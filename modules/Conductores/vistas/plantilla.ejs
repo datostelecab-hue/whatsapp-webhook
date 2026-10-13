@@ -901,16 +901,29 @@
     return r;
   }
 
-  /** Anula la baja programada: sigue de alta, sin fecha de salida. */
-  async function accionAnularBaja(d) {
-    const ok = await Dialogo.confirmar({
-      titulo: `Anular la baja de ${d.nombre_completo}`, si: 'Anular la baja', no: 'Dejarla',
-      html: `<p>Tenía la baja programada para el <b>${esc(dmy(d.baja_prevista))}</b>. Seguirá de alta, sin fecha de salida.</p>
-             <p class="text-telecab-muted">Sus plazas a partir del día siguiente se liberaron al programarla y no
-             vuelven solas: si sigue en su coche, colócalo en el planificador.</p>`,
+  /**
+   * CANCELA la baja programada (13/10/2026, db/193): no se le da de baja y sigue
+   * de alta. Queda en su EXPEDIENTE con por qué se iba a dar de baja y por qué
+   * se cancela: los dos obligatorios. El de la baja es el que se puso al
+   * programarla; solo si no se puso, se pide aquí.
+   */
+  async function accionCancelarBaja(d) {
+    const yaDicho = String(d.baja_prevista_motivo || '').trim();
+    const campos = [
+      ...(yaDicho ? [] : [{ id: 'motivoBaja', etiqueta: 'Por qué se iba a dar de baja', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'No se apuntó al programarla, y el expediente lleva los dos motivos.' }]),
+      { id: 'motivo', etiqueta: 'Por qué se cancela la baja', tipo: 'texto-largo', obligatorio: true },
+    ];
+    const v = await pedirDatos(`Cancelar la baja de ${d.nombre_completo}`, campos, {
+      textoBoton: 'Cancelar la baja', textoCancelar: 'Volver',
+      nota: `Tenía la baja programada para el ${dmy(d.baja_prevista)}`
+        + (yaDicho ? ` por: «${yaDicho}».` : '.')
+        + ' No se le dará de baja y seguirá de alta, sin fecha de salida. Los dos motivos quedan en su expediente. '
+        + 'Sus plazas desde el día siguiente se liberaron al programarla y no vuelven solas: si sigue en su coche, colócalo en el planificador.',
     });
-    if (!ok) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/anular-baja`, 'POST', {}));
+    if (!v || !String(v.motivo || '').trim()) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/cancelar-baja`, 'POST',
+      { motivo: v.motivo, motivoBaja: v.motivoBaja }));
   }
 
   /**
@@ -961,6 +974,11 @@
          nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero. '
              + 'Con una fecha futura, la baja se programa: sigue de alta y en su plaza hasta ese día.' });
     if (!v) return;
+    // Programada, el motivo es obligatorio: si luego se cancela, es la mitad de su expediente.
+    if (v.fecha && v.fecha > hoyMadrid() && !String(v.motivo || '').trim()) {
+      return Dialogo.aviso({ titulo: 'Falta el motivo', tono: 'aviso',
+        texto: 'Para programar una baja hay que decir por qué: si luego se cancela, queda en su expediente con el motivo de la cancelación.' });
+    }
     if (!await confirmarBaja(d, v.fecha)) return;
     await darDeBaja(d, v.fecha, v.motivo);
   }
@@ -1321,9 +1339,9 @@
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionExtras },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
-        // Con la baja programada para una fecha futura (db/191).
-        { texto: 'Anular la baja', icono: 'fa-rotate-left',
-          visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.baja_prevista, onClick: accionAnularBaja },
+        // Con la baja programada para una fecha futura (db/191). Deja expediente (db/193).
+        { texto: 'Cancelar la baja', icono: 'fa-rotate-left',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.baja_prevista, onClick: accionCancelarBaja },
         // Solo aparece si está de baja: es la vuelta, no un alta nueva.
         { texto: 'Volver a dar de alta', icono: 'fa-user-check', principal: true,
           visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: volverAAlta },
@@ -1563,6 +1581,27 @@
                 pinta: v => v ? fecha(v) : '<span class="text-telecab-green">En activo</span>' },
               { titulo: 'Antigüedad', campo: 'fecha_antiguedad', pinta: v => fecha(v) },
               { titulo: 'Motivo', campo: 'motivo_baja' },
+            ],
+          },
+        },
+        {
+          // EL EXPEDIENTE DE BAJAS PROGRAMADAS (13/10/2026, db/191 y db/193): la
+          // que tiene pendiente y las que se cancelaron, con los dos motivos.
+          // Solo sale si hay algo.
+          titulo: 'Bajas programadas', icono: 'fa-calendar-xmark',
+          visible: d => (d.bajas_programadas || []).length > 0,
+          tabla: {
+            datos: d => d.bajas_programadas || [],
+            columnas: [
+              { titulo: 'Estado', campo: 'estado',
+                pinta: v => etiqueta(v === 'pendiente' ? 'Pendiente' : 'Cancelada', v === 'pendiente' ? 'warn' : 'muted') },
+              { titulo: 'Último día', campo: 'fecha', clase: 'tabular-nums whitespace-nowrap', pinta: v => esc(dmy(v)) },
+              { titulo: 'Por qué se iba', campo: 'motivo_baja' },
+              { titulo: 'Programada', campo: 'programada_at', clase: 'whitespace-nowrap',
+                pinta: (v, f) => esc([f.programada_por, v ? fechaHora(v) : ''].filter(Boolean).join(' · ') || '—') },
+              { titulo: 'Por qué se canceló', campo: 'motivo_cancelacion', pinta: v => esc(v || '—') },
+              { titulo: 'Cancelada', campo: 'cancelada_at', clase: 'whitespace-nowrap',
+                pinta: (v, f) => esc([f.cancelada_por, v ? fechaHora(v) : ''].filter(Boolean).join(' · ') || '—') },
             ],
           },
         },

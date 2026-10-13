@@ -454,10 +454,14 @@ async function ficha(id, { momento } = {}) {
   // salen de una sola definición, así que la ficha nunca contradice a la tabla.
   const [fila] = await listar({ id, momento });
 
+  // Su expediente de bajas programadas: la pendiente y las canceladas (db/191, db/193).
+  const bajasProgramadas = await expedienteBajas(id);
+
   return {
     ...c,
     ...(fila || {}),
     empleos, situaciones, turnos, telefonos, cuentas, alias, coches,
+    bajas_programadas: bajasProgramadas,
     // OJO: se llaman `patrones` y no `libranzas` a proposito. `libranzas` ya
     // viene del listado como texto legible ('L M'); si esto se llamara igual,
     // lo pisaria y la pantalla ensenaria un objeto.
@@ -1561,8 +1565,15 @@ async function bajaOProgramada(id, { fecha, motivo } = {}, { usuarioId } = {}) {
   return { programada: await programarBaja(id, { fecha, motivo }, { usuarioId }) };
 }
 
-/** Programa la baja del contrato abierto para `fecha` (último día de contrato). */
+/**
+ * Programa la baja del contrato abierto para `fecha` (último día de contrato).
+ * El MOTIVO es obligatorio (13/10/2026): si luego se cancela, es la mitad del
+ * expediente (db/193).
+ */
 async function programarBaja(id, { fecha, motivo } = {}, { usuarioId } = {}) {
+  motivo = String(motivo || '').trim();
+  if (!motivo) throw new Error('Para programar la baja hace falta el motivo: si luego se cancela, queda en su expediente.');
+  if (motivo.length > 255) throw new Error(`El motivo admite como mucho 255 caracteres y tiene ${motivo.length}: abrévialo.`);
   return db.transaccion(async cli => {
     const abierto = (await cli.query(
       `SELECT id FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL FOR UPDATE`, [id])).rows[0];
@@ -1590,26 +1601,76 @@ async function programarBaja(id, { fecha, motivo } = {}, { usuarioId } = {}) {
 }
 
 /**
- * Anula una baja programada: sigue de alta sin fecha de salida. Sus plazas a
- * partir de ese día ya se liberaron al programarla y no vuelven solas: puede
- * que ya estén dadas a otro. Devuelve la fecha que tenía, o null si no tenía.
+ * CANCELA una baja programada (13/10/2026, db/193): no se le da de baja y
+ * sigue de alta sin fecha de salida. No se borra sin más: queda en su
+ * EXPEDIENTE (`conductor_baja_cancelada`) con POR QUÉ SE IBA A DAR DE BAJA y
+ * POR QUÉ SE CANCELÓ, los dos obligatorios. Camilo: «que se guarde como
+ * expediente con su respectiva observación […], obligatoriamente las dos».
+ *
+ * El motivo de la baja es el que se puso al programarla; si no se puso (las de
+ * antes de que fuera obligatorio), hay que darlo ahora (`motivoBaja`).
+ *
+ * Sus plazas a partir de ese día ya se liberaron al programarla y no vuelven
+ * solas: puede que ya estén dadas a otro. Devuelve la fecha que tenía, o null
+ * si no tenía ninguna.
  */
-async function anularBajaProgramada(id, { usuarioId } = {}) {
+async function cancelarBajaProgramada(id, { motivo, motivoBaja } = {}, { usuarioId } = {}) {
+  const porQue = String(motivo || '').trim();
+  if (!porQue) throw new Error('Di por qué se cancela la baja: queda en su expediente.');
   return db.transaccion(async cli => {
-    const r = await cli.query(
-      `DELETE FROM conductor_baja_programada p
-        USING conductor_periodo_empleo e
-        WHERE p.periodo_id = e.id AND e.conductor_id = $1 AND e.baja IS NULL
-        RETURNING to_char(p.fecha, 'YYYY-MM-DD') AS fecha`, [id]);
-    const fecha = r.rows.length ? r.rows[0].fecha : null;
-    if (fecha) {
-      await audit.registrar({
-        tabla: 'conductor', id, usuarioId, cli,
-        cambios: [{ campo: 'baja programada', antes: fecha, ahora: 'anulada' }],
-      });
+    const p = (await cli.query(
+      `SELECT p.periodo_id, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.motivo, p.usuario_id, p.creado_at
+         FROM conductor_baja_programada p
+         JOIN conductor_periodo_empleo e ON e.id = p.periodo_id AND e.baja IS NULL
+        WHERE p.conductor_id = $1
+          FOR UPDATE OF p`, [id])).rows[0];
+    if (!p) return null;
+    const porQueBaja = String(p.motivo || '').trim() || String(motivoBaja || '').trim();
+    if (!porQueBaja) throw new Error('Di también por qué se iba a dar de baja: no se apuntó al programarla y el expediente lleva los dos motivos.');
+    try {
+      await cli.query(
+        `INSERT INTO conductor_baja_cancelada
+           (conductor_id, periodo_id, fecha, motivo_baja, programada_por, programada_at, motivo_cancelacion, cancelada_por)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [id, p.periodo_id, p.fecha, porQueBaja, p.usuario_id, p.creado_at, porQue, usuarioId || null]);
+    } catch (e) {
+      if (SIN_TABLA_PROGRAMADA(e)) throw new Error('Para cancelar una baja hay que aplicar antes la migración db/193 (su expediente).');
+      throw e;
     }
-    return fecha;
+    await cli.query('DELETE FROM conductor_baja_programada WHERE periodo_id = $1', [p.periodo_id]);
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'baja programada', antes: `${p.fecha} · ${porQueBaja}`, ahora: `cancelada: ${porQue}` }],
+    });
+    return p.fecha;
   });
+}
+
+/**
+ * El EXPEDIENTE de bajas programadas de una persona, para su ficha: la que
+ * tiene pendiente y las que se cancelaron, con sus motivos y quién y cuándo.
+ * Sin db/191 o db/193, lo que haya.
+ */
+async function expedienteBajas(id) {
+  const tolera = p => p.then(r => r.rows).catch(e => { if (SIN_TABLA_PROGRAMADA(e)) return []; throw e; });
+  const quien = col => `(SELECT btrim(concat_ws(' ', u.nombre, u.apellidos)) FROM usuario u WHERE u.id = ${col})`;
+  const [pendiente, canceladas] = await Promise.all([
+    tolera(db.consulta(
+      `SELECT 'pendiente' AS estado, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.motivo AS motivo_baja,
+              ${quien('p.usuario_id')} AS programada_por, p.creado_at AS programada_at,
+              NULL::text AS motivo_cancelacion, NULL::text AS cancelada_por, NULL::timestamptz AS cancelada_at
+         FROM conductor_baja_programada p
+         JOIN conductor_periodo_empleo e ON e.id = p.periodo_id AND e.baja IS NULL
+        WHERE p.conductor_id = $1`, [id])),
+    tolera(db.consulta(
+      `SELECT 'cancelada' AS estado, to_char(c.fecha, 'YYYY-MM-DD') AS fecha, c.motivo_baja,
+              ${quien('c.programada_por')} AS programada_por, c.programada_at,
+              c.motivo_cancelacion, ${quien('c.cancelada_por')} AS cancelada_por, c.cancelada_at
+         FROM conductor_baja_cancelada c
+        WHERE c.conductor_id = $1
+        ORDER BY c.cancelada_at DESC`, [id])),
+  ]);
+  return [...pendiente, ...canceladas];
 }
 
 /**
@@ -1802,5 +1863,5 @@ module.exports = {
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,
-  bajaOProgramada, anularBajaProgramada, bajasVencidas,
+  bajaOProgramada, cancelarBajaProgramada, bajasVencidas,
 };

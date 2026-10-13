@@ -185,9 +185,10 @@ router.post('/api/conductor/:id/alta', responde(async req =>
 router.post('/api/conductor/:id/baja', responde(async req =>
   plantilla.darDeBaja(req.params.id, req.body || {}, await quien(req))));
 
-// Anula la baja programada para una fecha futura (db/191).
-router.post('/api/conductor/:id/anular-baja', responde(async req =>
-  plantilla.anularBaja(req.params.id, await quien(req))));
+// Cancela la baja programada para una fecha futura (db/191), con los dos
+// motivos obligatorios: queda en su expediente (db/193).
+router.post('/api/conductor/:id/cancelar-baja', responde(async req =>
+  plantilla.cancelarBaja(req.params.id, req.body || {}, await quien(req))));
 
 router.post('/api/conductor/:id/a-propia', responde(async req =>
   plantilla.aPropia(req.params.id, req.body || {}, await quien(req))));

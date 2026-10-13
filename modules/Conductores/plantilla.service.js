@@ -344,11 +344,15 @@ const darDeAlta = async (id, datos, quien) => {
 // día. Devuelve { dado } o { programada: 'AAAA-MM-DD' }.
 const darDeBaja = (id, datos, quien) => con.bajaOProgramada(Number(id), datos || {}, quien);
 
-/** Anula su baja programada. { anulada: 'AAAA-MM-DD' } o lanza si no tenía. */
-async function anularBaja(id, quien) {
-  const fecha = await con.anularBajaProgramada(Number(id), quien);
+/**
+ * Cancela su baja programada: no se le da de baja. Queda en su expediente con
+ * por qué se iba a dar de baja y por qué se cancela, los dos obligatorios
+ * (db/193). { cancelada: 'AAAA-MM-DD' } o lanza si no tenía.
+ */
+async function cancelarBaja(id, { motivo, motivoBaja } = {}, quien) {
+  const fecha = await con.cancelarBajaProgramada(Number(id), { motivo, motivoBaja }, quien);
   if (!fecha) throw new Error('No tiene ninguna baja programada');
-  return { anulada: fecha };
+  return { cancelada: fecha };
 }
 
 /**
@@ -439,7 +443,7 @@ module.exports = {
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
-  darDeAlta, darDeBaja, anularBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
+  darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
   excelGestoria,
   tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,
   retirarDocumento, descargarDocumento, documentosQueVencen,

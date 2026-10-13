@@ -183,8 +183,11 @@
    *
    * `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'semana', opciones, valor, ayuda }]
    * Devuelve los valores, o null si se cancela.
+   *
+   * `textoCancelar`: el botón de cerrar dice «Cancelar», salvo que la acción ya
+   * se llame así («Cancelar la baja» al lado de «Cancelar» no se entiende).
    */
-  function formulario(titulo, campos, { textoBoton = 'Guardar', nota, ancho = 'max-w-md', columnas = 1 } = {}) {
+  function formulario(titulo, campos, { textoBoton = 'Guardar', textoCancelar = 'Cancelar', nota, ancho = 'max-w-md', columnas = 1 } = {}) {
     return new Promise(resolver => {
       const fondo = document.createElement('div');
       fondo.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm';
@@ -314,7 +317,7 @@
             <p class="hidden text-sm text-telecab-red col-span-full" data-error></p>
             <div class="flex items-center gap-2 pt-1 col-span-full">
               <button type="submit" class="flex-1 px-4 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">${esc(textoBoton)}</button>
-              <button type="button" data-cancelar class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">Cancelar</button>
+              <button type="button" data-cancelar class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">${esc(textoCancelar)}</button>
             </div>
           </form>
         </div>`;

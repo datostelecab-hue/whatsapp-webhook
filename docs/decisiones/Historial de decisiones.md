@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-13 · Cancelar una baja programada deja expediente, con los dos motivos
+
+«Si hay una baja programada, da también la opción de poder cancelarla, pero que se guarde como expediente con su respectiva observación del por qué se iba a dar de baja y por qué se canceló, obligatoriamente las dos.» Cancelar ya no borra la baja programada sin rastro: la pasa a `conductor_baja_cancelada` (db/193) con los dos motivos, obligatorios también en la base. Por eso programar una baja pide ya el motivo. Se ve en la ficha, en «Bajas programadas». → [[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]]
+
 ## 2026-10-13 · La candidatura y el contrato no pueden decir cosas distintas
 
 Aaron Borja entró por InfoJobs con contrato propio y se le dio de alta con el «Alta rápida» de ETT. Corregir después su candidatura no corrigió su contrato, y el planificador lo pintaba como ETT. Su contrato se corrigió con db/192: el mismo contrato y la misma alta, no un «Pasar a propia», que dejaría un tramo de ETT que no existió. Para que no se repita, si una edición de la candidatura cambia el tipo de contrato y la ficha tiene abierto otro, Selección pregunta y ofrece corregir también el contrato (solo si es de hasta 30 días). El «Alta rápida» avisa de que es solo para la ETT. → [[Seleccion#La candidatura y el contrato no dicen cosas distintas (13/10/2026)]]

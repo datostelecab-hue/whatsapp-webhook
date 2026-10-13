@@ -60,6 +60,7 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 - **`opciones` es el selector de la casa** y `lista` es el mismo por fuera; lo que cambia es lo que devuelven (abajo). Los dos aceptan `buscador: { marcador, tope }`: pinta un filtro, enseña `tope` (10 por defecto) y dice cuántas quedan fuera. Con `grupos` pinta dos niveles.
 - `grupo` mete una cabecera cuando cambia: con treinta campos seguidos no se distingue la dirección de la Seguridad Social.
 - `ancho` (`max-w-md` por defecto) y `columnas: 2`.
+- `textoBoton` es el botón de guardar y **`textoCancelar`** el de cerrar («Cancelar» por defecto, 13/10/2026). Cámbialo cuando la acción ya se llame «Cancelar…»: «Cancelar la baja» al lado de «Cancelar» no se entiende, así que ahí dice «Volver».
 - Devuelve los valores, o **`null` si se cancela** — compruébalo siempre.
 
 **`obligatorio` vale en todos los campos** (01/10/2026). Antes solo se miraba en las listas: un texto obligatorio en blanco cerraba la ventana y cada pantalla lo comprobaba después a mano, o no. Ahora se queda abierta y dice «Rellena «…»».
