@@ -105,6 +105,23 @@ Un tramo que arranca el 21 no se puede cerrar el 14 — la base lo prohíbe, y c
 
 Es la misma función que usa la rama de "alta futura cancelada": **una sola definición de dar de baja**, en vez de dos que cierran cosas distintas. → [[Trampas conocidas]]
 
+### Una baja con fecha futura se programa (13/10/2026, db/191)
+
+Camilo: *«a los que les demos de baja por ejemplo el 15, hoy estamos a 13, no les quites la plaza hasta ese día, que siga planificado; simplemente el sistema sabe que lo quita automáticamente ese día y lo pone de baja, no lo pone de baja de una vez»*.
+
+Hasta ese día, «Dar de baja» con fecha futura recortaba bien las plazas, pero **cerraba el contrato en el acto**. Casi todo el sistema decide quién está de alta por «contrato sin fecha de baja», así que la persona desaparecía del planificador y del bot desde ese momento. Le pasó a Dylan Hernández García: baja voluntaria el 15/10, dada el 13.
+
+Ahora (`conductores.repo.bajaOProgramada`):
+
+- **Fecha futura: se programa.** El contrato sigue abierto y la baja se apunta en `conductor_baja_programada`, una por contrato. Hasta ese día la persona **sigue de alta, en su plaza y en el bot**. Sus **plazas** se recortan ya a ese día: desde el siguiente quedan libres en el planificador, para buscar relevo. Su turno, libranzas y situación los cierra la baja de verdad, cuando llega.
+- **El día llega solo.** Cada hora (`app.js`, `plantilla.service.aplicarBajasProgramadas`), las bajas cuyo día ya ha terminado se dan con su fecha, su motivo y firmadas por quien las programó. La fecha es el **último día de contrato**, como siempre. Como la jornada va de 05:00 a 05:00 (los turnos de noche), la baja del 15 se da a partir de las 05:00 del 16.
+- **Hoy o antes: la baja de siempre**, en el acto. Antes del alta de un contrato que aún no ha empezado, se cancela el alta, como siempre.
+- **Se ve:** en Plantilla, la situación dice «Activo · se va el 15/10». En el planificador, junto a su nombre, «se va el 15/10». Para un día posterior ya no se le ofrece.
+- **Se puede cambiar o anular.** Volver a «Dar de baja» con otra fecha la cambia. **«Anular la baja»** la quita y sigue de alta, pero sus plazas desde el día siguiente no vuelven solas: puede que ya estén dadas a otro.
+- Elegir «Baja en la empresa» como situación hace lo mismo que el botón.
+- **db/191** pasó a programadas las dos bajas futuras que había el 13/10: Lionar Abreu (14/10) y Dylan Hernández (15/10). Volvieron a estar de alta hasta su día. Las de ese mismo día no se tocaron: ya estaban de baja.
+- Sin db/191 todo se ve como antes, y dar de baja con fecha futura avisa de que falta la migración.
+
 ### Un tramo "Activo" abierto es el fondo, no un obstáculo
 
 Al añadir una ausencia, un tramo abierto que **no sea ausencia** se **parte**: se cierra la víspera y se vuelve a abrir al día siguiente de la vuelta, todo en una transacción.

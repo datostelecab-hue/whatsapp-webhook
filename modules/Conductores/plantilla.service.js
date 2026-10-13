@@ -340,8 +340,34 @@ const darDeAlta = async (id, datos, quien) => {
   }
   return { periodoId, candidatura };
 };
-const darDeBaja = async (id, datos, quien) =>
-  ({ dado: await con.darDeBaja(Number(id), datos, quien) });
+// Con fecha futura se PROGRAMA (db/191): sigue de alta y en su plaza hasta ese
+// día. Devuelve { dado } o { programada: 'AAAA-MM-DD' }.
+const darDeBaja = (id, datos, quien) => con.bajaOProgramada(Number(id), datos || {}, quien);
+
+/** Anula su baja programada. { anulada: 'AAAA-MM-DD' } o lanza si no tenía. */
+async function anularBaja(id, quien) {
+  const fecha = await con.anularBajaProgramada(Number(id), quien);
+  if (!fecha) throw new Error('No tiene ninguna baja programada');
+  return { anulada: fecha };
+}
+
+/**
+ * LAS BAJAS PROGRAMADAS QUE YA TOCAN (cada hora, app.js). Se da cada una con su
+ * fecha y su motivo, firmada por quien la programó. Una que falle no para a las
+ * demás: se dice y se reintenta en la vuelta siguiente.
+ */
+async function aplicarBajasProgramadas() {
+  const hechas = [], fallos = [];
+  for (const b of await con.bajasVencidas()) {
+    try {
+      await con.darDeBaja(b.conductorId, { fecha: b.fecha, motivo: b.motivo }, { usuarioId: b.usuarioId });
+      hechas.push(b);
+    } catch (e) {
+      fallos.push({ ...b, error: e.message });
+    }
+  }
+  return { hechas, fallos };
+}
 
 /**
  * El paso de ETT a plantilla propia, a los tres meses. NO es una baja seguida
@@ -413,7 +439,7 @@ module.exports = {
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
-  darDeAlta, darDeBaja, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
+  darDeAlta, darDeBaja, anularBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
   excelGestoria,
   tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,
   retirarDocumento, descargarDocumento, documentosQueVencen,

@@ -335,8 +335,24 @@ async function tablero({ dia } = {}) {
   // igual, solo sin la letra.
   const rend = await require('../../services/repo/rendimiento').leer().catch(() => new Map());
 
+  // LAS BAJAS PROGRAMADAS (db/191, 13/10/2026): quien se va el 15 sigue de alta
+  // y en su plaza hasta ese día, y se dice; para un día posterior ya no se le
+  // ofrece. Sus plazas quedaron libres desde el día siguiente al programarla.
+  // Sin la migración no hay ninguna.
+  const seVaEl = await db.consulta(
+    `SELECT p.conductor_id, to_char(p.fecha, 'YYYY-MM-DD') AS fecha
+       FROM conductor_baja_programada p
+       JOIN conductor_periodo_empleo e ON e.id = p.periodo_id AND e.baja IS NULL`)
+    .then(r => new Map(r.rows.map(x => [String(x.conductor_id), x.fecha])))
+    .catch(e => {
+      if (e.code !== '42P01') console.warn('⚠️ [Planificador] bajas programadas:', e.message);
+      return new Map();
+    });
+
   const gente = new Map();
   conductores.rows.forEach(c => {
+    const bajaPrevista = seVaEl.get(String(c.id)) || null;
+    if (bajaPrevista && bajaPrevista < efectivo) return;   // ese día ya no está
     const libra = new Array(DIAS).fill(false);
     (c.libra || []).forEach(d => { libra[d - 1] = true; });
     gente.set(String(c.id), {
@@ -372,6 +388,8 @@ async function tablero({ dia } = {}) {
       vuelveEl: fechaDe(c.estado_hasta),
       // La proxima ausencia que aun no ha empezado (para avisar "entra el...").
       proxAusencia: c.prox_desde ? { estado: c.prox_etiqueta, desde: fechaDe(c.prox_desde) } : null,
+      // Su último día, si tiene la baja programada (db/191).
+      bajaPrevista,
       libra,
       // Se rellenan con la cobertura, más abajo.
       trabaja: new Array(DIAS).fill(false),

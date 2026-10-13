@@ -126,6 +126,10 @@ Sin fechas se cogen las de la ausencia: la vuelta prevista de las vacaciones **e
 
 Los días del sustituto, si no se dicen, son **los mismos que tenía el titular**: un correturnos que cubre a otro cubre sus días, no unos nuevos.
 
+### Quien se va, se va el día que toca (13/10/2026)
+
+Una baja con fecha futura se **programa** ([[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]]). La persona sigue en su plaza hasta ese día, con «se va el 15/10» junto a su nombre. Su plaza queda libre desde el día siguiente, así que el hueco se ve con tiempo para buscar relevo. Para un día posterior ya no se le ofrece (`seVaEl` en `planificador.repo.tablero`).
+
 ### Pinchar a alguien deja ver su ficha (09/10/2026)
 
 Camilo: *«en las tarjetas y en los cuadrantes, al darle clic, quiero tener siempre la opción de ver su perfil»*. Pinchar a una persona abre el selector de siempre (cambiarla, quitarla), y arriba del todo ahora sale **su nombre con «Ver su ficha»**, que abre su ficha de Plantilla (`/plantilla#id`) **en otra pestaña**: el cuadrante se queda como estaba, con su base, su vista y su scroll, y el diálogo se cierra.

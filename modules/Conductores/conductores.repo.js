@@ -281,9 +281,22 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- mirando a todos, a los de baja o a los que entran.
     ORDER BY COALESCE(ultimo.baja, e.alta) DESC NULLS LAST, ${NOMBRE_BOLT}`, params);
 
+  // LA BAJA PROGRAMADA (db/191): sigue de alta, y se dice cuándo se va. Va en
+  // su propia consulta para que, sin la migración, la lista salga igual.
+  const programadas = await bajasProgramadas();
+  const aEsCorta = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+
   // Lo que le falta a cada ficha. Se calcula aquí y no en la vista para que
   // valga igual en la pantalla, en un aviso o en un informe.
-  return r.rows.map(c => ({ ...c, faltan: faltantesDe(c) }));
+  return r.rows.map(c => {
+    const p = c.empleo_vigente ? programadas.get(Number(c.id)) : null;
+    return {
+      ...c, faltan: faltantesDe(c),
+      baja_prevista: p ? p.fecha : null,
+      baja_prevista_motivo: p ? p.motivo : null,
+      ...(p ? { situacion_etiqueta: `${c.situacion_etiqueta} · se va el ${aEsCorta(p.fecha)}` } : {}),
+    };
+  });
 }
 
 /**
@@ -751,7 +764,8 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
   // con el contrato abierto, y el resto del sistema seguía contando con esa
   // persona. Dos pantallas respondiendo cosas distintas porque se les preguntaba
   // por cosas distintas.
-  if (cat.es_fin_contrato) return darDeBaja(id, { fecha: desde, motivo }, { usuarioId });
+  // Con fecha futura se programa, como desde el botón (db/191).
+  if (cat.es_fin_contrato) return bajaOProgramada(id, { fecha: desde, motivo }, { usuarioId });
 
   // LA FECHA DE VUELTA ES OBLIGATORIA en lo que tiene vuelta (vacaciones,
   // permiso). Sin ella la ausencia no termina NUNCA: se guardaba `hasta` en NULL
@@ -1414,17 +1428,18 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
     // Así que lo que empieza después de la baja se borra, y lo que ya estaba en
     // marcha se recorta a ese día. Vale igual para un alta que nunca arrancó y
     // para una baja con fecha atrasada: una sola definición de dar de baja.
-    const limpiar = async tabla => {
-      await cli.query(`DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde > $2`, [id, dia]);
-      await cli.query(
-        `UPDATE ${tabla} SET hasta = $2
-          WHERE conductor_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta > $2)`, [id, dia]);
-    };
     const suyo = async () => {
-      await limpiar('asignacion');            // asignacion_dia cae en cascada
-      await limpiar('conductor_estado_hist');
-      await limpiar('conductor_turno_hist');
-      await limpiar('patron_libranza');
+      await recortar(cli, 'asignacion', id, dia);            // asignacion_dia cae en cascada
+      await recortar(cli, 'conductor_estado_hist', id, dia);
+      await recortar(cli, 'conductor_turno_hist', id, dia);
+      await recortar(cli, 'patron_libranza', id, dia);
+    };
+    // Si tenía la baja programada, ya está dada (`aplicarBajasProgramadas`, o
+    // alguien la ha dado a mano antes de su día).
+    const sinProgramada = async () => {
+      if ((await cli.query("SELECT to_regclass('conductor_baja_programada') IS NOT NULL AS hay")).rows[0].hay) {
+        await cli.query('DELETE FROM conductor_baja_programada WHERE periodo_id = $1', [abierto.id]);
+      }
     };
 
     // Un alta que aún no ha empezado NO se puede dar de baja antes del alta (lo
@@ -1432,6 +1447,7 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
     // una prueba o un alta cancelada-, así que se CANCELA en vez de cerrarse.
     if (abierto.alta > dia) {
       await suyo();
+      await sinProgramada();
       await cli.query('DELETE FROM conductor_periodo_empleo WHERE id = $1', [abierto.id]);
       await audit.registrar({
         tabla: 'conductor', id, usuarioId, cli,
@@ -1445,6 +1461,7 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
       `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4 WHERE id = $1`,
       [abierto.id, dia, motivo || null, usuarioId || null]);
     await suyo();
+    await sinProgramada();
 
     await audit.registrar({
       tabla: 'conductor', id, usuarioId, cli,
@@ -1453,6 +1470,139 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
     return true;
   };
   return cli ? hazlo(cli) : db.transaccion(hazlo);
+}
+
+/** Lo que empieza después de `dia` se borra; lo que lo cruza, se recorta a ese día. */
+async function recortar(cli, tabla, id, dia) {
+  await cli.query(`DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde > $2`, [id, dia]);
+  await cli.query(
+    `UPDATE ${tabla} SET hasta = $2
+      WHERE conductor_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta > $2)`, [id, dia]);
+}
+
+// ── LA BAJA CON FECHA FUTURA SE PROGRAMA (13/10/2026, db/191) ─────────────────
+//
+// Camilo: «a los que les demos de baja por ejemplo el 15, hoy estamos a 13, no
+// les quites la plaza hasta ese día, que siga planificado; simplemente el
+// sistema sabe que lo quita automáticamente ese día y lo pone de baja, no lo
+// pone de baja de una vez».
+//
+// Dar de baja cerraba el contrato en el acto aunque la fecha fuera futura, y
+// casi todo el sistema decide quién está de alta por «contrato sin fecha de
+// baja»: desde ese momento la persona desaparecía del planificador y del bot.
+// Ahora, con fecha futura, el contrato SIGUE ABIERTO y la baja se apunta en
+// `conductor_baja_programada`. Lo único que se toca ya son sus PLAZAS: siguen
+// suyas hasta ese día y quedan libres desde el siguiente, para que Tráfico vea
+// el hueco y busque relevo. Su turno, libranzas y situación los cierra la baja
+// de verdad, cuando llega (`aplicarBajasProgramadas`, cada hora).
+//
+// Sin db/191 no hay tabla: leerla da vacío (y la pantalla se ve como siempre)
+// y programar lo dice.
+
+const SIN_TABLA_PROGRAMADA = e => e && e.code === '42P01';
+
+/** Las bajas programadas de contratos aún abiertos: Map conductorId → { fecha, motivo }. */
+async function bajasProgramadas() {
+  try {
+    const r = await db.consulta(
+      `SELECT p.conductor_id, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.motivo
+         FROM conductor_baja_programada p
+         JOIN conductor_periodo_empleo e ON e.id = p.periodo_id AND e.baja IS NULL`);
+    return new Map(r.rows.map(x => [Number(x.conductor_id), { fecha: x.fecha, motivo: x.motivo || '' }]));
+  } catch (e) {
+    if (SIN_TABLA_PROGRAMADA(e)) return new Map();
+    throw e;
+  }
+}
+
+/**
+ * Da de baja YA o la PROGRAMA, según la fecha. La puerta de «Dar de baja» y de
+ * elegir «Baja en la empresa» como situación.
+ *
+ * - Fecha de hoy o pasada: la baja de siempre.
+ * - Fecha futura: se programa.
+ * - Antes de que empiece su contrato: se cancela el alta ya (`darDeBaja`), que
+ *   un contrato que nunca arranca no tiene nada que esperar.
+ */
+async function bajaOProgramada(id, { fecha, motivo } = {}, { usuarioId } = {}) {
+  if (!fecha) return { dado: await darDeBaja(id, { fecha, motivo }, { usuarioId }) };
+  const r = (await db.consulta(
+    `SELECT $2::date > (now() AT TIME ZONE 'Europe/Madrid')::date AS futura,
+            (SELECT alta > $2::date FROM conductor_periodo_empleo
+              WHERE conductor_id = $1 AND baja IS NULL) AS antes_del_alta`, [id, fecha])).rows[0];
+  if (!r.futura || r.antes_del_alta) return { dado: await darDeBaja(id, { fecha, motivo }, { usuarioId }) };
+  return { programada: await programarBaja(id, { fecha, motivo }, { usuarioId }) };
+}
+
+/** Programa la baja del contrato abierto para `fecha` (último día de contrato). */
+async function programarBaja(id, { fecha, motivo } = {}, { usuarioId } = {}) {
+  return db.transaccion(async cli => {
+    const abierto = (await cli.query(
+      `SELECT id FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL FOR UPDATE`, [id])).rows[0];
+    if (!abierto) throw new Error('Esta persona no está de alta');
+    try {
+      await cli.query(
+        `INSERT INTO conductor_baja_programada (periodo_id, conductor_id, fecha, motivo, usuario_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (periodo_id) DO UPDATE
+           SET fecha = EXCLUDED.fecha, motivo = EXCLUDED.motivo,
+               usuario_id = EXCLUDED.usuario_id, creado_at = now()`,
+        [abierto.id, id, fecha, motivo || null, usuarioId || null]);
+    } catch (e) {
+      if (SIN_TABLA_PROGRAMADA(e)) throw new Error('Para dar de baja con fecha futura hay que aplicar antes la migración db/191.');
+      throw e;
+    }
+    // SUS PLAZAS, hasta ese día: desde el siguiente quedan libres en el planificador.
+    await recortar(cli, 'asignacion', id, fecha);
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'baja programada', antes: null, ahora: `${fecha}${motivo ? ' · ' + motivo : ''}` }],
+    });
+    return fecha;
+  });
+}
+
+/**
+ * Anula una baja programada: sigue de alta sin fecha de salida. Sus plazas a
+ * partir de ese día ya se liberaron al programarla y no vuelven solas: puede
+ * que ya estén dadas a otro. Devuelve la fecha que tenía, o null si no tenía.
+ */
+async function anularBajaProgramada(id, { usuarioId } = {}) {
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `DELETE FROM conductor_baja_programada p
+        USING conductor_periodo_empleo e
+        WHERE p.periodo_id = e.id AND e.conductor_id = $1 AND e.baja IS NULL
+        RETURNING to_char(p.fecha, 'YYYY-MM-DD') AS fecha`, [id]);
+    const fecha = r.rows.length ? r.rows[0].fecha : null;
+    if (fecha) {
+      await audit.registrar({
+        tabla: 'conductor', id, usuarioId, cli,
+        cambios: [{ campo: 'baja programada', antes: fecha, ahora: 'anulada' }],
+      });
+    }
+    return fecha;
+  });
+}
+
+/**
+ * Las bajas programadas cuyo día YA HA TERMINADO. La jornada va de 05:00 a
+ * 05:00: quien hace la noche del 15 sigue en su coche hasta la madrugada del
+ * 16, así que su baja del 15 no se da hasta las 05:00 del 16.
+ */
+async function bajasVencidas() {
+  try {
+    const r = await db.consulta(
+      `SELECT p.conductor_id, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.motivo, p.usuario_id
+         FROM conductor_baja_programada p
+         JOIN conductor_periodo_empleo e ON e.id = p.periodo_id AND e.baja IS NULL
+        WHERE p.fecha < ((now() AT TIME ZONE 'Europe/Madrid') - INTERVAL '5 hours')::date
+        ORDER BY p.fecha, p.conductor_id`);
+    return r.rows.map(x => ({ conductorId: Number(x.conductor_id), fecha: x.fecha, motivo: x.motivo || null, usuarioId: x.usuario_id }));
+  } catch (e) {
+    if (SIN_TABLA_PROGRAMADA(e)) return [];
+    throw e;
+  }
 }
 
 /**
@@ -1625,4 +1775,5 @@ module.exports = {
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,
+  bajaOProgramada, anularBajaProgramada, bajasVencidas,
 };

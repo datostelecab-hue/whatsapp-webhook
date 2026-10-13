@@ -69,10 +69,11 @@
   /** Ejecuta una acción y refresca la ficha y la lista. Errores a la vista. */
   async function hacer(fn) {
     try {
-      await fn();
+      const r = await fn();
       const id = plantilla.abierto;
       await plantilla.recargar();
       if (id) await plantilla.abrir(id, { historial: false });
+      return r;   // lo que contestó el servidor, por si quien llama tiene algo que decir
     } catch (e) {
       alert(e.message);
     }
@@ -865,19 +866,51 @@
    * Si se explicara en dos sitios, tarde o temprano uno de los dos diría algo
    * que el otro ya no hace.
    */
+  // CON FECHA FUTURA, LA BAJA SE PROGRAMA (db/191, 13/10/2026): sigue de alta y
+  // en su plaza hasta ese día, y el ERP le da de baja solo cuando termina.
+  const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const dmy = iso => String(iso || '').slice(0, 10).split('-').reverse().join('/');
   function confirmarBaja(d, dia) {
+    if (dia && dia > hoyMadrid()) {
+      return Dialogo.confirmar({
+        titulo: `Programar la baja de ${d.nombre_completo}`,
+        tono: 'peligro', si: 'Programar la baja', no: 'Cancelar',
+        html: `<p>Su último día será el <b>${esc(dmy(dia))}</b>.</p>
+               <p class="text-telecab-muted">Hasta ese día sigue de alta, en su plaza y en el bot. Desde el día
+               siguiente su plaza queda libre en el planificador, para buscarle relevo. Cuando acabe ese día
+               se le da de baja solo: se cierran su empleo, su turno y sus libranzas.</p>`,
+      });
+    }
     return Dialogo.confirmar({
       titulo: `Dar de baja a ${d.nombre_completo}`,
       tono: 'peligro', si: 'Dar de baja', no: 'Cancelar',
-      html: `<p>Con fecha <b>${esc(dia)}</b>.</p>
+      html: `<p>Con fecha <b>${esc(dmy(dia))}</b>.</p>
              <p class="text-telecab-muted">Se cierran su empleo, su turno, sus libranzas y sus asignaciones.
              Su historial se conserva entero y se le puede volver a dar de alta.</p>`,
     });
   }
 
   // Declarada, no `const`: `accionSituacion` está más arriba y también la usa.
-  function darDeBaja(d, fecha, motivo) {
-    return hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', { fecha, motivo }));
+  async function darDeBaja(d, fecha, motivo) {
+    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', { fecha, motivo }));
+    if (r && r.programada) {
+      await Dialogo.aviso({ titulo: 'Baja programada', tono: 'ok',
+        texto: `${d.nombre_completo} sigue de alta y en su plaza hasta el ${dmy(r.programada)}. ` +
+          'Cuando acabe ese día se le da de baja solo.' });
+    }
+    return r;
+  }
+
+  /** Anula la baja programada: sigue de alta, sin fecha de salida. */
+  async function accionAnularBaja(d) {
+    const ok = await Dialogo.confirmar({
+      titulo: `Anular la baja de ${d.nombre_completo}`, si: 'Anular la baja', no: 'Dejarla',
+      html: `<p>Tenía la baja programada para el <b>${esc(dmy(d.baja_prevista))}</b>. Seguirá de alta, sin fecha de salida.</p>
+             <p class="text-telecab-muted">Sus plazas a partir del día siguiente se liberaron al programarla y no
+             vuelven solas: si sigue en su coche, colócalo en el planificador.</p>`,
+    });
+    if (!ok) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/anular-baja`, 'POST', {}));
   }
 
   /**
@@ -921,10 +954,12 @@
 
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
-      { id: 'fecha', etiqueta: 'Fecha de baja', tipo: 'fecha', valor: fecha(new Date()) },
-      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
+      { id: 'fecha', etiqueta: 'Fecha de baja (su último día)', tipo: 'fecha',
+        valor: d.baja_prevista ? dmy(d.baja_prevista) : fecha(new Date()) },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: d.baja_prevista_motivo || '' },
     ], { textoBoton: 'Dar de baja',
-         nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero.' });
+         nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero. '
+             + 'Con una fecha futura, la baja se programa: sigue de alta y en su plaza hasta ese día.' });
     if (!v) return;
     if (!await confirmarBaja(d, v.fecha)) return;
     await darDeBaja(d, v.fecha, v.motivo);
@@ -1286,6 +1321,9 @@
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionExtras },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
+        // Con la baja programada para una fecha futura (db/191).
+        { texto: 'Anular la baja', icono: 'fa-rotate-left',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.baja_prevista, onClick: accionAnularBaja },
         // Solo aparece si está de baja: es la vuelta, no un alta nueva.
         { texto: 'Volver a dar de alta', icono: 'fa-user-check', principal: true,
           visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: volverAAlta },

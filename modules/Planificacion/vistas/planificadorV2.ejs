@@ -1651,12 +1651,15 @@
   // baja/permiso (alerta, sigue asignado), o una ausencia que entra pronto.
   function avisoAusencia(c) {
     if (!c) return null;
+    // LA BAJA PROGRAMADA (db/191): sigue en su plaza hasta ese día, y se dice.
+    const seVa = c.bajaPrevista ? `se va el ${isoAes(c.bajaPrevista).slice(0, 5)}` : '';
     if (c.ausente) {
       const vuelve = c.vuelveEl && c.vuelveEl <= sumarDias(DIA, 7) ? ` · vuelve ${isoAes(c.vuelveEl)}` : '';
       // Cualquier ausente deja el dia sin cubrir (hueco); el tachado (se quita del
       // cuadrante) es solo para las que liberan la plaza, como vacaciones.
-      return { tono: c.liberaPlaza ? 'red' : 'warn', texto: c.estado + vuelve, hueco: true, tachado: !!c.liberaPlaza };
+      return { tono: c.liberaPlaza ? 'red' : 'warn', texto: c.estado + vuelve + (seVa ? ' · ' + seVa : ''), hueco: true, tachado: !!c.liberaPlaza };
     }
+    if (seVa) return { tono: 'red', texto: seVa, hueco: false };
     if (c.proxAusencia && c.proxAusencia.desde && c.proxAusencia.desde <= sumarDias(DIA, 7)) {
       return { tono: 'gold', texto: `entra en ${String(c.proxAusencia.estado || '').toLowerCase()} el ${isoAes(c.proxAusencia.desde)}`, hueco: false };
     }

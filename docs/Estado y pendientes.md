@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## La baja programada y el contrato de Aaron (13/10/2026)
+
+- **Desplegar y aplicar `db/191`** (la baja programada). Lionar Abreu (14/10) y Dylan Hernández (15/10) vuelven a estar de alta hasta su día. Si se aplica después de esas fechas, no hace nada con ellos. Ver [[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]].
+- **Aaron Borja González (ficha 463)**: lo creó Victor el 07/10 con el «Alta rápida» de /ett, que siempre abre contrato ETT GiGroup. Su candidatura se cambió después a InfoJobs y TIBUS, pero el contrato de la ficha sigue diciendo ETT. Falta decidir cómo se corrige (no con «Pasar a propia», que dejaría un tramo de ETT que no existió).
+
 ## Los descuentos de Tibus (13/10/2026)
 
 - **Aplicar `db/190`** desde /migraciones: anula los descuentos de septiembre que RRHH no hizo en Tibus y apunta los que hizo de menos. Vuelven a quedar pendientes 696,96 € entre seis conductores. Ver [[Administracion#Lo que Tibus no descontó: db/190 (13/10/2026)]].

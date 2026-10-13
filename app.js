@@ -558,6 +558,23 @@ programar('10 5 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// LAS BAJAS PROGRAMADAS (db/191, 13/10/2026). Quien se da de baja con fecha
+// futura sigue de alta y en su plaza hasta ese día; cuando la jornada de ese
+// día termina (05:00 del siguiente, por los turnos de noche), se le da de baja
+// aquí. Cada hora y no una vez al día: si un despliegue se come la vuelta de
+// las 05:15, la siguiente la recoge.
+programar('15 * * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./modules/Conductores/plantilla.service').aplicarBajasProgramadas();
+    r.hechas.forEach(b => console.log(`👋 [Plantilla] Baja programada aplicada: conductor ${b.conductorId}, último día ${b.fecha}`));
+    r.fallos.forEach(b => console.error(`⚠️  [Plantilla] Baja programada de ${b.conductorId} (${b.fecha}) sin aplicar: ${b.error}`));
+  } catch (error) {
+    console.error(`⚠️  [Plantilla] bajas programadas: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // Dos cosas que se calculan juntas porque dependen de lo mismo: el promedio de
 // horas del mes corrido (`conductor_rendimiento`, que usa el reporte de
 // asistencia) y la CALIFICACIÓN A-D del MES CORRIDO (`conductor_calificacion`), que

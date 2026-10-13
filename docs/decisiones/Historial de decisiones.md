@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-13 · Una baja con fecha futura se programa, no se da en el acto
+
+«A los que les demos de baja por ejemplo el 15 […] no les quites la plaza hasta ese día, que siga planificado; el sistema lo quita automáticamente ese día.» Dar de baja cerraba el contrato al momento aunque la fecha fuera futura, y la persona desaparecía del planificador y del bot. No se cambió la treintena de sitios que deciden «de alta» por el contrato sin baja. La baja futura se apunta aparte (db/191), el contrato sigue abierto, las plazas se recortan a ese día, y un proceso de cada hora da la baja cuando el día termina (a las 05:00 del siguiente, por los turnos de noche). → [[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]]
+
 ## 2026-10-13 · Los conductores ven sus turnos sin empezar turno
 
 «Déjales la opción siempre de ver turnos sin necesidad de iniciar el turno o escribir alguna matrícula, siempre y cuando estén en la base.» El saludo del bot lleva el botón «Ver mis turnos» para quien tiene ficha, y una pregunta por sus turnos («Cuales es mi turno») los enseña en vez de devolver el saludo. Las órdenes («terminar turno») siguen yendo a su panel. → [[Fichaje#Los dos flujos del WhatsApp]]
