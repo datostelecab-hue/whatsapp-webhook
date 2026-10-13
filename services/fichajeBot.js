@@ -96,6 +96,19 @@ const PALABRAS = /^(turno|fichar|fichaje|fichar turno|viaje|iniciar turno|inicia
 const TURNOS_PALABRA = /^(ver\s+)?(mis\s+)?turnos?$|^relevos?$/i;
 const LAVADO_PALABRA = /^(c[oó]digo\s+(de\s+)?)?lavado$/i;
 
+// UNA PREGUNTA POR SUS TURNOS (13/10/2026): «Cuales es mi turno», «¿qué turno
+// tengo mañana?», «mi horario». Antes solo valía la palabra suelta, y a todo lo
+// demás se le contestaba con el saludo. Lo que habla de EMPEZAR o ACABAR un
+// turno («terminar turno», «iniciar turno») no es esto: eso es su panel.
+const sinAcentos = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function preguntaPorTurnos(texto) {
+  const s = sinAcentos(texto);
+  if (!/\bturnos?\b|\bhorarios?\b/.test(s)) return false;
+  // Las órdenes, no las preguntas: «¿a qué hora empieza mi turno?» sí es esto.
+  if (/\b(terminar|termino|iniciar|empezar|empiezo|comenzar|comienzo|cerrar|cierro|acabar|acabo|entregar|entrego|fichar|ficho)\b/.test(s)) return false;
+  return /\b(cuales?|que|cuando|ver|tengo|toca|mis?)\b/.test(s) || s.includes('?');
+}
+
 // Solo la hora (12:46), para lo que pasa dentro del mismo turno. horaES da
 // también el día (24/9, 12:46), que hace falta al empezar pero sobra aquí.
 const hora = ts => fichaje.horaES(ts).split(', ').pop();
@@ -124,12 +137,24 @@ const conCabecera = (cabecera, texto) => (cabecera ? `${cabecera}\n\n${texto}` :
 const AYUDA_ENTREGAR = '🚗 *Entregar coche*: púlsalo justo *antes de salir* hacia donde está tu compañero ' +
   'para darle el coche, no cuando ya se lo hayas dado.';
 
-/** El saludo. Con su nombre de pila y nada más: es lo primero que lee. */
+/**
+ * El saludo. Con su nombre de pila y nada más: es lo primero que lee.
+ *
+ * CON EL BOTÓN «VER MIS TURNOS» (13/10/2026). Camilo: «déjales la opción
+ * siempre de ver turnos sin necesidad de iniciar el turno o escribir alguna
+ * matrícula, siempre y cuando estén en la base». Quien tiene ficha (los de
+ * Madrid) los ve sin abrir turno; a los de Barcelona no se les ofrece, que aún
+ * no tienen planificador.
+ */
 async function bienvenida(telefono, p, cabecera) {
   const hola = p.pila ? `👋 ¡Hola, ${p.pila}! Qué gusto saludarte.` : '👋 ¡Hola! Qué gusto saludarte.';
-  await enviarTexto(telefono, conCabecera(cabecera, `${hola}\n\n` +
+  const conTurnos = !deOtraSede(p) && !!p.conductorId;
+  const texto = conCabecera(cabecera, `${hola}\n\n` +
     `Para empezar, escríbeme la *matrícula* del coche que vas a llevar${deOtraSede(p) ? '' : ' y te desbloqueo el motor'}.\n\n` +
-    '✍️ Escríbela todo junto, *sin espacios ni guiones*. Ejemplo: *1234ABC*'));
+    '✍️ Escríbela todo junto, *sin espacios ni guiones*. Ejemplo: *1234ABC*' +
+    (conTurnos ? '\n\n📅 Si solo quieres ver tus turnos, pulsa *Ver mis turnos*: no hace falta empezar el turno.' : ''));
+  if (conTurnos) await enviarBotones(telefono, texto, [{ id: BTN_TURNOS, titulo: '📅 Ver mis turnos' }]);
+  else await enviarTexto(telefono, texto);
 }
 
 /** Primer mensaje del panel: el coche, desde cuándo, y las puertas. */
@@ -176,7 +201,7 @@ async function textoConductor(telefono, t, p) {
     return true;
   }
 
-  if (TURNOS_PALABRA.test(t)) { await verTurnos(telefono, p, abierto); return true; }
+  if (TURNOS_PALABRA.test(t) || preguntaPorTurnos(t)) { await verTurnos(telefono, p, abierto); return true; }
   if (LAVADO_PALABRA.test(t)) { await codigoLavado(telefono, p, abierto); return true; }
   if (/^desbloquear$/i.test(t)) { await desbloquear(telefono); return true; }
   if (/^km$/i.test(t)) { await verKm(telefono); return true; }

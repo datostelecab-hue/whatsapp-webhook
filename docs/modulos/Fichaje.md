@@ -232,6 +232,13 @@ Si no se sabe su nombre, **el turno no se abre**: fichar sin nombre dejaría un 
 
 **El conductor (turno), desde el 28/09/2026.** Saludo con su nombre de pila → escribe la matrícula (todo junto) → empieza el turno y le salen siempre los mismos botones: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Ver mis turnos · Terminar turno*. Si escribe otra matrícula con el turno abierto, **no se cambia solo**: se le pide que termine primero (cambiar de coche es cerrar un turno —y quizá bloquear un motor— y abrir otro). Si el desbloqueo falla, le sale un botón **Reintentar** antes del panel (y la palabra `desbloquear` hace lo mismo). Probado de punta a punta con `Scripts de análisis/simular-bot-conductor.js` (todo en memoria).
 
+**Ver sus turnos sin empezar turno (13/10/2026).** Camilo: *«déjales la opción siempre de ver turnos sin necesidad de iniciar el turno o escribir alguna matrícula, siempre y cuando estén en la base»*. Un conductor preguntó «Cuales es mi turno» y le volvió el saludo. Ahora:
+
+- El saludo, sin turno abierto, lleva el botón **📅 Ver mis turnos** y una línea que dice que no hace falta empezar el turno. Solo a quien tiene ficha: a los de Barcelona no, que aún no tienen planificador.
+- Una **pregunta** por sus turnos le enseña sus turnos, como la palabra «turnos» de siempre: «Cuales es mi turno», «¿qué turno tengo mañana?», «¿a qué hora empieza mi turno?», «mi horario» (`preguntaPorTurnos`). Lo que es una orden («terminar turno», «empezar turno», «fichar turno») no cuenta: eso sigue siendo su panel.
+
+Se prueba con la escena 12 de `Scripts de análisis/simular-bot-conductor.js`.
+
 *(Hasta el 28/09 el bot proponía el coche del cuadrante con un botón «Iniciar 8203LTR». Camilo pidió que se escriba la matrícula; el botón viejo sigue funcionando si alguien lo pulsa en un mensaje antiguo.)*
 
 **La empresa (viaje).** Es el flujo que pidió Camilo: *«Por favor, indica la matrícula» → empieza el viaje (se suelta el motor) → al terminar se bloquea*. Escribe `viaje` (o `turno`) y el bot le pide la matrícula directamente. La espera de la matrícula **caduca a los 10 minutos**: sin eso, quien la dejaba a medias y escribía «hola» tres horas después recibía «eso no parece una matrícula».

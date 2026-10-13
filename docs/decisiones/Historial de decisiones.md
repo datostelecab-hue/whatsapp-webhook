@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-13 · Los conductores ven sus turnos sin empezar turno
+
+«Déjales la opción siempre de ver turnos sin necesidad de iniciar el turno o escribir alguna matrícula, siempre y cuando estén en la base.» El saludo del bot lleva el botón «Ver mis turnos» para quien tiene ficha, y una pregunta por sus turnos («Cuales es mi turno») los enseña en vez de devolver el saludo. Las órdenes («terminar turno») siguen yendo a su panel. → [[Fichaje#Los dos flujos del WhatsApp]]
+
 ## 2026-10-13 · En el chat, cada plantilla se ve como le llega al conductor
 
 «En vez de "Plantilla X", simula cómo le llega al conductor el mensaje exactamente.» La forma (cabecera, cuerpo, pie y botones) se lee de Meta y no se copia en el código, para que el chat no se quede atrás si se cambia un texto en WhatsApp Manager. Cada envío guarda además su vista tal como salió. Los de antes se arman al abrir con la definición de hoy. Si Meta no contesta, se ven como antes. → [[WhatsApp chat#Cada plantilla, como le llega al conductor (13/10/2026)]]
