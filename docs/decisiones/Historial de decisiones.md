@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-13 · Un descuento de nómina que no se hizo se anula, y se apunta lo descontado de verdad
+
+RRHH no descontó en las nóminas de Tibus de septiembre lo que pedía el Excel a siete conductores. «Dejar descontado el monto correcto» es anular cada descuento de db/162 y, donde se descontó algo, apuntar eso con la misma fecha: la diferencia les vuelve a quedar pendiente. Así queda el rastro de los dos importes. Elian Bonilla queda fuera: Ignacio ya le había anulado el suyo el 29/09 porque pagó en efectivo. → [[Administracion#Lo que Tibus no descontó: db/190 (13/10/2026)]]
+
 ## 2026-10-11 · Una orden de motor por coche a la vez, y mirar después de cortar
 
 El 11/10 el corte de motor que pidió Hamid al terminar entró en el 1067MJY tres segundos después de que Javier abriera su turno. Su «soltar» había leído el relé antes de que llegara el corte. Javier trabajó todo el día con un coche que al final no se dejaba apagar. Camilo eligió dos arreglos. **Uno:** las órdenes de un mismo coche van en fila. **Dos:** antes y después de cortar se mira si alguien ha abierto turno en el coche o si se ha encendido, y si es así se suelta en el acto. La fila va en memoria y no en la base: es un solo proceso, y un candado de la base tendría una conexión cogida 15 s por orden. Lo que se escape en un despliegue lo recoge la comprobación de después. Se descartó cerrar el turno antes de mandar el corte. → [[Fichaje#Una orden de motor por coche, y mirar después de cortar (11/10/2026)]]

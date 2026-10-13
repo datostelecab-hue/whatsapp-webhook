@@ -117,6 +117,26 @@ Camilo dio el visto bueno el mismo 25/09. **`db/163-recaudacion-apertura-corregi
 - **Solo actúa si todo está como se diagnosticó**: la 146 viva y con 26.394,27 €, y las entregas 99 y 138 anuladas. Si algo no cuadra (o en una base sin estos datos) no hace nada, y la comprobación lo seguirá diciendo.
 - **La lección**: una carga por SQL se salta las reglas de la pantalla (aquí, la de no apuntar con fecha futura). Lo que se importe a mano tiene que pasar las mismas comprobaciones que el formulario, o dejar escrito por qué no.
 
+### Lo que Tibus no descontó: db/190 (13/10/2026)
+
+Le llegó a Camilo: *«tenemos que rectificar los siguientes descuentos que RRHH no descontó de las nóminas de Tibus. Si podemos dejar descontado el monto correcto a cada conductor»*. La tabla (`table.tsv`) traía siete personas con lo que pedía el Excel y lo que RRHH descontó de verdad.
+
+Un descuento de nómina que no se hizo no puede seguir bajando la deuda, porque el dinero no ha entrado por ningún lado. **`db/190-recaudacion-nomina-tibus.sql` anula el descuento de septiembre de seis** (firmado por Camilo, usuario 7, con el motivo escrito). En los dos a los que sí se les descontó algo, **apunta lo descontado de verdad**, con la misma fecha (25/09) y el mismo responsable (Ignacio):
+
+| Conductor | Excel | Descontado | Vuelve a pendiente |
+|---|---|---|---|
+| Kevin Eduardo Trejo Rodriguez | 445,90 | 82,14 | 363,76 |
+| Oswaldo Antonio Maco Cardenas | 439,60 | 439,50 | 0,10 |
+| David Lazaro-Carrasco Benitez (ya no está) | 191,10 | — | 191,10 |
+| Jonatan Lozano Crespo | 74,95 | — | 74,95 |
+| Juan Carlos Terranova Portilla (ya no está) | 60,15 | — | 60,15 |
+| Helmuth Isaac Held | 6,90 | — | 6,90 |
+| | | | **696,96** |
+
+- **Elian Fernando Bonilla Ruiz no se toca, aunque esté en la tabla.** Su descuento (134,20 €, id 233) ya lo anuló Ignacio el 29/09: pagó en efectivo y se cuadró con Diana para que RRHH no se lo descontara. Volver a ponérselo sería cobrárselo dos veces.
+- **Solo actúa sobre lo que está como se vio**: cada fila, si su movimiento sigue vivo, es de nómina y tiene ese conductor e importe. El importe bueno solo se apunta si en la misma pasada se anuló el viejo. Se ensayó contra la base real en una copia temporal, con la transacción en solo lectura: anula 6, apunta 2, y una segunda pasada no hace nada.
+- La caja no se mueve: es nómina (*caja =*). Lo que cambia es lo que debe cada uno.
+
 ## El cron
 
 Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia.

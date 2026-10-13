@@ -15,6 +15,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Los descuentos de Tibus (13/10/2026)
+
+- **Aplicar `db/190`** desde /migraciones: anula los descuentos de septiembre que RRHH no hizo en Tibus y apunta los que hizo de menos. Vuelven a quedar pendientes 696,96 € entre seis conductores. Ver [[Administracion#Lo que Tibus no descontó: db/190 (13/10/2026)]].
+
 ## El corte de motor del 1067MJY (11/10/2026)
 
 - **Desplegar** la fila de órdenes de motor y la comprobación de después de cortar. No lleva migración. Ver [[Fichaje#Una orden de motor por coche, y mirar después de cortar (11/10/2026)]].
