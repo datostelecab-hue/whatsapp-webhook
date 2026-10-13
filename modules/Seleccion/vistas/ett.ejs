@@ -350,7 +350,11 @@
       { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
         ayuda: 'Si eliges una, OCUPA esas plazas desde la fecha de arriba, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
     ], { columnas: 2, textoBoton: 'Dar de alta',
-         nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado. '
+         // SOLO PARA LA ETT (13/10/2026): Aaron Borja venía de InfoJobs con
+         // contrato propio y se le dio de alta por aquí, y su contrato salió de ETT.
+         nota: 'Solo para quien entra por la ETT: el contrato se abre SIEMPRE como ETT (GiGroup). '
+             + 'Si viene por InfoJobs u otro canal con contrato propio, dale de alta desde Selección. '
+             + 'Crea la ficha y la pasa directa al planificador, como si ya estuviera contratado. '
              + 'Con vacante, la plaza queda ocupada en el acto; sin ella, a Tráfico le llega igual '
              + 'el aviso de que hay alguien nuevo esperando coche.' });
     if (!v || !v.nombre || !v.telefono) return;

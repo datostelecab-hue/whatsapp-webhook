@@ -245,6 +245,57 @@ function despiezar(datos) {
   return fuera;
 }
 
+// LA CANDIDATURA Y EL CONTRATO NO PUEDEN DECIR COSAS DISTINTAS (13/10/2026).
+//
+// Aaron Borja entró por InfoJobs con contrato propio, pero se le dio de alta con
+// el «Alta rápida» de /ett, que abre SIEMPRE contrato de ETT. Dos días después
+// alguien le cambió aquí el canal y el tipo de contrato... y el contrato de la
+// ficha siguió diciendo ETT GiGroup, que es lo que lee el planificador. Corregir
+// la candidatura no corregía nada.
+//
+// Ahora, si una edición CAMBIA el tipo de contrato que se deduce de la
+// candidatura (ETT o propia) y la persona ya tiene un contrato abierto del otro,
+// no se guarda en silencio: se pregunta. Si fue un error al darle de alta, se
+// corrige también el contrato, el mismo y con la misma alta
+// (`corregirContrato`). Si lo que pasa es que ahora pasa a plantilla propia, eso
+// es otro contrato y va por «Pasar a propia» en Plantilla. Solo se ofrece con
+// contratos de hasta 30 días: uno más viejo no es un error de alta.
+//
+// Solo cuando la edición cambia el tipo: quien pasó de la ETT a propia sigue
+// con su candidatura de la ETT, y tocarle otra cosa no puede pedirle que
+// «corrija» su contrato.
+const DIAS_PARA_CORREGIR = 30;
+const viaDe = k => ((k.canal === 'bolsa_ett' || /ETT/i.test(k.tipo_contrato || '')) ? 'ett' : 'propia');
+const NOMBRE_CONTRATO = c => (c.tipo === 'ett' ? `ETT${c.ettNombre ? ' · ' + c.ettNombre : ''}` : 'plantilla propia');
+
+async function contratoCoherente(id, conductorId, deProceso, corregir, quien) {
+  if (deProceso.tipo_contrato === undefined && deProceso.canal === undefined) return;
+  const antes = (await repo.pactado(id)) || {};
+  const despues = {
+    canal: deProceso.canal !== undefined ? deProceso.canal : antes.canal,
+    tipo_contrato: deProceso.tipo_contrato !== undefined ? deProceso.tipo_contrato : antes.tipo_contrato,
+  };
+  const nueva = viaDe(despues);
+  if (viaDe(antes) === nueva) return;                     // la edición no cambia el tipo
+  const contrato = await conductores.contratoAbierto(conductorId);
+  if (!contrato || contrato.tipo === nueva) return;       // sin contrato, o ya dice eso
+
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const dias = Math.round((Date.parse(hoy) - Date.parse(contrato.alta)) / 86400000);
+  const puedeCorregir = dias <= DIAS_PARA_CORREGIR;
+  if (corregir && puedeCorregir) {
+    await conductores.corregirTipoContrato(conductorId, { tipo: nueva }, quien);
+    return;
+  }
+  const e = new Error(puedeCorregir
+    ? `Su contrato en la ficha es de ${NOMBRE_CONTRATO(contrato)} desde el ${contrato.alta.split('-').reverse().join('/')}. ` +
+      'Cambiar aquí el tipo de contrato no cambia su contrato.'
+    : `Su contrato en la ficha es de ${NOMBRE_CONTRATO(contrato)} desde hace ${dias} días: eso ya no es un error de alta. ` +
+      'Si ahora pasa a plantilla propia, hazlo con «Pasar a propia» en su ficha de Plantilla.');
+  e.conflicto = { tipo: 'contrato', contrato: NOMBRE_CONTRATO(contrato), alta: contrato.alta, nuevo: nueva, puedeCorregir };
+  throw e;
+}
+
 /**
  * Guarda lo que venga, mandando cada dato a su tabla.
  *
@@ -266,6 +317,9 @@ async function guardar(id, datos = {}, quien = {}) {
     if (conductores.CAMPOS[k]) dePersona[k] = v;
     else if (repo.CAMPOS[k]) deProceso[k] = v;
   }
+
+  // Antes de escribir nada: que la candidatura no diga otro contrato que la ficha.
+  await contratoCoherente(id, c.conductor_id, deProceso, datos.corregirContrato === true, quien);
 
   if (Object.keys(dePersona).length) await conductores.actualizar(c.conductor_id, dePersona, quien);
 

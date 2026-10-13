@@ -18,7 +18,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 ## La baja programada y el contrato de Aaron (13/10/2026)
 
 - **Desplegar y aplicar `db/191`** (la baja programada). Lionar Abreu (14/10) y Dylan Hernández (15/10) vuelven a estar de alta hasta su día. Si se aplica después de esas fechas, no hace nada con ellos. Ver [[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]].
-- **Aaron Borja González (ficha 463)**: lo creó Victor el 07/10 con el «Alta rápida» de /ett, que siempre abre contrato ETT GiGroup. Su candidatura se cambió después a InfoJobs y TIBUS, pero el contrato de la ficha sigue diciendo ETT. Falta decidir cómo se corrige (no con «Pasar a propia», que dejaría un tramo de ETT que no existió).
+- **Aplicar `db/192`**: corrige el contrato de Aaron Borja González (ficha 463) a plantilla propia, con la misma alta (13/10) y 40 h. Lo creó Victor el 07/10 con el «Alta rápida» de /ett. Desde el 13/10, Selección pregunta antes de dejar que la candidatura y el contrato digan cosas distintas ([[Seleccion#La candidatura y el contrato no dicen cosas distintas (13/10/2026)]]).
 
 ## Los descuentos de Tibus (13/10/2026)
 

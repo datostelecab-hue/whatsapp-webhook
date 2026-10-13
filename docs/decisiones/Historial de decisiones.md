@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-13 · La candidatura y el contrato no pueden decir cosas distintas
+
+Aaron Borja entró por InfoJobs con contrato propio y se le dio de alta con el «Alta rápida» de ETT. Corregir después su candidatura no corrigió su contrato, y el planificador lo pintaba como ETT. Su contrato se corrigió con db/192: el mismo contrato y la misma alta, no un «Pasar a propia», que dejaría un tramo de ETT que no existió. Para que no se repita, si una edición de la candidatura cambia el tipo de contrato y la ficha tiene abierto otro, Selección pregunta y ofrece corregir también el contrato (solo si es de hasta 30 días). El «Alta rápida» avisa de que es solo para la ETT. → [[Seleccion#La candidatura y el contrato no dicen cosas distintas (13/10/2026)]]
+
 ## 2026-10-13 · Una baja con fecha futura se programa, no se da en el acto
 
 «A los que les demos de baja por ejemplo el 15 […] no les quites la plaza hasta ese día, que siga planificado; el sistema lo quita automáticamente ese día.» Dar de baja cerraba el contrato al momento aunque la fecha fuera futura, y la persona desaparecía del planificador y del bot. No se cambió la treintena de sitios que deciden «de alta» por el contrato sin baja. La baja futura se apunta aparte (db/191), el contrato sigue abierto, las plazas se recortan a ese día, y un proceso de cada hora da la baja cuando el día termina (a las 05:00 del siguiente, por los turnos de noche). → [[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]]

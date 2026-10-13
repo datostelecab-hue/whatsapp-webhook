@@ -99,6 +99,10 @@ module.exports = {
   guardarTelefono: (...a) => repo.guardarTelefono(...a),
   guardarIban: (...a) => repo.guardarIban(...a),
   darDeAlta: (...a) => repo.darDeAlta(...a),
+  // El contrato abierto y la corrección de su tipo (13/10/2026): Selección los
+  // usa para que la candidatura y el contrato no digan cosas distintas.
+  contratoAbierto: (...a) => repo.contratoAbierto(...a),
+  corregirTipoContrato: (...a) => repo.corregirTipoContrato(...a),
   cambiarTurno: (...a) => repo.cambiarTurno(...a),
   enlazarBolt: (...a) => repo.enlazarBolt(...a),
   realizarAlta,

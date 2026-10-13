@@ -356,6 +356,12 @@ No son de los seis, pero forman parte de la misma red:
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día
   00→24, noche 12→12, «No salió», sin plaza, otro coche, fuera de su turno, el Excel).
+- **`comprobar-contrato-candidatura.js`** (13/10/2026) — la candidatura y el
+  contrato no dicen cosas distintas: si una edición cambia el tipo de contrato
+  (ETT o propia) y la ficha tiene abierto otro, se pregunta en vez de guardar; con
+  «corregir», se corrige también el contrato si es de hasta 30 días. Quien ya pasó
+  a propia, un cambio que no cambia el tipo o alguien aún sin contrato se guardan
+  sin preguntar.
 - **`comprobar-vacaciones.js`** (09/10/2026) — las vacaciones las aprueba una sola
   persona: las siete puertas (aplicar, cerrar y mover un ticket de vacaciones; cambiar
   la situación, añadir, corregir y borrar un tramo en Plantilla) se cierran sin la llave

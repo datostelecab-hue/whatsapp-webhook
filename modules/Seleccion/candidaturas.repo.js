@@ -431,7 +431,7 @@ async function paraContratar(id) {
 /** Lo pactado durante la selección: vale como contrato si no se dice otra cosa. */
 async function pactado(id) {
   return (await db.consulta(
-    'SELECT inicio_previsto, jornada_horas, tipo_contrato, turno_id FROM candidatura WHERE id = $1',
+    'SELECT inicio_previsto, jornada_horas, tipo_contrato, canal, turno_id FROM candidatura WHERE id = $1',
     [Number(id)])).rows[0];
 }
 

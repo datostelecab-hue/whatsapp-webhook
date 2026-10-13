@@ -166,6 +166,19 @@ El extra son las **tandas** (`solicitud`): la unidad con la que se le contesta a
 
 El Excel (`modules/Seleccion/ett.excel.js`) mantiene **exactamente** las columnas y el significado de la matriz de siempre, porque la ETT las lee tal cual; el color y la leyenda solo refuerzan lo que ya dice el texto. Son cuatro resultados: Contratado, Pendiente (de asignar), No pasa y No se presentó. Había un quinto, "Presentó", y se quitó: quien está entrevistado y sin puesto **es** el pendiente de asignar, y dos nombres para lo mismo solo confunden a quien lo lee.
 
+## La candidatura y el contrato no dicen cosas distintas (13/10/2026)
+
+**Lo que pasó.** Aaron Borja González entró por InfoJobs con contrato propio (Tibus Luxury). Victor le dio de alta el 07/10 con el **«Alta rápida»** de /ett, que abre **siempre** contrato de ETT GiGroup. El 09/10 alguien le cambió aquí la candidatura a InfoJobs y TIBUS, pero eso no toca el contrato de la ficha, que es lo que lee el planificador, y le siguió pintando «ETT GiGroup». Su contrato se corrigió con **db/192**: el mismo contrato, con la misma alta (13/10) y 40 h.
+
+**Para que no se repita:**
+
+- **Al guardar los datos de una candidatura** (`candidaturas.service.contratoCoherente`): si la edición **cambia** el tipo de contrato que se deduce de la candidatura (ETT si el canal es la bolsa de ETT o el tipo dice «ETT»; si no, propia) y la persona tiene abierto un contrato **del otro tipo**, no se guarda en silencio. La pantalla lo explica y ofrece **«Corregir también el contrato»**: el mismo, con la misma alta, y queda en el registro de cambios de la ficha (`conductores.corregirTipoContrato`). Si lo que pasa es que **ahora** pasa de la ETT a plantilla propia, eso es otro contrato y va por «Pasar a propia» en Plantilla.
+- **Solo con contratos de hasta 30 días.** Uno más viejo no es un error de alta: se avisa y se remite a «Pasar a propia».
+- **Solo si la edición cambia el tipo.** Quien ya pasó a propia conserva su candidatura de la ETT, y tocarle otra cosa (las notas, el teléfono) no le pide nada.
+- **El «Alta rápida» de /ett lo dice:** solo para quien entra por la ETT; si viene por InfoJobs u otro canal con contrato propio, se le da de alta desde Selección.
+
+Comprobador: `node scripts/comprobar-contrato-candidatura.js` (11 casos).
+
 ## Permisos
 
 Son tres claves separadas del catálogo (`services/permisos.js`), en el grupo *Contratación*: `/vacantes`, `/seleccion` y `/ett`; `/generador` va en el grupo de Tráfico, porque quien arma la vacante es Tráfico. Ver [[Usuarios y permisos]].

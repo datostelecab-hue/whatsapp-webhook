@@ -201,7 +201,42 @@
         : v[c.id];
     });
     if (!Object.keys(cambios).length) return;
-    await hacer(() => enviar('/seleccion/api/candidatura/' + d.id, 'PUT', cambios));
+    await guardarDatos(d, cambios);
+  }
+
+  /**
+   * Guarda los datos de la candidatura. Si el cambio dice OTRO tipo de contrato
+   * que el que ya tiene abierto en su ficha (13/10/2026), no se guarda a medias:
+   * se pregunta si fue un error al darle de alta y, si lo fue, se corrige
+   * también el contrato, con la misma fecha de alta.
+   */
+  async function guardarDatos(d, cambios) {
+    const url = '/seleccion/api/candidatura/' + d.id;
+    try {
+      await enviar(url, 'PUT', cambios);
+    } catch (e) {
+      const k = e.conflicto;
+      if (!k || k.tipo !== 'contrato') {
+        return Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
+      }
+      if (!k.puedeCorregir) {
+        return Dialogo.aviso({ titulo: 'Su contrato dice otra cosa', texto: e.message, tono: 'aviso' });
+      }
+      const nuevo = k.nuevo === 'ett' ? 'ETT' : 'plantilla propia';
+      const ok = await Dialogo.confirmar({
+        titulo: 'Su contrato dice otra cosa', tono: 'aviso',
+        si: 'Corregir también el contrato', no: 'Cancelar',
+        html: `<p>${esc(e.message)}</p>
+               <p class="mt-2">¿Se le dio de alta con el tipo equivocado? Se corrige también su contrato a
+               <b>${esc(nuevo)}</b>, el mismo y con la misma fecha de alta, y el planificador lo verá así.</p>
+               <p class="mt-2 text-telecab-muted text-sm">Si lo que pasa es que <b>ahora</b> pasa de la ETT a
+               plantilla propia, cancela: eso es otro contrato y se hace con «Pasar a propia» en su ficha de Plantilla.</p>`,
+      });
+      if (!ok) return;
+      return hacer(() => enviar(url, 'PUT', { ...cambios, corregirContrato: true }), 'Guardado, y su contrato corregido');
+    }
+    await seleccion.recargar();
+    Dialogo.hecho('Guardado');
   }
 
   /** Sacar las coordenadas de la dirección ya escrita. */

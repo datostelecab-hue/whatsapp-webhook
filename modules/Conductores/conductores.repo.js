@@ -1309,10 +1309,37 @@ async function cambiarJornada(id, { jornadaHoras }, { usuarioId } = {}) {
 /** El contrato abierto de una persona: { id, tipo, alta, jornadaHoras }, o null. */
 async function contratoAbierto(id) {
   const r = await db.consulta(
-    `SELECT id, tipo, to_char(alta, 'YYYY-MM-DD') AS alta, jornada_horas
+    `SELECT id, tipo, ett_nombre, to_char(alta, 'YYYY-MM-DD') AS alta, jornada_horas
        FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [Number(id)]);
   const e = r.rows[0];
-  return e ? { id: Number(e.id), tipo: e.tipo, alta: e.alta, jornadaHoras: e.jornada_horas } : null;
+  return e ? { id: Number(e.id), tipo: e.tipo, ettNombre: e.ett_nombre || null, alta: e.alta, jornadaHoras: e.jornada_horas } : null;
+}
+
+/**
+ * CORRIGE EL TIPO del contrato abierto (13/10/2026): el MISMO contrato, con la
+ * misma alta. Es para un contrato mal tipificado desde el primer día —Aaron
+ * Borja entró por InfoJobs y el «Alta rápida» de /ett se lo abrió como ETT—,
+ * no para quien pasa de la ETT a plantilla propia: eso es otro contrato y va
+ * por «Pasar a propia» (`alta.convertirAPropia`), que cierra el de la ETT.
+ * Queda en el registro de cambios de la ficha.
+ */
+async function corregirTipoContrato(id, { tipo, ettNombre } = {}, { usuarioId } = {}) {
+  if (!['propia', 'ett'].includes(tipo)) throw new Error('El tipo de contrato es «propia» o «ett»');
+  const nombreEtt = tipo === 'ett' ? (String(ettNombre || '').trim() || process.env.ETT_NOMBRE || 'GiGroup') : null;
+  return db.transaccion(async cli => {
+    const e = (await cli.query(
+      `SELECT id, tipo, ett_nombre FROM conductor_periodo_empleo
+        WHERE conductor_id = $1 AND baja IS NULL FOR UPDATE`, [Number(id)])).rows[0];
+    if (!e) throw new Error('Esta persona no tiene ningún contrato abierto');
+    if (e.tipo === tipo) return false;
+    await cli.query('UPDATE conductor_periodo_empleo SET tipo = $2, ett_nombre = $3 WHERE id = $1', [e.id, tipo, nombreEtt]);
+    const nombre = t => (t.tipo === 'ett' ? `ETT · ${t.ett_nombre || ''}`.trim() : 'Plantilla propia');
+    await audit.registrar({
+      tabla: 'conductor', id: Number(id), usuarioId, cli,
+      cambios: [{ campo: 'contrato', antes: nombre(e), ahora: `${nombre({ tipo, ett_nombre: nombreEtt })} (corregido desde su alta)` }],
+    });
+    return true;
+  });
 }
 
 // «HA TRABAJADO» quiere decir lo mismo que en la nómina: tiempo efectivo en
@@ -1766,7 +1793,7 @@ async function guardarIban(id, valor, { usuarioId } = {}) {
 module.exports = {
   paraGestoria, buscarPersona,
   ibanEnmascarado, guardarIban,
-  JORNADAS, TOPE_JORNADA, cambiarJornada, contratoAbierto, cambiarAlta,
+  JORNADAS, TOPE_JORNADA, cambiarJornada, contratoAbierto, corregirTipoContrato, cambiarAlta,
   campos,
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
