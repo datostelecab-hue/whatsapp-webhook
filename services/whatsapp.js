@@ -30,9 +30,18 @@ const esErrorDeIdioma = e => /132001|does not exist in the translation|translati
 // Control, un aviso de velocidad o de turnos. Apuntarlo nunca lanza: el envío ya
 // está hecho y su resultado es lo que se devuelve.
 async function apuntar(to, payload, r, { origen = 'bot', usuarioId = null, texto = null } = {}) {
-  const d = require('./whatsappChat').describirSaliente(payload);
-  // Una plantilla mandada desde el chat se apunta con el texto que lee la persona,
-  // no con «Plantilla «x»: a · b».
+  const W = require('./whatsappChat');
+  const d = W.describirSaliente(payload);
+  // UNA PLANTILLA SE APUNTA COMO LE LLEGA (13/10/2026): con su definición de
+  // Meta se guarda lo que ve la persona (cabecera, cuerpo, pie y botones) tal
+  // como salió, aunque luego se cambie el texto en Meta, y el cuerpo pasa a ser
+  // el texto del chat (el que sale en la lista). Sin definición, como antes.
+  if (d.tipo === 'plantilla') {
+    const t = payload.template || {};
+    const vista = W.vistaDePlantilla(await definicionDe(t.name, t.language && t.language.code).catch(() => null), d.detalle);
+    if (vista) { d.detalle.vista = vista; d.texto = vista.cuerpo || d.texto; }
+  }
+  // Una plantilla mandada desde el chat trae ya el texto que lee la persona.
   if (texto) d.texto = texto;
   await require('./repo/whatsappChat').guardar({
     wamid: r && r.ok ? r.id : null, telefono: to, sentido: 'saliente', ...d, origen, usuarioId,
@@ -194,6 +203,48 @@ async function plantillasCrudas(nombre) {
   } catch (e) { return { ok: false, waba, error: e.message }; }
 }
 
+// LAS DEFINICIONES, EN MEMORIA. Las usan el chat (para enseñar cada plantilla
+// como le llega a la persona) y el selector de plantillas. Cambian poco: se
+// piden a Meta cada diez minutos como mucho, y si Meta falla no se le vuelve a
+// preguntar hasta pasado un minuto (un aviso de turnos sale a cien personas
+// seguidas y no puede preguntar cien veces).
+const DEFINICIONES_MS = 10 * 60 * 1000;
+const DEFINICIONES_FALLO_MS = 60 * 1000;
+let _definiciones = null;   // { ts, data } o { ts, error }
+let _pidiendo = null;       // la petición en curso: los que llegan a la vez esperan a esa
+
+/** Las plantillas de la cuenta tal como las da Meta (crudas), recordadas. Lanza si no hay. */
+async function definiciones() {
+  const ahora = Date.now();
+  if (_definiciones && ahora - _definiciones.ts < (_definiciones.error ? DEFINICIONES_FALLO_MS : DEFINICIONES_MS)) {
+    if (_definiciones.error) throw new Error(_definiciones.error);
+    return _definiciones.data;
+  }
+  // Sin token (en local) ni se pregunta, salvo que una prueba haya puesto su
+  // propia lista en `plantillasCrudas`. No se recuerda: no ha costado nada.
+  if (!TOKEN && module.exports.plantillasCrudas === plantillasCrudas) throw new Error('sin WHATSAPP_TOKEN');
+  if (!_pidiendo) {
+    _pidiendo = module.exports.plantillasCrudas()
+      .catch(e => ({ ok: false, error: e.message }))
+      .then(r => { _definiciones = r.ok ? { ts: Date.now(), data: r.data } : { ts: Date.now(), error: r.error || 'sin respuesta' }; return _definiciones; })
+      .finally(() => { _pidiendo = null; });
+  }
+  const d = await _pidiendo;
+  if (d.error) throw new Error(d.error);
+  return d.data;
+}
+
+/** La definición de UNA plantilla en su idioma (o en cualquiera, si no está en ese). null si no se sabe. */
+async function definicionDe(nombre, idioma) {
+  if (!nombre) return null;
+  const todas = await definiciones();
+  return todas.find(t => t.name === nombre && (!idioma || t.language === idioma))
+    || todas.find(t => t.name === nombre) || null;
+}
+
+/** Para las pruebas: olvida lo recordado. */
+function olvidarDefiniciones() { _definiciones = null; }
+
 async function listarPlantillas(nombre) {
   const c = await plantillasCrudas(nombre);
   if (!c.ok) return c;
@@ -333,4 +384,4 @@ async function descargarMedia(mediaId, { maxBytes = null } = {}) {
  */
 const registrarEstados = statuses => require('./repo/whatsappEnvios').registrarEstados(statuses);
 
-module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, definiciones, definicionDe, olvidarDefiniciones, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };

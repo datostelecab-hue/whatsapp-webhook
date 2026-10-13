@@ -24,6 +24,36 @@ node scripts/crear-plantillas-whatsapp.js --ver
 | `detalle_turnos` | 1 posicional (nombre) | Aviso de turnos, con botón "Ver mis turnos" |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | Sanciones por exceso de velocidad |
 
+Así son (de WhatsApp Manager, 13/10/2026). El chat de /whatsapp las pinta así, leyéndolas de Meta:
+
+**`detalle_turnos`** · Utilidad · Español (`es`)
+
+- Encabezado (texto): `INFORMACIÓN IMPORTANTE DE TELECAB`
+- Botón: respuesta rápida `Ver mis turnos`
+
+```
+¡Hola {{1}}! 📋
+
+Los turnos de tu semana ya están listos.
+
+Pulsa el botón de aquí abajo para verlos en detalle.
+```
+
+**`advertencia_limite`** · Utilidad · Español (`es`)
+
+- Sin encabezado ni pie
+- Botón: enlace `Canal de tickets`
+
+```
+Hola {{1}}. Nuestro sistema de control de flota (Mapon) ha registrado un exceso del límite de velocidad durante la conducción del vehículo de empresa: {{2}}.
+
+Esta comunicación tiene carácter de ADVERTENCIA. Circular respetando los límites de velocidad es una obligación laboral (arts. 5.a y 20.2 del Estatuto de los Trabajadores) y de seguridad vial (Ley sobre Tráfico, RDL 6/2015, y Reglamento General de Circulación, RD 1428/2003).
+
+Le recordamos que, de repetirse, los hechos podrán calificarse como falta y sancionarse conforme al régimen disciplinario del convenio colectivo del sector VTC de aplicación y a los arts. 54 y 58 del Estatuto de los Trabajadores.
+
+Por su seguridad y la de terceros, ajuste su conducción a los límites establecidos. Si considera que se trata de un error, puede exponerlo en nuestro canal de tickets.
+```
+
 ## La que falta — LA CITA DEL TALLER (08/10/2026)
 
 `cita_taller`: el aviso al **conductor** dos días antes de una cita del taller,

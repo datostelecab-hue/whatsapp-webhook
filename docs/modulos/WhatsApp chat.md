@@ -27,6 +27,8 @@ Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de
   - A la derecha, lo que le llega, distinguiendo el **bot**, la **oficina** (en el acento, con el nombre de quien escribió) y los avisos (**alerta de Control**, **aviso de velocidad**, **aviso de turnos**, en azul).
   - Cada mensaje enviado lleva su marca: enviado, entregado, leído (en azul) o **no llegó** (en rojo, con el motivo que dio Meta).
   - Los botones que mandó el bot se ven debajo del texto; lo que pulsó la persona, como «Pulsó …».
+  - **Las plantillas, como le llegan** (13/10/2026): con su cabecera en negrita, el cuerpo con los valores puestos, el pie y, bajo la hora, sus botones (respuesta, enlace o llamada), como en el móvil. Al pasar el ratón por encima se ve cuál es («Plantilla «detalle_turnos» (es)»).
+  - Las marcas de WhatsApp se pintan como en el móvil: *negrita*, _cursiva_, ~tachado~ y monoespaciado.
   - Las ubicaciones se abren en el mapa. Las **fotos** se ven en el chat y, pulsándolas, en grande sin salir de la pantalla, los **audios** y **vídeos** se escuchan ahí mismo y los **documentos** se descargan.
   - Si es un conductor, **sus llamadas** del Call Center y de Control salen entre los mensajes, a su hora, con quién llamó, de qué y qué contestó. Llevan al Call Center.
 - **Arriba del chat**: el teléfono, los enlaces a su ficha y a **sus llamadas** si es conductor, hasta cuándo está abierta la ventana, el estado del bot (con **Pausar el bot** o **Devolver al bot**) y **quién la lleva** (con **Me la quedo** o **Cambiar**).
@@ -64,7 +66,19 @@ routes/botPuertas.js                      el webhook: guarda lo que entra, baja 
 modules/Control/callcenter.*              las llamadas que salen en el chat, y el enlace de vuelta (?conductor=)
 ```
 
-Comprobador: `scripts/comprobar-whatsapp-chat.js` (69 casos), sin base ni Meta: las reglas, que cada envío quede apuntado con su origen y el servicio de la segunda fase con la base y Meta sustituidos. Vigila además el cast de `$5` que dejó la lista vacía.
+Comprobador: `scripts/comprobar-whatsapp-chat.js` (87 casos; desde el 13/10, también cómo le llega cada plantilla), sin base ni Meta: las reglas, que cada envío quede apuntado con su origen y el servicio de la segunda fase con la base y Meta sustituidos. Vigila además el cast de `$5` que dejó la lista vacía.
+
+## Cada plantilla, como le llega al conductor (13/10/2026)
+
+Camilo: *«en vez de "Plantilla X", simula cómo le llega al conductor el mensaje exactamente»*. Hasta entonces las plantillas que manda el sistema (aviso de turnos, aviso de velocidad) salían como «Plantilla «detalle_turnos»: Ronnie…».
+
+- **La forma sale de Meta.** `services/whatsapp.js` lee las plantillas de la cuenta (`message_templates`) y las recuerda 10 minutos; si Meta falla, no le vuelve a preguntar hasta pasado un minuto, porque un aviso de turnos sale a cien personas seguidas. Con esa definición y los valores del envío, `vistaDePlantilla` (`services/whatsappChat.js`) arma lo que ve la persona: cabecera, cuerpo, pie y botones. Si mañana se cambia un texto en WhatsApp Manager, el chat lo enseña sin tocar código.
+- **Cada envío se guarda tal como salió.** Desde el 13/10 el apunte de una plantilla lleva su vista (`detalle.vista`), aunque luego se edite la plantilla en Meta. Además, el cuerpo pasa a ser el texto del mensaje: la lista de conversaciones enseña también el mensaje de verdad. El envío guarda además los nombres de las variables, las de la cabecera y lo que completa el enlace de un botón.
+- **Los de antes se arman al abrir**, con la definición de hoy y los valores que se guardaron. Las plantillas por nombre de antes del 13/10 no tienen guardados los nombres: se ponen en el orden en que aparecen en el texto.
+- **Si Meta no contesta, se ve como antes** («Plantilla «x»: …»), y la conversación se abre igual.
+- **La vista previa de «Mandar una plantilla»** usa los mismos botones que el chat.
+
+Las tres que salen en los chats (13/10): `detalle_turnos` (182 envíos), `advertencia_limite` (15) y `cita_taller` (8). Su texto exacto está en [[PLANTILLAS-WHATSAPP]].
 
 ## Segunda fase (db/186, 07/10/2026)
 

@@ -230,6 +230,95 @@ function igual(nombre, real, esperado) {
   repo.conversaciones = async () => { throw Object.assign(new Error('relation "whatsapp_chat" does not exist'), { code: '42P01' }); };
   igual('Sin db/185: lo dice', await svc.conversaciones({}, 7), { faltaMigracion: 'db/185' });
 
+  // ════════════════════════════════════════════════════════════════════════
+  // CÓMO LE LLEGA UNA PLANTILLA (13/10/2026)
+  // ════════════════════════════════════════════════════════════════════════
+  // Camilo: «en vez de "Plantilla X", simula cómo le llega al conductor el
+  // mensaje exactamente». Las definiciones de aquí son las de WhatsApp Manager
+  // (capturas del 13/10); en producción se leen de Meta.
+  const TURNOS_DEF = {
+    name: 'detalle_turnos', language: 'es', status: 'APPROVED', category: 'UTILITY', parameter_format: 'POSITIONAL',
+    components: [
+      { type: 'HEADER', format: 'TEXT', text: 'INFORMACIÓN IMPORTANTE DE TELECAB' },
+      { type: 'BODY', text: '¡Hola {{1}}! 📋\n\nLos turnos de tu semana ya están listos.\n\nPulsa el botón de aquí abajo para verlos en detalle.' },
+      { type: 'BUTTONS', buttons: [{ type: 'QUICK_REPLY', text: 'Ver mis turnos' }] },
+    ],
+  };
+  const VELOCIDAD_DEF = {
+    name: 'advertencia_limite', language: 'es', status: 'APPROVED', category: 'UTILITY', parameter_format: 'POSITIONAL',
+    components: [
+      { type: 'BODY', text: 'Hola {{1}}. Nuestro sistema de control de flota (Mapon) ha registrado un exceso del límite de velocidad durante la conducción del vehículo de empresa: {{2}}.\n\nEsta comunicación tiene carácter de ADVERTENCIA.' },
+      { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Canal de tickets', url: 'https://ejemplo.invalid/tickets' }] },
+    ],
+  };
+  const CITA_DEF = {
+    name: 'cita_taller', language: 'es', status: 'APPROVED', category: 'UTILITY',
+    components: [
+      { type: 'HEADER', format: 'TEXT', text: 'Cita en el taller' },
+      { type: 'BODY', text: 'Hola {{1}}, el coche {{2}} tiene cita en el taller el {{3}} a las {{4}}, y ese día lo llevas tú.' },
+      { type: 'FOOTER', text: 'Telecab · Taller' },
+      { type: 'BUTTONS', buttons: [{ type: 'QUICK_REPLY', text: 'Confirmo' }, { type: 'QUICK_REPLY', text: 'No puedo ir' }] },
+    ],
+  };
+  igual('detalle_turnos: cabecera, cuerpo con el nombre y su botón',
+    W.vistaDePlantilla(TURNOS_DEF, { plantilla: 'detalle_turnos', parametros: ['Ronnie Adrian Cuñas Maldonado'] }),
+    { cabecera: 'INFORMACIÓN IMPORTANTE DE TELECAB', cabeceraMedia: null,
+      cuerpo: '¡Hola Ronnie Adrian Cuñas Maldonado! 📋\n\nLos turnos de tu semana ya están listos.\n\nPulsa el botón de aquí abajo para verlos en detalle.',
+      pie: '', botones: [{ texto: 'Ver mis turnos', tipo: 'respuesta' }] });
+  const vel = W.vistaDePlantilla(VELOCIDAD_DEF, { parametros: ['Ana', '1234ABC'] });
+  igual('advertencia_limite: sin cabecera, nombre y matrícula, y el enlace del botón',
+    [vel.cabecera, vel.cuerpo.split('\n')[0], vel.botones],
+    ['', 'Hola Ana. Nuestro sistema de control de flota (Mapon) ha registrado un exceso del límite de velocidad durante la conducción del vehículo de empresa: 1234ABC.',
+      [{ texto: 'Canal de tickets', tipo: 'enlace', url: 'https://ejemplo.invalid/tickets' }]]);
+  const cita = W.vistaDePlantilla(CITA_DEF, { parametros: ['Abraham', '1194LCK', 'jueves 15 de octubre', '13:00'] });
+  igual('cita_taller: cabecera, pie y sus dos botones', [cita.cabecera, cita.pie, cita.botones.map(b => b.texto), cita.cuerpo.slice(0, 40)],
+    ['Cita en el taller', 'Telecab · Taller', ['Confirmo', 'No puedo ir'], 'Hola Abraham, el coche 1194LCK tiene cit']);
+  const NOMBRADA = { name: 'n', language: 'es', parameter_format: 'NAMED', components: [{ type: 'BODY', text: 'Hola {{nombre}}, tu coche {{coche}}' }] };
+  igual('Por nombre: cada valor a su variable', W.vistaDePlantilla(NOMBRADA, { parametros: ['1234ABC', 'Ana'], nombres: ['coche', 'nombre'] }).cuerpo, 'Hola Ana, tu coche 1234ABC');
+  igual('Por nombre y sin los nombres guardados (antes del 13/10): en el orden en que aparecen',
+    W.vistaDePlantilla(NOMBRADA, { parametros: ['Ana', '1234ABC'] }).cuerpo, 'Hola Ana, tu coche 1234ABC');
+  igual('Lo que no llegó se queda a la vista', W.vistaDePlantilla(VELOCIDAD_DEF, { parametros: ['Ana'] }).cuerpo.includes('{{2}}'), true);
+  igual('Un enlace con variable se completa con lo que se mandó',
+    W.vistaDePlantilla({ components: [{ type: 'BODY', text: 'x' }, { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Ver', url: 'https://x.es/t/{{1}}' }] }] },
+      { parametros: [], enlaces: [{ indice: 0, texto: 'abc' }] }).botones[0].url, 'https://x.es/t/abc');
+  igual('Con una foto en la cabecera, se dice', W.vistaDePlantilla({ components: [{ type: 'HEADER', format: 'IMAGE' }, { type: 'BODY', text: 'x' }] }, {}).cabeceraMedia, 'Foto');
+  igual('Sin definición, nada (se queda el texto de siempre)', W.vistaDePlantilla(null, { parametros: ['a'] }), null);
+  igual('El envío guarda los nombres, la cabecera y el enlace del botón',
+    W.describirSaliente({ type: 'template', template: { name: 'n', language: { code: 'es' }, components: [
+      { type: 'header', parameters: [{ type: 'text', text: 'Aviso' }] },
+      { type: 'body', parameters: [{ type: 'text', parameter_name: 'nombre', text: 'Ana' }] },
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'abc' }] }] } }).detalle,
+    { plantilla: 'n', idioma: 'es', parametros: ['Ana'], nombres: ['nombre'], cabecera: ['Aviso'], enlaces: [{ indice: 0, texto: 'abc' }] });
+  igual('La vista previa del selector sabe de qué es cada botón', W.plantillaDeMeta(VELOCIDAD_DEF).botonesVista, [{ texto: 'Canal de tickets', tipo: 'enlace' }]);
+
+  // Al salir se apunta COMO LE LLEGA: la vista guardada y el cuerpo como texto.
+  wa.olvidarDefiniciones();
+  wa.plantillasCrudas = async () => ({ ok: true, data: [TURNOS_DEF, VELOCIDAD_DEF, CITA_DEF] });
+  siguiente = { messages: [{ id: 'wamid.T' }] };
+  global.fetch = async () => ({ json: async () => siguiente });
+  await wa.enviarAvisoTurnos('600111222', 'Ronnie');
+  const at = apuntados[apuntados.length - 1];
+  igual('Aviso de turnos: se apunta con su cabecera, su botón y el cuerpo como texto',
+    [at.origen, at.detalle.vista.cabecera, at.detalle.vista.botones[0].texto, at.texto.split('\n')[0]],
+    ['turnos', 'INFORMACIÓN IMPORTANTE DE TELECAB', 'Ver mis turnos', '¡Hola Ronnie! 📋']);
+
+  // Al abrir: lo de antes se arma con la definición; lo guardado se respeta.
+  repo.chat = async tel => (tel === ANA.telefono ? ANA : null);
+  repo.marcarLeido = async () => {};
+  repo.mensajes = async () => [
+    { id: 1, tipo: 'plantilla', sentido: 'saliente', texto: 'Plantilla «advertencia_limite»: Ana · 1234ABC', detalle: { plantilla: 'advertencia_limite', idioma: 'es', parametros: ['Ana', '1234ABC'] } },
+    { id: 2, tipo: 'plantilla', sentido: 'saliente', texto: 'x', detalle: { plantilla: 'detalle_turnos', vista: { cuerpo: 'tal como salió', botones: [] } } },
+    { id: 3, tipo: 'texto', sentido: 'entrante', texto: 'hola', detalle: null },
+  ];
+  let ab = await svc.abrir(ANA.telefono);
+  igual('Abrir: la de antes, armada; la guardada, tal cual; el texto, sin tocar',
+    [ab.mensajes[0].vista && ab.mensajes[0].vista.cuerpo.slice(0, 9), ab.mensajes[1].vista.cuerpo, ab.mensajes[2].vista], ['Hola Ana.', 'tal como salió', undefined]);
+  wa.olvidarDefiniciones();
+  wa.plantillasCrudas = async () => ({ ok: false, error: 'Meta caída' });
+  ab = await svc.abrir(ANA.telefono);
+  igual('Con Meta caída se abre igual, con el texto de siempre', [ab.mensajes[0].vista, ab.mensajes[0].texto, ab.mensajes[1].vista.cuerpo],
+    [undefined, 'Plantilla «advertencia_limite»: Ana · 1234ABC', 'tal como salió']);
+
   console.log(fallos ? '\n' + fallos + ' FALLO(S)' : '\nTodo bien');
   process.exit(fallos ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

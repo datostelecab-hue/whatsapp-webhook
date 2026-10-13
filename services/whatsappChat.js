@@ -69,12 +69,26 @@ function describirSaliente(p) {
   }
   if (x.type === 'template') {
     const t = x.template || {};
-    const parametros = (t.components || []).filter(c => c.type === 'body')
+    const comps = t.components || [];
+    const textos = tipo => comps.filter(c => c.type === tipo)
       .flatMap(c => (c.parameters || []).map(pp => (pp.text == null ? '' : String(pp.text))));
+    const parametros = textos('body');
+    // Lo que hace falta para enseñarla luego como le llega (`vistaDePlantilla`):
+    // los nombres de las variables, si van por nombre; las de la cabecera; y lo
+    // que completa el enlace de un botón. Solo si los hay.
+    const nombres = comps.filter(c => c.type === 'body').flatMap(c => (c.parameters || []).map(pp => pp.parameter_name || null));
+    const cabecera = textos('header');
+    const enlaces = comps.filter(c => c.type === 'button')
+      .map(c => ({ indice: Number(c.index) || 0, texto: ((c.parameters || [])[0] || {}).text || '' })).filter(b => b.texto);
     return {
       tipo: 'plantilla',
       texto: `Plantilla «${t.name || '?'}»${parametros.length ? ': ' + parametros.join(' · ') : ''}`,
-      detalle: { plantilla: t.name || null, idioma: (t.language && t.language.code) || null, parametros },
+      detalle: {
+        plantilla: t.name || null, idioma: (t.language && t.language.code) || null, parametros,
+        ...(nombres.some(Boolean) ? { nombres } : {}),
+        ...(cabecera.length ? { cabecera } : {}),
+        ...(enlaces.length ? { enlaces } : {}),
+      },
     };
   }
   return { tipo: 'otro', texto: '', detalle: { type: x.type || null } };
@@ -188,6 +202,8 @@ function plantillaDeMeta(t) {
     formato: nombrado ? 'nombrado' : 'posicional', cuerpo,
     cabecera: (cab && String(cab.format || 'TEXT').toUpperCase() === 'TEXT' && cab.text) || '',
     pie: (pie && pie.text) || '', botones: botones.map(b => b.text || ''),
+    // Para la vista previa, igual que en el chat (`vistaDePlantilla`).
+    botonesVista: botones.map(b => ({ texto: b.text || '', tipo: TIPO_BOTON[String(b.type || '').toUpperCase()] || 'otro' })),
     variables, usable: !motivo, motivo,
   };
 }
@@ -202,6 +218,59 @@ function rellenarPlantilla(cuerpo, valores = {}) {
     const x = aplanar(valores[v]);
     return x ? x : m;
   });
+}
+
+// CÓMO LE LLEGA UNA PLANTILLA (13/10/2026). Camilo: «en vez de "Plantilla X",
+// simula cómo le llega al conductor el mensaje exactamente». La definición de
+// Meta (cabecera, cuerpo, pie y botones) con los valores que se mandaron, que
+// es lo que el conductor ve en el móvil.
+const MEDIA_CABECERA = { IMAGE: 'Foto', VIDEO: 'Vídeo', DOCUMENT: 'Documento', LOCATION: 'Ubicación' };
+const TIPO_BOTON = { QUICK_REPLY: 'respuesta', URL: 'enlace', PHONE_NUMBER: 'llamar' };
+
+/** El texto con sus {{variables}} puestas. Lo que no llegó se queda a la vista. */
+function rellenarCon(texto, valores, nombres) {
+  const s = String(texto || '');
+  const orden = [];
+  s.replace(VARIABLE, (m, v) => { if (!orden.includes(v)) orden.push(v); return m; });
+  const vals = valores || [];
+  const mapa = {};
+  (nombres || []).forEach((n, i) => { if (n) mapa[n] = vals[i]; });
+  orden.forEach((v, i) => {
+    if (mapa[v] != null) return;
+    // Por posición, {{2}} es el segundo valor. Por nombre y sin los nombres
+    // guardados (los envíos de antes del 13/10), en el orden en que aparecen.
+    mapa[v] = /^\d+$/.test(v) ? vals[Number(v) - 1] : vals[i];
+  });
+  return s.replace(VARIABLE, (m, v) => (mapa[v] == null || String(mapa[v]) === '' ? m : String(mapa[v])));
+}
+
+/**
+ * Una plantilla de Meta (la definición cruda, `message_templates`) y el
+ * `detalle` de un envío (`describirSaliente`) → lo que lee la persona:
+ * { cabecera, cabeceraMedia, cuerpo, pie, botones: [{ texto, tipo, url?, telefono? }] }.
+ * Sin definición, null: quien pinta se queda con el texto de siempre.
+ */
+function vistaDePlantilla(def, detalle) {
+  if (!def || !Array.isArray(def.components)) return null;
+  const d = detalle || {};
+  const de = tipo => def.components.find(c => String(c.type || '').toUpperCase() === tipo) || null;
+  const cab = de('HEADER'), cuerpo = de('BODY'), pie = de('FOOTER'), bots = de('BUTTONS');
+  const formatoCab = cab ? String(cab.format || 'TEXT').toUpperCase() : null;
+  return {
+    cabecera: formatoCab === 'TEXT' ? rellenarCon(cab.text, d.cabecera) : '',
+    cabeceraMedia: formatoCab && formatoCab !== 'TEXT' ? (MEDIA_CABECERA[formatoCab] || 'Adjunto') : null,
+    cuerpo: rellenarCon(cuerpo && cuerpo.text, d.parametros, d.nombres),
+    pie: (pie && pie.text) || '',
+    botones: ((bots && bots.buttons) || []).map((b, i) => {
+      const tipo = TIPO_BOTON[String(b.type || '').toUpperCase()] || 'otro';
+      const enlace = (d.enlaces || []).find(e => e.indice === i);
+      return {
+        texto: b.text || '', tipo,
+        ...(tipo === 'enlace' && b.url ? { url: rellenarCon(b.url, enlace ? [enlace.texto] : []) } : {}),
+        ...(tipo === 'llamar' && b.phone_number ? { telefono: b.phone_number } : {}),
+      };
+    }),
+  };
 }
 
 /** Comprueba los valores; lanza con lo que falta. Devuelve los valores aplanados. */
@@ -256,6 +325,6 @@ module.exports = {
   VENTANA_MS, PAUSA_MIN, MAX_TEXTO, soloDigitos,
   describirEntrante, describirSaliente, resumen, ventana, botAtiende, textoDeOficina,
   MAX_ADJUNTO, CON_ADJUNTO, adjuntoEnLinea, nombreAdjunto, disposicion,
-  MAX_CUERPO, plantillaDeMeta, rellenarPlantilla, validarValores, parametrosDePlantilla,
+  MAX_CUERPO, plantillaDeMeta, rellenarPlantilla, validarValores, parametrosDePlantilla, vistaDePlantilla,
   primerNombre, valorSugerido, respuestaPara, validarRespuesta,
 };

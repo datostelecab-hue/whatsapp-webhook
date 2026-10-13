@@ -116,7 +116,7 @@ function abrir(telefono, { despuesDe, antesDe, verLlamadas = false } = {}) {
     const c = await chat.chat(tel);
     if (!c || (!c.existe && !c.nombre)) throw new Error('No hay ninguna conversación con ese teléfono.');
     const num = v => (v != null && /^\d+$/.test(String(v)) ? Number(v) : null);
-    const mensajes = c.existe ? await chat.mensajes(tel, { despuesDe: num(despuesDe), antesDe: num(antesDe) }) : [];
+    const mensajes = c.existe ? await conVista(await chat.mensajes(tel, { despuesDe: num(despuesDe), antesDe: num(antesDe) })) : [];
     if (c.existe) await chat.marcarLeido(tel);
     const primeraCarga = num(despuesDe) == null && num(antesDe) == null;
     const llamadas = primeraCarga && verLlamadas && c.conductor_id
@@ -216,26 +216,43 @@ async function adjunto(mensajeId) {
 }
 
 // ── LAS PLANTILLAS ───────────────────────────────────────────────────────────
-// La lista se pide a Meta y se recuerda unos minutos: cambia poco y pedirla en
-// cada apertura sería lento.
-const CACHE_PLANTILLAS_MS = 10 * 60 * 1000;
-let cachePlantillas = null;
+// La lista se pide a Meta y se recuerda unos minutos (`whatsapp.definiciones`):
+// cambia poco y pedirla en cada apertura sería lento.
 
 // Las que manda el propio sistema. Se pueden mandar a mano, pero se dice de qué
 // son: un aviso de velocidad mandado por error confunde al conductor.
 const DEL_SISTEMA = { advertencia_limite: 'avisos de velocidad', [whatsapp.PLANTILLA_TURNOS]: 'aviso de turnos' };
 
 async function plantillasDeMeta() {
-  if (cachePlantillas && Date.now() - cachePlantillas.ts < CACHE_PLANTILLAS_MS) return cachePlantillas.lista;
-  const r = await whatsapp.plantillasCrudas();
-  if (!r.ok) throw new Error(`No se pudo leer la lista de plantillas de WhatsApp: ${r.error}`);
-  const lista = r.data.map(W.plantillaDeMeta)
+  let defs;
+  try { defs = await whatsapp.definiciones(); }
+  catch (e) { throw new Error(`No se pudo leer la lista de plantillas de WhatsApp: ${e.message}`); }
+  return defs.map(W.plantillaDeMeta)
     .map(p => ({ ...p, delSistema: DEL_SISTEMA[p.nombre] || (/^alerta/i.test(p.nombre) ? 'alertas de Control' : null) }))
     // Primero las que se pueden mandar, y entre ellas las de la oficina antes que las del sistema.
     .sort((a, b) => (a.usable === b.usable ? 0 : a.usable ? -1 : 1) || (!a.delSistema === !b.delSistema ? 0 : a.delSistema ? 1 : -1)
       || a.nombre.localeCompare(b.nombre));
-  cachePlantillas = { ts: Date.now(), lista };
-  return lista;
+}
+
+/**
+ * CADA PLANTILLA, COMO LE LLEGA A LA PERSONA (13/10/2026). Desde ese día cada
+ * envío guarda su vista al salir (`whatsapp.apuntar`); a los de antes se les
+ * arma ahora con la definición de Meta y los valores que se mandaron. Si Meta
+ * no contesta, se quedan con su texto de siempre.
+ */
+async function conVista(mensajes) {
+  let sinMeta = false;
+  const out = [];
+  for (const m of mensajes) {
+    const d = m.tipo === 'plantilla' && m.detalle;
+    let vista = (d && d.vista) || null;
+    if (d && !vista && !sinMeta && d.plantilla) {
+      try { vista = W.vistaDePlantilla(await whatsapp.definicionDe(d.plantilla, d.idioma), d); }
+      catch (e) { sinMeta = true; console.warn('⚠️ [WhatsApp] Sin las plantillas de Meta: se enseñan con su texto de siempre:', e.message); }
+    }
+    out.push(vista ? { ...m, vista } : m);
+  }
+  return out;
 }
 
 /** El nombre con que se le habla a alguien (el de su ficha, o el que tiene en WhatsApp). */

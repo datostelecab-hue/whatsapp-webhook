@@ -76,8 +76,15 @@
   const SIN_TELEFONO = <%- JSON.stringify(!!sinTelefono) %>;
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  // El *negrita* de WhatsApp, que el bot usa para las matrículas.
-  const formato = s => esc(s).replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+  // Las marcas de WhatsApp, como las pinta el móvil: *negrita* (el bot la usa
+  // para las matrículas), _cursiva_, ~tachado~ y ```monoespaciado```. La marca
+  // va pegada a la palabra y no a otra letra: «nombre_de_algo» no es cursiva.
+  const marcaWa = c => new RegExp(`(^|[^\\w${c}])\\${c}(?!\\s)([^${c}\\n]+?)(?<!\\s)\\${c}(?![\\w${c}])`, 'g');
+  const formato = s => esc(s)
+    .replace(/```([^`]+?)```/g, '<code class="font-mono text-[0.95em]">$1</code>')
+    .replace(marcaWa('*'), '$1<b>$2</b>')
+    .replace(marcaWa('_'), '$1<i>$2</i>')
+    .replace(marcaWa('~'), '$1<s>$2</s>');
   const TZ = 'Europe/Madrid';
   const fmtHora = d => new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(d));
   const diaDe = d => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
@@ -275,10 +282,36 @@
     }
   }
 
+  // UNA PLANTILLA, COMO LE LLEGA AL CONDUCTOR (13/10/2026): la cabecera en
+  // negrita, el cuerpo, el pie en pequeño y, bajo la hora, sus botones, como en
+  // el móvil. Sin su vista (Meta no contestó), el texto de siempre.
+  function vistaPlantilla(v) {
+    return (v.cabeceraMedia ? `<div class="flex items-center justify-center gap-1.5 mb-1.5 py-6 rounded-lg bg-telecab-dark/30 text-xs text-telecab-muted"><i class="fa-solid fa-image"></i>${esc(v.cabeceraMedia)}</div>` : '')
+      + (v.cabecera ? `<div class="font-semibold mb-1 whitespace-pre-wrap break-words">${formato(v.cabecera)}</div>` : '')
+      + `<div class="whitespace-pre-wrap break-words">${formato(v.cuerpo)}</div>`
+      + (v.pie ? `<div class="mt-1 text-xs text-telecab-muted whitespace-pre-wrap break-words">${esc(v.pie)}</div>` : '');
+  }
+  const ICONO_BOTON = { respuesta: 'fa-reply', enlace: 'fa-arrow-up-right-from-square', llamar: 'fa-phone' };
+  function botonesPlantilla(m) {
+    const bs = (m.vista && m.vista.botones) || [];
+    if (!bs.length) return '';
+    return `<div class="-mx-3 -mb-2 mt-1.5 border-t border-telecab-border/70 divide-y divide-telecab-border/70">${bs.map(b => {
+      const dentro = `<i class="fa-solid ${ICONO_BOTON[b.tipo] || 'fa-circle-dot'} text-[11px]"></i>${esc(b.texto)}`;
+      const cls = 'flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-telecab-azul';
+      if (b.url && /^https?:\/\//i.test(b.url)) {
+        return `<a href="${esc(b.url)}" target="_blank" rel="noopener" title="${esc(b.url)}" class="${cls} hover:underline">${dentro}</a>`;
+      }
+      const ayuda = b.tipo === 'respuesta' ? 'Botón de respuesta: si lo pulsa, llega aquí' : b.telefono ? 'Llama al ' + b.telefono : '';
+      return `<div class="${cls}"${ayuda ? ` title="${esc(ayuda)}"` : ''}>${dentro}</div>`;
+    }).join('')}</div>`;
+  }
+
   function cuerpo(m) {
     const d = m.detalle || {};
     const texto = m.texto ? `<div class="whitespace-pre-wrap break-words">${formato(m.texto)}</div>` : '';
     switch (m.tipo) {
+      case 'plantilla':
+        return m.vista ? vistaPlantilla(m.vista) : (texto || '<div class="text-sm text-telecab-muted italic">(vacío)</div>');
       case 'botones':
         return texto + `<div class="flex flex-wrap gap-1.5 mt-2">${(d.botones || []).map(b =>
           `<span class="px-2 py-1 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted">${esc(b)}</span>`).join('')}</div>`;
@@ -316,11 +349,14 @@
     else if (m.origen === 'oficina') { clase = 'bg-telecab-gold/10 border-telecab-gold/30'; quien = (m.usuario || 'Oficina') + (m.tipo === 'plantilla' ? ' · plantilla' : ''); }
     else if (m.origen === 'bot') { clase = 'bg-telecab-card2 border-telecab-border'; quien = 'Bot'; }
     else { clase = 'bg-telecab-azul/10 border-telecab-azul/30'; quien = ETIQUETA[m.origen] || 'Plantilla'; }
+    const dePlantilla = m.tipo === 'plantilla' && m.detalle && m.detalle.plantilla
+      ? ` title="${esc('Plantilla «' + m.detalle.plantilla + '»' + (m.detalle.idioma ? ' (' + m.detalle.idioma + ')' : ''))}"` : '';
     return separador(m.ocurrido_at) + `<div class="flex ${sale ? 'justify-end' : 'justify-start'}" data-id="${m.id}">
-      <div class="max-w-[78%] md:max-w-[64%] rounded-2xl border px-3 py-2 text-sm text-telecab-text ${clase} ${sale ? 'rounded-br-md' : 'rounded-bl-md'}">
+      <div class="max-w-[78%] md:max-w-[64%] rounded-2xl border px-3 py-2 text-sm text-telecab-text ${clase} ${sale ? 'rounded-br-md' : 'rounded-bl-md'}"${dePlantilla}>
         ${quien ? `<div class="text-[11px] font-semibold mb-0.5 ${m.origen === 'oficina' ? 'text-telecab-gold' : 'text-telecab-muted'}">${esc(quien)}</div>` : ''}
         ${cuerpo(m)}
         <div class="w-marca flex items-center justify-end gap-1.5 mt-1 text-[10px] text-telecab-muted">${esc(fmtHora(m.ocurrido_at))} ${marca(m)}</div>
+        ${botonesPlantilla(m)}
       </div></div>`;
   }
 
@@ -602,10 +638,10 @@
               <input data-var="${esc(v)}" value="${esc(plantilla.valores[v] || '')}" maxlength="400" autocomplete="off"
                 class="mt-0.5 w-full px-3 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text focus:outline-none focus:border-telecab-gold/70"></label>`).join('')}</div>` : ''}
           <div class="rounded-2xl border border-telecab-gold/30 bg-telecab-gold/10 px-3 py-2 text-sm text-telecab-text max-h-40 overflow-y-auto" title="Así le llega">
-            ${p.cabecera ? `<div class="font-semibold mb-1">${esc(p.cabecera)}</div>` : ''}
+            ${p.cabecera ? `<div class="font-semibold mb-1">${formato(p.cabecera)}</div>` : ''}
             <div id="w-pl-vista" class="whitespace-pre-wrap break-words"></div>
-            ${p.pie ? `<div class="text-[11px] text-telecab-muted mt-1">${esc(p.pie)}</div>` : ''}
-            ${p.botones.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${p.botones.map(b => `<span class="px-2 py-1 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted">${esc(b)}</span>`).join('')}</div>` : ''}
+            ${p.pie ? `<div class="mt-1 text-xs text-telecab-muted">${esc(p.pie)}</div>` : ''}
+            ${botonesPlantilla({ vista: { botones: p.botonesVista || p.botones.map(t => ({ texto: t, tipo: 'otro' })) } })}
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
