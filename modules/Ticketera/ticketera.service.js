@@ -27,6 +27,8 @@ const { clasificar } = require('./clasificar');
 const plantilla = require('../Conductores/plantilla.service');
 // Las vacaciones las aprueba una sola persona (db/189).
 const aprobarVac = require('../../services/aprobarVacaciones');
+// El estado que en un ticket que abre una ausencia no vale: ahí se aplica (13/10/2026).
+const ESTADO_APROBADO = 'aprobado';
 const configApp = require('../../services/configApp');
 
 const CLAVE_MARCA = 'ticketera_ultima_fila';
@@ -325,6 +327,15 @@ async function cambiarEstado(id, { estado, resolucion }, quien = {}) {
   // Cerrar un ticket de vacaciones (aprobado, rechazado, no procede…) es
   // decidirlas: solo quien tiene la llave. Ponerlo «en curso», cualquiera.
   if (e.cierra && antes.subtipoCodigo === aprobarVac.SUBTIPO) await aprobarVac.exigir(quien.usuarioId);
+  // UN TICKET QUE ABRE UNA AUSENCIA NO SE «APRUEBA»: SE APLICA (13/10/2026).
+  // El 13/10 Laura dejó en «Aprobado» las vacaciones de Chistel Carbajal y no
+  // llegaron a su ficha: «Aprobado» solo cerraba el ticket, y lo que las pone
+  // es «Aplicar». Camilo: «quita aprobado». En vacaciones, bajas y permisos se
+  // aplica, o se rechaza, o no procede.
+  if (estado === ESTADO_APROBADO && antes.estadoAbre) {
+    throw new Error(`Un ticket de «${antes.subtipo}» no se aprueba: se aplica. «Aplicar» lo pone en su ficha; ` +
+      'si no se le da, déjalo en «Rechazado» o «No procede».');
+  }
   // Cerrar un ticket es la acción que no se puede deshacer sola: se exige decir
   // en qué quedó. "Rechazado" sin motivo es lo que obliga a llamar a alguien un
   // mes después para preguntarle qué pasó.

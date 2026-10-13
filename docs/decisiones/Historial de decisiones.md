@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-13 · Un ticket de vacaciones, baja o permiso no se aprueba: se aplica
+
+Laura «aprobó» las vacaciones de Chistel Carbajal y no llegaron a su ficha: «Aprobado» solo cerraba el ticket, y en «Resolver» venía marcado de primeras. «Quita aprobado y haz que ese ticket pase a hacerse efectivo ya mismo.» En los tickets que abren una ausencia, «Aprobado» desaparece (pantalla y servidor): o se aplica, o se cierra sin dárselo. db/194 aplica el de Chistel. → [[Ticketera#Un ticket que abre una ausencia no se aprueba: se aplica (13/10/2026)]]
+
 ## 2026-10-13 · Cancelar una baja programada deja expediente, con los dos motivos
 
 «Si hay una baja programada, da también la opción de poder cancelarla, pero que se guarde como expediente con su respectiva observación del por qué se iba a dar de baja y por qué se canceló, obligatoriamente las dos.» Cancelar ya no borra la baja programada sin rastro: la pasa a `conductor_baja_cancelada` (db/193) con los dos motivos, obligatorios también en la base. Por eso programar una baja pide ya el motivo. Se ve en la ficha, en «Bajas programadas». → [[Conductores#Una baja con fecha futura se programa (13/10/2026, db/191)]]

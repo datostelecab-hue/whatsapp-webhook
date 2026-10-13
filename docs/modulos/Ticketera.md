@@ -179,7 +179,7 @@ Camilo: *«el departamento de Laura será el único que apruebe vacaciones; el r
 | Dónde | Qué |
 |---|---|
 | Ticketera | **Aplicar** un ticket de vacaciones, o abrir unas vacaciones desde otro ticket |
-| Ticketera | **Cerrar** un ticket de vacaciones: Ejecutado, Aprobado, Rechazado o No procede |
+| Ticketera | **Cerrar** un ticket de vacaciones: Ejecutado, Rechazado o No procede |
 | Ticketera | **Mover** un ticket fuera de la bandeja de vacaciones (si no, se movería a «Permiso» y se aplicaría desde ahí) |
 | Plantilla | **Cambiar la situación** a Vacaciones |
 | Plantilla | **Añadir un tramo** de vacaciones |
@@ -190,7 +190,18 @@ Camilo: *«el departamento de Laura será el único que apruebe vacaciones; el r
 - **El resto ve las vacaciones de todo el mundo**: los tickets (y puede quedárselos, enlazarlos, escribir en ellos o ponerlos «en curso») y los tramos en la ficha. En la bandeja, un ticket de vacaciones no les ofrece Aplicar, Resolver ni Mover: dice «Las vacaciones las aprueba Laura Blanco». En Plantilla, «Vacaciones» no sale en las listas de situación, y los tramos de vacaciones no tienen lápiz ni papelera.
 - **Volver al trabajo lo apunta cualquiera** («Cambiar situación» → Activo): es un hecho, no una aprobación. Las bajas y los permisos siguen como estaban.
 - Si alguien sin la llave lo intenta por la API, el servidor contesta: «Las vacaciones solo las aprueba Laura Blanco. Puedes verlas, pero no aprobarlas, rechazarlas ni cambiarlas.»
-- Comprobador: `node scripts/comprobar-vacaciones.js` (32 casos).
+- Comprobador: `node scripts/comprobar-vacaciones.js` (35 casos).
+
+### Un ticket que abre una ausencia no se aprueba: se aplica (13/10/2026)
+
+Laura aprobó el 13/10 las vacaciones de Chistel Carbajal (RH-20261013-10650, del 15 al 17/10) con **«Resolver» → «Aprobado»**, y no salían en ningún sitio. «Aprobado» solo **cerraba el ticket**: lo que pone las vacaciones en la ficha es **«Aplicar»**. Y en «Resolver» venía el primero y marcado de primeras, así que era lo natural. Era el único ticket así en la base.
+
+Camilo: *«Quita aprobado y haz que ese ticket pase a hacerse efectivo ya mismo»*.
+
+- **En vacaciones, bajas y permisos** (los subtipos con `estado_abre`) «Resolver» ya no ofrece «Aprobado». La nota del diálogo lo dice: *«Para dárselo, usa "Aplicar": es lo que lo pone en su ficha. Aquí solo se cierra sin dárselo.»*
+- **El servidor tampoco lo deja** (`ticketera.service.cambiarEstado`), por si llega por la API: *«Un ticket de "Vacaciones" no se aprueba: se aplica…»*.
+- **En el resto de tickets «Aprobado» sigue** (nómina, certificados…): ahí no hay nada que poner en una ficha.
+- **El de Chistel lo aplica `db/194`**: hace lo mismo que «Aplicar» — el tramo de vacaciones del 15 al 17/10 en su ficha (241), enlazado con el ticket y a nombre de Laura — y deja el ticket «Ejecutado» con su «Aplicado: …» y su línea en la historia. Si para entonces ya tiene esas vacaciones puestas a mano, no las duplica: solo cierra el ticket como aplicado. Si esos días tiene otra cosa, no toca nada.
 
 ### La ausencia se acuerda de su ticket
 

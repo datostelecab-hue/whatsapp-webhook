@@ -382,16 +382,24 @@
     r.status === 'ok' ? cargar() : aviso(r.msg, 'error');
   }
 
-  /** RESOLVER: cerrarlo diciendo cómo queda. */
+  /**
+   * RESOLVER: cerrarlo diciendo cómo queda.
+   *
+   * Un ticket que abre una ausencia (vacaciones, bajas, permisos) NO se
+   * «aprueba»: se APLICA, que es lo que lo pone en su ficha (13/10/2026). Antes
+   * «Aprobado» salía el primero y ya marcado, y las vacaciones de Chistel
+   * Carbajal se quedaron aprobadas en el ticket y sin llegar a su ficha.
+   */
   async function resolver(t) {
-    const cierres = ESTADOS.filter(e => e.cierra);
+    const cierres = ESTADOS.filter(e => e.cierra && !(t.estadoAbre && e.codigo === 'aprobado'));
     const v = await Dialogo.formulario(`Resolver ${t.codigo}`, [
       { id: 'estado', etiqueta: '¿Cómo queda?', tipo: 'lista', obligatorio: true,
         valor: (cierres[0] || {}).codigo || '',
         opciones: cierres.map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
       { id: 'resolucion', etiqueta: '¿En qué quedó?', tipo: 'texto-largo',
         ayuda: 'Se guarda con el ticket y se ve en la historia.' },
-    ], { textoBoton: 'Resolver', nota: `${t.subtipo} · ${t.quien}` });
+    ], { textoBoton: 'Resolver', nota: `${t.subtipo} · ${t.quien}`
+      + (t.estadoAbre ? '. Para dárselo, usa «Aplicar»: es lo que lo pone en su ficha. Aquí solo se cierra sin dárselo.' : '') });
     if (!v) return;
     const r = await api('/estado', { id: t.id, estado: v.estado, resolucion: v.resolucion });
     r.status === 'ok' ? cargar() : aviso(r.msg, 'error');

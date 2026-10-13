@@ -367,7 +367,8 @@ No son de los seis, pero forman parte de la misma red:
   la situación, añadir, corregir y borrar un tramo en Plantilla) se cierran sin la llave
   `/vacaciones/aprobar`, también al superadmin, sin escribir nada. Bajas, permisos, la
   vuelta al trabajo y poner un ticket «en curso» siguen abiertos. Ningún rol recibe la
-  llave al crearse.
+  llave al crearse. Desde el 13/10, también: un ticket de vacaciones o de baja no se
+  puede dejar en «Aprobado» (se aplica), y uno de nómina sí.
 - **`comprobar-largos.js`** (09/10/2026) — lo que no cabe en su columna se dice antes de
   guardar, con el nombre de la casilla, sin abrir la transacción: la ficha de la persona
   (un piso «Entreplanta») y el proceso de Selección (el tipo de carné).

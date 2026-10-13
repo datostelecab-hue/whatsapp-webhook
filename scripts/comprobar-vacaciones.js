@@ -51,6 +51,7 @@ const tRepo = require('../modules/Ticketera/ticketera.repo');
 const TICKETS = {
   1: { id: 1, codigo: 'RRHH-1', subtipo: 'Vacaciones', subtipoCodigo: 'VACACIONES', estadoAbre: 'vacaciones', conductorId: 50, fechaIniIso: '2026-10-20', fechaFinIso: '2026-10-30', estado: 'pendiente', area: 'RRHH' },
   2: { id: 2, codigo: 'RRHH-2', subtipo: 'Baja', subtipoCodigo: 'BAJA_AUSENCIA', estadoAbre: 'baja_medica', conductorId: 51, fechaIniIso: '2026-10-09', fechaFinIso: null, estado: 'pendiente', area: 'RRHH' },
+  3: { id: 3, codigo: 'RRHH-3', subtipo: 'Nómina', subtipoCodigo: 'NOMINA', estadoAbre: null, conductorId: 52, fechaIniIso: null, fechaFinIso: null, estado: 'pendiente', area: 'RRHH' },
 };
 tRepo.una = async id => TICKETS[id] && { ...TICKETS[id] };
 tRepo.catalogos = async () => ({
@@ -106,6 +107,13 @@ const q = id => ({ usuarioId: id, nombre: 'x', rol: id === SUPER ? 'superadmin' 
   igual('Sacarlo de vacaciones: sin la llave, no', await intenta(() => T.reclasificar(1, 'PERMISO_RETRIBUIDO', q(MERCEDES))), 'bloqueada');
   igual('Meter uno en vacaciones: cualquiera (así le llega a Laura)', await intenta(() => T.reclasificar(2, 'VACACIONES', q(MERCEDES))), 'pasa');
   igual('Laura lo rechaza', await intenta(() => T.cambiarEstado(1, { estado: 'rechazado', resolucion: 'no hay cupo' }, q(LAURA))), 'pasa');
+
+  // ── «Aprobado» no existe donde se aplica (13/10/2026) ────────────────────
+  // Las vacaciones de Chistel Carbajal se quedaron en «Aprobado» sin llegar a su
+  // ficha: en vacaciones, bajas y permisos se APLICA, no se aprueba.
+  igual('Aprobar un ticket de vacaciones, ni Laura: se aplica', /no se aprueba: se aplica/.test(await intenta(() => T.cambiarEstado(1, { estado: 'aprobado', resolucion: 'ok' }, q(LAURA)))), true);
+  igual('…ni una baja', /no se aprueba: se aplica/.test(await intenta(() => T.cambiarEstado(2, { estado: 'aprobado', resolucion: 'ok' }, q(MERCEDES)))), true);
+  igual('En lo que no abre ausencia (nómina), «Aprobado» sigue', await intenta(() => T.cambiarEstado(3, { estado: 'aprobado', resolucion: 'ok' }, q(MERCEDES))), 'pasa');
 
   // ── El mensaje dice a quién acudir ───────────────────────────────────────
   try { await aprobarVac.exigir(MERCEDES); } catch (e) { igual('El aviso nombra a Laura', e.message, 'Las vacaciones solo las aprueba Laura Blanco. Puedes verlas, pero no aprobarlas, rechazarlas ni cambiarlas.'); }
