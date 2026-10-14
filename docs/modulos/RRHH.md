@@ -152,6 +152,7 @@ Cómo se cruzó: Caverel por **teléfono** y, si no, por nombre; la plantilla po
 - **15 vacaciones del sistema no están en ningún Excel** (casi todas puestas en septiembre desde la ficha). No se tocan: a la plantilla le falta apuntarlas.
 - **79 personas de los Excel no tienen ficha**: se fueron antes de que arrancara el sistema (cuenta de BOLT desactivada, o ninguna).
 - Los días de **asuntos propios** de Caverel (columna J) no son vacaciones y no se cargaron.
+- **Dos resueltos después, con db/196** (Camilo: *«Lo de Lakraa sí, mételo así; Requena pásalo a permiso»*). Rachid Lakraa entra de vacaciones del 07/08 al 09/08/2026, porque la fila ponía «09/08/0206». El 01/09/2026 de Víctor Requena pasa de vacaciones a **permiso retribuido de asuntos propios** (`leave_type_code = PR_ASUNTOS_PROPIOS`), con su línea en el historial de cambios de la ficha.
 
 Los scripts están en «Scripts de análisis/vacaciones-rrhh» (fuera del repo).
 
