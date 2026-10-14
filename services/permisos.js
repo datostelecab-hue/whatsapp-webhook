@@ -51,6 +51,10 @@ const CATALOGO = [
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
     { clave: '/nominas',        etiqueta: 'Nóminas' },
     { clave: '/convenio',       etiqueta: 'Convenio' },
+    // Los SALDOS de vacaciones (14/10/2026): mirarlos. Aprobar es otra llave,
+    // '/vacaciones/aprobar', de una sola persona y mirada exacta: tener esta no
+    // la da (services/aprobarVacaciones.js).
+    { clave: '/vacaciones',     etiqueta: 'Vacaciones (saldos)' },
   ] },
   { grupo: 'Tráfico', items: [
     // MIRAR el planificador lo necesita media empresa: RRHH quiere saber dónde
@@ -378,7 +382,7 @@ function semillaDeRol(rol) {
     // Administración es el papel y el dinero: contratos, nóminas, convenio.
     // No planifica ni ve el directo.
     case 'administracion': return ['/inicio', '/pendientes', '/plantilla', '/documentos', '/bitacora',
-      '/rrhh', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
+      '/rrhh', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett', '/vacaciones'];
 
     // Operaciones es el control de lo que pasa en la calle.
     case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Taller'),

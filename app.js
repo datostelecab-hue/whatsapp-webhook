@@ -184,6 +184,7 @@ const ticketsTelecabRoutes = require('./routes/ticketsTelecab');
 const reportesRoutes = require('./routes/reportes');
 const nominasRoutes = require('./modules/Nominas/nominas.controller');
 const convenioRoutes = require('./modules/RRHH/convenio.controller');
+const vacacionesRoutes = require('./modules/Vacaciones/vacaciones.controller');
 const bitacoraRoutes = require('./modules/Operaciones/bitacora.controller');
 const configuracionRoutes = require('./routes/configuracion');
 const notificacionesRoutes = require('./routes/notificaciones');
@@ -309,6 +310,7 @@ app.use('/tickets-telecab', ticketsTelecabRoutes);
 app.use('/reportes', reportesRoutes);
 app.use('/nominas', nominasRoutes);
 app.use('/convenio', convenioRoutes);
+app.use('/vacaciones', vacacionesRoutes);
 app.use('/bitacora', bitacoraRoutes);
 // El módulo /incorporaciones se ELIMINÓ: su alerta vive en el planificador
 // (banner de incorporaciones, tabla `incorporacion`) y en Pendientes.
@@ -572,6 +574,21 @@ programar('15 * * * *', async () => {
     r.fallos.forEach(b => console.error(`⚠️  [Plantilla] Baja programada de ${b.conductorId} (${b.fecha}) sin aplicar: ${b.error}`));
   } catch (error) {
     console.error(`⚠️  [Plantilla] bajas programadas: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// LAS HORAS DE LOS FESTIVOS para el saldo de vacaciones (db/197, 14/10/2026):
+// cada festivo en el que alguien trabaja más de 6 h le suma un día. Se calculan
+// desde fv_tramo con la cuenta de la nómina y se rehacen unos días, porque BOLT
+// manda tramos con retraso. Cada hora: si no hay nada que hacer, es una consulta.
+programar('20 * * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./modules/Vacaciones/vacaciones.service').sellarFestivos();
+    r.hechos.forEach(h => console.log(`🏖️  [Vacaciones] Festivo ${h.fecha}: horas de ${h.personas} persona(s), ${h.masDe6} con más de 6 h`));
+  } catch (error) {
+    console.error(`⚠️  [Vacaciones] horas de los festivos: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
 

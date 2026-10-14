@@ -841,10 +841,25 @@ async function congelar(mes, ano, usuarioId) {
 const descongelar = (mes, ano) => repo.descongelar(mes, ano);
 const mesesCongelados = () => repo.mesesCongelados();
 
+/**
+ * Las horas de UN día natural de cada persona: Map(conductor_id → segundos
+ * efectivos). La misma cuenta que la nómina (viaje + espera de BOLT, dos cuentas
+ * que se pisan cuentan una vez). La pide Vacaciones para saber quién trabajó un
+ * festivo más de 6 horas (14/10/2026).
+ */
+async function horasDelDia(dia) {
+  const m = await repo.horasDelMes(dia, dia);
+  const d = Number(String(dia).slice(8, 10));
+  const out = new Map();
+  m.forEach((x, cid) => { const seg = x.porDia.get(d) || 0; if (seg > 0) out.set(Number(cid), seg); });
+  return out;
+}
+
 module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM,
   leerConfig, guardarConfig,
   calcular, cargar, congelar, descongelar, mesesCongelados, paraETT, finiquito, extras, mesesDeExtras,
+  horasDelDia,
   leerCongelada: (mes, ano) => repo.leerCongelada(mes, ano),
   // Expuestos para poder probar el prorrateo y el cálculo sin base de datos.
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,

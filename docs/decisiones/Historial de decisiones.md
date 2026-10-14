@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-14 · El módulo de vacaciones: el saldo de cada uno, con las reglas de Camilo
+
+«En el módulo de vacaciones, las vacaciones se van a calcular a 0,0821 día vacaciones/día a partir del día de alta que nos diga el sistema.» Por día natural (libranza y baja médica generan; la suspensión no). Cada día de permiso retribuido resta uno entero. Un festivo nacional o de Madrid trabajado más de 6 h suma 1 día. Quien entró antes de 2025 arranca el 01/01/2025. Las horas de los festivos se guardan (`festivo_horas`): el sistema calcula las nuevas, y las antiguas salen del historial de BOLT, que llega a junio de 2025. → [[Vacaciones]]
+
 ## 2026-10-14 · Las vacaciones de los Excel de RRHH, en el sistema; lo dudoso, a RRHH
 
 «Alinéalos en el sistema, si hay unos que no cuadran me dices.» Entra solo lo que no tiene duda (db/195: 121 tramos de 2025 y 2026 que están en los Excel, caben en un contrato y no pisan nada). Lo que no cuadra no se elige a ojo: va a un Excel para RRHH. → [[RRHH#Las vacaciones de los Excel de RRHH, cargadas (14/10/2026, db/195)]]
