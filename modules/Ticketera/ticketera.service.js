@@ -275,11 +275,14 @@ const diaLegible = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.s
  */
 async function datos(areaCodigo, { cerrados, recientes = false, codigo = null } = {}) {
   const desde = recientes ? await desdeCuando() : null;
-  const [tickets, cat] = await Promise.all([
+  const [tickets, cat, tiposPermiso] = await Promise.all([
     repo.bandeja(areaCodigo, { cerrados: !!cerrados, desde, codigo: codigo ? String(codigo).trim().slice(0, 40) : null }),
     repo.catalogos(),
+    // Al aplicar un permiso se dice cuál es: solo los de asuntos propios restan
+    // de las vacaciones (14/10/2026).
+    plantilla.tiposPermiso().catch(() => []),
   ]);
-  return { tickets, ...cat, desde: desde ? diaLegible(desde) : null };
+  return { tickets, ...cat, tiposPermiso, desde: desde ? diaLegible(desde) : null };
 }
 
 /**
@@ -400,7 +403,7 @@ async function reclasificar(id, subtipoCodigo, quien = {}) {
  * Se aplica ANTES de mover el ticket: si el tramo choca, el ticket se queda como
  * estaba en vez de figurar «Ejecutado» sin haberse ejecutado nada.
  */
-async function aplicar(id, { desde, hasta, estado, motivo } = {}, quien = {}) {
+async function aplicar(id, { desde, hasta, estado, motivo, tipoPermiso } = {}, quien = {}) {
   const t = await repo.una(id);
   if (!t) throw new Error('No existe ese ticket');
   if (!t.estadoAbre) {
@@ -451,6 +454,7 @@ async function aplicar(id, { desde, hasta, estado, motivo } = {}, quien = {}) {
     estado: cual, desde: d, hasta: h || null,
     motivo: String(motivo || '').trim() || `Ticket ${t.codigo}`,
     ticketId: Number(t.id),
+    tipoPermiso,
   }, { usuarioId: quien.usuarioId || null });
 
   const { ausencias: cat } = await repo.catalogos();

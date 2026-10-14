@@ -166,6 +166,8 @@ El listado enseña los **dos nombres** —el que escribió en el formulario y el
 
 **Reclasificar no separa área de subtipo**: el subtipo decide el área. Si «incidencia del vehículo» es de Taller, no tiene sentido poder dejarla en RRHH.
 
+**Aplicar un permiso pregunta qué permiso es** (14/10/2026), con los tipos del convenio: solo los de asuntos propios restan de las [[Vacaciones]].
+
 **Aplicar** es lo que convierte el ticket en el hecho: para los subtipos que abren una ausencia (vacaciones, baja, permiso) abre el tramo en la ficha de la persona, y entra **por la puerta de Conductores**, que es donde viven las reglas — que el tramo no pise otro de la misma persona, que lo que tiene vuelta la lleve, y que cerrar una vigencia y abrir la siguiente vaya en una transacción. Se aplica **antes** de mover el ticket: si el tramo choca, el ticket se queda como estaba en vez de figurar «Ejecutado» sin haberse ejecutado nada.
 
 Todo movimiento queda apuntado en el historial del ticket con quién lo hizo.

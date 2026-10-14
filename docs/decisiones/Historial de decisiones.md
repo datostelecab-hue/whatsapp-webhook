@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-14 · De los permisos, solo restan de las vacaciones los de asuntos propios
+
+«Solo restan los de asuntos propios.» Para saberlo, cada permiso lleva ahora su tipo, el del convenio. Plantilla y la Ticketera lo preguntan al ponerlo, y se puede corregir. Los permisos que ya había no tienen tipo y no restan. → [[Vacaciones#El tipo de un permiso se dice al ponerlo]]
+
 ## 2026-10-14 · El módulo de vacaciones: el saldo de cada uno, con las reglas de Camilo
 
 «En el módulo de vacaciones, las vacaciones se van a calcular a 0,0821 día vacaciones/día a partir del día de alta que nos diga el sistema.» Por día natural (libranza y baja médica generan; la suspensión no). Cada día de permiso retribuido resta uno entero. Un festivo nacional o de Madrid trabajado más de 6 h suma 1 día. Quien entró antes de 2025 arranca el 01/01/2025. Las horas de los festivos se guardan (`festivo_horas`): el sistema calcula las nuevas, y las antiguas salen del historial de BOLT, que llega a junio de 2025. → [[Vacaciones]]

@@ -4,7 +4,8 @@
 //   + 0,0821 días por día natural desde el alta (o el 01/01/2025), sin las
 //     suspensiones; la baja médica y la libranza sí generan
 //   + 1 día por festivo trabajado MÁS de 6 horas
-//   − vacaciones disfrutadas  − cada día de permiso retribuido
+//   − vacaciones disfrutadas  − cada día de permiso de ASUNTOS PROPIOS (los demás
+//     permisos no restan: «Solo restan los de asuntos propios», 14/10/2026)
 //
 //   node scripts/comprobar-vacaciones-saldo.js
 //
@@ -27,7 +28,7 @@ const HOY = '2026-10-14';
 const F = (fecha, horas_at = '2026-10-01T00:00:00Z', nombre = 'Festivo') => ({ fecha, nombre, ambito: 'nacional', horas_at });
 const H = obj => new Map(Object.entries(obj));
 const vac = (desde, hasta) => ({ estado: 'vacaciones', desde, hasta, fila: '1' });
-const perm = (desde, hasta) => ({ estado: 'permiso', desde, hasta, fila: '2' });
+const perm = (desde, hasta, tipo = 'PR_ASUNTOS_PROPIOS') => ({ estado: 'permiso', desde, hasta, fila: '2', leave_type_code: tipo });
 const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, fila: '3' });
 
 (async () => {
@@ -65,6 +66,11 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
   s = saldoDe({ alta: '2026-07-13' }, [perm('2026-09-01', '2026-09-01'), perm('2026-10-20', '2026-10-21')], [], new Map(), HOY);
   igual('Un día de permiso pasado resta 1 entero; los de mañana van aparte', [s.permisos, s.permisosProgramados, s.saldo, s.saldoTras], [1, 2, 6.72, 4.72]);
   igual('…y el permiso sí genera su día natural', s.generadas, 7.72);
+  s = saldoDe({ alta: '2026-07-13' }, [perm('2026-08-23', '2026-08-31', null), perm('2026-10-08', '2026-11-08', 'PR_MATRIMONIO')], [], new Map(), HOY);
+  igual('Un permiso sin tipo y uno de matrimonio: no restan nada, ni hoy ni después',
+    [s.permisos, s.permisosProgramados, s.saldo, s.saldoTras], [0, 0, 7.72, 7.72]);
+  igual('…pero se ven en la ficha, marcados como que no restan',
+    s.detalle.permisos.map(p => [p.resta, p.dentro]), [[false, 9], [false, 7]]);
 
   // ── 3. Los festivos ──────────────────────────────────────────────────────
   const cal = [F('2025-05-01', null), F('2025-12-25'), F('2026-08-15'), F('2026-10-12', null), F('2026-10-14', null), F('2026-07-01')];

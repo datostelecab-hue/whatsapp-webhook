@@ -369,7 +369,7 @@ No son de los seis, pero forman parte de la misma red:
 - **`comprobar-vacaciones-saldo.js`** (14/10/2026) — el saldo de vacaciones: 0,0821 por día
   natural desde el alta o el 01/01/2025, sin suspensiones (la baja médica sí genera);
   vacaciones que cruzan hoy, de antes del alta y programadas; cada día de permiso resta
-  uno; un festivo suma con MÁS de 6 h (6 justas no), «sin datos» antes de junio de 2025
+  uno solo si es de asuntos propios (sin tipo u otro tipo, no restan); un festivo suma con MÁS de 6 h (6 justas no), «sin datos» antes de junio de 2025
   y «calculándose» si el sistema aún no tiene sus horas. Y el cálculo de las horas de los
   festivos, con dobles.
 - **`comprobar-vacaciones.js`** (09/10/2026) — las vacaciones las aprueba una sola

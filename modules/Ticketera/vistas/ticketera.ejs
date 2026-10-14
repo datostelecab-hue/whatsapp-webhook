@@ -94,7 +94,7 @@
   // candado de verdad está en el servidor; aquí solo no se ofrecen.
   const VAC  = <%- JSON.stringify(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
 
-  let TICKETS = [], SUBTIPOS = [], ESTADOS = [], AUSENCIAS = [], PERSONAS = null;
+  let TICKETS = [], SUBTIPOS = [], ESTADOS = [], AUSENCIAS = [], PERSONAS = null, TIPOS_PERMISO = [];
 
   const aviso = (t, tipo) => {
     const m = $('#msg');
@@ -355,6 +355,18 @@
       nota: `${t.subtipo}${t.fechaIni ? ' · pidió ' + t.fechaIni + (t.fechaFin ? ' → ' + t.fechaFin : '') : ''}` });
     if (!v) return;
 
+    // QUÉ PERMISO ES (14/10/2026): solo los de asuntos propios restan de las
+    // vacaciones, así que al abrir un permiso se dice cuál, con los del convenio.
+    if (v.estado === 'permiso') {
+      const p = await Dialogo.formulario('¿Qué permiso es?', [
+        { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
+          opciones: TIPOS_PERMISO.map(x => ({ valor: x.codigo, texto: x.etiqueta }))
+            .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]), buscador: { tope: 20 } },
+      ], { textoBoton: 'Aplicar', nota: 'Los de asuntos propios restan de las vacaciones: cada día, uno. Los demás, no.' });
+      if (!p) return;
+      v.tipoPermiso = p.tipoPermiso;
+    }
+
     const r = await api('/aplicar', { id: t.id, ...v });
     if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se ha podido aplicar', texto: r.msg, tono: 'error' });
     aviso('Aplicado: la ausencia ya está en su ficha.', 'ok');
@@ -479,7 +491,7 @@
     // Los cuadros de la barra de arriba, al día con lo que se acaba de hacer.
     if (typeof window.__refrescarBandejas === 'function') window.__refrescarBandejas();
     TICKETS = r.tickets || []; SUBTIPOS = r.subtipos || [];
-    ESTADOS = r.estados || []; AUSENCIAS = r.ausencias || [];
+    ESTADOS = r.estados || []; AUSENCIAS = r.ausencias || []; TIPOS_PERMISO = r.tiposPermiso || [];
 
     // El desplegable de tipos se llena con lo que HAY en la bandeja, no con el
     // catálogo entero: ofrecer veinte filtros que dan cero no ayuda a nadie.

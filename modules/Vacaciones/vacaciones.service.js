@@ -14,7 +14,11 @@
 //               Madrid en el que trabajó MÁS DE 6 HORAS (las de la nómina: viaje
 //               + espera de BOLT, por día natural).
 //   DISFRUTADAS − los días de vacaciones que ya pasaron.
-//   PERMISOS    − cada día de permiso retribuido resta un día entero del saldo.
+//   PERMISOS    − cada día de permiso de ASUNTOS PROPIOS resta un día entero
+//               (Camilo, 14/10/2026: «Solo restan los de asuntos propios»). El
+//               resto de permisos retribuidos no toca el saldo. El tipo es el
+//               del convenio (`leave_type_code`), que se elige al poner el
+//               permiso en Plantilla o al aplicar el ticket.
 //
 // Lo programado (vacaciones y permisos de mañana en adelante) no toca el saldo
 // de hoy: se enseña aparte, con el saldo que quedará después.
@@ -32,6 +36,7 @@ const NUCLEO_DESDE = '2026-07-01';
 // han pasado estos días (como el sellado de la bitácora, que mira tres).
 const MARGEN_DIAS = 4;
 const NO_GENERAN = new Set(['suspendido', 'suspension_permiso']);
+const ASUNTOS_PROPIOS = 'PR_ASUNTOS_PROPIOS';   // el único permiso que resta
 const FIN = '9999-12-31';
 
 // ── Fechas en 'AAAA-MM-DD', sin husos: todo es día natural ───────────────────
@@ -72,8 +77,10 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
       vacaciones.push({ ...linea, disfrutados: pasado, programados: futuro });
     } else if (t.estado === 'permiso') {
       if (!pasado && !futuro) continue;
-      diasPermiso += pasado; permisoProgramado += futuro;
-      permisos.push({ ...linea, tipo: t.tipo_permiso || '', restan: pasado, programados: futuro });
+      const resta = t.leave_type_code === ASUNTOS_PROPIOS;
+      if (resta) { diasPermiso += pasado; permisoProgramado += futuro; }
+      permisos.push({ ...linea, tipo: t.tipo_permiso || '', resta, restan: resta ? pasado : 0,
+        programados: resta ? futuro : 0, dentro: pasado });
     } else if (NO_GENERAN.has(t.estado)) {
       if (!pasado) continue;
       diasSuspension += pasado;
@@ -177,7 +184,7 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 }
 
 module.exports = {
-  TASA, DESDE_HISTORICO, UMBRAL_FESTIVO, NUCLEO_DESDE,
+  TASA, DESDE_HISTORICO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS,
   lista, ficha, sellarFestivos,
   _saldoDe: saldoDe,
 };

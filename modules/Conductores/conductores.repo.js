@@ -552,6 +552,7 @@ async function catalogos() {
     situaciones: situaciones.rows,
     turnos: turnos.rows,
     centros: centros.rows,
+    tiposPermiso: await tiposPermiso(),
     tipos: [{ codigo: 'propia', etiqueta: 'Plantilla propia' }, { codigo: 'ett', etiqueta: 'ETT' }],
   };
 }
@@ -745,12 +746,36 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
 }
 
 /**
+ * LOS TIPOS DE PERMISO del convenio (art. 22, `leave_type`), con asuntos propios
+ * el primero. Hacen falta desde el 14/10/2026: de los permisos retribuidos, solo
+ * los de ASUNTOS PROPIOS restan del saldo de vacaciones (Vacaciones).
+ */
+async function tiposPermiso() {
+  const r = await db.consulta(
+    `SELECT leave_type_code AS codigo, name AS etiqueta FROM leave_type
+      ORDER BY (leave_type_code = 'PR_ASUNTOS_PROPIOS') DESC, name`);
+  return r.rows;
+}
+
+/**
+ * El tipo de un permiso, comprobado contra el catálogo. Solo vale en un
+ * permiso; vacío u 'OTRO' = ninguno de los del convenio (NULL).
+ */
+async function tipoDePermiso(estado, tipo) {
+  const t = String(tipo == null ? '' : (typeof tipo === 'object' ? tipo.valor : tipo)).trim();
+  if (estado !== 'permiso' || !t || t === 'OTRO') return null;
+  const r = await db.consulta('SELECT 1 FROM leave_type WHERE leave_type_code = $1', [t]);
+  if (!r.rows.length) throw new Error(`Ese tipo de permiso no existe: «${t}»`);
+  return t;
+}
+
+/**
  * Cambia la situación (vacaciones, baja médica, vuelta al trabajo).
  *
  * Una ausencia NO cierra la asignación: la persona conserva su plaza. Eso ya
  * está decidido en el esquema y aquí solo se respeta.
  */
-async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { usuarioId } = {}) {
+async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipoPermiso }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   const cat = (await db.consulta(
     `SELECT codigo, etiqueta, fin_previsible, es_fin_contrato
@@ -797,6 +822,7 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
     throw new Error('La vuelta no puede ser anterior al día en que empieza la ausencia');
   }
 
+  const tipo = await tipoDePermiso(estado, tipoPermiso);
   return db.transaccion(async cli => {
     // Y la ausencia nace CERRADA en esa fecha (`hasta`), no solo "prevista": así
     // el día que toca vuelve al cuadrante sola, sin que nadie tenga que acordarse
@@ -804,6 +830,7 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
     return vig.reemplazar('situacion', id, {
       estado, hasta: previsto, hasta_previsto: previsto,
       motivo: motivo || null, usuario_id: usuarioId || null,
+      ...(tipo ? { leave_type_code: tipo } : {}),
     }, { desde, cli });
   });
 }
@@ -819,7 +846,7 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
  * Aquí no se cierra ni se recorta nada: o el tramo cabe en un hueco libre, o se
  * dice cuál es el que estorba. Nada se pierde en silencio.
  */
-async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId }, { usuarioId } = {}) {
+async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipoPermiso }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   if (!desde) throw new Error('Falta el día en que empieza');
   const cat = (await db.consulta(
@@ -838,6 +865,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId }, { 
       'y esa persona desaparece del cuadrante indefinidamente.');
   }
   if (fin && fin < desde) throw new Error('La vuelta no puede ser anterior al día en que empieza la ausencia');
+  const tipo = await tipoDePermiso(estado, tipoPermiso);
 
   // El hueco se comprueba aquí para poder decir CUÁL estorba. La base también
   // lo impide —hay una restricción de exclusión—, pero su error no dice nada.
@@ -912,10 +940,10 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId }, { 
     // justificante que subió, sin copiar ninguno de los dos.
     const r = await cli.query(
       `INSERT INTO conductor_estado_hist
-         (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, ticket_id)
-       VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8) RETURNING *`,
+         (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, ticket_id, leave_type_code)
+       VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8, $9) RETURNING *`,
       [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null,
-       usuarioId || null, ticketId || null]);
+       usuarioId || null, ticketId || null, tipo]);
     return { anadida: r.rows[0], fondoPartido: fondos.length };
   });
 }
@@ -930,7 +958,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId }, { 
  * hace falta es tocar esa fila, no apilar otra encima. Hasta ahora eso solo se
  * podía por base de datos.
  */
-async function editarAusencia(id, filaId, { desde, hasta, motivo }, { usuarioId } = {}) {
+async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso }, { usuarioId } = {}) {
   const fila = (await db.consulta(
     `SELECT h.*, c.fin_previsible, c.etiqueta
        FROM conductor_estado_hist h
@@ -941,6 +969,12 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo }, { usuarioId 
   const cambios = {};
   if (desde !== undefined) cambios.desde = desde || fila.desde;
   if (motivo !== undefined) cambios.motivo = motivo || null;
+  // El tipo de un permiso se puede corregir: es lo que decide si resta de las
+  // vacaciones (solo los de asuntos propios).
+  if (tipoPermiso !== undefined && fila.estado === 'permiso') {
+    const tipo = await tipoDePermiso('permiso', tipoPermiso);
+    if ((tipo || null) !== (fila.leave_type_code || null)) cambios.leave_type_code = tipo;
+  }
   if (hasta !== undefined) {
     const h = hasta || null;
     // La misma regla que al crearla: lo que tiene vuelta la necesita, o esa
@@ -1859,7 +1893,7 @@ module.exports = {
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe, tiposPermiso,
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,

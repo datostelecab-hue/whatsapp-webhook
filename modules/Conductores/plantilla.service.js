@@ -241,6 +241,9 @@ const codigo = x => String(x && typeof x === 'object' ? x.valor : (x || ''));
 const sonVacaciones = x => codigo(x) === aprobarVac.ESTADO;
 const vacacionesParaLaPantalla = quien => aprobarVac.paraLaPantalla((quien || {}).usuarioId);
 
+/** Los tipos de permiso del convenio, para elegirlo al poner un permiso (también desde la Ticketera). */
+const tiposPermiso = () => con.tiposPermiso();
+
 const cambiarSituacion = async (id, datos, quien) => {
   if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
   return { vigencia: await con.cambiarSituacion(Number(id), datos, quien) };
@@ -441,7 +444,7 @@ const documentosQueVencen = dias => docs.porVencer({ dias });
 module.exports = {
   paraLaPantalla, lista, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
   excelGestoria,

@@ -143,6 +143,21 @@
 
   // ---------- acciones de la ficha ----------
 
+  // QUÉ PERMISO ES (14/10/2026). De los permisos retribuidos, solo los de asuntos
+  // propios restan de las vacaciones; así que al poner uno se dice cuál, con los
+  // tipos del convenio. Devuelve el código, 'OTRO', o null si se cancela.
+  const opcionesPermiso = () => (CAT.tiposPermiso || []).map(x => ({ valor: x.codigo, texto: x.etiqueta }))
+    .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]);
+  const NOTA_PERMISO = 'Los de asuntos propios restan de las vacaciones: cada día, uno. Los demás, no.';
+  const tipoPermisoTxt = c => ((CAT.tiposPermiso || []).find(x => x.codigo === c) || {}).etiqueta || '';
+  async function pedirTipoPermiso(valor) {
+    const v = await pedirDatos('¿Qué permiso es?', [
+      { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true, valor: valor || '',
+        opciones: opcionesPermiso(), buscador: { tope: 20 } },
+    ], { textoBoton: 'Seguir', nota: NOTA_PERMISO });
+    return v ? v.tipoPermiso : null;
+  }
+
   async function accionSituacion(d) {
     const v = await pedirDatos(`Cambiar la situación de ${d.nombre_completo}`, [
       { id: 'estado', etiqueta: 'Situación', tipo: 'lista', valor: d.situacion,
@@ -186,6 +201,12 @@
       return darDeBaja(d, v.desde, v.motivo);
     }
 
+    if (v.estado === 'permiso') {
+      const t = await pedirTipoPermiso();
+      if (t === null) return;
+      v.tipoPermiso = t;
+    }
+
     // Una ausencia no cierra su asignación, así que aquí no se toca nada del
     // coche. Está decidido en el esquema y esto solo lo respeta.
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion`, 'POST', v));
@@ -214,6 +235,11 @@
              + 'esa persona desaparecería del cuadrante.' });
       return anadirAusencia(d);
     }
+    if (v.estado === 'permiso') {
+      const t = await pedirTipoPermiso();
+      if (t === null) return;
+      v.tipoPermiso = t;
+    }
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/ausencia`, 'POST', v));
   }
 
@@ -233,7 +259,10 @@
           ? 'Obligatoria: el día que vuelve al cuadrante. Sin ella la ausencia no termina nunca.'
           : 'Vacía mientras siga de baja. Se rellena el día del alta.' },
       { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: fila.motivo || '' },
-    ], { nota: 'Esto CORRIGE este tramo, no abre uno nuevo. Si lo que pasa es que vuelve antes de tiempo, '
+    ].concat(fila.estado === 'permiso' ? [
+      { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
+        valor: fila.leave_type_code || 'OTRO', opciones: opcionesPermiso(), buscador: { tope: 20 }, ayuda: NOTA_PERMISO },
+    ] : []), { nota: 'Esto CORRIGE este tramo, no abre uno nuevo. Si lo que pasa es que vuelve antes de tiempo, '
              + 'usa "Cambiar situación" y ponlo activo desde el día que vuelve.' });
     if (!v) return;
     if (cat.fin_previsible && !v.hasta) {
@@ -1634,7 +1663,8 @@
             vacio: 'Nunca ha estado ausente.',
             columnas: [
               { titulo: 'Situación', campo: 'etiqueta',
-                pinta: (v, f) => etiqueta(v || f.estado, tonoSituacion(f.estado)) },
+                pinta: (v, f) => etiqueta(v || f.estado, tonoSituacion(f.estado)) + (f.estado === 'permiso'
+                  ? `<span class="block text-[11px] text-telecab-muted mt-0.5">${esc(tipoPermisoTxt(f.leave_type_code) || 'Sin tipo')}</span>` : '') },
               { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
               { titulo: 'Hasta', campo: 'hasta',
                 // "Sigue" en ámbar y no en verde: una ausencia sin fecha de fin

@@ -134,6 +134,8 @@ Hay tres operaciones distintas y no son intercambiables:
 | **Añadir ausencia** | Mete un tramo suelto sin tocar nada de lo que ya hay | Vacaciones partidas: 13 días este mes y 3 en noviembre |
 | **Editar / borrar ausencia** | Corrige la fila que ya está | Hay un **error**: el 13 en vez del 15, unas vacaciones a quien no le tocaban |
 
+**Un permiso lleva su tipo** (14/10/2026): al poner un «Permiso retribuido», un segundo paso pregunta cuál es, con los tipos del convenio. Solo los de asuntos propios restan de las [[Vacaciones]]. Al corregir el tramo, el tipo también se puede cambiar.
+
 Añadir no cierra ni recorta nada: o el tramo cabe en un hueco libre, o se dice **cuál** es el que estorba, con su etiqueta y sus fechas. Y si el que estorba está abierto sin fecha de vuelta se dice también, porque mientras siga así no cabe ningún tramo después y el otro se quedaría probando fechas a ver cuál entra.
 
 **Irse de la empresa no es una situación en la que se esté**: es el final del contrato. Pero la gente la busca en la lista de situaciones, que es donde tiene sentido buscarla, así que se sigue ofreciendo y hace **exactamente lo mismo** que el botón de dar de baja — no algo parecido. Dos puertas, un solo camino. Antes escribía una fila de estado y ya: la ficha decía "Baja en la empresa" con el contrato abierto, y el resto del sistema seguía contando con esa persona.

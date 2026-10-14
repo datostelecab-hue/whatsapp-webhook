@@ -25,7 +25,7 @@
   }
 
   const AYUDA_SALDO = `Generadas: ${tasa} días por cada día natural desde el alta (o desde el ${f(R.desde)}), sin los días de suspensión.\n` +
-    `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h.\n− Vacaciones disfrutadas y días de permiso retribuido.`;
+    `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h.\n− Vacaciones disfrutadas y días de permiso por asuntos propios.`;
 
   const ESTADO_FESTIVO = {
     'suma': '<span class="font-semibold">+1 día</span>',
@@ -63,7 +63,7 @@
 
     nota: () => ({ tono: 'info', icono: 'fa-scale-balanced',
       texto: `Saldo = ${tasa} días por día natural desde el alta (o desde el ${f(R.desde)}), sin las suspensiones · ` +
-        `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas · − permisos retribuidos.` }),
+        `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas · − días de asuntos propios (los demás permisos no restan).` }),
 
     filtros: [
       { id: 'saldo', textoTodos: 'Cualquier saldo', opciones: [
@@ -101,8 +101,8 @@
           ? `<span class="block text-[11px] text-telecab-muted" title="Festivos de enero a mayo de 2025: BOLT ya no guarda esas horas.">${x.festivosSinDatos} sin datos</span>` : '') },
       { titulo: 'Disfrutadas', campo: 'disfrutadas', clase: 'tabular-nums whitespace-nowrap',
         pinta: v => (v ? '−' + num(v, 0) : DASH) },
-      { titulo: 'Permisos', campo: 'permisos', clase: 'tabular-nums whitespace-nowrap',
-        ayuda: 'Cada día de permiso retribuido resta un día entero del saldo.',
+      { titulo: 'Asuntos propios', campo: 'permisos', clase: 'tabular-nums whitespace-nowrap',
+        ayuda: 'Cada día de permiso por asuntos propios resta un día entero del saldo. Los demás permisos no restan.',
         pinta: v => (v ? '−' + num(v, 0) : DASH) },
       { titulo: 'Programadas', campo: 'programadas', clase: 'tabular-nums whitespace-nowrap',
         ayuda: 'Vacaciones ya puestas en su ficha de mañana en adelante. No restan del saldo de hoy.',
@@ -168,10 +168,10 @@
                   : (x.estado === 'suspension_permiso' ? 'Suspensión por retirada del permiso' : 'Suspensión')) },
               { titulo: 'Desde', campo: 'desde', clase: 'whitespace-nowrap tabular-nums', pinta: v => f(v) },
               { titulo: 'Hasta', campo: 'hasta', clase: 'whitespace-nowrap tabular-nums', pinta: v => f(v) || 'sin fecha' },
-              { titulo: 'Efecto', campo: 'clase', clase: 'whitespace-nowrap tabular-nums',
-                pinta: (v, x) => (v === 'permiso'
-                  ? (x.restan ? `−${x.restan} día(s)` : '') + (x.programados ? `${x.restan ? '<br>' : ''}<span class="text-telecab-muted">${x.programados} programado(s)</span>` : '')
-                  : `${x.sinGenerar} día(s) sin generar`) },
+              { titulo: 'Efecto en el saldo', campo: 'clase', clase: 'whitespace-nowrap tabular-nums',
+                pinta: (v, x) => (v !== 'permiso' ? `${x.sinGenerar} día(s) sin generar`
+                  : !x.resta ? '<span class="text-telecab-muted" title="Solo restan los permisos de asuntos propios.">No resta</span>'
+                  : (x.restan ? `−${x.restan} día(s)` : '') + (x.programados ? `${x.restan ? '<br>' : ''}<span class="text-telecab-muted">${x.programados} programado(s)</span>` : '')) },
               { titulo: 'Motivo', campo: 'motivo', pinta: v => (v ? `<span class="text-sm text-telecab-muted">${esc(v)}</span>` : DASH) },
             ],
           },
@@ -198,12 +198,14 @@
     const neg = d.saldo < 0;
     const tramosVac = d.detalle.vacaciones.filter(v => v.disfrutados).length;
     const diasPerm = d.detalle.permisos.filter(p => p.restan).length;
+    const otros = d.detalle.permisos.filter(p => !p.resta && p.dentro).length;
     return `
       <div class="px-5 py-2">
         ${linea('Generadas', d.generadas, `${d.diasQueGeneran} días naturales desde el ${f(d.inicio)}${sus} × ${tasa}`, '+')}
         ${linea('Festivos trabajados', d.festivosSuman, `${d.festivosSuman} de ${fest} festivo(s) con más de ${R.umbralHoras} h${sinD}${pend}`, '+')}
         ${linea('Vacaciones disfrutadas', d.disfrutadas, tramosVac ? `${tramosVac} tramo(s) hasta hoy` : 'Ninguna hasta hoy', '−')}
-        ${linea('Permisos retribuidos', d.permisos, diasPerm ? `${diasPerm} permiso(s); cada día resta uno entero` : 'Ninguno', '−')}
+        ${linea('Asuntos propios', d.permisos, (diasPerm ? `${diasPerm} permiso(s); cada día resta uno entero` : 'Ninguno') +
+          (otros ? ` · ${otros} permiso(s) de otro tipo, que no restan` : ''), '−')}
         <div class="flex items-baseline gap-4 pt-4 pb-2">
           <p class="flex-1 text-sm font-semibold uppercase tracking-wide text-telecab-muted">Saldo a hoy</p>
           <p class="tabular-nums text-right whitespace-nowrap">

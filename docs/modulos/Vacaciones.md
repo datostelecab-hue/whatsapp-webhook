@@ -16,13 +16,22 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 | **+** | Generadas | **0,0821 días por cada día natural** desde el alta que dice el sistema (la del contrato abierto). Cuentan la libranza, la **baja médica**, las vacaciones y los permisos. **No** cuentan los días de **suspensión** (de empleo y sueldo, o por retirada del permiso de conducir). |
 | **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no). |
 | **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron. |
-| **−** | Permisos retribuidos | **Cada día de permiso retribuido resta un día entero** del saldo. |
+| **−** | Asuntos propios | **Cada día de permiso por ASUNTOS PROPIOS resta un día entero** del saldo. Los demás permisos retribuidos no restan. |
 
 - **Quien entró antes de 2025 empieza el 01/01/2025**: el histórico de vacaciones empieza ahí y lo anterior se da por cerrado. Quien entró después, desde su alta. Las vacaciones de un contrato anterior no cuentan.
 - **Lo programado** (vacaciones y permisos de mañana en adelante, ya puestos en la ficha) no toca el saldo de hoy. Se enseña aparte, con lo que quedará después.
 - El saldo puede ser **negativo**: ha disfrutado más de lo generado.
 
-Las cuatro decisiones de Camilo, el 14/10/2026: los permisos se descuentan del saldo; para los antiguos, desde el 01/01/2025; las suspensiones no generan; y el festivo suma solo si se trabajó más de 6 h.
+Las decisiones de Camilo, el 14/10/2026: los permisos se descuentan del saldo, y luego, *«Solo restan los de asuntos propios»*; para los antiguos, desde el 01/01/2025; las suspensiones no generan; y el festivo suma solo si se trabajó más de 6 h.
+
+### El tipo de un permiso se dice al ponerlo
+
+Si un permiso es de asuntos propios lo dice su **tipo**: los del convenio (art. 22, `leave_type`), guardado en `conductor_estado_hist.leave_type_code`. Hasta el 14/10/2026 no lo pedía nadie (solo lo tenía el de Víctor Requena, de db/196). Ahora:
+
+- **Plantilla** (cambiar la situación o añadir un tramo): al elegir «Permiso retribuido», un segundo paso pregunta «¿Qué permiso es?», con asuntos propios el primero y «Otro (ninguno de estos)» al final. **Corregir** un tramo de permiso deja cambiar el tipo, y el historial de situaciones lo enseña debajo de la etiqueta («Sin tipo» si no lo tiene).
+- **Ticketera**: «Aplicar» un permiso pregunta lo mismo antes de ponerlo.
+- El servidor comprueba el tipo contra el catálogo (`conductores.repo.tipoDePermiso`). Solo vale en un permiso: en otra situación se ignora. «Otro» o vacío guardan NULL.
+- db/199 pone las tildes a los nombres del catálogo («Acompanyamiento» → «Acompañamiento»). Los códigos no cambian.
 
 La cuenta es una función pura, `vacaciones.service._saldoDe`, con su comprobador: `node scripts/comprobar-vacaciones-saldo.js` (32 casos).
 
@@ -47,7 +56,7 @@ La cuenta es una función pura, `vacaciones.service._saldoDe`, con su comprobado
 Se diseñó con la skill de UI/UX, sobre la identidad de la casa ([[Identidad visual]]).
 
 - **El saldo va debajo de cada nombre**, como lo pidió Camilo. El número lleva su signo y la palabra «Saldo», y en rojo solo si es negativo: el color no va solo. Si tiene algo programado, al lado va lo que le quedará. Si está de vacaciones hoy, una etiqueta lo dice.
-- Columnas: contrato, desde cuándo se le calcula, generadas, festivos, disfrutadas, permisos y programadas. En el Excel de la lista van además el saldo, el saldo tras lo programado y el DNI.
+- Columnas: contrato, desde cuándo se le calcula, generadas, festivos, disfrutadas, asuntos propios y programadas. En el Excel de la lista van además el saldo, el saldo tras lo programado y el DNI.
 - KPIs: personas, días por disfrutar (la suma de los saldos a favor), en negativo y de vacaciones hoy. Los dos últimos son atajos a su filtro. Filtros por saldo (en negativo, más de 30 días, de vacaciones hoy) y por contrato.
 - **La ficha es un extracto**: cada línea con su signo y de dónde sale, y el saldo debajo de la raya. Detrás, las tablas de festivos (horas trabajadas y si suma), de vacaciones (con la celda o fila del Excel de donde salieron) y de permisos y suspensiones. Arriba, «Abrir en Plantilla».
 
@@ -57,6 +66,6 @@ Se diseñó con la skill de UI/UX, sobre la identidad de la casa ([[Identidad vi
 
 ## Lo que hay que saber
 
-- **«Permiso retribuido» se usa hoy para cosas que quizá no deberían restar vacaciones.** El 14/10/2026 había, entre otros, una baja por paternidad del 08/10 al 08/11, que resta 32 días; dos «no se le entregó el coche» (9 y 2 días); y «día compensatorio por trabajar el festivo». Con la regla de hoy restan todos. Está preguntado a Camilo ([[Estado y pendientes]]).
+- **Los permisos que había el 14/10/2026 no tienen tipo**, salvo el de Requena. Por eso no restan: entre ellos, una baja por paternidad, dos «no se le entregó el coche» y un día compensatorio. Uno dice **«permiso por asuntos personales»** (la ficha 283, del 06/10). Si es de asuntos propios, hay que marcarlo en Plantilla (corregir el tramo → tipo) para que reste.
 - ETT: sale todo el que tiene contrato abierto. Las vacaciones de quien está por ETT las paga la agencia; el filtro de contrato los separa.
 - Con los datos del 14/10/2026 (ensayado en copia, antes de aplicar db/197 y db/198): 214 personas, saldo medio de 9,1 días, 8 en negativo y 15 con más de 30.
