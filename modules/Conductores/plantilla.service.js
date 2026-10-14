@@ -50,21 +50,21 @@ async function paraLaPantalla() {
 async function lista({ momento, soloVigentes } = {}) {
   const opciones = { momento: momento || null, soloVigentes: !!soloVigentes };
   // EL PROMEDIO DE HORAS, PARA EL EXCEL (Camilo, 14/10/2026): las de BOLT MÁS
-  // las justificadas, entre los días que trabajó, del mes corrido. Es la «Media
-  // por día» de la bitácora, y por eso se le pide a ella: si lo contara Plantilla
-  // por su cuenta, las dos pantallas acabarían diciendo cosas distintas. Con UNA
-  // diferencia, pedida por Camilo: un día con menos de 1 h (BOLT + J) no cuenta
-  // como trabajado. Es el mismo listón que la letra.
+  // las justificadas, del mes corrido, y cada día que no salió cuenta como un
+  // día de 0 h («los días de ausencia cuentan como 0»). Es la media «contando la
+  // ausencia» de la bitácora, y por eso se le pide a ella: si lo contara
+  // Plantilla por su cuenta, las dos pantallas acabarían diciendo cosas
+  // distintas.
   const bitacora = require('../Operaciones/bitacora.service');
-  const { MODELO } = require('../../services/repo/calificacion');
   const [filas, resumen, media] = await Promise.all([con.listar(opciones), con.resumen(opciones),
-    bitacora.mediaDelMes({ hasta: momento, minHoras: MODELO.minHorasDiaTrabajado })
+    bitacora.mediaDelMes({ hasta: momento })
       .catch(e => { console.error('⚠️  [PLANTILLA] media por día de la bitácora:', e.message); return null; })]);
   // Sin media (falló la bitácora), la lista sale igual: la columna, vacía.
   if (media) filas.forEach(f => {
     const h = media.porId.get(String(f.id));
-    f.horas_dia_media = h ? h.horas : null;
+    f.horas_dia_media = h ? h.conAus : null;
     f.dias_trabajados_mes = h ? h.dias : null;
+    f.ausencias_mes = h ? h.ausencias : null;
   });
   return { filas, resumen, mediaDelMes: media && { desde: media.desde, hasta: media.hasta } };
 }

@@ -758,7 +758,28 @@ async function horasDeJornada(diaIso) {
   return out;
 }
 
+/**
+ * LAS SITUACIONES QUE NO MARCAN LA REJILLA: suspensión de empleo y sueldo,
+ * suspensión por retirada del permiso, pendiente de asignar… Toda la que no es
+ * «activo» y no tiene `marca_bitacora`. En la rejilla esos días salen vacíos
+ * —y por eso como «no salió»—, pero no son una falta: no le dejan trabajar, o
+ * todavía no tiene coche. Las usa la media «contando la ausencia» para no
+ * contarlos como un día de 0 h.
+ */
+async function situacionesSinMarca(desdeIso, hastaIso) {
+  const r = await db.consulta(
+    `SELECT h.conductor_id::text AS cid,
+            to_char(GREATEST(h.desde, $1::date), 'YYYY-MM-DD')                  AS desde,
+            to_char(LEAST(COALESCE(h.hasta, $2::date), $2::date), 'YYYY-MM-DD') AS hasta
+       FROM conductor_estado_hist h
+       JOIN cat_estado_conductor ce ON ce.codigo = h.estado
+      WHERE h.estado <> 'activo' AND ce.marca_bitacora IS NULL
+        AND h.desde <= $2::date AND (h.hasta IS NULL OR h.hasta >= $1::date)`, [desdeIso, hastaIso]);
+  return r.rows;
+}
+
 module.exports = {
+  situacionesSinMarca,
   // El histórico sellado: lo llama el cron al cerrar la jornada y la pantalla de
   // la bitácora si hay que rehacer un tramo a mano.
   sellarHoras, horasCalculadas, horasDeJornada, leerBitacora, leerVacaciones,

@@ -40,21 +40,27 @@ La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion
 
 El botón de Excel junto al buscador descarga lo que se está viendo. Desde el 01/10/2026 lleva, detrás del nombre, la columna **«Contrato»: Propia o ETT**. En la tabla no hay columna nueva —ya lo dice la etiqueta ETT junto al nombre—, porque es una columna `soloExcel` del Listado ([[Componentes de la casa]]). A quien ya no está no se le atribuye contrato: sale en blanco, igual que «SS / ETT» en pantalla.
 
-### Y el promedio de horas: BOLT + justificadas (14/10/2026)
+### Y el promedio de horas: BOLT + justificadas, ausencias a 0 (14/10/2026)
 
-Camilo pidió *«el promedio de horas de BOLT de cada uno, sin letras»*. La primera versión contaba solo BOLT, y a Deisy Cavadia, cuyas jornadas son casi todas J, le salían 3,6 h. Camilo: *«necesito es horas puras + justificadas … las J también cuentan en su jornada»*. Así que es la **«Media por día» de la bitácora**, y se le pide a ella (`bitacora.service.mediaDelMes`), para que las dos pantallas no digan cosas distintas.
+Se llegó en tres pasos, todos de Camilo el mismo día:
+1. *«El promedio de horas de BOLT de cada uno, sin letras»*. Solo BOLT, entre los días con 1 h o más. A Deisy Cavadia, cuyas jornadas son casi todas J, le salían 3,6 h.
+2. *«Necesito es horas puras + justificadas … las J también cuentan en su jornada»*. Pasó a ser la «Media por día» de la bitácora, y se probó un mínimo de 1 h por día.
+3. *«Coge también esos, los días de ausencia cuentan como 0 por lo que bajará mucho su promedio»*. Sin mínimo, y cada día que no salió vale 0 h. Es la otra cifra de la ficha de la bitácora, la de **«contando la ausencia»**.
 
-Son dos columnas, solo en el Excel de la lista:
-- **«Promedio h/día BOLT + J (mes corrido)»**.
-- **«Días trabajados (mes corrido)»**: cuántos días son, para saber cuánto pesa la media. Un 11 h de un solo día no es lo mismo que un 11 h de doce.
+Son tres columnas, solo en el Excel de la lista:
+- **«Promedio h/día BOLT + J, ausencias a 0 (mes corrido)»**: horas ÷ (días trabajados + ausencias).
+- **«Días trabajados (mes corrido)»** y **«Ausencias (mes corrido)»**: de cuántos días sale.
 
-**Las reglas, las de `resumen()` en la bitácora** (si una cambia, la otra también), con **una diferencia**:
-- **Un día cuenta si llega a 1 h** (BOLT + J aprobadas). Camilo lo pidió así para que unos minutos en BOLT no cuenten como un día trabajado. Es el mismo listón que la letra (`MODELO.minHorasDiaTrabajado`). La ficha de la bitácora sí cuenta esos días, así que a quien los tenga le sale una media más baja allí: a Harold Torres, 7,7 h en el Excel y 5,8 h en la ficha, por dos días con 13 y 16 minutos. `mediaDelMes` lleva el mínimo como parámetro (`minHoras`); por omisión es 0, la regla de la pantalla.
-- **Un día con J** es un día trabajado, con las justificadas **aprobadas** más lo que hizo en BOLT. Una J pendiente no suma horas, así que solo cuenta si en BOLT llegó a 1 h.
-- **Libranzas, vacaciones, bajas, permisos y «no salió»** no entran. Antes del alta o tras la baja, solo si trabajó.
-- **El periodo es el mes corrido hasta AYER.** La ficha de la bitácora cuenta también hoy, así que el día en curso puede mover una décima: Deisy sale con 9,4 h en el Excel y 9,6 h en la ficha, que lleva hoy 10,4 h. El día 1 sale el mes anterior entero. Mirando la plantilla de una fecha pasada, el mes corrido de esa fecha.
+Se le pide a la bitácora (`bitacora.service.mediaDelMes`) para que las dos pantallas no digan cosas distintas.
 
-Quien no trabajó ningún día sale en blanco. Si la bitácora falla, la lista sale igual y la columna queda vacía. Tarda lo que la bitácora en frío (~1,5 s), en paralelo con la lista, y luego tira de su caché de 3 minutos. Con los datos del 14/10/2026 (del 01 al 13/10): 191 personas con media, y la media de las medias es de 7,7 h.
+**Las reglas, las de `resumen()` y `mediaKpi()` en la bitácora** (si una cambia, la otra también):
+- **Un día con horas de BOLT (más de 0)** es un día trabajado, aunque sean minutos.
+- **Un día con J** es un día trabajado, con las justificadas **aprobadas** más lo que hizo en BOLT. Una J pendiente cuenta el día, pero no sus horas.
+- **Un día sin nada de eso** y sin libranza, vacaciones, baja ni permiso es una **«Ausencia»** y vale 0. Libranzas, vacaciones, bajas y permisos no entran. Antes del alta o tras la baja, solo si trabajó.
+- **Lo que la bitácora no hace.** Los días de una situación que la rejilla no marca no cuentan como ausencia: suspensión de empleo y sueldo, retirada del permiso y pendiente de asignar (`bitacora.repo.situacionesSinMarca`). Tampoco cuentan las fichas sin ningún contrato. En la primera prueba, cuatro suspendidos salían con 0 h y 13 ausencias de 13 días, y 17 fichas que nunca entraron salían con ausencias todos los días. En la ficha de la bitácora esos días siguen saliendo como «Ausencia», porque la suspensión no tiene marca en la rejilla.
+- **El periodo es el mes corrido hasta AYER.** La ficha cuenta también hoy, así que el día en curso puede mover una décima. Con los datos del 14/10, a Deisy le sale 8,1 h en el Excel (56,5 h ÷ 6 días + 1 ausencia, hasta el 13/10) y 8,4 h en la ficha, que lleva hoy 10,4 h. El día 1 sale el mes anterior entero. Mirando la plantilla de una fecha pasada, el mes corrido de esa fecha.
+
+Quien no tiene ni días trabajados ni ausencias en el periodo sale en blanco. Si la bitácora falla, la lista sale igual y las columnas quedan vacías. Tarda lo que la bitácora en frío (~1,5 s), en paralelo con la lista, y luego tira de su caché de 3 minutos.
 
 ## La lista va por la fecha que enseña, de la más reciente a la más antigua
 

@@ -1286,12 +1286,13 @@
         valor: f => (f.empleo_vigente === false ? ''
           : f.empleo_tipo === 'ett' ? 'ETT' : f.empleo_tipo === 'propia' ? 'Propia' : '') },
       // EL PROMEDIO DE HORAS, SOLO EN EL EXCEL (14/10/2026, Camilo): BOLT MÁS las
-      // justificadas, «las J también cuentan en su jornada», entre los días que
-      // trabajó del mes corrido, sin la letra. Es la «Media por día» de la
-      // bitácora hasta ayer (bitacora.service.mediaDelMes), sin los días de
-      // menos de 1 h. Al lado, cuántos días son, para saber cuánto pesa.
-      { titulo: 'Promedio h/día BOLT + J (mes corrido)', soloExcel: true, valor: f => f.horas_dia_media ?? '' },
+      // justificadas («las J también cuentan en su jornada») del mes corrido, y
+      // cada día que no salió cuenta como 0 h («los días de ausencia cuentan como
+      // 0»). Es la media «contando la ausencia» de la bitácora hasta ayer
+      // (bitacora.service.mediaDelMes). Al lado, de cuántos días sale.
+      { titulo: 'Promedio h/día BOLT + J, ausencias a 0 (mes corrido)', soloExcel: true, valor: f => f.horas_dia_media ?? '' },
       { titulo: 'Días trabajados (mes corrido)', soloExcel: true, valor: f => f.dias_trabajados_mes ?? '' },
+      { titulo: 'Ausencias (mes corrido)', soloExcel: true, valor: f => f.ausencias_mes ?? '' },
       // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio
       // de lo que sí se mira. Se sigue pudiendo BUSCAR por él.
       { titulo: 'Letra', campo: 'calificacion', clase: 'text-center whitespace-nowrap',

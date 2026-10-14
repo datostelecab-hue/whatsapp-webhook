@@ -136,33 +136,40 @@ async function resellar({ desde, hasta }, quien) {
 }
 
 /**
- * LA MEDIA POR DÍA DEL MES CORRIDO, LA MISMA QUE ENSEÑA LA BITÁCORA (14/10/2026).
+ * LA MEDIA POR DÍA DEL MES CORRIDO, LAS DOS QUE ENSEÑA LA BITÁCORA (14/10/2026).
  *
- * Es la «Media por día» de la ficha de una persona, pero para toda la plantilla
- * y en el servidor: la pide el Excel de Plantilla. Camilo: «horas puras +
- * justificadas … las J también cuentan en su jornada». Las mismas reglas que
- * `resumen()` de vistas/bitacora.ejs, y si una cambia, la otra también:
+ * Son las dos cifras de «Media por día» de la ficha de una persona, pero para
+ * toda la plantilla y en el servidor: las pide el Excel de Plantilla. Las mismas
+ * reglas que `resumen()` y `mediaKpi()` de vistas/bitacora.ejs, y si una cambia,
+ * la otra también:
  *
  *   · Un día con horas de BOLT (más de 0) es un día trabajado, con esas horas.
  *   · Un día con J es un día trabajado, con sus horas justificadas APROBADAS más
  *     lo que hizo en BOLT ese día. Una J pendiente cuenta el día, pero no sus
  *     horas: todavía no las ha aprobado nadie.
- *   · Libranzas, vacaciones, bajas, permisos y «no salió» no entran.
+ *   · Un día sin nada de eso ni de lo de abajo es una «Ausencia» (no salió).
+ *   · Libranzas, vacaciones, bajas y permisos no entran en ninguna.
  *   · Antes de su alta, tras su baja o entre dos contratos, solo si trabajó.
+ *     Quien no tiene NINGÚN contrato (una ficha que no llegó a entrar), igual.
+ *
+ * Y AQUÍ VA UNA COSA QUE LA PANTALLA NO HACE: los días de una situación sin
+ * marca en la rejilla —suspensión de empleo y sueldo, retirada del permiso,
+ * pendiente de asignar— no son una ausencia. La rejilla los deja vacíos y los
+ * pinta como «no salió»; esta cuenta no los cuenta como 0 (14/10/2026: cuatro
+ * suspendidos salían con 0 h y 13 ausencias de 13 días).
+ *
+ *   media     = horas ÷ días trabajados            (la grande de la ficha)
+ *   conAus    = horas ÷ (trabajados + ausencias)   (la de «contando la ausencia»:
+ *               cada día que no salió cuenta como un día de 0 h)
  *
  * El periodo va del día 1 a AYER: la jornada de hoy va a medias. El día 1 aún
  * no hay ninguna cerrada del mes y sale el mes anterior entero. Con `hasta`
  * (una fecha pasada), el mes corrido de esa fecha.
  *
- * `minHoras` deja fuera los días que no llegan a esas horas (BOLT + J). Por
- * omisión, 0: la regla de la pantalla. El Excel de Plantilla pide 1 h (Camilo,
- * 14/10/2026: unos minutos en BOLT no son un día trabajado), y por eso allí la
- * media puede salir algo más alta que en la ficha de la bitácora.
- *
- * Devuelve { desde, hasta, porId: Map(conductor_id → { horas, dias }) }, con
- * `horas` = la media por día trabajado, a un decimal.
+ * Devuelve { desde, hasta, porId: Map(conductor_id → { media, conAus, horas,
+ * dias, ausencias }) }, las medias a un decimal.
  */
-async function mediaDelMes({ hasta, minHoras = 0 } = {}) {
+async function mediaDelMes({ hasta } = {}) {
   const d = await datos();
   const base = Date.UTC(d.inicio.y, d.inicio.m, d.inicio.d);
   const idx = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - base) / 86400000);
@@ -172,23 +179,33 @@ async function mediaDelMes({ hasta, minHoras = 0 } = {}) {
   const hastaIso = iso(fin), desdeIso = hastaIso.slice(0, 8) + '01';
   const ini = Math.max(0, idx(desdeIso));
 
-  const fuera = (c, i) => (c.altaIdx != null && i < c.altaIdx) || (c.bajaIdx != null && i > c.bajaIdx)
+  const fuera = (c, i) => c.altaIdx == null || i < c.altaIdx || (c.bajaIdx != null && i > c.bajaIdx)
     || (c.huecos || []).some(([a, b]) => i >= a && i <= b);
+  const sinMarca = new Map();   // conductor_id → [[desdeIdx, hastaIdx]]
+  (await repo.situacionesSinMarca(desdeIso, hastaIso)).forEach(x => {
+    if (!sinMarca.has(x.cid)) sinMarca.set(x.cid, []);
+    sinMarca.get(x.cid).push([idx(x.desde), idx(x.hasta)]);
+  });
+  const sinFalta = (c, i) => (sinMarca.get(String(c.conductorId)) || []).some(([a, b]) => i >= a && i <= b);
+  const AUSENTE = new Set(['V', 'B', 'P', 'L']);
+  const r1 = x => Math.round(x * 10) / 10;
   const porId = new Map();
   d.conductores.forEach(c => {
-    let horas = 0, dias = 0;
+    let horas = 0, dias = 0, ausencias = 0;
     for (let i = ini; i <= fin; i++) {
       const v = c.dias[i];
-      let h = null;
-      if (typeof v === 'number') { if (v > 0) h = v; }
-      else if (v === 'J' && !fuera(c, i)) {
+      if (typeof v === 'number' && v > 0) { horas += v; dias++; continue; }
+      if (fuera(c, i)) continue;
+      if (v === 'J') {
         const dia = iso(i), j = c.justif[dia] || {};
-        h = (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
-      }
-      if (h == null || h < minHoras) continue;
-      horas += h; dias++;
+        horas += (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
+        dias++;
+      } else if (!AUSENTE.has(v) && !sinFalta(c, i)) ausencias++;
     }
-    if (dias) porId.set(String(c.conductorId), { horas: Math.round(horas / dias * 10) / 10, dias });
+    if (dias || ausencias) porId.set(String(c.conductorId), {
+      media: dias ? r1(horas / dias) : null, conAus: r1(horas / (dias + ausencias)),
+      horas: r1(horas), dias, ausencias,
+    });
   });
   return { desde: desdeIso, hasta: hastaIso, porId };
 }
