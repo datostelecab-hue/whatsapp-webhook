@@ -1885,7 +1885,29 @@ async function guardarIban(id, valor, { usuarioId } = {}) {
   }).catch(() => {});
 }
 
+/**
+ * LAS HORAS DE BOLT DE CADA UNO EN UN PERIODO, SIN NADA MÁS (14/10/2026).
+ *
+ * Las horas selladas de la bitácora (`bitacora_horas`: viaje + espera de BOLT,
+ * sin descanso, por jornada) de los días que trabajó, es decir, con `minSeg` o
+ * más. Sin J, sin justificantes y sin las 8 h que la letra le pone a un día de
+ * libranza: lo que hizo en BOLT y nada más.
+ *
+ * Devuelve Map(conductor_id → { horas: promedio por día trabajado, dias }).
+ */
+async function horasBoltDelPeriodo(desde, hasta, minSeg) {
+  const r = await db.consulta(
+    `SELECT conductor_id::text AS id, count(*)::int AS dias,
+            round(sum(horas_seg) / 3600.0 / count(*), 1)::float AS horas
+       FROM bitacora_horas
+      WHERE dia_operativo BETWEEN $1::date AND $2::date
+        AND horas_seg >= $3
+      GROUP BY conductor_id`, [desde, hasta, minSeg]);
+  return new Map(r.rows.map(x => [x.id, { horas: x.horas, dias: x.dias }]));
+}
+
 module.exports = {
+  horasBoltDelPeriodo,
   paraGestoria, buscarPersona,
   ibanEnmascarado, guardarIban,
   JORNADAS, TOPE_JORNADA, cambiarJornada, contratoAbierto, corregirTipoContrato, cambiarAlta,

@@ -40,6 +40,19 @@ La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion
 
 El botón de Excel junto al buscador descarga lo que se está viendo. Desde el 01/10/2026 lleva, detrás del nombre, la columna **«Contrato»: Propia o ETT**. En la tabla no hay columna nueva —ya lo dice la etiqueta ETT junto al nombre—, porque es una columna `soloExcel` del Listado ([[Componentes de la casa]]). A quien ya no está no se le atribuye contrato: sale en blanco, igual que «SS / ETT» en pantalla.
 
+### Y el promedio de horas de BOLT (14/10/2026)
+
+Camilo: *«el promedio de horas de BOLT de cada uno, sin letras, sin justificantes, solo promedio de horas reales»*. Dos columnas más, también solo en el Excel:
+- **«Promedio h BOLT (mes corrido)»**: horas de BOLT (viaje + espera, sin descanso) entre los días que trabajó.
+- **«Días con horas BOLT (mes corrido)»**: cuántos días son, para saber cuánto pesa el promedio. Un 11 h de un solo día no es lo mismo que un 11 h de doce.
+
+**Las reglas, decididas por Camilo:**
+- **El mes corrido.** Va del día 1 a la última jornada cerrada, porque la de hoy va a medias, como la letra ([[Calificacion de conductores]]). El día 1 todavía no hay ninguna jornada cerrada del mes, así que sale el mes anterior entero. Mirando la plantilla de una fecha pasada, sale el mes corrido de esa fecha.
+- **Solo los días trabajados**, con 1 h o más en BOLT. Es el mismo listón que la letra, y sale de su `MODELO.minHorasDiaTrabajado`. Libranzas, vacaciones y bajas no entran.
+- **Las horas son las selladas de la bitácora** (`bitacora_horas`), sin J, sin justificantes y sin las 8 h que la letra le pone a un día de libranza. Por eso puede no coincidir con el promedio de la letra.
+
+Quien no trabajó ningún día en el periodo sale en blanco. Lo calcula `plantilla.service.promedioBolt` con `conductores.repo.horasBoltDelPeriodo`, y va en la misma respuesta de la lista (`/plantilla/api/lista`). Si esa consulta falla, la lista sale igual y la columna queda vacía. Con los datos del 14/10/2026 (del 01 al 13/10): 188 personas con promedio, y la media de los promedios es de 7,8 h.
+
 ## La lista va por la fecha que enseña, de la más reciente a la más antigua
 
 Alfabético ordena una guía de teléfonos, no una plantilla. En una lista de más de doscientas personas, **las recién incorporadas son las que hay que mirar** —les falta documentación, no tienen cuenta de BOLT, están en periodo de prueba— y estaban repartidas por toda la lista según su apellido.

@@ -1285,6 +1285,12 @@
       { titulo: 'Contrato', soloExcel: true,
         valor: f => (f.empleo_vigente === false ? ''
           : f.empleo_tipo === 'ett' ? 'ETT' : f.empleo_tipo === 'propia' ? 'Propia' : '') },
+      // EL PROMEDIO DE HORAS DE BOLT, SOLO EN EL EXCEL (14/10/2026, Camilo):
+      // «sin letras, sin justificantes, solo promedio de horas reales». Horas de
+      // BOLT del mes corrido entre los días que trabajó (1 h o más); al lado,
+      // cuántos días son, para saber cuánto pesa el promedio.
+      { titulo: 'Promedio h BOLT (mes corrido)', soloExcel: true, valor: f => f.horas_bolt_prom ?? '' },
+      { titulo: 'Días con horas BOLT (mes corrido)', soloExcel: true, valor: f => f.horas_bolt_dias ?? '' },
       // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio
       // de lo que sí se mira. Se sigue pudiendo BUSCAR por él.
       { titulo: 'Letra', campo: 'calificacion', clase: 'text-center whitespace-nowrap',

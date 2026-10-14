@@ -49,8 +49,38 @@ async function paraLaPantalla() {
  */
 async function lista({ momento, soloVigentes } = {}) {
   const opciones = { momento: momento || null, soloVigentes: !!soloVigentes };
-  const [filas, resumen] = await Promise.all([con.listar(opciones), con.resumen(opciones)]);
-  return { filas, resumen };
+  const [filas, resumen, bolt] = await Promise.all([con.listar(opciones), con.resumen(opciones),
+    promedioBolt(momento).catch(e => { console.error('⚠️  [PLANTILLA] promedio de BOLT:', e.message); return null; })]);
+  // Sin promedio (falló la consulta), la lista sale igual: la columna, vacía.
+  if (bolt) filas.forEach(f => {
+    const h = bolt.porId.get(String(f.id));
+    f.horas_bolt_prom = h ? h.horas : null;
+    f.horas_bolt_dias = h ? h.dias : null;
+  });
+  return { filas, resumen, horasBolt: bolt && { desde: bolt.desde, hasta: bolt.hasta } };
+}
+
+/**
+ * EL PROMEDIO DE HORAS DE BOLT, PARA EL EXCEL (Camilo, 14/10/2026): «el
+ * promedio de horas de BOLT de cada uno, sin letras, sin justificantes, solo
+ * promedio de horas reales».
+ *
+ *   · El periodo es el MES CORRIDO, como la letra: del día 1 a la última
+ *     jornada cerrada (la de hoy va a medias). El día 1 todavía no hay ninguna
+ *     cerrada del mes, así que sale el mes anterior entero. Mirando la
+ *     plantilla de una fecha pasada, el mes corrido de esa fecha.
+ *   · Se divide entre los días que TRABAJÓ: 1 h o más en BOLT, el mismo listón
+ *     que la letra. Libranzas, vacaciones y bajas no entran.
+ */
+async function promedioBolt(momento) {
+  const { MODELO } = require('../../services/repo/calificacion');
+  const hoy = require('../../services/repo/llamadas').diaOperativoHoy();
+  const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(momento || '').slice(0, 10)) ? String(momento).slice(0, 10) : null;
+  const hasta = dia && dia < ayer ? dia : ayer;
+  const desde = hasta.slice(0, 8) + '01';
+  const porId = await con.horasBoltDelPeriodo(desde, hasta, MODELO.minHorasDiaTrabajado * 3600);
+  return { desde, hasta, porId };
 }
 
 /** La ficha administrativa. Revienta si no existe, en vez de devolver nada. */
