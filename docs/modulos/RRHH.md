@@ -138,6 +138,23 @@ Añadir no cierra ni recorta nada: o el tramo cabe en un hueco libre, o se dice 
 
 **Irse de la empresa no es una situación en la que se esté**: es el final del contrato. Pero la gente la busca en la lista de situaciones, que es donde tiene sentido buscarla, así que se sigue ofreciendo y hace **exactamente lo mismo** que el botón de dar de baja — no algo parecido. Dos puertas, un solo camino. Antes escribía una fila de estado y ya: la ficha decía "Baja en la empresa" con el contrato abierto, y el resto del sistema seguía contando con esa persona.
 
+### Las vacaciones de los Excel de RRHH, cargadas (14/10/2026, db/195)
+
+Camilo: *«revisa los excels de las vacaciones gozadas de los conductores … alinéalos en el sistema, si hay unos que no cuadran me dices»*. Son dos:
+
+- **«vacaciones caverel 2025-2026.xlsx»**: una fila por persona y año, con un trío inicio / fin / días por mes. Las cabeceras de los meses van corridas (en 2025 no hay enero y hay fechas de octubre bajo «septiembre»), así que manda la fecha, no la columna. Llega hasta el **31/08/2026**. Lo de enero de 2026 está a veces en la hoja de 2025, que es donde se descuentan esos días. La columna «Autorizadas» no cuadra con sus propios tramos en 56 filas y no se ha usado.
+- **Pestaña VACACIONES de «PLANTILLA TRABAJADORES (7).xlsx»**: un tramo por fila, desde finales de julio de 2026. Es de donde salió la carga inicial del 03/09.
+
+Cómo se cruzó: Caverel por **teléfono** y, si no, por nombre; la plantilla por **DNI** y, si no, por nombre (con una letra de margen: ISAAC/ISAC). Un tramo partido por meses (07/08–31/08 y 01/09) cuenta como uno.
+
+- **Entraron con db/195** los 121 tramos de 50 personas que estaban en los Excel y no en el sistema (79 de 2025 y 42 de 2026, 1.085 días), **solo si caían dentro de un contrato suyo y no pisaban nada**. Van sin usuario y con el motivo diciendo de qué Excel y de qué celda o fila salen. Se ensayó contra la base real en una copia: entran los 121, una segunda pasada no mete nada y la situación de hoy de nadie cambia.
+- **No se tocó lo que no cuadra**: va en «Vacaciones RRHH - lo que no cuadra.xlsx» (Descargas) para que RRHH diga cuál es el bueno. Son 11 casos de fechas distintas entre los Excel o con el sistema, vacaciones dentro de una baja médica, una persona que Caverel pone antes de su alta, un 01/01/2027 suelto y un día de asuntos propios guardado como vacaciones; más 6 filas de la plantilla con fechas imposibles (un año «0206», fines antes del inicio, filas sin fechas).
+- **15 vacaciones del sistema no están en ningún Excel** (casi todas puestas en septiembre desde la ficha). No se tocan: a la plantilla le falta apuntarlas.
+- **79 personas de los Excel no tienen ficha**: se fueron antes de que arrancara el sistema (cuenta de BOLT desactivada, o ninguna).
+- Los días de **asuntos propios** de Caverel (columna J) no son vacaciones y no se cargaron.
+
+Los scripts están en «Scripts de análisis/vacaciones-rrhh» (fuera del repo).
+
 ## Justificantes
 
 Tráfico justifica el día a un conductor que no llegó a horas (`services/repo/justificantes.js`). Un justificante:

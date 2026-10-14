@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-14 · Las vacaciones de los Excel de RRHH, en el sistema; lo dudoso, a RRHH
+
+«Alinéalos en el sistema, si hay unos que no cuadran me dices.» Entra solo lo que no tiene duda (db/195: 121 tramos de 2025 y 2026 que están en los Excel, caben en un contrato y no pisan nada). Lo que no cuadra no se elige a ojo: va a un Excel para RRHH. → [[RRHH#Las vacaciones de los Excel de RRHH, cargadas (14/10/2026, db/195)]]
+
 ## 2026-10-14 · El alta rápida de la ETT pide jornada y contrato
 
 «Necesito en alta rápida poner la jornada (día o noche) y el contrato (40, 32, 20 horas), que lo de la jornada se asigne automática ahí.» Hasta entonces el alta rápida abría el contrato sin horas y la persona llegaba al planificador sin turno. Ahora las dos son obligatorias. La jornada va sola a la ficha desde el día del alta y, con vacante, sale de ella si no se marca. Las 20 horas no entran en `cat_jornada`, porque sus `dias_ct` cambiarían lo que ofrecen las vacantes de correturnos. → [[Seleccion#El alta rápida pide la jornada y el contrato (14/10/2026)]]
