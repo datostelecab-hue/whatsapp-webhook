@@ -17,6 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## La baja programada y el contrato de Aaron (13/10/2026)
 
+- **Aplicar `db/201`**: pone «De dónde sale» (la fila del Excel de RRHH) a las 28 vacaciones de la carga inicial. Solo el motivo; ni fechas ni días. Ver [[Vacaciones]].
 - **Aplicar `db/200`** (las altas y bajas de la exportación de nóminas de RRHH: 17 cambios). Y que RRHH conteste lo de «Altas RRHH - lo que no cuadra.xlsx»:
   - la fecha real de **11 bajas** que tienen el 04/09/2026 de relleno de la carga inicial;
   - si **Apezteguía** estuvo suspendido de empleo y sueldo, para poner la suspensión con sus fechas (las suspensiones no generan vacaciones);
