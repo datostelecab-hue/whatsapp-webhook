@@ -186,6 +186,12 @@ async function abrirContratada(conductorId, datos = {}, quien = {}) {
       // fecha de alta si le falta y sin ella el Excel la cuenta como "sin decidir".
       await guardar(Number(viva.id), { inicio_previsto: datos.alta }, quien);
     }
+    // Lo que se decidio al darle de alta (jornada y turno, 14/10/2026) manda
+    // sobre lo que dijera durante el proceso: es lo que se le contrato.
+    const decidido = {};
+    if (datos.jornadaHoras) decidido.jornada_horas = datos.jornadaHoras;
+    if (datos.turnoId) decidido.turno_id = datos.turnoId;
+    if (Object.keys(decidido).length) await guardar(Number(viva.id), decidido, quien);
     return { id: Number(viva.id), conductorId: id, yaExistia: true, adelantada };
   }
 

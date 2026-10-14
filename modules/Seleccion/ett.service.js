@@ -39,6 +39,18 @@ const POR_DEFECTO = 'GiGroup';
 const ettNombre = pedido =>
   String(pedido || '').trim() || process.env.ETT_NOMBRE || POR_DEFECTO;
 
+/**
+ * Los contratos que ofrece el ALTA RÁPIDA, en horas (Camilo, 14/10/2026:
+ * «el contrato (40, 32, 20 horas)»).
+ *
+ * No salen de `cat_jornada`, como los de «Contratar», y es a propósito: ese
+ * catálogo solo tiene 32 y 40, y cada fila lleva sus `dias_ct`, que son los que
+ * deciden qué contrato ofrece una vacante de correturnos y cuántos días planifica
+ * el cuadrante. Meter ahí las 20 horas cambiaría las dos cosas sin que nadie lo
+ * haya pedido.
+ */
+const CONTRATOS = [40, 32, 20];
+
 // ── Lectura ────────────────────────────────────────────────────────────────
 
 /** Los catálogos para pintar la pantalla. Si fallan, se abre igual. */
@@ -46,7 +58,7 @@ async function paraLaPantalla() {
   const vacio = { estados: [], canales: [], turnos: [], zonas: [], campos: [] };
   const catalogos = await cand.catalogos()
     .catch(e => { console.error('❌ [ETT] catálogos:', e.message); return vacio; });
-  return { catalogos };
+  return { catalogos, contratos: CONTRATOS };
 }
 
 /**
@@ -229,6 +241,59 @@ async function pasarARRHH(id, datos, quien) {
 }
 
 /**
+ * LA JORNADA Y EL CONTRATO DEL ALTA RÁPIDA (14/10/2026).
+ *
+ * Hasta aquí el alta rápida no preguntaba ninguna de las dos: el 14/10 había 16
+ * contratos de ETT abiertos sin horas, todos de esta puerta, y el turno se lo
+ * ponía el planificador al colocarlos en un coche (a uno, ni eso). Y sin turno
+ * nadie se puede planificar.
+ *
+ * Con vacante, la jornada sale SOLA de la vacante si no se elige: es la de las
+ * plazas que va a ocupar. Si se elige y no coincide, no se da el alta: quedaría
+ * de día en la ficha y de noche en el coche, y el planificador no corrige un
+ * turno puesto a mano. Las horas no se bloquean —es el contrato que se firma—,
+ * pero si no son las de la vacante se avisa.
+ *
+ * Se decide ANTES de crear nada: un alta que se cae a medias deja una ficha.
+ */
+async function jornadaDelAlta(b) {
+  const horas = Number(b.jornadaHoras);
+  if (!CONTRATOS.includes(horas)) {
+    throw new Error(`Elige el contrato: ${CONTRATOS.join(', ')} horas.`);
+  }
+
+  // Día o noche: los turnos que se eligen al contratar, de la base.
+  const turnos = ((await cand.catalogos()).turnos || []).filter(t => t.asignable);
+  const turnoDe = id => turnos.find(t => Number(t.id) === Number(id)) || null;
+
+  const vacante = String(b.vacanteId || '').trim() ? await vacantes.ficha(b.vacanteId) : null;
+  const deLaVacante = vacante ? turnoDe(vacante.turnoId) : null;
+
+  const elegida = String(b.turnoId == null ? '' : b.turnoId).trim();
+  let turno = null;
+  if (elegida) {
+    turno = turnoDe(elegida);
+    if (!turno) throw new Error('Esa jornada no vale: tiene que ser de día o de noche.');
+  }
+  if (!turno) turno = deLaVacante;
+  if (!turno) {
+    throw new Error(vacante
+      ? `La vacante ${vacante.codigo} no es de un solo turno: elige la jornada, día o noche.`
+      : 'Elige la jornada: día o noche.');
+  }
+  if (deLaVacante && Number(deLaVacante.id) !== Number(turno.id)) {
+    throw new Error(`La vacante ${vacante.codigo} es de ${deLaVacante.etiqueta.toLowerCase()} ` +
+      `y has elegido ${turno.etiqueta.toLowerCase()}. Cambia la jornada o elige otra vacante.`);
+  }
+
+  const avisos = [];
+  if (vacante && vacante.jornadaHoras && Number(vacante.jornadaHoras) !== horas) {
+    avisos.push(`La vacante ${vacante.codigo} es de ${vacante.jornadaHoras} h y el contrato queda de ${horas} h.`);
+  }
+  return { horas, turno, deLaVacante: !elegida, avisos };
+}
+
+/**
  * ALTA RÁPIDA: teléfono + nombre → alta de ETT directa, sin matriz ni
  * candidatura, y enlace AUTOMÁTICO a BOLT por teléfono —incluidas las cuentas
  * desactivadas, con aviso de reactivarlas—.
@@ -255,10 +320,17 @@ async function altaRapida(datos, quien) {
   const hoy = new Date().toISOString().slice(0, 10);
   const alta_dia = /^\d{4}-\d{2}-\d{2}$/.test(String(b.alta || '')) ? String(b.alta) : hoy;
 
+  const jornada = await jornadaDelAlta(b);
+
+  // EL TURNO VA A LA FICHA DESDE EL DÍA DEL ALTA, como en «Contratar»: es lo
+  // que lee el planificador, y con él ya sale de día o de noche en el
+  // banquillo, listo para colocarlo.
   const r = await conductores.realizarAlta({
     nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: alta_dia,
+    jornadaHoras: jornada.horas, turnoId: jornada.turno.id,
     barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
   }, quien);
+  if (jornada.avisos.length) r.avisos = [...(r.avisos || []), ...jornada.avisos];
 
   // SU CANDIDATURA, aunque no haya habido proceso.
   //
@@ -274,7 +346,7 @@ async function altaRapida(datos, quien) {
   try {
     candidatura = await cand.abrirContratada(r.id, {
       canal: CANAL, alta: alta_dia, tipoContrato: 'ETT',
-      jornadaHoras: b.jornadaHoras ? Number(b.jornadaHoras) : null,
+      jornadaHoras: jornada.horas, turnoId: jornada.turno.id,
     }, quien);
   } catch (e) {
     console.error('⚠️ [ETT] no se pudo abrir la candidatura:', e.message);
@@ -282,13 +354,16 @@ async function altaRapida(datos, quien) {
       'El alta salió bien, pero no aparecerá en la lista de la ETT: ' + e.message];
   }
 
-  console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id})` +
+  console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id}) · ${jornada.turno.etiqueta} ${jornada.horas} h` +
     (candidatura ? ` · candidatura ${candidatura.id}${candidatura.yaExistia ? ' (ya la tenía)' : ''}` : '') +
     (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
 
   const incorporacion = await avisarAlPlanificador(
     r, r.id, b.vacanteId, 'ett-rapida', quien.usuarioId, alta_dia);
-  return { ...r, alta: alta_dia, candidatura, incorporacion };
+  return {
+    ...r, alta: alta_dia, candidatura, incorporacion,
+    jornada: { turno: jornada.turno.etiqueta, horas: jornada.horas, deLaVacante: jornada.deLaVacante },
+  };
 }
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
@@ -329,7 +404,7 @@ const excelDeElegidos = async ids =>
 
 module.exports = {
   foto, subirFoto,
-  CANAL, POR_DEFECTO,
+  CANAL, POR_DEFECTO, CONTRATOS,
   paraLaPantalla, lista, ficha, catalogos, vacantesAbiertas,
   importar, guardar, cambiarEstado, descartar, eliminar,
   pasarARRHH, altaRapida,

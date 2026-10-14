@@ -166,6 +166,20 @@ El extra son las **tandas** (`solicitud`): la unidad con la que se le contesta a
 
 El Excel (`modules/Seleccion/ett.excel.js`) mantiene **exactamente** las columnas y el significado de la matriz de siempre, porque la ETT las lee tal cual; el color y la leyenda solo refuerzan lo que ya dice el texto. Son cuatro resultados: Contratado, Pendiente (de asignar), No pasa y No se presentó. Había un quinto, "Presentó", y se quitó: quien está entrevistado y sin puesto **es** el pendiente de asignar, y dos nombres para lo mismo solo confunden a quien lo lee.
 
+### El alta rápida pide la jornada y el contrato (14/10/2026)
+
+Camilo: *«Necesito en alta rápida poner la jornada (día o noche) y el contrato (40, 32, 20 horas), que lo de la jornada se asigne automática ahí»*.
+
+Hasta ese día el «Alta rápida» de /ett no preguntaba ninguna de las dos. El contrato se abría **sin horas** (16 contratos de ETT abiertos así el 14/10, todos de esta puerta) y el turno se lo ponía el planificador al colocar a la persona en un coche. Sin turno nadie se puede planificar, y a uno no se le llegó a poner.
+
+- **Jornada (Día / Noche)** y **Contrato (40, 32 o 20 horas)**, las dos obligatorias. La jornada sale de los turnos que se eligen al contratar (`turno.asignable`); los contratos son una lista del servidor (`ett.service.CONTRATOS`).
+- **La jornada se pone sola en la ficha**, desde la fecha de alta, como en «Contratar» (`conductor_turno_hist`, origen `manual`). Es lo que lee el planificador: la persona sale ya de día o de noche en el banquillo. Las horas van al contrato. Las dos se escriben también en su candidatura.
+- **Con vacante, la jornada sale de ella** si no se marca. Si se marca y no coincide, no se da el alta: quedaría de día en la ficha y de noche en el coche, y el planificador no corrige un turno puesto a mano. Si la vacante no es de un solo turno, hay que marcarla. Las horas no se bloquean, porque es el contrato que se firma, pero si no son las de la vacante el alta avisa.
+- **Quien vuelve** (una ficha que ya existía) también recibe el turno. Hasta ahora solo lo recibía el alta nueva (`conductores.realizarAlta`).
+- **Por qué 20 horas no está en `cat_jornada`:** ese catálogo solo tiene 32 y 40, y cada fila lleva sus `dias_ct`. Esos días deciden qué contrato ofrece una vacante de correturnos y cuántos días planifica el cuadrante. Meter ahí las 20 horas cambiaría las dos cosas sin que nadie lo haya pedido.
+
+Comprobador: `node scripts/comprobar-alta-rapida.js` (29 casos).
+
 ## La candidatura y el contrato no dicen cosas distintas (13/10/2026)
 
 **Lo que pasó.** Aaron Borja González entró por InfoJobs con contrato propio (Tibus Luxury). Victor le dio de alta el 07/10 con el **«Alta rápida»** de /ett, que abre **siempre** contrato de ETT GiGroup. El 09/10 alguien le cambió aquí la candidatura a InfoJobs y TIBUS, pero eso no toca el contrato de la ficha, que es lo que lee el planificador, y le siguió pintando «ETT GiGroup». Su contrato se corrigió con **db/192**: el mismo contrato, con la misma alta (13/10) y 40 h.

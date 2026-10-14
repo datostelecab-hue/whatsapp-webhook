@@ -362,6 +362,10 @@ No son de los seis, pero forman parte de la misma red:
   «corregir», se corrige también el contrato si es de hasta 30 días. Quien ya pasó
   a propia, un cambio que no cambia el tipo o alguien aún sin contrato se guardan
   sin preguntar.
+- **`comprobar-alta-rapida.js`** (14/10/2026) — el «Alta rápida» de /ett no da de alta
+  sin jornada (día o noche) ni contrato (40, 32 o 20 h), y lo dice antes de crear nada. La
+  jornada llega a la ficha y a la candidatura; con vacante sale de ella si no se marca, y
+  si no coincide no se da el alta. Quien vuelve también recibe su turno.
 - **`comprobar-vacaciones.js`** (09/10/2026) — las vacaciones las aprueba una sola
   persona: las siete puertas (aplicar, cerrar y mover un ticket de vacaciones; cambiar
   la situación, añadir, corregir y borrar un tramo en Plantilla) se cierran sin la llave

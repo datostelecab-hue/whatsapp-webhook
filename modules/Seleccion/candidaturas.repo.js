@@ -224,12 +224,12 @@ async function adelantarAListo(id, fechaAlta) {
 async function insertarContratada(conductorId, datos = {}) {
   const r = await db.consulta(
     `INSERT INTO candidatura
-       (conductor_id, estado, canal, inicio_previsto, jornada_horas, tipo_contrato,
+       (conductor_id, estado, canal, inicio_previsto, jornada_horas, turno_id, tipo_contrato,
         responsable, apto_at)
-     VALUES ($1, 'listo_rrhh', $2, $3, $4, $5, $6, now())
+     VALUES ($1, 'listo_rrhh', $2, $3, $4, $5, $6, $7, now())
      RETURNING id`,
     [conductorId, datos.canal || null, datos.alta || null, datos.jornadaHoras || null,
-     datos.tipoContrato || null, datos.responsable || null]);
+     datos.turnoId || null, datos.tipoContrato || null, datos.responsable || null]);
   return r.rows[0].id;
 }
 

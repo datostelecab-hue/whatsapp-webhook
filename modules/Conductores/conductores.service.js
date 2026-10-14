@@ -57,6 +57,7 @@ async function realizarAlta(datos, quien = {}) {
   };
 
   let id, restaurado = false;
+  const avisos = [...(s.avisos || [])];
   if (s.ficha) {
     // Restauración: la ficha se queda, con su historial. Se actualiza lo que
     // venga nuevo (puede haber cambiado de dirección en un año) y se le abre un
@@ -67,6 +68,17 @@ async function realizarAlta(datos, quien = {}) {
     await repo.darDeAlta(id, contrato, quien);
     // Si vuelve con un número que no era el suyo, se le añade.
     if (!s.ficha.telefonoVigente) await repo.guardarTelefono(id, d.telefono, quien);
+    // Y SU TURNO, desde el día del alta, como al que entra nuevo (14/10/2026).
+    // Hasta aquí solo lo recibía el alta nueva, y quien volvía llegaba al
+    // planificador sin turno. Si falla, el alta ya está hecha: se avisa.
+    if (d.turnoId) {
+      try { await repo.cambiarTurno(id, { turnoId: d.turnoId, desde: d.alta }, quien); }
+      catch (e) {
+        console.error(`❌ [ALTA] no se pudo poner el turno a la ficha ${id}: ${e.message}`);
+        avisos.push('El alta salió bien, pero no se le pudo poner el turno: ' + e.message +
+          '. Pónselo en su ficha de Plantilla.');
+      }
+    }
   } else {
     const r = await repo.crear({ ...ficha, ...contrato, telefono: d.telefono,
                                  turnoId: d.turnoId, libranzas: d.libranzas }, quien);
@@ -87,7 +99,7 @@ async function realizarAlta(datos, quien = {}) {
     // Sin cuenta de BOLT no puede conducir. Se devuelve para que la pantalla lo
     // diga en el momento y no se descubra el día que tiene que salir.
     faltaBolt: !s.bolt,
-    avisos: s.avisos,
+    avisos,
   };
 }
 

@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-14 · El alta rápida de la ETT pide jornada y contrato
+
+«Necesito en alta rápida poner la jornada (día o noche) y el contrato (40, 32, 20 horas), que lo de la jornada se asigne automática ahí.» Hasta entonces el alta rápida abría el contrato sin horas y la persona llegaba al planificador sin turno. Ahora las dos son obligatorias. La jornada va sola a la ficha desde el día del alta y, con vacante, sale de ella si no se marca. Las 20 horas no entran en `cat_jornada`, porque sus `dias_ct` cambiarían lo que ofrecen las vacantes de correturnos. → [[Seleccion#El alta rápida pide la jornada y el contrato (14/10/2026)]]
+
 ## 2026-10-13 · Un ticket de vacaciones, baja o permiso no se aprueba: se aplica
 
 Laura «aprobó» las vacaciones de Chistel Carbajal y no llegaron a su ficha: «Aprobado» solo cerraba el ticket, y en «Resolver» venía marcado de primeras. «Quita aprobado y haz que ese ticket pase a hacerse efectivo ya mismo.» En los tickets que abren una ausencia, «Aprobado» desaparece (pantalla y servidor): o se aplica, o se cierra sin dárselo. db/194 aplica el de Chistel. → [[Ticketera#Un ticket que abre una ausencia no se aprueba: se aplica (13/10/2026)]]
