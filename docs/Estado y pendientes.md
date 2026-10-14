@@ -17,6 +17,13 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## La baja programada y el contrato de Aaron (13/10/2026)
 
+- **Aplicar `db/200`** (las altas y bajas de la exportación de nóminas de RRHH: 17 cambios). Y que RRHH conteste lo de «Altas RRHH - lo que no cuadra.xlsx»:
+  - la fecha real de **11 bajas** que tienen el 04/09/2026 de relleno de la carga inicial;
+  - si **Apezteguía** estuvo suspendido de empleo y sueldo, para poner la suspensión con sus fechas (las suspensiones no generan vacaciones);
+  - el DNI de Cristian Jefferson Medina Romero y las fechas de Pablo Molero;
+  - y si Cañas del Olmo tiene vacaciones antes de julio de 2026: con su alta del 16/08/2024 le salen 53,5 días.
+
+  Ver [[RRHH#Las fechas de alta, las de RRHH (14/10/2026, db/200)]].
 - **Desplegar y aplicar `db/199`** con las de vacaciones: pone las tildes a los nombres de los tipos de permiso, que ahora salen en un desplegable.
 - **Desplegar y aplicar `db/197` y `db/198`** (el módulo de [[Vacaciones]]: el calendario de festivos, la llave `/vacaciones` y las horas de los festivos antiguos). Sin db/197 la pantalla dice que falta. Y los festivos de **2027**: una migración cuando salga su decreto.
 - **El permiso «por asuntos personales» de la ficha 283 (06/10)** no tiene tipo y no resta. Si es de asuntos propios, se marca en Plantilla (corregir el tramo → tipo). Ver [[Vacaciones#Lo que hay que saber]].

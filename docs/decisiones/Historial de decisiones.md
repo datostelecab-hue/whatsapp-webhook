@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-14 · Las fechas de alta, las de la exportación de nóminas de RRHH
+
+«Este excel es el definitivo que tengo de RRHH.» Las altas del sistema se corrigen con el «Inicio Contrato» de la pestaña PLANTILLA (db/200). Los contratos partidos el mismo día se juntan, y las bajas con la fecha de relleno del 04/09 pasan a llevar la suya. En ETT valen las fechas de GiGroup, no las de la pestaña PLANTILLA ETT. Las bajas recientes que la exportación aún no tiene no se deshacen. → [[RRHH#Las fechas de alta, las de RRHH (14/10/2026, db/200)]]
+
 ## 2026-10-14 · De los permisos, solo restan de las vacaciones los de asuntos propios
 
 «Solo restan los de asuntos propios.» Para saberlo, cada permiso lleva ahora su tipo, el del convenio. Plantilla y la Ticketera lo preguntan al ponerlo, y se puede corregir. Los permisos que ya había no tienen tipo y no restan. → [[Vacaciones#El tipo de un permiso se dice al ponerlo]]

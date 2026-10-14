@@ -158,6 +158,26 @@ Cómo se cruzó: Caverel por **teléfono** y, si no, por nombre; la plantilla po
 
 Los scripts están en «Scripts de análisis/vacaciones-rrhh» (fuera del repo).
 
+### Las fechas de alta, las de RRHH (14/10/2026, db/200)
+
+Camilo: *«APEZTEGUIA RODRIGUEZ, ALVARO tiene como fecha de alta el 04/09/2026 pero en la plantilla … sale como inicio de contrato el 10/04/2026, verifica a todos y corrige, ya que este excel es el definitivo»*.
+
+**El Excel bueno** es la pestaña PLANTILLA de «PLANTILLA TRABAJADORES (7).xlsx», la exportación de nóminas: una fila por persona con «Fecha Ingreso», «Fecha Baja», «Inicio Contrato» (columna AK) y «Fecha Antigüedad». Se cruzó por DNI con los contratos del sistema, y con la fecha de alta de Caverel y la pestaña PLANTILLA ETT.
+
+**La fecha de relleno del 04/09/2026.** La carga inicial (03/09) puso de baja con fecha **04/09** a quien el Excel de entonces daba de baja sin fecha. Los motivos eran del tipo «A consultar con RRHH», «Suspensión empleo y sueldo», «NSPP» o «BV». Una baja del 04/09 cargada ese día **no es una fecha real**. Y en tres casos se abrió después un contrato nuevo el mismo día, así que el contrato quedó partido en dos (Apezteguía, Samuel Pereira y, el 09/10, Abdeslam Rais).
+
+**Lo que corrigió db/200** (17 cambios, cada uno en el historial de su ficha y en su ficha del convenio):
+- **Un solo contrato** para Apezteguía (desde el 10/04/2026), Pereira (del 17/10/2025 al 17/09/2026) y Rais (del 20/08 al 13/10/2026).
+- **Alta**: Rodríguez Lezcano (29/07/2026), Zuluaga Botero (06/08/2026), Romero Gutiérrez (31/08/2023) y Cañas del Olmo (16/08/2024).
+- **Romero y Cañas** tienen en RRHH una fecha de ingreso (2025 y 2026) distinta del inicio de contrato (2023 y 2024). Camilo decidió el inicio de contrato. Cañas no tiene vacaciones registradas antes de julio de 2026, así que su saldo pasa a 53,5 días.
+- **Seis bajas con la fecha de RRHH**: cinco eran el 04/09 de relleno; la sexta, Ferreyra, el 16/08 en vez del 18/08.
+- **El DNI de cuatro fichas** que no lo tenían o lo tenían con un cero de más.
+
+**Lo que no se tocó**, en «Altas RRHH - lo que no cuadra.xlsx» (Descargas):
+- **ETT**: las fechas de la pestaña PLANTILLA ETT no son las de GiGroup, que son las del sistema y las de la factura. Camilo: valen las de GiGroup.
+- **39 bajas** que el sistema tiene y la exportación de nóminas no, porque va por detrás. **11 son el 04/09 de relleno**: RRHH tendría que dar su fecha real.
+- 14 personas de alta que no están en la exportación (altas posteriores, salvo Cristian Jefferson Medina Romero, sin DNI en ninguno de los dos, y Pablo Molero, que está en la exportación sin ninguna fecha).
+
 ## Justificantes
 
 Tráfico justifica el día a un conductor que no llegó a horas (`services/repo/justificantes.js`). Un justificante:
