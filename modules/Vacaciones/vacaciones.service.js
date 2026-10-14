@@ -54,7 +54,7 @@ const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Mad
  * argumentos, para poder probarla sin base (scripts/comprobar-vacaciones-saldo.js).
  *
  *   p         { alta }  el alta del contrato abierto
- *   tramos    [{ estado, desde, hasta, motivo, tipo_permiso, fila }] suyos
+ *   tramos    [{ estado, desde, hasta, motivo, tipo_permiso, fila, quien, puesto }] suyos
  *   festivos  [{ fecha, nombre, ambito, horas_at }] el calendario
  *   horas     Map(fecha → segundos) suyas en los festivos
  */
@@ -74,7 +74,7 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
     if (t.estado === 'vacaciones') {
       if (!pasado && !futuro) continue;
       disfrutadas += pasado; programadas += futuro;
-      vacaciones.push({ ...linea, disfrutados: pasado, programados: futuro });
+      vacaciones.push({ ...linea, disfrutados: pasado, programados: futuro, quien: t.quien || '', puesto: t.puesto || '' });
     } else if (t.estado === 'permiso') {
       if (!pasado && !futuro) continue;
       const resta = t.leave_type_code === ASUNTOS_PROPIOS;

@@ -151,7 +151,9 @@
               { titulo: 'Cuentan', campo: 'disfrutados', clase: 'whitespace-nowrap tabular-nums',
                 pinta: (v, x) => (x.programados && !v ? '<span class="text-telecab-muted">programadas</span>'
                   : (v ? '−' + v : DASH) + (x.programados ? `<span class="block text-[11px] text-telecab-muted">y ${x.programados} programado(s)</span>` : '')) },
-              { titulo: 'De dónde sale', campo: 'motivo', pinta: v => (v ? `<span class="text-sm text-telecab-muted">${esc(v)}</span>` : DASH) },
+              // Sin motivo, lo único que dice de dónde sale es quién lo puso a mano.
+              { titulo: 'De dónde sale', campo: 'motivo', pinta: (v, x) => (v ? `<span class="text-sm text-telecab-muted">${esc(v)}</span>`
+                  : x.quien ? `<span class="text-sm text-telecab-muted">Lo puso ${esc(x.quien)} el ${f(x.puesto)}</span>` : DASH) },
             ],
           },
         },

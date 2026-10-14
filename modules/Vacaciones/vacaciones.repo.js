@@ -25,15 +25,22 @@ async function personas({ id = null } = {}) {
   return r.rows;
 }
 
-/** Vacaciones, permisos y suspensiones de esas personas que tocan el periodo. */
+/**
+ * Vacaciones, permisos y suspensiones de esas personas que tocan el periodo.
+ * Con quién lo puso y qué día: si el tramo no trae motivo, eso es lo único que
+ * dice de dónde sale.
+ */
 async function tramos(ids, desde) {
   if (!ids.length) return [];
   const r = await db.consulta(
     `SELECT h.id::text AS fila, h.conductor_id::text AS id, h.estado,
             to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta,
-            h.motivo, h.leave_type_code, lt.name AS tipo_permiso
+            h.motivo, h.leave_type_code, lt.name AS tipo_permiso,
+            NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS quien,
+            to_char(h.creado_at AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS puesto
        FROM conductor_estado_hist h
        LEFT JOIN leave_type lt ON lt.leave_type_code = h.leave_type_code
+       LEFT JOIN usuario u ON u.id = h.usuario_id
       WHERE h.conductor_id = ANY($1::bigint[])
         AND h.estado = ANY($2::text[])
         AND (h.hasta IS NULL OR h.hasta >= $3::date)
