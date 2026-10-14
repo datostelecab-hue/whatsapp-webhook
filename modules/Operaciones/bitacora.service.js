@@ -154,10 +154,15 @@ async function resellar({ desde, hasta }, quien) {
  * no hay ninguna cerrada del mes y sale el mes anterior entero. Con `hasta`
  * (una fecha pasada), el mes corrido de esa fecha.
  *
+ * `minHoras` deja fuera los días que no llegan a esas horas (BOLT + J). Por
+ * omisión, 0: la regla de la pantalla. El Excel de Plantilla pide 1 h (Camilo,
+ * 14/10/2026: unos minutos en BOLT no son un día trabajado), y por eso allí la
+ * media puede salir algo más alta que en la ficha de la bitácora.
+ *
  * Devuelve { desde, hasta, porId: Map(conductor_id → { horas, dias }) }, con
  * `horas` = la media por día trabajado, a un decimal.
  */
-async function mediaDelMes({ hasta } = {}) {
+async function mediaDelMes({ hasta, minHoras = 0 } = {}) {
   const d = await datos();
   const base = Date.UTC(d.inicio.y, d.inicio.m, d.inicio.d);
   const idx = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - base) / 86400000);
@@ -174,11 +179,14 @@ async function mediaDelMes({ hasta } = {}) {
     let horas = 0, dias = 0;
     for (let i = ini; i <= fin; i++) {
       const v = c.dias[i];
-      if (typeof v === 'number') { if (v > 0) { horas += v; dias++; } continue; }
-      if (v !== 'J' || fuera(c, i)) continue;
-      const dia = iso(i), j = c.justif[dia] || {};
-      horas += (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
-      dias++;
+      let h = null;
+      if (typeof v === 'number') { if (v > 0) h = v; }
+      else if (v === 'J' && !fuera(c, i)) {
+        const dia = iso(i), j = c.justif[dia] || {};
+        h = (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
+      }
+      if (h == null || h < minHoras) continue;
+      horas += h; dias++;
     }
     if (dias) porId.set(String(c.conductorId), { horas: Math.round(horas / dias * 10) / 10, dias });
   });

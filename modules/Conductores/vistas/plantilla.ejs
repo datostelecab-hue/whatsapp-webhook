@@ -1288,8 +1288,8 @@
       // EL PROMEDIO DE HORAS, SOLO EN EL EXCEL (14/10/2026, Camilo): BOLT MÁS las
       // justificadas, «las J también cuentan en su jornada», entre los días que
       // trabajó del mes corrido, sin la letra. Es la «Media por día» de la
-      // bitácora hasta ayer (bitacora.service.mediaDelMes). Al lado, cuántos días
-      // son, para saber cuánto pesa el promedio.
+      // bitácora hasta ayer (bitacora.service.mediaDelMes), sin los días de
+      // menos de 1 h. Al lado, cuántos días son, para saber cuánto pesa.
       { titulo: 'Promedio h/día BOLT + J (mes corrido)', soloExcel: true, valor: f => f.horas_dia_media ?? '' },
       { titulo: 'Días trabajados (mes corrido)', soloExcel: true, valor: f => f.dias_trabajados_mes ?? '' },
       // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio

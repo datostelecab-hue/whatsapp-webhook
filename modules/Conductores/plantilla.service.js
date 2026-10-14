@@ -52,10 +52,13 @@ async function lista({ momento, soloVigentes } = {}) {
   // EL PROMEDIO DE HORAS, PARA EL EXCEL (Camilo, 14/10/2026): las de BOLT MÁS
   // las justificadas, entre los días que trabajó, del mes corrido. Es la «Media
   // por día» de la bitácora, y por eso se le pide a ella: si lo contara Plantilla
-  // por su cuenta, las dos pantallas acabarían diciendo cosas distintas.
+  // por su cuenta, las dos pantallas acabarían diciendo cosas distintas. Con UNA
+  // diferencia, pedida por Camilo: un día con menos de 1 h (BOLT + J) no cuenta
+  // como trabajado. Es el mismo listón que la letra.
   const bitacora = require('../Operaciones/bitacora.service');
+  const { MODELO } = require('../../services/repo/calificacion');
   const [filas, resumen, media] = await Promise.all([con.listar(opciones), con.resumen(opciones),
-    bitacora.mediaDelMes({ hasta: momento })
+    bitacora.mediaDelMes({ hasta: momento, minHoras: MODELO.minHorasDiaTrabajado })
       .catch(e => { console.error('⚠️  [PLANTILLA] media por día de la bitácora:', e.message); return null; })]);
   // Sin media (falló la bitácora), la lista sale igual: la columna, vacía.
   if (media) filas.forEach(f => {

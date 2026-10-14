@@ -48,9 +48,9 @@ Son dos columnas, solo en el Excel de la lista:
 - **«Promedio h/día BOLT + J (mes corrido)»**.
 - **«Días trabajados (mes corrido)»**: cuántos días son, para saber cuánto pesa la media. Un 11 h de un solo día no es lo mismo que un 11 h de doce.
 
-**Las reglas, las de `resumen()` en la bitácora** (si una cambia, la otra también):
-- **Un día con horas de BOLT (más de 0)** es un día trabajado. Un día de pocos minutos también cuenta, y baja la media, igual que en la bitácora.
-- **Un día con J** es un día trabajado, con las justificadas **aprobadas** más lo que hizo en BOLT. Una J pendiente cuenta el día, pero no sus horas.
+**Las reglas, las de `resumen()` en la bitácora** (si una cambia, la otra también), con **una diferencia**:
+- **Un día cuenta si llega a 1 h** (BOLT + J aprobadas). Camilo lo pidió así para que unos minutos en BOLT no cuenten como un día trabajado. Es el mismo listón que la letra (`MODELO.minHorasDiaTrabajado`). La ficha de la bitácora sí cuenta esos días, así que a quien los tenga le sale una media más baja allí: a Harold Torres, 7,7 h en el Excel y 5,8 h en la ficha, por dos días con 13 y 16 minutos. `mediaDelMes` lleva el mínimo como parámetro (`minHoras`); por omisión es 0, la regla de la pantalla.
+- **Un día con J** es un día trabajado, con las justificadas **aprobadas** más lo que hizo en BOLT. Una J pendiente no suma horas, así que solo cuenta si en BOLT llegó a 1 h.
 - **Libranzas, vacaciones, bajas, permisos y «no salió»** no entran. Antes del alta o tras la baja, solo si trabajó.
 - **El periodo es el mes corrido hasta AYER.** La ficha de la bitácora cuenta también hoy, así que el día en curso puede mover una décima: Deisy sale con 9,4 h en el Excel y 9,6 h en la ficha, que lleva hoy 10,4 h. El día 1 sale el mes anterior entero. Mirando la plantilla de una fecha pasada, el mes corrido de esa fecha.
 
