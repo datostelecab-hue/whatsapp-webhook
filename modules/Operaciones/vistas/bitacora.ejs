@@ -297,6 +297,9 @@
   }
 
   // ── Resúmenes ────────────────────────────────────────────────────────────
+  // LA MISMA CUENTA DE HORAS Y DÍAS, EN EL SERVIDOR: bitacora.service.mediaDelMes
+  // (la usa el Excel de Plantilla). Si aquí cambia qué es un día trabajado,
+  // allí también.
   function resumen(c, a, b) {
     const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0,
                 dias: 0, horasJ: 0, ausFuturas: 0 };

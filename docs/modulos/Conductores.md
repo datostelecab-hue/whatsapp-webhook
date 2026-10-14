@@ -40,18 +40,21 @@ La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion
 
 El botón de Excel junto al buscador descarga lo que se está viendo. Desde el 01/10/2026 lleva, detrás del nombre, la columna **«Contrato»: Propia o ETT**. En la tabla no hay columna nueva —ya lo dice la etiqueta ETT junto al nombre—, porque es una columna `soloExcel` del Listado ([[Componentes de la casa]]). A quien ya no está no se le atribuye contrato: sale en blanco, igual que «SS / ETT» en pantalla.
 
-### Y el promedio de horas de BOLT (14/10/2026)
+### Y el promedio de horas: BOLT + justificadas (14/10/2026)
 
-Camilo: *«el promedio de horas de BOLT de cada uno, sin letras, sin justificantes, solo promedio de horas reales»*. Dos columnas más, también solo en el Excel:
-- **«Promedio h BOLT (mes corrido)»**: horas de BOLT (viaje + espera, sin descanso) entre los días que trabajó.
-- **«Días con horas BOLT (mes corrido)»**: cuántos días son, para saber cuánto pesa el promedio. Un 11 h de un solo día no es lo mismo que un 11 h de doce.
+Camilo pidió *«el promedio de horas de BOLT de cada uno, sin letras»*. La primera versión contaba solo BOLT, y a Deisy Cavadia, cuyas jornadas son casi todas J, le salían 3,6 h. Camilo: *«necesito es horas puras + justificadas … las J también cuentan en su jornada»*. Así que es la **«Media por día» de la bitácora**, y se le pide a ella (`bitacora.service.mediaDelMes`), para que las dos pantallas no digan cosas distintas.
 
-**Las reglas, decididas por Camilo:**
-- **El mes corrido.** Va del día 1 a la última jornada cerrada, porque la de hoy va a medias, como la letra ([[Calificacion de conductores]]). El día 1 todavía no hay ninguna jornada cerrada del mes, así que sale el mes anterior entero. Mirando la plantilla de una fecha pasada, sale el mes corrido de esa fecha.
-- **Solo los días trabajados**, con 1 h o más en BOLT. Es el mismo listón que la letra, y sale de su `MODELO.minHorasDiaTrabajado`. Libranzas, vacaciones y bajas no entran.
-- **Las horas son las selladas de la bitácora** (`bitacora_horas`), sin J, sin justificantes y sin las 8 h que la letra le pone a un día de libranza. Por eso puede no coincidir con el promedio de la letra.
+Son dos columnas, solo en el Excel de la lista:
+- **«Promedio h/día BOLT + J (mes corrido)»**.
+- **«Días trabajados (mes corrido)»**: cuántos días son, para saber cuánto pesa la media. Un 11 h de un solo día no es lo mismo que un 11 h de doce.
 
-Quien no trabajó ningún día en el periodo sale en blanco. Lo calcula `plantilla.service.promedioBolt` con `conductores.repo.horasBoltDelPeriodo`, y va en la misma respuesta de la lista (`/plantilla/api/lista`). Si esa consulta falla, la lista sale igual y la columna queda vacía. Con los datos del 14/10/2026 (del 01 al 13/10): 188 personas con promedio, y la media de los promedios es de 7,8 h.
+**Las reglas, las de `resumen()` en la bitácora** (si una cambia, la otra también):
+- **Un día con horas de BOLT (más de 0)** es un día trabajado. Un día de pocos minutos también cuenta, y baja la media, igual que en la bitácora.
+- **Un día con J** es un día trabajado, con las justificadas **aprobadas** más lo que hizo en BOLT. Una J pendiente cuenta el día, pero no sus horas.
+- **Libranzas, vacaciones, bajas, permisos y «no salió»** no entran. Antes del alta o tras la baja, solo si trabajó.
+- **El periodo es el mes corrido hasta AYER.** La ficha de la bitácora cuenta también hoy, así que el día en curso puede mover una décima: Deisy sale con 9,4 h en el Excel y 9,6 h en la ficha, que lleva hoy 10,4 h. El día 1 sale el mes anterior entero. Mirando la plantilla de una fecha pasada, el mes corrido de esa fecha.
+
+Quien no trabajó ningún día sale en blanco. Si la bitácora falla, la lista sale igual y la columna queda vacía. Tarda lo que la bitácora en frío (~1,5 s), en paralelo con la lista, y luego tira de su caché de 3 minutos. Con los datos del 14/10/2026 (del 01 al 13/10): 191 personas con media, y la media de las medias es de 7,7 h.
 
 ## La lista va por la fecha que enseña, de la más reciente a la más antigua
 

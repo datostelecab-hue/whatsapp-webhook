@@ -135,7 +135,58 @@ async function resellar({ desde, hasta }, quien) {
   return r;
 }
 
+/**
+ * LA MEDIA POR DÍA DEL MES CORRIDO, LA MISMA QUE ENSEÑA LA BITÁCORA (14/10/2026).
+ *
+ * Es la «Media por día» de la ficha de una persona, pero para toda la plantilla
+ * y en el servidor: la pide el Excel de Plantilla. Camilo: «horas puras +
+ * justificadas … las J también cuentan en su jornada». Las mismas reglas que
+ * `resumen()` de vistas/bitacora.ejs, y si una cambia, la otra también:
+ *
+ *   · Un día con horas de BOLT (más de 0) es un día trabajado, con esas horas.
+ *   · Un día con J es un día trabajado, con sus horas justificadas APROBADAS más
+ *     lo que hizo en BOLT ese día. Una J pendiente cuenta el día, pero no sus
+ *     horas: todavía no las ha aprobado nadie.
+ *   · Libranzas, vacaciones, bajas, permisos y «no salió» no entran.
+ *   · Antes de su alta, tras su baja o entre dos contratos, solo si trabajó.
+ *
+ * El periodo va del día 1 a AYER: la jornada de hoy va a medias. El día 1 aún
+ * no hay ninguna cerrada del mes y sale el mes anterior entero. Con `hasta`
+ * (una fecha pasada), el mes corrido de esa fecha.
+ *
+ * Devuelve { desde, hasta, porId: Map(conductor_id → { horas, dias }) }, con
+ * `horas` = la media por día trabajado, a un decimal.
+ */
+async function mediaDelMes({ hasta } = {}) {
+  const d = await datos();
+  const base = Date.UTC(d.inicio.y, d.inicio.m, d.inicio.d);
+  const idx = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - base) / 86400000);
+  const iso = i => new Date(base + i * 86400000).toISOString().slice(0, 10);
+  let fin = d.hoyIdx - 1;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(hasta || '').slice(0, 10))) fin = Math.min(fin, idx(String(hasta).slice(0, 10)));
+  const hastaIso = iso(fin), desdeIso = hastaIso.slice(0, 8) + '01';
+  const ini = Math.max(0, idx(desdeIso));
+
+  const fuera = (c, i) => (c.altaIdx != null && i < c.altaIdx) || (c.bajaIdx != null && i > c.bajaIdx)
+    || (c.huecos || []).some(([a, b]) => i >= a && i <= b);
+  const porId = new Map();
+  d.conductores.forEach(c => {
+    let horas = 0, dias = 0;
+    for (let i = ini; i <= fin; i++) {
+      const v = c.dias[i];
+      if (typeof v === 'number') { if (v > 0) { horas += v; dias++; } continue; }
+      if (v !== 'J' || fuera(c, i)) continue;
+      const dia = iso(i), j = c.justif[dia] || {};
+      horas += (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
+      dias++;
+    }
+    if (dias) porId.set(String(c.conductorId), { horas: Math.round(horas / dias * 10) / 10, dias });
+  });
+  return { desde: desdeIso, hasta: hastaIso, porId };
+}
+
 module.exports = {
+  mediaDelMes,
   datos, vacaciones, llamadasDelDia,
   justificar, anularJustificante, libranza, resellar,
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el
