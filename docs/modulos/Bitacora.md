@@ -71,9 +71,22 @@ La cabecera sigue enseñando el alta del contrato de ahora y, si la casa empieza
 
 **Se ven 60 días de futuro.** Sin eso, poner a alguien de vacaciones para mañana no se veía en ninguna parte: su ficha salía en blanco y había que acordarse. Las libranzas futuras solo se calculan **14 días**, porque más allá el cuadrante es una intención y no una promesa: cambia cada semana. Las ausencias y las J van a todo el horizonte, porque son decisiones ya tomadas y con fecha.
 
-### Las cifras cortan en hoy, salvo las ausencias
+### Las cifras cortan en AYER, salvo las ausencias
 
-Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencias» se cuentan solo hasta hoy. **Una ausencia no es lo mismo**: está firmada, con sus fechas, y por eso el calendario ya la pinta atenuada. Cortándola en hoy, la tarjeta decía «8 ausencias» mientras en pantalla se veían **19 casillas azules** — misma persona, mismo mes, dos cifras distintas.
+**Hoy no cuenta todavía** (15/10/2026). Camilo, con Lucía Peralta, del turno de noche: a las 14:00 su día salía como «Ausencia» y su media bajaba de 10 h a 7,5 h, cuando su turno empezaba a las 17:00. *«La ausencia del día actual debe restarle al otro día; el día que transcurre no afecta a su promedio. Agrega al día actual "HOY": si tiene horas las pones, si no simplemente el "HOY"»*. Desde entonces:
+
+- La casilla de hoy lleva **«HOY»** y es neutra (dorado suave): con sus horas si ya las tiene, y si no, solo «HOY». Nunca «Ausencia» ni el verde de un día cerrado. Lo ya decidido (vacaciones, baja, permiso, libranza o una J) se pinta como siempre, también hoy.
+- Horas, días trabajados, media y «Ausencias» **cortan en ayer**. Lo que haga hoy entra mañana. Así cuadra con el Excel de Plantilla (`bitacora.service.mediaDelMes`), que ya cortaba en ayer. Hoy sin horas se puede justificar desde el panel del día igual que una ausencia.
+- En la **bitácora general**, hoy tampoco es rojo, no cuenta en «Más rojos» y no entra en la media.
+- De paso, «Sin salir esta semana» ya cuenta como salida los días con J: antes la comparación miraba la clase con su sufijo (`J jcumple`) y nunca casaba.
+
+Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencias» no miran el futuro.
+
+> [!info] Tres promedios, tres preguntas (Lucía Peralta, 15/10/2026)
+> Con los mismos días de octubre salían **5,8 h** en su ficha, **9,23 h · A** en el planificador y **10 h** (7,5 h «contando la ausencia») en la bitácora. Ninguna estaba rota; cada una mide otra cosa:
+> - **Bitácora: 10 h.** BOLT + J por **jornada** 05→05, y solo los días que salió: 10,3 + 10,5 + (8,4 + 1 h de J) = 30,1 h en 3 días. El 7,5 h metía hoy como «Ausencia», con su turno de noche aún sin empezar, y ya no pasa.
+> - **Planificador: 9,23 h · A.** Es la **calificación** (`conductor_calificacion`): hasta ayer, y las **libranzas cuentan como 8 h** («descansar cuando toca no puede bajar la media»). (10,25 + 10,53 + 8 + 8 + 9,36) ÷ 5 = 9,23.
+> - **Ficha: 5,8 h.** Es BI (`bi_conductor_mes`): horas de BOLT sin J ÷ **días naturales** con horas. A quien hace noche cada turno le cae en dos días de calendario (17:00→00:00 y 00:00→05:00), así que sus 3 turnos son 5 días y la media sale a la mitad: 29,1 ÷ 5. Además cuenta lo que lleva de hoy. **Una ausencia no es lo mismo**: está firmada, con sus fechas, y por eso el calendario ya la pinta atenuada. Cortándola en hoy, la tarjeta decía «8 ausencias» mientras en pantalla se veían **19 casillas azules** — misma persona, mismo mes, dos cifras distintas.
 
 **Y la tarjeta se llama por su nombre.** «8 ausencias» de alguien que está de vacaciones se lee como un reproche, y no lo es: unas vacaciones son un derecho, no una falta. Cuando todas las del periodo son de un tipo, la tarjeta pone «Vacaciones», «Baja médica» o «Permiso»; cuando hay mezcla, **las enumera**: «Vacaciones y bajas», «Bajas y permisos». Debajo, cuántas aún no han pasado.
 

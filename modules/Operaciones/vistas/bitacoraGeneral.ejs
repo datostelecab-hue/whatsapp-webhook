@@ -255,6 +255,11 @@
       if (v === 'L') return rgb(C.muted, .14);
       return null;
     }
+    // HOY VA A MEDIAS (15/10/2026): no se pinta rojo ni se juzga; lo que haga
+    // hoy cuenta mañana. Lo ya decidido (V, B, P, L, J) sigue con su color.
+    if (d === DATA.hoyIdx && !(esAus(v) || v === 'L' || v === 'J')) {
+      return typeof v === 'number' && v > 0 ? rgb(C.oro, .35) : rgb(C.oro, .14);
+    }
     if (v === 'V') return rgb(C.vac, .6);
     if (v === 'B') return rgb(C.med, .6);
     if (v === 'P') return rgb(C.permiso, .6);
@@ -273,7 +278,7 @@
 
   /** ¿Cuenta como "rojo" para ordenar por los peores? */
   function esRojo(c, d) {
-    if (d > DATA.hoyIdx) return false;
+    if (d >= DATA.hoyIdx) return false;   // hoy no cuenta todavía
     if (fueraDe(c, d)) return false;
     const v = val(c, d);
     if (esAus(v) || v === 'L') return false;
@@ -339,7 +344,7 @@
     // el orden y la lista mentiría.
     for (const c of filas) {
       let r = 0, h = 0, dias = 0;
-      for (let d = a; d <= b; d++) {
+      for (let d = a; d <= Math.min(b, DATA.hoyIdx - 1); d++) {   // la media, hasta ayer
         if (esRojo(c, d)) r++;
         const x = horasDe(c, d);
         if (x != null) { h += x; dias++; }
@@ -574,6 +579,10 @@
     else if (fuera === 'despues') { valor = 'Ya de baja'; }
     else if (fuera === 'hueco') { valor = 'Sin contrato'; nota = 'Entre dos periodos.'; }
     else if (d > DATA.hoyIdx) { valor = NOMBRE_MARCA[v] || 'Por venir'; nota = 'Aún no ha pasado.'; }
+    else if (d === DATA.hoyIdx && !(esAus(v) || v === 'L' || v === 'J')) {
+      valor = typeof v === 'number' && v > 0 ? 'Hoy · ' + nf1.format(v) + ' h hasta ahora' : 'Hoy · sin horas todavía';
+      nota = 'Cuenta para su promedio a partir de mañana.';
+    }
     else if (NOMBRE_MARCA[v]) { valor = NOMBRE_MARCA[v]; }
     else if (v === 'J') {
       // LA CUENTA, A LA VISTA. Es la pregunta que se hace cualquiera delante de
