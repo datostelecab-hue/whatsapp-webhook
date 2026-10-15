@@ -26,9 +26,13 @@
       </button>
       <button id="h-hoy" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
         text-sm text-telecab-muted hover:text-telecab-text">Hoy</button>
-      <button id="h-excel" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold
-        shadow-gold hover:brightness-110">
-        <i class="fa-solid fa-file-excel mr-1"></i> Informe
+      <button id="h-excel" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-file-excel mr-1"></i> Excel
+      </button>
+      <button id="h-pdf" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold
+        shadow-gold hover:brightness-110" title="Una hoja para dirección: quién salió, quién avisó, quién faltó sin avisar y qué coches se quedaron sin nadie">
+        <i class="fa-solid fa-file-pdf mr-1"></i> Informe PDF
       </button>
     </div>
   </div>
@@ -490,6 +494,43 @@
       : '/control/historico/excel?dia=' + dia;
   });
   $('#h-excel').title = 'Excel del día. Con Mayúsculas pulsado, la semana que termina ese día.';
+
+  // EL INFORME DE SALIDAS EN PDF, de un turno. Mirando hoy se propone el turno
+  // en curso (el de día hasta las 17:00); un día pasado, el día completo.
+  $('#h-pdf').addEventListener('click', async () => {
+    const dia = $('#h-dia').value;
+    const hora = Number(new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date()));
+    const propuesto = dia !== '<%= hoy %>' ? 'todo' : (hora >= 5 && hora < 17 ? 'dia' : 'noche');
+    const v = await Dialogo.formulario('Informe de salidas en PDF', [{
+      id: 'turno', etiqueta: 'De qué turno', tipo: 'lista', obligatorio: true, valor: propuesto,
+      opciones: [
+        { valor: 'dia', texto: 'Turno de día (05:00 a 17:00)' },
+        { valor: 'noche', texto: 'Turno de noche (17:00 a 05:00)' },
+        { valor: 'todo', texto: 'Día completo (los dos turnos)' },
+      ],
+    }], { textoBoton: 'Descargar', nota: 'Del ' + dia.split('-').reverse().join('/') + '. Quien dobla (TodoTurno) sale en los dos turnos.' });
+    if (!v || !v.turno) return;
+    // Se pide y se guarda aquí (y no con location.href) para que un fallo —p. ej.
+    // que no se pudo leer la actividad de BOLT— salga en un aviso y no como una
+    // página en blanco con el error. El logo de carga tapa mientras se genera.
+    try {
+      const r = await fetch('/control/historico/pdf?dia=' + encodeURIComponent(dia) + '&turno=' + encodeURIComponent(v.turno));
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.msg || 'No se pudo generar el informe');
+      }
+      const m = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await r.blob());
+      a.download = m ? m[1] : 'informe-salidas.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo sacar el informe', texto: e.message, tono: 'error' });
+    }
+  });
 
   carga();
 })();

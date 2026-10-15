@@ -212,7 +212,7 @@ Comprobador: `scripts/comprobar-jornada-semanal.js` (25 casos: la J aprobada y l
 
 ## Informe del Histórico
 
-`GET /control/historico/excel?desde=&hasta=` — no está en la pantalla de Reportes sino en `/control/historico`, pero es un descargable más. Un día por defecto; con rango, apila varios en las mismas hojas con la fecha delante, para la tabla dinámica. **Tope de 7 días** y el calendario se camina día a día: ver [[Control]].
+`GET /control/historico/excel?desde=&hasta=` — no está en la pantalla de Reportes sino en `/control/historico`, pero es un descargable más. Al lado está su versión para dirección, el [[Informe de salidas]] en PDF (`/control/historico/pdf?dia=&turno=`), una hoja por turno. Un día por defecto; con rango, apila varios en las mismas hojas con la fecha delante, para la tabla dinámica. **Tope de 7 días** y el calendario se camina día a día: ver [[Control]].
 
 ## La auditoría de los lunes
 

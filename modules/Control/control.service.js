@@ -216,6 +216,29 @@ async function historicoExcel({ desde, hasta, dia } = {}) {
   return { bytes, nombre };
 }
 
+/**
+ * EL INFORME DE SALIDAS EN PDF (15/10/2026): una hoja para dirección con cómo
+ * fue un turno —quién salió, quién avisó, quién faltó sin avisar y qué se hizo,
+ * qué coches se quedaron sin nadie—. Sale del mismo parte que la pantalla y el
+ * Excel, así que los tres cuentan lo mismo.
+ *
+ * @param {{dia: string, turno: 'dia'|'noche'|'todo'}} q
+ */
+async function historicoPdf({ dia, turno } = {}) {
+  const d = diaDe(dia);
+  const pdf = require('./historico.pdf');
+  const t = pdf.TURNOS[turno] ? turno : 'todo';
+  const parte = await historicoSrv.parte(d);
+  // Sin la actividad de BOLT todos saldrían «sin salir aún»: mejor no dar un
+  // informe que diga «salieron 0» por un fallo de lectura.
+  if (!parte.hayActividad) throw new Error('No se ha podido leer la actividad de BOLT de ese día. Vuelve a intentarlo en un momento.');
+  const bytes = await pdf.generar(parte, { turno: t });
+  const r = pdf.resumen(parte, t);
+  console.log(`📄 [Control] informe de salidas ${d} (${t}): ${r.salieron.length}/${r.planificados} salieron · ` +
+    `${r.noSaldran.length} no saldrán · ${r.ausencias.length} sin avisar · ${r.sinConductor.length} coches sin conductor`);
+  return { bytes, nombre: `informe-salidas-${d}-${t === 'todo' ? 'dia-completo' : 'turno-' + t}.pdf` };
+}
+
 // ── Las llamadas de seguimiento ────────────────────────────────────────────
 
 /**
@@ -508,7 +531,7 @@ module.exports = {
   hoyMadrid, diaOperativoHoy,
   paraLaPantalla, vistaDeCampanas,
   directo, ahora, campanas, campanasInforme,
-  historico, historicoExcel, trazos, historialLlamadas,
+  historico, historicoExcel, historicoPdf, trazos, historialLlamadas,
   apuntarLlamada, listarLlamadas, justificarEnDirecto,
   marcarNoSale, quitarNoSale, marcarSlack, quitarSlack,
   kmTraza, kmDiagnostico,

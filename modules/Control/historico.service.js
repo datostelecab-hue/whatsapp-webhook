@@ -98,6 +98,42 @@ async function alertasDeFranja(dia) {
 }
 
 /**
+ * LOS COCHES SIN CONDUCTOR de cada turno: los del plan, operativos, con la
+ * celda vacía ese día. Una celda vacía no es el descanso del coche —ese día lo
+ * cubre su correturnos—: es una plaza que nadie cubría. Pura.
+ *
+ * La celda del coche solo trae el NOMBRE, y hay celdas con persona y sin nombre
+ * (quien ya no está en la plantilla del planificador): por eso también se mira
+ * si alguien del plan de ese turno lleva el coche (`ocupados`).
+ *
+ * @param {Array} coches    las filas de `enDirecto().coches`
+ * @param {Object} ocupados { dia: Set, noche: Set } de matrículas con alguien del plan
+ */
+function cochesSinConductor(coches, ocupados = {}) {
+  const sin = { dia: [], noche: [] };
+  const norm = m => String(m || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+  (coches || []).forEach(c => {
+    if (!c.enPlan || c.operativo === false) return;
+    ['dia', 'noche'].forEach(t => {
+      if ((c.plan || {})[t] || (ocupados[t] && ocupados[t].has(norm(c.matricula)))) return;
+      sin[t].push({ matricula: c.matricula, cuadrante: c.cuadrante || '' });
+    });
+  });
+  const orden = (a, b) => a.cuadrante.localeCompare(b.cuadrante, 'es', { numeric: true }) ||
+    a.matricula.localeCompare(b.matricula);
+  sin.dia.sort(orden); sin.noche.sort(orden);
+  return sin;
+}
+
+/** Las matrículas que lleva alguien del plan en ese turno (quien dobla, en los dos). */
+function matriculasDelPlan(porT, turno) {
+  const s = new Set();
+  [...(porT[turno] || []), ...(porT.todoturno || [])].forEach(f =>
+    (f.matriculas || []).forEach(m => s.add(String(m || '').toUpperCase().replace(/[^0-9A-Z]/g, ''))));
+  return s;
+}
+
+/**
  * EL PARTE DE UN DÍA.
  *
  * @param {string} dia jornada operativa 'AAAA-MM-DD'
@@ -139,6 +175,14 @@ async function parte(dia) {
     (f.matriculas || []).forEach(m => { if (!(ya.matriculas || []).includes(m)) ya.matriculas.push(m); });
   }));
   const filas = [...porPersona.values()];
+
+  // Quien está en el plan sin nombre en la celda (ya no está en la plantilla
+  // del planificador): el nombre de su ficha, para que no salga en blanco.
+  const sinNombre = filas.filter(f => !String(f.conductor || '').trim()).map(f => String(f.conductorId));
+  if (sinNombre.length) {
+    const deFicha = await repo.nombres(sinNombre).catch(() => new Map());
+    filas.forEach(f => { if (!String(f.conductor || '').trim()) f.conductor = deFicha.get(String(f.conductorId)) || ''; });
+  }
 
   const llamPorCond = new Map();
   llamadas.forEach(l => {
@@ -258,6 +302,9 @@ async function parte(dia) {
   }));
   return {
     dia: d,
+    // Si el núcleo no respondió, el cockpit pone a todos «pendiente» y el día
+    // parecería vacío: quien lo pinte o lo imprima tiene que poder saberlo.
+    hayActividad: !!(vivo && vivo.hayActividad),
     resumen: {
       conductores: conductores.length,
       noSalieron: noSalieron.length,
@@ -278,6 +325,10 @@ async function parte(dia) {
         .reduce((n, j) => n + (j.horas || 0), 0) * 10) / 10,
     },
     agentes,
+    // Las plazas del plan que nadie cubría, por turno (la cuarta cifra del PDF).
+    sinConductor: cochesSinConductor(vivo && vivo.coches, {
+      dia: matriculasDelPlan(porT, 'dia'), noche: matriculasDelPlan(porT, 'noche'),
+    }),
     alertas: Object.values(porAlerta)
       .map(a => ({ ...a, conductores: a.conductores.size }))
       .sort((a, b) => b.n - a.n),
@@ -314,4 +365,4 @@ async function parte(dia) {
   };
 }
 
-module.exports = { parte, SALIDA, ALERTA, nombreAlerta };
+module.exports = { parte, cochesSinConductor, SALIDA, ALERTA, nombreAlerta };

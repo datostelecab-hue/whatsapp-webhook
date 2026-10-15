@@ -15,7 +15,7 @@ No es un módulo de consulta: existe para decidir a quién se llama en los próx
 |---|---|---|
 | `/control` | el cockpit [[Control En directo|En directo]] | `modules/Control/vistas/controlDirecto.ejs` |
 | `/control/campanas` | las tres pasadas de llamadas del turno | `controlCampanas.ejs` / `controlCampanasInforme.ejs` |
-| `/control/historico` | qué pasó ese día y qué se hizo (también los «No saldrá» por motivo y las trazas por Slack) | `controlHistorico.ejs` |
+| `/control/historico` | qué pasó ese día y qué se hizo (también los «No saldrá» por motivo y las trazas por Slack); con el Excel y el [[Informe de salidas|informe de salidas en PDF]] por turno | `controlHistorico.ejs` |
 | `/control/citas-taller` | [[Citas del taller|las citas del taller]]: quién lleva el coche, si se le avisó y qué contestó; aquí se apunta la llamada para confirmarla | `controlCitasTaller.ejs` |
 | `/control/incorporaciones` | [[Proximas incorporaciones|quién entra mañana]], nuevo o de vacaciones: llamarle, mandarle sus turnos y explicarle el bot con un guion | `controlIncorporaciones.ejs` |
 | `/control/km` | km conectado vs desconectado | `kmTraza.ejs` |
@@ -80,6 +80,8 @@ Los **backfills** de `/flota-viva/api/*` piden rol de desarrollador o superadmin
 **El Call Center y el chat de WhatsApp se enlazan** (07/10/2026, [[WhatsApp chat]]). `/callcenter?conductor=<id>` abre directamente la historia de esa persona; desde esa historia, el botón «WhatsApp» lleva a su conversación (solo a quien tiene la llave `/whatsapp`). Y al abrir el chat de un conductor, sus llamadas salen entre los mensajes, leídas de `historiaConductor` (solo a quien tiene `/callcenter`).
 
 **La llamada se escribe UNA vez**, en `llamada_seguimiento`. Hasta `db/131-call-center-una-sola-historia.sql` se copiaba además al Call Center con la clasificación clavada en el código, así que allí una avería en ruta y un conductor que no coge el teléfono entraban como la misma cosa. Ahora el Call Center **lee** estas llamadas y las clasifica por su tipo y su caso (`DESDE_CONTROL` en `modules/Control/callcenter.service.js`): una copia envejece, una lectura no puede.
+
+**El informe de salidas en PDF es de un turno y de un día** (15/10/2026, [[Informe de salidas]]): una hoja para dirección con los mismos datos que la pantalla. Se puede sacar con el turno en marcha para ver cómo va. Si no se pudo leer la actividad de BOLT, no se genera: diría «salieron 0».
 
 **El informe del histórico se camina, no se resta.** Tope de 7 días, porque cada día recalcula el cockpit entero contra el núcleo (unos 5 s) y un mes de una sentada serían dos minutos y medio de petición colgada. Y el calendario se recorre día a día (`diaSiguiente()`) porque el día del cambio de hora tiene 23 o 25 y restar bloques de 24 se salta una jornada. Los partes se piden **de uno en uno**: cada uno ya paraleliza sus consultas por dentro y siete a la vez ahogan el pool.
 

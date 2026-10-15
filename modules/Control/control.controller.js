@@ -213,6 +213,9 @@ router.post('/api/traza-slack/quitar', responde(async req =>
 
 router.get('/historico/excel', descarga(req =>
   control.historicoExcel({ desde: req.query.desde, hasta: req.query.hasta, dia: req.query.dia }), XLSX));
+// El informe de salidas en PDF: una hoja por turno, para dirección.
+router.get('/historico/pdf', descarga(req =>
+  control.historicoPdf({ dia: req.query.dia, turno: req.query.turno }), PDF));
 
 router.get('/asistencia/pdf', descarga(req =>
   control.asistenciaPdf({ desde: req.query.desde, hasta: req.query.hasta }), PDF));

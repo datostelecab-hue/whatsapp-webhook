@@ -30,4 +30,19 @@ async function llamadasDelDia(dia) {
   }));
 }
 
-module.exports = { llamadasDelDia };
+/**
+ * EL NOMBRE DE LA FICHA de unas personas. Hace falta para la celda del plan que
+ * trae el id y no el nombre: la de alguien que ya no está en la plantilla del
+ * planificador (una baja voluntaria del mismo día, p. ej.).
+ */
+async function nombres(ids) {
+  if (!ids.length) return new Map();
+  const r = await db.consulta(
+    `SELECT c.id,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
+       FROM conductor c
+      WHERE c.id = ANY($1::bigint[])`, [ids.map(Number)]);
+  return new Map(r.rows.map(x => [String(x.id), x.nombre || '']));
+}
+
+module.exports = { llamadasDelDia, nombres };

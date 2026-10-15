@@ -405,6 +405,12 @@ No son de los seis, pero forman parte de la misma red:
   enlace solo https, cómo se apunta en el chat, que con la ventana cerrada o sin
   conversación no sale, y que con ella abierta sale con el 34, el enlace, su texto y
   firmado por la oficina. 12 casos.
+- **`comprobar-historico-pdf.js`** (15/10/2026) — el [[Informe de salidas]] en PDF sin
+  base: en qué grupo cae cada uno (salió aunque tuviera «No saldrá», avisó, sin avisar,
+  aún no le tocaba), quién va en cada turno (TodoTurno en los dos), los coches sin
+  conductor (también la celda sin nombre con alguien del plan en el coche), las llamadas
+  y las alertas del turno, la frase, y que el PDF sale con emojis, flechas, textos
+  largos, muchas páginas o un día vacío. 24 casos.
 
 ---
 
