@@ -25,6 +25,8 @@ No es un módulo de consulta: existe para decidir a quién se llama en los próx
 | `/justificantes` | la cola de aprobación de las J | `justificantes.ejs` |
 | `/flota-viva/api/…` | las APIs que consume el cockpit (sin pantalla) | — |
 
+**Copiar el nombre, el teléfono y la matrícula** (15/10/2026). Camilo: *«en control necesito que los nombres se puedan copiar directamente, el teléfono y la matrícula … control no deja, abre directamente las observaciones del conductor, déjales el cuadrito de pegado al lado»*. En En directo cada fila se abre al pulsarla y no deja seleccionar el texto, así que al lado de cada dato hay un botón pequeño que lo copia (`Copiar.boton`, pieza de la casa en `public/assets/js/copiar.js`). Copia el teléfono en sus 9 cifras. Vale igual para las filas de los NN. Al copiar, el botón enseña un visto un momento y la fila no se abre.
+
 La sub-navegación de las pestañas está en `modules/Control/vistas/partials/control-nav.ejs`, y lleva Justificantes dentro aunque cuelgue de otra URL: "quien rechaza una J es quien está mirando el directo".
 
 **Flota viva ya no es una pantalla.** Sus dos vistas se retiraron el 11/09/2026 porque contaban un sistema de alertas de vehículo apagado desde el 08/09 y enseñaban una foto fija de un día que no era hoy. `modules/Control/flota.controller.js` redirige `/flota-viva` a `/control` y `/flota-viva/partes` a `/control/historico`, y lo hace con un **302 a propósito**: un 301 se cachea en el navegador para siempre y ata las manos si mañana hay que reutilizar la URL. Ver [[Flota viva]].

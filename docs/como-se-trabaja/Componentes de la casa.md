@@ -23,6 +23,7 @@ actualizado: 2026-10-07
 | **Una fecha** | `<input class="js-fecha">` | **`<input type="date">`** |
 | **Elegir una opción en un formulario propio** | `.tc-selector` + input oculto (`selector.js`) | **`<select>`** |
 | Listar cosas | el componente **Listado** (`listado.js`) | una tabla nueva |
+| **Copiar un dato** (nombre, teléfono, matrícula) | `Copiar.boton(texto, titulo)` (`copiar.js`): el cuadrito al lado del dato; el clic se escucha una vez para toda la página | seleccionar texto en una fila que se abre al pulsarla |
 | **Explicar un dato** | un **`title`** en el elemento (lo pinta `ayuda.js`) | un icono de «?» propio |
 | Tapar mientras carga | `#cargando-overlay` de `layout-gestion` | un spinner propio |
 | **Ver una foto en grande** | `VisorFoto.abrir({ src, titulo, pie, original })` (`visorFoto.js`) | abrirla en otra pestaña |

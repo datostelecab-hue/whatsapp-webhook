@@ -502,6 +502,10 @@
           '<span class="flex items-center gap-2 min-w-0">' +
             '<span class="truncate text-telecab-text font-medium" title="' + esc(f.conductor) + '">' +
               esc(f.conductor) + '</span>' +
+            // COPIAR EL NOMBRE, EL TELÉFONO Y LA MATRÍCULA (15/10/2026): la fila
+            // se abre al pulsarla y no deja seleccionar el texto, y hay que
+            // pegarlos en otras partes. El cuadrito es un botón: no abre la fila.
+            Copiar.boton(f.conductor, 'Copiar el nombre') +
             // Sale con SU nombre, pero rodando con la cuenta de otro. Hay que
             // decirlo aquí: quien lo busque en BOLT no encontrará este nombre, y
             // quien vea el de la cuenta creerá que es otra persona.
@@ -527,7 +531,7 @@
               : '') +
           '</span>' +
           '<span class="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' +
-            enlaceTel(f.telefono) + accionesConductor(f) + '</span>' +
+            enlaceTel(f.telefono) + Copiar.boton(tel9(f.telefono), 'Copiar el teléfono') + accionesConductor(f) + '</span>' +
         '</span>' +
         '<span class="dopc min-w-0 flex items-center gap-1.5">' +
           '<span class="min-w-0">' +
@@ -535,6 +539,7 @@
             // El cuadrante ya no es la cabecera del grupo: se dice aquí, pequeño.
             (f.cuadrante ? '<span class="block text-[10px] text-telecab-muted/70 truncate" title="Cuadrante">' + esc(f.cuadrante) + '</span>' : '') +
           '</span>' +
+          (mat !== '—' ? Copiar.boton(mat, 'Copiar la matrícula') : '') +
           (f.cocheCambiado
             ? '<span class="shrink-0 text-[10px] font-bold text-amber-500" title="No es el coche del plan (' +
               esc(plan) + ')">&ne;</span>' : '') +
@@ -892,12 +897,15 @@
       '<span class="min-w-0">' +
         '<span class="flex items-center gap-1.5 min-w-0">' +
           '<span class="truncate text-telecab-text font-medium" title="' + esc(s.conductor) + '">' + esc(s.conductor) + '</span>' +
+          Copiar.boton(s.conductor, 'Copiar el nombre') +
           chipRend(s.rendimiento) + '</span>' +
-        '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) + '</span>' +
+        '<span class="flex items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) +
+          Copiar.boton(tel9(s.telefono), 'Copiar el teléfono') + '</span>' +
         (sit.etiqueta ? '<span class="block text-[11px] font-medium ' + (NN_TONO[sit.codigo] || 'text-telecab-muted') + '">' + esc(sit.etiqueta) + '</span>' : '') +
       '</span>' +
-      '<span class="dopc min-w-0 font-mono text-xs text-telecab-muted truncate" title="Coche(s) usados en BOLT">' +
-        esc((s.matriculas || []).join(', ') || '—') + '</span>' +
+      '<span class="dopc min-w-0 flex items-center gap-1.5 font-mono text-xs text-telecab-muted">' +
+        '<span class="truncate" title="Coche(s) usados en BOLT">' + esc((s.matriculas || []).join(', ') || '—') + '</span>' +
+        ((s.matriculas || []).length ? Copiar.boton(s.matriculas.join(', '), 'Copiar la matrícula') : '') + '</span>' +
       '<span>' + (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Salió en el turno', 'muted')) + '</span>' +
       '<span class="dopc text-right text-xs text-telecab-muted tabular-nums" title="Primera conexión de la jornada">' +
         (s.primera ? hora(s.primera) : '<span class="text-telecab-border">—</span>') + '</span>' +
