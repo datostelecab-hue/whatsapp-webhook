@@ -45,21 +45,52 @@ async function deHoy() {
 
 /**
  * LO QUE VE CADA UNO HOY. Si quien pregunta es el que cumple, no le sale «Fulano
- * cumple hoy»: le sale la felicitación, de parte de Telecab.
+ * cumple hoy»: le sale la felicitación, de parte de Telecab. Y las felicitaciones
+ * que le han mandado sus compañeros y aún no ha visto (db/205).
  *
- * { dia, conductores: [{ id, nombre, ett }], oficina: [{ id, nombre, apellidos, rol }],
- *   felicitar: { nombre } | null }
+ * { dia, conductores: [{ id, nombre, ett }],
+ *   oficina: [{ id, nombre, apellidos, rol, yaFelicitado }],
+ *   felicitar: { nombre } | null,
+ *   felicitaciones: [{ id, dia, nombre, apellidos }] }
  */
 async function hoy(usuarioId) {
   const c = await deHoy();
   const yo = Number(usuarioId);
   const mio = c.oficina.find(o => o.id === yo) || null;
+  const [ya, felicitaciones] = await Promise.all([
+    yo ? repo.yaFelicitados(yo, c.dia) : new Set(),
+    yo ? repo.pendientes(yo) : [],
+  ]);
   return {
     dia: c.dia,
     conductores: c.conductores,
-    oficina: c.oficina.filter(o => o.id !== yo),
+    oficina: c.oficina.filter(o => o.id !== yo).map(o => ({ ...o, yaFelicitado: ya.has(o.id) })),
     felicitar: mio ? { nombre: mio.nombre } : null,
+    felicitaciones,
   };
+}
+
+/**
+ * FELICITAR A UN COMPAÑERO DE OFICINA (15/10/2026): «Camilo te ha enviado
+ * felicitaciones», con globos en su pantalla. Solo a quien cumple hoy, y no a
+ * uno mismo. Pulsar dos veces no manda dos.
+ */
+async function felicitar(paraId, deId) {
+  const c = await deHoy();
+  const para = c.oficina.find(o => o.id === Number(paraId));
+  if (!para) throw new Error('Esa persona no cumple años hoy');
+  if (Number(paraId) === Number(deId)) throw new Error('No puedes felicitarte a ti mismo');
+  const r = await repo.felicitar(para.id, deId, c.dia);
+  return { nueva: r.nueva, para: para.nombre };
+}
+
+/** Las felicitaciones sin ver de alguien (lo pregunta su pantalla cada minuto el día que cumple). */
+const mias = async usuarioId => ({ felicitaciones: await repo.pendientes(usuarioId) });
+
+/** Las da por vistas (al cerrar la tarjeta). */
+async function vistas(usuarioId, ids) {
+  const lista = (Array.isArray(ids) ? ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 200);
+  return { vistas: await repo.marcarVistas(usuarioId, lista) };
 }
 
 /** Los ids de los conductores que cumplen hoy, para Control. */
@@ -71,4 +102,4 @@ async function idsConductoresHoy() {
 /** Se olvida lo guardado: quien acaba de poner su fecha de nacimiento la ve ya. */
 const olvidar = () => { cache = null; };
 
-module.exports = { hoy, delDia, idsConductoresHoy, olvidar };
+module.exports = { hoy, delDia, idsConductoresHoy, olvidar, felicitar, mias, vistas };
