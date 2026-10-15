@@ -8,8 +8,11 @@ const cripto = require('../services/cripto');
 const correo = require('../services/correo');
 
 // Página de configuración (tema para todos; usuarios y correo solo superadmin).
-router.get('/', (req, res) => {
-  res.render('configuracion', { titulo: 'Configuración', seccion: 'configuracion', layout: 'layout-gestion' });
+router.get('/', async (req, res) => {
+  // La fecha de nacimiento no va en la sesión: se lee aquí (db/204).
+  const fechaNacimiento = req.usuario
+    ? await usuarios.fechaNacimientoDe(req.usuario.id).catch(() => null) : null;
+  res.render('configuracion', { titulo: 'Configuración', seccion: 'configuracion', layout: 'layout-gestion', fechaNacimiento });
 });
 
 // ── SESIONES ABIERTAS ───────────────────────────────────────────────────────
@@ -57,6 +60,8 @@ router.post('/mi-perfil', async (req, res) => {
     });
     // Contraseña de correo (CIFRADA) — solo si el usuario ha escrito una nueva.
     if (b.pass_correo) await usuarios.guardarPassCorreo(req.usuario.email, b.pass_correo);
+    // La fecha de nacimiento, para su cumpleaños (db/204). Solo si viene.
+    if ('fecha_nacimiento' in b) await usuarios.ponerFechaNacimiento(req.usuario.id, b.fecha_nacimiento);
     sesion.renovarSesion(res, actualizado, req.usuario);   // refresca la firma, conservando si era larga
     res.json({
       status: 'ok',

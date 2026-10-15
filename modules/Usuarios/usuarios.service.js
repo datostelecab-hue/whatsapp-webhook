@@ -253,6 +253,48 @@ async function registrarAcceso(email) {
   try { await actualizarUsuario(email, { ultimo_acceso: true }); } catch (_) {}
 }
 
+// ── La fecha de nacimiento (db/204) ─────────────────────────────────────────
+// Para felicitar el cumpleaños a la gente de oficina (15/10/2026). Va en
+// consultas APARTE y no en el SELECT general, que es el del inicio de sesión:
+// si el código llega antes que la migración, nadie se queda sin entrar.
+
+/** Su fecha de nacimiento, 'AAAA-MM-DD' o null. Sin la migración, null. */
+async function fechaNacimientoDe(id) {
+  try {
+    const r = await db.consulta(
+      `SELECT to_char(fecha_nacimiento, 'YYYY-MM-DD') AS f FROM usuario WHERE id = $1`, [Number(id)]);
+    return (r.rows[0] || {}).f || null;
+  } catch (e) {
+    if (e.code === '42703') return null;   // sin db/204
+    throw e;
+  }
+}
+
+/**
+ * Pone (o borra, con vacío) la fecha de nacimiento de alguien. 'AAAA-MM-DD'.
+ * Entre 16 y 90 años: lo de fuera es una fecha mal tecleada.
+ */
+async function ponerFechaNacimiento(id, iso) {
+  const v = String(iso || '').trim();
+  let fecha = null;
+  if (v) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('La fecha de nacimiento va como dd/mm/aaaa');
+    const d = new Date(v + 'T12:00:00Z');
+    if (isNaN(d) || d.toISOString().slice(0, 10) !== v) throw new Error('Esa fecha de nacimiento no existe');
+    const hoy = new Date();
+    const anios = (hoy - d) / (365.25 * 86400000);
+    if (anios < 16 || anios > 90) throw new Error('Revisa la fecha de nacimiento: el año no parece el bueno');
+    fecha = v;
+  }
+  try {
+    await db.consulta('UPDATE usuario SET fecha_nacimiento = $2 WHERE id = $1', [Number(id), fecha]);
+  } catch (e) {
+    if (e.code === '42703') throw new Error('Todavía no se puede guardar: falta aplicar la migración db/204');
+    throw e;
+  }
+  return fecha;
+}
+
 // ── Contraseña de correo del usuario (CIFRADA, reversible) ──────────────────
 async function guardarPassCorreo(email, passPlano) {
   const p = String(passPlano || '');
@@ -364,6 +406,7 @@ async function sesionSigueValiendo(id, iat) {
 const olvidarCorte = id => _corte.delete(Number(id));
 
 module.exports = {
+  fechaNacimientoDe, ponerFechaNacimiento,
   roles, esRol, ESTADOS_U,
   leerUsuarios, buscarUsuario, buscarUsuarioPorId, buscarUsuarioPorTelefono,
   olvidarUsuario, crearUsuario, actualizarUsuario,

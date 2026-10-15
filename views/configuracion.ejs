@@ -16,6 +16,19 @@
       <div><label class="block text-xs text-telecab-muted mb-1">Apellidos</label><input id="p-apellidos" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.apellidos) || '' %>"></div>
       <div><label class="block text-xs text-telecab-muted mb-1">Teléfono</label><input id="p-telefono" class="inp" inputmode="tel" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.telefono) || '' %>"></div>
     </div>
+    <%# La fecha de nacimiento (db/204): para felicitarle el cumpleaños. dd/mm/aaaa en pantalla. %>
+    <% const fnac = (typeof fechaNacimiento !== 'undefined' && fechaNacimiento) ? fechaNacimiento.split('-').reverse().join('/') : ''; %>
+    <div class="grid sm:grid-cols-3 gap-3 mt-3 items-end">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1" for="p-nacimiento">Fecha de nacimiento</label>
+        <input id="p-nacimiento" class="inp js-fecha" placeholder="dd/mm/aaaa" value="<%= fnac %>" autocomplete="bday">
+      </div>
+      <p class="sm:col-span-2 text-xs <%= fnac ? 'text-telecab-muted' : 'text-telecab-gold' %>">
+        <i class="fa-solid fa-cake-candles mr-1"></i>
+        <%= fnac ? 'Para felicitarte el día de tu cumpleaños. Al resto solo le sale que cumples hoy, ni el año ni la edad.'
+                 : 'Ponla para que el sistema te felicite el día de tu cumpleaños. Al resto solo le sale que cumples hoy, ni el año ni la edad.' %>
+      </p>
+    </div>
     <div class="mt-4 pt-3 border-t border-telecab-border">
       <p class="text-xs text-telecab-muted mb-2">
         <i class="fa-solid fa-envelope text-telecab-gold mr-1"></i>
@@ -389,6 +402,10 @@
 
   async function guardarPerfil(incluirCorreo) {
     const body = { nombre: $('p-nombre').value.trim(), apellidos: $('p-apellidos').value.trim(), telefono: $('p-telefono').value.trim() };
+    // dd/mm/aaaa → aaaa-mm-dd; vacía, se borra.
+    const fn = $('p-nacimiento').value.trim();
+    const m = fn.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    body.fecha_nacimiento = m ? `${m[3]}-${m[2]}-${m[1]}` : (fn ? 'mal' : '');
     if (incluirCorreo && $('p-pass-correo').value) body.pass_correo = $('p-pass-correo').value;
     return (await fetch('/configuracion/mi-perfil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
   }

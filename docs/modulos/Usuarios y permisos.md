@@ -191,6 +191,12 @@ Y **nace apagado para todos**: se elige a quién **sí**. Si se olvida marcar a 
 
 Otra casilla en la ficha, debajo de la de fichar la jornada: **Puede coger coches por WhatsApp** (`usuario.ficha_coche`, `db/148`; `POST /usuarios/fichaje-coche`). Es el fichaje de **coche**, no el de la jornada: escribe al bot, dice la matrícula, se le suelta el motor y al terminar se bloquea. Sin teléfono en su ficha no puede, y la casilla lo avisa. A los conductores se les enciende desde el planificador. Ver [[Fichaje]].
 
+## La fecha de nacimiento (15/10/2026, db/204)
+
+Cada uno pone la suya en **Configuración → Mi perfil** (`usuario.fecha_nacimiento`, con el calendario de la casa, dd/mm/aaaa, y el mismo botón «Guardar»). Es para felicitar los cumpleaños de la oficina, igual que los de los conductores (que ya la tenían en su ficha). Al resto solo le sale que cumple hoy: ni el año ni la edad. Tiene que ser de alguien de entre 16 y 90 años; si no, es un año mal tecleado.
+
+**No va en la lectura general del usuario** (`SELECT` de `usuarios.service`), que es la del inicio de sesión: se lee y se escribe aparte (`fechaNacimientoDe`, `ponerFechaNacimiento`). Si el código llegara antes que la migración y fuera en esa lectura, **nadie podría entrar**, ni siquiera para aplicarla. Así, sin `db/204` se lee vacía y al guardar avisa de que falta aplicarla.
+
 ## Lo que falta
 
 `usuarios.service.js` lleva dentro sus consultas SQL: es servicio y repositorio a la vez, y hay que sacarlo a un `usuarios.repo.js`. No se hizo al mudarlo porque la mudanza tenía que ser mecánica y revisable de un vistazo.
