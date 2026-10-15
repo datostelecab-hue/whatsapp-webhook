@@ -111,6 +111,25 @@ const del = tipo => (hechos.find(h => h[0] === tipo) || [])[1];
     await intenta({ turnoId: '2', jornadaHoras: '40', vacanteId: 'V-NO' }), 'error: No existe esa vacante');
   igual('…y no se ha creado nada', hechos, []);
 
+  // ── 3b. La dirección exacta (15/10/2026) ──────────────────────────────────
+  // Sin base: lo que cabe en cada casilla se finge, con la regla de verdad.
+  const largos = require('../services/repo/largos');
+  largos.comprobar = async (tabla, valores, etiquetaDe) => {
+    const malos = largos.sobran(valores, new Map([['piso', 10], ['via_nombre', 80]]));
+    if (malos.length) throw new Error(largos.mensaje(malos, etiquetaDe));
+  };
+  const DIR = ['via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta', 'codigo_postal', 'localidad', 'provincia'];
+  r = await intenta({ turnoId: '1', jornadaHoras: '40', via_tipo: 'Calle', via_nombre: ' Mayor ', via_numero: '12',
+    escalera: '', piso: '3', puerta: 'B', codigo_postal: '28013', localidad: 'Madrid', provincia: 'Madrid' });
+  igual('La dirección va a la ficha, sin espacios y sin las casillas vacías',
+    DIR.map(k => del('alta')[k] === undefined ? '-' : del('alta')[k]),
+    ['Calle', 'Mayor', '12', '-', '3', 'B', '28013', 'Madrid', 'Madrid']);
+  igual('Un piso que no cabe: no se da el alta',
+    String(await intenta({ turnoId: '1', jornadaHoras: '40', piso: 'tercero izquierda interior' })).startsWith('error: '), true);
+  igual('…y no se ha creado nada', hechos, []);
+  await intenta({ turnoId: '1', jornadaHoras: '40' });
+  igual('Sin dirección: el alta sale igual', [del('alta').alta, del('alta').via_nombre === undefined], ['2026-10-20', true]);
+
   // ── 4. Conductores: el turno llega también a quien vuelve ──────────────────
   conductores.realizarAlta = realizarAltaDeVerdad;
   let situacion;

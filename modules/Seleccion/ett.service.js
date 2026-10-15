@@ -305,6 +305,12 @@ async function jornadaDelAlta(b) {
  * esta persona trabaja pero no sale ni en esta pantalla ni en el Excel que se
  * le manda a la ETT.
  */
+// LA DIRECCIÓN EXACTA, despiezada como en Selección y en la ficha: es como la
+// pide la gestoría (15/10/2026). La pantalla pinta estos campos con la
+// etiqueta y el tope de cada uno, que salen de Conductores.
+const DIRECCION = ['via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
+  'codigo_postal', 'localidad', 'provincia'];
+
 async function altaRapida(datos, quien) {
   const b = datos || {};
   const nombre = String(b.nombre || '').trim();
@@ -322,6 +328,18 @@ async function altaRapida(datos, quien) {
 
   const jornada = await jornadaDelAlta(b);
 
+  // La dirección, si se ha escrito, y que quepa: se comprueba ANTES de crear la
+  // ficha, porque un alta que se cae a medias deja una ficha sin contrato.
+  const direccion = {};
+  for (const k of DIRECCION) {
+    const v = String(b[k] == null ? '' : b[k]).trim();
+    if (v) direccion[k] = v;
+  }
+  if (Object.keys(direccion).length) {
+    await require('../../services/repo/largos').comprobar('conductor', direccion,
+      k => (conductores.CAMPOS[k] && conductores.CAMPOS[k].etiqueta) || k);
+  }
+
   // EL TURNO VA A LA FICHA DESDE EL DÍA DEL ALTA, como en «Contratar»: es lo
   // que lee el planificador, y con él ya sale de día o de noche en el
   // banquillo, listo para colocarlo.
@@ -329,6 +347,7 @@ async function altaRapida(datos, quien) {
     nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: alta_dia,
     jornadaHoras: jornada.horas, turnoId: jornada.turno.id,
     barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
+    ...direccion,
   }, quien);
   if (jornada.avisos.length) r.avisos = [...(r.avisos || []), ...jornada.avisos];
 

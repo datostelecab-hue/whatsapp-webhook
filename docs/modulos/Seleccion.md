@@ -178,7 +178,17 @@ Hasta ese día el «Alta rápida» de /ett no preguntaba ninguna de las dos. El 
 - **Quien vuelve** (una ficha que ya existía) también recibe el turno. Hasta ahora solo lo recibía el alta nueva (`conductores.realizarAlta`).
 - **Por qué 20 horas no está en `cat_jornada`:** ese catálogo solo tiene 32 y 40, y cada fila lleva sus `dias_ct`. Esos días deciden qué contrato ofrece una vacante de correturnos y cuántos días planifica el cuadrante. Meter ahí las 20 horas cambiaría las dos cosas sin que nadie lo haya pedido.
 
-Comprobador: `node scripts/comprobar-alta-rapida.js` (29 casos).
+Comprobador: `node scripts/comprobar-alta-rapida.js` (33 casos).
+
+### Y la dirección exacta (15/10/2026)
+
+Camilo: *«en alta rápida incluye el dato para ingresar la dirección exacta del conductor, con el formato que tenemos actualmente»*.
+
+Al final del formulario hay un bloque **«Dirección»**. Primero va la zona (barrio), que ya estaba. Detrás, la dirección **despiezada como en Selección y en la ficha**, que es como la pide la gestoría: tipo de vía, nombre de la vía, número, escalera, piso, puerta, código postal, localidad y provincia.
+- **Las etiquetas y el límite de cada casilla vienen del servidor** (`CAT.campos`, de `conductores.CAMPOS` y de lo que cabe en cada columna), no de una lista en la pantalla. Así no pueden ser distintas de las de Selección.
+- **Ninguna es obligatoria**, para que el alta siga siendo rápida. Lo que se escribe va a la ficha con espacios recortados, y las casillas vacías no se guardan.
+- **Si algo no cabe**, no se da el alta y no se crea nada, porque se comprueba antes de crear la ficha (`largos.comprobar`). Sin dirección no se consulta nada de más.
+- **Las coordenadas no se sacan solas.** Para el reparto por zona hay que geocodificar después desde Selección. Hacerlo en automático guardaría un punto que nadie ha mirado.
 
 ## La candidatura y el contrato no dicen cosas distintas (13/10/2026)
 

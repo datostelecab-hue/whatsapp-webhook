@@ -334,6 +334,10 @@
     } catch (_) { return []; }
   }
 
+  // Las casillas de la dirección, en el orden de Selección y de la ficha.
+  const DIRECCION = ['via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
+    'codigo_postal', 'localidad', 'provincia'];
+
   // Alta rápida: teléfono + nombre → alta ETT directa + enlace BOLT por teléfono.
   // Pasa directa al planificador (no entra en la bolsa de candidatos).
   async function altaRapida() {
@@ -342,8 +346,6 @@
       { id: 'nombre', etiqueta: 'Nombre y apellidos', tipo: 'texto', obligatorio: true },
       { id: 'telefono', etiqueta: 'Teléfono', tipo: 'texto', obligatorio: true,
         ayuda: 'Se enlaza solo con su cuenta de BOLT por este número.' },
-      { id: 'barrio', etiqueta: 'Zona (barrio)', tipo: 'texto',
-        ayuda: 'La zona del conductor: Aluche, San Blas… Sale en el planificador, debajo del teléfono.' },
       // MANDA ESTA FECHA, no el día en que se rellena el formulario: es la del
       // contrato y la del día desde el que ocupa el coche. A quien empieza el
       // lunes se le abría el contrato el jueves anterior.
@@ -359,7 +361,14 @@
         opciones: CONTRATOS.map(h => ({ valor: String(h), texto: h + ' horas' })) },
       { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
         ayuda: 'Si eliges una, OCUPA esas plazas desde la fecha de arriba, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
-    ], { columnas: 2, textoBoton: 'Dar de alta',
+      // LA DIRECCIÓN EXACTA (15/10/2026), en su propio bloque y despiezada como
+      // en Selección y en la ficha. Las etiquetas y lo que cabe en cada casilla
+      // vienen del servidor (CAT.campos), no de una lista de aquí.
+      { id: 'barrio', etiqueta: 'Zona (barrio)', tipo: 'texto', grupo: 'Dirección',
+        ayuda: 'La zona del conductor: Aluche, San Blas… Sale en el planificador, debajo del teléfono.' },
+      ...DIRECCION.map(id => (CAT.campos || []).find(c => c.id === id)).filter(Boolean)
+        .map(c => ({ id: c.id, etiqueta: c.etiqueta || c.id, tipo: 'texto', grupo: 'Dirección', max: c.max, ayuda: c.ayuda })),
+    ], { columnas: 2, ancho: 'max-w-2xl', textoBoton: 'Dar de alta',
          // SOLO PARA LA ETT (13/10/2026): Aaron Borja venía de InfoJobs con
          // contrato propio y se le dio de alta por aquí, y su contrato salió de ETT.
          nota: 'Solo para quien entra por la ETT: el contrato se abre SIEMPRE como ETT (GiGroup). '
