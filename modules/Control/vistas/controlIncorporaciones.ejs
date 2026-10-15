@@ -120,6 +120,21 @@
       <div class="text-[11px] text-telecab-muted">${esc(u.cuando)}${u.quien ? ' · ' + esc(u.quien) : ''}${u.nota ? ' · ' + esc(u.nota) : ''}</div>`;
   }
 
+  // LA BIENVENIDA CON VÍDEO (nuevos) o EL VÍDEO DEL BOT (vuelven), solo con la
+  // ventana de WhatsApp abierta: con ella cerrada el botón sale en gris, y el
+  // título dice cómo abrirla.
+  function botonVideo(f, BTN) {
+    const nuevo = f.tipo === 'nuevo';
+    const cerrada = 'Solo con su ventana de WhatsApp abierta (ha escrito al bot en las últimas 24 h). '
+      + 'Mándale primero sus turnos: al pulsar «Ver mis turnos», o al escribir «hola» al bot, se abre.';
+    const titulo = !f.telefono ? 'No tiene teléfono' : !f.ventanaWhatsApp ? cerrada
+      : nuevo ? 'Un mensaje de bienvenida con su primer turno y cómo se usa el bot, y el vídeo del bot (1:12)'
+        : 'El vídeo de cómo funciona el bot del coche (1:12)';
+    const activo = f.telefono && f.ventanaWhatsApp;
+    return `<button data-${nuevo ? 'bienvenida' : 'video'}="${f.id}" class="${BTN} disabled:opacity-40 disabled:cursor-not-allowed"${activo ? '' : ' disabled'} title="${esc(titulo)}">
+      <i class="fa-solid fa-film mr-1"></i>${nuevo ? 'Bienvenida con vídeo' : 'Vídeo del bot'}</button>`;
+  }
+
   function fila(f) {
     const ojo = f.sinPlaza || f.sinBolt || f.confirmacion === 'no_entra';
     const BTN = 'px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text';
@@ -137,9 +152,7 @@
             <i class="fa-solid fa-calendar-days mr-1"></i>Sus turnos</button>
           <button data-enviar="${f.id}" class="${BTN}"${f.turnosTexto && f.telefono ? '' : ` disabled title="${f.telefono ? 'No tiene turnos que mandar' : 'No tiene teléfono'}"`}>
             <i class="fa-brands fa-whatsapp mr-1"></i>Enviar turnos</button>
-          <button data-video="${f.id}" class="${BTN}"${f.telefono ? '' : ' disabled'}
-            title="${!f.telefono ? 'No tiene teléfono' : f.ventanaWhatsApp ? 'Mandarle el vídeo de cómo funciona el bot del coche (1:12)' : 'Solo con la ventana de WhatsApp abierta: que escriba al bot o pulse «Ver mis turnos» primero'}">
-            <i class="fa-solid fa-film mr-1"></i>Vídeo del bot</button>
+          ${botonVideo(f, BTN)}
           <button data-llamar="${f.id}" class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-xs font-semibold">
             <i class="fa-solid fa-phone mr-1"></i>Apuntar llamada</button>
           <button data-historial="${f.id}" class="${BTN}" title="Todas sus llamadas, de Control y del Call Center">
@@ -212,6 +225,7 @@
     document.querySelectorAll('#i-lista [data-turnos]').forEach(b => b.addEventListener('click', () => verTurnos(de(b.dataset.turnos))));
     document.querySelectorAll('#i-lista [data-enviar]').forEach(b => b.addEventListener('click', () => enviarTurnos(de(b.dataset.enviar))));
     document.querySelectorAll('#i-lista [data-video]').forEach(b => b.addEventListener('click', () => enviarVideo(de(b.dataset.video))));
+    document.querySelectorAll('#i-lista [data-bienvenida]').forEach(b => b.addEventListener('click', () => enviarBienvenida(de(b.dataset.bienvenida))));
     document.querySelectorAll('#i-lista [data-llamar]').forEach(b => b.addEventListener('click', () => llamar(de(b.dataset.llamar))));
     document.querySelectorAll('#i-lista [data-historial]').forEach(b => b.addEventListener('click', () => HistorialLlamadas.abrir(b.dataset.historial)));
   }
@@ -259,7 +273,7 @@
             ? 'Ya se le mandaron sus turnos por WhatsApp. ' + di('Guarda ese número: es el de Telecab, y desde ahí se lleva el coche.')
             : 'Mándale ahora sus turnos con «Enviar turnos». ' + di('Te acaba de llegar un WhatsApp de Telecab: guarda ese número, desde ahí se lleva el coche.')) +
           '<br>' + (f.videoEnviado ? 'Ya se le mandó el vídeo del bot (' + esc(f.videoEnviado) + ').'
-            : 'Cuando pulse «Ver mis turnos» (o escriba al bot) se abre su ventana de WhatsApp: mándale entonces el vídeo del bot con «Vídeo del bot». ' +
+            : 'Cuando pulse «Ver mis turnos» (o escriba al bot) se abre su ventana de WhatsApp: mándale entonces «Bienvenida con vídeo». ' +
               di('Te mando un vídeo de un minuto que explica cómo se usa: míralo antes de tu primer turno.'))),
         paso(4, 'Ver sus turnos',
           di('Para ver tus turnos cuando quieras, escribe "hola" y pulsa Ver mis turnos. No hace falta empezar el turno. También puedes preguntar "¿qué turno tengo?".')),
@@ -346,6 +360,30 @@
       return cargar();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo mandar el vídeo', texto: e.message, tono: 'error' });
+    }
+  }
+
+  /** LA BIENVENIDA CON VÍDEO de un nuevo: el texto (se enseña antes) y el vídeo. */
+  async function enviarBienvenida(f) {
+    if (!f || !f.ventanaWhatsApp || !f.bienvenida) return;
+    const ok = await Dialogo.confirmar({
+      titulo: `Bienvenida con vídeo para ${f.nombre}`, ancho: 'max-w-lg',
+      html: `<p class="text-xs text-telecab-muted mb-2">Le llegan por WhatsApp dos mensajes: primero este texto y después el vídeo del bot (1:12).${
+          f.videoEnviado ? ` Ya se le mandó un vídeo el ${esc(f.videoEnviado)}.` : ''}</p>
+        <div class="rounded-2xl bg-telecab-card2 border border-telecab-border px-4 py-3 text-sm text-telecab-text leading-relaxed mb-2">${waHtml(f.bienvenida)}</div>
+        <video controls preload="metadata" src="/assets/videos/bot-coche.mp4" poster="/assets/videos/bot-coche.jpg" class="w-full max-h-64 rounded-lg bg-black"></video>`,
+      si: 'Mandar', no: 'Cancelar',
+    });
+    if (!ok) return;
+    try {
+      await postar(`/control/api/incorporaciones/${f.id}/enviar-bienvenida`, {
+        dia: f.dia, turno: (f.plazas[0] && f.plazas[0].turno) || f.jornada || '',
+        matriculas: [...new Set(f.plazas.map(p => p.matricula))],
+      });
+      Dialogo.hecho('Bienvenida enviada');
+      return cargar();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo mandar la bienvenida', texto: e.message, tono: 'error' });
     }
   }
 

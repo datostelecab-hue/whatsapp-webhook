@@ -20,7 +20,8 @@ const sustituir = (rel, exp) => {
 const WA_REAL = require('../services/whatsapp');
 sustituir('services/whatsapp.js', {
   ...WA_REAL,
-  enviarVideo: async (tel, o, op) => { enviados.push({ tel, ...o, ...op }); return { ok: true, id: 'wamid.V' }; },
+  enviarVideo: async (tel, o, op) => { enviados.push({ tipo: 'video', tel, ...o, ...op }); return { ok: true, id: 'wamid.V' }; },
+  enviarTexto: async (tel, texto, op) => { enviados.push({ tipo: 'texto', tel, texto, ...op }); return { ok: true, id: 'wamid.T' }; },
 });
 sustituir('services/repo/whatsappChat.js', { chat: async tel => chatDe(tel) });
 
@@ -74,6 +75,15 @@ async function lanza(nombre, fn, trozo) {
   igual('Ventana abierta: sale, con el 34 delante, el enlace, su texto y firmado por la oficina',
     [r.enviado, enviados[0].tel, enviados[0].link, enviados[0].caption === bot.pie, enviados[0].origen, enviados[0].usuarioId],
     [true, '34600111222', 'https://erp.example.com/assets/videos/bot-coche.mp4', true, 'oficina', 7]);
+
+  enviados.length = 0;
+  await S.enviarVideo({ telefono: '600111222', video: 'bot_coche', texto: 'Hola, bienvenido' }, 7, 'https://erp.example.com');
+  igual('Con texto: sale primero el texto y después el vídeo, los dos de la oficina',
+    enviados.map(e => [e.tipo, e.origen]), [['texto', 'oficina'], ['video', 'oficina']]);
+  enviados.length = 0;
+  await lanza('Sin https no sale ni el texto', () =>
+    S.enviarVideo({ telefono: '600111222', video: 'bot_coche', texto: 'Hola' }, 7, 'http://localhost'), 'https');
+  igual('…de verdad, nada', enviados.length, 0);
 
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);

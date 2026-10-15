@@ -194,6 +194,11 @@ router.post('/api/incorporaciones/:id/enviar-video', responde(async req =>
   incorporaciones.enviarVideo(req.params.id, { usuarioId: (req.usuario || {}).id || await actor.idDe(req) },
     `${req.protocol}://${req.get('host')}`), 400));
 
+// La bienvenida de un nuevo: un texto con su primer turno y el bot, y el vídeo.
+router.post('/api/incorporaciones/:id/enviar-bienvenida', responde(async req =>
+  incorporaciones.enviarBienvenida(req.params.id, req.body || {}, { usuarioId: (req.usuario || {}).id || await actor.idDe(req) },
+    `${req.protocol}://${req.get('host')}`), 400));
+
 // «No saldrá» (motivo + comentario) y «Traza por Slack» (canal): db/170.
 router.post('/api/no-saldra', responde(async req =>
   control.marcarNoSale(req.body || {}, req.usuario, await actor.idDe(req)), 400));

@@ -72,4 +72,13 @@ Las tarjetas de arriba cuentan cuántos entran, cuántos son nuevos y cuántos v
   - **A un nuevo casi nunca se le abre sola**, porque no nos ha escrito antes. Por eso el guion lo pone después de los turnos.
 - **La columna «WhatsApp»** dice cuándo se le mandaron los turnos y cuándo el vídeo (el último vídeo que salió bien a su teléfono, de `whatsapp_mensaje`).
 
+### La bienvenida con vídeo de los nuevos (15/10/2026)
+
+Camilo pidió *«la plantilla con el vídeo para los nuevos, pero que se habilite siempre y cuando tengan la ventana activa»*, y eligió un **mensaje propio** y no una plantilla de Meta. Con la ventana abierta es gratis, no necesita aprobación y salía el mismo día.
+
+- **A los NUEVOS**, el botón es **«Bienvenida con vídeo»**: dos mensajes, primero un texto y luego el vídeo del bot. A los que vuelven de vacaciones, «Vídeo del bot».
+- **El texto** lo monta `incorporaciones.service.textoBienvenida` (pura): su nombre de pila, su primer turno («mañana, viernes 16/10», turno y coche), y cómo se usa el bot con sus palabras (matrícula, puertas, «Entregar coche», «Terminar turno», «Ver mis turnos»), sin «fichar». La pantalla lo enseña tal cual antes de mandarlo, con el vídeo.
+- **Con la ventana cerrada los dos botones salen en gris**, y el título dice cómo abrirla.
+- **El envío** va por `whatsapp.service.enviarVideo({ …, texto })`: el texto sale antes que el vídeo, con una sola comprobación de la ventana, y el bot no se pausa. Si no hay enlace https, no sale ni el texto.
+
 Relacionado: [[Control]] · [[Citas del taller]] · [[Planificacion]] · [[WhatsApp]] · [[WhatsApp chat]]

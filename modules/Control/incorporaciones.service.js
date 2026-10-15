@@ -208,6 +208,12 @@ async function lista({ ventana } = {}) {
       llamadas: suyas.length,
       avisoTurnos: aviso ? { ok: aviso.resultado === 'ok', cuando: aviso.cuando, quien: aviso.usuario || '', detalle: aviso.detalle || '' } : null,
       turnosTexto: t ? t.texto : null,
+      // Lo que le llegará con «Bienvenida con vídeo» (solo a los nuevos): el
+      // mismo texto que monta el servidor al mandarla.
+      bienvenida: e.tipo === 'nuevo' ? textoBienvenida({
+        pila: pila(p), dia: e.dia, hoy,
+        turno: (e.plazas[0] && e.plazas[0].turno) || p.jornada || '', matriculas: ahoraLleva,
+      }) : null,
     };
   });
   return {
@@ -261,9 +267,58 @@ async function enviarVideo(conductorId, quien = {}, base) {
 }
 const VIDEO_DEL_BOT = 'bot_coche';
 
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/**
+ * EL TEXTO DE BIENVENIDA de un nuevo (15/10/2026). Pura. Va antes del vídeo del
+ * bot y dice lo justo: su primer turno y cómo se usa el WhatsApp del coche, con
+ * las palabras del bot (services/fichajeBot.js) y sin «fichar».
+ *
+ *   { pila, dia, hoy, turno, matriculas }
+ */
+function textoBienvenida({ pila, dia, hoy, turno, matriculas = [] } = {}) {
+  const d = new Date(Date.parse(dia + 'T12:00:00Z'));
+  const fecha = `${DIAS_SEMANA[d.getUTCDay()]} ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+  const cuando = dia === mas(hoy, 1) ? `mañana, ${fecha}` : dia === hoy ? `hoy, ${fecha}` : `el ${fecha}`;
+  const coche = matriculas.length ? `, con el coche *${matriculas.join('* y el *')}*` : '';
+  const de = turno ? `, turno de ${String(turno).toLowerCase()}` : '';
+  return [
+    `👋 ¡Hola${pila ? ', ' + pila : ''}! Te damos la bienvenida a Telecab.`,
+    `Tu primer turno es ${cuando}${de}${coche}.`,
+    '',
+    'Este WhatsApp es el de tu coche:',
+    '• Al llegar, escríbeme la *matrícula* todo junto (ejemplo: *1234ABC*): empieza tu turno y se desbloquea el motor.',
+    '• Desde aquí abres y cierras las *puertas*.',
+    '• Pulsa *Entregar coche* justo antes de salir hacia donde está tu compañero.',
+    '• Al acabar, *Terminar turno* con el coche aparcado y apagado.',
+    '• Para ver tus turnos, escríbeme «hola» y pulsa *Ver mis turnos*.',
+    '',
+    'Ahora te mando un vídeo de un minuto que lo explica. Si algo falla, llama a Tráfico.',
+  ].join('\n');
+}
+
+/**
+ * LA BIENVENIDA CON VÍDEO de un nuevo: el texto de arriba y el vídeo del bot,
+ * por la puerta del módulo de WhatsApp (solo con la ventana abierta). El día,
+ * el turno y el coche llegan de la pantalla y se comprueba su forma.
+ */
+async function enviarBienvenida(conductorId, b = {}, quien = {}, base) {
+  const [p] = await repo.personas([String(Number(conductorId))]);
+  if (!p) throw new Error('No existe esa persona');
+  if (!p.telefono) throw new Error('No tiene teléfono en su ficha');
+  const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(b.dia || '')) ? String(b.dia) : null;
+  if (!dia) throw new Error('Falta el día en que entra');
+  const matriculas = (Array.isArray(b.matriculas) ? b.matriculas : [])
+    .map(m => String(m || '').toUpperCase().replace(/[^0-9A-Z]/g, '')).filter(m => /^[0-9A-Z]{5,8}$/.test(m)).slice(0, 3);
+  const turno = /^[A-Za-zÁÉÍÓÚáéíóú ]{1,20}$/.test(String(b.turno || '')) ? String(b.turno) : '';
+  const texto = textoBienvenida({ pila: pila(p), dia, hoy: hoyMadrid(), turno, matriculas });
+  return require('../WhatsApp/whatsapp.service')
+    .enviarVideo({ telefono: p.telefono, video: VIDEO_DEL_BOT, texto }, quien.usuarioId, base);
+}
+
 module.exports = {
   VENTANAS, RESULTADOS_LLAMADA, PREFIJO, VIDEO_DEL_BOT,
-  lista, apuntarLlamada, enviarTurnos, enviarVideo,
+  lista, apuntarLlamada, enviarTurnos, enviarVideo, enviarBienvenida, textoBienvenida,
   // Para las pruebas.
   clasificar, cochesDeAntes,
 };

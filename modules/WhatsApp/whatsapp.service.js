@@ -158,9 +158,10 @@ async function enviar({ telefono, texto } = {}, usuarioId) {
  * `base` es la dirección pública con la que Meta baja el fichero.
  *
  * Lo usan el chat y Control → Próximas incorporaciones. El teléfono puede venir
- * con o sin el 34.
+ * con o sin el 34. Con `texto`, ese mensaje sale ANTES del vídeo (la bienvenida
+ * de los nuevos), también sin pausar el bot.
  */
-async function enviarVideo({ telefono, video } = {}, usuarioId, base) {
+async function enviarVideo({ telefono, video, texto } = {}, usuarioId, base) {
   const videos = require('../../services/videosWhatsapp');
   const v = videos.de(video);
   if (!v) throw new Error('Ese vídeo no existe.');
@@ -171,10 +172,16 @@ async function enviarVideo({ telefono, video } = {}, usuarioId, base) {
     throw new Error('La ventana de 24 h está cerrada: el vídeo solo se puede mandar si ha escrito al WhatsApp de Telecab en las últimas 24 horas. '
       + 'Por ejemplo, después de pulsar «Ver mis turnos» en la plantilla de turnos.');
   }
-  const r = await whatsapp.enviarVideo(tel, { link: videos.enlace(v, base), caption: v.pie }, { origen: 'oficina', usuarioId });
+  const link = videos.enlace(v, base);   // antes de mandar nada: sin enlace no sale ni el texto
+  const t = String(texto == null ? '' : texto).trim();
+  if (t) {
+    const rt = await whatsapp.enviarTexto(tel, t.slice(0, 4096), { origen: 'oficina', usuarioId });
+    if (!rt.ok) throw new Error(`WhatsApp no ha aceptado el texto: ${rt.error}`);
+  }
+  const r = await whatsapp.enviarVideo(tel, { link, caption: v.pie }, { origen: 'oficina', usuarioId });
   if (!r.ok) throw new Error(`WhatsApp no lo ha aceptado: ${r.error}`);
-  console.log(`🎬 [WhatsApp] Vídeo «${v.id}» a ${tel} (usuario ${usuarioId || '?'})`);
-  return { enviado: true, video: v.id };
+  console.log(`🎬 [WhatsApp] Vídeo «${v.id}»${t ? ' con texto' : ''} a ${tel} (usuario ${usuarioId || '?'})`);
+  return { enviado: true, video: v.id, conTexto: !!t };
 }
 
 /** Pausar el bot con alguien, o devolverle la conversación. */
