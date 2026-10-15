@@ -41,7 +41,7 @@ En **En directo**, la fila de quien cumple hoy va en azul, con la chapa «Cumple
 
 ## Lo que no hace (todavía)
 
-**Felicitar al conductor por WhatsApp.** Fuera de su ventana de 24 h haría falta una plantilla aprobada por Meta, y cada envío cuesta. Está sin hacer a la espera de que se decida.
+**Felicitar al conductor por WhatsApp.** La plantilla `cumpleanos_conductor` (marketing) está preparada para mandarla a revisión: ver [[PLANTILLAS-WHATSAPP#La que falta — LA FELICITACIÓN DE CUMPLEAÑOS (15/10/2026)]]. El código se hace cuando Meta la apruebe.
 
 ## Ver también
 

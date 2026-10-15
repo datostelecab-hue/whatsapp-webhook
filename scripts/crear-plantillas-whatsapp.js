@@ -5,6 +5,7 @@
 //   node scripts/crear-plantillas-whatsapp.js --go      las manda a revisión
 //   node scripts/crear-plantillas-whatsapp.js --go alerta_control    solo una
 //   node scripts/crear-plantillas-whatsapp.js --go cita_taller       la de la cita del taller
+//   node scripts/crear-plantillas-whatsapp.js --go cumpleanos_conductor   la felicitación
 //
 // Teclear una plantilla en el formulario de Meta es donde se cometen los errores
 // que luego cuestan un rechazo y otra espera: una variable pegada a otra, un
@@ -104,6 +105,23 @@ const PLANTILLAS = [
     pie: 'Telecab · Taller',
     botones: ['Confirmo', 'No puedo ir'],
   },
+  {
+    // LA FELICITACIÓN DE CUMPLEAÑOS (15/10/2026, modules/Cumpleanos). Va al
+    // CONDUCTOR el día de su cumpleaños, de parte de Telecab. Es MARKETING, no
+    // utilidad: Meta pone las felicitaciones en «relación con el cliente», y
+    // mandarla como UTILITY solo serviría para que la recategorice o la rechace.
+    //   {{1}} su nombre de pila
+    name: 'cumpleanos_conductor',
+    categoria: 'MARKETING',
+    para: 'Felicitación al conductor el día de su cumpleaños, de parte de Telecab. Sin botones.',
+    header: '¡Feliz cumpleaños!',
+    body:
+      'Hola {{1}}, hoy es tu cumpleaños y desde Telecab queremos felicitarte. 🎂\n\n' +
+      'Gracias por tu trabajo de cada día. Que lo disfrutes con los tuyos.\n\n' +
+      'Un abrazo de todo el equipo.',
+    ejemplos: ['Jaime'],
+    pie: 'Telecab',
+  },
 ];
 
 // ── LAS REGLAS DE META, COMPROBADAS AQUÍ ────────────────────────────────────
@@ -162,7 +180,7 @@ async function crear(p) {
     body: JSON.stringify({
       name: p.name,
       language: IDIOMA,
-      category: 'UTILITY',
+      category: p.categoria || 'UTILITY',
       components: componentes(p),
     }),
   });
@@ -214,7 +232,7 @@ if (require.main !== module) return;
   for (const p of lista) {
     const hay = ya.get(p.name);
     if (hay) { console.log(`  = ${p.name} — YA EXISTE (${hay.estado}, ${hay.idioma}, ${hay.categoria}). No se toca.`); continue; }
-    if (!go) { console.log(`  + ${p.name} — se mandaría a revisión · ${p.para}`); continue; }
+    if (!go) { console.log(`  + ${p.name} (${p.categoria || 'UTILITY'}) — se mandaría a revisión · ${p.para}`); continue; }
     const r = await crear(p);
     if (r.ok) console.log(`  + ${p.name} — ENVIADA a revisión (id ${r.id}, estado ${r.estado})`);
     else console.log(`  x ${p.name} — Meta la rechazó al crearla: ${r.error}`);

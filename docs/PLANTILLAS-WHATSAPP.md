@@ -95,6 +95,53 @@ Ejemplos: `{{1}}` Andrés · `{{2}}` 1194LCK · `{{3}}` viernes 10 de octubre ·
 - El texto es el mismo que se copia con «Copiar» para mandarlo a mano
   (`citas.service.textoAviso`). `scripts/comprobar-citas-taller.js` falla si se separan.
 
+## La que falta — LA FELICITACIÓN DE CUMPLEAÑOS (15/10/2026)
+
+`cumpleanos_conductor`: el día de su cumpleaños, al **conductor**, de parte de
+Telecab → [[Cumpleanos]]. Se prepara ahora y **el código se hace cuando Meta la
+apruebe** (Camilo, 15/10/2026).
+
+Para mandarla a revisión, en la consola de Render (donde está `WHATSAPP_TOKEN`),
+después de desplegar:
+
+```bash
+node scripts/crear-plantillas-whatsapp.js --go cumpleanos_conductor
+```
+
+O a mano en WhatsApp Manager, copiando esto tal cual:
+
+| Campo | Valor |
+|---|---|
+| Nombre | `cumpleanos_conductor` |
+| Categoría | **Marketing** (MARKETING) |
+| Idioma | Español (`es`) |
+| Encabezado (texto) | `¡Feliz cumpleaños!` |
+| Pie | `Telecab` |
+| Botones | Ninguno |
+
+Cuerpo:
+
+```
+Hola {{1}}, hoy es tu cumpleaños y desde Telecab queremos felicitarte. 🎂
+
+Gracias por tu trabajo de cada día. Que lo disfrutes con los tuyos.
+
+Un abrazo de todo el equipo.
+```
+
+Ejemplo: `{{1}}` Jaime (su nombre de pila).
+
+- **Es MARKETING a propósito.** Meta clasifica las felicitaciones (cumpleaños,
+  fiestas) como mensajes de relación con el cliente, o sea marketing. Mandarla como
+  UTILITY solo serviría para que la recategorice o la rechace. Se cobra a precio
+  de marketing, que es más caro que el de utilidad, pero son unos 220 conductores
+  al año: un mensaje por persona y año.
+- **Puede que alguna no llegue.** Meta limita cuántos mensajes de marketing recibe
+  cada persona de todas las empresas, y quien haya bloqueado los mensajes de marketing de
+  Telecab no la recibirá. No pasa nada: la felicitación es un detalle, no un aviso.
+- **Sin botones**: si contesta, llega al chat de /whatsapp como cualquier mensaje y
+  abre su ventana de 24 h.
+
 ## Las que faltan — ALERTAS DE CONTROL
 
 Sin estas, el módulo `/alertas` detecta pero no avisa: a día de hoy hay **338
