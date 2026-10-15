@@ -121,10 +121,20 @@
   .dfila.dalerta { animation: dlatido 1.8s ease-in-out infinite; box-shadow: inset 3px 0 0 0 rgb(239 68 68); }
   .dfila.dalerta-ok { background-color: rgb(239 68 68 / .05); box-shadow: inset 3px 0 0 0 rgb(239 68 68 / .45); }
   .dlate { animation: dlatido 1.8s ease-in-out infinite; }
+  /* CUMPLEAÑOS (15/10/2026): la fila de quien cumple hoy, en azul. Con una alerta
+     sin atender late igual, pero en azul en vez de en rojo. */
+  @keyframes dlatido-cumple {
+    0%, 100% { background-color: rgb(var(--tc-azul) / .14); }
+    50%      { background-color: rgb(var(--tc-azul) / .42); }
+  }
+  .dfila.dcumple { background-color: rgb(var(--tc-azul) / .24); box-shadow: inset 4px 0 0 0 rgb(var(--tc-azul)); }
+  .dfila.dcumple-alerta { animation: dlatido-cumple 1.8s ease-in-out infinite; box-shadow: inset 4px 0 0 0 rgb(var(--tc-azul)); }
+  .dcumple-chip { background: rgb(var(--tc-azul) / .18); color: rgb(var(--tc-azul)); }
   /* A quien le moleste el movimiento (o lo tenga desactivado en su sistema) se
      le deja el rojo fijo: la información es el color, no el parpadeo. */
   @media (prefers-reduced-motion: reduce) {
     .dfila.dalerta, .dlate { animation: none; background-color: rgb(239 68 68 / .16); }
+    .dfila.dcumple-alerta { animation: none; background-color: rgb(var(--tc-azul) / .34); }
   }
 
   /* En pantallas estrechas se apilan las tres cosas que de verdad importan y el
@@ -483,6 +493,13 @@
     return '<span class="flex flex-wrap justify-end gap-1">' + chips.join('') + '</span>';
   }
 
+  /** «Cumple hoy», al lado del nombre (modules/Cumpleanos). */
+  const chipCumple = f => (f.cumple
+    ? '<span class="dcumple-chip shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold" ' +
+      'title="Hoy es su cumpleaños: si le llamas, felicítale de parte de Telecab">' +
+      '<i class="fa-solid fa-cake-candles mr-1"></i>Cumple hoy</span>'
+    : '');
+
   function filaConductor(f) {
     const a = f.actividad || {};
     const nInc = (f.incidencias || []).length;
@@ -494,7 +511,8 @@
     const mat = vivas.join(', ') || plan || '—';
     const nivel = nivelAlerta(f);
     return '<div class="dfila border-b border-telecab-border/70 ' +
-        (nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : e.fila) +
+        (f.cumple ? (nivel === 2 ? 'dcumple-alerta' : 'dcumple')
+          : nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : e.fila) +
         '" data-mat="' + esc(f.clave) + '" data-cid="' + esc(f.conductorId || '') + '">' +
       '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
         '<span class="dbarra ' + e.barra + '"></span>' +
@@ -506,6 +524,7 @@
             // se abre al pulsarla y no deja seleccionar el texto, y hay que
             // pegarlos en otras partes. El cuadrito es un botón: no abre la fila.
             Copiar.boton(f.conductor, 'Copiar el nombre') +
+            chipCumple(f) +
             // Sale con SU nombre, pero rodando con la cuenta de otro. Hay que
             // decirlo aquí: quien lo busque en BOLT no encontrará este nombre, y
             // quien vea el de la cuenta creerá que es otra persona.
@@ -889,7 +908,8 @@
     // igual que las del plan: mismo nivel de alerta, mismo botón, misma traza.
     const nivel = nivelAlerta(s);
     return '<div class="dfila ' +
-        (nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : '') +
+        (s.cumple ? (nivel === 2 ? 'dcumple-alerta' : 'dcumple')
+          : nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : '') +
         ' border-b border-telecab-border/70" data-mat="' + esc(s.clave || ('nn-' + s.conductorId + '-' + s.turno)) +
         '" data-cid="' + esc(s.conductorId || '') + '">' +
       '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
@@ -898,7 +918,7 @@
         '<span class="flex items-center gap-1.5 min-w-0">' +
           '<span class="truncate text-telecab-text font-medium" title="' + esc(s.conductor) + '">' + esc(s.conductor) + '</span>' +
           Copiar.boton(s.conductor, 'Copiar el nombre') +
-          chipRend(s.rendimiento) + '</span>' +
+          chipCumple(s) + chipRend(s.rendimiento) + '</span>' +
         '<span class="flex items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) +
           Copiar.boton(tel9(s.telefono), 'Copiar el teléfono') + '</span>' +
         (sit.etiqueta ? '<span class="block text-[11px] font-medium ' + (NN_TONO[sit.codigo] || 'text-telecab-muted') + '">' + esc(sit.etiqueta) + '</span>' : '') +

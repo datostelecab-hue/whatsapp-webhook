@@ -1069,6 +1069,16 @@ async function enDirecto({ dia } = {}) {
     (a.conductor || '').localeCompare(b.conductor || ''));
   ordena(porTurno.dia); ordena(porTurno.noche); ordena(porTurno.todoturno);
 
+  // CUMPLEAÑOS (15/10/2026): la fila de quien cumple hoy se pinta en azul, y si
+  // tiene una alerta sin atender late en azul. Solo en el directo de hoy: un día
+  // pasado (el histórico) no tiene cumpleaños que celebrar.
+  if (hoy === diaOperativoHoy()) {
+    const cumplen = await require('../Cumpleanos/cumpleanos.service').idsConductoresHoy().catch(() => new Set());
+    ['dia', 'noche', 'todoturno', 'nn'].forEach(t => (porTurno[t] || []).forEach(f => {
+      if (f.conductorId && cumplen.has(String(f.conductorId))) f.cumple = true;
+    }));
+  }
+
   // La cabecera decía "3 avisos" y no había forma de llegar a ellos: los de un
   // coche sin plaza o de alguien fuera del plan no caían en ninguna fila. Ahora
   // los NN llevan los suyos, y lo que aun así no tiene dueño se dice aparte.

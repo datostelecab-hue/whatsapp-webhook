@@ -49,6 +49,10 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
   <%# El cuadrito de copiar un dato (Copiar.boton): para las filas que se abren al pulsarlas. %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/copiar.js') : '/assets/js/copiar.js' %>"></script>
+  <%# Los cumpleaños de hoy: tarjetas en las pantallas de TODOS (modules/Cumpleanos). %>
+  <% if (typeof usuario !== 'undefined' && usuario && usuario.id) { %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/cumpleanos.js') : '/assets/js/cumpleanos.js' %>" defer data-usuario="<%= usuario.id %>"></script>
+  <% } %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/listado.js') : '/assets/js/listado.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/fichaConductor.js') : '/assets/js/fichaConductor.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/fotoPersona.js') : '/assets/js/fotoPersona.js' %>"></script>

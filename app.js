@@ -315,6 +315,8 @@ app.use('/bitacora', bitacoraRoutes);
 // El módulo /incorporaciones se ELIMINÓ: su alerta vive en el planificador
 // (banner de incorporaciones, tabla `incorporacion`) y en Pendientes.
 app.use('/configuracion', configuracionRoutes);
+// Los cumpleaños de hoy: libre para cualquiera de dentro (no está en el catálogo).
+app.use('/cumpleanos', require('./modules/Cumpleanos/cumpleanos.controller'));
 app.use('/notificaciones', notificacionesRoutes);
 app.use('/pendientes', pendientesRoutes);
 app.use('/operaciones', operacionesRoutes);

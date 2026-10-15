@@ -416,6 +416,9 @@ No son de los seis, pero forman parte de la misma red:
   sobre una rejilla inventada: la J aprobada suma y la pendiente no, libranzas y
   vacaciones fuera, la ausencia a 0, días sin plaza y suspensiones fuera, antes del alta
   solo si trabajó, hoy no cuenta, y los periodos con «desde» y «hasta». 11 casos.
+- **`comprobar-cumpleanos.js`** (15/10/2026) — los [[Cumpleanos]] sin base: los del 29 de
+  febrero el 28 en un año no bisiesto, quien cumple ve la felicitación y no «cumple hoy»,
+  y los ids que Control pinta en azul. 6 casos.
 
 ---
 

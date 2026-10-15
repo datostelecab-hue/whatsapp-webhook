@@ -61,7 +61,10 @@ router.post('/mi-perfil', async (req, res) => {
     // Contraseña de correo (CIFRADA) — solo si el usuario ha escrito una nueva.
     if (b.pass_correo) await usuarios.guardarPassCorreo(req.usuario.email, b.pass_correo);
     // La fecha de nacimiento, para su cumpleaños (db/204). Solo si viene.
-    if ('fecha_nacimiento' in b) await usuarios.ponerFechaNacimiento(req.usuario.id, b.fecha_nacimiento);
+    if ('fecha_nacimiento' in b) {
+      await usuarios.ponerFechaNacimiento(req.usuario.id, b.fecha_nacimiento);
+      require('../modules/Cumpleanos/cumpleanos.service').olvidar();   // si cumple hoy, que salga ya
+    }
     sesion.renovarSesion(res, actualizado, req.usuario);   // refresca la firma, conservando si era larga
     res.json({
       status: 'ok',
