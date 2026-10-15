@@ -1153,6 +1153,35 @@
   ];
   const cols = () => (T && T.refuerzoVisible ? COLS_BASE.concat(COLS_REFUERZO) : COLS_BASE);
 
+  // ── COCHES SIN CORRETURNOS (15/10/2026, db/203) ───────────────────────────
+  // No llevan CT y cada fijo libra sus días. Sus columnas de correturnos no se
+  // enseñan: si toda la tabla son coches así, desaparecen; si se mezclan, en su
+  // fila va el aviso en su lugar.
+  const AVISO_SIN_CT = 'Este coche no tiene correturnos: no se pueden agregar personas en esta matrícula.';
+  const colsDe = coche => cols().filter(c => !(coche.sinCT && c.slot >= 2));
+  const hoyLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  /** Desde cuándo vale un cambio de «sin correturnos»: el día que se mira, nunca antes de hoy. */
+  const desdeSinCT = () => (DIA && DIA > hoyLocal() ? DIA : hoyLocal());
+
+  /** Los dos botones de libranza de un coche sin correturnos: el del fijo de día y el de noche. */
+  function botonesLibranzaFijos(coche, compacto) {
+    const t = coche.descansoTurno || {};
+    const boton = (turno, icono) => {
+      const dias = t[turno] || [];
+      const txt = dias.length ? diasTexto(dias) : 'no libra';
+      return `<button type="button" data-desc-turno="${turno}" title="${esc(`Los días que libra el fijo de ${turno === 'dia' ? 'día' : 'noche'}. Ese turno, esos días, el coche no sale.`)}"
+                class="inline-flex items-center gap-1 ${compacto ? 'px-1.5 py-0.5 rounded-md text-[11px]' : 'px-2 py-1 rounded-lg text-xs'} font-semibold border transition-colors hover:border-telecab-gold/50
+                       ${dias.length ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
+                <i class="fa-solid ${icono} text-[9px]"></i>${esc(txt)}</button>`;
+    };
+    return boton('dia', 'fa-sun') + boton('noche', 'fa-moon');
+  }
+
+  /** La marca del coche sin correturnos, con el aviso en el título. */
+  const chipSinCT = coche => `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide
+      bg-telecab-card2 border border-telecab-border text-telecab-muted" title="${esc(AVISO_SIN_CT + (coche.sinCTDesde ? ' Desde el ' + isoAes(coche.sinCTDesde) + '.' : ''))}">
+      <i class="fa-solid fa-user-slash text-[9px]"></i>Sin correturnos</span>`;
+
   // El CT (día/noche) de un cuadrante: el ocupante de la plaza CT en sus coches.
   // Si es el mismo en todos, ese es el CT del cuadrante; si difieren, 'varios'.
   function ctDelCuadrante(lista, slot) {
@@ -1176,6 +1205,8 @@
   };
 
   function tablaCoches(lista, enCuadrante) {
+    // Si TODOS son coches sin correturnos, sus columnas sobran (db/203).
+    const columnas = lista.length && lista.every(c => c.sinCT) ? cols().filter(c => c.slot < 2) : cols();
     const wrap = document.createElement('div');
     wrap.className = 'overflow-x-auto border border-telecab-border rounded-2xl';
     wrap.innerHTML = `
@@ -1184,14 +1215,14 @@
           <tr>
             <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Matrícula</th>
             <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Descanso</th>
-            ${cols().map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
+            ${columnas.map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
             <th class="w-10"></th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>`;
     const tb = wrap.querySelector('tbody');
-    lista.forEach(coche => tb.appendChild(filaCoche(coche, enCuadrante)));
+    lista.forEach(coche => tb.appendChild(filaCoche(coche, enCuadrante, columnas)));
     return wrap;
   }
 
@@ -1219,7 +1250,11 @@
     const sec = document.createElement('section');
     sec.dataset.cuadrante = cu.id;
     sec.className = 'scroll-mt-24';   // que la barra de arriba no tape la cabecera al saltar aquí
-    const ctDia = ctDelCuadrante(lista, 2), ctNoche = ctDelCuadrante(lista, 3);
+    // El CT del cuadrante es de los coches que llevan correturnos; los que no
+    // (db/203) están en el cuadrante para tenerlo, no para que el CT los cubra.
+    const conCT = lista.filter(c => !c.sinCT);
+    const nSinCT = lista.length - conCT.length;
+    const ctDia = ctDelCuadrante(conCT, 2), ctNoche = ctDelCuadrante(conCT, 3);
     const chipCT = (persona, turno) => {
       const nombre = persona === 'varios' ? 'Varios' : (persona ? persona.nombre : null);
       const libra = (persona && persona !== 'varios') ? libraCT(persona) : '';
@@ -1233,7 +1268,8 @@
       <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex items-center gap-2">
         <span class="w-2 h-2 rounded-full ${ESCALON[escalonDe(cu)].punto}" title="${esc(ESCALON[escalonDe(cu)].tit)}"></span>
         ${esc(cu.nombre)}
-        <span class="text-telecab-muted font-normal normal-case">${cu.zona ? esc(cu.zona) + ' · ' : ''}${lista.length} bloque(s)</span>
+        <span class="text-telecab-muted font-normal normal-case">${cu.zona ? esc(cu.zona) + ' · ' : ''}${conCT.length} bloque(s)${
+          nSinCT ? ` · ${nSinCT} sin correturnos` : ''}</span>
       </h3>
       ${horasDelCuadrante(cu)}
       <button data-bloque class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50 transition"><i class="fa-solid fa-plus"></i> Bloque</button>
@@ -1246,9 +1282,9 @@
     if (bWa) bWa.addEventListener('click', e => enviarTurnosCuadrante(cu.nombre, lista, e.currentTarget));
     cab.querySelector('[data-bloque]').addEventListener('click', () => anadirBloque(cu.id));
     cab.querySelector('[data-ct="día"]').addEventListener('click', () =>
-      asignarCTCuadrante(cu.id, 'dia', lista, (ctDia && ctDia !== 'varios') ? ctDia.id : null));
+      asignarCTCuadrante(cu.id, 'dia', conCT, (ctDia && ctDia !== 'varios') ? ctDia.id : null));
     cab.querySelector('[data-ct="noche"]').addEventListener('click', () =>
-      asignarCTCuadrante(cu.id, 'noche', lista, (ctNoche && ctNoche !== 'varios') ? ctNoche.id : null));
+      asignarCTCuadrante(cu.id, 'noche', conCT, (ctNoche && ctNoche !== 'varios') ? ctNoche.id : null));
     cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(cu.id, cu.nombre));
     sec.appendChild(cab);
     if (lista.length) {
@@ -1400,7 +1436,7 @@
     }
   }
 
-  function filaCoche(coche, enCuadrante) {
+  function filaCoche(coche, enCuadrante, columnas = cols()) {
     const tr = document.createElement('tr');
     tr.className = 'border-t border-telecab-border/70 align-top scroll-mt-24';
     tr.dataset.vehiculo = coche.vehiculoId;   // para «Ver su cuadrante»
@@ -1415,6 +1451,7 @@
                      bg-telecab-${tono}/15 text-telecab-${tono} border border-telecab-${tono}/30 hover:bg-telecab-${tono}/25 transition"
               data-estado>${esc(ESTADO_ETQ.get(coche.estadoVeh) || coche.estadoVeh)}<i class="fa-solid fa-chevron-down text-[9px]"></i></button>`;
     tdMat.querySelector('[data-estado]').addEventListener('click', () => cambiarEstado(coche));
+    if (coche.sinCT) tdMat.insertAdjacentHTML('beforeend', `<div class="mt-1">${chipSinCT(coche)}</div>`);
     tdMat.insertAdjacentHTML('beforeend', lineaHoras(coche));
     // Taller/siniestro: el coche se queda en su bloque, pero avisa de que hay que
     // cambiar la matrícula ahí (sus conductores quedan "huérfanos imaginarios").
@@ -1441,23 +1478,41 @@
     const descTxt = (coche.descanso && coche.descanso.length) ? diasTexto(coche.descanso) : '';
     const tdDesc = document.createElement('td');
     tdDesc.className = 'px-3 py-2.5 whitespace-nowrap';
-    tdDesc.innerHTML = `
-      <button class="px-2 py-1 rounded-lg text-xs font-semibold border transition hover:border-telecab-gold/50
-                     ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}"
-              data-desc title="Editar el descanso del coche (día y noche)">
-        ${descTxt ? esc(descTxt) : 'sin descanso'}
-      </button>`;
-    tdDesc.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche));
+    if (coche.sinCT) {
+      // Sin correturnos: un descanso por fijo (db/203).
+      tdDesc.innerHTML = `<div class="flex flex-col items-start gap-1">${botonesLibranzaFijos(coche, false)}</div>`;
+      tdDesc.querySelectorAll('[data-desc-turno]').forEach(b =>
+        b.addEventListener('click', () => fijarDescansoCoche(coche, b.dataset.descTurno)));
+    } else {
+      tdDesc.innerHTML = `
+        <button class="px-2 py-1 rounded-lg text-xs font-semibold border transition hover:border-telecab-gold/50
+                       ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}"
+                data-desc title="Editar el descanso del coche (día y noche)">
+          ${descTxt ? esc(descTxt) : 'sin descanso'}
+        </button>`;
+      tdDesc.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche));
+    }
     tr.appendChild(tdDesc);
 
-    // Las 4 columnas de puestos.
-    cols().forEach(col => {
+    // Las columnas de puestos. Las de correturnos de un coche sin ellos se
+    // juntan en una sola celda con el aviso (si la tabla las enseña).
+    columnas.forEach(col => {
+      if (coche.sinCT && col.slot >= 2) return;
       const p = (coche.personas || [])[col.slot] || {};
       const td = document.createElement('td');
       td.className = 'px-3 py-2.5';
       td.appendChild(celdaPuesto(coche, p, col));
       tr.appendChild(td);
     });
+    const huecosCT = coche.sinCT ? columnas.filter(c => c.slot >= 2).length : 0;
+    if (huecosCT) {
+      const td = document.createElement('td');
+      td.colSpan = huecosCT;
+      td.className = 'px-3 py-2.5 align-middle';
+      td.innerHTML = `<p class="text-xs text-telecab-muted flex items-center gap-2 max-w-md">
+        <i class="fa-solid fa-user-slash shrink-0"></i>${esc(AVISO_SIN_CT)}</p>`;
+      tr.appendChild(td);
+    }
 
     // Acciones del coche.
     const tdAcc = document.createElement('td');
@@ -1468,7 +1523,10 @@
       <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-swap
               title="Intercambiar coche por otro (cada tripulación se queda en su cuadrante y días; solo cambia la matrícula)"><i class="fa-solid fa-shuffle"></i></button>
       <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-cambiar
-              title="Cambiar de coche (llevarse la tripulación a una matrícula libre)"><i class="fa-solid fa-right-left"></i></button>`;
+              title="Cambiar de coche (llevarse la tripulación a una matrícula libre)"><i class="fa-solid fa-right-left"></i></button>
+      <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-sinct
+              title="${coche.sinCT ? 'Volver a tener correturnos' : 'Sin correturnos: quitar sus correturnos y dar a cada fijo su propio descanso'}"><i class="fa-solid ${coche.sinCT ? 'fa-user-plus' : 'fa-user-slash'}"></i></button>`;
+    tdAcc.querySelector('[data-sinct]').addEventListener('click', () => sinCorreturnosUI(coche));
     tdAcc.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
     tdAcc.querySelector('[data-swap]').addEventListener('click', () => reemplazarMatriculaUI(coche));
     tdAcc.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
@@ -1546,30 +1604,42 @@
           ${medidor(ic.horas)}<b class="text-telecab-text font-semibold">${fmtH(ic.horas)} h</b></span>
       </header>
       <div class="flex items-center gap-1 -mt-1">
-        <button type="button" data-desc title="Editar el descanso del coche (día y noche)"
+        ${coche.sinCT ? botonesLibranzaFijos(coche, true) : `<button type="button" data-desc title="Editar el descanso del coche (día y noche)"
                 class="px-1.5 py-0.5 rounded-md text-[11px] font-semibold border transition-colors hover:border-telecab-gold/50
                        ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
-          ${descTxt ? 'libra ' + esc(descTxt) : 'sin descanso'}</button>
+          ${descTxt ? 'libra ' + esc(descTxt) : 'sin descanso'}</button>`}
         ${falta ? `<span class="min-w-0 truncate text-[11px] text-telecab-warn" title="${esc('Falta ' + falta)}">Falta ${esc(falta)}</span>` : ''}
         <span class="ml-auto flex items-center shrink-0">
           ${accion('data-cua', enCuadrante ? 'fa-object-ungroup' : 'fa-object-group', enCuadrante ? 'Sacar del cuadrante' : 'Meter en un cuadrante')}
           ${accion('data-swap', 'fa-shuffle', 'Intercambiar coche por otro (cada tripulación se queda en su cuadrante y días; solo cambia la matrícula)')}
           ${accion('data-cambiar', 'fa-right-left', 'Cambiar de coche (llevarse la tripulación a una matrícula libre)')}
+          ${accion('data-sinct', coche.sinCT ? 'fa-user-plus' : 'fa-user-slash', coche.sinCT ? 'Volver a tener correturnos' : 'Sin correturnos: quitar sus correturnos y dar a cada fijo su propio descanso')}
         </span>
       </div>
+      ${coche.sinCT ? `<div class="-mt-1">${chipSinCT(coche)}</div>` : ''}
       <div class="grid grid-cols-2 gap-x-2 gap-y-1" data-plazas>
         <div class="px-2 text-[10px] font-semibold uppercase tracking-wider text-telecab-muted"><i class="fa-solid fa-sun mr-1"></i>Día</div>
         <div class="px-2 text-[10px] font-semibold uppercase tracking-wider text-telecab-muted"><i class="fa-solid fa-moon mr-1"></i>Noche</div>
       </div>`;
     art.querySelector('[data-estado]').addEventListener('click', () => cambiarEstado(coche));
-    art.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche));
+    const bDesc = art.querySelector('[data-desc]');
+    if (bDesc) bDesc.addEventListener('click', () => fijarDescansoCoche(coche));
+    art.querySelectorAll('[data-desc-turno]').forEach(b =>
+      b.addEventListener('click', () => fijarDescansoCoche(coche, b.dataset.descTurno)));
+    art.querySelector('[data-sinct]').addEventListener('click', () => sinCorreturnosUI(coche));
     art.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
     art.querySelector('[data-swap]').addEventListener('click', () => reemplazarMatriculaUI(coche));
     art.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
     // Las plazas van por orden de slot (0 fijo día, 1 fijo noche, 2 CT día…):
     // en una rejilla de dos columnas eso deja el día a la izquierda.
     const rejilla = art.querySelector('[data-plazas]');
-    cols().forEach(col => rejilla.appendChild(plazaCompacta(coche, (coche.personas || [])[col.slot] || {}, col)));
+    colsDe(coche).forEach(col => rejilla.appendChild(plazaCompacta(coche, (coche.personas || [])[col.slot] || {}, col)));
+    if (coche.sinCT) {
+      const aviso = document.createElement('p');
+      aviso.className = 'col-span-2 px-2 pt-1 text-[11px] text-telecab-muted flex items-center gap-1.5';
+      aviso.innerHTML = `<i class="fa-solid fa-user-slash"></i>${esc(AVISO_SIN_CT)}`;
+      rejilla.appendChild(aviso);
+    }
     if (parado) {
       const tieneGente = (coche.personas || []).some(p => p && p.id);
       const b = document.createElement('button');
@@ -1748,7 +1818,8 @@
     if (p.id) {
       // Sub-línea: para el fijo, los días que libra; para el CT, sus días.
       let sub = '';
-      if (esFijo) sub = 'libra ' + (diasTexto(coche.descanso) || '—');
+      // En un coche sin correturnos (db/203), los de SU turno.
+      if (esFijo) sub = 'libra ' + (diasTexto(coche.sinCT ? (coche.descansoTurno || {})[col.turno] : coche.descanso) || '—');
       else if (!esFijo) {
         const dias = (p.diasManual || []).some(Boolean)
           ? (p.diasManual || []).map((v, i) => v ? DIAS_LETRA[i] : null).filter(Boolean).join(' ')
@@ -2506,7 +2577,8 @@
     if (dias === undefined) return;
     if (!dias.length) { alert('Elige al menos un día'); return; }
     const candidatos = [
-      ...(T.coches || []).filter(c => !c.cuadranteId).map(c => ({ vehiculoId: c.vehiculoId, matricula: c.matricula, zona: c.zona })),
+      // Un coche sin correturnos no hace bloque: entra con «Meter en un cuadrante».
+      ...(T.coches || []).filter(c => !c.cuadranteId && !c.sinCT).map(c => ({ vehiculoId: c.vehiculoId, matricula: c.matricula, zona: c.zona })),
       ...(T.emergencia || []).map(c => ({ vehiculoId: c.vehiculoId, matricula: c.matricula, zona: c.zona })),
     ];
     const vistos = new Set(); const unicos = candidatos.filter(c => !vistos.has(c.vehiculoId) && vistos.add(c.vehiculoId));
@@ -2577,6 +2649,60 @@
     } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
+  /**
+   * «SIN CORRETURNOS» (db/203). Ponerlo quita sus correturnos desde el día que
+   * se mira (nunca antes de hoy), oculta sus columnas y le da a cada fijo su
+   * descanso, que empieza siendo el del coche. Quitarlo pide el descanso que
+   * vuelve a tener el coche, el que cubrirá su correturnos.
+   */
+  async function sinCorreturnosUI(coche) {
+    const desde = isoAes(desdeSinCT());
+    if (coche.sinCT) {
+      const dias = await editarDescanso({ titulo: `Volver a tener correturnos · ${coche.matricula}`,
+        actual: (coche.descansoTurno || {}).dia || [],
+        nota: `Desde el ${desde}. El descanso del coche (los dos fijos a la vez), que es lo que cubrirá su correturnos. Después se pone el correturnos como en cualquier coche.` });
+      if (dias === undefined) return;
+      try {
+        await pedirTablero('/planificador-v2/api/sin-correturnos', { vehiculoId: coche.vehiculoId, activar: false, dias, dia: DIA });
+        Dialogo.hecho(`${coche.matricula} vuelve a llevar correturnos`);
+      } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+      return;
+    }
+    // Quién deja de llevarlo: los correturnos de hoy y los que estaban por llegar.
+    const cts = [];
+    (coche.personas || []).forEach(p => {
+      if (!p || p.slot < 2) return;
+      if (p.id) cts.push(`${p.nombre} (${p.etiqueta})`);
+      if (p.futuro) cts.push(`${p.futuro.nombre} (${p.etiqueta}, llegaba el ${isoAes(p.futuro.desde)})`);
+    });
+    const descanso = (coche.descanso || []).length ? diasTexto(coche.descanso) : '';
+    const ok = await Dialogo.confirmar({
+      titulo: `Sin correturnos · ${coche.matricula}`, tono: 'aviso', ancho: 'max-w-lg',
+      si: 'Quitar correturnos', no: 'Cancelar',
+      html: `<p class="text-sm mb-2">Desde el <b>${esc(desde)}</b> este coche no lleva correturnos:</p>
+        <ul class="text-sm list-disc pl-5 space-y-1 mb-2">
+          <li>${cts.length ? 'Se quitan de este coche: <b>' + cts.map(esc).join(', ') + '</b>. Si no tienen otra plaza, pasan al banquillo.' : 'Ahora no tiene correturnos puestos.'}</li>
+          <li>Se ocultan sus columnas de correturnos y no se pueden agregar personas en ellas.</li>
+          <li>Cada fijo pasa a tener su propio descanso${descanso ? `; los dos empiezan con el del coche (<b>${esc(descanso)}</b>) y luego se cambia el de cada uno` : ''}. Los días que libre un fijo, ese turno el coche no sale.</li>
+          <li>Puede seguir en su cuadrante: es para tener uno.</li>
+        </ul>`,
+    });
+    if (!ok) return;
+    try {
+      const j = await pedirTablero('/planificador-v2/api/sin-correturnos', { vehiculoId: coche.vehiculoId, dia: DIA });
+      const quitados = (j.quitados || []).map(q => `${q.nombre} (CT ${String(q.turno || '').toLowerCase()})`);
+      if (quitados.length || (j.vacantes || []).length) {
+        await Dialogo.aviso({
+          titulo: `${coche.matricula} ya no lleva correturnos`, tono: 'aviso',
+          texto: (quitados.length ? `Se han quitado de este coche: ${quitados.join(', ')}. Si no tienen otra plaza, están en el banquillo. ` : '') +
+            ((j.vacantes || []).length ? `Ojo: la vacante ${j.vacantes.join(', ')} tenía prometida una de sus plazas de correturnos; díselo a Selección.` : ''),
+        });
+      } else {
+        Dialogo.hecho(`${coche.matricula} sin correturnos`);
+      }
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
   // Elegir qué bloques (coches del cuadrante) cubre un CT. Por defecto, todos.
   function elegirBloques(lista) {
     return new Promise(resolve => {
@@ -2621,14 +2747,20 @@
     });
   }
 
-  // ── Descanso del coche (día + noche a la vez) ─────────────────────────────
-  async function fijarDescansoCoche(coche) {
-    const dias = await editarDescanso({ titulo: `Descanso de ${coche.matricula}`, actual: coche.descanso || [] });
+  // ── Descanso del coche (día + noche a la vez), o el de un fijo ────────────
+  // Con `turno` ('dia' / 'noche'): el de ese fijo, en un coche sin correturnos.
+  async function fijarDescansoCoche(coche, turno) {
+    const deUnFijo = !!turno;
+    const quien = turno === 'noche' ? 'noche' : 'día';
+    const dias = await editarDescanso(deUnFijo
+      ? { titulo: `Libranza del fijo de ${quien} · ${coche.matricula}`, actual: (coche.descansoTurno || {})[turno] || [],
+          nota: `Los días que libra el fijo de ${quien}. El coche no tiene correturnos: esos días, el turno de ${quien} no sale.` }
+      : { titulo: `Descanso de ${coche.matricula}`, actual: coche.descanso || [] });
     if (dias === undefined) return;   // cancelado
     try {
       const r = await fetch('/planificador-v2/api/descanso', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vehiculoId: coche.vehiculoId, dias, dia: DIA }),
+        body: JSON.stringify({ vehiculoId: coche.vehiculoId, dias, dia: DIA, turno: turno || undefined }),
       });
       const j = await r.json();
       if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo guardar el descanso');
@@ -2636,7 +2768,7 @@
     } catch (e) { alert(e.message); }
   }
 
-  function editarDescanso({ titulo, actual }) {
+  function editarDescanso({ titulo, actual, nota }) {
     return new Promise(resolve => {
       const sel = new Set(actual || []);
       const fondo = document.createElement('div');
@@ -2648,7 +2780,7 @@
             <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="p-4">
-            <p class="text-xs text-telecab-muted mb-3">Los días que libran los fijos (día y noche a la vez). El correturnos cubre justo esos días.</p>
+            <p class="text-xs text-telecab-muted mb-3">${esc(nota || 'Los días que libran los fijos (día y noche a la vez). El correturnos cubre justo esos días.')}</p>
             <div class="flex flex-wrap gap-1.5 justify-center" data-dias></div>
             <div class="flex gap-2 mt-4">
               <button data-guardar class="flex-1 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">Guardar</button>

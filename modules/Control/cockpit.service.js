@@ -336,6 +336,12 @@ async function enDirecto({ dia } = {}) {
       dia: nombreCelda(c.semana && c.semana[idx * 2]),
       noche: nombreCelda(c.semana && c.semana[idx * 2 + 1]),
     };
+    // Un coche sin correturnos el día que libra su fijo (db/203): ese turno no
+    // sale y es lo planificado, no una plaza vacía.
+    const libra = {
+      dia: !!(c.semana && c.semana[idx * 2] && c.semana[idx * 2].libra),
+      noche: !!(c.semana && c.semana[idx * 2 + 1] && c.semana[idx * 2 + 1].libra),
+    };
     const vivo = vivos.get(k) || null;
     const incidencias = porInc.get(k) || [];
     const kmc = kmHoy.get(k) || {};
@@ -343,7 +349,7 @@ async function enDirecto({ dia } = {}) {
       matricula: c.matricula, matriculaNorm: k,
       zona: c.zona || '', cuadrante: cuadDe(c),
       estadoVeh: c.estadoVeh || '', operativo: c.operativo !== false,
-      plan, vivo, incidencias,
+      plan, libra, sinCT: !!c.sinCT, vivo, incidencias,
       km: kmc.km || 0, viajes: kmc.viajes || 0,
       enPlan: true,
       estado: calcEstado({ plan, vivo, nIncidencias: incidencias.length, operativo: c.operativo !== false }),

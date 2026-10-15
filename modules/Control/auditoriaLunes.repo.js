@@ -64,7 +64,9 @@ async function ultimosLunes(n) {
 // justamente quién debía salir y no salió porque estaba de vacaciones o de baja.
 const SQL_PLAN = `
   WITH descansa_lunes AS (
-    SELECT DISTINCT vd.vehiculo_id
+    -- Con su turno: NULL es el coche entero; 1/2, el fijo de ese turno en un
+    -- coche sin correturnos (db/203).
+    SELECT DISTINCT vd.vehiculo_id, vd.turno_id
       FROM vehiculo_descanso vd
       JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
      WHERE vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)
@@ -82,7 +84,9 @@ const SQL_PLAN = `
      AND (CASE WHEN s.rol = 'CT'
                THEN EXISTS (SELECT 1 FROM asignacion_dia ad
                              WHERE ad.asignacion_id = a.id AND ad.dia_semana = ${LUNES})
-               ELSE p.vehiculo_id NOT IN (SELECT vehiculo_id FROM descansa_lunes)
+               ELSE NOT EXISTS (SELECT 1 FROM descansa_lunes dl
+                                 WHERE dl.vehiculo_id = p.vehiculo_id
+                                   AND (dl.turno_id IS NULL OR dl.turno_id = s.turno_id))
           END)`;
 
 // Los coches del cuadrante: todos los que tienen plaza viva, con su estado y sus

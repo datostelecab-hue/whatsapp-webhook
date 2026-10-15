@@ -52,7 +52,13 @@ function diasLibranza(conductor) {
 // las filas porque leía la libranza del FIJO (patron_libranza), que nadie
 // tiene: 0 patrones frente a 132 coches con descanso.
 function descansoCoche(coche) {
-  return ((coche && coche.descanso) || []).map(d => DIAS_SEM[d - 1]).filter(Boolean).join('/');
+  const letras = dias => (dias || []).map(d => DIAS_SEM[d - 1]).filter(Boolean).join('/');
+  // Un coche sin correturnos (db/203) no tiene un descanso: tiene uno por fijo.
+  if (coche && coche.sinCT) {
+    const t = coche.descansoTurno || {};
+    return `Día ${letras(t.dia) || '-'} · Noche ${letras(t.noche) || '-'}`;
+  }
+  return letras(coche && coche.descanso);
 }
 
 // Estado del vehículo, para anotar (mini) los coches no operativos que se mantienen
@@ -302,6 +308,8 @@ async function exportar(tablero) {
     // Los correturnos de este coche, por si el bloque no los combina (grupo de 1).
     r.getCell(6).value = wrap(juntar(fichaRuns(coche.personas[2], false), fichaRuns(coche.personas[4], false)));
     r.getCell(7).value = wrap(juntar(fichaRuns(coche.personas[3], false), fichaRuns(coche.personas[5], false)));
+    // Sin correturnos (db/203): no es un hueco, es como va ese coche.
+    if (coche.sinCT) { r.getCell(6).value = 'Sin correturnos'; r.getCell(7).value = 'Sin correturnos'; }
 
     // De qué plazas depende el color de cada columna de turno.
     const PLAZAS_COL = { 4: [0], 5: [1], 6: [2, 4], 7: [3, 5] };
@@ -321,7 +329,8 @@ async function exportar(tablero) {
       // Y un hueco ya prometido va en azul, no en amarillo: no hay que buscar a
       // nadie, hay que esperar a que llegue. Pintarlos igual los cuenta dos veces.
       const plazas = (PLAZAS_COL[c] || []).map(s => coche.personas[s])
-        .filter(p => p && !(esRefuerzo(p) && !refuerzoAbierto));
+        .filter(p => p && !(esRefuerzo(p) && !refuerzoAbierto))
+        .filter(p => !(coche.sinCT && p.rol === 'CT'));
       if (!plazas.length) { cel.fill = relleno(BLANCO); continue; }
       const falta = plazas.some(p => !hayPersona(p));
       const prometida = plazas.every(p => hayPersona(p) || p.vacante);

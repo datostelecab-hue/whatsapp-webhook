@@ -119,7 +119,14 @@ router.post('/api/reemplazar-matricula', responde(async req => {
 
 router.post('/api/descanso', responde(async req => {
   const b = req.body || {};
-  return tablero.fijarDescanso({ vehiculoId: b.vehiculoId, dias: b.dias, dia: b.dia }, await quien(req));
+  return tablero.fijarDescanso({ vehiculoId: b.vehiculoId, dias: b.dias, dia: b.dia, turno: b.turno }, await quien(req));
+}));
+
+// «Sin correturnos» (db/203): ponerlo, o quitarlo con `activar: false` y los
+// días del bloque que vuelve a tener el coche.
+router.post('/api/sin-correturnos', responde(async req => {
+  const b = req.body || {};
+  return tablero.sinCorreturnos({ vehiculoId: b.vehiculoId, activar: b.activar, dias: b.dias, dia: b.dia }, await quien(req));
 }));
 
 router.post('/api/cubrir', responde(async req => tablero.cubrirAusencia(req.body || {}, await quien(req))));

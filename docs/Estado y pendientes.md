@@ -17,6 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## La baja programada y el contrato de Aaron (13/10/2026)
 
+- **Desplegar y aplicar `db/203` enseguida**: los [[Coches sin correturnos]]. Añade el descanso por turno y la marca del coche, cambia `f_cobertura` y tres vistas, y pone un disparador. El tablero y la Plantilla aguantan sin ella; las salidas por coche, las vacantes, la asistencia y la ficha 360 no.
 - **Desplegar y aplicar `db/202`**: las plazas, el turno y el inicio previsto de Daniela Durán (desde el 16/10) y Alejandro Duarte (desde el 14/10) pasan a empezar en su fecha de alta. Ver [[Conductores#Lo que colgaba del alta se mueve con ella (15/10/2026, db/202)]]. Quedan por decidir seis personas de septiembre con el turno de uno a tres días antes de su alta: Iván Martínez, Abdelkader Kourrit, José Alberto Polanco, Francisco Gómez Zamora, Anthony Adrián Rodríguez y Harroun Abdelhak (este, también con una plaza del 21 al 29/09). Y Franklyn de León, con el «Activo» un día antes.
 - **Aplicar `db/201`**: pone «De dónde sale» (la fila del Excel de RRHH) a las 28 vacaciones de la carga inicial. Solo el motivo; ni fechas ni días. Ver [[Vacaciones]].
 - **Aplicar `db/200`** (las altas y bajas de la exportación de nóminas de RRHH: 17 cambios). Y que RRHH conteste lo de «Altas RRHH - lo que no cuadra.xlsx»:

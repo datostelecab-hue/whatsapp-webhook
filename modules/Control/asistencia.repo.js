@@ -23,7 +23,10 @@ libra_hoy AS (
   SELECT DISTINCT a.conductor_id, vdd.dia_semana
     FROM asignacion a
     JOIN plaza p              ON p.id = a.plaza_id AND p.baja_at IS NULL
+    JOIN cat_slot s           ON s.slot = p.slot
     JOIN vehiculo_descanso vd ON vd.vehiculo_id = p.vehiculo_id
+                             -- el del coche o el de su turno (coche sin CT, db/203)
+                             AND (vd.turno_id IS NULL OR vd.turno_id = s.turno_id)
                              AND vd.desde <= CURRENT_DATE
                              AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)
     JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id

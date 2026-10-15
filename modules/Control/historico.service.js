@@ -116,6 +116,8 @@ function cochesSinConductor(coches, ocupados = {}) {
     if (!c.enPlan || c.operativo === false) return;
     ['dia', 'noche'].forEach(t => {
       if ((c.plan || {})[t] || (ocupados[t] && ocupados[t].has(norm(c.matricula)))) return;
+      // El día que libra el fijo de un coche sin correturnos (db/203) no es un hueco.
+      if ((c.libra || {})[t]) return;
       sin[t].push({ matricula: c.matricula, cuadrante: c.cuadrante || '' });
     });
   });

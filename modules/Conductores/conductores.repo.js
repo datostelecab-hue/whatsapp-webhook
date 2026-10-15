@@ -47,7 +47,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
   // Mismo turno que se PINTA: el del historial o, si no lo hay, el de su plaza.
   if (turnoId)   { params.push(Number(turnoId)); donde.push(`COALESCE(th.turno_id, pl.turno_id) = $${params.length}`); }
 
-  const r = await db.consulta(`
+  const sqlLista = `
     WITH ref AS (SELECT COALESCE($1::date, CURRENT_DATE) AS dia)
     SELECT c.id,
            ${NOMBRE_BOLT}                  AS nombre_completo,
@@ -236,6 +236,8 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
                              SELECT 1 FROM vehiculo_descanso vd
                                JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                               WHERE vd.vehiculo_id = p4.vehiculo_id
+                                -- el del coche o el de su turno (coche sin CT, db/203)
+                                AND (vd.turno_id IS NULL OR vd.turno_id = s4.turno_id)
                                 AND vd.desde <= ref.dia
                                 AND (vd.hasta IS NULL OR vd.hasta >= ref.dia)
                                 AND vdd.dia_semana = g.n)
@@ -279,7 +281,13 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- EL ORDEN LO PONE LA BASE Y LOS FILTROS NO LO TOCAN: la pantalla filtra
     -- sobre esta misma lista sin reordenarla, así que el criterio vale igual
     -- mirando a todos, a los de baja o a los que entran.
-    ORDER BY COALESCE(ultimo.baja, e.alta) DESC NULLS LAST, ${NOMBRE_BOLT}`, params);
+    ORDER BY COALESCE(ultimo.baja, e.alta) DESC NULLS LAST, ${NOMBRE_BOLT}`;
+  // Entre desplegar y aplicar db/203 no hay descanso por turno: la libranza,
+  // como antes. La Plantilla no puede caerse esos minutos.
+  const r = await db.consulta(sqlLista, params).catch(e => {
+    if (e.code !== '42703') throw e;
+    return db.consulta(sqlLista.replace(/AND \(vd\.turno_id IS NULL OR vd\.turno_id = s4\.turno_id\)/, ''), params);
+  });
 
   // LA BAJA PROGRAMADA (db/191): sigue de alta, y se dice cuándo se va. Va en
   // su propia consulta para que, sin la migración, la lista salga igual.

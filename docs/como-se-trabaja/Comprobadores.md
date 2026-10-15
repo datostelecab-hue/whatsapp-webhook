@@ -410,7 +410,8 @@ No son de los seis, pero forman parte de la misma red:
   aún no le tocaba), quién va en cada turno (TodoTurno en los dos), los coches sin
   conductor (también la celda sin nombre con alguien del plan en el coche), las llamadas
   y las alertas del turno, la frase, y que el PDF sale con emojis, flechas, textos
-  largos, muchas páginas o un día vacío. 24 casos.
+  largos, muchas páginas o un día vacío. También que el día que libra el fijo de un
+  [[Coches sin correturnos|coche sin correturnos]] no es «sin conductor». 25 casos.
 
 ---
 

@@ -101,6 +101,10 @@ juan.llamadas = [llamada('L3', juan.conductorId, '06:00', { alertas: [{ alerta: 
   igual('Celda sin nombre pero con alguien del plan en el coche: no es «sin conductor»', cochesSinConductor([
     { matricula: '9528 MMX', cuadrante: 'CUADRANTE 24', enPlan: true, operativo: true, plan: { dia: '', noche: '' } },
   ], { dia: new Set(['9528MMX']), noche: new Set() }), { dia: [], noche: [{ matricula: '9528 MMX', cuadrante: 'CUADRANTE 24' }] });
+  igual('Coche sin correturnos el día que libra su fijo de noche: no es «sin conductor» (db/203)', cochesSinConductor([
+    { matricula: '0348MMZ', cuadrante: 'CUADRANTE 22', enPlan: true, operativo: true, sinCT: true,
+      plan: { dia: 'Jhonatan', noche: '' }, libra: { dia: false, noche: true } },
+  ]), { dia: [], noche: [] });
 
   // ── 5. El PDF sale ─────────────────────────────────────────────────────────
   igual('Lo que las fuentes no saben escribir se va; los acentos y la ñ se quedan',

@@ -137,6 +137,7 @@ async function leer(conductorId) {
                      FROM vehiculo_descanso vd
                      JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                     WHERE vd.vehiculo_id = vp.vehiculo_id
+                      AND (vd.turno_id IS NULL OR vd.turno_id = vp.turno_id)
                       AND vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)),
                   ARRAY[]::smallint[]) AS descanso,
                 COALESCE(

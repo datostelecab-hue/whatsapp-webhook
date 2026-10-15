@@ -111,10 +111,28 @@ async function reemplazarMatricula({ de, a, dia } = {}, quien) {
   return conTablero(r, dia);
 }
 
-/** El descanso de un coche: escribe la libranza de sus dos fijos. */
-async function fijarDescanso({ vehiculoId, dias, dia } = {}, quien) {
-  const r = await plan.fijarDescanso(vehiculoId, dias, { dia, ...quien });
-  console.log(`🛌 [TABLERO] descanso del coche ${vehiculoId} = [${(r.dias || []).join(' ')}] desde ${r.dia}`);
+/**
+ * El descanso de un coche: escribe la libranza de sus dos fijos. Con `turno`,
+ * la de uno solo, en un coche sin correturnos (db/203).
+ */
+async function fijarDescanso({ vehiculoId, dias, dia, turno } = {}, quien) {
+  const r = await plan.fijarDescanso(vehiculoId, dias, { dia, turno, ...quien });
+  console.log(`🛌 [TABLERO] descanso del coche ${vehiculoId}${turno ? ' (fijo de ' + turno + ')' : ''} = [${(r.dias || []).join(' ')}] desde ${r.dia}`);
+  return conTablero(r, dia);
+}
+
+/**
+ * «SIN CORRETURNOS» (db/203): el coche deja de llevar CT desde ese día y cada
+ * fijo pasa a tener su descanso. `activar: false` es la vuelta, con los días
+ * del bloque que vuelve a tener el coche.
+ */
+async function sinCorreturnos({ vehiculoId, activar, dias, dia } = {}, quien) {
+  const r = activar === false
+    ? await plan.volverConCorreturnos(vehiculoId, dias, { dia, ...quien })
+    : await plan.quitarCorreturnos(vehiculoId, { dia, ...quien });
+  console.log(activar === false
+    ? `🚗 [TABLERO] ${r.matricula} vuelve a llevar correturnos desde ${r.dia} (descanso [${r.descanso.join(' ')}])`
+    : `🚗 [TABLERO] ${r.matricula} sin correturnos desde ${r.dia}: fuera ${r.quitados.length} correturnos`);
   return conTablero(r, dia);
 }
 
@@ -371,7 +389,7 @@ const parrilla = async dia => {
 module.exports = {
   paraLaPantalla, tablero,
   guardar, comprobar, quitarRelevo, cambiarCoche, reemplazarMatricula,
-  fijarDescanso, cubrirAusencia, libranzaExcepcional, borrarLibranzaExcepcional,
+  fijarDescanso, sinCorreturnos, cubrirAusencia, libranzaExcepcional, borrarLibranzaExcepcional,
   cuadrantes, crearCuadrante, borrarCuadrante, anadirBloque, meterCoche, asignarCT,
   eventoEstado, crearEvento, editarEvento, cancelarEvento, restaurarEvento, mensajeDeEvento,
   incorporaciones, colocarIncorporacion, aceptarIncorporacion, rechazarIncorporacion,

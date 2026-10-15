@@ -16,7 +16,7 @@ Camilo, 15/10/2026: *«en el reporte del histórico de llamadas que tenemos ahor
 | La ruta | `GET /control/historico/pdf?dia=&turno=dia\|noche\|todo` (permiso: el del Histórico) |
 | Los coches sin conductor | `historico.service.cochesSinConductor()`, dentro de `parte()` |
 | El botón | `controlHistorico.ejs`: `#h-pdf` abre un `Dialogo.formulario` para elegir el turno |
-| Comprobador | `scripts/comprobar-historico-pdf.js` (24 casos) |
+| Comprobador | `scripts/comprobar-historico-pdf.js` (25 casos) |
 
 ## Qué cuenta
 
@@ -33,7 +33,7 @@ Arriba van **cuatro cifras**: salieron, no saldrán, sin avisar y **coches sin c
 
 ## Las reglas que no se ven
 
-**Un coche sin conductor es una plaza que nadie cubría.** Cuenta así si es operativo, está en el plan y tiene la celda de ese turno vacía. No es el descanso del coche, porque ese día lo cubre su correturnos. Pero la celda del cockpit solo trae el **nombre**, y hay celdas con persona y sin nombre: alguien que ya no está en la plantilla del planificador, como una baja voluntaria del mismo día (pasó el 14/10 con el 9528MMX). Por eso también se mira si alguien del plan de ese turno lleva el coche. Ese mismo caso salía **sin nombre** en el histórico; ahora `parte()` completa el nombre desde la ficha (`historico.repo.nombres`).
+**Un coche sin conductor es una plaza que nadie cubría.** Cuenta así si es operativo, está en el plan y tiene la celda de ese turno vacía. No es el descanso del coche, porque ese día lo cubre su correturnos. Pero la celda del cockpit solo trae el **nombre**, y hay celdas con persona y sin nombre: alguien que ya no está en la plantilla del planificador, como una baja voluntaria del mismo día (pasó el 14/10 con el 9528MMX). Por eso también se mira si alguien del plan de ese turno lleva el coche. Tampoco cuenta el turno que libra el fijo de un [[Coches sin correturnos|coche sin correturnos]]: ese día no sale, y es lo planificado (la celda lleva `libra`). Ese mismo caso salía **sin nombre** en el histórico; ahora `parte()` completa el nombre desde la ficha (`historico.repo.nombres`).
 
 **Sin la actividad de BOLT no hay informe.** Si el núcleo no responde, el cockpit pone a todos «pendiente» y el PDF diría «salieron 0, a 57 aún no les tocaba». Pasó en una prueba. Por eso `parte()` dice `hayActividad`, y sin ella el servicio da un error claro que la pantalla enseña en un aviso. Por lo mismo, el botón pide el PDF con `fetch` en vez de `location.href`: si falla, no queda una página en blanco con un JSON.
 

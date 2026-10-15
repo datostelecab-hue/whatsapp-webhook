@@ -90,7 +90,7 @@ async function tablero({ dia } = {}) {
   const fechas = semanaDesde(lunes);
   const domingo = fechas[DIAS - 1];
 
-  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos, comprometidas, bajas] = await Promise.all([
+  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos, comprometidas, bajas, sinCt] = await Promise.all([
     // Las plazas de los coches que se planifican. El orden es el de la
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
@@ -216,13 +216,26 @@ async function tablero({ dia } = {}) {
         WHERE le.dia_trabaja BETWEEN $1 AND $2 OR le.dia_libra BETWEEN $1 AND $2
         ORDER BY le.dia_trabaja`, [lunes, domingo]),
 
-    // El descanso (bloque) de cada coche vigente el dia efectivo.
+    // El descanso (bloque) de cada coche vigente el dia efectivo. Por turno
+    // (db/203): sin turno es el del coche entero; con turno, el de ese fijo en
+    // un coche sin correturnos.
     db.consulta(
-      `SELECT vd.vehiculo_id, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
+      `SELECT vd.vehiculo_id, vd.turno_id, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
          FROM vehiculo_descanso vd
          JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
         WHERE vd.desde <= $1 AND (vd.hasta IS NULL OR vd.hasta >= $1)
-        GROUP BY vd.vehiculo_id`, [efectivo]),
+        GROUP BY vd.vehiculo_id, vd.turno_id`, [efectivo])
+      // Entre desplegar y aplicar db/203 no hay columna de turno: como antes.
+      // Del tablero cuelgan Control y el bot, que no pueden caerse esos minutos.
+      .catch(e => {
+        if (e.code !== '42703') throw e;
+        return db.consulta(
+          `SELECT vd.vehiculo_id, NULL::smallint AS turno_id, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
+             FROM vehiculo_descanso vd
+             JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+            WHERE vd.desde <= $1 AND (vd.hasta IS NULL OR vd.hasta >= $1)
+            GROUP BY vd.vehiculo_id`, [efectivo]);
+      }),
 
     // El PRÓXIMO DUEÑO de cada plaza: la primera asignación que EMPIEZA después del
     // día efectivo. Es lo que permite avisar "→ Carlos, llega el X" aunque estés
@@ -281,9 +294,20 @@ async function tablero({ dia } = {}) {
           AND NOT EXISTS (SELECT 1 FROM conductor_periodo_empleo ab
                            WHERE ab.conductor_id = c.id AND ab.baja IS NULL)
         ORDER BY e.conductor_id, e.baja DESC, e.id DESC`, [hoy(), DIAS_BAJAS]),
+
+    // LOS COCHES SIN CORRETURNOS (db/203) el día efectivo, y desde cuándo.
+    db.consulta(
+      `SELECT vehiculo_id, to_char(desde, 'YYYY-MM-DD') AS desde FROM vehiculo_sin_ct
+        WHERE desde <= $1 AND (hasta IS NULL OR hasta >= $1)`, [efectivo])
+      .catch(e => { if (e.code === '42P01') return { rows: [] }; throw e; }),   // sin db/203, ninguno
   ]);
 
-  const descansoDe = new Map(descansos.rows.map(r => [String(r.vehiculo_id), (r.dias || []).map(Number)]));
+  const descansoDe = new Map(descansos.rows.filter(r => r.turno_id == null)
+    .map(r => [String(r.vehiculo_id), (r.dias || []).map(Number)]));
+  // El de cada fijo de un coche sin correturnos: 'vehiculo|turno_id' → días (ISODOW).
+  const descansoTurnoDe = new Map(descansos.rows.filter(r => r.turno_id != null)
+    .map(r => [`${r.vehiculo_id}|${r.turno_id}`, (r.dias || []).map(Number)]));
+  const sinCtDe = new Map(sinCt.rows.map(r => [String(r.vehiculo_id), r.desde]));
 
   // EL EVENTO y LOS RELEVOS. Van aparte de la tanda de arriba porque los dos
   // dependen de f_cobertura y se calculan, no se leen: el evento para saber
@@ -469,6 +493,13 @@ async function tablero({ dia } = {}) {
         cuadranteNum: p.cuadrante_num == null ? null : Number(p.cuadrante_num),
         // El descanso del coche (bloque): los días que libran sus fijos.
         descanso: descansoDe.get(String(p.vehiculo_id)) || [],
+        // SIN CORRETURNOS (db/203): no lleva CT y cada fijo libra lo suyo.
+        sinCT: sinCtDe.has(k),
+        sinCTDesde: sinCtDe.get(k) || '',
+        descansoTurno: {
+          dia: descansoTurnoDe.get(`${p.vehiculo_id}|1`) || [],
+          noche: descansoTurnoDe.get(`${p.vehiculo_id}|2`) || [],
+        },
         // `estadoVeh` con el nombre que usa el front. Es el CODIGO de la base
         // ('O', 'R', 'T'...), no el simbolo de la hoja: quien decide que
         // significa operativo es `cat_estado_vehiculo`, no una lista de textos.
@@ -602,11 +633,15 @@ async function tablero({ dia } = {}) {
       // Lo que un coche necesita de correturnos son los días que libra su fijo
       // (`diasSugeridos`); lo que tiene es lo que sus CT llevan escrito. La
       // resta no depende de la semana que estés mirando.
-      const plazasCt = [(coche.personas || [])[off + 2], (coche.personas || [])[off + 4]].filter(Boolean);
+      //
+      // UN COCHE SIN CORRETURNOS (db/203) no pide ninguno: los días que libra
+      // su fijo, ese turno el coche no sale, y está bien.
+      const plazasCt = coche.sinCT ? []
+        : [(coche.personas || [])[off + 2], (coche.personas || [])[off + 4]].filter(Boolean);
       const pide = new Set();
       plazasCt.forEach(x => (x.diasSugeridos || []).forEach(d => pide.add(d)));
       // Sin fijo del que heredar los días, el descanso del coche dice cuáles son.
-      if (!pide.size) (coche.descanso || []).forEach(d => pide.add(d - 1));
+      if (!pide.size && !coche.sinCT) (coche.descanso || []).forEach(d => pide.add(d - 1));
       // Los días con dueño, con lo ya escrito: los del próximo correturnos si
       // lo hay; si no, los del de hoy mientras no se vaya.
       const conDueno = new Set();
@@ -641,6 +676,12 @@ async function tablero({ dia } = {}) {
         const rel0 = relevoDe.get(`${coche.vehiculoId}|${codigo}|${fechas[d]}`);
         if (rel0) celda.relevo = { id: rel0.id, sale: rel0.sale, entra: rel0.entra, motivo: rel0.motivo };
         if (!quienes.length) {
+          // El día que libra el fijo de un coche sin correturnos el coche no
+          // sale ese turno: se dice («libra») y no cuenta como hueco.
+          if (coche.sinCT && (coche.descansoTurno[codigo] || []).includes(d + 1)) {
+            celda.libra = true;
+            continue;
+          }
           if (coche.operativo) sinCubrir++;
           continue;
         }
@@ -1272,14 +1313,20 @@ async function comprobarPlan({ plazaId, conductorId, dias, desde, hasta } = {}, 
                  FROM vehiculo_descanso vd
                  JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                 WHERE vd.vehiculo_id = p.vehiculo_id
+                  AND (vd.turno_id IS NULL OR vd.turno_id = s.turno_id)
                   AND vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)),
-              '{}') AS descanso
+              '{}') AS descanso,
+            EXISTS (SELECT 1 FROM vehiculo_sin_ct x
+                     WHERE x.vehiculo_id = p.vehiculo_id AND (x.hasta IS NULL OR x.hasta >= CURRENT_DATE)) AS sin_ct
        FROM plaza p
        JOIN cat_slot s ON s.slot = p.slot
        JOIN turno t    ON t.id = s.turno_id
        JOIN vehiculo v ON v.id = p.vehiculo_id
       WHERE p.id = $1 AND p.baja_at IS NULL`, [plazaId])).rows[0];
   if (!p) throw new Error('Esa plaza ya no existe');
+  if (p.rol === 'CT' && p.sin_ct) {
+    throw new Error(`El ${p.matricula} no tiene correturnos: no se pueden agregar personas en esta matrícula`);
+  }
 
   // Desde el día pedido, pero nunca antes de su alta: es cuando de verdad entra,
   // y los choques que importan son los de a partir de ahí (ver `entraDesde`).
@@ -1907,12 +1954,19 @@ async function guardarDias(cli, asignacionId, plazaId, rol, dias) {
 // dias porque f_cobertura lee el descanso del coche de su plaza; no se copia
 // nada a cada conductor. La libranza excepcional (por conductor) manda encima.
 
-/** Pone (con fecha) el descanso de un coche desde un dia. Vacio = sin descanso. */
-async function ponerDescansoCoche(cli, vehiculoId, dias, dia, usuarioId) {
+/**
+ * Pone (con fecha) el descanso de un coche desde un dia. Vacio = sin descanso.
+ *
+ * `turnoId` (db/203): sin él, el descanso del coche entero —los dos fijos, el
+ * bloque del cuadrante—; con 1 o 2, solo el del fijo de ese turno, que es lo
+ * que lleva un coche sin correturnos.
+ */
+async function ponerDescansoCoche(cli, vehiculoId, dias, dia, usuarioId, turnoId = null) {
   const act = (await cli.query(
     `SELECT id, desde FROM vehiculo_descanso
-      WHERE vehiculo_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta >= $2)
-      ORDER BY desde DESC LIMIT 1`, [vehiculoId, dia])).rows[0];
+      WHERE vehiculo_id = $1 AND turno_id IS NOT DISTINCT FROM $3::smallint
+        AND desde <= $2 AND (hasta IS NULL OR hasta >= $2)
+      ORDER BY desde DESC LIMIT 1`, [vehiculoId, dia, turnoId])).rows[0];
   if (act) {
     // Cerrar la vispera; borrar si aun no habia empezado (no llego a pasar).
     if (fechaDe(act.desde) >= dia) await cli.query('DELETE FROM vehiculo_descanso WHERE id = $1', [act.id]);
@@ -1925,14 +1979,17 @@ async function ponerDescansoCoche(cli, vehiculoId, dias, dia, usuarioId) {
   // y la base lo rechazaba (ex_vehdesc_solape). Pasó con el 8203LTR el
   // 28/09/2026: tenía uno escrito desde el 05/10 y no se dejaba intercambiar
   // con ningún coche, ni cambiarle el descanso, ni meterlo en un bloque.
+  // Lo escrito para más adelante que chocaría: el del mismo turno o uno común
+  // (que ocupa los dos).
   const sig = (await cli.query(
     `SELECT desde FROM vehiculo_descanso
       WHERE vehiculo_id = $1 AND desde > $2
-      ORDER BY desde LIMIT 1`, [vehiculoId, dia])).rows[0];
+        AND (turno_id IS NULL OR $3::smallint IS NULL OR turno_id = $3::smallint)
+      ORDER BY desde LIMIT 1`, [vehiculoId, dia, turnoId])).rows[0];
   const hasta = sig ? vispera(fechaDe(sig.desde)) : null;
   const r = await cli.query(
-    'INSERT INTO vehiculo_descanso (vehiculo_id, desde, hasta, usuario_id) VALUES ($1, $2, $3, $4) RETURNING id',
-    [vehiculoId, dia, hasta, usuarioId || null]);
+    'INSERT INTO vehiculo_descanso (vehiculo_id, desde, hasta, usuario_id, turno_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+    [vehiculoId, dia, hasta, usuarioId || null, turnoId]);
   for (const d of dias) {
     await cli.query('INSERT INTO vehiculo_descanso_dia (descanso_id, dia_semana) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [r.rows[0].id, d]);
@@ -1940,29 +1997,219 @@ async function ponerDescansoCoche(cli, vehiculoId, dias, dia, usuarioId) {
   return r.rows[0].id;
 }
 
-/** Fija el descanso (bloque) de un coche. Sus fijos libran esos dias solos. */
-async function fijarDescanso(vehiculoId, dias, { dia, usuarioId } = {}) {
+/**
+ * Si el bloque de días de un coche choca con el de otro de su cuadrante: dos
+ * bloques no comparten día, porque el mismo correturnos cubre los dos. Solo
+ * cuentan los descansos del coche entero; un coche sin correturnos (db/203) no
+ * tiene bloque y no choca con nadie.
+ */
+async function chocaEnElCuadrante(q, vehiculoId, dias) {
+  if (!dias.length) return null;
+  const dup = await q(
+    `SELECT v2.matricula, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
+       FROM vehiculo v1
+       JOIN vehiculo v2 ON v2.cuadrante_id = v1.cuadrante_id AND v2.id <> v1.id
+       JOIN vehiculo_descanso vd ON vd.vehiculo_id = v2.id AND vd.hasta IS NULL AND vd.turno_id IS NULL
+       JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+      WHERE v1.id = $1 AND v1.cuadrante_id IS NOT NULL
+      GROUP BY v2.id, v2.matricula
+     HAVING array_agg(vdd.dia_semana) && $2::smallint[]`,
+    [vehiculoId, dias]);
+  return dup.rows[0] || null;
+}
+const mensajeChoque = d =>
+  `Esos días chocan con ${d.matricula} (${(d.dias || []).map(x => LETRAS[x - 1]).join('/')}) en el cuadrante: no pueden compartir día`;
+
+const TURNO_ID = { dia: 1, noche: 2 };
+
+/** ¿Está sin correturnos ese coche ese día? (db/203) */
+async function sinCorreturnosEn(q, vehiculoId, dia) {
+  const r = await q(
+    `SELECT to_char(desde, 'YYYY-MM-DD') AS desde FROM vehiculo_sin_ct
+      WHERE vehiculo_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta >= $2) LIMIT 1`, [vehiculoId, dia]);
+  return r.rows[0] || null;
+}
+
+/**
+ * Fija el descanso de un coche. Sin turno, el del coche entero (el bloque): sus
+ * dos fijos libran esos días y su correturnos los cubre. Con `turno` ('dia' o
+ * 'noche'), el de ese fijo, y solo en un coche sin correturnos (db/203).
+ */
+async function fijarDescanso(vehiculoId, dias, { dia, usuarioId, turno } = {}) {
   if (!vehiculoId) throw new Error('Falta el coche');
   const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
   const parsed = parsearDias(dias);
   if (parsed === null) throw new Error('No entiendo los días. Escríbelos como L M X J V S D.');
-  // Si el coche esta en un cuadrante, no puede repetir el bloque de dias de otro.
-  if (parsed.length) {
-    const dup = await db.consulta(
-      `SELECT v2.matricula, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
-         FROM vehiculo v1
-         JOIN vehiculo v2 ON v2.cuadrante_id = v1.cuadrante_id AND v2.id <> v1.id
-         JOIN vehiculo_descanso vd ON vd.vehiculo_id = v2.id AND vd.hasta IS NULL
-         JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
-        WHERE v1.id = $1 AND v1.cuadrante_id IS NOT NULL
-        GROUP BY v2.id, v2.matricula
-       HAVING array_agg(vdd.dia_semana) && $2::smallint[]`,
-      [vehiculoId, parsed]);
-    if (dup.rows.length) throw new Error(
-      `Esos días chocan con ${dup.rows[0].matricula} (${(dup.rows[0].dias || []).map(d => LETRAS[d - 1]).join('/')}) en el cuadrante: no pueden compartir día`);
+  const q = (sql, args) => db.consulta(sql, args);
+  const sinCt = await sinCorreturnosEn(q, vehiculoId, efectivo);
+  if (turno) {
+    const turnoId = TURNO_ID[turno];
+    if (!turnoId) throw new Error('El turno es «dia» o «noche»');
+    if (!sinCt) throw new Error('Solo un coche sin correturnos lleva un descanso distinto para cada fijo');
+    await db.transaccion(async cli => { await ponerDescansoCoche(cli, vehiculoId, parsed, efectivo, usuarioId, turnoId); });
+    return { dia: efectivo, dias: parsed, turno };
   }
+  if (sinCt) throw new Error('Este coche no tiene correturnos: cada fijo tiene su propio descanso (el de día y el de noche)');
+  // Si el coche esta en un cuadrante, no puede repetir el bloque de dias de otro.
+  const choca = await chocaEnElCuadrante(q, vehiculoId, parsed);
+  if (choca) throw new Error(mensajeChoque(choca));
   await db.transaccion(async cli => { await ponerDescansoCoche(cli, vehiculoId, parsed, efectivo, usuarioId); });
   return { dia: efectivo, dias: parsed };
+}
+
+/** El descanso de un coche un día: el común y el de cada fijo (ISODOW). */
+async function descansosDe(cli, vehiculoId, dia) {
+  const r = await cli.query(
+    `SELECT vd.turno_id, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
+       FROM vehiculo_descanso vd
+       JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+      WHERE vd.vehiculo_id = $1 AND vd.desde <= $2 AND (vd.hasta IS NULL OR vd.hasta >= $2)
+      GROUP BY vd.turno_id`, [vehiculoId, dia]);
+  const de = t => ((r.rows.find(x => (x.turno_id == null ? null : Number(x.turno_id)) === t) || {}).dias || []).map(Number);
+  return { comun: de(null), dia: de(1), noche: de(2) };
+}
+
+/**
+ * Pone de una vez el descanso de un coche (el común o el de cada fijo) desde un
+ * día: lo que lo cubría ese día se cierra la víspera; lo escrito para más
+ * adelante se respeta (`ponerDescansoCoche` corta antes).
+ */
+async function ponerDescansos(cli, vehiculoId, desc, dia, usuarioId) {
+  await cli.query('DELETE FROM vehiculo_descanso WHERE vehiculo_id = $1 AND desde = $2', [vehiculoId, dia]);
+  await cli.query(
+    `UPDATE vehiculo_descanso SET hasta = $3
+      WHERE vehiculo_id = $1 AND desde < $2 AND (hasta IS NULL OR hasta >= $2)`, [vehiculoId, dia, vispera(dia)]);
+  if ((desc.dia || []).length || (desc.noche || []).length) {
+    await ponerDescansoCoche(cli, vehiculoId, desc.dia || [], dia, usuarioId, 1);
+    await ponerDescansoCoche(cli, vehiculoId, desc.noche || [], dia, usuarioId, 2);
+  } else {
+    await ponerDescansoCoche(cli, vehiculoId, desc.comun || [], dia, usuarioId);
+  }
+}
+
+/** Deja sin descanso un coche desde un día: cierra lo que lo cubre y borra lo de después. */
+async function cerrarDescansos(cli, vehiculoId, dia) {
+  await cli.query('DELETE FROM vehiculo_descanso WHERE vehiculo_id = $1 AND desde >= $2', [vehiculoId, dia]);
+  await cli.query(
+    `UPDATE vehiculo_descanso SET hasta = $3
+      WHERE vehiculo_id = $1 AND desde < $2 AND (hasta IS NULL OR hasta >= $2)`, [vehiculoId, dia, vispera(dia)]);
+}
+
+/**
+ * Saca a los correturnos de un coche desde un día: cierra la víspera a quien lo
+ * llevaba y borra lo que estaba escrito para después. Devuelve a quién.
+ */
+async function soltarCorreturnos(cli, vehiculoId, dia, usuarioId) {
+  const cts = (await cli.query(
+    `SELECT a.id, a.conductor_id, to_char(a.desde, 'YYYY-MM-DD') AS desde, t.etiqueta AS turno,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
+       FROM asignacion a
+       JOIN plaza p     ON p.id = a.plaza_id AND p.baja_at IS NULL
+       JOIN cat_slot s  ON s.slot = p.slot AND s.rol = 'CT'
+       JOIN turno t     ON t.id = s.turno_id
+       JOIN conductor c ON c.id = a.conductor_id
+      WHERE p.vehiculo_id = $1 AND (a.hasta IS NULL OR a.hasta >= $2)
+      ORDER BY s.slot, a.desde`, [vehiculoId, dia])).rows;
+  for (const a of cts) {
+    if (a.desde >= dia) await cli.query('DELETE FROM asignacion WHERE id = $1', [a.id]);
+    else await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [a.id, vispera(dia)]);
+  }
+  // Su turno se recalcula con las plazas que les queden, como al soltar una.
+  for (const id of new Set(cts.map(a => String(a.conductor_id)))) {
+    await recordarTurno(cli, id, null, dia, usuarioId);
+  }
+  return cts.map(a => ({ conductorId: String(a.conductor_id), nombre: a.nombre, turno: a.turno, desde: a.desde }));
+}
+
+/** Quita la marca «sin correturnos» desde un día (cierra la víspera o borra la que no empezó). */
+async function quitarMarcaSinCt(cli, vehiculoId, dia) {
+  await cli.query('DELETE FROM vehiculo_sin_ct WHERE vehiculo_id = $1 AND desde >= $2', [vehiculoId, dia]);
+  await cli.query(
+    `UPDATE vehiculo_sin_ct SET hasta = $3
+      WHERE vehiculo_id = $1 AND desde < $2 AND (hasta IS NULL OR hasta >= $2)`, [vehiculoId, dia, vispera(dia)]);
+}
+
+/** Desde cuándo vale un cambio de «sin correturnos»: el día que se mira, nunca antes de hoy. */
+const desdeHoy = dia => {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  return d < hoy() ? hoy() : d;
+};
+
+/**
+ * «SIN CORRETURNOS» (15/10/2026, db/203). Camilo: «hay unos coches que no tienen
+ * correturnos y los fijos descansan en días diferentes».
+ *
+ * Desde ese día (nunca hacia atrás: el pasado del coche tuvo correturnos y su
+ * cobertura tiene que seguir cuadrando):
+ *
+ *   1. Fuera sus correturnos: a quien lo llevaba se le cierra la víspera y lo
+ *      escrito para después se borra. Se devuelve quiénes, para decirlo.
+ *   2. Su descanso pasa a ser el de cada fijo: los dos empiezan librando los
+ *      días que libraba el coche, y luego se cambia el de cada uno.
+ *   3. La marca, con fecha. A partir de ahí la base no deja poner a nadie en
+ *      sus plazas de correturnos (el disparador de db/203).
+ *
+ * Puede seguir en su cuadrante: está para eso, para tener uno.
+ */
+async function quitarCorreturnos(vehiculoId, { dia, usuarioId } = {}) {
+  if (!vehiculoId) throw new Error('Falta el coche');
+  const efectivo = desdeHoy(dia);
+  return db.transaccion(async cli => {
+    const v = (await cli.query('SELECT id, matricula FROM vehiculo WHERE id = $1 AND baja_at IS NULL', [vehiculoId])).rows[0];
+    if (!v) throw new Error('Ese coche ya no existe: recarga el tablero');
+    const ya = (await cli.query(
+      `SELECT to_char(desde, 'YYYY-MM-DD') AS desde FROM vehiculo_sin_ct
+        WHERE vehiculo_id = $1 AND (hasta IS NULL OR hasta >= $2) ORDER BY desde LIMIT 1`, [vehiculoId, efectivo])).rows[0];
+    if (ya) throw new Error(`El ${v.matricula} ya está sin correturnos desde el ${ddmmaaaa(ya.desde)}`);
+
+    const quitados = await soltarCorreturnos(cli, vehiculoId, efectivo, usuarioId);
+
+    const antes = await descansosDe(cli, vehiculoId, efectivo);
+    const dias = antes.comun.length ? antes.comun : [...new Set([...antes.dia, ...antes.noche])].sort();
+    await cerrarDescansos(cli, vehiculoId, efectivo);
+    if (dias.length) {
+      await ponerDescansoCoche(cli, vehiculoId, dias, efectivo, usuarioId, 1);
+      await ponerDescansoCoche(cli, vehiculoId, dias, efectivo, usuarioId, 2);
+    }
+
+    await cli.query('INSERT INTO vehiculo_sin_ct (vehiculo_id, desde, usuario_id) VALUES ($1, $2, $3)',
+      [vehiculoId, efectivo, usuarioId || null]);
+
+    // Una vacante viva que tenía prometida una de sus plazas de correturnos: no
+    // se toca (es de Selección), se dice.
+    const vacantes = (await cli.query(
+      `SELECT DISTINCT c.codigo FROM v_plaza_comprometida c
+         JOIN v_plaza w ON w.plaza_id = c.plaza_id
+        WHERE w.vehiculo_id = $1 AND w.rol = 'CT'`, [vehiculoId])).rows.map(r => r.codigo);
+
+    return { dia: efectivo, matricula: v.matricula, quitados, descanso: dias, vacantes };
+  });
+}
+
+/**
+ * LA VUELTA: el coche vuelve a llevar correturnos desde ese día. Se le da otra
+ * vez UN descanso, el del coche entero (el bloque, que es lo que cubre el CT),
+ * con la misma regla de siempre: no puede compartir día con otro bloque de su
+ * cuadrante. Los correturnos se ponen después, como en cualquier coche.
+ */
+async function volverConCorreturnos(vehiculoId, dias, { dia, usuarioId } = {}) {
+  if (!vehiculoId) throw new Error('Falta el coche');
+  const efectivo = desdeHoy(dia);
+  const parsed = parsearDias(dias);
+  if (parsed === null) throw new Error('No entiendo los días. Escríbelos como L M X J V S D.');
+  return db.transaccion(async cli => {
+    const v = (await cli.query('SELECT id, matricula FROM vehiculo WHERE id = $1', [vehiculoId])).rows[0];
+    if (!v) throw new Error('Ese coche ya no existe: recarga el tablero');
+    const marca = (await cli.query(
+      'SELECT 1 FROM vehiculo_sin_ct WHERE vehiculo_id = $1 AND (hasta IS NULL OR hasta >= $2)', [vehiculoId, efectivo])).rows[0];
+    if (!marca) throw new Error(`El ${v.matricula} ya lleva correturnos`);
+    const choca = await chocaEnElCuadrante((sql, args) => cli.query(sql, args), vehiculoId, parsed);
+    if (choca) throw new Error(mensajeChoque(choca));
+    await quitarMarcaSinCt(cli, vehiculoId, efectivo);
+    await cerrarDescansos(cli, vehiculoId, efectivo);
+    if (parsed.length) await ponerDescansoCoche(cli, vehiculoId, parsed, efectivo, usuarioId);
+    return { dia: efectivo, matricula: v.matricula, descanso: parsed };
+  });
 }
 
 /**
@@ -2381,6 +2628,9 @@ async function salidasHoy(dia) {
 // empieza por lo que funciona y se baja hasta lo que hay que resolver.
 const GRUPOS = [
   { codigo: 'sale',        etiqueta: 'Sale (sin incidencias)' },
+  // Un coche sin correturnos (db/203) el día que libra su fijo: no sale, y es
+  // lo planificado. No es un hueco que haya que resolver.
+  { codigo: 'libra',       etiqueta: 'Libra su fijo · coche sin correturnos' },
   { codigo: 'baja_medica', etiqueta: 'Planificado pero de BAJA MÉDICA' },
   { codigo: 'permiso',     etiqueta: 'Planificado pero con PERMISO' },
   { codigo: 'vacaciones',  etiqueta: 'Planificado pero de VACACIONES' },
@@ -2418,6 +2668,7 @@ async function salidasPorCoche(dia) {
             ELSE (NOT EXISTS (SELECT 1 FROM vehiculo_descanso vd
                                 JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                                WHERE vd.vehiculo_id = p.vehiculo_id
+                                 AND (vd.turno_id IS NULL OR vd.turno_id = s.turno_id)
                                  AND vd.desde <= $1::date AND (vd.hasta IS NULL OR vd.hasta >= $1::date)
                                  AND vdd.dia_semana = EXTRACT(ISODOW FROM $1::date)::smallint)
                   OR EXISTS (SELECT 1 FROM libranza_excepcional le
@@ -2439,14 +2690,19 @@ async function salidasPorCoche(dia) {
               EXISTS (SELECT 1 FROM vehiculo_descanso vd
                         JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                        WHERE vd.vehiculo_id = vp.vehiculo_id
+                         AND (vd.turno_id IS NULL OR vd.turno_id = vp.turno_id)
                          AND vd.desde <= $1::date AND (vd.hasta IS NULL OR vd.hasta >= $1::date)
                          AND vdd.dia_semana = EXTRACT(ISODOW FROM $1::date)::smallint) AS descansa_hoy,
               COALESCE((SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana)
                           FROM vehiculo_descanso vd
                           JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                          WHERE vd.vehiculo_id = vp.vehiculo_id
+                           AND (vd.turno_id IS NULL OR vd.turno_id = vp.turno_id)
                            AND vd.desde <= $1::date AND (vd.hasta IS NULL OR vd.hasta >= $1::date)),
                        ARRAY[]::smallint[]) AS descanso,
+              EXISTS (SELECT 1 FROM vehiculo_sin_ct x
+                       WHERE x.vehiculo_id = vp.vehiculo_id
+                         AND x.desde <= $1::date AND (x.hasta IS NULL OR x.hasta >= $1::date)) AS sin_ct,
               -- La vacante que tenga prometida alguna de sus plazas de este turno:
               -- un coche parado que YA se está reclutando no es el mismo problema.
               (SELECT c.codigo FROM v_plaza_comprometida c
@@ -2538,6 +2794,11 @@ async function salidasPorCoche(dia) {
       grupo = quien.ausente ? (GRUPO_DE_ESTADO[quien.estado] || 'ausente') : 'ausente';
       motivo = quien.estadoEtiqueta || 'No cubre';
       if (quien.vuelve) motivo += ' · vuelve el ' + quien.vuelve.split('-').reverse().join('/');
+    } else if (v.sin_ct && v.descansa_hoy) {
+      // Un coche sin correturnos el día que libra su fijo: no sale, y es lo
+      // planificado (db/203).
+      grupo = 'libra';
+      motivo = 'Libra el fijo (' + descanso.map(x => LETRAS[x - 1]).join(' ') + '): coche sin correturnos';
     } else {
       grupo = 'sin_nadie';
       // Por qué no hay nadie: o el coche descansa hoy y no tiene correturnos, o
@@ -2558,7 +2819,7 @@ async function salidasPorCoche(dia) {
       cuadranteNum: q ? q.numero : (v.cuadrante_num == null ? null : Number(v.cuadrante_num)),
       estadoCoche: v.estado_coche,
       operativo: !!v.es_operativo,
-      descanso, descansaHoy: !!v.descansa_hoy,
+      descanso, descansaHoy: !!v.descansa_hoy, sinCT: !!v.sin_ct,
       descansoLetras: descanso.map(x => LETRAS[x - 1]).join(' '),
       vacante: v.vacante || '',
       grupo, motivo,
@@ -2653,12 +2914,18 @@ async function crearCuadrante({ zonaId }, { usuarioId } = {}) {
 async function anadirBloque({ cuadranteId, vehiculoId, dias }, { dia, usuarioId } = {}) {
   if (!cuadranteId || !vehiculoId) throw new Error('Falta el cuadrante o la matrícula');
   const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  // UN COCHE SIN CORRETURNOS (db/203) no tiene bloque —cada fijo libra lo
+  // suyo—: entra en el cuadrante y ya está, sin días que no repetir.
+  if (await sinCorreturnosEn((sql, args) => db.consulta(sql, args), vehiculoId, efectivo)) {
+    await db.consulta('UPDATE vehiculo SET cuadrante_id = $2 WHERE id = $1', [vehiculoId, cuadranteId]);
+    return { dia: efectivo, sinCT: true };
+  }
   const parsed = parsearDias(dias);
   if (parsed === null || !parsed.length) throw new Error('Elige los días del bloque');
   const dup = await db.consulta(
     `SELECT v.matricula, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
        FROM vehiculo v
-       JOIN vehiculo_descanso vd ON vd.vehiculo_id = v.id AND vd.hasta IS NULL
+       JOIN vehiculo_descanso vd ON vd.vehiculo_id = v.id AND vd.hasta IS NULL AND vd.turno_id IS NULL
        JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
       WHERE v.cuadrante_id = $1 AND v.id <> $2
       GROUP BY v.id, v.matricula
@@ -2704,10 +2971,15 @@ async function asignarCTcuadrante({ cuadranteId, turno, conductorId, vehiculos }
   let n = 0;
   const saltados = [];   // bloques que ese dia ya tenian conductor: se hacen a mano
   await db.transaccion(async cli => {
+    // Los coches sin correturnos (db/203) se saltan: están en el cuadrante para
+    // tenerlo, no para que el CT los cubra.
     const plazas = await cli.query(
       `SELECT p.id AS plaza_id, p.vehiculo_id
          FROM plaza p JOIN vehiculo v ON v.id = p.vehiculo_id AND v.baja_at IS NULL
-        WHERE v.cuadrante_id = $1 AND p.slot = $2 AND p.baja_at IS NULL`, [cuadranteId, slot]);
+        WHERE v.cuadrante_id = $1 AND p.slot = $2 AND p.baja_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM vehiculo_sin_ct x
+                           WHERE x.vehiculo_id = v.id AND (x.hasta IS NULL OR x.hasta >= $3))`,
+      [cuadranteId, slot, efectivo]);
     for (const pl of plazas.rows) {
       const cubre = !elegidos || elegidos.has(String(pl.vehiculo_id));
       if (conductorId && cubre) {
@@ -2772,23 +3044,30 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
       const r = (await cli.query('SELECT cuadrante_id FROM vehiculo WHERE id = $1', [vid])).rows[0];
       return r ? r.cuadrante_id : null;
     };
-    const leerDescanso = async vid => {
-      const r = (await cli.query(
-        `SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
-           FROM vehiculo_descanso vd JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
-          WHERE vd.vehiculo_id = $1 AND vd.desde <= $2 AND (vd.hasta IS NULL OR vd.hasta >= $2)`,
-        [vid, efectivo])).rows[0];
-      return (r && r.dias) || [];
-    };
+    // El descanso, común o por fijo (db/203).
+    const leerDescanso = vid => descansosDe(cli, vid, efectivo);
+    // Y si es un coche sin correturnos: eso también es del bloque y viaja con él.
+    const leerSinCt = async vid => !!(await sinCorreturnosEn((sql, args) => cli.query(sql, args), vid, efectivo));
 
     const crewDe = await leerCrew(deVehiculoId), crewA = await leerCrew(aVehiculoId);
     const plzDe = await leerPlazas(deVehiculoId), plzA = await leerPlazas(aVehiculoId);
     const cuadDe = await leerCuadrante(deVehiculoId), cuadA = await leerCuadrante(aVehiculoId);
     const descDe = await leerDescanso(deVehiculoId), descA = await leerDescanso(aVehiculoId);
+    const sinDe = await leerSinCt(deVehiculoId), sinA = await leerSinCt(aVehiculoId);
 
     // Se liberan TODAS las plazas de ambos ANTES de recolocar, para que el cruce no
     // choque (dos personas no pueden pisar la misma plaza a la vez).
     for (const pid of [...plzDe.values(), ...plzA.values()]) await liberar(cli, pid, efectivo, usuarioId);
+
+    // «Sin correturnos» se cruza ANTES de recolocar: la tripulación con CT
+    // tiene que caer en un coche que los admita.
+    if (sinDe !== sinA) {
+      const pasaA = sinDe ? aVehiculoId : deVehiculoId;
+      await quitarMarcaSinCt(cli, sinDe ? deVehiculoId : aVehiculoId, efectivo);
+      await soltarCorreturnos(cli, pasaA, efectivo, usuarioId);
+      await cli.query('INSERT INTO vehiculo_sin_ct (vehiculo_id, desde, usuario_id) VALUES ($1, $2, $3)',
+        [pasaA, efectivo, usuarioId || null]);
+    }
 
     // La tripulación de DE pasa a las plazas de A (mismo slot) y la de A a las de DE.
     const colocarCruz = async (crew, plazas) => {
@@ -2806,8 +3085,8 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
     // El cuadrante y el descanso se intercambian con la tripulación.
     await cli.query('UPDATE vehiculo SET cuadrante_id = $2 WHERE id = $1', [deVehiculoId, cuadA]);
     await cli.query('UPDATE vehiculo SET cuadrante_id = $2 WHERE id = $1', [aVehiculoId, cuadDe]);
-    await ponerDescansoCoche(cli, deVehiculoId, descA, efectivo, usuarioId);
-    await ponerDescansoCoche(cli, aVehiculoId, descDe, efectivo, usuarioId);
+    await ponerDescansos(cli, deVehiculoId, descA, efectivo, usuarioId);
+    await ponerDescansos(cli, aVehiculoId, descDe, efectivo, usuarioId);
   });
   return { dia: efectivo, movidos };
 }
@@ -2823,6 +3102,7 @@ const reponer = (cli, { plazaId, conductorId, desde, hasta, dias }, { usuarioId 
 
 module.exports = {
   tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso, cubrirAusencia,
+  quitarCorreturnos, volverConCorreturnos,
   comprobarPlan, quitarRelevo, relevosEntre, MOTIVOS_RELEVO, liberarPlaza, reponer,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
   listarCuadrantes, salidasHoy, salidasPorCoche, GRUPOS_SALIDA: GRUPOS,

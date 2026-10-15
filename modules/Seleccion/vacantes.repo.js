@@ -217,8 +217,11 @@ async function crear(v = {}, { usuarioId } = {}) {
                    FROM vehiculo_descanso vd
                    JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                   WHERE vd.vehiculo_id = p.vehiculo_id
+                    AND (vd.turno_id IS NULL OR vd.turno_id = s.turno_id)
                     AND vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)),
-                ARRAY[]::smallint[]) AS descanso
+                ARRAY[]::smallint[]) AS descanso,
+              EXISTS (SELECT 1 FROM vehiculo_sin_ct x
+                       WHERE x.vehiculo_id = p.vehiculo_id AND (x.hasta IS NULL OR x.hasta >= CURRENT_DATE)) AS sin_ct
          FROM plaza p JOIN cat_slot s ON s.slot = p.slot
          JOIN vehiculo v ON v.id = p.vehiculo_id
         WHERE p.id = ANY($1::bigint[]) AND p.baja_at IS NULL`,
@@ -228,6 +231,8 @@ async function crear(v = {}, { usuarioId } = {}) {
       const d = porId.get(String(p.plazaId));
       if (!d) throw new Error(`La plaza ${p.plazaId} no existe o está dada de baja`);
       if (d.rol !== rol) throw new Error(`La plaza de ${d.matricula} es de ${d.rol}, no de ${rol}`);
+      // Un coche sin correturnos (db/203) no tiene plaza de CT que cubrir.
+      if (d.rol === 'CT' && d.sin_ct) throw new Error(`El ${d.matricula} no tiene correturnos: no se buscan correturnos para él`);
     }
     // LOS DÍAS DE UNA PLAZA SON LOS QUE SE CUBREN, TAMBIÉN SI ES UN FIJO.
     //
@@ -366,6 +371,7 @@ async function plantillaPlanificada({ busca, limite = 400 } = {}) {
                                             FROM vehiculo_descanso vd
                                             JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                                            WHERE vd.vehiculo_id = vp.vehiculo_id
+                                             AND (vd.turno_id IS NULL OR vd.turno_id = vp.turno_id)
                                              AND vd.desde <= CURRENT_DATE
                                              AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE))
                            END), 0)::int                       AS dias
@@ -479,6 +485,7 @@ async function propuestaRecambio(conductorId) {
                    FROM vehiculo_descanso vd
                    JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
                   WHERE vd.vehiculo_id = vp.vehiculo_id
+                    AND (vd.turno_id IS NULL OR vd.turno_id = vp.turno_id)
                     AND vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)),
                 ARRAY[]::smallint[]) AS descanso_coche,
               (SELECT k.codigo FROM vacante k

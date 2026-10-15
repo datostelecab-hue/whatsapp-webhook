@@ -147,6 +147,8 @@ Un conductor no "tiene turno" escrito aparte: **lo dice el conjunto de sus plaza
 
 La **libranza** tampoco se teclea: el fijo libra el descanso de su coche (`vehiculo_descanso`), y el CT los días que no le pusieron. Ver [[Jornada y turnos]].
 
+**Coches sin correturnos** (15/10/2026, `db/203`): un coche puede no llevar correturnos. Entonces cada fijo libra sus propios días (`vehiculo_descanso` con `turno_id`), sus columnas de CT no se enseñan y la base no deja poner a nadie en ellas. Los días que libra un fijo, ese turno el coche no sale, y no cuenta como hueco. Sigue pudiendo estar en un cuadrante. Ver [[Coches sin correturnos]].
+
 ## El plantel y los avisos
 
 El tablero no solo pinta: cuenta. `plantel()` da **dos números por puesto, no uno**:
