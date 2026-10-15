@@ -1450,6 +1450,16 @@ async function cambiarAlta(id, { alta }, { usuarioId } = {}) {
               fecha_antiguedad = CASE WHEN $3::boolean THEN $2::date ELSE fecha_antiguedad END
         WHERE id = $1`, [e.id, dia, conAntiguedad]);
     const cambios = [{ campo: 'alta', antes: aEs(e.alta), ahora: aEs(dia) }];
+    // LO QUE COLGABA DEL ALTA SE MUEVE CON ELLA (15/10/2026). Hasta aquí solo se
+    // movía el contrato, y el turno, las plazas del planificador y el inicio
+    // previsto de Selección se quedaban en la fecha vieja. A Daniela Durán le
+    // pasaron el alta del 15 al 16/10 y el 15 seguía planificada de correturnos
+    // en el 1096MJY; a Alejandro Duarte, del 13 al 14/10, igual. Con el contrato
+    // anterior seguido no se toca nada: lo de antes es de ese contrato.
+    const movidos = seguido ? [] : await moverConElAlta(cli, id, { antes: e.alta, ahora: dia, periodoId: e.id, tope: prev ? prev.baja : null });
+    const antesDe = dia > e.alta ? `antes del ${aEs(dia)}` : `desde el ${aEs(e.alta)}`;
+    movidos.forEach(m => cambios.push({ campo: m.que, antes: antesDe,
+      ahora: (m.quitadas ? 'quitadas' : `desde el ${aEs(dia)}`) + (m.n > 1 ? ` (${m.n})` : '') }));
     if (seguido) {
       const r = await cli.query(
         `UPDATE conductor_periodo_empleo SET baja = ($2::date - 1) WHERE id = $1 RETURNING to_char(baja, 'YYYY-MM-DD') AS baja`,
@@ -1457,8 +1467,59 @@ async function cambiarAlta(id, { alta }, { usuarioId } = {}) {
       cambios.push({ campo: 'baja del contrato anterior', antes: aEs(prev.baja), ahora: aEs(r.rows[0].baja) });
     }
     await audit.registrar({ tabla: 'conductor', id, usuarioId, cli, cambios });
-    return { alta: dia, antes: e.alta, seguido };
+    return { alta: dia, antes: e.alta, seguido, movidos };
   });
+}
+
+/**
+ * Mueve con el alta lo que empezaba en ella. Devuelve [{ que, n }] de lo movido.
+ *
+ *   · El alta se RETRASA: nada puede empezar antes de que entre. Lo que acababa
+ *     antes del alta nueva se borra (nunca llegó a existir) y lo que la cruza
+ *     empieza ese día: plazas del planificador, turno, situación y patrón de
+ *     libranza. Es lo mismo que hace `recortar` al dar de baja, pero por el
+ *     otro extremo.
+ *   · El alta se ADELANTA: el turno, el «Activo» y el patrón que arrancaban en
+ *     el alta vieja arrancan en la nueva. Las plazas NO: adelantarlas sería
+ *     planificarle días que nadie ha decidido; eso se hace en el planificador.
+ *   · En los dos casos, el contrato del convenio de este periodo y el inicio
+ *     previsto de su candidatura, si eran el alta vieja.
+ *
+ * `tope` es la baja de su contrato anterior: lo que empieza ese día o antes es
+ * de aquel contrato y no se toca.
+ */
+async function moverConElAlta(cli, id, { antes, ahora, periodoId, tope }) {
+  const t = tope || '-infinity';
+  const out = [];
+  const apunta = (que, n, quitadas) => { if (n) out.push({ que, n, ...(quitadas ? { quitadas: true } : {}) }); };
+  const NOMBRES = {
+    asignacion: 'plazas del planificador', conductor_turno_hist: 'turno',
+    conductor_estado_hist: 'situación', patron_libranza: 'patrón de libranza',
+  };
+  if (ahora > antes) {
+    for (const tabla of Object.keys(NOMBRES)) {
+      const b = await cli.query(
+        `DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde > $3::date AND hasta < $2::date`, [id, ahora, t]);
+      const u = await cli.query(
+        `UPDATE ${tabla} SET desde = $2
+          WHERE conductor_id = $1 AND desde > $3::date AND desde < $2::date
+            AND (hasta IS NULL OR hasta >= $2::date)`, [id, ahora, t]);
+      apunta(NOMBRES[tabla], u.rowCount);
+      apunta(NOMBRES[tabla], b.rowCount, true);   // las que acababan antes del alta nueva
+    }
+  } else {
+    for (const [tabla, cond] of [['conductor_turno_hist', ''], ['conductor_estado_hist', " AND estado = 'activo'"], ['patron_libranza', '']]) {
+      const u = await cli.query(`UPDATE ${tabla} SET desde = $3 WHERE conductor_id = $1 AND desde = $2${cond}`, [id, antes, ahora]);
+      apunta(NOMBRES[tabla], u.rowCount);
+    }
+  }
+  apunta('contrato del convenio', (await cli.query(
+    `UPDATE contrato SET desde = $3 WHERE conductor_id = $1 AND periodo_empleo_id = $4 AND desde = $2`,
+    [id, antes, ahora, periodoId])).rowCount);
+  apunta('inicio previsto (Selección)', (await cli.query(
+    `UPDATE candidatura SET inicio_previsto = $3 WHERE conductor_id = $1 AND inicio_previsto = $2`,
+    [id, antes, ahora])).rowCount);
+  return out;
 }
 
 /**

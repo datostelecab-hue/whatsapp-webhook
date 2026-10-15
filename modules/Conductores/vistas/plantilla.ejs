@@ -988,10 +988,22 @@
     const v = await pedirDatos(`Fecha de alta de ${d.nombre_completo}`, [
       { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha', obligatorio: true, valor: d.alta ? fecha(d.alta) : '' },
     ], { textoBoton: 'Cambiar la fecha',
-         nota: 'Solo se puede si todavía no ha trabajado. Queda en su historial quién la cambió y de qué a qué. '
+         nota: 'Solo se puede si todavía no ha trabajado. Su turno y sus plazas del planificador se mueven con ella. '
+             + 'Queda en su historial quién la cambió y de qué a qué. '
              + 'Si ya tiene ficha de alta, vuelve a generarla para que salga con la nueva.' });
     if (!v || !v.alta) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/fecha-alta`, 'POST', { alta: v.alta }));
+    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/fecha-alta`, 'POST', { alta: v.alta }));
+    // Lo que se ha movido con el alta, dicho: si no, quien la cambia no sabe que
+    // su plaza del planificador ya no empieza donde la dejó Tráfico.
+    if (r && r.movidos && r.movidos.length) {
+      const adelanta = r.alta < r.antes;
+      await Dialogo.aviso({
+        titulo: 'Fecha de alta cambiada', tono: 'info',
+        html: `<p>Ahora entra el <b>${esc(fecha(r.alta))}</b>. Con ella se ha movido:</p><ul class="list-disc pl-5 mt-1">`
+          + r.movidos.map(m => `<li>${esc(m.que)}${m.n > 1 ? ` (${m.n})` : ''}${m.quitadas ? ': quitadas' : ''}</li>`).join('') + '</ul>'
+          + (adelanta ? '<p class="mt-2">Sus plazas del planificador no se adelantan: si tiene que trabajar antes, planifícalo allí.</p>' : ''),
+      });
+    }
   }
 
   async function accionBaja(d) {
@@ -1081,7 +1093,8 @@
         titulo: 'Ficha de alta generada', tono: 'ok',
         html: `<p class="text-sm">${esc(r.nombre)} · ${r.adjuntos} documento(s) dentro.</p>
                ${r.altaCambiada ? `<p class="text-sm mt-2">La fecha de alta de su contrato pasa del <b>${esc(fecha(r.altaCambiada.antes))}</b>
-                 al <b>${esc(fecha(r.altaCambiada.alta))}</b>${r.altaCambiada.seguido ? ', y su contrato de la ETT acaba el día antes' : ''}.</p>` : ''}
+                 al <b>${esc(fecha(r.altaCambiada.alta))}</b>${r.altaCambiada.seguido ? ', y su contrato de la ETT acaba el día antes' : ''}.${
+                 (r.altaCambiada.movidos || []).length ? ` Con ella se ha movido: ${esc(r.altaCambiada.movidos.map(m => m.que).join(', '))}.` : ''}</p>` : ''}
                <p class="text-sm mt-2 text-telecab-muted">Queda guardada en sus documentos.</p>`,
       });
       const id = plantilla.abierto;

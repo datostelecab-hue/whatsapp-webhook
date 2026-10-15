@@ -308,6 +308,26 @@ Al pulsar el botón, primero se pide la fecha:
 - Un alta suelta no puede caer dentro de un contrato anterior, y su antigüedad se mueve con ella si era la misma fecha.
 - Queda en el historial de la ficha quién lo cambió y de qué a qué (también la baja de la ETT). Tráfico no lo cambia: es de RRHH, como la ficha.
 
+#### Lo que colgaba del alta se mueve con ella (15/10/2026, db/202)
+
+Camilo: *«a Daniela Patricia Duran Tella se le cambió la fecha de alta, todos los desde tienen que cuadrar con su fecha de alta modificada, verifica que no la planifiquen dos veces en una plaza»*.
+
+`cambiarAlta` solo movía el contrato. Lo demás se quedaba en la fecha vieja: su turno, sus plazas del planificador y el inicio previsto de Selección.
+- **Daniela** (ETT, del 15 al 16/10): el jueves 15 salía planificada de correturnos en el 1096MJY sin estar de alta.
+- **Alejandro Duarte** (ETT, del 13 al 14/10): igual.
+
+Doble planificación no había: cada día cubría una sola plaza, y la base no deja dos personas en la misma plaza el mismo día (`ex_asig_plaza`).
+
+Ahora, en la misma transacción, `moverConElAlta`:
+- **Si el alta se retrasa**, nada puede empezar antes de que entre. Lo que acababa antes del alta nueva se quita y lo que la cruza empieza ese día. Vale para las plazas del planificador, el turno, la situación y el patrón de libranza. Es `recortar` de la baja, por el otro extremo.
+- **Si el alta se adelanta**, el turno, el «Activo» y el patrón que arrancaban en el alta vieja arrancan en la nueva. Las plazas **no**: adelantarlas sería planificarle días que nadie ha decidido.
+- **En los dos casos** se mueven el contrato del convenio de ese periodo y el inicio previsto de su candidatura, si eran el alta vieja.
+- **Con el contrato anterior seguido** (de ETT a propia), no se toca nada: lo de antes es de aquel contrato.
+
+Cada cosa movida queda en el historial de la ficha, y la pantalla dice qué se ha movido. **db/202** arregla a Daniela y a Alejandro.
+
+Hay otras seis personas con el turno empezando de uno a tres días antes de su alta, todas de septiembre. A Harroun Abdelhak le pasa también con una plaza; a Franklyn de León, con el «Activo». No consta en su historial ningún cambio de alta, así que no se tocaron: están en [[Estado y pendientes]].
+
 **La jornada, que la ficha no recibía.** A todo el mundo le salían «40 HORAS» y el salario de 40, también a quien tiene 32: ahora va la de su contrato, o la de su candidatura si aún no lo tiene.
 
 ### Lo que pide la ficha, también en «Datos»
