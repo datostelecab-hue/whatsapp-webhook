@@ -70,7 +70,10 @@ const MODELO = {
   // otras once personas. Ahora solo cuenta `avisado`; no cuentan `dudoso`,
   // `simulado` (modo pruebas) ni `error` (el WhatsApp no salió: tampoco se
   // enteró). Los umbrales no cambian: cambia qué se cuenta.
-  version: '2.1',
+  // 2.2 (15/10/2026): el promedio de horas es el de la casa
+  // (bitacora.service.promedioHoras): libranzas y ausencias ya no valen 8 h, no
+  // cuentan; las J, solo aprobadas; días sin plaza fuera.
+  version: '2.2',
   periodo: 'mes',              // del día 1 (o su alta) al último día cerrado
   minDiasTrabajados: 5,        // por debajo → N/E, nunca D
   minHorasDiaTrabajado: 1,     // qué cuenta como día CON HORAS de Bolt (§9.1)
@@ -214,12 +217,14 @@ function largoDe(desde, hasta) {
 }
 
 /**
- * Las tres métricas de todo el mundo para un periodo.
+ * Las métricas de todo el mundo para un periodo.
  *
- * CUENTAN TODOS LOS DÍAS DEL PERIODO, no solo aquellos en los que rodó. Cada
- * día vale sus horas (Bolt + justificadas), u 8 h si estaba cubierto —libranza,
- * vacaciones, baja o permiso—, o 0 si debía salir y no salió sin nada que lo
- * explique. Así el que descansa cuando toca no pierde media y el que falta sí.
+ * OJO: SU `horas_prom` YA NO ES EL DE LA LETRA (2.2, 15/10/2026). La letra usa
+ * el promedio de la casa (`calcular` lo pide a quien la recalcula). De aquí
+ * salen `dias_trabajados` —los días del periodo, para el «menos de 5 días»— y
+ * la utilización. La cuenta de debajo es la de 2.1: cada día vale sus horas
+ * (Bolt + justificadas), u 8 h si estaba cubierto —libranza, vacaciones, baja o
+ * permiso—, o 0 si debía salir y no salió.
  *
  * La UTILIZACIÓN va por otro camino y no cambia: promedia solo los días con
  * tiempo efectivo de Bolt, porque un día de libranza o de taller no tiene
@@ -380,11 +385,17 @@ async function diasConTelemetria(desde, hasta) {
  * Calcula la calificación de toda la plantilla para el periodo que acaba en
  * `hasta`. No escribe: eso lo hace `recalcular`.
  */
-async function calcular(hasta) {
+async function calcular(hasta, promedioHoras) {
+  // EL PROMEDIO DE HORAS ES EL DE LA CASA, y lo tiene la bitácora: quien
+  // recalcula lo pasa (bitacora.service.recalcularPromedios). Sin él no se
+  // calcula: una letra con otra cuenta de horas es justo lo que se quitó.
+  if (typeof promedioHoras !== 'function') {
+    throw new Error('La calificación se calcula con el promedio de la casa: recalcúlala con bitacora.service.recalcularPromedios');
+  }
   const fin = String(hasta).slice(0, 10);
   const ini = inicioDe(fin);
 
-  const [filas, excesos, tele, plantilla] = await Promise.all([
+  const [filas, excesos, tele, plantilla, estandar] = await Promise.all([
     metricas(ini, fin),
     excesosDe(ini, fin),
     diasConTelemetria(ini, fin),
@@ -396,6 +407,7 @@ async function calcular(hasta) {
          FROM conductor c
          JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
         WHERE NOT c.es_centinela`),
+    promedioHoras(ini, fin),
   ]);
 
   // Sin NADA de telemetría en el periodo no se califica a nadie por velocidad.
@@ -407,13 +419,18 @@ async function calcular(hasta) {
     .filter(f => activos.has(Number(f.conductor_id)))
     .map(f => {
       const cid = Number(f.conductor_id);
-      const r = calificar({
-        horasProm: Number(f.horas_prom) || 0,
+      // Sus horas, las de la casa: horas ÷ (días que salió + ausencias a 0 h).
+      const est = estandar.porId.get(String(cid));
+      const r = est ? calificar({
+        horasProm: est.promedio,
         utilProm: Number(f.util_prom) || 0,
         excesosTotal: hayTelemetria ? (excesos.get(cid) || 0) : null,
         diasTrabajados: f.dias_trabajados,
         diasUtilizacion: f.dias_utilizacion,
-      });
+      }) : {
+        letra: 'N/E', motivo: 'sin días que promediar en el periodo (ni salidas ni ausencias)',
+        diasTrabajados: f.dias_trabajados || 0, versionModelo: MODELO.version,
+      };
       return {
         conductorId: cid, nombre: nombres.get(cid) || ('#' + cid),
         periodoInicio: ini, periodoFin: fin,
@@ -421,7 +438,7 @@ async function calcular(hasta) {
         // De qué está hecho el promedio: cuántos días rodó, cuántos estuvo
         // cubierto (a 8 h) y cuántos salieron a cero. Sin esto, «5,8 h» es un
         // número que nadie puede discutir porque nadie sabe de dónde sale.
-        diasConHoras: f.dias_con_horas, diasCubiertos: f.dias_cubiertos, diasCero: f.dias_cero,
+        diasConHoras: est ? est.dias : 0, diasCubiertos: 0, diasCero: est ? est.ausencias : 0,
         // Con cuántos días de telemetría se calculó esta letra. Si son menos que
         // la ventana, los excesos están infravalorados y la letra sale mejor de
         // lo que es: hay que poder decirlo al mirar la fila, no al mirar el log.
@@ -438,13 +455,17 @@ async function calcular(hasta) {
   };
 }
 
-/** Calcula y GUARDA. Repetirlo sobre el mismo periodo reescribe, no duplica. */
-async function recalcular({ hasta } = {}) {
+/**
+ * Calcula y GUARDA. Repetirlo sobre el mismo periodo reescribe, no duplica.
+ * `promedioHoras(desde, hasta)` es el de la casa: lo pasa
+ * bitacora.service.recalcularPromedios, que es por donde se entra.
+ */
+async function recalcular({ hasta, promedioHoras } = {}) {
   const cierre = require('./llamadas').diaOperativoHoy();
   // Hasta la última jornada CERRADA: la de hoy va a medias y hundiría a quien
   // esté trabajando ahora mismo.
   const ayer = new Date(Date.parse(cierre + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
-  const r = await calcular(hasta || ayer);
+  const r = await calcular(hasta || ayer, promedioHoras);
   if (!r.filas.length) return { ...r, guardadas: 0 };
 
   await db.transaccion(async cli => {
@@ -487,7 +508,7 @@ async function recalcular({ hasta } = {}) {
   const res = { ...r, guardadas: r.filas.length };
   // Solo en la pasada del cron (sin `hasta`): la que pide un periodo concreto
   // hace eso y nada más.
-  if (!hasta) res.mesAnterior = await mesAnteriorAlDia(r.periodoInicio);
+  if (!hasta) res.mesAnterior = await mesAnteriorAlDia(r.periodoInicio, promedioHoras);
   return res;
 }
 
@@ -504,7 +525,7 @@ async function recalcular({ hasta } = {}) {
  * Solo un mes hacia atrás y solo si ese cierre era un mes entero (empieza el 1),
  * para no reescribir periodos viejos de otra forma (los de 14 días de 1.0).
  */
-async function mesAnteriorAlDia(periodoInicio) {
+async function mesAnteriorAlDia(periodoInicio, promedioHoras) {
   const fin = new Date(Date.parse(periodoInicio + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
   const r = await db.consulta(
     `SELECT count(*)::int AS n, bool_or(version_modelo = $3) AS al_dia
@@ -513,7 +534,7 @@ async function mesAnteriorAlDia(periodoInicio) {
     [fin, inicioDe(fin), MODELO.version]);
   const x = r.rows[0] || {};
   if (!x.n || x.al_dia) return null;
-  const re = await recalcular({ hasta: fin });
+  const re = await recalcular({ hasta: fin, promedioHoras });
   return { periodoInicio: re.periodoInicio, periodoFin: re.periodoFin, guardadas: re.guardadas };
 }
 

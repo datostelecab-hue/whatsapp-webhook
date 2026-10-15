@@ -220,6 +220,11 @@
     return { jh, bolt, total: Math.round((jh + bolt) * 10) / 10, estado: j.estado || '', obs: j.obs || '' };
   }
 
+  /** ¿Cae el día en uno de esos tramos [desde, hasta, …]? (sin plaza, situación sin marca) */
+  const enTramo = (tramos, d) => (tramos || []).some(t => d >= t[0] && d <= t[1]);
+  /** Un día que no cuenta: sin plaza o en una situación sin marca (suspensión…). */
+  const noCuenta = (c, d) => enTramo(c.situaciones, d) || enTramo(c.sinPlaza, d);
+
   /** Las horas de un día, sea como sea. Null si no es un día de trabajo. */
   function horasDe(c, d) {
     const v = val(c, d);
@@ -273,6 +278,8 @@
       const t = Math.min(1, v / OBJETIVO);
       return rgb(C.verde, (0.12 + t * 0.48).toFixed(3));
     }
+    // Sin plaza o en una situación sin marca: nadie le esperaba. No es rojo.
+    if (noCuenta(c, d)) return rgb(C.muted, .12);
     return rgb(C.rojo, .45);
   }
 
@@ -283,7 +290,8 @@
     const v = val(c, d);
     if (esAus(v) || v === 'L') return false;
     if (v === 'J') return desglose(c, d).total < OBJETIVO;
-    if (typeof v === 'number') return v < OBJETIVO;
+    if (typeof v === 'number' && v > 0) return v < OBJETIVO;
+    if (noCuenta(c, d)) return false;
     return true;   // ni horas, ni libranza, ni ausencia: no salió
   }
 
@@ -343,11 +351,16 @@
     // que se está viendo, no el año entero. Si no, cambiar de mes no cambiaría
     // el orden y la lista mentiría.
     for (const c of filas) {
+      // EL PROMEDIO DE LA CASA (bitacora.service.promedioHoras): horas de BOLT
+      // más las J APROBADAS ÷ (días que salió + ausencias a 0 h), hasta ayer.
       let r = 0, h = 0, dias = 0;
-      for (let d = a; d <= Math.min(b, DATA.hoyIdx - 1); d++) {   // la media, hasta ayer
+      for (let d = a; d <= Math.min(b, DATA.hoyIdx - 1); d++) {
         if (esRojo(c, d)) r++;
-        const x = horasDe(c, d);
-        if (x != null) { h += x; dias++; }
+        const v = val(c, d);
+        if (typeof v === 'number' && v > 0) { h += v; dias++; continue; }
+        if (fueraDe(c, d)) continue;
+        if (v === 'J') { const g = desglose(c, d); h += (g.estado === 'aprobada' ? g.jh : 0) + g.bolt; dias++; }
+        else if (!esAus(v) && v !== 'L' && !noCuenta(c, d)) dias++;   // una «Ausencia»: 0 h
       }
       c._rojos = r; c._horas = h; c._media = dias ? h / dias : null;
     }
@@ -600,6 +613,11 @@
       valor = nf1.format(v) + ' h';
       if (v < OBJETIVO) nota = 'Por debajo de las ' + OBJETIVO + ' h.';
     }
+    else if (enTramo(c.situaciones, d)) {
+      valor = (c.situaciones.find(t => d >= t[0] && d <= t[1]) || [])[2] || 'Situación sin marca';
+      nota = 'No le tocaba salir: no cuenta en su promedio.';
+    }
+    else if (enTramo(c.sinPlaza, d)) { valor = 'Sin plaza'; nota = 'No tenía coche asignado: no cuenta en su promedio.'; }
     else { valor = 'No salió'; nota = 'Sin horas y sin justificante.'; }
     return { f, valor, nota };
   }

@@ -82,7 +82,7 @@ La cabecera sigue enseñando el alta del contrato de ahora y, si la casa empieza
 
 Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencias» no miran el futuro.
 
-> [!info] Tres promedios, tres preguntas (Lucía Peralta, 15/10/2026)
+> [!info] Tres promedios, tres preguntas (Lucía Peralta, 15/10/2026). Ese mismo día se unificaron: ver [[Promedio de horas]]
 > Con los mismos días de octubre salían **5,8 h** en su ficha, **9,23 h · A** en el planificador y **10 h** (7,5 h «contando la ausencia») en la bitácora. Ninguna estaba rota; cada una mide otra cosa:
 > - **Bitácora: 10 h.** BOLT + J por **jornada** 05→05, y solo los días que salió: 10,3 + 10,5 + (8,4 + 1 h de J) = 30,1 h en 3 días. El 7,5 h metía hoy como «Ausencia», con su turno de noche aún sin empezar, y ya no pasa.
 > - **Planificador: 9,23 h · A.** Es la **calificación** (`conductor_calificacion`): hasta ayer, y las **libranzas cuentan como 8 h** («descansar cuando toca no puede bajar la media»). (10,25 + 10,53 + 8 + 8 + 9,36) ÷ 5 = 9,23.
@@ -99,6 +99,9 @@ Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencia
 > llamadas «Ausencias» una al lado de la otra era el error a evitar.
 
 ### La media por día lleva dos cifras (24/09/2026)
+
+> [!important] Desde el 15/10/2026 la grande es el [[Promedio de horas]] de la casa
+> «Promedio h/día» = horas ÷ (días que salió + ausencias a 0 h), el mismo número de la ficha, la letra y los reportes. La media de los días que salió pasa a ir debajo, solo si hubo ausencias. Lo de este apartado es cómo era antes. Los días **sin plaza** y las **situaciones sin marca** (suspensión…) ya no son «Ausencia»: se pintan en gris y no cuentan.
 
 La grande es **la media de los días que salió**: horas ÷ días trabajados (un día con J cuenta como trabajado). Un día de «Ausencia» no entra, así que ni la sube ni la baja. Nelson Ontiveros hizo en agosto 147 h en 19 días, **7,7 h**, con 4 ausencias que no se notaban en ningún número.
 

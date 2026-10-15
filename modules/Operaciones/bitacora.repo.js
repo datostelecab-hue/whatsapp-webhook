@@ -29,7 +29,9 @@
 //                     lManual: { 'YYYY-MM-DD': { por, el } },  // libranzas puestas a mano (bitacora_dia)
 //                     lQuitada: { 'YYYY-MM-DD': { por, el } }, // libranzas del planificador quitadas a mano
 //                     fantasma: { 'YYYY-MM-DD': 'nombre de la cuenta' }, // trabajó con la cuenta de otro
-//                     ausencias: [{ marca, etiqueta, desde, hasta }] }],
+//                     ausencias: [{ marca, etiqueta, desde, hasta }],
+//                     sinPlaza: [[desdeIdx, hastaIdx], ...],             // días sin ninguna plaza
+//                     situaciones: [[desdeIdx, hastaIdx, etiqueta], ...] }], // sin marca: suspensión…
 //     hoyIdx, inicio, avisos: { sinFicha } }
 
 const db = require('../../services/db');
@@ -397,7 +399,7 @@ async function leerBitacora() {
 
   // Las fechas se piden como TEXTO ('YYYY-MM-DD'): node-postgres devuelve DATE como
   // Date en zona local y eso desplaza un día según el reloj.
-  const [roster, ausencias, justis, horas, libranzas, manualBit, periodos] = await Promise.all([
+  const [roster, ausencias, justis, horas, libranzas, manualBit, periodos, plazas, sinMarca] = await Promise.all([
     // TODA la plantilla, con el nombre de BOLT primero. La dimensión ya excluye a
     // los centinelas y resuelve contrato, zona, turno, teléfono y estado de hoy.
     db.consulta(
@@ -466,6 +468,18 @@ async function leerBitacora() {
               to_char(fecha_antiguedad, 'YYYY-MM-DD') AS antiguedad
          FROM conductor_periodo_empleo
         ORDER BY conductor_id, alta`),
+    // LOS DÍAS CON PLAZA de cada uno (15/10/2026). Un día sin ninguna plaza no es
+    // una «Ausencia»: nadie le esperaba en un coche. Las mismas asignaciones que
+    // mira la libranza del planificador (SQL_LIBRANZAS_PLAN).
+    db.consulta(
+      `SELECT a.conductor_id, to_char(a.desde, 'YYYY-MM-DD') AS desde, to_char(a.hasta, 'YYYY-MM-DD') AS hasta
+         FROM asignacion a
+         JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+        WHERE a.desde <= $2::date AND (a.hasta IS NULL OR a.hasta >= $1::date)`,
+      [INICIO_ISO, finIso]),
+    // Las situaciones que NO pintan marca (suspensión de empleo y sueldo,
+    // retirada del permiso, pendiente de asignar…): no son una «Ausencia».
+    situacionesSinMarca(INICIO_ISO, finIso),
   ]);
 
   const nuevos = () => new Array(nDias).fill(null);
@@ -621,6 +635,38 @@ async function leerBitacora() {
     }
   });
 
+  // LOS DÍAS SIN PLAZA, en tramos. Con plaza se sabe si le tocaba (y si no,
+  // es su libranza, la 'L'); sin plaza no le tocaba a nadie esperarle, así que
+  // un día así sin horas no es «Ausencia» ni cuenta en su promedio.
+  const conPlaza = new Map();
+  plazas.rows.forEach(r => {
+    const cid = Number(r.conductor_id);
+    if (!porId.has(cid)) return;
+    if (!conPlaza.has(cid)) conPlaza.set(cid, new Array(nDias).fill(0));
+    const marca = conPlaza.get(cid);
+    const a = Math.max(0, idxDe(r.desde)), b = r.hasta ? Math.min(nDias - 1, idxDe(r.hasta)) : nDias - 1;
+    for (let i = a; i <= b; i++) marca[i] = 1;
+  });
+  porId.forEach((c, cid) => {
+    const marca = conPlaza.get(cid);
+    const tramos = [];
+    let ini = null;
+    for (let i = 0; i < nDias; i++) {
+      const sin = !marca || !marca[i];
+      if (sin && ini === null) ini = i;
+      if (!sin && ini !== null) { tramos.push([ini, i - 1]); ini = null; }
+    }
+    if (ini !== null) tramos.push([ini, nDias - 1]);
+    c.sinPlaza = tramos;
+    c.situaciones = [];
+  });
+  sinMarca.forEach(x => {
+    const c = porId.get(Number(x.cid));
+    if (!c) return;
+    const a = Math.max(0, idxDe(x.desde)), b = Math.min(nDias - 1, idxDe(x.hasta));
+    if (b >= a) c.situaciones.push([a, b, x.etiqueta || 'Situación sin marca']);
+  });
+
   // Vigentes primero, por nombre; los de baja al final, la más reciente antes.
   const conductores = [...porId.values()].sort((a, b) =>
     (Number(b.vigente) - Number(a.vigente)) ||
@@ -768,7 +814,7 @@ async function horasDeJornada(diaIso) {
  */
 async function situacionesSinMarca(desdeIso, hastaIso) {
   const r = await db.consulta(
-    `SELECT h.conductor_id::text AS cid,
+    `SELECT h.conductor_id::text AS cid, ce.etiqueta,
             to_char(GREATEST(h.desde, $1::date), 'YYYY-MM-DD')                  AS desde,
             to_char(LEAST(COALESCE(h.hasta, $2::date), $2::date), 'YYYY-MM-DD') AS hasta
        FROM conductor_estado_hist h

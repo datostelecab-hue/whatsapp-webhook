@@ -27,7 +27,7 @@ Quién trabaja aquí y en qué condiciones: la ficha de la persona, su contrato,
 
 La misma plantilla la miran dos áreas y buscan cosas distintas: **Tráfico** quiere saber quién puede conducir hoy, **RRHH** quién está de alta y con qué contrato. De ahí salen dos decisiones de diseño:
 
-- **Hay dos fichas.** La **administrativa** (`modules/Conductores/conductores.repo.js`), con sus historiales y sus acciones, y la **de un vistazo** (`modules/Conductores/ficha360.repo.js`): calificación, horas, dinero, papeles que faltan, excesos de velocidad y lo hablado con esa persona. La segunda solo se pide cuando alguien abre a alguien, no en cada listado.
+- **Hay dos fichas.** La **administrativa** (`modules/Conductores/conductores.repo.js`), con sus historiales y sus acciones, y la **de un vistazo** (`modules/Conductores/ficha360.repo.js`): calificación, horas, dinero, papeles que faltan, excesos de velocidad y lo hablado con esa persona. La segunda solo se pide cuando alguien abre a alguien, no en cada listado. Su **«Promedio h/día»** y los días del mes son el [[Promedio de horas]] de la casa (15/10/2026, `plantilla.service.hoja`), no los de BI, que cuentan por día natural.
 - **Lo editable depende del rol.** La pantalla pregunta `/api/campos` y enseña unos campos abiertos y otros de solo lectura, en vez de dejar intentarlo y fallar. El ámbito de cada campo es `sensible` u `operativo`; el rol `trafico` solo toca lo operativo.
 
 La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion`, las horas la bitácora, el dinero la capa BI, los papeles el almacén de documentos. Cada bloque va con su propio `.catch()` — que falte el dinero de un mes no puede dejar sin ficha a una persona. Y los bloques para los que aún no hay datos (siniestralidad, multas, pluses, finiquito) **salen marcados como pendientes en vez de desaparecer**: un hueco visible es una lista de lo que queda por conectar, y un bloque ausente no es nada.
@@ -48,7 +48,7 @@ Se llegó en tres pasos, todos de Camilo el mismo día:
 3. *«Coge también esos, los días de ausencia cuentan como 0 por lo que bajará mucho su promedio»*. Sin mínimo, y cada día que no salió vale 0 h. Es la otra cifra de la ficha de la bitácora, la de **«contando la ausencia»**.
 
 Son tres columnas, solo en el Excel de la lista:
-- **«Promedio h/día BOLT + J, ausencias a 0 (mes corrido)»**: horas ÷ (días trabajados + ausencias).
+- **«Promedio h/día (BOLT + J aprobadas, ausencias a 0, mes corrido hasta ayer)»**: el [[Promedio de horas]] de la casa, horas ÷ (días trabajados + ausencias).
 - **«Días trabajados (mes corrido)»** y **«Ausencias (mes corrido)»**: de cuántos días sale.
 
 Se le pide a la bitácora (`bitacora.service.mediaDelMes`) para que las dos pantallas no digan cosas distintas.

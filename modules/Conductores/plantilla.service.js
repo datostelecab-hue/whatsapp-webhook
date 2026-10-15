@@ -143,7 +143,46 @@ async function fichaDeAlta(conductorId, quien = {}, { fechaInicio } = {}) {
  * historiales y sus acciones— y esta es la de un vistazo. Se piden las dos,
  * pero la segunda solo cuando alguien abre a alguien, y no en cada listado.
  */
-const hoja = id => ficha360.leer(id);
+const hoja = async id => {
+  const f = await ficha360.leer(id);
+  // Con red: si la bitácora no responde, la hoja sale igual (sin promedio).
+  await conPromedioDeLaCasa(f, id).catch(e => {
+    console.warn('⚠️ [Plantilla] promedio de la casa en la hoja:', e.message);
+    const k = (f.kpis || []).find(x => x.id === 'horas_dia');
+    if (k) { k.valor = null; k.delta = null; k.detalle = 'no se pudo calcular'; }
+  });
+  return f;
+};
+
+/**
+ * EL PROMEDIO H/DÍA DE LA HOJA ES EL DE LA CASA (15/10/2026): el de la bitácora,
+ * la letra, el planificador y los reportes (bitacora.service.promedioHoras),
+ * del mes corrido hasta ayer, y el del mes anterior para comparar. Antes salía
+ * de la capa BI, que cuenta por día NATURAL: al turno de noche le partía cada
+ * turno en dos días y la media le salía a la mitad (Lucía Peralta: 5,8 h en la
+ * ficha, 10 h en la bitácora).
+ */
+async function conPromedioDeLaCasa(f, id) {
+  const bit = require('../Operaciones/bitacora.service');
+  const actual = await bit.promedioHoras({});
+  const finAnterior = new Date(Date.parse(actual.desde + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  const anterior = await bit.promedioHoras({ hasta: finAnterior });
+  const yo = actual.porId.get(String(id)), antes = anterior.porId.get(String(id));
+  const k = (f.kpis || []).find(x => x.id === 'horas_dia');
+  if (k) {
+    k.valor = yo ? yo.promedio : null;
+    k.delta = yo && antes ? Math.round((yo.promedio - antes.promedio) * 100) / 100 : null;
+    k.detalle = yo
+      ? `${yo.dias} día${yo.dias === 1 ? '' : 's'} que salió${yo.ausencias ? ` + ${yo.ausencias} ausencia${yo.ausencias === 1 ? '' : 's'} a 0 h` : ''}`
+      : 'sin días que promediar este mes';
+  }
+  if (f.mesActual) {
+    f.mesActual.horasPorDia = yo ? yo.promedio : null;
+    f.mesActual.diasTrabajados = yo ? yo.dias : 0;
+    f.mesActual.ausencias = yo ? yo.ausencias : 0;
+  }
+  if (f.mesAnterior) f.mesAnterior.horasPorDia = antes ? antes.promedio : null;
+}
 
 const catalogos = () => con.catalogos();
 

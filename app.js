@@ -602,10 +602,10 @@ programar('40 5 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
-    const r = await require('./services/repo/rendimiento').recalcular();
+    // Los dos con el promedio de horas de la casa (bitacora.service.promedioHoras).
+    const { rendimiento: r, calificacion: c } =
+      await require('./modules/Operaciones/bitacora.service').recalcularPromedios();
     console.log(`⭐ [Rendimiento] ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
-    const cal = require('./services/repo/calificacion');
-    const c = await cal.recalcular();
     console.log(`⚖️  [Calificación] ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
       (c.telemetria.completa ? '' : ` · OJO: telemetría incompleta, ${c.telemetria.dias} día(s) con datos`) +
       (c.mesAnterior ? ` · rehecho ${c.mesAnterior.periodoInicio} → ${c.mesAnterior.periodoFin} con el modelo nuevo` : ''));
@@ -642,9 +642,9 @@ programar('0 12 * * *', async () => {
       // Si el sellado falla, el promedio se calcula igual con lo de las 05:35.
       console.error(`⚠️  [Bitácora] resellado del mediodía: ${e.message}`);
     }
-    const r = await require('./services/repo/rendimiento').recalcular();
+    const { rendimiento: r, calificacion: c } =
+      await require('./modules/Operaciones/bitacora.service').recalcularPromedios();
     console.log(`⭐ [Rendimiento] mediodía (todos): ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
-    const c = await require('./services/repo/calificacion').recalcular();
     console.log(`⚖️  [Calificación] mediodía: ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
       (c.mesAnterior ? ` · rehecho ${c.mesAnterior.periodoInicio} → ${c.mesAnterior.periodoFin} con el modelo nuevo` : ''));
   } catch (error) {

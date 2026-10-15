@@ -49,9 +49,37 @@ const primeroDe = iso => String(iso).slice(0, 8) + '01';
  * `hastaIso` debe ser una jornada YA CERRADA: la de hoy va a medias y hundiría
  * la media de todo el que esté trabajando ahora mismo.
  */
-async function calcular(hastaIso) {
+async function calcular(hastaIso, promedioHoras) {
   const hasta = String(hastaIso).slice(0, 10);
   const desde = primeroDe(hasta);
+  // DESDE EL 15/10/2026 ES EL PROMEDIO DE LA CASA (bitacora.service.promedioHoras),
+  // el mismo que la letra, la ficha y la bitácora. La consulta de debajo era la
+  // misma idea con otra cuenta (J sin aprobar, días sin plaza a 0) y queda solo
+  // para cuando no se pasa la fuente (las pruebas sueltas).
+  if (typeof promedioHoras === 'function') {
+    const est = await promedioHoras(desde, hasta);
+    const nuevosEst = new Set((await db.consulta(
+      `SELECT DISTINCT e.conductor_id FROM conductor_periodo_empleo e
+        WHERE e.baja IS NULL AND e.alta IS NOT NULL
+          AND e.alta > ($1::date - ($2 || ' days')::interval)`,
+      [hasta, String(DIAS_NUEVO)])).rows.map(x => Number(x.conductor_id)));
+    const filas = [...est.porId].map(([cid, x]) => {
+      const nuevo = nuevosEst.has(Number(cid));
+      return {
+        conductorId: Number(cid), mes: desde, nuevo,
+        dias: nuevo ? 0 : x.dias + x.ausencias,
+        diasCero: nuevo ? 0 : x.ausencias,
+        horasTotal: nuevo ? 0 : x.horas,
+        horasProm: nuevo ? 0 : x.promedio,
+        letra: nuevo ? 'N' : letraDe(x.promedio),
+      };
+    });
+    const ya = new Set(filas.map(f => f.conductorId));
+    nuevosEst.forEach(cid => {
+      if (!ya.has(cid)) filas.push({ conductorId: cid, mes: desde, nuevo: true, dias: 0, diasCero: 0, horasTotal: 0, horasProm: 0, letra: 'N' });
+    });
+    return filas;
+  }
   const r = await db.consulta(
     `WITH dias AS (
        SELECT g.dia::date AS dia FROM generate_series($1::date, $2::date, interval '1 day') g(dia)
@@ -147,14 +175,14 @@ async function calcular(hastaIso) {
  * Recalcula y GUARDA. `soloIds` limita a unas personas (el cron del mediodía,
  * que solo toca a los TodoTurno). Devuelve cuántas filas quedaron.
  */
-async function recalcular({ hasta, soloIds } = {}) {
+async function recalcular({ hasta, soloIds, promedioHoras } = {}) {
   // Hasta la última jornada CERRADA: la de hoy va a medias.
   const cierre = require('./llamadas').diaOperativoHoy();
   const ayer = new Date(Date.parse(cierre + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
   const hastaIso = hasta || ayer;
   const mes = primeroDe(hastaIso);
 
-  let filas = await calcular(hastaIso);
+  let filas = await calcular(hastaIso, promedioHoras);
   const limite = soloIds && soloIds.length ? new Set(soloIds.map(Number)) : null;
   if (limite) filas = filas.filter(f => limite.has(f.conductorId));
   if (!filas.length) return { mes, hasta: hastaIso, filas: 0 };

@@ -1303,7 +1303,9 @@
       // cada día que no salió cuenta como 0 h («los días de ausencia cuentan como
       // 0»). Es la media «contando la ausencia» de la bitácora hasta ayer
       // (bitacora.service.mediaDelMes). Al lado, de cuántos días sale.
-      { titulo: 'Promedio h/día BOLT + J, ausencias a 0 (mes corrido)', soloExcel: true, valor: f => f.horas_dia_media ?? '' },
+      // El promedio de la casa (bitacora.service.promedioHoras): el mismo de la
+      // bitácora, la ficha, la letra y los reportes.
+      { titulo: 'Promedio h/día (BOLT + J aprobadas, ausencias a 0, mes corrido hasta ayer)', soloExcel: true, valor: f => f.horas_dia_media ?? '' },
       { titulo: 'Días trabajados (mes corrido)', soloExcel: true, valor: f => f.dias_trabajados_mes ?? '' },
       { titulo: 'Ausencias (mes corrido)', soloExcel: true, valor: f => f.ausencias_mes ?? '' },
       // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio

@@ -10,7 +10,6 @@
 
 const repo = require('./fantasma.repo');
 const bitacora = require('../Operaciones/bitacora.service');
-const rendimiento = require('../../services/repo/rendimiento');
 
 const HOY = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 const esISO = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
@@ -56,7 +55,8 @@ async function rehacer(rango) {
     const r = await bitacora.sellarHoras(rango.desde, rango.hasta);
     // El promedio del mes se calcula sobre las horas selladas: si no se rehace,
     // la media sigue siendo la de antes hasta que pase el cron de la noche.
-    await rendimiento.recalcular({}).catch(() => null);
+    // Y la letra con él: los dos salen del promedio de la casa.
+    await bitacora.recalcularPromedios().catch(() => null);
     return { resellado: { ...rango, filas: r.filas } };
   } catch (e) {
     return { resellado: null, avisoSellado: `El enlace quedó guardado, pero no se pudieron recalcular ` +

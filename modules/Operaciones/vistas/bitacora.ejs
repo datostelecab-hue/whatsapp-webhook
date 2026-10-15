@@ -69,6 +69,10 @@
   .cal-dia.hoydia, .cal-dia.hoyh { background: rgb(var(--tc-gold) / .06); border-color: rgb(var(--tc-gold) / .35); }
   .cal-dia.hoyh .cal-val { color: rgb(var(--tc-text)); }
   .cal-hoytag { font-size: 9px; font-weight: 700; letter-spacing: .04em; color: rgb(var(--tc-gold)); margin-left: .3rem; }
+  /* Sin plaza ese día, o en una situación sin marca (suspensión…): nadie le
+     esperaba en un coche. No es «Ausencia» ni cuenta en su promedio. */
+  .cal-dia.sinplaza, .cal-dia.sinmarca { background: rgb(var(--tc-muted) / .06); }
+  .cal-dia.sinplaza .cal-val, .cal-dia.sinmarca .cal-val { color: rgb(var(--tc-muted)); font-weight: 600; font-size: 10px; }
   .cal-dia.nosalio { background: rgb(var(--tc-red) / .10); border-color: rgb(var(--tc-red) / .35); }
   .cal-dia.nosalio .cal-val { color: rgb(var(--tc-red)); font-size: 10px; font-weight: 600; }
   .cal-dia.L { background: rgb(var(--tc-muted) / .10); }
@@ -112,6 +116,7 @@
   .mini > i.t1 { background: rgb(var(--tc-green) / .35); } .mini > i.t2 { background: rgb(var(--tc-green) / .6); } .mini > i.t3 { background: rgb(var(--tc-green)); }
   .mini > i.nosalio { background: rgb(var(--tc-red) / .6); } .mini > i.L { background: rgb(var(--tc-muted) / .35); }
   .mini > i.hoydia { background: rgb(var(--tc-gold) / .45); }
+  .mini > i.sinplaza, .mini > i.sinmarca { background: rgb(var(--tc-muted) / .18); }
   .mini > i.V { background: rgb(var(--tc-vac)); } .mini > i.B { background: rgb(var(--tc-med)); } .mini > i.P { background: rgb(var(--tc-permiso)); } .mini > i.J { background: rgb(var(--tc-just)); }
   .mini > i.futuro, .mini > i.fuera { opacity: .15; }
   .b-chip { font-size: 11px; padding: .2rem .55rem; border-radius: .5rem; border: 1px solid rgb(var(--tc-border) / .7); color: rgb(var(--tc-muted)); cursor: pointer; }
@@ -268,8 +273,17 @@
       return 'J ' + cual + (p ? ' jpend' : '');
     }
     if (esAus(v) || v === 'L') return v;
+    // Sin plaza ese día, o en una situación sin marca (suspensión…): no se le
+    // esperaba en ningún coche. No es «Ausencia» ni cuenta en su promedio
+    // (15/10/2026, la regla de la casa: bitacora.service.promedioHoras).
+    if (enTramo(c.situaciones, d)) return 'sinmarca';
+    if (enTramo(c.sinPlaza, d)) return 'sinplaza';
     return 'nosalio';
   }
+  /** ¿Cae el día en uno de esos tramos [desde, hasta, …]? */
+  function enTramo(tramos, d) { return (tramos || []).some(t => d >= t[0] && d <= t[1]); }
+  /** La situación sin marca de ese día (su nombre), si la hay. */
+  function situacionDe(c, d) { const t = (c.situaciones || []).find(x => d >= x[0] && d <= x[1]); return t ? t[2] : ''; }
   // La clase "de verdad" sin el sufijo, para comparar (k === 'V', etc.).
   const soloClase = k => String(k).split(' ')[0];
   const trabajo = k => k === 't1' || k === 't2' || k === 't3';
@@ -309,6 +323,8 @@
         ' + BOLT ' + nf1.format(hb) + ' h' + (j.obs ? ' · ' + j.obs : '') + porvenir;
     }
     if (k === 'L') return ((c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)') + porvenir;
+    if (k === 'sinmarca') return situacionDe(c, d) + ': no le tocaba salir. No cuenta en su promedio.';
+    if (k === 'sinplaza') return 'Sin plaza ese día: no tenía coche asignado. No cuenta en su promedio.';
     if (esAus(k)) return NOM[k];
     return 'Ausencia: ni una hora, sin libranza, vacaciones, baja ni permiso.' +
       ((c.lQuitada || {})[isoDe(d)] ? ' (El planificador lo tenía de libranza y se quitó a mano.)' : '');
@@ -690,29 +706,30 @@
    * que es cuando la palabra genérica sí dice algo.
    */
   /**
-   * LA MEDIA POR DÍA, CON DOS CIFRAS.
+   * EL PROMEDIO H/DÍA, EL DE LA CASA (15/10/2026). Es el mismo número que la
+   * ficha, la letra del planificador, Control y los reportes, y se calcula igual
+   * en el servidor (bitacora.service.promedioHoras):
    *
-   * La grande es la media de los días que salió: horas ÷ días trabajados. Dice
-   * cuánto rinde un día en la calle, pero un día de «Ausencia» ni la sube ni
-   * la baja. Nelson Ontiveros hizo en agosto 147 h en 19 días (7,7 h/día) y
-   * tuvo 4 ausencias que no se notaban en ningún número.
+   *   horas ÷ (días que salió + «Ausencias», cada una a 0 h)
    *
-   * La de debajo cuenta cada «Ausencia» como un día de 0 h: horas ÷ (días
-   * trabajados + ausencias). Es la que dice cuánto rinde un día que le tocaba
-   * trabajar. Vacaciones, bajas, permisos y libranzas no entran en ninguna de
-   * las dos. Lo de antes del alta y después de la baja tampoco (`fuera`).
+   * Las horas son las de BOLT de su turno más las J aprobadas. No cuentan
+   * vacaciones, bajas, permisos, libranzas, situaciones sin marca, días sin
+   * plaza ni hoy. Debajo, solo si hubo ausencias, la media de los días que salió.
+   * Hasta el 15/10 la grande era esa (Nelson Ontiveros en agosto: 7,7 h los días
+   * que salió y 6,4 h contando sus 4 ausencias).
    */
   function mediaKpi(s) {
     const media = s.trabajados ? s.horas / s.trabajados : null;
     const dias = s.trabajados + s.nosalio;
-    const conAus = dias ? s.horas / dias : null;
-    const color = media != null && media < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text';
-    if (!s.nosalio) return ['Media por día', media != null ? nf1.format(media) + ' h' : '—', color];
-    return ['Media por día', media != null ? nf1.format(media) + ' h' : '—', color,
-      `${nf1.format(conAus)} h contando ${s.nosalio === 1 ? 'la ausencia' : 'las ' + s.nosalio + ' ausencias'}`,
-      `${media != null ? nf1.format(media) : '—'} h: media de los días que salió (${nf0.format(Math.round(s.horas))} h ÷ ${s.trabajados} días).\n` +
-      `${nf1.format(conAus)} h: contando cada «Ausencia» como un día de 0 h (${nf0.format(Math.round(s.horas))} h ÷ ${dias} días).\n` +
-      'Vacaciones, bajas, permisos y libranzas no cuentan en ninguna.'];
+    const prom = dias ? s.horas / dias : null;
+    const color = prom != null && prom < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text';
+    const titulo = `El promedio de la casa, el mismo de la ficha, la letra y los reportes: ` +
+      `${nf0.format(Math.round(s.horas))} h ÷ ${dias} días (${s.trabajados} que salió` +
+      `${s.nosalio ? ' + ' + s.nosalio + (s.nosalio === 1 ? ' ausencia' : ' ausencias') + ' a 0 h' : ''}).\n` +
+      'Horas de BOLT de su turno más las J aprobadas. No cuentan vacaciones, bajas, permisos, libranzas, ' +
+      'días sin plaza, situaciones sin marca ni hoy.';
+    return ['Promedio h/día', prom != null ? nf1.format(prom) + ' h' : '—', color,
+      s.nosalio && media != null ? `${nf1.format(media)} h los días que salió` : undefined, titulo];
   }
 
   function ausenciasKpi(s) {
@@ -933,6 +950,8 @@
     if (trabajo(k)) contenido = `<span class="cal-val">${nf1.format(v)} h</span>`;
     else if (k === 'nosalio') contenido = '<span class="cal-val">Ausencia</span>';
     else if (k === 'hoydia') contenido = '';
+    else if (k === 'sinplaza') contenido = '<span class="cal-val">sin plaza</span>';
+    else if (k === 'sinmarca') contenido = `<span class="cal-val">${esc(situacionDe(c, d).split(' ')[0].toLowerCase())}</span>`;
     else if (k === 'L') contenido = '<span class="cal-val">libra</span>';
     else if (k === 'J') {
       // El número que vale para la nómina (justificadas APROBADAS + BOLT) y la

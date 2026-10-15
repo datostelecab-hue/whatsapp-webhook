@@ -14,7 +14,10 @@ Una letra por conductor y periodo. Es lo que Tráfico ve al lado del nombre —*
 
 Dos ficheros, y **dos medias distintas** que conviene no confundir:
 
-- `services/repo/calificacion.js` — el modelo **ABCD 2.1**, la letra de verdad.
+- `services/repo/calificacion.js` — el modelo **ABCD 2.2**, la letra de verdad.
+
+> [!important] Desde 2.2 (15/10/2026) las horas de la letra son el [[Promedio de horas]] de la casa
+> El mismo número que la bitácora, la ficha y los reportes: horas (BOLT de su turno + J aprobadas) ÷ (días que salió + ausencias a 0 h), hasta ayer. Las libranzas, vacaciones, bajas, permisos, situaciones sin marca y días sin plaza **ya no valen 8 h: no cuentan**. Lo recalcula `bitacora.service.recalcularPromedios`, que le pasa el promedio; `calcular()` no funciona sin él. Medido ese día, cambiaban **37 letras de 205** (las D, de 9 a 22). La tabla de «Qué cuenta como día cubierto» es la de 2.1 y queda solo para contar los días del periodo (el mínimo de 5).
 - `services/repo/rendimiento.js` — el **promedio de horas del mes corrido** (escala S/A/B/C) y, hoy, la puerta por la que las pantallas piden la letra.
 
 ## El modelo: tres métricas ponderadas
@@ -150,6 +153,9 @@ Además hay `historico(conductorId)` —para contestar *"llevo tres periodos baj
 
 ## Por qué hay DOS medias distintas
 
+> [!note] Ya no (15/10/2026)
+> Desde 2.2 la calificación y `conductor_rendimiento` usan el mismo [[Promedio de horas]]. Lo de abajo explica cómo era con 2.1.
+
 Porque contestan preguntas distintas y **no dan el mismo número para la misma persona**.
 
 ### `conductor_rendimiento` — el promedio de horas del mes corrido
@@ -187,7 +193,7 @@ Si en algún sitio se ven dos cifras distintas para la misma persona, esa es la 
 
 ## Cuándo se calcula
 
-Las dos cosas van juntas porque dependen de lo mismo (`app.js`):
+Las dos cosas van juntas porque dependen de lo mismo (`app.js`), y desde el 15/10/2026 entran por `bitacora.service.recalcularPromedios()`, que les pasa el promedio de la casa:
 
 - **05:40** — después de que la bitácora selle la jornada (05:35). Si se calculara antes, el último día entraría a medias.
 - **12:00, otra vez y para todos.** Antes aquí solo se recalculaban los TodoTurno, porque su jornada no cierra a las 05:00 sino al mediodía. Pero **al turno de noche le pasa lo mismo**: a las 05:40 lo suyo aún se está cerrando y salían con horas de menos. Al mediodía la jornada anterior está cerrada para todo el mundo. La pasada de las 05:40 se queda porque da una cifra utilizable a primera hora, cuando Tráfico empieza a colocar gente; esta la corrige. Son 200 filas sobre histórico ya sellado: no le cuesta nada al servidor y es idempotente.

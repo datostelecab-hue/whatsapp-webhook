@@ -266,7 +266,8 @@
         ${linea('En viaje', m ? num(m.horasViaje, 1) + ' h' : '—')}
         ${linea('En espera', m ? num(m.horasEspera, 1) + ' h' : '—')}
         ${linea('Días trabajados', m ? num(m.diasTrabajados) : '—')}
-        ${linea('Promedio por día', m ? num(m.horasPorDia, 1) + ' h' : '—')}
+        ${m && m.ausencias ? linea('Ausencias (cuentan 0 h)', num(m.ausencias)) : ''}
+        ${linea('Promedio por día', m && m.horasPorDia != null ? num(m.horasPorDia, 1) + ' h' : '—')}
         ${linea('Coches distintos', m ? num(m.cochesDistintos) : '—')}
       </div>
       <div>

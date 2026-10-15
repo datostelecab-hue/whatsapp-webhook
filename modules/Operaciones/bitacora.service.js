@@ -152,11 +152,11 @@ async function resellar({ desde, hasta }, quien) {
  *   · Antes de su alta, tras su baja o entre dos contratos, solo si trabajó.
  *     Quien no tiene NINGÚN contrato (una ficha que no llegó a entrar), igual.
  *
- * Y AQUÍ VA UNA COSA QUE LA PANTALLA NO HACE: los días de una situación sin
- * marca en la rejilla —suspensión de empleo y sueldo, retirada del permiso,
- * pendiente de asignar— no son una ausencia. La rejilla los deja vacíos y los
- * pinta como «no salió»; esta cuenta no los cuenta como 0 (14/10/2026: cuatro
- * suspendidos salían con 0 h y 13 ausencias de 13 días).
+ * Tampoco son una ausencia los días de una situación sin marca —suspensión de
+ * empleo y sueldo, retirada del permiso, pendiente de asignar— (14/10/2026:
+ * cuatro suspendidos salían con 0 h y 13 ausencias de 13 días), ni los días sin
+ * ninguna plaza (15/10/2026). Desde el 15/10 la rejilla trae los dos
+ * (`situaciones`, `sinPlaza`) y la pantalla los pinta igual que los cuenta esto.
  *
  *   media     = horas ÷ días trabajados            (la grande de la ficha)
  *   conAus    = horas ÷ (trabajados + ausencias)   (la de «contando la ausencia»:
@@ -170,24 +170,51 @@ async function resellar({ desde, hasta }, quien) {
  * dias, ausencias }) }, las medias a un decimal.
  */
 async function mediaDelMes({ hasta } = {}) {
+  return promedioHoras({ hasta });
+}
+
+/**
+ * EL PROMEDIO DE HORAS DE LA CASA (15/10/2026). Camilo: «la letra debe de
+ * calcularse igual en todas partes, pon lo del cálculo de las horas como un
+ * estándar en todas partes, hasta en los reportes». Es ESTE, y lo demás lo lee
+ * de aquí: la calificación —y con ella la letra, el planificador, Control, el
+ * reporte de horas y el de asistencia—, la ficha de cada persona y el Excel de
+ * Plantilla. La pantalla de la bitácora hace la misma cuenta (`resumen()` y
+ * `mediaKpi()` en vistas/bitacora.ejs) sobre la misma rejilla.
+ *
+ *   · Las horas de un día: las de BOLT de su turno (las de la rejilla, que son
+ *     las selladas en bitacora_horas) más las J APROBADAS.
+ *   · Cuentan los días que salió (con horas o con J) y las «Ausencias», a 0 h:
+ *     días con plaza en los que le tocaba y no salió sin nada que lo explique.
+ *   · No cuentan: libranzas, vacaciones, bajas, permisos, situaciones sin marca
+ *     (suspensión…), días sin plaza y los de fuera de contrato (salvo que
+ *     trabajara).
+ *   · Hasta AYER: hoy va a medias y entra mañana.
+ *
+ *   promedio = horas ÷ (días que salió + ausencias)   ← EL número
+ *   media    = horas ÷ días que salió                 (solo de detalle)
+ *
+ * Por omisión, el mes corrido hasta ayer. Con `hasta`, el mes corrido de esa
+ * fecha; con `desde` también, ese tramo. Devuelve { desde, hasta, porId:
+ * Map(conductor_id → { promedio, conAus (= promedio), media, horas, dias,
+ * ausencias }) }, a un decimal.
+ */
+async function promedioHoras({ desde, hasta } = {}) {
   const d = await datos();
   const base = Date.UTC(d.inicio.y, d.inicio.m, d.inicio.d);
   const idx = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - base) / 86400000);
   const iso = i => new Date(base + i * 86400000).toISOString().slice(0, 10);
+  const esIso = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').slice(0, 10));
   let fin = d.hoyIdx - 1;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(hasta || '').slice(0, 10))) fin = Math.min(fin, idx(String(hasta).slice(0, 10)));
-  const hastaIso = iso(fin), desdeIso = hastaIso.slice(0, 8) + '01';
+  if (esIso(hasta)) fin = Math.min(fin, idx(String(hasta).slice(0, 10)));
+  const hastaIso = iso(fin);
+  const desdeIso = esIso(desde) ? String(desde).slice(0, 10) : hastaIso.slice(0, 8) + '01';
   const ini = Math.max(0, idx(desdeIso));
 
+  const enTramo = (tramos, i) => (tramos || []).some(([a, b]) => i >= a && i <= b);
   const fuera = (c, i) => c.altaIdx == null || i < c.altaIdx || (c.bajaIdx != null && i > c.bajaIdx)
-    || (c.huecos || []).some(([a, b]) => i >= a && i <= b);
-  const sinMarca = new Map();   // conductor_id → [[desdeIdx, hastaIdx]]
-  (await repo.situacionesSinMarca(desdeIso, hastaIso)).forEach(x => {
-    if (!sinMarca.has(x.cid)) sinMarca.set(x.cid, []);
-    sinMarca.get(x.cid).push([idx(x.desde), idx(x.hasta)]);
-  });
-  const sinFalta = (c, i) => (sinMarca.get(String(c.conductorId)) || []).some(([a, b]) => i >= a && i <= b);
-  const AUSENTE = new Set(['V', 'B', 'P', 'L']);
+    || enTramo(c.huecos, i);
+  const NO_CUENTA = new Set(['V', 'B', 'P', 'L']);
   const r1 = x => Math.round(x * 10) / 10;
   const porId = new Map();
   d.conductores.forEach(c => {
@@ -200,23 +227,44 @@ async function mediaDelMes({ hasta } = {}) {
         const dia = iso(i), j = c.justif[dia] || {};
         horas += (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
         dias++;
-      } else if (!AUSENTE.has(v) && !sinFalta(c, i)) ausencias++;
+      } else if (!NO_CUENTA.has(v) && !enTramo(c.situaciones, i) && !enTramo(c.sinPlaza, i)) ausencias++;
     }
-    if (dias || ausencias) porId.set(String(c.conductorId), {
-      media: dias ? r1(horas / dias) : null, conAus: r1(horas / (dias + ausencias)),
-      horas: r1(horas), dias, ausencias,
-    });
+    if (dias || ausencias) {
+      const promedio = r1(horas / (dias + ausencias));
+      porId.set(String(c.conductorId), {
+        promedio, conAus: promedio, media: dias ? r1(horas / dias) : null,
+        horas: r1(horas), dias, ausencias,
+      });
+    }
   });
   return { desde: desdeIso, hasta: hastaIso, porId };
 }
 
+/**
+ * RECALCULA LO QUE SALE DEL PROMEDIO DE HORAS: el rendimiento del mes
+ * (`conductor_rendimiento`) y la CALIFICACIÓN A–D (`conductor_calificacion`),
+ * los dos con el promedio de la casa (`promedioHoras`). Es por donde entran los
+ * crons de las 05:40 y de las 12:00 y quien rehace horas (cuentas fantasma):
+ * así la letra no puede calcular las horas de otra manera que la bitácora.
+ *
+ * La rejilla se lee de nuevo antes (la caché puede ser de antes del sellado).
+ */
+async function recalcularPromedios({ hasta } = {}) {
+  olvidar();
+  const fuente = (desde, h) => promedioHoras({ desde, hasta: h });
+  const rendimiento = await require('../../services/repo/rendimiento').recalcular({ hasta, promedioHoras: fuente });
+  const calificacion = await require('../../services/repo/calificacion').recalcular({ hasta, promedioHoras: fuente });
+  return { rendimiento, calificacion };
+}
+
 module.exports = {
-  mediaDelMes,
+  mediaDelMes, promedioHoras, recalcularPromedios,
   datos, vacaciones, llamadasDelDia,
   justificar, anularJustificante, libranza, resellar,
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el
   // repositorio, que es lo que deja cambiar esto por dentro.
-  sellarHoras: (desde, hasta) => repo.sellarHoras(desde, hasta),
+  // Y la rejilla en caché se tira: lo sellado cambia lo que enseña.
+  sellarHoras: async (desde, hasta) => { const r = await repo.sellarHoras(desde, hasta); olvidar(); return r; },
   // Las horas de UNA jornada, por persona. Las pide el reporte de la ETT: si
   // las contara por su cuenta, dos pantallas dirían cosas distintas del mismo
   // día y una de ellas se le manda a un tercero.
