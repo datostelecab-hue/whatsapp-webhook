@@ -88,6 +88,10 @@ Hecha: fotos, audios y documentos; plantillas con la ventana cerrada (también p
 
 Lo que no está: mandar fotos o documentos desde la oficina, y cargar mensajes más antiguos que los 80 últimos de una conversación.
 
+## Mandar un vídeo de la casa (15/10/2026)
+
+Con la ventana abierta, junto al rayo de las respuestas rápidas hay un botón con una película. Abre el vídeo para verlo antes, y al pulsar «Mandar» se le envía con su texto debajo (`POST /whatsapp/api/video { tel, video }`). Los vídeos salen de `services/videosWhatsapp.js`; hoy solo está el del bot del coche. El bot no se pausa. En la conversación se ve el vídeo mandado, servido desde nuestro `/assets`. Todo el detalle, en [[WhatsApp#Vídeos (15/10/2026)]].
+
 ## Ver también
 
 [[WhatsApp]] · [[Control]] (Call Center) · [[Usuarios y permisos]]

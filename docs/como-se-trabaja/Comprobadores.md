@@ -400,6 +400,11 @@ No son de los seis, pero forman parte de la misma red:
   vuelve de VACACIONES (aunque librara después, sin plaza, con otra ausencia detrás);
   una vez por persona y por fecha; la llamada (lo que pide nota) y que el Call Center
   la clasifique como confirmación de turno. 25 casos.
+- **`comprobar-videos-whatsapp.js`** (15/10/2026) — el envío de vídeos por WhatsApp
+  sin base ni Meta: el catálogo (el fichero existe y cabe en 16 MB, sin «fichar»), el
+  enlace solo https, cómo se apunta en el chat, que con la ventana cerrada o sin
+  conversación no sale, y que con ella abierta sale con el 34, el enlace, su texto y
+  firmado por la oficina. 12 casos.
 
 ---
 

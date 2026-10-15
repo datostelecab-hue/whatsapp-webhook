@@ -74,6 +74,8 @@
   const VER_LLAMADAS = <%- JSON.stringify(!!verLlamadas) %>;
   const ABRIR_TEL = <%- JSON.stringify(abrirTel || '') %>;
   const SIN_TELEFONO = <%- JSON.stringify(!!sinTelefono) %>;
+  // Los vídeos de la casa (services/videosWhatsapp.js), para mandarlos con la ventana abierta.
+  const VIDEOS = <%- JSON.stringify(locals.videos || []) %>;
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   // Las marcas de WhatsApp, como las pinta el móvil: *negrita* (el bot la usa
@@ -324,6 +326,11 @@
       case 'reaccion':
         return `<div class="text-sm text-telecab-muted">Reaccionó con ${esc(m.texto)}</div>`;
       case 'imagen': case 'video': case 'audio': case 'documento': case 'sticker':
+        // Un vídeo NUESTRO (15/10/2026) va por enlace a /assets: se ve de ahí.
+        if (m.tipo === 'video' && !d.media_id && d.ruta && d.ruta.startsWith('/assets/')) {
+          return `<video controls preload="metadata" src="${esc(d.ruta)}" class="max-h-72 max-w-full rounded-lg bg-black"></video>`
+            + (m.texto ? `<div class="whitespace-pre-wrap break-words mt-1.5">${formato(m.texto)}</div>` : '');
+        }
         return d.media_id ? adjunto(m) : `<div class="text-sm text-telecab-muted italic">${NOMBRE_MEDIA[m.tipo]} sin fichero.</div>`;
       case 'contacto':
         return `<div class="flex items-center gap-2 text-sm"><i class="fa-solid fa-address-card text-telecab-muted"></i> Contacto: ${esc(m.texto || '')}</div>`;
@@ -466,6 +473,8 @@
       <form id="w-form" class="flex items-end gap-2">
         <button type="button" id="w-rapidas" class="shrink-0 w-10 h-10 rounded-xl border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60"
                 title="Respuestas rápidas (o escribe «/» al empezar)" aria-label="Respuestas rápidas"><i class="fa-solid fa-bolt"></i></button>
+        ${VIDEOS.length ? `<button type="button" id="w-video" class="shrink-0 w-10 h-10 rounded-xl border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60"
+                title="Mandar un vídeo de la casa (el del bot del coche…)" aria-label="Mandar un vídeo"><i class="fa-solid fa-film"></i></button>` : ''}
         <textarea id="w-texto" rows="1" maxlength="4096" placeholder="Escribe un mensaje"
           class="flex-1 resize-none max-h-40 px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70"></textarea>
         <button type="submit" id="w-enviar" class="shrink-0 h-10 px-4 rounded-xl bg-telecab-gold text-sm font-semibold hover:brightness-95 disabled:opacity-60" style="color: rgb(var(--tc-on-gold))">
@@ -490,6 +499,43 @@
     });
     $('#w-form').addEventListener('submit', ev => { ev.preventDefault(); enviar(); });
     $('#w-rapidas').addEventListener('click', () => (rapidas.abierto ? cerrarRapidas() : abrirRapidas('')));
+    const bv = $('#w-video');
+    if (bv) bv.addEventListener('click', mandarVideo);
+  }
+
+  /**
+   * MANDAR UN VÍDEO DE LA CASA (15/10/2026): el del bot del coche, de momento.
+   * Con la ventana abierta, como el texto; el bot no se pausa.
+   */
+  async function mandarVideo() {
+    if (!VIDEOS.length || enviando) return;
+    let v = VIDEOS[0];
+    if (VIDEOS.length > 1) {
+      const id = await Dialogo.elegir({ titulo: 'Mandar un vídeo', texto: 'Elige cuál.',
+        opciones: VIDEOS.map(x => ({ valor: x.id, texto: `${x.titulo} (${x.duracion})` })) });
+      if (!id) return;
+      v = VIDEOS.find(x => x.id === (id.valor || id)) || null;
+      if (!v) return;
+    }
+    const ok = await Dialogo.confirmar({
+      titulo: `Mandar «${v.titulo}»`,
+      html: `<video controls preload="metadata" src="${esc(v.ruta)}" poster="${esc(v.portada || '')}" class="w-full max-h-72 rounded-lg bg-black mb-2"></video>`
+        + `<p class="text-sm">${esc(v.para || '')} Dura ${esc(v.duracion)}. Le llega con un texto debajo que le explica para qué es.</p>`,
+      si: 'Mandar', no: 'Cancelar',
+    });
+    if (!ok) return;
+    enviando = true;
+    try {
+      const r = await json('/whatsapp/api/video', { tel: actual, video: v.id });
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo mandar');
+      await refrescarChat();
+      abajo(true);
+      cargarLista();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo mandar el vídeo', texto: e.message, tono: 'error' });
+    } finally {
+      enviando = false;
+    }
   }
 
   // ── Las respuestas rápidas ──────────────────────────────────────────────

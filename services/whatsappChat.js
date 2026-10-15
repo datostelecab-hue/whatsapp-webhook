@@ -91,6 +91,14 @@ function describirSaliente(p) {
       },
     };
   }
+  // UN VÍDEO QUE MANDAMOS (15/10/2026): por enlace a nuestro /assets. Se guarda
+  // la RUTA para verlo en el chat (servida por nosotros mismos).
+  if (x.type === 'video') {
+    const v = x.video || {};
+    let ruta = null;
+    try { ruta = v.link ? new URL(v.link).pathname : null; } catch (_) { ruta = null; }
+    return { tipo: 'video', texto: v.caption || '', detalle: { enlace: v.link || null, ruta } };
+  }
   return { tipo: 'otro', texto: '', detalle: { type: x.type || null } };
 }
 

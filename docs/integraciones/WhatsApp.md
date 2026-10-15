@@ -35,6 +35,22 @@ Hay un apaño parecido con el número de parámetros: si la plantilla de turnos 
 
 Para diagnosticar están `listarPlantillas()` —nombre, idioma, estado, categoría, variables y botones exactos tal como los tiene Meta— y `estadoCuenta()`, que dice el escalón de mensajería, la calidad del número, qué empresa posee el WABA y si está verificada. Eso último resuelve el caso típico de "mi empresa está verificada y WhatsApp me sigue limitando": suele ser que el WABA cuelga de otro portfolio distinto del verificado.
 
+### Vídeos (15/10/2026)
+
+Camilo: *«prepara el envío de vídeos y monta lo del vídeo de explicación que hicimos sobre el bloqueo de motor»*.
+
+- **Solo con la ventana de 24 h abierta.** Fuera de ella Meta solo deja plantillas. Una plantilla con vídeo en la cabecera es otra cosa: la aprueba Meta y se paga.
+- **`whatsapp.enviarVideo(tel, { link, caption })`** manda un `type: video` por **enlace https**: Meta se baja el fichero de nuestra dirección pública. Formato MP4 (H.264 + AAC), hasta 16 MB. Un enlace que no es https no sale.
+- **Los vídeos de la casa** están en `services/videosWhatsapp.js`, cada uno con su fichero en `public/assets/videos/`, que se sirve sin sesión. Hoy solo hay uno: **`bot_coche`**, el reel «El bot del coche» (`Documents/Claude/reel-bot-coche`, 72 s, 11 MB), con un texto debajo que explica para qué es.
+- **La dirección pública** es la de la petición (en Render llega como https), o `URL_PUBLICA` si se pone. Desde una prueba en local no sale nada, porque no es https.
+- **En el chat** se apunta como un vídeo con su ruta (`detalle.ruta`) y se ve desde el propio ERP.
+- **Se manda desde dos sitios:**
+  - el chat de [[WhatsApp chat]], con el botón de la película;
+  - [[Proximas incorporaciones]], con «Vídeo del bot».
+
+  Los dos pasan por `modules/WhatsApp/whatsapp.service.enviarVideo`, que comprueba la ventana. El bot **no se pausa**: es para que aprenda a usarlo y lo pruebe.
+- **A un nuevo**, la ventana se le abre cuando pulsa «Ver mis turnos» en la plantilla de turnos o escribe al bot. Comprobador: `scripts/comprobar-videos-whatsapp.js` (12 casos).
+
 ## Plantillas
 
 El detalle completo, con los textos exactos y las reglas de Meta, está en [[PLANTILLAS-WHATSAPP]] (`docs/PLANTILLAS-WHATSAPP.md`). Se crean sin teclearlas a mano con `node scripts/crear-plantillas-whatsapp.js --ver` (y `--go` para mandarlas a revisión).

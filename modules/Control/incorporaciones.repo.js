@@ -101,7 +101,11 @@ async function personas(ids) {
             (SELECT max(w.ultima_entrante_at) FROM whatsapp_chat w
               WHERE t.sufijo9 IS NOT NULL AND right(w.telefono, 9) = t.sufijo9) AS ultima_entrante_at,
             (SELECT tu.etiqueta FROM conductor_turno_hist th JOIN turno tu ON tu.id = th.turno_id
-              WHERE th.conductor_id = c.id ORDER BY th.desde DESC LIMIT 1) AS jornada
+              WHERE th.conductor_id = c.id ORDER BY th.desde DESC LIMIT 1) AS jornada,
+            -- El último vídeo que le mandamos (el del bot), y si llegó a salir.
+            (SELECT to_char(max(m.ocurrido_at) AT TIME ZONE 'Europe/Madrid', 'DD/MM HH24:MI') FROM whatsapp_mensaje m
+              WHERE t.sufijo9 IS NOT NULL AND right(m.telefono, 9) = t.sufijo9
+                AND m.sentido = 'saliente' AND m.tipo = 'video' AND m.error IS NULL) AS video_enviado
        FROM conductor c
        LEFT JOIN LATERAL (
          SELECT e164, sufijo9 FROM conductor_telefono

@@ -199,6 +199,7 @@ async function lista({ ventana } = {}) {
       contrato: k ? { tipo: k.tipo, ett: k.ett_nombre || '', horas: k.jornada_horas || null } : null,
       sinBolt: !p.cuentas_bolt,
       ventanaWhatsApp: !!ventanaAbierta,
+      videoEnviado: p.video_enviado || null,
       cambiaDeCoche: e.tipo === 'vacaciones' && antes.length && ahoraLleva.length
         ? antes.join(',') !== ahoraLleva.join(',') : false,
       cochesAntes: antes,
@@ -245,9 +246,24 @@ async function apuntarLlamada(conductorId, b = {}, quien = {}) {
 const enviarTurnos = (conductorId, quien = {}) =>
   require('../Planificacion/cobertura.service').enviarAUno({ id: conductorId, semana: 0 }, quien);
 
+/**
+ * MANDARLE EL VÍDEO DEL BOT (15/10/2026): el de cómo funciona el WhatsApp del
+ * coche (matrícula, puertas, entregar, terminar y el bloqueo del motor). Solo
+ * con la ventana de 24 h abierta; va por la puerta del módulo de WhatsApp, que
+ * es quien lo comprueba y lo apunta en su chat. `base`, la dirección pública.
+ */
+async function enviarVideo(conductorId, quien = {}, base) {
+  const [p] = await repo.personas([String(Number(conductorId))]);
+  if (!p) throw new Error('No existe esa persona');
+  if (!p.telefono) throw new Error('No tiene teléfono en su ficha');
+  return require('../WhatsApp/whatsapp.service')
+    .enviarVideo({ telefono: p.telefono, video: VIDEO_DEL_BOT }, quien.usuarioId, base);
+}
+const VIDEO_DEL_BOT = 'bot_coche';
+
 module.exports = {
-  VENTANAS, RESULTADOS_LLAMADA, PREFIJO,
-  lista, apuntarLlamada, enviarTurnos,
+  VENTANAS, RESULTADOS_LLAMADA, PREFIJO, VIDEO_DEL_BOT,
+  lista, apuntarLlamada, enviarTurnos, enviarVideo,
   // Para las pruebas.
   clasificar, cochesDeAntes,
 };

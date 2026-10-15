@@ -313,6 +313,20 @@ async function enviarTexto(telefono, texto, opciones = {}) {
   return apuntar(to, payload, await mandar(payload), opciones);
 }
 
+/**
+ * UN VÍDEO (15/10/2026), dentro de la ventana de 24 h: fuera de ella Meta solo
+ * deja plantillas. Va por ENLACE (`link`, https y sin sesión): Meta lo baja de
+ * nuestra dirección pública. MP4 (H.264 + AAC), hasta 16 MB. `caption` es el
+ * texto que va debajo. Los vídeos de la casa y su enlace: services/videosWhatsapp.js.
+ */
+async function enviarVideo(telefono, { link, caption } = {}, opciones = {}) {
+  const to = limpiarTelefono(telefono);
+  if (!to) return { ok: false, error: 'sin teléfono' };
+  if (!/^https:\/\//i.test(String(link || ''))) return { ok: false, error: 'el vídeo tiene que ir por un enlace https' };
+  const payload = { messaging_product: 'whatsapp', to, type: 'video', video: { link, ...(caption ? { caption } : {}) } };
+  return apuntar(to, payload, await mandar(payload), opciones);
+}
+
 /** Manda un mensaje ya montado a /messages. Devuelve { ok, id } o { ok:false, error }. */
 async function mandar(payload) {
   try {
@@ -384,4 +398,4 @@ async function descargarMedia(mediaId, { maxBytes = null } = {}) {
  */
 const registrarEstados = statuses => require('./repo/whatsappEnvios').registrarEstados(statuses);
 
-module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, definiciones, definicionDe, olvidarDefiniciones, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, enviarVideo, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, definiciones, definicionDe, olvidarDefiniciones, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };

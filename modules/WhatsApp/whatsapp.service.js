@@ -151,6 +151,32 @@ async function enviar({ telefono, texto } = {}, usuarioId) {
   return { enviado: true };
 }
 
+/**
+ * MANDAR UN VÍDEO DE LA CASA (15/10/2026), como el del bot del coche. Igual que
+ * escribir: solo con la ventana abierta (gratis). El bot NO se pausa: es un
+ * vídeo para que aprenda a usarlo, y lo normal es que lo pruebe a continuación.
+ * `base` es la dirección pública con la que Meta baja el fichero.
+ *
+ * Lo usan el chat y Control → Próximas incorporaciones. El teléfono puede venir
+ * con o sin el 34.
+ */
+async function enviarVideo({ telefono, video } = {}, usuarioId, base) {
+  const videos = require('../../services/videosWhatsapp');
+  const v = videos.de(video);
+  if (!v) throw new Error('Ese vídeo no existe.');
+  let tel = W.soloDigitos(telefono);
+  if (tel.length === 9) tel = '34' + tel;
+  const c = tel ? await chat.chat(tel) : null;
+  if (!c || !c.existe || !W.ventana(c.ultima_entrante_at).abierta) {
+    throw new Error('La ventana de 24 h está cerrada: el vídeo solo se puede mandar si ha escrito al WhatsApp de Telecab en las últimas 24 horas. '
+      + 'Por ejemplo, después de pulsar «Ver mis turnos» en la plantilla de turnos.');
+  }
+  const r = await whatsapp.enviarVideo(tel, { link: videos.enlace(v, base), caption: v.pie }, { origen: 'oficina', usuarioId });
+  if (!r.ok) throw new Error(`WhatsApp no lo ha aceptado: ${r.error}`);
+  console.log(`🎬 [WhatsApp] Vídeo «${v.id}» a ${tel} (usuario ${usuarioId || '?'})`);
+  return { enviado: true, video: v.id };
+}
+
 /** Pausar el bot con alguien, o devolverle la conversación. */
 async function bot({ telefono, pausar } = {}, usuarioId) {
   const tel = W.soloDigitos(telefono);
@@ -370,7 +396,7 @@ async function telefonoDeConductor(conductorId) {
 }
 
 module.exports = {
-  conversaciones, abrir, enviar, bot, cabecera,
+  conversaciones, abrir, enviar, enviarVideo, bot, cabecera,
   bajarAdjunto, adjunto,
   plantillas, enviarPlantilla,
   asignables, asignar,

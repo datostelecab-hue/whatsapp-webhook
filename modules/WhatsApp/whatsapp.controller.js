@@ -13,6 +13,7 @@
 //   GET  /whatsapp/api/respuestas?tel=              las respuestas rápidas, con su {nombre} ya puesto
 //   GET  /whatsapp/api/conductores                  a quién se puede escribir por primera vez
 //   POST /whatsapp/api/enviar        { tel, texto }                     escribir (ventana de 24 h)
+//   POST /whatsapp/api/video         { tel, video }                     un vídeo de la casa (ventana de 24 h)
 //   POST /whatsapp/api/plantilla     { tel, nombre, idioma, valores }   mandar una plantilla (se paga)
 //   POST /whatsapp/api/bot           { tel, pausar }                    pausar el bot o devolverle la conversación
 //   POST /whatsapp/api/asignar       { tel, usuario }                   quién la lleva (vacío: nadie)
@@ -66,6 +67,8 @@ router.get('/', async (req, res) => {
     verLlamadas: await tiene(req, '/callcenter'),
     abrirTel: abrirTel || '',
     sinTelefono: !!req.query.conductor && !abrirTel,
+    // Los vídeos de la casa que se pueden mandar (con la ventana abierta).
+    videos: require('../../services/videosWhatsapp').lista(),
   });
 });
 
@@ -117,6 +120,10 @@ router.get('/api/respuestas', responde(req => svc.respuestas({ telefono: req.que
 router.get('/api/conductores', responde(() => svc.conductores()));
 
 router.post('/api/enviar', responde(async req => svc.enviar({ telefono: cuerpo(req).tel, texto: cuerpo(req).texto }, await actor.idDe(req)), 400));
+// Un vídeo de la casa (services/videosWhatsapp.js), con la ventana abierta. La
+// dirección pública sale de la petición: es la que Meta usa para bajarlo.
+router.post('/api/video', responde(async req => svc.enviarVideo({ telefono: cuerpo(req).tel, video: cuerpo(req).video },
+  await actor.idDe(req), `${req.protocol}://${req.get('host')}`), 400));
 router.post('/api/plantilla', responde(async req => svc.enviarPlantilla({
   telefono: cuerpo(req).tel, nombre: cuerpo(req).nombre, idioma: cuerpo(req).idioma, valores: cuerpo(req).valores,
 }, await actor.idDe(req)), 400));

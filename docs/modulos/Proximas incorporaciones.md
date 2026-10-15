@@ -63,10 +63,13 @@ Las tarjetas de arriba cuentan cuántos entran, cuántos son nuevos y cuántos v
   Va a `llamada_seguimiento`, tipo `trafico`, con el caso «Incorporación: …» y «Entra el dd/mm/aaaa» en la nota. El Call Center ([[Control]]) la clasifica como **Asistencia → Conexión → Revisión de asistencia / confirmación de turno** (`DESDE_CONTROL.trafico`).
 - **Historial.** Todas sus llamadas, de Control y del Call Center (`partials/historial-llamadas`).
 
-## Vídeos por WhatsApp (pregunta del mismo día)
+## El vídeo del bot (15/10/2026)
 
-- **Con la ventana de 24 h abierta, WhatsApp deja mandar vídeo** (MP4 de hasta 16 MB, con texto). Fuera de ella, solo plantillas, que pueden llevar un vídeo en la cabecera, aprobada por Meta y de pago.
-- **Hoy `services/whatsapp.js` no sabe enviar archivos**: solo texto, botones y plantillas. Los vídeos que llegan sí se ven en [[WhatsApp chat]].
-- **A un nuevo casi nunca le sirve la ventana**, porque no nos ha escrito antes. Un vídeo de cómo funciona el bot tendría que ir en una plantilla, o después de que escriba «hola».
+**«Vídeo del bot»** le manda el reel de cómo funciona el WhatsApp del coche (1:12): matrícula, puertas, entregar y terminar el turno, y el bloqueo del motor. Va por `modules/WhatsApp/whatsapp.service.enviarVideo`, el mismo que usa el chat; ver [[WhatsApp#Vídeos (15/10/2026)]].
+
+- **Solo con la ventana de WhatsApp abierta**, es decir, si ha escrito al WhatsApp de Telecab en las últimas 24 h.
+  - **Si está cerrada**, el botón no lo intenta y explica cómo abrirla: mandarle primero sus turnos y que pulse «Ver mis turnos», o que escriba «hola» al bot. Después se recarga la lista.
+  - **A un nuevo casi nunca se le abre sola**, porque no nos ha escrito antes. Por eso el guion lo pone después de los turnos.
+- **La columna «WhatsApp»** dice cuándo se le mandaron los turnos y cuándo el vídeo (el último vídeo que salió bien a su teléfono, de `whatsapp_mensaje`).
 
 Relacionado: [[Control]] · [[Citas del taller]] · [[Planificacion]] · [[WhatsApp]] · [[WhatsApp chat]]

@@ -188,6 +188,12 @@ router.post('/api/incorporaciones/:id/enviar-turnos', responde(async req =>
     usuario: (req.usuario && [req.usuario.nombre, req.usuario.apellidos].filter(Boolean).join(' ')) || null,
   }), 400));
 
+// El vídeo del bot por WhatsApp (ventana de 24 h abierta). La dirección pública
+// sale de la petición: es la que Meta usa para bajar el fichero.
+router.post('/api/incorporaciones/:id/enviar-video', responde(async req =>
+  incorporaciones.enviarVideo(req.params.id, { usuarioId: (req.usuario || {}).id || await actor.idDe(req) },
+    `${req.protocol}://${req.get('host')}`), 400));
+
 // «No saldrá» (motivo + comentario) y «Traza por Slack» (canal): db/170.
 router.post('/api/no-saldra', responde(async req =>
   control.marcarNoSale(req.body || {}, req.usuario, await actor.idDe(req)), 400));
