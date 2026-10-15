@@ -1,0 +1,342 @@
+<%- include('partials/control-nav', { sub: 'incorporaciones' }) %>
+<%- include('partials/historial-llamadas') %>
+
+<div class="max-w-[1400px] mx-auto px-4 lg:px-6 pb-10">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4 mt-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-user-plus text-telecab-gold"></i> Próximas incorporaciones
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1 max-w-3xl">
+        Quién entra a trabajar, nuevo o de vuelta de vacaciones, con su coche y sus turnos según el
+        planificador. Llámale para confirmar que entra, mándale sus turnos por WhatsApp y, si es nuevo,
+        explícale el bot con el guion. Lo que te diga queda en su historial de llamadas.
+      </p>
+    </div>
+    <button id="i-recargar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-rotate mr-1"></i> Recargar
+    </button>
+  </div>
+
+  <div id="i-resumen" class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4"></div>
+
+  <div id="i-ventanas" class="flex flex-wrap items-center gap-2 mb-4"></div>
+
+  <div id="i-lista" class="space-y-5">
+    <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+  </div>
+</div>
+
+<script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
+<script>
+(function () {
+  const RESULTADOS = <%- JSON.stringify(resultados) %>;
+  const C = window.CitasTaller;            // las fechas, el teléfono y el escape, los mismos que en Citas
+  const esc = C.esc;
+  const $ = s => document.querySelector(s);
+
+  let ventana = 'manana', DATOS = null;
+  try { ventana = localStorage.getItem('incorporaciones.ventana') || 'manana'; } catch (_) { /* nada */ }
+
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => ({ status: 'error', msg: 'respuesta ilegible' }));
+    if (j.status !== 'ok') throw new Error(j.msg || 'Error');
+    return j;
+  }
+  const postar = (url, cuerpo) => api(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo || {}),
+  });
+
+  async function cargar() {
+    DATOS = await api('/control/api/incorporaciones?' + new URLSearchParams({ ventana }).toString());
+    pintar();
+  }
+
+  function tarjeta(etq, valor, tono, ayuda) {
+    const T = { red: 'border-telecab-red/40 text-telecab-red', warn: 'border-telecab-warn/40 text-telecab-warn',
+      green: 'border-telecab-green/40 text-telecab-green', muted: 'border-telecab-border text-telecab-text' }[tono];
+    return `<div class="rounded-2xl border bg-telecab-card p-4 ${T.split(' ')[0]}" title="${esc(ayuda || '')}">
+      <div class="text-[11px] uppercase tracking-wide text-telecab-muted">${esc(etq)}</div>
+      <div class="text-2xl font-bold tabular-nums ${T.split(' ')[1]}">${esc(String(valor))}</div>
+    </div>`;
+  }
+
+  // ── Las piezas de cada fila ───────────────────────────────────────────────
+  const CHIP = 'inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md border';
+  const tipoChip = f => f.tipo === 'nuevo'
+    ? `<span class="${CHIP} bg-telecab-azul/15 text-telecab-azul border-telecab-azul/30" title="Empieza a trabajar con nosotros: su primer día con coche.">Nuevo</span>`
+    : `<span class="${CHIP} bg-telecab-card2 text-telecab-text border-telecab-border" title="Vuelve de vacaciones (del ${esc(fechaCorta(f.vacaciones.desde))} al ${esc(fechaCorta(f.vacaciones.hasta))}): es su primer día con coche desde entonces."><i class="fa-solid fa-umbrella-beach"></i> Vacaciones</span>`;
+  const fechaCorta = iso => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
+  const contratoTexto = f => !f.contrato ? '' : (f.contrato.tipo === 'ett' ? 'ETT' + (f.contrato.ett ? ' ' + f.contrato.ett : '') : 'Plantilla propia')
+    + (f.contrato.horas ? ` · ${f.contrato.horas} h` : '');
+
+  function persona(f) {
+    const extra = [f.jornada ? 'Jornada de ' + f.jornada.toLowerCase() : '', contratoTexto(f), f.barrio].filter(Boolean).join(' · ');
+    return `<div class="flex items-center gap-2 flex-wrap"><span class="font-semibold text-telecab-text">${esc(f.nombre)}</span>${tipoChip(f)}</div>
+      <div class="text-xs text-telecab-text mt-0.5">${f.telefono ? `<a href="tel:${esc(f.telefono)}" class="hover:text-telecab-gold" title="Llamar">${esc(C.telefono(f.telefono))}</a>` : '<span class="text-telecab-red">Sin teléfono en su ficha</span>'}</div>
+      ${extra ? `<div class="text-[11px] text-telecab-muted mt-0.5">${esc(extra)}</div>` : ''}`;
+  }
+
+  function primerDia(f) {
+    if (f.sinPlaza) {
+      return `<span class="text-xs font-semibold text-telecab-warn" title="No cubre ninguna plaza ese día en el planificador. Tráfico tiene que darle coche antes de que entre.">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i>Sin plaza en el planificador</span>`;
+    }
+    const coches = f.plazas.map(p => `<span class="font-mono font-semibold text-telecab-text">${esc(p.matricula)}</span>
+      <span class="text-[11px] text-telecab-muted">${esc(p.puesto)}${p.turno ? ' · ' + esc(p.turno.toLowerCase()) : ''}</span>`).join('<br>');
+    const cambio = f.cambiaDeCoche
+      ? `<div class="text-[11px] text-telecab-warn mt-1" title="Antes de irse llevaba otro coche. Díselo: puede que también cambien sus compañeros.">Antes llevaba ${esc(f.cochesAntes.join(', '))}</div>` : '';
+    return coches + cambio;
+  }
+
+  function atencion(f) {
+    const L = [];
+    if (f.sinBolt) L.push(`<div class="text-xs text-telecab-red" title="No tiene ninguna cuenta de BOLT enlazada a su ficha. Sin ella no puede trabajar: avisa a RRHH.">
+      <i class="fa-solid fa-circle-exclamation mr-1"></i>Sin cuenta de BOLT</div>`);
+    if (f.tipo === 'nuevo' && f.bajaAnterior) L.push(`<div class="text-xs text-telecab-muted" title="Ya trabajó con nosotros: su contrato anterior acabó el ${esc(fechaCorta(f.bajaAnterior))}.">Vuelve: estuvo hasta el ${esc(fechaCorta(f.bajaAnterior))}</div>`);
+    L.push(f.ventanaWhatsApp
+      ? `<div class="text-xs text-telecab-green" title="Ha escrito al WhatsApp de Telecab en las últimas 24 horas: ya sabe usarlo y se le puede contestar sin plantilla.">Ha escrito al bot hoy</div>`
+      : `<div class="text-xs text-telecab-muted" title="No ha escrito al WhatsApp de Telecab en las últimas 24 horas.">No ha escrito al bot hoy</div>`);
+    return L.join('');
+  }
+
+  function avisoTurnos(f) {
+    const a = f.avisoTurnos;
+    if (!a) return '<span class="text-xs text-telecab-muted">Sin enviar</span>';
+    if (!a.ok) return `<span class="text-xs text-telecab-red" title="${esc(a.detalle || '')}">No se pudo enviar (${esc(a.cuando)})</span>`;
+    return `<span class="text-xs text-telecab-green"><i class="fa-solid fa-check mr-1"></i>Enviados ${esc(a.cuando)}</span>
+      ${a.quien ? `<div class="text-[11px] text-telecab-muted">${esc(a.quien)}</div>` : ''}`;
+  }
+
+  function llamada(f) {
+    const u = f.ultimaLlamada;
+    if (!u) return '<span class="text-xs text-telecab-warn">Sin llamar</span>';
+    const tono = { confirmada: 'text-telecab-green', no_entra: 'text-telecab-red', otro_dia: 'text-telecab-warn', no_contesta: 'text-telecab-warn' }[f.confirmacion] || 'text-telecab-text';
+    return `<div class="text-xs font-semibold ${tono}">${esc(u.resultado)}${f.llamadas > 1 ? ` <span class="text-telecab-muted font-normal">(${f.llamadas} llamadas)</span>` : ''}</div>
+      <div class="text-[11px] text-telecab-muted">${esc(u.cuando)}${u.quien ? ' · ' + esc(u.quien) : ''}${u.nota ? ' · ' + esc(u.nota) : ''}</div>`;
+  }
+
+  function fila(f) {
+    const ojo = f.sinPlaza || f.sinBolt || f.confirmacion === 'no_entra';
+    const BTN = 'px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text';
+    return `<tr class="${ojo ? 'bg-telecab-red/5' : ''} align-top">
+      <td class="px-4 py-3">${persona(f)}</td>
+      <td class="px-3 py-3">${primerDia(f)}</td>
+      <td class="px-3 py-3">${atencion(f)}</td>
+      <td class="px-3 py-3">${avisoTurnos(f)}</td>
+      <td class="px-3 py-3">${llamada(f)}</td>
+      <td class="px-4 py-3 text-right">
+        <div class="flex flex-wrap justify-end gap-1">
+          <button data-guion="${f.id}" class="${BTN}" title="${f.tipo === 'nuevo' ? 'Lo que hay que contarle: su primer día y cómo funciona el bot de WhatsApp.' : 'Lo que hay que confirmarle al volver.'}">
+            <i class="fa-solid fa-list-check mr-1"></i>Guion</button>
+          <button data-turnos="${f.id}" class="${BTN}"${f.turnosTexto ? '' : ' disabled title="No tiene turnos planificados de hoy a 7 días"'}>
+            <i class="fa-solid fa-calendar-days mr-1"></i>Sus turnos</button>
+          <button data-enviar="${f.id}" class="${BTN}"${f.turnosTexto && f.telefono ? '' : ` disabled title="${f.telefono ? 'No tiene turnos que mandar' : 'No tiene teléfono'}"`}>
+            <i class="fa-brands fa-whatsapp mr-1"></i>Enviar turnos</button>
+          <button data-llamar="${f.id}" class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-xs font-semibold">
+            <i class="fa-solid fa-phone mr-1"></i>Apuntar llamada</button>
+          <button data-historial="${f.id}" class="${BTN}" title="Todas sus llamadas, de Control y del Call Center">
+            <i class="fa-solid fa-clock-rotate-left"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function pintar() {
+    const F = DATOS.filas;
+    const r = {
+      total: F.length,
+      nuevos: F.filter(f => f.tipo === 'nuevo').length,
+      vacaciones: F.filter(f => f.tipo === 'vacaciones').length,
+      sinConfirmar: F.filter(f => f.confirmacion !== 'confirmada').length,
+      problemas: F.filter(f => f.sinPlaza || f.sinBolt).length,
+    };
+    $('#i-resumen').innerHTML =
+      tarjeta('Entran', r.total, 'muted', 'Personas que entran en los días elegidos') +
+      tarjeta('Nuevos', r.nuevos, 'muted', 'Su primer día con nosotros') +
+      tarjeta('Vuelven de vacaciones', r.vacaciones, 'muted', 'Su primer día con coche desde las vacaciones') +
+      tarjeta('Sin confirmar', r.sinConfirmar, r.sinConfirmar ? 'warn' : 'green', 'No han confirmado por teléfono que entran') +
+      tarjeta('Sin plaza o sin BOLT', r.problemas, r.problemas ? 'red' : 'muted', 'No tienen coche en el planificador o no tienen cuenta de BOLT: así no pueden trabajar');
+
+    $('#i-ventanas').innerHTML = DATOS.ventanas.map(v => `<button data-ventana="${v.id}" class="px-3.5 py-1.5 rounded-xl text-sm font-semibold transition ${
+      v.id === DATOS.ventana ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text'}">${esc(v.texto)}</button>`).join('');
+    document.querySelectorAll('#i-ventanas [data-ventana]').forEach(b => b.addEventListener('click', () => {
+      ventana = b.dataset.ventana;
+      try { localStorage.setItem('incorporaciones.ventana', ventana); } catch (_) { /* nada */ }
+      cargar().catch(e => Dialogo.aviso({ titulo: 'No se pudo cargar', texto: e.message, tono: 'error' }));
+    }));
+
+    if (!F.length) {
+      $('#i-lista').innerHTML = `<div class="rounded-2xl border border-telecab-border bg-telecab-card px-4 py-10 text-center text-sm text-telecab-muted">
+        No entra nadie en estos días: ni altas nuevas con coche ni vueltas de vacaciones.</div>`;
+      return;
+    }
+    const dias = new Map();
+    F.forEach(f => { if (!dias.has(f.dia)) dias.set(f.dia, []); dias.get(f.dia).push(f); });
+    $('#i-lista').innerHTML = [...dias.entries()].map(([dia, gente]) => {
+      const cerca = C.cercania(dia, DATOS.hoy);
+      return `<section>
+        <h2 class="text-sm font-semibold text-telecab-text mb-2 flex items-center gap-2">
+          ${cerca ? `<span class="px-2 py-0.5 rounded-full text-[11px] ${cerca === 'Hoy' ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card2 text-telecab-text border border-telecab-border'}">${esc(cerca)}</span>` : ''}
+          ${esc(C.diaLargo(dia))} <span class="text-telecab-muted font-normal">· ${gente.length} persona(s)</span>
+        </h2>
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[1080px]">
+              <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
+                <tr>
+                  <th class="text-left px-4 py-2">Quién</th>
+                  <th class="text-left px-3 py-2">Primer día</th>
+                  <th class="text-left px-3 py-2">A tener en cuenta</th>
+                  <th class="text-left px-3 py-2">Turnos por WhatsApp</th>
+                  <th class="text-left px-3 py-2">Llamada</th>
+                  <th class="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-telecab-border">${gente.map(fila).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>`;
+    }).join('');
+
+    const de = id => F.find(f => String(f.id) === String(id));
+    document.querySelectorAll('#i-lista [data-guion]').forEach(b => b.addEventListener('click', () => verGuion(de(b.dataset.guion))));
+    document.querySelectorAll('#i-lista [data-turnos]').forEach(b => b.addEventListener('click', () => verTurnos(de(b.dataset.turnos))));
+    document.querySelectorAll('#i-lista [data-enviar]').forEach(b => b.addEventListener('click', () => enviarTurnos(de(b.dataset.enviar))));
+    document.querySelectorAll('#i-lista [data-llamar]').forEach(b => b.addEventListener('click', () => llamar(de(b.dataset.llamar))));
+    document.querySelectorAll('#i-lista [data-historial]').forEach(b => b.addEventListener('click', () => HistorialLlamadas.abrir(b.dataset.historial)));
+  }
+
+  // ── El texto del bot, como se ve en WhatsApp ──────────────────────────────
+  // *negrita* y _cursiva_ son las marcas de WhatsApp; se escapa primero.
+  const waHtml = t => esc(t).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/_([^_\n]+)_/g, '<i>$1</i>').replace(/\n/g, '<br>');
+
+  function verTurnos(f) {
+    if (!f || !f.turnosTexto) return;
+    Dialogo.aviso({
+      titulo: `Turnos de ${f.nombre}`, ancho: 'max-w-lg', tono: 'info',
+      html: `<p class="text-xs text-telecab-muted mb-2">Es exactamente lo que verá al pulsar «Ver mis turnos» en el WhatsApp de Telecab, según el planificador de ahora.</p>
+        <div class="rounded-2xl bg-telecab-card2 border border-telecab-border px-4 py-3 text-sm text-telecab-text leading-relaxed">${waHtml(f.turnosTexto)}</div>`,
+    });
+  }
+
+  /** EL GUION DE LA LLAMADA. Para los nuevos, con el instructivo del bot. */
+  function verGuion(f) {
+    if (!f) return;
+    const dia = C.cercania(f.dia, DATOS.hoy);
+    const cuando = (dia ? dia.toLowerCase() + ', ' : 'el ') + C.diaLargo(f.dia).toLowerCase();
+    // El turno, el de su plaza (lo que manda en el planificador); sin plaza, el de su ficha.
+    const turnoTxt = ((f.plazas[0] && f.plazas[0].turno) || f.jornada || '—').toLowerCase();
+    const coche = f.plazas.length
+      ? f.plazas.map(p => `<b>${esc(p.matricula)}</b> (${esc(p.puesto.toLowerCase())})`).join(' y ')
+      : '<span class="text-telecab-warn">todavía no tiene coche en el planificador: habla con Tráfico antes de llamar</span>';
+    const paso = (n, t, cuerpo) => `<li class="flex gap-3 py-2">
+      <span class="shrink-0 w-6 h-6 rounded-full bg-telecab-card2 border border-telecab-border text-[11px] font-bold text-telecab-text flex items-center justify-center">${n}</span>
+      <div class="min-w-0 text-sm text-telecab-text"><div class="font-semibold">${t}</div>${cuerpo ? `<div class="text-telecab-muted mt-0.5">${cuerpo}</div>` : ''}</div></li>`;
+    const di = t => `<span class="text-telecab-text">«${t}»</span>`;
+    const aviso = t => `<div class="mt-1 text-telecab-red"><i class="fa-solid fa-circle-exclamation mr-1"></i>${t}</div>`;
+
+    let pasos;
+    if (f.tipo === 'nuevo') {
+      pasos = [
+        paso(1, 'Preséntate y confirma que entra',
+          di(`Hola, ${esc(f.pila || f.nombre)}, te llamo de Tráfico de Telecab. Te confirmo que empiezas ${esc(cuando)}`) +
+          `<br>Turno de ${esc(turnoTxt)} con el coche ${coche}. De quién recibe el coche y a quién se lo entrega está en «Sus turnos».`),
+        paso(2, 'Su cuenta de BOLT',
+          'Que compruebe que puede entrar en la app de BOLT conductor.' +
+          (f.sinBolt ? aviso('No tiene ninguna cuenta de BOLT enlazada a su ficha: sin ella no puede trabajar. Avisa a RRHH.') : '')),
+        paso(3, 'El WhatsApp de Telecab',
+          (f.avisoTurnos && f.avisoTurnos.ok
+            ? 'Ya se le mandaron sus turnos por WhatsApp. ' + di('Guarda ese número: es el de Telecab, y desde ahí se lleva el coche.')
+            : 'Mándale ahora sus turnos con «Enviar turnos». ' + di('Te acaba de llegar un WhatsApp de Telecab: guarda ese número, desde ahí se lleva el coche.'))),
+        paso(4, 'Ver sus turnos',
+          di('Para ver tus turnos cuando quieras, escribe "hola" y pulsa Ver mis turnos. No hace falta empezar el turno. También puedes preguntar "¿qué turno tengo?".')),
+        paso(5, 'Al llegar al coche',
+          di('Escribe la matrícula todo junto, sin espacios ni guiones, por ejemplo 1234ABC. Con eso empieza tu turno y se desbloquea el motor.') +
+          '<br>Si el coche lo tiene otro compañero, primero tiene que soltarlo él (Entregar coche o Terminar turno).'),
+        paso(6, 'Los botones del turno',
+          di('Te salen siempre los mismos: Abrir puertas, Cerrar puertas y Entregar coche; y Ver mis turnos y Terminar turno.')),
+        paso(7, 'Entregar el coche al compañero',
+          di('Pulsa Entregar coche justo antes de salir hacia donde está tu compañero, no cuando ya se lo hayas dado. Cuando llegues, él escribe la matrícula y tu turno se cierra solo.')),
+        paso(8, 'Terminar el turno',
+          di('Pulsa Terminar turno con el coche aparcado y apagado. Si está encendido o en marcha no te deja, porque al terminar se bloquea el motor.') +
+          '<br>Si no hay a quién entregárselo, que lo apague y pulse Terminar turno.'),
+        paso(9, 'Si algo falla', di('Si el coche no abre, no arranca o el bot no te contesta, llama a Tráfico.')),
+        paso(10, 'Al colgar', 'Apunta la llamada con «Apuntar llamada».'),
+      ];
+    } else {
+      pasos = [
+        paso(1, 'Bienvenida y confirma que vuelve',
+          di(`Hola, ${esc(f.pila || f.nombre)}, te llamo de Tráfico de Telecab para confirmar que vuelves ${esc(cuando)}`) +
+          `<br>Turno de ${esc(turnoTxt)} con el coche ${coche}.` +
+          (f.cambiaDeCoche ? aviso(`Ha cambiado de coche: antes llevaba ${esc(f.cochesAntes.join(', '))}. Explícaselo, y que mire con quién hace ahora los relevos en «Sus turnos».`) : '')),
+        paso(2, 'Sus turnos',
+          (f.avisoTurnos && f.avisoTurnos.ok ? 'Ya se le mandaron por WhatsApp. ' : 'Mándaselos con «Enviar turnos». ') +
+          di('Puedes verlos cuando quieras escribiendo "hola" al WhatsApp de Telecab y pulsando Ver mis turnos.')),
+        paso(3, 'El bot, por si acaso',
+          di('Recuerda: al llegar al coche escribe la matrícula todo junto y empieza tu turno; al acabar, Terminar turno con el coche aparcado y apagado.') +
+          (f.sinBolt ? aviso('No tiene cuenta de BOLT enlazada a su ficha: avisa a RRHH.') : '')),
+        paso(4, 'Al colgar', 'Apunta la llamada con «Apuntar llamada».'),
+      ];
+    }
+    Dialogo.aviso({
+      titulo: `Guion · ${f.nombre}`, ancho: 'max-w-2xl', tono: 'info',
+      html: `<div class="text-xs text-telecab-muted mb-1">${f.tipo === 'nuevo' ? 'Es nuevo: primer día con nosotros.' : `Vuelve de vacaciones (del ${esc(fechaCorta(f.vacaciones.desde))} al ${esc(fechaCorta(f.vacaciones.hasta))}).`}
+          ${f.telefono ? ` Llámale al <b class="text-telecab-text">${esc(C.telefono(f.telefono))}</b>.` : ''}</div>
+        <ol class="divide-y divide-telecab-border/60">${pasos.join('')}</ol>`,
+    });
+  }
+
+  /** MANDARLE SUS TURNOS: la plantilla del planificador, con su botón. */
+  async function enviarTurnos(f) {
+    if (!f) return;
+    const ok = await Dialogo.confirmar({
+      titulo: `Enviar sus turnos a ${f.nombre}`,
+      texto: `Le llega por WhatsApp la plantilla de turnos de Telecab, la misma que manda el planificador, con el botón «Ver mis turnos». `
+        + `Al pulsarlo verá sus turnos de hoy a 7 días.${f.avisoTurnos && f.avisoTurnos.ok ? ` Ya se le mandaron el ${f.avisoTurnos.cuando}.` : ''}`,
+      si: 'Enviar', no: 'Cancelar',
+    });
+    if (!ok) return;
+    try {
+      await postar(`/control/api/incorporaciones/${f.id}/enviar-turnos`);
+      Dialogo.hecho('Turnos enviados');
+      return cargar();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudieron enviar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  /** APUNTAR UNA LLAMADA: qué ha dicho y una nota. */
+  async function llamar(f) {
+    if (!f) return;
+    let previo = { resultado: '', nota: '' };
+    for (;;) {
+      const v = await Dialogo.formulario(`Llamada · ${f.nombre}`, [
+        { id: 'resultado', etiqueta: 'Qué ha dicho', tipo: 'lista', obligatorio: true, valor: previo.resultado,
+          opciones: RESULTADOS.map(r => ({ valor: r.valor, texto: r.texto })) },
+        { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', valor: previo.nota,
+          marcador: 'Si entra otro día, cuál; si no va a entrar, por qué.' },
+      ], { textoBoton: 'Apuntar la llamada',
+           nota: (f.telefono ? `Llámale al ${C.telefono(f.telefono)}. ` : '') + `Entra ${C.diaLargo(f.dia).toLowerCase()}.` });
+      if (!v) return;
+      previo = v;
+      try {
+        await postar(`/control/api/incorporaciones/${f.id}/llamada`, {
+          resultado: v.resultado, nota: v.nota, dia: f.dia, matricula: (f.plazas[0] || {}).matricula || '',
+        });
+        Dialogo.hecho('Llamada apuntada');
+        return cargar();
+      } catch (e) {
+        await Dialogo.aviso({ titulo: 'Falta algo', texto: e.message, tono: 'aviso' });
+      }
+    }
+  }
+
+  $('#i-recargar').addEventListener('click', () => cargar().catch(e => Dialogo.aviso({ titulo: 'No se pudo cargar', texto: e.message, tono: 'error' })));
+  cargar().catch(e => { $('#i-lista').innerHTML = `<p class="px-4 py-10 text-center text-sm text-telecab-red">No se pudo cargar la lista: ${esc(e.message)}</p>`; });
+  setInterval(() => { if (!document.hidden) cargar().catch(() => {}); }, 120000);
+})();
+</script>

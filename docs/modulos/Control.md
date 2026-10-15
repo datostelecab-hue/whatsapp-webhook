@@ -17,6 +17,7 @@ No es un módulo de consulta: existe para decidir a quién se llama en los próx
 | `/control/campanas` | las tres pasadas de llamadas del turno | `controlCampanas.ejs` / `controlCampanasInforme.ejs` |
 | `/control/historico` | qué pasó ese día y qué se hizo (también los «No saldrá» por motivo y las trazas por Slack) | `controlHistorico.ejs` |
 | `/control/citas-taller` | [[Citas del taller|las citas del taller]]: quién lleva el coche, si se le avisó y qué contestó; aquí se apunta la llamada para confirmarla | `controlCitasTaller.ejs` |
+| `/control/incorporaciones` | [[Proximas incorporaciones|quién entra mañana]], nuevo o de vacaciones: llamarle, mandarle sus turnos y explicarle el bot con un guion | `controlIncorporaciones.ejs` |
 | `/control/km` | km conectado vs desconectado | `kmTraza.ejs` |
 | `/control/reportes` | [[Control Reportes|solo descargables]] | `reportes.ejs` |
 | `/alertas` | [[Control Alertas|qué se vigila y a quién se avisa]] | `alertas.ejs` |

@@ -362,6 +362,14 @@ const DESDE_CONTROL = {
     'Se ha quedado sin combustible o carga':
       ['Vehículo', 'Combustible', 'Problemas con la gasolina / repostaje'],
     'Problema con la app de BOLT': ['Tecnología', 'Bolt', 'Problemas con Bolt (app o cuenta)'],
+    // Las llamadas para confirmar que alguien ENTRA mañana (15/10/2026). No
+    // salen del telefonito sino de /control/incorporaciones
+    // (`incorporaciones.service.RESULTADOS_LLAMADA`).
+    'Incorporación: confirma que entra': ['Asistencia', 'Conexión', 'Revisión de asistencia / confirmación de turno'],
+    'Incorporación: entra otro día': ['Asistencia', 'Conexión', 'Revisión de asistencia / confirmación de turno'],
+    'Incorporación: no va a entrar': ['Asistencia', 'Conexión', 'Revisión de asistencia / confirmación de turno'],
+    'Incorporación: no contesta': ['Asistencia', 'Conexión', 'Revisión de asistencia / confirmación de turno'],
+    'Incorporación: buzón de voz': ['Asistencia', 'Conexión', 'Revisión de asistencia / confirmación de turno'],
   },
 };
 

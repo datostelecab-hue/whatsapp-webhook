@@ -9,6 +9,7 @@
 //   /control/historico    lo que pasó un día y lo que se hizo con ello
 //   /control/km           km conectado vs desconectado
 //   /control/citas-taller las citas del taller: quién lleva el coche y si la confirmó
+//   /control/incorporaciones quién entra mañana (nuevo o de vacaciones): llamarle y mandarle sus turnos
 //   /control/reportes     solo descargables
 //
 // El "Tablero clásico" (leía las horas de la hoja Datos_API) se RETIRÓ: manda el
@@ -26,6 +27,7 @@ const router = express.Router();
 const control = require('./control.service');
 const cochesLibres = require('./cochesLibres.service');
 const citasTaller = require('../Vehiculos/citas.service');
+const incorporaciones = require('./incorporaciones.service');
 const actor = require('../../services/repo/actor');   // quién firma (id por email si la cookie es vieja)
 
 /** Envoltorio: recoge el error y lo devuelve legible, sin repetirlo veinte veces. */
@@ -97,6 +99,15 @@ router.get('/citas-taller', (req, res) => {
   });
 });
 
+// LAS PRÓXIMAS INCORPORACIONES (15/10/2026): quién entra mañana, nuevo o de
+// vuelta de vacaciones, para llamarle, mandarle sus turnos y explicarle el bot.
+router.get('/incorporaciones', (req, res) => {
+  res.render('controlIncorporaciones', {
+    titulo: 'Control · Próximas incorporaciones', seccion: 'control', layout: 'layout-gestion',
+    resultados: incorporaciones.RESULTADOS_LLAMADA.map(({ valor, texto, notaObligatoria }) => ({ valor, texto, notaObligatoria: !!notaObligatoria })),
+  });
+});
+
 router.get('/km', (req, res) => {
   res.render('kmTraza', { titulo: 'Control · KM y traza', seccion: 'control', layout: 'layout-gestion' });
 });
@@ -136,6 +147,8 @@ router.get('/api/coches', responde(req => cochesLibres.delDia(req.query.dia)));
 router.get('/api/citas-taller', responde(req => citasTaller.proximas({ dias: req.query.dias })));
 router.get('/api/citas-taller/:id', responde(async req => ({ cita: await citasTaller.ficha(req.params.id) })));
 
+router.get('/api/incorporaciones', responde(req => incorporaciones.lista({ ventana: req.query.ventana })));
+
 router.get('/api/km-traza', responde(req => control.kmTraza(req.query.dia, req.query.turno)));
 
 // Ej: /control/api/km-diagnostico?dia=2026-09-01&mats=9521MMX,6663LCY&mapon=1
@@ -163,6 +176,17 @@ router.post('/api/justificar-directo', responde(async req =>
 // historial de llamadas (tipo «Taller»).
 router.post('/api/citas-taller/:id/llamada', responde(async req =>
   citasTaller.apuntarLlamada(req.params.id, req.body || {}, { usuarioId: (req.usuario || {}).id || await actor.idDe(req) }), 400));
+
+// Una llamada para confirmar que entra: queda en su historial de llamadas.
+router.post('/api/incorporaciones/:id/llamada', responde(async req =>
+  incorporaciones.apuntarLlamada(req.params.id, req.body || {}, { usuarioId: (req.usuario || {}).id || await actor.idDe(req) }), 400));
+
+// Sus turnos por WhatsApp: la plantilla del planificador, a una persona.
+router.post('/api/incorporaciones/:id/enviar-turnos', responde(async req =>
+  incorporaciones.enviarTurnos(req.params.id, {
+    usuarioId: (req.usuario || {}).id || await actor.idDe(req),
+    usuario: (req.usuario && [req.usuario.nombre, req.usuario.apellidos].filter(Boolean).join(' ')) || null,
+  }), 400));
 
 // «No saldrá» (motivo + comentario) y «Traza por Slack» (canal): db/170.
 router.post('/api/no-saldra', responde(async req =>

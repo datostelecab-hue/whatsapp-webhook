@@ -394,6 +394,12 @@ No son de los seis, pero forman parte de la misma red:
   la importación (nuevas, otra hora, iguales, pasadas, las que ya no vienen), el aviso,
   los botones «Confirmo» / «No puedo ir», las llamadas de Control y dónde las clasifica
   el Call Center.
+- **`comprobar-incorporaciones.js`** (15/10/2026) — las [[Proximas incorporaciones]]
+  sin base: quién es NUEVO (primer día con plaza, la re-alta, el «Sin plaza») y quién
+  no (de la ETT a propia, quien ya cubrió, quien tenía plaza de antes, de baja); quién
+  vuelve de VACACIONES (aunque librara después, sin plaza, con otra ausencia detrás);
+  una vez por persona y por fecha; la llamada (lo que pide nota) y que el Call Center
+  la clasifique como confirmación de turno. 25 casos.
 
 ---
 

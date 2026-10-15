@@ -212,7 +212,24 @@ function lanzarMasivo(semana, soloIds, ctx) {
     .catch(e => console.error('❌ [Turnos] bulk:', e.message));
 }
 
+/**
+ * LOS TURNOS DE CADA UNO DE HOY A 7 DÍAS, con el texto EXACTO que le enseña el
+ * bot al pulsar «Ver mis turnos» (15/10/2026). Lo pide Control → Próximas
+ * incorporaciones: quien llama a alguien que entra mañana tiene que ver lo mismo
+ * que verá él en WhatsApp, y explicárselo. `pilaDe(id)` da el nombre de pila del
+ * saludo, como el bot.
+ *
+ * Devuelve Map(conductor_id → { texto }).
+ */
+async function proximosDeCadaUno(pilaDe = () => '') {
+  const { mensajeProximos } = require('./turnos.service');
+  const v = await cob.proximos();
+  return new Map((v.porConductor || []).map(e =>
+    [String(e.id), { texto: mensajeProximos(e, { ...v, pila: pilaDe(String(e.id)) || '' }) }]));
+}
+
 module.exports = {
+  proximosDeCadaUno,
   paraLaPantalla, datos, conductorPorTelefono, estadoDeAvisos, informeDeAvisos,
   enviarAUno, lanzarMasivo, progreso, hayEnvioEnMarcha,
   semanaDe, diaDeSemana,
