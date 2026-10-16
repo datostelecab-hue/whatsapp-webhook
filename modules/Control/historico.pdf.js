@@ -78,6 +78,18 @@ const n1 = v => (Math.round((Number(v) || 0) * 10) / 10).toLocaleString('es-ES',
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const pl = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const hhmm = v => { const m = String(v || '').match(/(\d{1,2}):(\d{2})/); return m ? m[1].padStart(2, '0') + ':' + m[2] : ''; };
+
+/**
+ * EL TELÉFONO, pequeño al lado del nombre (16/10/2026, Camilo: «agrega el número
+ * de teléfono al lado del conductor (pequeño)»). Los de 9 cifras, a tres
+ * grupos; sin el +34. Los de relleno de la ficha («000000000») no se enseñan:
+ * un número que no es de nadie es peor que ninguno.
+ */
+function telefono(t) {
+  const d = String(t || '').replace(/[^\d+]/g, '').replace(/^\+34/, '');
+  if (!d || /^0+$/.test(d) || /^000/.test(d)) return '';
+  return /^\d{9}$/.test(d) ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : d;
+}
 const ROL = { FIJO: 'Fijo', CT: 'Correturnos' };
 
 // ── Lo que se cuenta (pura: la prueba scripts/comprobar-historico-pdf.js) ────
@@ -308,6 +320,18 @@ async function generar(parte, { turno } = {}) {
     pg.drawLine({ start: { x: MX, y }, end: { x: W - MX, y }, thickness: 0.4, color: C.linea });
   };
 
+  /**
+   * El nombre de una lista a dos columnas y, justo detrás, su teléfono en
+   * pequeño. Si no cabe todo, se recorta el nombre, nunca el número.
+   */
+  const nombreYTelefono = (nom, tel, x, fy, max) => {
+    const t = L(tel || '');
+    const anchoTel = t ? ancho(t, reg, 7) + 6 : 0;
+    const n = cabe(nom, reg, 8.5, Math.max(40, max - anchoTel));
+    texto(n, x, fy, { s: 8.5 });
+    if (t) texto(t, x + ancho(n, reg, 8.5) + 6, fy, { s: 7, c: C.suave });
+  };
+
   /** UNA LISTA CORTA A DOS COLUMNAS (de arriba abajo y luego la de al lado). */
   const dosColumnas = (items, pinta) => {
     const ALTO = 13.5, HUECO = 22, COL = (ANCHO - HUECO) / 2;
@@ -410,7 +434,9 @@ async function generar(parte, { turno } = {}) {
   y -= BH + 4;
 
   // ════ Los nombres ════
-  const queEs = c => [ROL[c.rol] || '', c.cuadrante || '', r.turno === 'todo' || c.turno === 'todoturno' ? c.turnoEtiqueta : '']
+  // Lo que va al lado del nombre, en pequeño: su teléfono y lo que es.
+  const queEs = c => [telefono(c.telefono), ROL[c.rol] || '', c.cuadrante || '',
+    r.turno === 'todo' || c.turno === 'todoturno' ? c.turnoEtiqueta : '']
     .filter(Boolean).join(' · ');
   const coches = c => (c.matriculas || []).join(' / ');
   const nombre = c => c.conductor || `Sin nombre en la ficha (n.º ${c.conductorId})`;
@@ -422,9 +448,12 @@ async function generar(parte, { turno } = {}) {
   r.ausencias.forEach(c => {
     const ll = c.llamadas || [];
     const u = ll[ll.length - 1];
+    // La última llamada, SIN LA HORA (16/10/2026, «quita las horas de las
+    // llamadas para que se vea mucho más resumido»): quién llamó y qué
+    // contestó. La hora de cada una sigue en el Excel.
     const notas = u
-      ? [{ t: `Llamada ${u.hora} (${u.agente}): ${u.resultado || 'sin resultado'}${u.nota ? ' - ' + u.nota : ''}` +
-          (ll.length > 1 ? `  ·  ${ll.length} llamadas ese día` : '') }]
+      ? [{ t: `Llamada${u.agente ? ' de ' + u.agente : ''}: ${u.resultado || 'sin resultado'}${u.nota ? ' - ' + u.nota : ''}` +
+          (ll.length > 1 ? ` (${ll.length} llamadas)` : '') }]
       : [{ t: 'Sin llamada de Control', f: bold, c: C.rojo }];
     if (c.justificante) {
       const h = Number(c.justificante.horas) || 0;
@@ -439,7 +468,9 @@ async function generar(parte, { turno } = {}) {
     seccion('NO SALDRÁN', r.noSaldran.length, C.ambar, 'avisaron a Control');
     r.noSaldran.forEach(c => {
       const ns = c.noSale || {};
-      const quien = [ns.quien, ns.hora].filter(Boolean).join(', ');
+      // Quién lo apuntó, sin la hora (16/10/2026): sale de la llamada, y el
+      // informe va resumido. La hora sigue en el Excel.
+      const quien = ns.quien || '';
       fila({ nombre: nombre(c), extra: queEs(c), matricula: coches(c),
         notas: [{ t: `${ns.etiqueta || 'No saldrá'}${ns.comentario ? ': ' + ns.comentario : ''}${quien ? `  (${quien})` : ''}` }] });
     });
@@ -450,7 +481,7 @@ async function generar(parte, { turno } = {}) {
     seccion('AÚN NO LES TOCABA SALIR', r.pendientes.length, C.gris, 'turno sin empezar al generar');
     dosColumnas(r.pendientes, (c, x, fy, w) => {
       const mat = L(coches(c));
-      texto(cabe(nombre(c), reg, 8.5, w - ancho(mat, mono, 8) - 10), x, fy, { s: 8.5 });
+      nombreYTelefono(nombre(c), telefono(c.telefono), x, fy, w - ancho(mat, mono, 8) - 10);
       derecha(mat, x + w, fy, { f: mono, s: 8 });
     });
   }
@@ -472,7 +503,7 @@ async function generar(parte, { turno } = {}) {
     const mat = L((c.matriculas || [])[0] || '') + ((c.matriculas || []).length > 1 ? '+' : '');
     const hora = hhmm(c.primera);
     const dcha = ancho(mat, mono, 8) + (hora ? ancho(hora, reg, 7.8) + 8 : 0);
-    texto(cabe(nombre(c), reg, 8.5, w - dcha - 10), x, fy, { s: 8.5 });
+    nombreYTelefono(nombre(c), telefono(c.telefono), x, fy, w - dcha - 10);
     derecha(mat, x + w, fy, { f: mono, s: 8 });
     if (hora) derecha(hora, x + w - ancho(mat, mono, 8) - 8, fy, { s: 7.8, c: C.suave });
   });
@@ -484,7 +515,7 @@ async function generar(parte, { turno } = {}) {
       const mat = L((n.matriculas || [])[0] || '');
       const h = `${n1(n.horasBolt)} h`;
       const dcha = ancho(mat, mono, 8) + ancho(h, reg, 7.8) + 8;
-      texto(cabe(n.conductor, reg, 8.5, w - dcha - 10), x, fy, { s: 8.5 });
+      nombreYTelefono(n.conductor, telefono(n.telefono), x, fy, w - dcha - 10);
       derecha(mat, x + w, fy, { f: mono, s: 8 });
       derecha(h, x + w - ancho(mat, mono, 8) - 8, fy, { s: 7.8, c: C.suave });
     });
@@ -533,4 +564,4 @@ async function generar(parte, { turno } = {}) {
   return Buffer.from(await doc.save());
 }
 
-module.exports = { generar, resumen, frase, TURNOS, L };
+module.exports = { generar, resumen, frase, TURNOS, L, telefono };

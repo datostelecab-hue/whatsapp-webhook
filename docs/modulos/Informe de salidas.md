@@ -26,10 +26,15 @@ Cada persona del plan cae en **un solo grupo**:
 
 - **Salieron**: salió, está conectado o está en descanso. Cuenta aunque tuviera un «No saldrá» puesto: si salió, salió.
 - **No saldrán**: no salió y tiene «No saldrá», con su motivo, el comentario y quién lo puso.
-- **Sin avisar**: no salió y nadie avisó. Debajo va la **última llamada** (hora, agente, caso y nota) o, en rojo, **«Sin llamada de Control»**, y la J si la hay.
+- **Sin avisar**: no salió y nadie avisó. Debajo va la **última llamada** (quién llamó, caso y nota, y cuántas fueron si hubo más de una) o, en rojo, **«Sin llamada de Control»**, y la J si la hay.
 - **Aún no les tocaba**: el turno no había empezado al generarlo. Solo sale si hay alguien.
 
 Arriba van **cuatro cifras**: salieron, no saldrán, sin avisar y **coches sin conductor**. Debajo, una barra con el mismo reparto, una frase que lo cuenta y una franja con lo que hizo Control: llamadas a cuántos conductores, alertas atendidas y sin atender, J aprobadas y pendientes, y quién rodó fuera del plan. Luego vienen los nombres: primero lo que hay que explicar y, al final, quién salió (a dos columnas, con hora de la primera conexión y coche) y la tabla de llamadas por agente y de alertas por tipo.
+
+**Resumido, con el teléfono** (16/10/2026, Camilo: *«agrega el número de teléfono al lado del conductor (pequeño) y quita las horas de las llamadas para que se vea mucho más resumido»*):
+
+- **El teléfono va al lado del nombre**, en pequeño y gris, en todas las listas: sin avisar, no saldrán, aún no les tocaba, salieron y fuera del plan. Los de 9 cifras a tres grupos («630 745 794») y sin el +34. Los de relleno de la ficha (empiezan por «000») no se enseñan; si no cabe todo, se recorta el nombre, nunca el número.
+- **Sin la hora de las llamadas**: «Llamada de Gabriel: Confirma que sale ya (2 llamadas)». Tampoco lleva hora quién apuntó un «No saldrá»: solo su nombre. La hora de cada llamada sigue en el Excel del histórico.
 
 ## Las reglas que no se ven
 
