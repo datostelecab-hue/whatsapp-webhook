@@ -176,7 +176,7 @@ Todo movimiento queda apuntado en el historial del ticket con quién lo hizo.
 
 Camilo: *«el departamento de Laura será el único que apruebe vacaciones; el resto puede verlas pero no aprobarlas. Laura Blanco será la única»*.
 
-**Aprobar unas vacaciones es ponerlas en la ficha, por cualquier camino.** Hay siete puertas y en todas el servidor exige la llave **`/vacaciones/aprobar`** (`services/aprobarVacaciones.js`):
+**Aprobar unas vacaciones es ponerlas en la ficha, por cualquier camino.** Hay ocho puertas y en todas el servidor exige la llave **`/vacaciones/aprobar`** (`services/aprobarVacaciones.js`):
 
 | Dónde | Qué |
 |---|---|
@@ -186,6 +186,7 @@ Camilo: *«el departamento de Laura será el único que apruebe vacaciones; el r
 | Plantilla | **Cambiar la situación** a Vacaciones |
 | Plantilla | **Añadir un tramo** de vacaciones |
 | Plantilla | **Corregir** o **borrar** un tramo de vacaciones |
+| Vacaciones | **Cambiar las fechas** de unas ya aprobadas, solo a futuro (16/10/2026). Siguen unidas a su ticket: el ticket no se reabre, pero su resolución pasa a decir las fechas nuevas y su historia apunta el cambio y quién lo hizo → [[Vacaciones#Cambiar unas vacaciones ya aprobadas (16/10/2026)]] |
 
 - La llave la tiene **una sola persona**: la base no deja que la tengan dos (`uq_permiso_vacaciones_aprobar`, db/189). db/189 se la da a Laura Blanco (usuario 4). Para dársela a otra, en Usuarios y permisos, primero hay que quitársela a ella.
 - Se mira **en la matriz de cada uno**: **ni el superadmin ni el desarrollador** aprueban por su rol. Está en el grupo «Aprobaciones», que no siembra ningún rol, igual que la de los fichajes.

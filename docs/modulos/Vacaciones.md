@@ -60,6 +60,33 @@ Se diseñó con la skill de UI/UX, sobre la identidad de la casa ([[Identidad vi
 - KPIs: personas, días por disfrutar (la suma de los saldos a favor), en negativo y de vacaciones hoy. Los dos últimos son atajos a su filtro. Filtros por saldo (en negativo, más de 30 días, de vacaciones hoy) y por contrato.
 - **La ficha es un extracto**: cada línea con su signo y de dónde sale, y el saldo debajo de la raya. Detrás, las tablas de festivos (horas trabajadas y si suma), de vacaciones (con la celda o fila del Excel de donde salieron) y de permisos y suspensiones. Arriba, «Abrir en Plantilla».
 
+## Cambiar unas vacaciones ya aprobadas (16/10/2026)
+
+Camilo: *«que en el módulo de vacaciones se puedan editar las vacaciones aprobadas pero solo a futuro, las que pasaron no, pero siempre ligado todavía al ticket de requerimiento»*.
+
+En la ficha, la tabla de **Vacaciones** lleva una columna **«Ticket»** (el chip con su código, que abre la Ticketera) y, en las que todavía no han pasado, un lápiz **«Cambiar las fechas»**. Solo lo ve —y solo lo puede usar— quien tiene la llave de aprobar (Laura Blanco): la exige el servidor, la pantalla solo esconde el botón.
+
+| Cómo están | Qué se puede cambiar |
+|---|---|
+| **Ya pasaron** (terminaron antes de hoy) | nada |
+| **Empezadas** (desde hoy o antes) | solo la **vuelta**: adelantarla —como pronto, que terminen hoy— o retrasarla. El primer día ya pasó y se queda; el diálogo ni lo pregunta |
+| **Aún no han empezado** | las dos fechas, **a partir de mañana** |
+
+Hoy cuenta como pasado: es un día que ya se está viviendo. También se puede cambiar el motivo.
+
+**Siguen unidas a su ticket.** Se corrige la MISMA fila (`conductor_estado_hist`, con su `ticket_id`), no se borra y se crea otra. Si salieron de un ticket, el ticket **no se reabre ni cambia de estado** (sigue «ejecutado»), pero:
+
+- su **resolución** pasa a decir las fechas nuevas: *«Aplicado: Vacaciones del 23/10/2026 al 03/11/2026 (cambiadas el 16/10/2026)»*;
+- su **historia** apunta el cambio y quién lo hizo: *«Vacaciones cambiadas desde Vacaciones: antes del 21/10/2026 al 01/11/2026, ahora del 23/10/2026 al 03/11/2026.»*
+
+Las que no salieron de un ticket (las de los Excel, las puestas a mano) se cambian igual, sin ticket que apuntar.
+
+Por debajo: `PUT /vacaciones/api/conductor/:id/vacaciones/:filaId` → `vacaciones.service.cambiarVacaciones` (las reglas, en `validarCambio`, pura) → `plantilla.service.editarAusencia` (la llave y la corrección del tramo) → `ticketera.service.anotarCambioDeVacaciones`. Al corregir el tramo, el «Activo» de fondo se parte como al añadirlo ([[Conductores#Un tramo "Activo" abierto es el fondo, no un obstáculo]]): sin eso, alargar o mover unas vacaciones de quien volvió de una baja chocaba con su tramo «Activo» y no se podía. Otra ausencia en medio sigue avisando de cuál estorba.
+
+Ensayado sobre copias temporales de los estados y los tickets reales (21 casos, entre ellos las vacaciones del ticket RH-20261016-10659, del 21/10 al 01/11, y las de la ficha 69, con dos «Activo» de fondo). Las reglas puras, en `scripts/comprobar-vacaciones-saldo.js`.
+
+Plantilla sigue pudiendo **corregir cualquier tramo** (también uno pasado, con la llave), porque es donde se arreglan los errores de verdad: unas fechas mal metidas que ya pasaron.
+
 ## La llave
 
 `/vacaciones`, en el grupo RRHH del catálogo ([[Usuarios y permisos]]). db/197 se la da a quien ya tenía `/rrhh` o la de aprobar vacaciones, que son 8 usuarios. **Mirar los saldos no da permiso para aprobar**: `/vacaciones/aprobar` se mira exacta (`services/aprobarVacaciones.js`) y no por prefijo.

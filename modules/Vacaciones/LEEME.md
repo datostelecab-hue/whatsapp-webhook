@@ -1,12 +1,16 @@
 # Vacaciones (`/vacaciones`)
 
 El saldo de vacaciones de cada persona con contrato abierto, y de dónde sale cada
-número. Solo se mira: poner, corregir o borrar unas vacaciones sigue siendo de
-Plantilla, con la llave de aprobar (una sola persona, db/189).
+número. Poner o borrar unas vacaciones sigue siendo de Plantilla, con la llave de
+aprobar (una sola persona, db/189). CAMBIAR LAS FECHAS de unas ya aprobadas, solo
+lo que aún no ha llegado, se puede también desde aquí (16/10/2026), con la misma
+llave y sin soltarlas de su ticket, que apunta el cambio (`cambiarVacaciones`).
 
 ```
-vacaciones.controller.js   la pantalla y la API (/api/lista, /api/ficha/:id)
-vacaciones.service.js      LA CUENTA (saldoDe, pura) y las horas de los festivos (sellarFestivos)
+vacaciones.controller.js   la pantalla y la API (/api/lista, /api/ficha/:id,
+                           PUT /api/conductor/:id/vacaciones/:filaId)
+vacaciones.service.js      LA CUENTA (saldoDe, pura), las horas de los festivos (sellarFestivos)
+                           y cambiar unas aprobadas (cambiarVacaciones, con validarCambio pura)
 vacaciones.repo.js         contratos, ausencias, festivos y horas de cada festivo
 vistas/vacaciones.ejs      el Listado: el saldo debajo de cada nombre y, en la ficha, el extracto
 ```

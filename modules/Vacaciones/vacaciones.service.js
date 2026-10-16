@@ -22,8 +22,16 @@
 //
 // Lo programado (vacaciones y permisos de mañana en adelante) no toca el saldo
 // de hoy: se enseña aparte, con el saldo que quedará después.
+//
+// CAMBIAR UNAS VACACIONES YA APROBADAS (16/10/2026, Camilo: «que se puedan
+// editar las vacaciones aprobadas pero solo a futuro, las que pasaron no, pero
+// siempre ligado todavía al ticket de requerimiento»). Ver `cambiarVacaciones`:
+// solo lo que aún no ha llegado, con la llave de quien aprueba, y el tramo
+// sigue unido a su ticket, que apunta el cambio en su historia.
 
 const repo = require('./vacaciones.repo');
+const plantilla = require('../Conductores/plantilla.service');   // la puerta de las ausencias (y la llave de aprobar)
+const ticketera = require('../Ticketera/ticketera.service');      // la historia del ticket
 const nominas = require('../Nominas/nominas.service');   // la puerta de Nóminas: las horas de un día
 
 const TASA = 0.0821;
@@ -74,7 +82,13 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
     if (t.estado === 'vacaciones') {
       if (!pasado && !futuro) continue;
       disfrutadas += pasado; programadas += futuro;
-      vacaciones.push({ ...linea, disfrutados: pasado, programados: futuro, quien: t.quien || '', puesto: t.puesto || '' });
+      vacaciones.push({ ...linea, disfrutados: pasado, programados: futuro, quien: t.quien || '', puesto: t.puesto || '',
+        // El ticket del que salieron, si salieron de uno.
+        ticket: t.ticket_id ? { id: t.ticket_id, codigo: t.ticket_codigo || '' } : null,
+        // Se pueden cambiar mientras les quede algo por llegar; las empezadas,
+        // solo la vuelta (ver `validarCambio`).
+        editable: !!t.hasta && t.hasta >= hoy,
+        empezadas: t.desde <= hoy });
     } else if (t.estado === 'permiso') {
       if (!pasado && !futuro) continue;
       const resta = t.leave_type_code === ASUNTOS_PROPIOS;
@@ -165,6 +179,78 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
   };
 }
 
+// ── Cambiar unas vacaciones ya aprobadas ────────────────────────────────────
+
+const ddmmaaaa = d => String(d || '').split('-').reverse().join('/');
+
+/**
+ * LO QUE SE PUEDE CAMBIAR DE UNAS VACACIONES, a fecha `hoy`. Pura: devuelve las
+ * fechas nuevas o lanza con el porqué.
+ *
+ *   · Las que ya pasaron enteras (terminaron antes de hoy) no se tocan.
+ *   · Las empezadas (desde hoy o antes): el primer día se queda, porque ya pasó;
+ *     la vuelta se puede adelantar —como pronto, que terminen hoy— o retrasar.
+ *   · Las que aún no han empezado: las dos fechas, a partir de mañana.
+ *
+ * Hoy cuenta como pasado: es un día que ya se está viviendo.
+ */
+function validarCambio(t, { desde, hasta }, hoy) {
+  if (!t.hasta) throw new Error('Estas vacaciones no tienen fecha de vuelta: corrígelas en Plantilla.');
+  if (t.hasta < hoy) {
+    throw new Error(`Estas vacaciones ya pasaron (del ${ddmmaaaa(t.desde)} al ${ddmmaaaa(t.hasta)}): no se pueden cambiar.`);
+  }
+  const manana = mas(hoy, 1);
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  const nd = desde || t.desde, nh = hasta || t.hasta;
+  if (!iso.test(nd) || !iso.test(nh)) throw new Error('Faltan las fechas');
+  if (t.desde <= hoy) {
+    if (nd !== t.desde) {
+      throw new Error(`Ya empezaron el ${ddmmaaaa(t.desde)}: el primer día no se puede mover. Sí se puede cambiar la vuelta.`);
+    }
+    if (nh < hoy) throw new Error('Como pronto pueden terminar hoy: lo de antes ya pasó y no se cambia.');
+  } else if (nd < manana) {
+    throw new Error(`Solo se pueden mover a días que aún no han llegado: como pronto, desde mañana (${ddmmaaaa(manana)}).`);
+  }
+  if (nh < nd) throw new Error('La vuelta no puede ser antes que el primer día');
+  return { desde: nd, hasta: nh };
+}
+
+/**
+ * CAMBIA UNAS VACACIONES YA APROBADAS (16/10/2026). Solo lo que aún no ha
+ * llegado (`validarCambio`), y solo quien las aprueba: la llave la exige la
+ * puerta de Plantilla, que es la que corrige el tramo —la misma fila, así que
+ * sigue unida a su ticket—. Si salieron de un ticket, el ticket apunta el cambio
+ * en su historia y su resolución pasa a decir las fechas nuevas.
+ */
+async function cambiarVacaciones(conductorId, filaId, datos = {}, quien = {}, { hoy = hoyMadrid() } = {}) {
+  const t = await repo.tramo(conductorId, filaId);
+  if (!t || t.estado !== 'vacaciones') throw new Error('Esas vacaciones no existen (o no son de esta persona)');
+  const nuevas = validarCambio(t, datos, hoy);
+  const motivo = datos.motivo === undefined ? undefined : String(datos.motivo || '').trim();
+  const cambiaMotivo = motivo !== undefined && motivo !== (t.motivo || '');
+  if (nuevas.desde === t.desde && nuevas.hasta === t.hasta && !cambiaMotivo) {
+    throw new Error('No has cambiado nada');
+  }
+
+  await plantilla.editarAusencia(Number(conductorId), Number(filaId), {
+    desde: nuevas.desde, hasta: nuevas.hasta, ...(cambiaMotivo ? { motivo } : {}),
+  }, quien);
+
+  const tramo = f => `del ${ddmmaaaa(f.desde)} al ${ddmmaaaa(f.hasta)}`;
+  if (t.ticket_id) {
+    const nota = (nuevas.desde !== t.desde || nuevas.hasta !== t.hasta)
+      ? `Vacaciones cambiadas desde Vacaciones: antes ${tramo(t)}, ahora ${tramo(nuevas)}.`
+      : 'Vacaciones: cambiado el motivo desde Vacaciones.';
+    await ticketera.anotarCambioDeVacaciones(t.ticket_id, {
+      nota: nota + (cambiaMotivo ? ` Motivo: «${motivo || '(sin motivo)'}».` : ''),
+      resolucion: `Aplicado: Vacaciones ${tramo(nuevas)} (cambiadas el ${ddmmaaaa(hoy)})`,
+    }, quien);
+  }
+  console.log(`🏖️ [Vacaciones] conductor ${conductorId}, tramo ${filaId}: ${tramo(t)} → ${tramo(nuevas)}` +
+    (t.ticket_codigo ? ` · ticket ${t.ticket_codigo}` : ''));
+  return { cambiadas: { ...nuevas, motivo: cambiaMotivo ? motivo : t.motivo }, ticket: t.ticket_codigo || null };
+}
+
 /**
  * LAS HORAS DE LOS FESTIVOS, desde el sistema. Cada hora: los festivos desde el
  * 01/07/2026 que ya pasaron y no tienen las horas, o las tienen de antes de que
@@ -185,6 +271,6 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 
 module.exports = {
   TASA, DESDE_HISTORICO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS,
-  lista, ficha, sellarFestivos,
-  _saldoDe: saldoDe,
+  lista, ficha, sellarFestivos, cambiarVacaciones,
+  _saldoDe: saldoDe, _validarCambio: validarCambio,
 };

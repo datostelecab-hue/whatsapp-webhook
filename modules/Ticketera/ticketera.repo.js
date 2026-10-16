@@ -226,6 +226,11 @@ async function cambiarEstado(id, { estado, resolucion, cierra }) {
   return r.rowCount > 0;
 }
 
+/** Solo la resolución, sin tocar el estado ni cuándo se cerró. */
+async function cambiarResolucion(id, resolucion) {
+  await db.consulta('UPDATE ticket SET resolucion = $2 WHERE id = $1', [Number(id), resolucion || null]);
+}
+
 async function asignar(id, { responsable, responsableId }) {
   const r = await db.consulta(
     `UPDATE ticket
@@ -293,7 +298,7 @@ async function catalogos() {
 }
 
 module.exports = {
-  bandeja, pendientesDesde, una, abiertosPorArea, alta, altaInterna, mios, cambiarEstado, asignar,
+  bandeja, pendientesDesde, una, abiertosPorArea, alta, altaInterna, mios, cambiarEstado, cambiarResolucion, asignar,
   guardarNotas, guardarAdjuntos,
   guardarObservaciones, enlazar, reclasificar, apuntar, historia, catalogos,
 };

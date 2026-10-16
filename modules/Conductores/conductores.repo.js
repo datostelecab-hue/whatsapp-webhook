@@ -844,6 +844,36 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipo
 }
 
 /**
+ * DEJA SITIO A UNA AUSENCIA EN EL «ACTIVO» DE FONDO (ver `anadirAusencia`): el
+ * trozo de antes se recorta a la víspera y el de después se reabre al día
+ * siguiente de la vuelta. Solo recibe filas que NO son ausencias: dos
+ * ausencias que se pisan son un error de verdad y se avisa antes.
+ */
+async function partirFondos(cli, id, fondos, desde, fin) {
+  for (const f of fondos) {
+    // El trozo de ANTES se recorta a la víspera. Si no hay trozo de antes
+    // —el fondo empezaba el mismo día o después— esa fila sobra entera.
+    if (vig.dia(f.desde) < desde) {
+      await cli.query(
+        `UPDATE conductor_estado_hist SET hasta = ($2::date - 1) WHERE id = $1`, [f.id, desde]);
+    } else {
+      await cli.query('DELETE FROM conductor_estado_hist WHERE id = $1', [f.id]);
+    }
+    // Y el de DESPUÉS vuelve a abrirse al día siguiente de la vuelta, con el
+    // mismo estado: la persona sigue activa cuando se reincorpora. Sin fecha
+    // de vuelta no hay "después" que reabrir.
+    const seguia = !f.hasta || vig.dia(f.hasta) > (fin || '9999-12-31');
+    if (fin && seguia) {
+      await cli.query(
+        `INSERT INTO conductor_estado_hist
+           (conductor_id, estado, desde, hasta, motivo, usuario_id)
+         VALUES ($1, $2, ($3::date + 1), $4::date, $5, $6)`,
+        [id, f.estado, fin, f.hasta || null, f.motivo || null, f.usuario_id || null]);
+    }
+  }
+}
+
+/**
  * AÑADE un tramo de ausencia suelto, sin tocar nada de lo que ya hay.
  *
  * Es lo que hace falta cuando alguien pide las vacaciones partidas: 13 días
@@ -920,27 +950,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
   // a medias quedaría alguien sin ningún tramo —o con dos— y eso lo leen la
   // bitácora, el cuadrante y la nómina.
   return db.transaccion(async cli => {
-    for (const f of fondos) {
-      // El trozo de ANTES se recorta a la víspera. Si no hay trozo de antes
-      // —el fondo empezaba el mismo día o después— esa fila sobra entera.
-      if (vig.dia(f.desde) < desde) {
-        await cli.query(
-          `UPDATE conductor_estado_hist SET hasta = ($2::date - 1) WHERE id = $1`, [f.id, desde]);
-      } else {
-        await cli.query('DELETE FROM conductor_estado_hist WHERE id = $1', [f.id]);
-      }
-      // Y el de DESPUÉS vuelve a abrirse al día siguiente de la vuelta, con el
-      // mismo estado: la persona sigue activa cuando se reincorpora. Sin fecha
-      // de vuelta no hay "después" que reabrir.
-      const seguia = !f.hasta || vig.dia(f.hasta) > (fin || '9999-12-31');
-      if (fin && seguia) {
-        await cli.query(
-          `INSERT INTO conductor_estado_hist
-             (conductor_id, estado, desde, hasta, motivo, usuario_id)
-           VALUES ($1, $2, ($3::date + 1), $4::date, $5, $6)`,
-          [id, f.estado, fin, f.hasta || null, f.motivo || null, f.usuario_id || null]);
-      }
-    }
+    await partirFondos(cli, id, fondos, desde, fin);
 
     // Quién la abrió queda en `usuario_id`, que es la pregunta que de verdad se
     // hace: "¿quién le puso estas vacaciones?". Y si vino de un ticket, se
@@ -1000,8 +1010,27 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso },
   if (!Object.keys(cambios).length) return { sinCambios: true };
 
   cambios.usuario_id = usuarioId || null;
-  const r = await vig.editar('situacion', filaId, id, cambios);
-  return { editada: r.despues || r };
+
+  // EL «ACTIVO» DE FONDO SE PARTE, igual que al añadirla (16/10/2026). Al poner
+  // una ausencia a quien volvió de una baja, su tramo «Activo» abierto se parte
+  // alrededor; luego, alargar o mover esas fechas chocaba con el trozo de
+  // después («pisan otro tramo suyo») y no había forma de corregirlas. Otra
+  // AUSENCIA en medio sí sigue siendo un error: la avisa `vig.editar`.
+  const nd = vig.dia(cambios.desde || fila.desde);
+  const nh = 'hasta' in cambios ? (cambios.hasta ? vig.dia(cambios.hasta) : null) : (fila.hasta ? vig.dia(fila.hasta) : null);
+  return db.transaccion(async cli => {
+    const fondos = (await cli.query(
+      `SELECT h.id, h.desde, h.hasta, h.estado, h.motivo, h.usuario_id
+         FROM conductor_estado_hist h
+         JOIN cat_estado_conductor c ON c.codigo = h.estado AND NOT c.es_ausencia
+        WHERE h.conductor_id = $1 AND h.id <> $2
+          AND h.desde <= COALESCE($4::date, 'infinity'::date)
+          AND COALESCE(h.hasta, 'infinity'::date) >= $3::date
+        ORDER BY h.desde`, [id, filaId, nd, nh])).rows;
+    await partirFondos(cli, id, fondos, nd, nh);
+    const r = await vig.editar('situacion', filaId, id, cambios, { cli });
+    return { editada: r.despues || r, fondoPartido: fondos.length };
+  });
 }
 
 /** De qué es un tramo del historial de situaciones (o null si no es de esta persona). */

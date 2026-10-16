@@ -152,6 +152,8 @@ Al añadir una ausencia, un tramo abierto que **no sea ausencia** se **parte**: 
 
 Sin eso, a quien vuelve de una baja —y se le queda un `activo` abierto— **no se le podía poner ninguna ausencia más**. Dos ausencias solapadas siguen siendo un error y siguen avisando.
 
+**Y al corregirla, también** (16/10/2026). Al poner la ausencia, el fondo queda partido alrededor; luego, alargar o mover esas fechas chocaba con el trozo de después («Esas fechas pisan otro tramo suyo») y no había forma de corregirlas. Ahora `editarAusencia` parte el fondo igual que `anadirAusencia` (la misma función, `partirFondos`) y en la misma transacción. Lo usa también [[Vacaciones#Cambiar unas vacaciones ya aprobadas (16/10/2026)|cambiar unas vacaciones desde Vacaciones]].
+
 ### De dónde salió cada tramo
 
 El **Historial de situaciones** enseña, además de las fechas, **quién lo puso** y —si vino de la [[Ticketera]]— el **ticket** y el **justificante de Drive**, los dos leídos del ticket cada vez que se pinta, no copiados. El tramo solo guarda el número: `conductor_estado_hist.ticket_id`.

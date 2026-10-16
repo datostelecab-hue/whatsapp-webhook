@@ -109,6 +109,28 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
   repo.festivosPorSellar = async () => { const e = new Error('no existe'); e.code = '42P01'; throw e; };
   igual('Sin la migración aplicada, el cron no revienta', await svc.sellarFestivos({ hoy: HOY }), { sinTabla: true, hechos: [] });
 
+  // ── 6. Cambiar unas vacaciones aprobadas: solo a futuro (16/10/2026) ──────
+  const val = svc._validarCambio;
+  const prueba = (t, d) => { try { return val(t, d, HOY); } catch (e) { return e.message; } };
+  const fut = { desde: '2026-10-20', hasta: '2026-10-24' };
+  const emp = { desde: '2026-10-12', hasta: '2026-10-18' };
+  igual('Futuras: se mueven a partir de mañana', prueba(fut, { desde: '2026-10-15', hasta: '2026-10-19' }),
+    { desde: '2026-10-15', hasta: '2026-10-19' });
+  igual('Futuras: no a hoy', /como pronto, desde mañana \(15\/10\/2026\)/.test(prueba(fut, { desde: HOY, hasta: '2026-10-19' })), true);
+  igual('Empezadas: el primer día no se mueve', /el primer día no se puede mover/.test(prueba(emp, { desde: '2026-10-13', hasta: '2026-10-18' })), true);
+  igual('Empezadas: la vuelta se adelanta hasta hoy', prueba(emp, { hasta: HOY }), { desde: '2026-10-12', hasta: HOY });
+  igual('Empezadas: no antes de hoy', /Como pronto pueden terminar hoy/.test(prueba(emp, { hasta: '2026-10-13' })), true);
+  igual('Empezadas: la vuelta se retrasa', prueba(emp, { hasta: '2026-10-30' }), { desde: '2026-10-12', hasta: '2026-10-30' });
+  igual('Pasadas: no se tocan', /ya pasaron/.test(prueba({ desde: '2026-10-01', hasta: '2026-10-13' }, { hasta: '2026-10-20' })), true);
+  igual('Las que terminan hoy aún se pueden alargar', prueba({ desde: '2026-10-10', hasta: HOY }, { hasta: '2026-10-16' }),
+    { desde: '2026-10-10', hasta: '2026-10-16' });
+  igual('La vuelta no antes que el primer día', /no puede ser antes/.test(prueba(fut, { desde: '2026-10-22', hasta: '2026-10-21' })), true);
+  const conTicket = saldoDe({ alta: '2026-01-01' },
+    [{ ...vac('2026-10-12', '2026-10-18'), ticket_id: '5', ticket_codigo: 'RH-1' }, vac('2026-10-01', '2026-10-05')], cal, H({}), HOY);
+  igual('La ficha dice cuáles se pueden cambiar y de qué ticket salieron',
+    conTicket.detalle.vacaciones.map(v => [v.desde, v.editable, v.empezadas, v.ticket && v.ticket.codigo]),
+    [['2026-10-12', true, true, 'RH-1'], ['2026-10-01', false, true, null]]);
+
   console.log(fallos ? `\n${fallos} fallo(s)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

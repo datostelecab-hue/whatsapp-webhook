@@ -4,6 +4,9 @@
 (function () {
   const { esc, etiqueta } = Listado.fmt;
   const R = <%- JSON.stringify(reglas || {}) %>;
+  // Quien aprueba vacaciones (una sola persona, db/189): solo para enseñar el
+  // botón de cambiar. Lo que manda es el servidor.
+  const APRUEBA = <%- JSON.stringify(typeof aprueba !== 'undefined' && aprueba ? aprueba : { puede: false, quien: null }) %>;
 
   // Fechas de la base en 'AAAA-MM-DD' → dd/mm/aaaa, sin pasar por Date (un
   // DATE leído como Date puede caer en el día anterior).
@@ -35,7 +38,7 @@
     'hoy': '<span class="text-telecab-muted">Hoy</span>',
   };
 
-  Listado.montar({
+  const lst = Listado.montar({
     raiz: '#modulo',
     titulo: 'Vacaciones',
     icono: 'fa-umbrella-beach',
@@ -154,6 +157,17 @@
               // Sin motivo, lo único que dice de dónde sale es quién lo puso a mano.
               { titulo: 'De dónde sale', campo: 'motivo', pinta: (v, x) => (v ? `<span class="text-sm text-telecab-muted">${esc(v)}</span>`
                   : x.quien ? `<span class="text-sm text-telecab-muted">Lo puso ${esc(x.quien)} el ${f(x.puesto)}</span>` : DASH) },
+              // El ticket del que salieron: sigue unido al tramo aunque se cambien las fechas.
+              { titulo: 'Ticket', campo: 'ticket', clase: 'whitespace-nowrap',
+                pinta: v => (v ? `<a href="/ticketera?ticket=${encodeURIComponent(v.codigo)}" title="Abrir el ticket del que salieron"
+                    class="px-1.5 py-0.5 rounded-md text-[11px] border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold transition">
+                    <i class="fa-solid fa-ticket mr-1"></i>${esc(v.codigo)}</a>` : DASH) },
+            ],
+            // CAMBIAR LAS FECHAS (16/10/2026): solo las que aún no han pasado, y
+            // solo quien las aprueba.
+            acciones: [
+              { icono: 'fa-pen', titulo: 'Cambiar las fechas', onClick: cambiar,
+                visible: x => APRUEBA.puede && x.editable },
             ],
           },
         },
@@ -181,6 +195,41 @@
       ],
     },
   });
+
+  /**
+   * CAMBIA UNAS VACACIONES YA APROBADAS. Solo lo que aún no ha llegado: si ya
+   * empezaron, el primer día se queda (no se pregunta) y solo se mueve la
+   * vuelta. El servidor lo vuelve a mirar todo: esto solo evita pedir lo que no
+   * se puede.
+   */
+  async function cambiar(x, d) {
+    const hoy = d.hoy;
+    const campos = [];
+    if (!x.empezadas) campos.push({ id: 'desde', etiqueta: 'Primer día', tipo: 'fecha', valor: f(x.desde) });
+    campos.push(
+      { id: 'hasta', etiqueta: 'Último día', tipo: 'fecha', valor: f(x.hasta),
+        ayuda: 'El último día de vacaciones. Al siguiente vuelve al cuadrante solo.' },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: x.motivo || '' });
+    const nota = (x.empezadas
+      ? `Empezaron el ${f(x.desde)}: ese día ya pasó y se queda. Se puede adelantar la vuelta (como pronto, hoy) o retrasarla.`
+      : 'Solo a días que aún no han llegado: como pronto, desde mañana.') +
+      (x.ticket ? ` Siguen unidas al ticket ${x.ticket.codigo}, que apunta el cambio en su historia.` : '');
+    const v = await Dialogo.formulario(`Cambiar las vacaciones de ${d.nombre}`, campos, { nota, textoBoton: 'Cambiar las fechas' });
+    if (!v) return;
+    try {
+      const r = await fetch(`/vacaciones/api/conductor/${encodeURIComponent(d.id)}/vacaciones/${encodeURIComponent(x.fila)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ desde: v.desde || x.desde, hasta: v.hasta, motivo: v.motivo }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.status !== 'ok') throw new Error(j.msg || `Error ${r.status}`);
+      Dialogo.hecho('Vacaciones cambiadas' + (j.ticket ? ` · apuntado en ${j.ticket}` : ''));
+      await lst.recargar();
+      await lst.abrir(d.id, { historial: false });
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se han cambiado', texto: e.message, tono: 'error' });
+    }
+  }
 
   // EL DESGLOSE, como un extracto: cada línea con su signo y de dónde sale, y
   // el saldo debajo de la raya. Es la forma que se lee sin explicarla.

@@ -491,11 +491,26 @@ async function diagnostico() {
   };
 }
 
+/**
+ * LAS VACACIONES DE UN TICKET SE HAN CAMBIADO después de aplicarlo (desde
+ * Vacaciones, 16/10/2026). El ticket no se reabre ni cambia de estado: sigue
+ * cerrado y enlazado con su tramo. Su resolución pasa a decir las fechas nuevas
+ * —es lo que se lee en la bandeja— y la historia cuenta el cambio y quién lo hizo.
+ */
+async function anotarCambioDeVacaciones(ticketId, { nota, resolucion }, quien = {}) {
+  const t = await repo.una(ticketId);
+  if (!t) return null;
+  await repo.cambiarResolucion(ticketId, resolucion);
+  await repo.apuntar(ticketId, { antes: t.estado, despues: t.estado, nota,
+    usuarioId: quien.usuarioId, quien: quien.nombre || '' });
+  return { ticket: t.codigo };
+}
+
 /** Si quien mira aprueba vacaciones, y quién lo hace: para la bandeja. */
 const vacacionesParaLaPantalla = usuarioId => aprobarVac.paraLaPantalla(usuarioId);
 
 module.exports = {
-  vacacionesParaLaPantalla,
+  vacacionesParaLaPantalla, anotarCambioDeVacaciones,
   sincronizar, datos, ficha, asignar, cambiarEstado, observaciones,
   crearSoporte, mios, notas, adjuntos, bandejaIT, estadoIT, TIPOS_IT, PRIORIDADES,
   enlazar, reclasificar, aplicar, diagnostico,

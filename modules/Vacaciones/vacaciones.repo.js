@@ -37,15 +37,29 @@ async function tramos(ids, desde) {
             to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta,
             h.motivo, h.leave_type_code, lt.name AS tipo_permiso,
             NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS quien,
-            to_char(h.creado_at AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS puesto
+            to_char(h.creado_at AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS puesto,
+            h.ticket_id::text AS ticket_id, t.codigo AS ticket_codigo
        FROM conductor_estado_hist h
        LEFT JOIN leave_type lt ON lt.leave_type_code = h.leave_type_code
        LEFT JOIN usuario u ON u.id = h.usuario_id
+       LEFT JOIN ticket t ON t.id = h.ticket_id
       WHERE h.conductor_id = ANY($1::bigint[])
         AND h.estado = ANY($2::text[])
         AND (h.hasta IS NULL OR h.hasta >= $3::date)
       ORDER BY h.conductor_id, h.desde`, [ids, ESTADOS, desde]);
   return r.rows;
+}
+
+/** UN tramo de una persona, con su ticket. Null si no existe o no es suyo. */
+async function tramo(conductorId, filaId) {
+  const r = await db.consulta(
+    `SELECT h.id::text AS fila, h.conductor_id::text AS id, h.estado,
+            to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta,
+            h.motivo, h.ticket_id::text AS ticket_id, t.codigo AS ticket_codigo
+       FROM conductor_estado_hist h
+       LEFT JOIN ticket t ON t.id = h.ticket_id
+      WHERE h.id = $1 AND h.conductor_id = $2`, [Number(filaId), Number(conductorId)]);
+  return r.rows[0] || null;
 }
 
 /** El calendario entero, con si sus horas están calculadas. */
@@ -98,4 +112,4 @@ async function guardarHorasFestivo(fecha, horas, fuente) {
   });
 }
 
-module.exports = { ESTADOS, personas, tramos, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo };
+module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo };
