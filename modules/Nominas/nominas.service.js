@@ -26,7 +26,7 @@
 //    menudo; en PostgreSQL la tiene el 100 % de la plantilla, así que el cuarto
 //    caso ya casi no se da.
 //
-// 3. LAS J CUENTAN, Y VALEN EL DIA ENTERO. Un dia con justificante aprobado
+// 3. LAS J CUENTAN, CADA UNA CON SUS HORAS. Un dia con justificante aprobado
 //    (coche en taller, cuenta suspendida, medico) no es un dia sin trabajar:
 //    es un dia que alguien dio por bueno. La nomina lo separa en dos cifras
 //    que es justo lo que RRHH pregunta —cuanto de lo que falta esta explicado
@@ -36,28 +36,21 @@
 //      HORAS NO JUSTIFICADAS  lo que sigue faltando para el objetivo despues
 //                             de sumar las horas de BOLT y las justificadas
 //
-//    Una J vale la JORNADA ENTERA (las horas meta del dia, 8), sin distinguir
-//    tipo ni motivo. La tabla `justificante` tiene una columna de horas, pero
-//    no dice nada util: de las 182 J aprobadas de agosto de 2026, 114 traen un
-//    "8" puesto a ojo y otras 13 traen las MISMAS horas que esa persona ya
-//    habia rodado ese dia —sumarlas seria contar dos veces el mismo rato—.
+//    Una J vale LAS HORAS QUE SE LE PUSIERON al justificarla, y se SUMAN a las
+//    de BOLT de ese dia: es el estandar de la bitacora, de la letra y del
+//    reporte de horas, y la nomina cuenta igual que ellos. Una J aprobada sin
+//    horas no suma nada (se avisa en el panel).
 //
-//    Y TOPADA POR LO QUE FALTE DE ESE DIA. Una J cubre lo que no se pudo
-//    hacer, no ocho horas encima de lo que si se hizo: quien rodo 3 h y tiene
-//    J ese dia suma 5 justificadas, no 8, y el dia queda en 8, no en 11. Para
-//    los 104 dias de agosto en que no se rodo nada, que son la mayoria, la J
-//    vale las 8 enteras, que es lo esperado.
+//    Hasta el 16/10/2026 toda J valia la jornada entera (8 h) topada por lo
+//    que faltara de ese dia, porque las horas de la tabla eran un "8" puesto a
+//    ojo: de las 182 J aprobadas de agosto, 114 traian 8. Camilo: «las J ya
+//    tienen valor propio, no todas valen 8, eso era antes cuando el sistema
+//    apenas estaba naciendo». En septiembre la media ya es de 5,2 h y en
+//    octubre de 3,8.
 //
 //    LAS J CUENTAN TAMBIEN PARA EL EXCESO. La diferencia contra el objetivo se
-//    mide con las justificadas dentro: quien rodo 205,6 h y tuvo dos dias
-//    justificados lleva 221,6 contra un objetivo de 176, y su exceso son 45,6
-//    horas, no 29,6. Un dia justificado no puede restarle a nadie.
-//
-//    Y NO REGALA HORAS EXTRA, justo por el tope de arriba: como la J nunca sube
-//    un dia por encima de la jornada, las justificadas solo pueden llevar a
-//    alguien HASTA su objetivo. Para pasarse hay que haber rodado de mas los
-//    demas dias, que es lo que la hora extra paga. Las dos reglas —vale el dia
-//    entero, pero topada— van juntas: separarlas rompe el calculo.
+//    mide con las justificadas dentro: un dia justificado no le resta a nadie
+//    sus horas extra.
 //
 // 4. LA HORA EXTRA SE PAGA POR CONDUCIR, NO POR ESTAR CONECTADO. Las horas
 //    efectivas son viaje + espera, asi que quien pasa el mes con la app abierta
@@ -65,19 +58,22 @@
 //    destapo: 211,4 h en el mes y 35,4 de exceso sobre el objetivo... con un
 //    52,7 % de utilizacion. De sus 211 horas, 100 fueron espera.
 //
-//    Asi que todo el mundo tiene que llegar a una utilizacion minima (65 %,
-//    editable). A quien no llega se le quitan horas DE ESPERA —nunca de viaje—
-//    hasta que la alcanza:
+//    DOS LISTONES (16/10/2026, «mucho más estricto»):
+//      · quien llega al 75 % de utilizacion (`utilUmbral`) no pierde nada;
+//      · a quien NO llega se le exige el 85 % (`utilExigida`): se le quitan
+//        horas DE ESPERA —nunca de viaje— hasta dejarlo exactamente en el 85.
+//    Hasta entonces habia un solo liston del 65 %, y quien no llegaba se
+//    quedaba en el 65. Ahora quedarse corto sale mas caro a proposito: el
+//    74 % no se lleva al 75, se lleva al 85.
 //
 //      utilizacion = viaje / (viaje + espera)
-//      X = (viaje + espera) - viaje / minimo
+//      X = (viaje + espera) - viaje / exigida          (solo si utilizacion < umbral)
 //
 //    Dos propiedades que la hacen segura:
 //      · X nunca pasa de la espera que esa persona tiene, porque X <= espera
-//        equivale a viaje <= viaje / minimo, cierto siempre que el minimo sea
-//        menor que 1. No se le puede quitar viaje a nadie.
-//      · Despues del recorte todos quedan EXACTAMENTE en el minimo. Quien ya
-//        llegaba no pierde nada.
+//        equivale a viaje <= viaje / exigida, cierto siempre que la exigida
+//        sea menor que 1. No se le puede quitar viaje a nadie.
+//      · Despues del recorte quedan EXACTAMENTE en la exigida.
 //
 //    La cifra retirada se ensena en su columna: a quien le baja la nomina por
 //    esto merece ver cuantas horas se le han quitado, no un "sale asi".
@@ -119,9 +115,15 @@
 //    elige agosto y salen los datos de agosto. La nomina va a mes vencido
 //    porque es un pago; el fichero de la ETT es un parte de trabajo.
 //
-//    Las horas, el objetivo y la diferencia SI se calculan para la ETT y se
-//    ensenan: son una medida, no un pago. Lo que se pone a cero es todo lo que
-//    se cobra.
+//    Las horas, el objetivo y la diferencia SI se calculan para la ETT: son
+//    una medida, no un pago. Lo que se pone a cero es todo lo que se cobra.
+//
+//    Y NO SALEN EN LA NOMINA (16/10/2026, Camilo: «No necesito ver en ese
+//    listado a los de la ETT ya que lo descargo por el excel»). `calcular`
+//    los calcula con todos los demas —el parte sale de esas mismas filas— pero
+//    los devuelve aparte, en `filasETT`: la lista, los totales, el Excel de la
+//    nomina y lo que se congela son solo de plantilla propia, que es lo que
+//    se paga por nomina.
 //
 // ── LO QUE SE GUARDA ────────────────────────────────────────────────────────
 // Solo el resultado CONGELADO. No hay "snapshot de datos crudos" como en las
@@ -138,8 +140,9 @@ const DEFAULTS = {
   // Sueldo base y umbral FAS son DISTINTOS por jornada (40h vs 32h). Los de 32h
   // arrancan igual que los de 40h para no cambiar nada hasta poner los reales.
   sueldoBase40: 1445, sueldoBase32: 1445,   // informativos (no entran en el total, como en el Excel)
-  horasMetaDia: 8,      // lo que vale un día: cuánto cubre una J y cuántas horas
-                        // hacen un "día extra". No es el objetivo del mes.
+  horasMetaDia: 8,      // cuántas horas hacen un "día extra" (solo esa columna). Hasta
+                        // el 16/10/2026 era también lo que valía una J; ya no: cada J
+                        // vale sus horas (regla 3). No es el objetivo del mes.
   horasMetaMes40: 172,  // EL OBJETIVO DEL MES para una jornada de 40 h. El de
                         // cualquier otra jornada sale de aquí por regla de tres
                         // (32 h → 172 × 32/40 = 137,6), y se prorratea por los
@@ -148,13 +151,15 @@ const DEFAULTS = {
                         // OJO: el .gs traía 9, pero la celda de config real (mayo y junio)
                         // tiene 7 y las fórmulas leían la celda → el valor REAL usado fue 7.
                         // Verificado reproduciendo junio: con 7 cuadra 164/164 al céntimo.
-  lUtilizacion: 0.75,   // informativo (no entra en el cálculo, como en el Excel)
-  utilMinima: 0.65,     // USADO — utilización mínima exigida. A quien no llega se le
-                        // retiran horas de ESPERA hasta que la alcanza (regla 4).
+  // Los dos listones de utilización (regla 4, 16/10/2026). Sustituyen a
+  // `utilMinima` (0,65) y a `lUtilizacion` (0,75, que era informativo).
+  utilUmbral: 0.75,     // USADO — quien llega a esta utilización no pierde ninguna hora
+  utilExigida: 0.85,    // USADO — a quien no llega se le exige esta: se le retiran horas
+                        // de ESPERA hasta dejarlo exactamente aquí
   umbralFAS40: 4750, umbralFAS32: 4750,     // USADO — a partir de este neto hay MBO FAS, según jornada
   pctMBOFAS: 0.4,       // fracción del exceso de facturación sobre el umbral
-  eurHoraNoc: 8.16,     // € hora nocturna
-  factorNoc: 0.1,       // multiplicador de nocturnas (€hora × horas × 0.1)
+  eurHoraNoc: 9.9,      // € hora nocturna (9,9 desde el 16/10/2026; antes 8,16)
+  factorNoc: 0.1,       // multiplicador de nocturnas (€hora × horas × 0.1 = 0,99 € la hora)
 
   // ── LO QUE SE LE FACTURA A LA ETT ──────────────────────────────────────
   // Nada de esto entra en la nómina: son los dos precios del PARTE que se le
@@ -168,16 +173,16 @@ const DEFAULTS = {
 const CONFIG_CAMPOS = [
   { key: 'sueldoBase40', label: 'Sueldo base 40h (€)', usado: false },
   { key: 'sueldoBase32', label: 'Sueldo base 32h (€)', usado: false },
-  { key: 'horasMetaDia', label: 'Horas de un día (vale una J, y un día extra)', usado: true },
   { key: 'horasMetaMes40', label: 'Objetivo del mes con jornada de 40 h', usado: true },
   { key: 'eurHoraExtra', label: '€ por hora extra', usado: true },
-  { key: 'lUtilizacion', label: 'L utilización (informativo)', usado: false },
-  { key: 'utilMinima', label: 'Utilización mínima (fracción, 0.65 = 65%)', usado: true },
+  { key: 'utilUmbral', label: 'Utilización con la que no se quitan horas (0.75 = 75 %)', usado: true },
+  { key: 'utilExigida', label: 'Utilización exigida a quien no llega (0.85 = 85 %)', usado: true },
   { key: 'umbralFAS40', label: 'Umbral FAS 40h (€)', usado: true },
   { key: 'umbralFAS32', label: 'Umbral FAS 32h (€)', usado: true },
   { key: 'pctMBOFAS', label: '% MBO FAS (fracción, 0.4 = 40%)', usado: true },
   { key: 'eurHoraNoc', label: '€ hora nocturna', usado: true },
   { key: 'factorNoc', label: 'Factor nocturnas', usado: true },
+  { key: 'horasMetaDia', label: 'Horas que hacen un «día extra» (solo esa columna)', usado: false },
   { key: 'ettEurHora', label: 'ETT · € por hora trabajada', usado: false },
   { key: 'ettPlusNocturno', label: 'ETT · € por hora nocturna (plus)', usado: false },
 ];
@@ -193,9 +198,17 @@ const mesVencido = (mes, ano) => (mes === 1 ? { mes: 12, ano: ano - 1 } : { mes:
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-/** Los defaults con lo guardado encima. Sin caché: es una consulta. */
+/**
+ * Los defaults con lo guardado encima. Sin caché: es una consulta.
+ *
+ * Solo las claves que existen hoy: en `nomina_config` siguen guardadas algunas
+ * retiradas (`diasObjetivo`, `utilMinima`, `lUtilizacion`), y colarlas en la
+ * config haría que una nómina congelada dijera que se calculó con ellas.
+ */
 async function leerConfig() {
-  return { ...DEFAULTS, ...(await repo.leerConfig()) };
+  const guardado = await repo.leerConfig();
+  const vivas = Object.fromEntries(Object.entries(guardado).filter(([k]) => k in DEFAULTS));
+  return { ...DEFAULTS, ...vivas };
 }
 
 /** Guarda solo las claves conocidas y numéricas. Devuelve la config final. */
@@ -278,21 +291,25 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
 
   // ── Las J ────────────────────────────────────────────────────────────────
   // Solo las de su ventana: una J anterior a su alta no cubre un objetivo que
-  // todavia no existia. Cada una vale la jornada del dia, topada por lo que le
-  // faltara a ese dia para llegar (ver la cabecera del fichero).
+  // todavia no existia. Cada una vale SUS horas, sumadas a las de BOLT de ese
+  // dia, como en la bitacora (regla 3).
   const jus = (c.jDias || []).filter(d => d >= primerDia);
-  const horasJustificadas = jus.reduce(
-    (a, d) => a + Math.max(0, cfg.horasMetaDia - ((c.horasPorDia && c.horasPorDia.get(d)) || 0) / 3600), 0);
+  const horasDeJ = d => ((c.jHoras && c.jHoras.get(d)) || 0) / 3600;
+  const horasJustificadas = jus.reduce((a, d) => a + horasDeJ(d), 0);
+  const jSinHoras = jus.filter(d => !(horasDeJ(d) > 0)).length;
 
-  // ── El recorte por utilizacion minima ────────────────────────────────────
-  // A quien no llega al minimo se le retiran horas de ESPERA hasta que lo
-  // alcanza (ver la regla 4 de la cabecera). El viaje no se toca nunca, y la
-  // propia formula lo garantiza: X no puede pasar de la espera que tuvo.
+  // ── El recorte por utilizacion ───────────────────────────────────────────
+  // Quien llega al umbral (75 %) no pierde nada; a quien no llega se le
+  // retiran horas de ESPERA hasta dejarlo en la exigida (85 %). Ver la regla 4
+  // de la cabecera. El viaje no se toca nunca, y la propia formula lo
+  // garantiza: X no puede pasar de la espera que tuvo.
   const viaje = c.viajeH || 0, espera = c.esperaH || 0;
   const efectivas = viaje + espera;
   let horasEsperaQuitadas = 0;
-  if (cfg.utilMinima > 0 && cfg.utilMinima < 1 && efectivas > 0 && viaje < cfg.utilMinima * efectivas) {
-    horasEsperaQuitadas = efectivas - viaje / cfg.utilMinima;
+  if (cfg.utilExigida > 0 && cfg.utilExigida < 1 && efectivas > 0 && viaje < cfg.utilUmbral * efectivas) {
+    // Con el umbral por encima de la exigida (una config al reves) la cuenta
+    // saldria negativa: entonces no se quita nada.
+    horasEsperaQuitadas = Math.max(0, efectivas - viaje / cfg.utilExigida);
     // Cinturon: `c.horas` es el total con los solapes FUNDIDOS y `efectivas` es
     // la suma de los dos por separado, asi que si alguien tiene dos cuentas
     // pisandose en situaciones distintas pueden diferir por unos minutos. El
@@ -300,15 +317,8 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     horasEsperaQuitadas = Math.min(horasEsperaQuitadas, Math.max(0, espera), c.horas);
   }
 
-  // LA DIFERENCIA SE MIDE CON LAS J DENTRO. Un dia justificado cuenta como la
-  // jornada que habria hecho, asi que no le resta a nadie: quien rodo 205,6 h y
-  // tuvo dos dias justificados lleva 221,6 contra un objetivo de 176, y su
-  // exceso son 45,6 h, no 29,6.
-  //
-  // Esto no regala horas extra porque la J esta TOPADA: nunca sube un dia por
-  // encima de la jornada, de modo que las justificadas solo pueden llevar a
-  // alguien HASTA su objetivo. Para pasarse hay que haber rodado de mas los
-  // demas dias, que es precisamente lo que la hora extra paga.
+  // LA DIFERENCIA SE MIDE CON LAS J DENTRO. Un dia justificado cuenta con las
+  // horas que se le reconocieron, asi que no le resta a nadie sus horas extra.
   const horasComputadas = c.horas - horasEsperaQuitadas + horasJustificadas;
   const delta = horasComputadas - hsTgt;
 
@@ -356,6 +366,9 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     horasJustificadas: r2(horasJustificadas),
     horasNoJustificadas: r2(horasNoJustificadas),
     diasJustificados: jus.length,
+    // J aprobadas a las que nadie puso horas: no suman. No se congela; solo
+    // alimenta el aviso del panel.
+    jSinHoras,
     horasObjetivo: r2(hsTgt),
     deltaHoras: r2(delta),
     utilPct: c.utilPct != null ? r2(c.utilPct) : null,
@@ -421,8 +434,8 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       horas: h.horasSeg / 3600,
       viajeH: h.viajeSeg / 3600,
       esperaH: h.esperaSeg / 3600,
-      horasPorDia: h.porDia,
       jDias: j.aprobados,
+      jHoras: j.horas,
       jPendientes: j.pendientes,
       nocturnasH: h.nocSeg / 3600,
       utilPct: efectivos > 0 ? (h.viajeSeg / efectivos) * 100 : null,
@@ -453,8 +466,8 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       horas: 0,
       viajeH: 0,
       esperaH: 0,
-      horasPorDia: new Map(),
       jDias: j.aprobados,
+      jHoras: j.horas,
       jPendientes: j.pendientes,
       nocturnasH: 0,
       utilPct: null,
@@ -468,13 +481,18 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   const fuera = [];
   const dentro = gente.filter(c => {
     if (situarAlta(c.alta, mesD, anoD).donde !== 'despues') return true;
-    fuera.push({ nombre: c.nombre, alta: c.alta, horas: r2(c.horas) });
+    if (!c.ett) fuera.push({ nombre: c.nombre, alta: c.alta, horas: r2(c.horas) });
     return false;
   });
 
-  const filas = dentro
+  const todas = dentro
     .map(c => calcularFila(c, diasDelMes, cfg, mesD, anoD))
     .sort((a, b) => b.total - a.total);
+  // La ETT se calcula con todos —su parte sale de estas mismas filas— pero va
+  // aparte: la nómina, sus totales, su Excel y lo que se congela son solo de
+  // plantilla propia (regla 6).
+  const filas = todas.filter(f => !f.ett);
+  const filasETT = todas.filter(f => f.ett);
 
   const totales = filas.reduce((t, f) => {
     t.propinas += f.propinas; t.peajes += f.peajes; t.nocturnas += f.nocturnas;
@@ -504,7 +522,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
     mes: mesNom, ano: anoNom, mesNombre: MESES_NOM[mesNom - 1], diasDelMes,
     mesDatos: mesD, anoDatos: anoD, mesDatosNombre: MESES_NOM[mesD - 1],
     desde, hasta,
-    filas, totales, config: cfg,
+    filas, filasETT, totales, config: cfg,
     congelada: false,
     avisos: {
       sinDni: filas.filter(f => !f.dni).length,
@@ -516,9 +534,13 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       sinApellidosSeparados: filas.filter(f => !f.nombreSSEnForma).length,
       // J en la cola: nadie las ha aprobado todavia, asi que NO cuentan. Si se
       // aprueban, las horas justificadas de este mes suben.
-      jPendientes: dentro.reduce((a, c) => a + (c.jPendientes || 0), 0),
+      jPendientes: dentro.filter(c => !c.ett).reduce((a, c) => a + (c.jPendientes || 0), 0),
       conJ: filas.filter(f => f.diasJustificados > 0).length,
-      // A quien no llegaba a la utilizacion minima y se le ha recortado espera.
+      // J aprobadas sin horas puestas: no suman nada (regla 3).
+      jSinHoras: filas.reduce((a, f) => a + (f.jSinHoras || 0), 0),
+      // Los de ETT, que no salen aquí: van en su parte.
+      ett: filasETT.length,
+      // A quien no llegaba al umbral de utilizacion y se le ha recortado espera.
       conRecorte: filas.filter(f => f.horasEsperaQuitadas > 0).length,
       // Y, de esos, a quien el recorte le ha quitado las horas extra que tenia.
       recortadosSinExtra: filas.filter(f =>
@@ -566,8 +588,7 @@ async function paraETT(mesTrabajo, anoTrabajo) {
   // el mes del informe esa persona segue trabajando.
   const bajaDelMes = baja => (baja && baja >= r.desde && baja <= r.hasta ? baja : '');
 
-  const filas = r.filas
-    .filter(f => f.ett)
+  const filas = (r.filasETT || [])
     .map(f => {
       // LAS HORAS QUE SE LE PAGAN A LA AGENCIA LLEVAN EL RECORTE POR
       // UTILIZACION, igual que las de casa. La hora de espera de quien no llega
@@ -613,7 +634,7 @@ async function paraETT(mesTrabajo, anoTrabajo) {
     desde: r.desde, hasta: r.hasta,
     trabajoIncompleto: r.avisos.trabajoIncompleto,
     eurHora: cfg.ettEurHora, plusNocturno: cfg.ettPlusNocturno,
-    utilMinima: cfg.utilMinima,
+    utilUmbral: cfg.utilUmbral, utilExigida: cfg.utilExigida,
     bajasEnElMes: filas.filter(f => f.bajaEnElMes).length,
     filas, totales,
   };
@@ -674,7 +695,10 @@ async function mesesDeTrabajo(cid, persona, trabajos, cfg) {
   for (const t of trabajos) {
     const pago = mesSiguiente(t.mes, t.ano);
     const r = await calcular(pago.mes, pago.ano, { config: cfg });
-    const fila = (r.filas || []).find(x => Number(x.conductorId) === cid) || null;
+    // Quien es de ETT ya no está en `filas` (la nómina es solo de propia),
+    // pero su mes sí se calcula: va en `filasETT`.
+    const fila = [...(r.filas || []), ...(r.filasETT || [])]
+      .find(x => Number(x.conductorId) === cid) || null;
     const diasDelMes = new Date(t.ano, t.mes, 0).getDate();
     meses.push({
       mes: t.mes, ano: t.ano,
@@ -753,8 +777,8 @@ async function extras(conductorId, claves) {
  *
  * Sale de las MISMAS consultas que la nómina, pedidas solo para esa persona: los
  * totales del mes son la suma de estos días, así que el desglose cuadra con su
- * fila al céntimo. Las J valen lo mismo que allí: la jornada del día menos lo
- * rodado, y solo desde el día en que arranca su mes.
+ * fila al céntimo. Las J valen lo mismo que allí: sus horas, y solo desde el
+ * día en que arranca su mes.
  *
  * Lo que NO se reparte por días, porque se decide con el mes entero:
  *   · el MBO (las horas del mes contra el objetivo, o la facturación contra el
@@ -771,7 +795,7 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
     repo.justificantesDelMes(desde, hasta, { conductorId: cid }),
   ]);
   const h = horas.get(cid) || { dias: new Map() };
-  const j = jus.get(cid) || { aprobados: [], pendientesDias: [] };
+  const j = jus.get(cid) || { aprobados: [], horas: new Map(), pendientesDias: [] };
   const primerDia = fila ? fila.primerDia : 1;
   const vacio = { seg: 0, viajeSeg: 0, esperaSeg: 0, nocSeg: 0 };
   const hoy = hoyMadrid();
@@ -790,7 +814,9 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
       horas: x.seg / 3600,
       viaje: x.viajeSeg / 3600,
       espera: x.esperaSeg / 3600,
-      horasJustificadas: cuentaJ ? Math.max(0, cfg.horasMetaDia - x.seg / 3600) : 0,
+      // La J vale sus horas, sumadas a las rodadas (regla 3).
+      horasJustificadas: cuentaJ ? ((j.horas && j.horas.get(d)) || 0) / 3600 : 0,
+      jSinHoras: cuentaJ && !((j.horas && j.horas.get(d)) > 0),
       jAprobada, jAntesDelArranque: jAprobada && !cuentaJ,
       jPendiente: (j.pendientesDias || []).includes(d),
       nocturnasHoras, nocturnas,

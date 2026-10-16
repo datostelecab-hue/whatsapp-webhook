@@ -243,7 +243,8 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
 
 /**
  * Los dias con JUSTIFICANTE del mes, por persona.
- * Devuelve Map(conductor_id -> { aprobados: [dia del mes...], pendientes: n }).
+ * Devuelve Map(conductor_id -> { aprobados: [dia del mes...], horas: Map(dia ->
+ * segundos de las aprobadas), pendientes: n, pendientesDias: [...] }).
  *
  * SOLO CUENTAN LAS APROBADAS. Una J nace pendiente y el area responsable la
  * aprueba o la rechaza; contar una pendiente seria darla por buena antes del
@@ -253,9 +254,10 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
  *
  * Las rechazadas no salen: ese dia vuelve a ser lo que era, sin justificar.
  *
- * NO se leen las horas de la J. La columna existe, pero en agosto de 2026 no
- * dice nada: 114 de 182 traen un "8" puesto a ojo y 13 traen las horas que esa
- * persona ya habia rodado ese dia. Cuanto vale una J lo decide el servicio.
+ * LAS HORAS DE LA J SI SE LEEN (16/10/2026): son lo que vale, sumado a lo
+ * rodado, como en la bitacora. Hasta entonces se ignoraban y toda J valia 8 h,
+ * porque en agosto 114 de 182 traian un "8" puesto a ojo; en septiembre la
+ * media ya es de 5,2 h. Sin horas puestas, la J vale 0.
  *
  * `pendientesDias` dice QUE dias estan en la cola, para el dia a dia del
  * finiquito: ahi se ensenan, aunque no cuenten. Con `conductorId`, solo esa
@@ -265,7 +267,8 @@ async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = 
   const r = await db.consulta(
     `SELECT conductor_id,
             EXTRACT(DAY FROM dia_operativo)::int AS dia,
-            (aprobado_at IS NOT NULL) AS aprobada
+            (aprobado_at IS NOT NULL) AS aprobada,
+            COALESCE(horas_seg_momento, 0)::int AS seg
        FROM justificante
       WHERE dia_operativo BETWEEN $1::date AND $2::date
         AND anulado_at IS NULL
@@ -276,9 +279,10 @@ async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = 
   const out = new Map();
   for (const x of r.rows) {
     const cid = Number(x.conductor_id);
-    if (!out.has(cid)) out.set(cid, { aprobados: [], pendientes: 0, pendientesDias: [] });
-    if (x.aprobada) out.get(cid).aprobados.push(Number(x.dia));
-    else { out.get(cid).pendientes++; out.get(cid).pendientesDias.push(Number(x.dia)); }
+    if (!out.has(cid)) out.set(cid, { aprobados: [], horas: new Map(), pendientes: 0, pendientesDias: [] });
+    const o = out.get(cid), d = Number(x.dia);
+    if (x.aprobada) { o.aprobados.push(d); o.horas.set(d, (o.horas.get(d) || 0) + Number(x.seg)); }
+    else { o.pendientes++; o.pendientesDias.push(d); }
   }
   return out;
 }

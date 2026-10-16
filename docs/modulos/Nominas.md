@@ -75,15 +75,15 @@ La nómina de un mes se calcula con los datos del mes **anterior**: la de julio 
 
 Con el criterio viejo, a un veterano que libraba la primera quincena se le partía el objetivo por la mitad y le bastaba media jornada para "hacer extras". El cuarto caso era el frecuente cuando la fecha venía de la columna G de una hoja escrita a mano; ahora sale de `conductor_periodo_empleo.alta`, que la tiene el 100 % de la plantilla.
 
-## Los justificantes valen el día entero, pero topados
+## Cada justificante vale sus horas (16/10/2026)
 
 Un día con **J aprobada** no es un día sin trabajar: es un día que alguien dio por bueno. De ahí salen dos columnas — **horas justificadas** (lo que cubren las J) y **horas no justificadas** (lo que sigue faltando para el objetivo después de sumar BOLT y las J).
 
-Cada J vale la **jornada entera** (8 h), sin distinguir tipo ni motivo. La tabla `justificante` tiene una columna de horas, pero no dice nada útil: de las 182 J aprobadas de agosto de 2026, 114 traían un "8" puesto a ojo y otras 13 traían las **mismas** horas que esa persona ya había rodado ese día — sumarlas sería contar dos veces el mismo rato.
+Cada J vale **las horas que se le pusieron al justificarla**, y se **suman** a las de BOLT de ese día. Es el estándar de la [[Bitacora|bitácora]], de la letra y del reporte de horas ([[Promedio de horas]]): la nómina cuenta igual que ellos. Una J aprobada **sin horas** no suma nada, y el panel dice cuántas hay (en septiembre de 2026, 9 de 323).
 
-Y **topada por lo que falte de ese día**: quien rodó 3 h y tiene J ese día suma 5 justificadas, y el día queda en 8, no en 11. Para los 104 días de agosto en que no se rodó nada, la J vale las 8 enteras.
+Camilo, 16/10/2026: *«las J ya tienen valor propio, no todas valen 8, eso era antes cuando el sistema apenas estaba naciendo, ahora que está más completo tenemos las J más exactas»*. Hasta ese día toda J valía la **jornada entera (8 h) topada** por lo que faltara de ese día, porque las horas de la tabla eran un "8" puesto a ojo: en agosto, 114 de 182. En septiembre la media ya es de **5,2 h** y en octubre de **3,8**. El parámetro `horasMetaDia` se queda solo para la columna «Días extra».
 
-Las J **cuentan también para el exceso**: quien rodó 205,6 h y tuvo dos días justificados lleva 221,6 contra un objetivo de 176, y su exceso son **45,6 h, no 29,6**. Un día justificado no puede restarle a nadie sus horas extra. Y **no regala horas extra**, justo por el tope: como la J nunca sube un día por encima de la jornada, las justificadas solo pueden llevar a alguien **hasta** su objetivo. Las dos reglas van juntas y separarlas rompe el cálculo.
+Las J **cuentan también para el exceso**: la diferencia contra el objetivo se mide con las justificadas dentro, así que un día justificado no le resta a nadie sus horas extra.
 
 Solo cuentan las **aprobadas**. Las pendientes no (el panel avisa de cuántas hay en la cola) y las rechazadas tampoco.
 
@@ -91,14 +91,21 @@ Solo cuentan las **aprobadas**. Las pendientes no (el panel avisa de cuántas ha
 
 Las horas efectivas son viaje + espera, así que quien pasa el mes con la app abierta y poca carrera acumula horas igual que quien no para. El caso que lo destapó: 211,4 h en el mes y 35,4 de exceso sobre el objetivo… con un **52,7 % de utilización**. De sus 211 horas, 100 fueron espera.
 
-Así que todo el mundo tiene que llegar a una **utilización mínima** (65 %, editable desde el panel). A quien no llega se le quitan horas **de espera** —nunca de viaje— hasta que la alcanza, y eso sale en su propia columna:
+Así que hay **dos listones**, los dos editables desde el panel (16/10/2026, Camilo: *«a los que tengan 75 % de utilización o más no les quitaremos horas, pero los que no lleguen ni a 75 % se les exige hasta el 85 %»*):
+
+- quien llega al **75 %** (`utilUmbral`) no pierde ninguna hora;
+- a quien no llega se le exige el **85 %** (`utilExigida`): se le quitan horas **de espera** —nunca de viaje— hasta dejarlo exactamente ahí, y eso sale en su propia columna.
 
 ```
 utilización = viaje ÷ (viaje + espera)
-X           = (viaje + espera) − viaje ÷ mínimo
+X           = (viaje + espera) − viaje ÷ exigida        (solo si utilización < umbral)
 ```
 
-Dos propiedades que lo hacen seguro, comprobadas sobre agosto de 2026 (86 personas afectadas, 1.138,9 h retiradas): **X nunca pasa de la espera que esa persona tuvo** —`X ≤ espera` equivale a `viaje ≤ viaje ÷ mínimo`, cierto siempre que el mínimo sea menor que 1—, y **después del recorte todos quedan exactamente en el mínimo**, sin que pierda nada quien ya llegaba. La única excepción es quien no hizo **ningún** viaje: 0 dividido entre lo que sea es 0 %, así que el límite es quitarle toda la espera, y es lo que se hace.
+Quedarse corto sale más caro a propósito: el 74 % no se lleva al 75, se lleva al 85. Hasta ese día había un solo listón del 65 %, y quien no llegaba se quedaba en el 65.
+
+Dos propiedades que lo hacen seguro: **X nunca pasa de la espera que esa persona tuvo** —`X ≤ espera` equivale a `viaje ≤ viaje ÷ exigida`, cierto siempre que la exigida sea menor que 1—, y **después del recorte quedan exactamente en la exigida**. La única excepción es quien no hizo **ningún** viaje: 0 dividido entre lo que sea es 0 %, así que el límite es quitarle toda la espera, y es lo que se hace. Con una config al revés (umbral por encima de la exigida) no se quita nada.
+
+Medido al cambiarlo, con la nómina de octubre de 2026 (trabajo de septiembre, plantilla propia): **38 de 145** no llegan al 75 %, se les quitan **835,8 h** de espera, y con los dos cambios juntos (este y las J con sus horas) el total baja **334 €** (de 18.188 a 17.854): a 21 personas les cambia, 9 bajan y 12 suben. Baja poco porque la mayoría de los recortados ya estaban por debajo de su objetivo. Con agosto, un mes de utilización mucho más baja (126 de 165 por debajo del 75 %), la bajada habría sido de 4.724 €.
 
 La columna de **% utilización** sigue enseñando la **real**, la de antes del recorte: es el diagnóstico, y esconderla dejaría la cifra retirada sin explicación.
 
@@ -107,7 +114,7 @@ La columna de **% utilización** sigue enseñando la **real**, la de antes del r
 ```
 objetivo de horas = objetivo de SU jornada × (días desde el arranque ÷ días del mes)
                     40 h → 172      32 h → 172 × 32/40 = 137,6
-horas quitadas    = (viaje + espera) − viaje ÷ utilización mínima   (0 si ya llegaba)
+horas quitadas    = (viaje + espera) − viaje ÷ exigida (85 %)   (0 si llega al umbral, 75 %)
 diferencia        = (horas rodadas − horas quitadas + horas justificadas) − objetivo
 MBO horas extra   = diferencia × € hora extra × utilización   (solo si la diferencia es positiva)
 MBO FAS           = (facturación neta − umbral) × % MBO FAS    (solo si supera el umbral de SU jornada)
@@ -120,7 +127,9 @@ TOTAL = nocturnas + peajes + propinas + el MAYOR de los dos MBO
 
 **El objetivo sale de su jornada**, por regla de tres sobre el de 40 h. Quien no tenga jornada anotada cuenta como 40, y no es pereza: es la de casi todos, y suponer menos le bajaría el objetivo por un dato vacío —le regalaría horas extra— además de dejarle el umbral FAS bajo.
 
-`€ por hora extra` vale **7, no 9**. El AppScript original traía 9, pero sus fórmulas leían la celda de configuración, y la celda real de mayo y junio tenía 7: reproduciendo junio con 7 cuadran las 164 nóminas al céntimo.
+`€ por hora extra` valía **7, no 9**: el AppScript original traía 9, pero sus fórmulas leían la celda de configuración, y la celda real de mayo y junio tenía 7 (reproduciendo junio con 7 cuadran las 164 nóminas al céntimo). El 16/10/2026 se guardó **8,16** desde el panel, y la **hora nocturna a 9,9 €** (antes 8,16): con el factor 0,1, cada hora nocturna suma **0,99 €**.
+
+Los dos MBO —el de horas extra y el FAS— **no cambiaron de fórmula** el 16/10/2026; lo que cambió es lo que entra en la diferencia (las J con sus horas y el recorte con los dos listones).
 
 > `calcularFila` es la cadena del AppScript original, intacta. Cambiar algo ahí cambia lo que cobra la gente: no se toca sin rehacer la comprobación contra un mes ya pagado.
 
@@ -130,24 +139,26 @@ Todo lo numérico se edita desde el panel y se guarda en `nomina_config`. Los va
 
 | Clave | Qué es | ¿Entra en el total? |
 |---|---|---|
-| `horasMetaDia` | lo que vale un día: cuánto cubre una J y cuántas horas hacen un "día extra" | sí |
 | `horasMetaMes40` | el objetivo del mes con jornada de 40 h (172) | sí |
-| `eurHoraExtra` | € por hora extra (7) | sí |
-| `utilMinima` | utilización mínima exigida (0,65) | sí |
+| `eurHoraExtra` | € por hora extra (8,16 desde el 16/10/2026) | sí |
+| `utilUmbral` | utilización con la que no se quitan horas (0,75) | sí |
+| `utilExigida` | utilización que se exige a quien no llega (0,85) | sí |
 | `umbralFAS40` / `umbralFAS32` | neto a partir del cual hay MBO FAS, por jornada | sí |
 | `pctMBOFAS` | fracción del exceso de facturación (0,4) | sí |
-| `eurHoraNoc`, `factorNoc` | € hora nocturna y su multiplicador | sí |
+| `eurHoraNoc`, `factorNoc` | € hora nocturna (9,9) y su multiplicador (0,1) | sí |
+| `horasMetaDia` | cuántas horas hacen un «día extra»; solo esa columna | no |
 | `sueldoBase40` / `sueldoBase32` | informativos, como en el Excel | no |
-| `lUtilizacion` | informativo | no |
 | `ettEurHora`, `ettPlusNocturno` | los dos precios del parte de la agencia | no (van al Excel de la ETT) |
 
 Lo que llega del navegador se filtra: **solo claves conocidas y numéricas**, tanto al guardar como al simular. Un cálculo de dinero no se hace con lo que venga en un cuerpo de petición sin mirarlo.
 
-## Los de ETT entran en la nómina, pero no cobran MBO
+Y lo que se **lee** de `nomina_config` también: siguen guardadas claves retiradas (`diasObjetivo`, `utilMinima`, `lUtilizacion`), y `leerConfig` solo deja pasar las de `DEFAULTS`, para que una nómina congelada no diga que se calculó con ellas.
 
-A quien viene por agencia lo contrata ella y es ella quien le paga: no le debemos horas extra ni participación en la facturación, así que a esas filas se les pone a **cero** todo el MBO —el de horas y el FAS— y con él los días extra.
+## Los de ETT van en su parte, no en la nómina
 
-Pero **sí entran, y con sus variables**: nocturnidad, propinas y peajes son suyas se las pague quien se las pague. Las horas, el objetivo y la diferencia también se les calculan y se enseñan: son una medida, no un pago.
+A quien viene por agencia lo contrata ella y es ella quien le paga: no le debemos horas extra ni participación en la facturación, así que a esas filas se les pone a **cero** todo el MBO —el de horas y el FAS— y con él los días extra. Nocturnidad, propinas y peajes sí son suyas, se las pague quien se las pague.
+
+**No salen en la nómina** desde el 16/10/2026 (Camilo: *«No necesito ver en ese listado a los de la ETT ya que lo descargo por el excel»*). `calcular` los sigue calculando con todos —el parte sale de esas mismas filas, y así no hay dos cuentas que algún día se separen— pero los devuelve aparte, en `filasETT`. La lista, sus totales, el Excel de la nómina y lo que se congela son **solo de plantilla propia**; la pantalla ya no tiene columna «Tipo» ni filtro Propia/ETT. El finiquito y las Extras de una persona de ETT buscan su fila en `filasETT`.
 
 Para pasárselas a la agencia está el **parte de trabajo** (`GET /nominas/ett.xlsx`), que no es una nómina: es **lo que le costamos**, con el formato que ella ya usa y una única columna añadida, la fecha de baja. Las tres cuentas que la agencia repasa:
 
@@ -162,6 +173,19 @@ El plus nocturno de la agencia es **€ por hora** y no se parece en nada al de 
 Las **horas llevan el recorte por utilización**, igual que las de casa — es la misma hora y vale lo mismo, la cobre quien la cobre —, y por eso el fichero lleva una segunda pestaña, **"Horas descontadas"**: a quién, cuánto, con qué utilización y cuánto supone en euros. Un descuento sin su argumento al lado es un número que la agencia no puede comprobar.
 
 La **fecha de baja** solo sale cuando cae dentro del mes pedido. Y ese Excel va por **mes trabajado**, no a mes vencido: se elige agosto y salen los datos de agosto. La nómina va a mes vencido porque es un pago; un parte de trabajo lleva el mes que dice. Por eso tiene su propio selector en la pantalla.
+
+## El diseño de los Excel (16/10/2026)
+
+Los tres libros del módulo —la nómina, el parte de la ETT y el de una persona (finiquito o Extras)— salen con el **diseño de la casa** de `services/excelEstilo.js`: la banda oscura con el logo, la cabecera de tabla oscura, bordes finos, el pie con los totales en fórmula, el panel congelado y el filtro. Desde el 16/10/2026, además:
+
+- la cabecera de tabla **parte los títulos largos en dos líneas** (`cabeceraTabla(…, { alto: 32, ajustar: true })`; sin opciones sale como siempre, así que los demás Excel del ERP no cambian);
+- se imprimen **apaisados y a lo ancho de una hoja**, y el nombre queda fijo al desplazarse a la derecha;
+- en la nómina los importes van en **formato de contabilidad** (un cero sale «- €») y los tonos dicen algo: **ámbar** para la espera quitada y la utilización por debajo del 75 %, **rojo** para las horas no justificadas, y el **oro** solo en el TOTAL, que es lo que se paga;
+- la hoja **«Cómo se calculó»** son ahora tres tablas —los parámetros con su valor, cómo sale cada columna y de dónde salen los datos— en vez de un texto alineado a espacios, que en una letra proporcional nunca quedaba alineado. Se escribe con la config del mes, así que dice 75 %, 85 % y 0,99 € la hora nocturna con los valores de ese momento.
+
+El parte de la ETT conserva **sus columnas**, que son las de la agencia; solo cambia la presentación y las notas (las J con sus horas y los dos listones de utilización).
+
+`scripts/comprobar-nomina.js` (17 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele.
 
 ## Los dos nombres del Excel
 
@@ -182,7 +206,7 @@ Camilo lo pidió *«desglosado por días: día a día del mes pasado y el cursan
 | Columna | De dónde sale |
 |---|---|
 | Horas rodadas, en viaje, esperando | los tramos efectivos de BOLT del día natural, con los solapes fundidos |
-| Horas justificadas (J) | la J aprobada vale la jornada del día menos lo rodado, solo desde el día en que arranca su mes |
+| Horas justificadas (J) | las horas de la J aprobada, encima de lo rodado; solo desde el día en que arranca su mes |
 | Horas nocturnas y Nocturnidad | el trozo de 22:00 a 06:00 de esas horas, y × € hora × factor |
 | Propinas, Peajes, Facturación neta | `v_ordenes_conductor` del día |
 | Extras del día | nocturnidad + propinas + peajes |

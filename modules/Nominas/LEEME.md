@@ -37,7 +37,7 @@ El cuarto caso era el frecuente cuando la fecha venía de la columna G de una ho
 a mano. Ahora sale de `conductor_periodo_empleo.alta`, que la tiene el 100 % de la
 plantilla, así que casi no se da.
 
-**Las J cuentan, y valen el día entero.** Un día con justificante aprobado no es un
+**Las J cuentan, cada una con sus horas.** Un día con justificante aprobado no es un
 día sin trabajar: es un día que alguien dio por bueno. De ahí salen dos columnas:
 
 | Columna | Qué es |
@@ -45,59 +45,48 @@ día sin trabajar: es un día que alguien dio por bueno. De ahí salen dos colum
 | **Horas justificadas** | Lo que cubren las J aprobadas |
 | **Horas no justificadas** | Lo que sigue faltando para el objetivo después de sumar BOLT y las J |
 
-Cada J vale la jornada entera (8 h), **sin distinguir tipo ni motivo**. La tabla
-`justificante` tiene una columna de horas, pero no dice nada útil: de las 182 J aprobadas
-de agosto de 2026, 114 traen un "8" puesto a ojo y otras 13 traen las **mismas** horas que
-esa persona ya había rodado ese día — sumarlas sería contar dos veces el mismo rato.
+Cada J vale **las horas que se le pusieron al justificarla**, y se **suman** a las de
+BOLT de ese día: es el estándar de la bitácora, la letra y el reporte de horas. Una J
+aprobada sin horas no suma nada (el panel avisa de cuántas hay).
 
-Y **topada por lo que falte de ese día**. Una J cubre lo que no se pudo hacer, no ocho
-horas encima de lo que sí se hizo: quien rodó 3 h y tiene J ese día suma 5 justificadas, y
-el día queda en 8, no en 11. Para los 104 días de agosto en que no se rodó nada —la gran
-mayoría— la J vale las 8 enteras.
+Hasta el 16/10/2026 toda J valía la jornada entera (8 h) topada por lo que faltara de ese
+día, porque las horas de la tabla eran un "8" puesto a ojo (114 de 182 en agosto). Ya no:
+en septiembre la media es de 5,2 h y en octubre de 3,8. Camilo: *«las J ya tienen valor
+propio, no todas valen 8»*.
 
 Solo cuentan las **aprobadas**. Las pendientes no (el panel avisa de cuántas hay en la
 cola) y las rechazadas tampoco: ese día vuelve a ser lo que era.
 
 **Las J cuentan también para el exceso.** La diferencia contra el objetivo se mide con las
-justificadas dentro: quien rodó 205,6 h y tuvo dos días justificados lleva 221,6 contra un
-objetivo de 176, y su exceso son **45,6 h, no 29,6**. Un día justificado no puede restarle
-a nadie sus horas extra.
-
-Y **no regala horas extra**, justo por el tope de arriba: como la J nunca sube un día por
-encima de la jornada, las justificadas solo pueden llevar a alguien **hasta** su objetivo.
-Para pasarse hay que haber rodado de más los otros días, que es lo que la hora extra paga.
-
-Las dos reglas van juntas —la J vale el día entero, pero topada— y separarlas rompe el
-cálculo: sin el tope, quien rodó 3 h un día justificado sumaría 11 h de ese día y cobraría
-extras por horas que no hizo.
+justificadas dentro: un día justificado no puede restarle a nadie sus horas extra.
 
 **La hora extra se paga por conducir, no por estar conectado.** Las horas efectivas son
 viaje + espera, así que quien pasa el mes con la app abierta y poca carrera acumula horas
 igual que quien no para. El caso que lo destapó: 211,4 h en el mes y 35,4 de exceso sobre el
 objetivo… con un **52,7 % de utilización**. De sus 211 horas, 100 fueron espera.
 
-Así que todo el mundo tiene que llegar a una **utilización mínima** (65 %, editable desde el
-panel). A quien no llega se le quitan horas **de espera** —nunca de viaje— hasta que la
-alcanza, y eso sale en su propia columna: *Horas quitadas en espera para llegar a la
-utilización mínima*.
+Así que hay **dos listones** (16/10/2026, editables desde el panel): quien llega al **75 %**
+de utilización (`utilUmbral`) no pierde nada; a quien **no** llega se le exige el **85 %**
+(`utilExigida`) y se le quitan horas **de espera** —nunca de viaje— hasta dejarlo
+exactamente ahí. Sale en su propia columna, *Horas de espera quitadas*. Hasta ese día había
+un solo listón del 65 %.
 
 ```
 utilización = viaje ÷ (viaje + espera)
-X           = (viaje + espera) − viaje ÷ mínimo
+X           = (viaje + espera) − viaje ÷ exigida        (solo si utilización < umbral)
 ```
 
-Dos propiedades que la hacen segura, comprobadas sobre agosto de 2026 (86 personas
-afectadas, 1.138,9 h retiradas):
+Dos propiedades que la hacen segura:
 
 - **X nunca pasa de la espera que esa persona tuvo.** Sale de la propia fórmula: `X ≤ espera`
-  equivale a `viaje ≤ viaje ÷ mínimo`, cierto siempre que el mínimo sea menor que 1. No se
+  equivale a `viaje ≤ viaje ÷ exigida`, cierto siempre que la exigida sea menor que 1. No se
   le puede quitar ni un minuto de viaje a nadie, por mal que esté su utilización.
-- **Después del recorte todos quedan exactamente en el mínimo.** Quien ya llegaba no pierde
+- **Después del recorte quedan exactamente en la exigida.** Quien llega al umbral no pierde
   nada.
 
 La única excepción es quien no hizo **ningún** viaje: 0 dividido entre lo que sea es 0 %, así
-que no hay recorte que lo lleve al mínimo. El límite es quitarle toda la espera, y es lo que
-se hace (4 personas en agosto).
+que no hay recorte que lo lleve a la exigida. El límite es quitarle toda la espera, y es lo
+que se hace.
 
 La columna de **% Utilización** sigue enseñando la **real**, la de antes del recorte: es el
 diagnóstico, y esconderla dejaría la cifra retirada sin explicación.
@@ -125,9 +114,10 @@ dos personas eso les cambiaba si superaban o no el umbral del MBO FAS.
 ella quien le paga: no le debemos horas extra ni participación en la facturación. A esas
 filas se les pone a **cero** todo el MBO —el de horas y el FAS— y con él los días extra.
 
-Pero **sí entran en la nómina, y con sus variables**: nocturnidad, propinas y peajes son
-suyas se las pague quien se las pague. Las horas, el objetivo y la diferencia también se les
-calculan y se enseñan: son una medida, no un pago. Lo que se pone a cero es lo que se cobra.
+**Y no salen en la nómina** (16/10/2026): `calcular` los calcula con todos —el parte sale de
+esas mismas filas— pero los devuelve aparte, en `filasETT`. La lista, los totales, el Excel
+de la nómina y lo que se congela son solo de plantilla propia. Su nocturnidad, propinas,
+peajes y horas van en el parte:
 
 Para pasárselas a la agencia está el **parte de trabajo de la ETT**
 (`GET /nominas/ett.xlsx`), que no es una nómina: es **lo que le costamos**. Sale con el
@@ -152,7 +142,7 @@ de casa —que es `€ hora × horas × factor`— y mezclarlos sería facturar 
 se editan desde el panel, como el resto.
 
 Las **HORAS llevan el recorte por utilización**, igual que las de casa: la hora de espera de
-quien no llega al mínimo no se le paga a un conductor nuestro y tampoco se le factura a la
+quien no llega al umbral no se le paga a un conductor nuestro y tampoco se le factura a la
 agencia. Es la misma hora y vale lo mismo, la cobre quien la cobre.
 
 > Por eso el fichero lleva una **segunda pestaña, "Horas descontadas"**: a quién se le ha
@@ -172,14 +162,14 @@ meses no pinta nada en ese parte, y una del mes que viene todavía no ha pasado.
 ```
 objetivo de horas = objetivo de SU jornada × (días desde el arranque ÷ días del mes)
                     40 h → 172      32 h → 172 × 32/40 = 137,6
-horas en espera   = (viaje + espera) − viaje ÷ utilización mínima   (0 si ya llegaba)
+horas en espera   = (viaje + espera) − viaje ÷ exigida (85 %)   (0 si llega al umbral, 75 %)
   quitadas
 diferencia        = (horas rodadas − horas quitadas + horas justificadas) − objetivo
 MBO horas extra   = diferencia × € hora extra × utilización     (solo si la diferencia es positiva)
 MBO FAS           = (facturación neta − umbral) × % MBO FAS     (solo si supera el umbral de SU jornada)
 nocturnas         = € hora nocturna × horas nocturnas × factor
 
-horas justificadas    = Σ, por cada día con J aprobada, max(0, jornada − lo rodado ese día)
+horas justificadas    = Σ de las horas de cada J aprobada (sin horas, 0), encima de lo rodado
 horas NO justificadas = la diferencia cuando sale negativa, o sea max(0, −diferencia)
 
 TOTAL = nocturnas + peajes + propinas + el MAYOR de los dos MBO

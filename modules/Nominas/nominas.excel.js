@@ -1,10 +1,13 @@
 // ============================================================
 // EXCEL DE LA NÓMINA VARIABLE
 // ============================================================
-// Lo que RRHH manda a la gestoría para que lo sume al recibo del mes. Dos hojas:
+// Lo que RRHH manda a la gestoría para que lo sume al recibo del mes. Solo
+// plantilla propia: los de ETT los paga la agencia y van en su parte (abajo).
+// Dos hojas, con el diseño de la casa (banda con el logo, cabecera oscura,
+// ámbar para los avisos, rojo para lo que falta y el oro solo en el TOTAL):
 //
 //   Nómina   una fila por persona, con el desglose de cada euro y el total.
-//   Cómo se calculó   la config usada y las fórmulas escritas en cristiano.
+//   Cómo se calculó   la config usada y cómo sale cada columna, en tablas.
 //
 // La segunda hoja no es adorno: cuando alguien pregunta "¿por qué he cobrado
 // 212,40 € y mi compañero 318?", la respuesta tiene que estar en el propio
@@ -32,9 +35,20 @@
 const ExcelJS = require('exceljs');
 const E = require('../../services/excelEstilo');
 
-const EUROS = '#,##0.00 "€"';
+// Los importes, en formato de CONTABILIDAD: un cero sale como "- €" en vez de
+// "0,00 €". En una columna de MBO que va a cero en tres de cada cuatro filas,
+// los que sí cobran se ven de un vistazo.
+const CONTA = '_-* #,##0.00\\ "€"_-;\\-* #,##0.00\\ "€"_-;_-* "-"\\ "€"_-;_-@_-';
+const EUROS = CONTA;
 const HORAS = '#,##0.0';
 const DOS = '#,##0.00';
+const PCT = '0.0"%"';
+
+// Los tonos de la casa: ámbar es aviso, rojo es lo que falta, y el oro solo
+// para lo que se paga.
+const AMBAR = { bg: 'FFFEF3C7', fg: 'FF92400E' };
+const ROJO = { bg: 'FFFEE2E2', fg: 'FF991B1B' };
+const ORO_SUAVE = 'FFFBF3DC';
 
 const sello = () => new Intl.DateTimeFormat('es-ES', {
   timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric',
@@ -50,31 +64,32 @@ const ARRANQUE = {
 };
 
 // Título, ancho, clave de la fila y formato. El orden es el de la pantalla.
+// Sin columna «Tipo»: desde el 16/10/2026 la nómina es solo de plantilla
+// propia, y los de ETT van en su parte.
 const COLUMNAS = [
-  ['ID de BOLT', 30, 'nombreBolt', null],
-  ['Nombre de la seguridad social', 36, 'nombreSS', null],
-  ['DNI/NIE', 13, 'dni', null],
-  ['Tipo', 8, '_tipo', null],
+  ['ID de BOLT', 28, 'nombreBolt', null],
+  ['Nombre de la seguridad social', 34, 'nombreSS', null],
+  ['DNI/NIE', 12, 'dni', null],
   ['Jornada', 9, '_jornada', null],
   ['Fecha alta', 11, '_alta', null],
-  ['Desde día', 10, 'primerDia', '0'],
-  ['Arranque del prorrateo', 32, '_arranque', null],
-  ['Horas', 9, 'horas', HORAS],
-  ['Horas quitadas en espera para llegar a la utilización mínima', 26, 'horasEsperaQuitadas', HORAS],
-  ['Horas justificadas', 15, 'horasJustificadas', HORAS],
-  ['Días justificados', 14, 'diasJustificados', '0'],
-  ['Objetivo (h)', 11, 'horasObjetivo', HORAS],
-  ['Horas no justificadas', 18, 'horasNoJustificadas', HORAS],
-  ['Diferencia (h)', 12, 'deltaHoras', HORAS],
-  ['% Utilización', 12, '_util', '0.0"%"'],
-  ['Propinas', 11, 'propinas', EUROS],
-  ['Peajes', 10, 'peajes', EUROS],
-  ['Nocturnas', 11, 'nocturnas', EUROS],
-  ['MBO FAS', 11, 'mboFAS', EUROS],
-  ['MBO horas extra', 15, 'mboHsExt', EUROS],
+  ['Desde día', 8, 'primerDia', '0'],
+  ['Arranque del prorrateo', 30, '_arranque', null],
+  ['Horas rodadas', 10, 'horas', HORAS],
+  ['Horas de espera quitadas', 12, 'horasEsperaQuitadas', HORAS],
+  ['Horas justificadas', 12, 'horasJustificadas', HORAS],
+  ['Días justificados', 11, 'diasJustificados', '0'],
+  ['Objetivo (h)', 10, 'horasObjetivo', HORAS],
+  ['Horas no justificadas', 12, 'horasNoJustificadas', HORAS],
+  ['Diferencia (h)', 11, 'deltaHoras', HORAS],
+  ['% Utilización', 11, '_util', PCT],
+  ['Propinas', 12, 'propinas', EUROS],
+  ['Peajes', 11, 'peajes', EUROS],
+  ['Nocturnas', 12, 'nocturnas', EUROS],
+  ['MBO FAS', 12, 'mboFAS', EUROS],
+  ['MBO horas extra', 13, 'mboHsExt', EUROS],
   ['Compensación', 13, 'compensacion', EUROS],
-  ['Días extra', 10, 'diasExtra', DOS],
-  ['TOTAL', 13, 'total', EUROS],
+  ['Días extra', 9, 'diasExtra', DOS],
+  ['TOTAL', 14, 'total', EUROS],
 ];
 
 // Las que se suman en el pie.
@@ -88,7 +103,6 @@ function valorDe(f, clave) {
     // aunque a esa persona le falte un dato.
     case 'nombreBolt': return f.nombreBolt || f.nombre || '';
     case 'nombreSS': return f.nombreSS || f.nombre || '';
-    case '_tipo': return f.ett ? 'ETT' : 'Propia';
     case '_jornada': return f.jornada ? f.jornada + ' h' : '';
     case '_alta': return fechaCorta(f.alta);
     case '_arranque': return ARRANQUE[f.origenArranque] || f.origenArranque || '';
@@ -102,190 +116,197 @@ function valorDe(f, clave) {
 // señalando la de al lado.
 const COL = clave => COLUMNAS.findIndex(c => c[2] === clave) + 1;
 
+const tono = (c, t, negrita = true) => {
+  c.fill = E.relleno(t.bg);
+  c.font = { bold: negrita, color: { argb: t.fg } };
+};
+
+/** Apaisado y a lo ancho de una hoja: así se imprime sin cortar columnas. */
+const PAGINA = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+  margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
+
 /** El libro. Devuelve los bytes; quien llama solo tiene que servirlo. */
 async function generarExcelNomina(r) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Telecab';
   const idLogo = E.registrarLogo(wb);
+  const cfg = r.config || {};
+  // Una congelada de antes del 16/10/2026 podía traer filas de ETT: fuera,
+  // como en la pantalla.
+  const filas = (r.filas || []).filter(f => !f.ett);
 
   // ── Hoja 1: la nómina ─────────────────────────────────────────────────────
-  const ws = wb.addWorksheet(`Nómina ${r.mesNombre} ${r.ano}`);
+  const ws = wb.addWorksheet(`Nómina ${r.mesNombre} ${r.ano}`, { pageSetup: PAGINA });
   COLUMNAS.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
 
-  const sub = `Nómina de ${r.mesNombre} ${r.ano} · a mes vencido: trabajo de ` +
-    `${r.mesDatosNombre} ${r.anoDatos} · ${r.filas.length} conductores · ` +
+  const sub = `Nómina de ${r.mesNombre} ${r.ano} · plantilla propia · a mes vencido: trabajo de ` +
+    `${r.mesDatosNombre} ${r.anoDatos} · ${filas.length} conductores · ` +
     (r.congelada ? 'CONGELADA' : 'sin congelar') + ` · generado ${sello()}`;
   let fila = E.bandaCabecera(ws, idLogo, 'NÓMINA VARIABLE', sub, COLUMNAS.length);
   const filaCab = fila;
-  fila = E.cabeceraTabla(ws, fila, COLUMNAS.map(c => c[0]));
+  fila = E.cabeceraTabla(ws, fila, COLUMNAS.map(c => c[0]), { alto: 32, ajustar: true });
+  // El TOTAL, en el oro de la casa: es la columna que se paga.
+  const cabTotal = ws.getRow(filaCab).getCell(COL('total'));
+  cabTotal.fill = E.relleno(E.GOLD);
+  cabTotal.font = { size: 10, bold: true, color: { argb: E.DARK } };
   const primera = fila;
 
-  for (const f of r.filas) {
+  const umbral = (Number(cfg.utilUmbral) || 0) * 100;
+  for (const f of filas) {
     const row = ws.getRow(fila++);
     COLUMNAS.forEach(([, , clave, fmt], i) => {
       const c = row.getCell(i + 1);
       c.value = valorDe(f, clave);
       if (fmt) c.numFmt = fmt;
       c.border = E.TODOS_BORDES;
-      if (clave === 'total') c.font = { bold: true };
+      c.font = { color: { argb: E.TEXTO } };
     });
+    const tot = row.getCell(COL('total'));
+    tot.font = { bold: true, color: { argb: E.DARK } };
+    tot.fill = E.relleno(ORO_SUAVE);
     // Quien va sin fecha de alta cobra con el criterio viejo: se marca, porque
     // es el único caso en el que la cifra depende de un dato que falta.
-    if (f.origenArranque === 'primer-log') {
-      const c = row.getCell(COL('_arranque'));
-      c.fill = E.relleno('FFFEF3C7');
-      c.font = { color: { argb: 'FF92400E' } };
-    }
-    // La espera retirada, en ámbar: es la explicación de por qué a alguien con
-    // muchas horas le sale poca diferencia, y hay que poder encontrarla sin
-    // leerse la fila entera.
-    if (f.horasEsperaQuitadas > 0) {
-      const c = row.getCell(COL('horasEsperaQuitadas'));
-      c.fill = E.relleno('FFFEF3C7');
-      c.font = { bold: true, color: { argb: 'FF92400E' } };
-    }
+    if (f.origenArranque === 'primer-log') tono(row.getCell(COL('_arranque')), AMBAR, false);
+    // La espera retirada y la utilización que la provoca, en ámbar: son la
+    // explicación de por qué a alguien con muchas horas le sale poca
+    // diferencia, y hay que poder encontrarla sin leerse la fila entera.
+    if (f.horasEsperaQuitadas > 0) tono(row.getCell(COL('horasEsperaQuitadas')), AMBAR);
+    if (f.utilPct != null && umbral && f.utilPct < umbral) tono(row.getCell(COL('_util')), AMBAR, false);
     // Las horas que siguen sin explicación, en rojo. Es la columna por la que se
     // abre esta hoja, y una cifra que hay que buscar a ojo entre veinte no
     // sirve de nada.
-    if (f.horasNoJustificadas > 0) {
-      const c = row.getCell(COL('horasNoJustificadas'));
-      c.fill = E.relleno('FFFEE2E2');
-      c.font = { bold: true, color: { argb: 'FF991B1B' } };
-    }
+    if (f.horasNoJustificadas > 0) tono(row.getCell(COL('horasNoJustificadas')), ROJO);
   }
 
   // Pie con los totales, en fórmula: si alguien borra una fila, el total baja.
   const ultima = fila - 1;
   const pie = ws.getRow(fila);
-  pie.getCell(1).value = `TOTAL (${r.filas.length})`;
-  pie.getCell(1).font = { bold: true };
   COLUMNAS.forEach(([, , clave, fmt], i) => {
     const c = pie.getCell(i + 1);
-    c.fill = E.relleno('FFF7F8FA');
+    c.fill = E.relleno('FFF3F4F6');
     c.border = E.TODOS_BORDES;
+    c.font = { bold: true, color: { argb: E.DARK } };
     if (!SUMABLES.has(clave) || ultima < primera) return;
     const L = E.colLetra(i + 1);
     c.value = { formula: `SUM(${L}${primera}:${L}${ultima})` };
     c.numFmt = fmt;
-    c.font = { bold: true };
   });
+  pie.getCell(1).value = `TOTAL (${filas.length})`;
+  pie.getCell(COL('total')).fill = E.relleno(E.GOLD);
+  pie.height = 20;
 
-  ws.views = [{ state: 'frozen', ySplit: filaCab }];
+  ws.views = [{ state: 'frozen', xSplit: 2, ySplit: filaCab }];
   if (ultima >= primera) {
     ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: COLUMNAS.length } };
   }
 
-  // ── Hoja 2: cómo se calculó ───────────────────────────────────────────────
-  const wc = wb.addWorksheet('Cómo se calculó');
-  wc.getColumn(1).width = 46;
-  wc.getColumn(2).width = 16;
-  wc.getColumn(3).width = 70;
-  let f2 = E.bandaCabecera(wc, null, 'CÓMO SE CALCULÓ', sub, 3);
-
-  const cfg = r.config || {};
-  f2 = E.cabeceraTabla(wc, f2, ['Parámetro', 'Valor', 'Qué hace']);
-  const PARAMS = [
-    ['Horas meta por día', 'horasMetaDia', 'Las horas que se esperan de un día operativo.'],
-    ['Días operativos objetivo', 'diasObjetivo', 'Días de un mes completo. El objetivo se prorratea desde la fecha de alta.'],
-    ['€ por hora extra', 'eurHoraExtra', 'Cada hora por encima del objetivo, multiplicada además por la utilización.'],
-    ['Umbral FAS 40h (€)', 'umbralFAS40', 'A partir de esta facturación neta hay MBO FAS, para jornada de 40 h.'],
-    ['Umbral FAS 32h (€)', 'umbralFAS32', 'Lo mismo para jornada de 32 h.'],
-    ['% MBO FAS', 'pctMBOFAS', 'Fracción del exceso de facturación sobre el umbral. 0,4 = 40 %.'],
-    ['€ hora nocturna', 'eurHoraNoc', 'Precio de la hora entre las 22:00 y las 06:00.'],
-    ['Factor nocturnas', 'factorNoc', 'Multiplicador de las nocturnas: € hora × horas × factor.'],
-    ['Sueldo base 40h (€)', 'sueldoBase40', 'Informativo: no entra en este total.'],
-    ['Sueldo base 32h (€)', 'sueldoBase32', 'Informativo: no entra en este total.'],
-    ['L utilización', 'lUtilizacion', 'Informativo: no entra en este total.'],
-  ];
-  for (const [etiqueta, clave, que] of PARAMS) {
-    const row = wc.getRow(f2++);
-    row.getCell(1).value = etiqueta;
-    row.getCell(2).value = cfg[clave] == null ? '' : Number(cfg[clave]);
-    row.getCell(3).value = que;
-    [1, 2, 3].forEach(i => { row.getCell(i).border = E.TODOS_BORDES; });
-    row.getCell(3).alignment = { wrapText: true, vertical: 'top' };
-  }
-
-  f2 += 1;
-  const EXPLICA = [
-    'LAS FÓRMULAS, UNA A UNA',
-    '',
-    'Objetivo de horas  = (días desde el arranque ÷ días del mes) × días objetivo × horas meta.',
-    '   El arranque es el día 1 si ya estaba de alta, o su día de alta si entró ese mes.',
-    'Horas justificadas = por cada día con J APROBADA, lo que le faltara a ese día para la jornada.',
-    '   Un día en el que no salió nada suma la jornada entera; uno en el que rodó 3 h suma 5.',
-    '   No se distingue el tipo ni el motivo de la J, y nunca suma por encima de la jornada:',
-    '   una J cubre lo que no se pudo hacer, no se añade a lo que sí se hizo.',
-    '   Las J PENDIENTES de aprobar no cuentan, y las rechazadas tampoco.',
-    'Horas quitadas     = las de ESPERA que se retiran para llegar a la utilización mínima.',
-    'en espera            utilización = viaje ÷ (viaje + espera). Si no llega al mínimo, se quita',
-    '                     X = (viaje + espera) − viaje ÷ mínimo, y queda exactamente en el mínimo.',
-    '                     NUNCA se quita viaje, y nunca más espera de la que esa persona tuvo.',
-    'Diferencia         = (horas hechas − horas quitadas en espera + horas justificadas) − objetivo.',
-    '   Con las justificadas DENTRO: un día justificado no le resta a nadie. Quien rodó',
-    '   205,6 h y tuvo dos días justificados lleva 221,6 contra un objetivo de 176, y su',
-    '   exceso son 45,6 h, no 29,6.',
-    'Horas NO justif.   = la diferencia, cuando sale negativa.  Cero si llegó al objetivo.',
-    '   Es lo que falta y no tiene explicación. La columna va en rojo cuando no es cero.',
-    'MBO horas extra    = diferencia × € por hora extra × utilización.  Solo si la diferencia es positiva.',
-    'MBO FAS            = (facturación neta − umbral) × % MBO FAS.  Solo si supera el umbral de SU jornada.',
-    'Nocturnas          = € hora nocturna × horas nocturnas × factor.',
-    '',
-    'TOTAL = nocturnas + peajes + propinas + el MAYOR de los dos MBO.',
-    '   Los dos MBO no se suman: se cobra el que salga más alto. Por eso en muchas filas',
-    '   la columna "Compensación" va a cero aunque "MBO horas extra" tenga un número:',
-    '   ese mes ganó el MBO FAS.',
-    '',
-    'POR QUÉ SE QUITAN HORAS DE ESPERA',
-    '',
-    'La hora extra se paga por CONDUCIR de más, no por estar conectado de más. Las horas',
-    'efectivas son viaje + espera, así que quien pasa el mes con la app abierta y poca carrera',
-    'acumula horas igual que quien no para. Con 211,4 h y un 52,7 % de utilización, 100 de esas',
-    'horas fueron espera: el recorte deja 171,3 h y su exceso sobre el objetivo desaparece.',
-    '',
-    'A quien ya llega al mínimo no se le quita nada, y a nadie se le toca una hora de viaje.',
-    '',
-    'POR QUÉ LAS J NO REGALAN HORAS EXTRA',
-    '',
-    'Porque una J está TOPADA: nunca sube un día por encima de la jornada. Un día justificado',
-    'vale exactamente lo que habría valido trabajado, ni una hora más, así que las justificadas',
-    'solo pueden llevar a alguien HASTA su objetivo. Para pasarse de ahí hay que haber rodado',
-    'de más los otros días, que es justo lo que la hora extra paga.',
-    '',
-    'Las dos reglas van juntas —la J vale el día entero, pero topada—: separarlas rompe el',
-    'cálculo. Sin el tope, quien rodó 3 h un día justificado sumaría 11 h de ese día y cobraría',
-    'extras por horas que no hizo.',
-    '',
-    'DE DÓNDE SALEN LOS DATOS',
-    '',
-    'Horas y nocturnas   de los tramos de BOLT ya ingeridos (viaje + espera), por DÍA NATURAL',
-    '                    (del 1 a las 00:00 al último a las 23:59) y con los solapes fundidos:',
-    '                    si alguien tiene dos cuentas que se pisan, ese rato cuenta una vez.',
-    '                    OJO: la bitácora mide por jornada 05:00-05:00, que es control de TURNOS.',
-    '                    Para quien trabaja de noche los dos números NO coinciden, y es correcto:',
-    '                    la nómina paga lo que cayó EN EL MES.',
-    'Utilización         viaje ÷ (viaje + espera). Es el has_order sobre el tiempo conectado.',
-    '                    La columna enseña la REAL, antes del recorte: es el diagnóstico.',
-    'Propinas, peajes    de las órdenes de BOLT ya ingeridas.',
-    'y facturación neta',
-    'DNI, jornada,       de la ficha del conductor y de su periodo de empleo.',
-    'ETT y fecha de alta',
-    'Horas justificadas  de los justificantes APROBADOS, los mismos que pinta la bitácora.',
-    'Los dos nombres     el de BOLT, del padrón de la plataforma; el de la seguridad social,',
-    '                    de la ficha de RRHH.',
-    '',
-    'Nada de esto se pide a ninguna API al generar la nómina ni se lee de ninguna hoja de',
-    'cálculo: todo está en la base de datos.',
-  ];
-  for (const linea of EXPLICA) {
-    const row = wc.getRow(f2++);
-    const c = row.getCell(1);
-    c.value = linea;
-    if (linea && linea === linea.toUpperCase() && linea.length > 6) c.font = { bold: true, color: { argb: E.DARK } };
-    else c.font = { color: { argb: E.TEXTO } };
-  }
-
+  hojaComoSeCalculo(wb, idLogo, sub, cfg);
   return wb.xlsx.writeBuffer();
+}
+
+// ── Hoja 2: cómo se calculó ─────────────────────────────────────────────────
+// Tres tablas de la casa en vez de un texto alineado a espacios (que en una
+// letra proporcional nunca quedaba alineado): los parámetros con su valor, cómo
+// sale cada columna, y de dónde salen los datos.
+
+const pctTxt = x => `${Math.round((Number(x) || 0) * 100)} %`;
+const num = x => (Number(x) || 0).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+
+// [etiqueta, clave, formato, qué hace, ¿entra en el total?]
+const PARAMS = [
+  ['Objetivo del mes con jornada de 40 h', 'horasMetaMes40', HORAS,
+    'Las horas que se piden en un mes completo. Otra jornada sale por regla de tres (32 h → 137,6) y se prorratea desde la fecha de alta.', true],
+  ['€ por hora extra', 'eurHoraExtra', DOS, 'Cada hora por encima del objetivo, multiplicada además por la utilización.', true],
+  ['Utilización con la que no se quitan horas', 'utilUmbral', '0%', 'Quien llega a este porcentaje no pierde ninguna hora.', true],
+  ['Utilización exigida a quien no llega', 'utilExigida', '0%', 'A quien se queda por debajo del umbral se le quitan horas de espera hasta dejarlo aquí.', true],
+  ['Umbral FAS 40 h (€)', 'umbralFAS40', DOS, 'A partir de esta facturación neta hay MBO FAS, para jornada de 40 h.', true],
+  ['Umbral FAS 32 h (€)', 'umbralFAS32', DOS, 'Lo mismo para jornada de 32 h.', true],
+  ['% MBO FAS', 'pctMBOFAS', '0%', 'Parte del exceso de facturación sobre el umbral que se paga.', true],
+  ['€ hora nocturna', 'eurHoraNoc', DOS, 'Precio de la hora entre las 22:00 y las 06:00.', true],
+  ['Factor nocturnas', 'factorNoc', DOS, 'La nocturnidad es € hora × horas × factor.', true],
+  ['Horas que hacen un «día extra»', 'horasMetaDia', HORAS, 'Solo para la columna «Días extra»: no entra en el total.', false],
+  ['Sueldo base 40 h (€)', 'sueldoBase40', DOS, 'Informativo: no entra en el total.', false],
+  ['Sueldo base 32 h (€)', 'sueldoBase32', DOS, 'Informativo: no entra en el total.', false],
+];
+
+function reglas(cfg) {
+  return [
+    ['Objetivo (h)', 'Objetivo del mes de su jornada × (días desde el arranque ÷ días del mes). El arranque es el día 1 si ya estaba de alta, o su día de alta si entró ese mes.'],
+    ['Horas justificadas', 'La suma de las horas de sus J APROBADAS: cada J vale las horas que se le pusieron al justificarla, y se SUMAN a las rodadas ese día, igual que en la bitácora. Una J sin horas no suma. Las pendientes y las rechazadas no cuentan.'],
+    ['Horas de espera quitadas', `Utilización = viaje ÷ (viaje + espera). Quien llega al ${pctTxt(cfg.utilUmbral)} no pierde nada. A quien no llega se le exige el ${pctTxt(cfg.utilExigida)}: se le quitan X = (viaje + espera) − viaje ÷ ${num(cfg.utilExigida)} horas de ESPERA, y queda exactamente en el ${pctTxt(cfg.utilExigida)}. Nunca se quita viaje, ni más espera de la que tuvo.`],
+    ['Diferencia (h)', 'Horas rodadas − horas de espera quitadas + horas justificadas − objetivo. Con las justificadas dentro: un día justificado no le resta a nadie sus horas extra.'],
+    ['Horas no justificadas', 'La diferencia cuando sale negativa; cero si llegó al objetivo. Es lo que falta y no tiene explicación: va en rojo.'],
+    ['MBO horas extra', `Diferencia × ${num(cfg.eurHoraExtra)} € × utilización. Solo si la diferencia es positiva.`],
+    ['MBO FAS', `(Facturación neta − umbral de su jornada) × ${pctTxt(cfg.pctMBOFAS)}. Solo si supera el umbral.`],
+    ['Nocturnas', `${num(cfg.eurHoraNoc)} € × horas nocturnas × ${num(cfg.factorNoc)}: ${num((Number(cfg.eurHoraNoc) || 0) * (Number(cfg.factorNoc) || 0))} € por cada hora entre las 22:00 y las 06:00.`],
+    ['TOTAL', 'Nocturnas + peajes + propinas + el MAYOR de los dos MBO. Los MBO no se suman: se cobra el que salga más alto, y por eso «Compensación» va a cero cuando gana el FAS.'],
+    ['Días extra', `La diferencia en días de ${num(cfg.horasMetaDia)} h, cuando pasa de un día. Informativo: no entra en el total.`],
+  ];
+}
+
+const DATOS = [
+  ['Horas y nocturnas', 'Los tramos de BOLT ya ingeridos (viaje + espera), por DÍA NATURAL: del 1 a las 00:00 al último a las 23:59, con los ratos de dos cuentas que se pisan contados una vez. La bitácora mide la jornada 05:00 a 05:00, así que para quien trabaja de noche los dos números no coinciden, y es correcto.'],
+  ['Utilización', 'Viaje ÷ (viaje + espera). La columna enseña la real, antes del recorte.'],
+  ['Propinas, peajes y facturación', 'Las órdenes de BOLT ya ingeridas.'],
+  ['Horas justificadas', 'Los justificantes APROBADOS, con sus horas: los mismos que pinta la bitácora.'],
+  ['DNI, jornada y fecha de alta', 'La ficha del conductor y su periodo de empleo.'],
+  ['Los dos nombres', 'El de BOLT, del padrón de la plataforma; el de la seguridad social, de la ficha de RRHH.'],
+  ['Quién entra', 'Solo plantilla propia. Los de ETT los paga la agencia y van en el «Parte de trabajo de la ETT».'],
+];
+
+/** Alto de una fila con texto partido: unas 15 unidades por línea. */
+const altoPara = (texto, anchoCols) => Math.max(18, Math.ceil(String(texto).length / (anchoCols * 1.15)) * 15 + 4);
+
+function hojaComoSeCalculo(wb, idLogo, sub, cfg) {
+  const ws = wb.addWorksheet('Cómo se calculó', { pageSetup: { ...PAGINA, orientation: 'portrait' } });
+  ws.getColumn(1).width = 34;
+  ws.getColumn(2).width = 14;
+  ws.getColumn(3).width = 84;
+  let fila = E.bandaCabecera(ws, idLogo, 'CÓMO SE CALCULÓ', sub, 3);
+
+  const celda = (row, i, v, { fmt, negrita, tono: t, ajustar } = {}) => {
+    const c = row.getCell(i);
+    c.value = v;
+    if (fmt) c.numFmt = fmt;
+    c.border = E.TODOS_BORDES;
+    c.font = { bold: !!negrita, color: { argb: t || E.TEXTO } };
+    c.alignment = { vertical: 'top', wrapText: !!ajustar, horizontal: i === 2 ? 'right' : 'left' };
+    return c;
+  };
+
+  // Parámetros
+  fila = E.cabeceraTabla(ws, fila, ['Parámetro', 'Valor', 'Qué hace']);
+  for (const [etiqueta, clave, fmt, que, entra] of PARAMS) {
+    const row = ws.getRow(fila++);
+    celda(row, 1, etiqueta, { negrita: entra, tono: entra ? E.DARK : E.TENUE });
+    celda(row, 2, cfg[clave] == null ? null : Number(cfg[clave]), { fmt, negrita: entra, tono: entra ? E.DARK : E.TENUE });
+    celda(row, 3, que, { ajustar: true, tono: entra ? E.TEXTO : E.TENUE });
+    row.height = altoPara(que, 84);
+  }
+
+  // Cómo sale cada columna, y de dónde salen los datos: la explicación ocupa
+  // las columnas B y C juntas.
+  const tabla2 = (titulos, lineas) => {
+    fila += 1;
+    fila = E.cabeceraTabla(ws, fila, titulos);
+    ws.mergeCells(fila - 1, 2, fila - 1, 3);
+    for (const [quien, como] of lineas) {
+      const row = ws.getRow(fila);
+      celda(row, 1, quien, { negrita: true, tono: E.DARK });
+      ws.mergeCells(fila, 2, fila, 3);
+      const c = celda(row, 2, como, { ajustar: true });
+      c.alignment = { vertical: 'top', wrapText: true, horizontal: 'left' };
+      row.getCell(3).border = E.TODOS_BORDES;
+      row.height = altoPara(como, 98);
+      fila++;
+    }
+  };
+  tabla2(['Columna', 'Cómo se calcula', ''], reglas(cfg));
+  tabla2(['Dato', 'De dónde sale', ''], DATOS);
+
+  const nota = ws.getRow(fila + 1).getCell(1);
+  nota.value = 'Nada de esto se pide a ninguna API al generar la nómina ni se lee de ninguna hoja de cálculo: todo está en la base de datos.';
+  nota.font = { size: 9, color: { argb: E.TENUE } };
 }
 
 /** nomina-variable-septiembre-2026.xlsx */
@@ -328,10 +349,8 @@ function nombreFichero(r) {
 // de agosto. La nómina va a mes vencido porque es un pago; un parte de trabajo
 // lleva el mes que dice. El subtítulo lo repite para que nadie lo confunda.
 
-// Formato de CONTABILIDAD: un cero sale como "- €" en vez de "0,00 €", que es
-// como lo tiene la agencia en su hoja y como se lee de un vistazo una columna
-// con muchos ceros.
-const CONTA = '_-* #,##0.00\\ "€"_-;\\-* #,##0.00\\ "€"_-;_-* "-"\\ "€"_-;_-@_-';
+// Los importes van en el formato de CONTABILIDAD de arriba (`CONTA`): un cero
+// sale como "- €", que es como lo tiene la agencia en su hoja.
 const HORAS_ETT = '#,##0.0#';
 const FECHA = 'd/m/yyyy';
 
@@ -376,7 +395,7 @@ const COL_DESCUENTO = [
   ['De las cuales, en viaje', 18, f => f.horasViaje, HORAS_ETT],
   ['De las cuales, esperando', 19, f => f.horasEspera, HORAS_ETT],
   ['% Utilización', 12, f => (f.utilPct == null ? null : f.utilPct / 100), '0.0%'],
-  ['Mínimo exigido', 13, (f, r) => r.utilMinima, '0.0%'],
+  ['Exigido', 10, (f, r) => r.utilExigida, '0.0%'],
   ['Horas de espera descontadas', 22, f => f.horasEsperaQuitadas, HORAS_ETT],
   ['Horas justificadas', 15, f => f.horasJustificadas, HORAS_ETT],
   ['HORAS QUE SE PAGAN', 18, f => f.horasTrabajadas, HORAS_ETT],
@@ -386,9 +405,10 @@ const COL_DESCUENTO = [
 /** Pinta una tabla con la banda de la casa, su cabecera, su pie y su filtro. */
 function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce, etiquetaTotal } = {}) {
   columnas.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+  ws.pageSetup = { ...ws.pageSetup, ...PAGINA };
   let fila = E.bandaCabecera(ws, idLogo, titulo, subtitulo, columnas.length);
   const filaCab = fila;
-  fila = E.cabeceraTabla(ws, fila, columnas.map(c => c[0]));
+  fila = E.cabeceraTabla(ws, fila, columnas.map(c => c[0]), { alto: 32, ajustar: true });
   const primera = fila;
 
   for (const f of filas) {
@@ -399,6 +419,7 @@ function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce, etiq
       c.value = v === undefined ? null : v;
       if (fmt) c.numFmt = fmt;
       c.border = E.TODOS_BORDES;
+      c.font = { color: { argb: E.TEXTO } };
     });
     if (realce) realce(row, f);
   }
@@ -409,12 +430,12 @@ function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce, etiq
   pie.getCell(1).font = { bold: true };
   columnas.forEach(([, , , fmt], i) => {
     const c = pie.getCell(i + 1);
-    c.fill = E.relleno('FFF7F8FA');
+    c.fill = E.relleno('FFF3F4F6');
     c.border = E.TODOS_BORDES;
     // Solo se suma lo que tiene sentido sumar. Un precio por hora repetido en
     // doscientas filas no se suma, y un porcentaje tampoco: sumarlos daría un
     // número sin significado en negrita, que es peor que una celda vacía.
-    const sumable = fmt && fmt !== FECHA && !/%/.test(fmt) && !['€/h', 'Plus Nocturnidad', 'Mínimo exigido'].includes(columnas[i][0]);
+    const sumable = fmt && fmt !== FECHA && !/%/.test(fmt) && !['€/h', 'Plus Nocturnidad', 'Exigido'].includes(columnas[i][0]);
     if (!sumable || ultima < primera) return;
     const L = E.colLetra(i + 1);
     c.value = { formula: `SUM(${L}${primera}:${L}${ultima})` };
@@ -422,7 +443,7 @@ function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce, etiq
     c.font = { bold: true };
   });
 
-  ws.views = [{ state: 'frozen', ySplit: filaCab }];
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: filaCab }];
   if (ultima >= primera) {
     ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: columnas.length } };
   }
@@ -464,7 +485,7 @@ async function generarExcelETT(r) {
     `€/Total = HORAS × ${r.eurHora} €/h.  Total Plus Nocturnidad = Horas Nocturnas × ${r.plusNocturno} € ` +
       '(es € POR HORA nocturna, no un porcentaje).  Total coste trabajador = la suma de los dos.',
     'HORAS = lo rodado en BOLT, menos las horas de espera descontadas por baja utilización, más las ' +
-      'horas justificadas (una J cubre la jornada del día, 8 h, sin pasar de ahí).',
+      'horas justificadas (cada J aprobada suma las horas que se le pusieron al justificarla).',
     'El detalle de los descuentos, con el porcentaje de utilización de cada uno, está en la segunda pestaña.',
     'Las horas van por día natural: del día 1 a las 00:00 al último a las 23:59.',
   ]);
@@ -474,7 +495,7 @@ async function generarExcelETT(r) {
   const wd = wb.addWorksheet('Horas descontadas');
   const fin2 = tabla(wd, idLogo, 'HORAS DESCONTADAS POR UTILIZACIÓN',
     `${conDescuento.length} de ${r.filas.length} conductores no llegan al ` +
-    `${(r.utilMinima * 100).toFixed(0)} % de utilización · ` +
+    `${(r.utilUmbral * 100).toFixed(0)} % de utilización: se les exige el ${(r.utilExigida * 100).toFixed(0)} % · ` +
     `${r.totales.horasEsperaQuitadas} h descontadas en total · trabajo de ${r.mesNombre} ${r.ano}`,
     COL_DESCUENTO, conDescuento, r, {
       realce: (row, f) => {
@@ -486,11 +507,11 @@ async function generarExcelETT(r) {
   nota(wd, fin2, [
     'La UTILIZACIÓN es el tiempo en viaje sobre el tiempo conectado: viaje ÷ (viaje + espera). ' +
       'Mide cuánto de lo que se factura es servicio y cuánto es esperar.',
-    `Quien no llega al ${(r.utilMinima * 100).toFixed(0)} % se le retiran horas DE ESPERA —nunca de viaje— ` +
-      'hasta que lo alcanza. Después del descuento, todos quedan exactamente en ese mínimo.',
+    `Quien llega al ${(r.utilUmbral * 100).toFixed(0)} % no pierde nada. A quien no llega se le exige el ` +
+      `${(r.utilExigida * 100).toFixed(0)} %: se le retiran horas DE ESPERA —nunca de viaje— hasta dejarlo exactamente ahí.`,
     'Nunca se descuenta más espera de la que esa persona tuvo: sale de la propia fórmula, ' +
-      'X = (viaje + espera) − viaje ÷ mínimo.',
-    'A quien ya llega al mínimo no se le quita nada, y por eso no aparece en esta pestaña.',
+      'X = (viaje + espera) − viaje ÷ exigida.',
+    `A quien llega al ${(r.utilUmbral * 100).toFixed(0)} % no se le quita nada, y por eso no aparece en esta pestaña.`,
   ]);
 
   return wb.xlsx.writeBuffer();
@@ -658,7 +679,7 @@ function notaDelDia(d) {
   if (d.esLaBaja) n.push('Día de la baja');
   else if (d.despuesDeLaBaja) n.push('De baja');
   if (d.antesDelAlta) n.push('Aún sin alta');
-  if (d.jAprobada && !d.jAntesDelArranque) n.push('J aprobada');
+  if (d.jAprobada && !d.jAntesDelArranque) n.push(d.jSinHoras ? 'J aprobada sin horas: no suma' : 'J aprobada');
   if (d.jAntesDelArranque) n.push('J aprobada antes de su alta: no cuenta');
   if (d.jPendiente) n.push('J pendiente de aprobar: no cuenta');
   if (d.hoy) n.push('Hoy: el día va a medias');
@@ -767,7 +788,7 @@ function hojaDiaADia(wb, idLogo, p, m, cfg) {
   nota(ws, fila, [
     'Cada día es un día natural, de 00:00 a 23:59: un turno de noche reparte sus horas entre los dos días que toca.',
     'Horas rodadas = viaje + espera, con los ratos que se pisan entre dos cuentas contados una sola vez.',
-    `Una J aprobada vale la jornada del día (${cfg.horasMetaDia} h) menos lo que se rodó ese día; las pendientes no cuentan hasta que se aprueben.`,
+    'Una J aprobada suma las horas que se le pusieron al justificarla, encima de lo rodado ese día; una sin horas no suma, y las pendientes no cuentan hasta que se aprueben.',
     'Extras del día = nocturnidad + propinas + peajes. La facturación neta solo cuenta para el MBO de facturación.',
     'La fila «Según la nómina» es la de la pantalla de Nóminas para ese mes: tiene que coincidir con el total de los días.',
   ]);

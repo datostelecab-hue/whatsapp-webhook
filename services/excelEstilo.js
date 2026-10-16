@@ -82,18 +82,24 @@ function bandaCabecera(ws, idLogo, titulo, subtitulo, nCols) {
   return 4;
 }
 
-/** Fila de cabecera de tabla: fondo oscuro, texto blanco, centrada. */
-function cabeceraTabla(ws, fila, textos) {
+/**
+ * Fila de cabecera de tabla: fondo oscuro, texto blanco, centrada.
+ *
+ * `ajustar` parte los títulos largos en varias líneas dentro de su columna, y
+ * `alto` da la altura de la fila (con dos líneas, unos 32). Sin opciones sale
+ * como siempre: una línea de 20.
+ */
+function cabeceraTabla(ws, fila, textos, { alto = 20, ajustar = false } = {}) {
   const r = ws.getRow(fila);
   textos.forEach((h, i) => {
     const c = r.getCell(i + 1);
     c.value = h;
     c.font = { size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
     c.fill = relleno(CAB_BG);
-    c.alignment = { vertical: 'middle', horizontal: 'center' };
+    c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: ajustar };
     c.border = TODOS_BORDES;
   });
-  r.height = 20;
+  r.height = alto;
   return fila + 1;
 }
 
