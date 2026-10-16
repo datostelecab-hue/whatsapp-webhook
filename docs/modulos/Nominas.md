@@ -187,7 +187,7 @@ El parte de la ETT conserva **sus columnas**, que son las de la agencia; solo ca
 
 ### La pestaña «Resumen por conductor» (16/10/2026)
 
-Camilo: *«Hazme una pestaña con el resumen del cálculo por cada conductor con su total»*. Va entre «Nómina» y «Cómo se calculó», una fila por persona **por orden alfabético**, con las columnas **en el orden en que se calcula**, agrupadas encima:
+Camilo: *«Hazme una pestaña con el resumen del cálculo por cada conductor con su total»*. Va entre «Nómina» y «Cómo se calculó», una fila por persona **de mayor a menor total** (con el mismo total, por nombre), con las columnas **en el orden en que se calcula**, agrupadas encima:
 
 | Grupo | Columnas |
 |---|---|

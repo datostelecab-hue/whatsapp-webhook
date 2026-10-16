@@ -408,7 +408,7 @@ function hojaResumen(wb, idLogo, r, filas, cfg) {
   const n = COL_RESUMEN.length;
   const iDe = titulo => COL_RESUMEN.findIndex(c => c[1] === titulo) + 1;
   const sub = `Nómina de ${r.mesNombre} ${r.ano} · trabajo de ${r.mesDatosNombre} ${r.anoDatos} · ` +
-    `${filas.length} conductores de plantilla propia, por orden alfabético · el cálculo de cada uno, en el orden en que se hace · generado ${sello()}`;
+    `${filas.length} conductores de plantilla propia, de mayor a menor total · el cálculo de cada uno, en el orden en que se hace · generado ${sello()}`;
   let fila = E.bandaCabecera(ws, idLogo, 'RESUMEN POR CONDUCTOR', sub, n);
 
   // Los grupos, encima de la cabecera: dicen en qué paso del cálculo está cada
@@ -441,8 +441,9 @@ function hojaResumen(wb, idLogo, r, filas, cfg) {
   cabTotal.font = { size: 10, bold: true, color: { argb: E.DARK } };
   const primera = fila;
 
-  const orden = [...filas].sort((a, b) =>
-    String(a.nombreSS || a.nombre || '').localeCompare(String(b.nombreSS || b.nombre || ''), 'es'));
+  // De mayor a menor total (Camilo, 16/10/2026); con el mismo total, por nombre.
+  const orden = [...filas].sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0)
+    || String(a.nombreSS || a.nombre || '').localeCompare(String(b.nombreSS || b.nombre || ''), 'es'));
   for (const f of orden) {
     const row = ws.getRow(fila++);
     COL_RESUMEN.forEach(([, titulo, , saca, fmt], i) => {
