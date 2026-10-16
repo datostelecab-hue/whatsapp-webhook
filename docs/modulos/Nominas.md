@@ -185,7 +185,23 @@ Los tres libros del módulo —la nómina, el parte de la ETT y el de una person
 
 El parte de la ETT conserva **sus columnas**, que son las de la agencia; solo cambia la presentación y las notas (las J con sus horas y los dos listones de utilización).
 
-`scripts/comprobar-nomina.js` (17 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele.
+### La pestaña «Resumen por conductor» (16/10/2026)
+
+Camilo: *«Hazme una pestaña con el resumen del cálculo por cada conductor con su total»*. Va entre «Nómina» y «Cómo se calculó», una fila por persona **por orden alfabético**, con las columnas **en el orden en que se calcula**, agrupadas encima:
+
+| Grupo | Columnas |
+|---|---|
+| HORAS | rodadas · − espera quitada · + justificadas · = cuentan · objetivo · diferencia · utilización |
+| MBO (SE COBRA EL MAYOR) | por horas extra · facturación neta · umbral FAS de su jornada · FAS · cuál gana |
+| LO QUE COBRA | MBO · nocturnidad · propinas · peajes · **TOTAL** |
+
+Y al final, **«Cómo sale su total»**, la cuenta escrita en palabras con la config del mes: *«211,4 h rodadas − 40,2 de espera (utilización 62,4 %, por debajo del 75 %: se le exige el 85 %) + 16,0 de J = 187,2 h contra 172,0 h de objetivo: +15,2 h. Horas extra: 15,2 h × 8,16 € × 62,4 % = 77,40 €. FAS: (6.200,00 − 4.750,00) × 40 % = 580,00 €. Se paga el FAS, que es el mayor. Total: 580,00 MBO + 12,30 nocturnidad + 5,00 propinas = 597,30 €.»* Es la que se abre cuando alguien pregunta por qué ha cobrado lo que ha cobrado.
+
+Los números son los de la fila de la nómina, **no fórmulas**: la nómina redondea cada pieza a céntimos, y una fórmula sobre las piezas redondeadas podría diferir en un céntimo del TOTAL de la otra hoja.
+
+**La facturación neta se guarda al congelar** desde `db/206` (columna `nomina_fila.neto`): antes solo se guardaba el FAS ya calculado, y de un mes cerrado solo se habría podido decir «no llegó al umbral». Sin la migración aplicada se congela y se lee como antes (el repositorio mira si la columna existe, por el `search_path`), y el resumen de esas filas da el FAS sin la facturación. Ensayado sobre copias temporales en las dos pasadas, sin la columna y con ella: 145 filas congeladas y leídas iguales, al céntimo.
+
+`scripts/comprobar-nomina.js` (18 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele.
 
 ## Los dos nombres del Excel
 

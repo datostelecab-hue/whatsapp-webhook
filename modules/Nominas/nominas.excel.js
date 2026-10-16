@@ -3,11 +3,13 @@
 // ============================================================
 // Lo que RRHH manda a la gestoría para que lo sume al recibo del mes. Solo
 // plantilla propia: los de ETT los paga la agencia y van en su parte (abajo).
-// Dos hojas, con el diseño de la casa (banda con el logo, cabecera oscura,
+// Tres hojas, con el diseño de la casa (banda con el logo, cabecera oscura,
 // ámbar para los avisos, rojo para lo que falta y el oro solo en el TOTAL):
 //
-//   Nómina   una fila por persona, con el desglose de cada euro y el total.
-//   Cómo se calculó   la config usada y cómo sale cada columna, en tablas.
+//   Nómina                 una fila por persona, con el desglose de cada euro.
+//   Resumen por conductor  el cálculo de cada uno en el orden en que se hace,
+//                          con la cuenta escrita en palabras y su total.
+//   Cómo se calculó        la config usada y cómo sale cada columna, en tablas.
 //
 // La segunda hoja no es adorno: cuando alguien pregunta "¿por qué he cobrado
 // 212,40 € y mi compañero 318?", la respuesta tiene que estar en el propio
@@ -200,11 +202,12 @@ async function generarExcelNomina(r) {
     ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: COLUMNAS.length } };
   }
 
+  hojaResumen(wb, idLogo, r, filas, cfg);
   hojaComoSeCalculo(wb, idLogo, sub, cfg);
   return wb.xlsx.writeBuffer();
 }
 
-// ── Hoja 2: cómo se calculó ─────────────────────────────────────────────────
+// ── Hoja 3: cómo se calculó ─────────────────────────────────────────────────
 // Tres tablas de la casa en vez de un texto alineado a espacios (que en una
 // letra proporcional nunca quedaba alineado): los parámetros con su valor, cómo
 // sale cada columna, y de dónde salen los datos.
@@ -307,6 +310,183 @@ function hojaComoSeCalculo(wb, idLogo, sub, cfg) {
   const nota = ws.getRow(fila + 1).getCell(1);
   nota.value = 'Nada de esto se pide a ninguna API al generar la nómina ni se lee de ninguna hoja de cálculo: todo está en la base de datos.';
   nota.font = { size: 9, color: { argb: E.TENUE } };
+}
+
+// ── Hoja 2: el resumen por conductor (16/10/2026) ───────────────────────────
+// Camilo: «Hazme una pestaña con el resumen del cálculo por cada conductor con
+// su total». La hoja de la nómina tiene todas las cifras; esta las pone EN EL
+// ORDEN EN QUE SE CALCULAN —las horas que cuentan, la diferencia, los dos MBO y
+// cuál gana, lo que se cobra— y, al final de cada fila, la cuenta escrita en
+// palabras. Es la que se abre cuando alguien pregunta «¿por qué he cobrado
+// esto?».
+//
+// Los números son los de la fila de la nómina, NO fórmulas: la nómina redondea
+// cada pieza a céntimos, y una fórmula sobre las piezas redondeadas podría
+// diferir en un céntimo del TOTAL de la otra hoja.
+
+// Con el punto de los miles también en cuatro cifras («4.750,00»): el español
+// de Intl no lo pone hasta las cinco, y en una cuenta de euros se lee mal.
+const eur2 = x => {
+  const [ent, dec] = Math.abs(Number(x) || 0).toFixed(2).split('.');
+  return ((Number(x) || 0) < 0 ? '−' : '') + ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dec;
+};
+const h1 = x => (Number(x) || 0).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const umbralDe = (f, cfg) => (Number(f.jornada) === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40);
+const horasQueCuentan = f => Math.round(((Number(f.horas) || 0) - (Number(f.horasEsperaQuitadas) || 0)
+  + (Number(f.horasJustificadas) || 0)) * 100) / 100;
+const ganaDe = f => (f.mboHsExt > f.mboFAS ? 'Horas extra' : f.mboFAS > 0 ? 'FAS' : '');
+
+/** La cuenta de una persona, en palabras. */
+function comoSale(f, cfg) {
+  const p = [];
+  // Las horas que cuentan
+  let horas = `${h1(f.horas)} h rodadas`;
+  if (f.horasEsperaQuitadas > 0) {
+    horas += ` − ${h1(f.horasEsperaQuitadas)} de espera (utilización ${h1(f.utilPct)} %, por debajo del ` +
+      `${pctTxt(cfg.utilUmbral)}: se le exige el ${pctTxt(cfg.utilExigida)})`;
+  }
+  if (f.horasJustificadas > 0) horas += ` + ${h1(f.horasJustificadas)} de J`;
+  if (f.horasEsperaQuitadas > 0 || f.horasJustificadas > 0) horas += ` = ${h1(horasQueCuentan(f))} h`;
+  const dif = Number(f.deltaHoras) || 0;
+  p.push(`${horas} contra ${h1(f.horasObjetivo)} h de objetivo: ` +
+    (dif > 0 ? `+${h1(dif)} h.` : `le faltan ${h1(-dif)} h.`));
+  // Los dos MBO
+  p.push(f.mboHsExt > 0
+    ? `Horas extra: ${h1(dif)} h × ${eur2(cfg.eurHoraExtra)} € × ${h1(f.utilPct)} % = ${eur2(f.mboHsExt)} €.`
+    : 'Sin MBO por horas extra.');
+  const umbral = umbralDe(f, cfg);
+  if (f.mboFAS > 0) {
+    p.push(f.neto != null
+      ? `FAS: (${eur2(f.neto)} − ${eur2(umbral)}) × ${pctTxt(cfg.pctMBOFAS)} = ${eur2(f.mboFAS)} €.`
+      : `FAS: ${eur2(f.mboFAS)} €.`);
+  } else {
+    p.push(f.neto != null
+      ? `FAS: factura ${eur2(f.neto)} €, no llega al umbral de ${eur2(umbral)} €.`
+      : `Sin FAS: no llega al umbral de ${eur2(umbral)} €.`);
+  }
+  const mbo = Math.max(Number(f.mboHsExt) || 0, Number(f.mboFAS) || 0);
+  if (f.mboHsExt > 0 && f.mboFAS > 0) p.push(`Se paga el ${ganaDe(f) === 'FAS' ? 'FAS' : 'de horas extra'}, que es el mayor.`);
+  // Lo que se cobra
+  const piezas = [[mbo, 'MBO'], [f.nocturnas, 'nocturnidad'], [f.propinas, 'propinas'], [f.peajes, 'peajes']]
+    .filter(([v]) => Number(v) > 0);
+  p.push(piezas.length > 1
+    ? `Total: ${piezas.map(([v, que]) => `${eur2(v)} ${que}`).join(' + ')} = ${eur2(f.total)} €.`
+    : piezas.length ? `Total: ${eur2(f.total)} €, todo de ${piezas[0][1]}.` : 'Total: 0,00 €.');
+  return p.join(' ');
+}
+
+// [grupo, título, ancho, de dónde, formato]
+const COL_RESUMEN = [
+  ['', 'Conductor', 32, f => f.nombreSS || f.nombre || '', null],
+  ['', 'DNI/NIE', 11, f => f.dni || '', null],
+  ['', 'Jornada', 8, f => (f.jornada ? f.jornada + ' h' : ''), null],
+  ['HORAS', 'Rodadas', 9, f => f.horas, HORAS],
+  ['HORAS', '− Espera quitada', 10, f => f.horasEsperaQuitadas, HORAS],
+  ['HORAS', '+ Justificadas', 11, f => f.horasJustificadas, HORAS],
+  ['HORAS', '= Cuentan', 9, f => horasQueCuentan(f), HORAS],
+  ['HORAS', 'Objetivo', 9, f => f.horasObjetivo, HORAS],
+  ['HORAS', 'Diferencia', 10, f => f.deltaHoras, HORAS],
+  ['HORAS', 'Utilización', 10, f => (f.utilPct == null ? null : f.utilPct), PCT],
+  ['MBO (SE COBRA EL MAYOR)', 'Por horas extra', 11, f => f.mboHsExt, EUROS],
+  ['MBO (SE COBRA EL MAYOR)', 'Facturación neta', 12, f => (f.neto == null ? null : f.neto), EUROS],
+  ['MBO (SE COBRA EL MAYOR)', 'Umbral FAS', 11, (f, cfg) => umbralDe(f, cfg), EUROS],
+  ['MBO (SE COBRA EL MAYOR)', 'FAS', 11, f => f.mboFAS, EUROS],
+  ['MBO (SE COBRA EL MAYOR)', 'Gana', 11, f => ganaDe(f), null],
+  ['LO QUE COBRA', 'MBO', 11, f => Math.max(Number(f.mboHsExt) || 0, Number(f.mboFAS) || 0), EUROS],
+  ['LO QUE COBRA', 'Nocturnidad', 11, f => f.nocturnas, EUROS],
+  ['LO QUE COBRA', 'Propinas', 10, f => f.propinas, EUROS],
+  ['LO QUE COBRA', 'Peajes', 9, f => f.peajes, EUROS],
+  ['LO QUE COBRA', 'TOTAL', 12, f => f.total, EUROS],
+  ['', 'Cómo sale su total', 92, (f, cfg) => comoSale(f, cfg), null],
+];
+const SUMA_RESUMEN = new Set(['Rodadas', '− Espera quitada', '+ Justificadas', '= Cuentan',
+  'Por horas extra', 'FAS', 'MBO', 'Nocturnidad', 'Propinas', 'Peajes', 'TOTAL']);
+
+function hojaResumen(wb, idLogo, r, filas, cfg) {
+  const ws = wb.addWorksheet('Resumen por conductor', { pageSetup: PAGINA });
+  COL_RESUMEN.forEach(([, , ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+  const n = COL_RESUMEN.length;
+  const iDe = titulo => COL_RESUMEN.findIndex(c => c[1] === titulo) + 1;
+  const sub = `Nómina de ${r.mesNombre} ${r.ano} · trabajo de ${r.mesDatosNombre} ${r.anoDatos} · ` +
+    `${filas.length} conductores de plantilla propia, por orden alfabético · el cálculo de cada uno, en el orden en que se hace · generado ${sello()}`;
+  let fila = E.bandaCabecera(ws, idLogo, 'RESUMEN POR CONDUCTOR', sub, n);
+
+  // Los grupos, encima de la cabecera: dicen en qué paso del cálculo está cada
+  // columna.
+  const grupos = ws.getRow(fila);
+  let desde = 1;
+  for (let i = 1; i <= n + 1; i++) {
+    const g = i <= n ? COL_RESUMEN[i - 1][0] : null;
+    if (i <= n && g === COL_RESUMEN[desde - 1][0]) continue;
+    const nombre = COL_RESUMEN[desde - 1][0];
+    if (i - 1 > desde) ws.mergeCells(fila, desde, fila, i - 1);
+    const c = grupos.getCell(desde);
+    c.value = nombre || null;
+    for (let k = desde; k < i; k++) {
+      const ck = grupos.getCell(k);
+      ck.fill = E.relleno(nombre ? E.DARK : 'FFFFFFFF');
+      if (nombre) ck.border = E.TODOS_BORDES;
+    }
+    c.font = { size: 9, bold: true, color: { argb: nombre === 'LO QUE COBRA' ? E.GOLD : 'FFC9CED6' } };
+    c.alignment = { vertical: 'middle', horizontal: 'center' };
+    desde = i;
+  }
+  grupos.height = 18;
+  fila += 1;
+
+  const filaCab = fila;
+  fila = E.cabeceraTabla(ws, fila, COL_RESUMEN.map(c => c[1]), { alto: 32, ajustar: true });
+  const cabTotal = ws.getRow(filaCab).getCell(iDe('TOTAL'));
+  cabTotal.fill = E.relleno(E.GOLD);
+  cabTotal.font = { size: 10, bold: true, color: { argb: E.DARK } };
+  const primera = fila;
+
+  const orden = [...filas].sort((a, b) =>
+    String(a.nombreSS || a.nombre || '').localeCompare(String(b.nombreSS || b.nombre || ''), 'es'));
+  for (const f of orden) {
+    const row = ws.getRow(fila++);
+    COL_RESUMEN.forEach(([, titulo, , saca, fmt], i) => {
+      const c = row.getCell(i + 1);
+      const v = saca(f, cfg);
+      c.value = v === undefined ? null : v;
+      if (fmt) c.numFmt = fmt;
+      c.border = E.TODOS_BORDES;
+      c.font = { color: { argb: E.TEXTO } };
+      c.alignment = { vertical: 'top', wrapText: titulo === 'Cómo sale su total' };
+    });
+    const tot = row.getCell(iDe('TOTAL'));
+    tot.font = { bold: true, color: { argb: E.DARK } };
+    tot.fill = E.relleno(ORO_SUAVE);
+    if (f.horasEsperaQuitadas > 0) tono(row.getCell(iDe('− Espera quitada')), AMBAR);
+    if (f.deltaHoras < 0) row.getCell(iDe('Diferencia')).font = { color: { argb: ROJO.fg } };
+    if (ganaDe(f)) row.getCell(iDe('Gana')).font = { bold: true, color: { argb: E.DARK } };
+    row.height = altoPara(comoSale(f, cfg), 92);
+  }
+
+  const ultima = fila - 1;
+  const pie = ws.getRow(fila);
+  COL_RESUMEN.forEach(([, titulo, , , fmt], i) => {
+    const c = pie.getCell(i + 1);
+    c.fill = E.relleno('FFF3F4F6');
+    c.border = E.TODOS_BORDES;
+    c.font = { bold: true, color: { argb: E.DARK } };
+    if (!SUMA_RESUMEN.has(titulo) || ultima < primera) return;
+    const L = E.colLetra(i + 1);
+    c.value = { formula: `SUM(${L}${primera}:${L}${ultima})` };
+    c.numFmt = fmt;
+  });
+  pie.getCell(1).value = `TOTAL (${filas.length})`;
+  pie.getCell(iDe('TOTAL')).fill = E.relleno(E.GOLD);
+  pie.height = 20;
+
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: filaCab }];
+  if (ultima >= primera) ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: n } };
+
+  if (filas.some(f => f.neto == null)) {
+    const c = ws.getRow(fila + 2).getCell(1);
+    c.value = 'Esta nómina se congeló antes de guardar la facturación neta: el FAS va con su importe, sin la facturación de la que sale.';
+    c.font = { size: 9, color: { argb: E.TENUE } };
+  }
 }
 
 /** nomina-variable-septiembre-2026.xlsx */

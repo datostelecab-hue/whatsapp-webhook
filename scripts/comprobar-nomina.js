@@ -92,6 +92,8 @@ function igual(nombre, real, esperado) {
   igual('Nocturnas a 9,9 € × 0,1 la hora', uno.nocturnas, 9.9);
   igual('La ETT no cobra ningún MBO, pero sí nocturnas, propinas y peajes',
     [cuatro.mboFAS, cuatro.mboHsExt, cuatro.diasExtra, cuatro.total], [0, 0, 0, Math.round((19.8 + 10 + 5) * 100) / 100]);
+  igual('La fila lleva la facturación neta, de la que sale el FAS (la pide el resumen del Excel)',
+    [uno.neto, cuatro.neto], [0, 9000]);
   igual('Los totales de la nómina son solo de propia',
     r.totales.nocturnas, Math.round(r.filas.reduce((a, f) => a + f.nocturnas, 0) * 100) / 100);
 

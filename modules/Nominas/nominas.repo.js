@@ -465,9 +465,27 @@ const valoresDeFila = f => [
   f.nocturnas, f.nocturnasHoras, f.mboFAS, f.mboHsExt, f.compensacion, f.diasExtra, f.total,
 ];
 
+// LA FACTURACIÓN NETA llegó con db/206 (16/10/2026), para el resumen por
+// conductor del Excel. Sin la migración aplicada se congela y se lee como
+// antes: se pregunta si la columna existe, y solo se recuerda el sí (al
+// aplicarla, la siguiente vez ya la usa sin reiniciar).
+let _hayNeto = false;
+async function hayNeto(consulta) {
+  if (_hayNeto) return true;
+  // Por el search_path, como la resuelven las consultas de abajo.
+  const r = await consulta(
+    `SELECT 1 FROM pg_attribute
+      WHERE attrelid = to_regclass('nomina_fila') AND attname = 'neto' AND NOT attisdropped`);
+  _hayNeto = r.rows.length > 0;
+  return _hayNeto;
+}
+
 /** Congela una nómina. Reescribe la del mes si ya hubiera una. */
 async function congelar(r, usuarioId) {
   return db.transaccion(async cli => {
+    const conNeto = await hayNeto((s, p) => cli.query(s, p));
+    const cols = conNeto ? [...COLS_FILA, 'neto'] : COLS_FILA;
+    const valores = f => (conNeto ? [...valoresDeFila(f), f.neto == null ? null : f.neto] : valoresDeFila(f));
     await cli.query('DELETE FROM nomina_mes WHERE mes = $1 AND ano = $2', [r.mes, r.ano]);
     const cab = await cli.query(
       `INSERT INTO nomina_mes (mes, ano, mes_datos, ano_datos, dias_del_mes, config, totales, avisos, usuario_id)
@@ -480,17 +498,17 @@ async function congelar(r, usuarioId) {
     // parámetros y PostgreSQL admite 65.535, pero el día que sean 3.000 personas
     // el INSERT de una sola vez reventaría sin avisar.
     const TAM = 200;
-    const N = COLS_FILA.length + 1;          // las columnas + el nomina_id
+    const N = cols.length + 1;               // las columnas + el nomina_id
     for (let i = 0; i < r.filas.length; i += TAM) {
       const trozo = r.filas.slice(i, i + TAM);
-      const valores = [];
+      const params = [];
       const marcas = trozo.map((f, k) => {
-        valores.push(id, ...valoresDeFila(f));
+        params.push(id, ...valores(f));
         const base = k * N;
         return '(' + Array.from({ length: N }, (_, j) => '$' + (base + j + 1)).join(',') + ')';
       }).join(',');
       await cli.query(
-        `INSERT INTO nomina_fila (nomina_id, ${COLS_FILA.join(', ')}) VALUES ${marcas}`, valores);
+        `INSERT INTO nomina_fila (nomina_id, ${cols.join(', ')}) VALUES ${marcas}`, params);
     }
     return { id, congeladaAt: cab.rows[0].congelada_at, conductores: r.filas.length, total: r.totales.total };
   });
@@ -504,8 +522,9 @@ async function leerCongelada(mes, ano) {
        FROM nomina_mes n WHERE n.mes = $1 AND n.ano = $2`, [mes, ano]);
   if (!c.rowCount) return null;
   const n = c.rows[0];
+  const conNeto = await hayNeto(db.consulta);
   const f = await db.consulta(
-    `SELECT ${COLS_FILA.join(', ')} FROM nomina_fila WHERE nomina_id = $1 ORDER BY total DESC`, [n.id]);
+    `SELECT ${COLS_FILA.join(', ')}${conNeto ? ', neto' : ''} FROM nomina_fila WHERE nomina_id = $1 ORDER BY total DESC`, [n.id]);
   return {
     mes: n.mes, ano: n.ano, mesDatos: n.mes_datos, anoDatos: n.ano_datos,
     diasDelMes: n.dias_del_mes, config: n.config, totales: n.totales, avisos: n.avisos || {},
@@ -526,6 +545,8 @@ async function leerCongelada(mes, ano) {
       utilPct: x.util_pct == null ? null : Number(x.util_pct),
       propinas: Number(x.propinas), peajes: Number(x.peajes), nocturnas: Number(x.nocturnas),
       nocturnasHoras: Number(x.nocturnas_horas),
+      // Sin db/206, o congelada antes: no se sabe (null, no cero).
+      neto: x.neto == null ? null : Number(x.neto),
       mboFAS: Number(x.mbo_fas), mboHsExt: Number(x.mbo_hs_ext), compensacion: Number(x.compensacion),
       diasExtra: Number(x.dias_extra), total: Number(x.total),
     })),

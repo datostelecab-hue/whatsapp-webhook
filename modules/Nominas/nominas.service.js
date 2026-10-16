@@ -380,6 +380,9 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     propinas: r2(c.propinas),
     peajes: r2(c.peajes),
     nocturnas: r2(eurNoc),
+    // La facturación de la que sale el FAS: la pide el resumen por conductor
+    // del Excel para poder decir cuánto facturó, no solo si pasó el umbral.
+    neto: r2(c.neto || 0),
     mboFAS: r2(mboFAS),
     mboHsExt: r2(mboHsExt),
     compensacion: r2(compensacion),
