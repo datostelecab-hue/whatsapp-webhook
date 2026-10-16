@@ -6,8 +6,8 @@ una deuda con la empresa, y aquí se lleva.
 
 ```
 /recaudacion                      el cuadro: quién debe cuánto
-/recaudacion/api/comprobar        ocho comprobaciones que pueden fallar de verdad
-/recaudacion/api/movimiento POST  apuntar una entrega (en mano o por nómina)
+/recaudacion/api/comprobar        diez comprobaciones que pueden fallar de verdad
+/recaudacion/api/movimiento POST  apuntar una entrega (en mano, por nómina o por transferencia)
 /recaudacion/api/cierre/*         lo que dice BOLT, calculado y congelado
 ```
 
@@ -42,6 +42,11 @@ la duda se resuelve cerrando.
 **La cifra de BOLT no se teclea: se calcula y se congela.** Lo anterior al corte
 lo manda el Excel que se importó y el repositorio se niega a tocarlo — si no, un
 recálculo reescribiría un histórico que ya se cuadró con la gente.
+
+**La transferencia (db/208) baja la deuda y no entra en la caja**, como la nómina:
+el dinero está en el banco. Lleva el ID de la transferencia, obligatorio y escrito
+a mano, en su columna `referencia`; la base no deja dos transferencias vivas con el
+mismo ID (sin mayúsculas ni espacios). La apunta quien cobra, como lo de en mano.
 
 **El cuadro es el acumulado, sin quincenas.** La quincena sigue existiendo por
 dentro (es la caja donde se guarda cada cierre de BOLT) pero ya no se navega: lo

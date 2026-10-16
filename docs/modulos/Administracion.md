@@ -22,7 +22,7 @@ Desde fuera se entra por `recaudacion.service` — el cron de `app.js` incluido.
 
 ```
 DEUDA     lo que BOLT dice que cobró en efectivo en la quincena (el cierre)
-RECAUDADO lo que ha entregado: presencial + descontado de nómina, menos lo devuelto
+RECAUDADO lo que ha entregado: presencial + descontado de nómina + transferencias, menos lo devuelto
 PENDIENTE deuda − recaudado
 ```
 
@@ -51,6 +51,7 @@ Cada movimiento tiene **dos efectos que no van juntos**, y confundirlos es lo qu
 |---|---|---|---|
 | En mano | +1 | +1 | se **cuenta** billete a billete |
 | Descontado de nómina | 0 | +1 | |
+| Transferencia | 0 | +1 | lleva el **ID de la transferencia**, obligatorio y único (db/208) |
 | Devuelto al conductor | −1 | −1 | deshace un ingreso suyo |
 | Cambio entregado | −1 | −1 | se **cuenta**; le prestamos dinero nuestro |
 | Banco · Gastos empresa · Caja chica · Nómina | −1 | 0 | las cuatro bocas de salida |
@@ -78,9 +79,9 @@ Lo anterior al corte lo manda el Excel que se importó, y **el repositorio se ni
 
 `GET /recaudacion/api/cierre/bolt` enseña lo que dice BOLT **ahora mismo sin congelar nada**: es la vista previa de lo que haría "calcular", para mirar antes de tocar. Y hay además cierre manual conductor a conductor, ajuste con motivo, e importación del cierre pegando el Excel entero.
 
-## Las ocho comprobaciones
+## Las diez comprobaciones
 
-`GET /recaudacion/api/comprobar` son ocho pruebas que **pueden fallar de verdad**. No escribe nada, así que se puede pulsar cuando se quiera. Las primeras cruzan **la tabla contra la caja** —la deuda, lo entregado en mano, el cambio en la calle y lo que queda por recaudar—, que son dos consultas distintas sobre las mismas tablas: una agrupa por persona y la otra suma en bloque, así que si una fila se queda fuera del listado (un centinela, un cierre huérfano) los dos números dejan de coincidir y ahí se ve. Otra comprueba que, **desde el corte, cada importe guardado sea el que dice BOLT**, y nombra tanto lo que se desvió como lo que BOLT tiene y no tiene cierre.
+`GET /recaudacion/api/comprobar` son diez pruebas que **pueden fallar de verdad**. No escribe nada, así que se puede pulsar cuando se quiera. Las primeras cruzan **la tabla contra la caja** —la deuda, lo entregado en mano, el cambio en la calle, lo pagado por transferencia y lo que queda por recaudar—, que son dos consultas distintas sobre las mismas tablas: una agrupa por persona y la otra suma en bloque, así que si una fila se queda fuera del listado (un centinela, un cierre huérfano) los dos números dejan de coincidir y ahí se ve. Otra comprueba que, **desde el corte, cada importe guardado sea el que dice BOLT**, y nombra tanto lo que se desvió como lo que BOLT tiene y no tiene cierre.
 
 ## Los descuentos de nómina de septiembre 2026 (db/162)
 
@@ -136,6 +137,19 @@ Un descuento de nómina que no se hizo no puede seguir bajando la deuda, porque 
 - **Elian Fernando Bonilla Ruiz no se toca, aunque esté en la tabla.** Su descuento (134,20 €, id 233) ya lo anuló Ignacio el 29/09: pagó en efectivo y se cuadró con Diana para que RRHH no se lo descontara. Volver a ponérselo sería cobrárselo dos veces.
 - **Solo actúa sobre lo que está como se vio**: cada fila, si su movimiento sigue vivo, es de nómina y tiene ese conductor e importe. El importe bueno solo se apunta si en la misma pasada se anuló el viejo. Se ensayó contra la base real en una copia temporal, con la transacción en solo lectura: anula 6, apunta 2, y una segunda pasada no hace nada.
 - La caja no se mueve: es nómina (*caja =*). Lo que cambia es lo que debe cada uno.
+
+## La transferencia (16/10/2026, db/208)
+
+Camilo: *«algunos conductores querrán dar el dinero vía transferencia, por lo tanto habilita un botón al lado de "Cobrar" donde diga "Transferencia" y poder colocar el monto y además el ID de la transferencia, el ID de la transferencia es obligatoria y la ponemos a mano»*.
+
+- **Un tipo de movimiento más**, `transferencia`, con los signos de la nómina: **baja lo que debe y no entra en la caja**, porque el dinero está en el banco y no en el cajón. El «Efectivo actual» no se mueve; el «Pendiente de cobro» sí.
+- **El botón «Transferencia»** está al lado de «Cobrar», en cada fila del cuadro y en la ficha del conductor (no en las cuentas sin ficha: primero hay que darlas de alta). Pide el **importe**, el **ID de la transferencia** (obligatorio), la **fecha** (la de la transferencia; no futura) y una observación opcional. La apunta quien cobra, como lo de en mano: es el mismo dinero por otro camino.
+- **El ID va en su propia columna** (`referencia`) y la base lo defiende, no solo la pantalla: un CHECK lo exige en las transferencias y un índice único no deja dos transferencias **vivas** con el mismo ID, a uno o a dos conductores. Se compara sin mayúsculas ni espacios («ES12 34» y «es1234» son la misma). Si se intenta, dice a quién y cuándo se apuntó la otra. **Anulada, su ID queda libre**: se anula la mal apuntada y se apunta bien.
+- Si el servidor dice que no, la ventana **vuelve a abrirse con lo escrito**: perder un ID largo por un error es justo lo que hace que la siguiente se apunte en una libreta.
+- **Dónde se ve:** en la fila, debajo del total en mano («+ 50,25 € transferencia», como la nómina); en la ficha, con su ID al lado; en el cuadre, «… por transferencia». Cuenta como **última entrega** para los días sin entregar.
+- **Antes de aplicar db/208** la pantalla funciona igual: la ficha lee el ID por la fila entera (`to_jsonb(m) ->> 'referencia'`) y apuntar una transferencia dice que falta la migración.
+- Para que cupiera el botón, las celdas del cuadro van **más juntas por debajo de 1536 px** (8 px en vez de 12): a 1280 la tabla ya no entraba. La cabecera de la ficha se parte en dos líneas cuando no cabe (en el móvil los botones se salían de la tarjeta).
+- Ensayado contra la base real en una copia temporal, sin la migración y con ella (aplicada dos veces): 22 casos, y las diez comprobaciones en verde.
 
 ## El cron
 

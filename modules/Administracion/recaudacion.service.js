@@ -72,7 +72,7 @@ async function cuadro(usuario, usuarioId) {
 }
 
 /**
- * ¿CUADRA TODO? Ocho comprobaciones que pueden fallar de verdad. No escribe
+ * ¿CUADRA TODO? Diez comprobaciones que pueden fallar de verdad. No escribe
  * nada, así que se puede pulsar cuando se quiera.
  */
 const comprobar = () => repo.comprobar();
@@ -104,6 +104,10 @@ async function loQueDiceBolt() {
 /**
  * APUNTAR DINERO. Lo presencial lo hace quien entra; lo de nómina, solo quien
  * tenga su permiso, y se comprueba aquí (nota 2).
+ *
+ * Una TRANSFERENCIA (db/208) la apunta quien cobra, como lo presencial: es el
+ * mismo dinero que llega por otro camino. Lleva `referencia`, el ID de la
+ * transferencia, obligatorio y escrito a mano.
  */
 async function anotar(b, usuario, usuarioId) {
   if (b.tipo === 'nomina' && !(await puedeNomina(usuario, usuarioId))) {
@@ -111,7 +115,7 @@ async function anotar(b, usuario, usuarioId) {
   }
   return repo.anotar({
     conductorId: b.conductorId, fecha: b.fecha, tipo: b.tipo, importe: b.importe,
-    desglose: b.desglose, observacion: b.observacion, usuarioId,
+    desglose: b.desglose, observacion: b.observacion, referencia: b.referencia, usuarioId,
   });
 }
 

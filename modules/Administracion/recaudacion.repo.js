@@ -4,8 +4,8 @@
 // Dos columnas y una resta:
 //
 //   DEUDA     lo que BOLT dice que cobró en efectivo en la quincena (el cierre)
-//   RECAUDADO lo que ha entregado: presencial + descontado de nómina, menos lo
-//             que se le haya devuelto
+//   RECAUDADO lo que ha entregado: presencial + descontado de nómina +
+//             transferencias, menos lo que se le haya devuelto
 //   PENDIENTE deuda − recaudado
 //
 // El pendiente que importa es el ACUMULADO, no el de una quincena suelta: quien
@@ -45,6 +45,11 @@ const TIPOS = [
   // (una nómina, una transferencia al banco): no hay nada que contar.
   { codigo: 'presencial',        etiqueta: 'En mano',               caja: +1, deuda: +1, conductor: true, cuenta: true },
   { codigo: 'nomina',            etiqueta: 'Descontado de nómina',  caja:  0, deuda: +1, conductor: true },
+  // LO QUE PAGA POR TRANSFERENCIA (db/208, 16/10/2026). Los signos de la
+  // nómina: baja lo que debe y no entra en el cajón, que el dinero está en el
+  // banco. `referencia`: lleva el ID de la transferencia, obligatorio y escrito
+  // a mano, y la misma no se puede apuntar dos veces.
+  { codigo: 'transferencia',     etiqueta: 'Transferencia',         caja:  0, deuda: +1, conductor: true, referencia: true },
   { codigo: 'entrega',           etiqueta: 'Devuelto al conductor', caja: -1, deuda: -1, conductor: true },
   // EL CAMBIO QUE SE LE DA PARA TRABAJAR. Sale del cajón y ÉL LO DEBE: no es
   // suyo, es de la casa, y vuelve con la recaudación. Mismos signos que
@@ -213,6 +218,7 @@ function aCentimos(v) {
  * La nómina no tiene columna propia porque casi nadie la usa, pero SÍ resta en
  * "a recaudar": si no, la cuenta no cerraría y alguien pediría dos veces el
  * mismo dinero. Va como dato aparte en cada fila para poder enseñarla al lado.
+ * La transferencia, igual (db/208).
  */
 async function cuadro() {
   // Las dos consultas son la misma cuenta sobre dos formas de identificar a
@@ -226,12 +232,13 @@ async function cuadro() {
        SELECT ${clave} AS quien,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
+              COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0) AS transferencia,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)     AS cambio,
               -- La última vez que ESTE dinero bajó de verdad. 'entrega' es lo
               -- contrario —dinero que se le devolvió— así que no cuenta: si
               -- contara, devolverle 20 € parecería que acaba de pagar.
-              max(fecha) FILTER (WHERE tipo IN ('presencial', 'nomina'))   AS ultima_entrega
+              max(fecha) FILTER (WHERE tipo IN ('presencial', 'nomina', 'transferencia')) AS ultima_entrega
          FROM recaudacion_movimiento
         WHERE anulado_at IS NULL AND ${clave} IS NOT NULL
         GROUP BY 1)`;
@@ -253,6 +260,7 @@ async function cuadro() {
             COALESCE(ci.bolt, 0)      AS bolt,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
+            COALESCE(m.transferencia, 0) AS transferencia,
             COALESCE(m.entrega, 0)    AS entrega,
             COALESCE(m.cambio, 0)     AS cambio,
             m.ultima_entrega
@@ -278,6 +286,7 @@ async function cuadro() {
             COALESCE(ci.bolt, 0)      AS bolt,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
+            COALESCE(m.transferencia, 0) AS transferencia,
             COALESCE(m.entrega, 0)    AS entrega,
             COALESCE(m.cambio, 0)     AS cambio,
             m.ultima_entrega
@@ -292,6 +301,9 @@ async function cuadro() {
   const filas = r.rows.map(x => {
     const bolt = Number(x.bolt);
     const presencial = Number(x.presencial), nomina = Number(x.nomina), entrega = Number(x.entrega);
+    // Lo que pagó por transferencia: como la nómina, baja lo que debe sin pasar
+    // por la ventanilla, así que tampoco va dentro de «en mano».
+    const transferencia = Number(x.transferencia);
     // El cambio que se le dio y aún no ha vuelto. SUMA a lo que debe, encima de
     // lo que diga BOLT: BOLT no sabe nada de este dinero —lo ponemos nosotros—.
     const cambio = Number(x.cambio);
@@ -316,8 +328,9 @@ async function cuadro() {
       efectivoAt: x.efectivo_at || null,
       bolt: +bolt.toFixed(2),
       enMano, nomina: +nomina.toFixed(2), entrega: +entrega.toFixed(2),
+      transferencia: +transferencia.toFixed(2),
       cambio: +cambio.toFixed(2),
-      aRecaudar: +(bolt + cambio - enMano - nomina).toFixed(2),
+      aRecaudar: +(bolt + cambio - enMano - nomina - transferencia).toFixed(2),
     };
   });
 
@@ -327,6 +340,7 @@ async function cuadro() {
     total: {
       gente: filas.length,
       bolt: suma('bolt'), enMano: suma('enMano'), nomina: suma('nomina'),
+      transferencia: suma('transferencia'),
       cambio: suma('cambio'),
       aRecaudar: suma('aRecaudar'),
       // A cuántos les falta algo: es el número por el que preguntan.
@@ -363,6 +377,7 @@ async function cuadre() {
        (SELECT COALESCE(sum(importe + ajuste), 0) FROM recaudacion_cierre) AS deuda,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0)        AS presencial,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)            AS nomina,
+       COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0)     AS transferencia,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)           AS entrega,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)            AS cambio,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_banco'), 0)      AS banco,
@@ -384,10 +399,13 @@ async function cuadre() {
     // un dinero que está en el bolsillo de un conductor.
     efectivo: dosDec(n('presencial') - n('entrega') - n('cambio') - salidas),
     // Lo que queda por cobrarle a la gente, incluido el cambio que se le prestó.
-    pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') - n('entrega'))),
+    // La transferencia lo baja y, como la nómina, no toca el cajón: el efectivo
+    // de arriba no la lleva.
+    pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') + n('transferencia') - n('entrega'))),
     deuda: dosDec(n('deuda')),
     entradas: dosDec(n('presencial')),
     nomina: dosDec(n('nomina')),
+    transferencia: dosDec(n('transferencia')),
     devuelto: dosDec(n('entrega')),
     // Cuánto cambio nuestro hay ahora mismo en la calle.
     cambio: dosDec(n('cambio')),
@@ -455,6 +473,9 @@ async function ficha(conductorId) {
     db.consulta(
       `SELECT m.id, m.fecha, m.tipo, m.importe, m.desglose, m.observacion, m.creado_at,
               m.anulado_at, m.anulado_motivo,
+              -- Por la fila entera y no por la columna: así la ficha se sigue
+              -- abriendo antes de aplicar db/208, cuando aún no existe.
+              to_jsonb(m) ->> 'referencia' AS referencia,
               u.nombre AS quien, a.nombre AS anulo
          FROM recaudacion_movimiento m
          LEFT JOIN usuario u ON u.id = m.usuario_id
@@ -466,7 +487,7 @@ async function ficha(conductorId) {
   const movimientos = movs.rows.map(m => ({
     id: String(m.id), fecha: String(m.fecha).slice(0, 10) === 'Invalid' ? null : diaIso(m.fecha),
     tipo: m.tipo, importe: Number(m.importe), desglose: m.desglose || null,
-    observacion: m.observacion || '', quien: m.quien || '¿?',
+    observacion: m.observacion || '', referencia: m.referencia || '', quien: m.quien || '¿?',
     creadoAt: m.creado_at,
     anulado: !!m.anulado_at, anuladoMotivo: m.anulado_motivo || '', anuladoPor: m.anulo || '',
   }));
@@ -501,13 +522,14 @@ async function ficha(conductorId) {
     const vivos = q.movimientos.filter(m => !m.anulado);
     q.presencial = +vivos.filter(m => m.tipo === 'presencial').reduce((a, m) => a + m.importe, 0).toFixed(2);
     q.nomina = +vivos.filter(m => m.tipo === 'nomina').reduce((a, m) => a + m.importe, 0).toFixed(2);
+    q.transferencia = +vivos.filter(m => m.tipo === 'transferencia').reduce((a, m) => a + m.importe, 0).toFixed(2);
     q.entrega = +vivos.filter(m => m.tipo === 'entrega').reduce((a, m) => a + m.importe, 0).toFixed(2);
     // El cambio va APARTE de lo entregado, no restandolo. Es dinero nuestro que
     // se le presta: sube lo que debe sin tocar lo que ha traido. Metido dentro
     // de `recaudado` la ficha ensenaria "entregado 300" a quien entrego 500 y se
     // llevo 200 de suelto, que es mentira por los dos lados.
     q.cambio = +vivos.filter(m => m.tipo === 'cambio').reduce((a, m) => a + m.importe, 0).toFixed(2);
-    q.recaudado = +(q.presencial + q.nomina - q.entrega).toFixed(2);
+    q.recaudado = +(q.presencial + q.nomina + q.transferencia - q.entrega).toFixed(2);
     acumulado = +(acumulado + q.deuda + q.cambio - q.recaudado).toFixed(2);
     q.saldo = acumulado;
   });
@@ -588,11 +610,40 @@ async function candidatos() {
 
 // ── ESCRITURA ──────────────────────────────────────────────────────────────
 /**
+ * ¿Ya hay una transferencia VIVA con ese ID? Se compara sin mayúsculas ni
+ * espacios, como el índice único de db/208: «ES12 34» y «es1234» son la misma.
+ */
+const sinEspacios = s => String(s || '').replace(/\s+/g, '').toUpperCase();
+async function transferenciaConId(referencia) {
+  const r = await db.consulta(
+    `SELECT m.id, m.fecha, m.importe,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor
+       FROM recaudacion_movimiento m
+       LEFT JOIN conductor c ON c.id = m.conductor_id
+      WHERE m.tipo = 'transferencia' AND m.anulado_at IS NULL
+        AND upper(regexp_replace(m.referencia, '[[:space:]]', '', 'g')) = $1
+      LIMIT 1`, [sinEspacios(referencia)]);
+  return r.rows[0] || null;
+}
+
+/** ¿Está aplicada db/208? Sin su columna no se puede guardar el ID. */
+async function hayReferencia() {
+  const r = await db.consulta(
+    `SELECT 1 FROM pg_attribute
+      WHERE attrelid = to_regclass('recaudacion_movimiento') AND attname = 'referencia' AND NOT attisdropped`);
+  return r.rows.length > 0;
+}
+
+/**
  * Apunta una entrega de dinero. `desglose` solo en lo presencial, y su recuento
  * tiene que CUADRAR con el importe: un recibo cuyo total no sale de sus billetes
  * es un recibo que alguien tendrá que explicar.
+ *
+ * Una TRANSFERENCIA lleva `referencia`, el ID de la transferencia: obligatorio,
+ * y una transferencia viva con ese mismo ID no deja apuntar otra. Lo vuelve a
+ * mirar la base (db/208), por si dos personas la apuntan a la vez.
  */
-async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion, usuarioId } = {}) {
+async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion, referencia, usuarioId } = {}) {
   const def = TIPO(tipo);
   if (!def) throw new Error('Ese tipo de movimiento no existe');
 
@@ -608,6 +659,22 @@ async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion
   }
   const dia = diaIso(fecha) || diaIso(new Date());
   if (dia > diaIso(new Date())) throw new Error('No se puede apuntar dinero con fecha futura');
+
+  let ref = null;
+  if (def.referencia) {
+    ref = String(referencia || '').trim().replace(/\s+/g, ' ');
+    if (!ref) throw new Error('Falta el ID de la transferencia: es obligatorio, y es lo que se busca en el extracto del banco.');
+    if (ref.length > 100) throw new Error('El ID de la transferencia es demasiado largo (100 caracteres como mucho).');
+    if (!(await hayReferencia())) {
+      throw new Error('Para apuntar transferencias falta aplicar la migración db/208 en /migraciones.');
+    }
+    const ya = await transferenciaConId(ref);
+    if (ya) {
+      throw new Error(`Esa transferencia (ID ${ref}) ya está apuntada: ${(Number(ya.importe)).toFixed(2).replace('.', ',')} € ` +
+        `a ${ya.conductor || 'otro conductor'} el ${String(diaIso(ya.fecha) || '').split('-').reverse().join('/')}. ` +
+        'Si aquella estaba mal, anúlala primero.');
+    }
+  }
 
   let centimos, limpio = null;
   if (def.cuenta) {
@@ -626,12 +693,26 @@ async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion
   }
   if (centimos <= 0) throw new Error('El importe tiene que ser mayor que cero');
 
-  const r = await db.consulta(
-    `INSERT INTO recaudacion_movimiento (conductor_id, fecha, tipo, importe, desglose, observacion, usuario_id)
-     VALUES ($1, $2::date, $3, $4, $5, $6, $7) RETURNING id`,
-    [id, dia, tipo, (centimos / 100).toFixed(2), limpio ? JSON.stringify(limpio) : null,
-      obs.slice(0, 255) || null, usuarioId || null]);
-  return { id: String(r.rows[0].id), importe: +(centimos / 100).toFixed(2), fecha: dia, tipo };
+  const valores = [id, dia, tipo, (centimos / 100).toFixed(2), limpio ? JSON.stringify(limpio) : null,
+    obs.slice(0, 255) || null, usuarioId || null];
+  let r;
+  try {
+    // La columna `referencia` solo se nombra si hay transferencia: así lo demás
+    // se sigue apuntando igual antes de aplicar db/208.
+    r = ref
+      ? await db.consulta(
+        `INSERT INTO recaudacion_movimiento (conductor_id, fecha, tipo, importe, desglose, observacion, usuario_id, referencia)
+         VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8) RETURNING id`, [...valores, ref])
+      : await db.consulta(
+        `INSERT INTO recaudacion_movimiento (conductor_id, fecha, tipo, importe, desglose, observacion, usuario_id)
+         VALUES ($1, $2::date, $3, $4, $5, $6, $7) RETURNING id`, valores);
+  } catch (e) {
+    // Dos personas apuntando la misma transferencia a la vez: la segunda la
+    // para el índice único de db/208.
+    if (e.code === '23505' && ref) throw new Error(`Esa transferencia (ID ${ref}) ya está apuntada.`);
+    throw e;
+  }
+  return { id: String(r.rows[0].id), importe: +(centimos / 100).toFixed(2), fecha: dia, tipo, referencia: ref };
 }
 
 /** Anula un movimiento. No se borra: el dinero deja rastro o no vale de nada. */
@@ -892,7 +973,7 @@ async function recalcularEstas(quincenas, { usuarioId } = {}) {
 }
 
 /**
- * ¿CUADRA TODO? Seis comprobaciones que pueden fallar de verdad.
+ * ¿CUADRA TODO? Diez comprobaciones que pueden fallar de verdad.
  *
  * No repite la misma cuenta dos veces para darse la razón: cada una compara
  * dos caminos independientes hasta el mismo número. Si los dos coinciden es
@@ -923,6 +1004,9 @@ async function comprobar() {
   mete('El cambio en la calle cuadra entre tabla y caja',
     casi(suma('cambio'), caja.cambio),
     `tabla ${suma('cambio')} € · caja ${caja.cambio} €`);
+  mete('Lo pagado por transferencia cuadra entre tabla y caja',
+    casi(suma('transferencia'), caja.transferencia),
+    `tabla ${suma('transferencia')} € · caja ${caja.transferencia} €`);
   mete('Lo que queda por recaudar cuadra entre tabla y caja',
     casi(suma('aRecaudar'), caja.pendiente),
     `tabla ${suma('aRecaudar')} € · caja ${caja.pendiente} €`);

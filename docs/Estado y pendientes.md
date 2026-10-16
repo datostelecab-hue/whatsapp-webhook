@@ -17,6 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## La baja programada y el contrato de Aaron (13/10/2026)
 
+- **Desplegar y aplicar `db/208`** (la transferencia en [[Administracion#La transferencia (16/10/2026, db/208)|Recaudación]]): sin ella todo sigue igual, pero el botón «Transferencia» contesta que falta la migración.
 - **Desplegar y aplicar `db/207`** (los días y las horas de vacaciones y permisos en la nómina congelada; la [[Nominas#La nómina base (16/10/2026)|nómina base]] ya funciona sin ella). Conviene antes de congelar la nómina de octubre: sin ella, lo congelado no explica qué parte de la diferencia salió de las vacaciones. `db/206` ya está aplicada.
 - **La nómina base no se congela todavía**: se calcula al bajar el Excel. Cuando se cierre el periodo del 26 al 25 habrá que decidir si se guarda como las variables.
 - **Desplegar y aplicar `db/205`** (las felicitaciones entre compañeros de oficina, con globos): sin ella todo sigue funcionando, pero el botón «Felicitar» contesta que falta la migración. Ver [[Cumpleanos#Felicitar a un compañero (15/10/2026, db/205)]]. `db/203` y `db/204` ya están aplicadas (15/10): que cada uno ponga su fecha de nacimiento en Configuración → Mi perfil.
