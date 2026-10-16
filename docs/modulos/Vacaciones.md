@@ -85,7 +85,20 @@ Por debajo: `PUT /vacaciones/api/conductor/:id/vacaciones/:filaId` → `vacacion
 
 Ensayado sobre copias temporales de los estados y los tickets reales (21 casos, entre ellos las vacaciones del ticket RH-20261016-10659, del 21/10 al 01/11, y las de la ficha 69, con dos «Activo» de fondo). Las reglas puras, en `scripts/comprobar-vacaciones-saldo.js`.
 
-Plantilla sigue pudiendo **corregir cualquier tramo** (también uno pasado, con la llave), porque es donde se arreglan los errores de verdad: unas fechas mal metidas que ya pasaron.
+**Y lo mismo en Plantilla** (16/10/2026, Camilo: *«Sí, bloquéalo también en Plantilla»*). Las dos puertas pasan por la misma regla, `services/vacacionesAFuturo.js`:
+
+- **Corregir** unas vacaciones en Plantilla: las mismas tres filas de la tabla de arriba.
+- **Borrar** unas vacaciones: solo las que **aún no han empezado**. Borrar unas empezadas es borrar días que ya pasaron; si vuelve antes, se adelanta la vuelta.
+- En la ficha de Plantilla, las vacaciones pasadas ya no tienen lápiz, y las empezadas no tienen papelera. El servidor lo vuelve a mirar.
+- **Solo las vacaciones**: una baja médica, un permiso o una suspensión se siguen corrigiendo y borrando como antes, porque el parte de una baja suele llegar después.
+
+Ensayado también por la puerta de Plantilla, sobre copias temporales (28 casos en total).
+
+## Solo plantilla propia (16/10/2026)
+
+Camilo: *«quita a la gente de la ETT, a ellos no les damos vacaciones»*. La lista y las fichas del módulo son **solo de plantilla propia** (136 personas ese día, de 223 con contrato abierto): a los de ETT las vacaciones se las da la agencia, y aquí no llevan saldo. Si alguien abre por enlace la ficha de uno de ETT, se le dice: *«… es de ETT: sus vacaciones se las da la agencia, no nosotros, así que aquí no lleva saldo»*. Ya no hay columna «Contrato» ni filtro Propia/ETT.
+
+Sus ausencias **se siguen poniendo en su ficha** de Plantilla (es lo que lo aparta del cuadrante); solo dejan de salir en este módulo.
 
 ## La llave
 

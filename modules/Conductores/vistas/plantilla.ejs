@@ -243,6 +243,13 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/ausencia`, 'POST', v));
   }
 
+  // Las vacaciones aprobadas solo se cambian a futuro (16/10/2026). El día de
+  // cada fecha, como lo pinta `fecha()`: en hora de aquí.
+  const diaLocal = v => { const d = new Date(v), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+  const hoyLocal = () => diaLocal(new Date());
+  const vacPasadas = f => !!f.hasta && diaLocal(f.hasta) < hoyLocal();
+  const vacEmpezadas = f => diaLocal(f.desde) <= hoyLocal();
+
   /**
    * CORRIGE una ausencia que ya está puesta. No es lo mismo que cambiar la
    * situación: aquella abre una nueva desde hoy y cierra la anterior —lo
@@ -262,8 +269,12 @@
     ].concat(fila.estado === 'permiso' ? [
       { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
         valor: fila.leave_type_code || 'OTRO', opciones: opcionesPermiso(), buscador: { tope: 20 }, ayuda: NOTA_PERMISO },
-    ] : []), { nota: 'Esto CORRIGE este tramo, no abre uno nuevo. Si lo que pasa es que vuelve antes de tiempo, '
-             + 'usa "Cambiar situación" y ponlo activo desde el día que vuelve.' });
+    ] : []), { nota: fila.estado === 'vacaciones'
+               ? (vacEmpezadas(fila)
+                  ? `Empezaron el ${fecha(fila.desde)}: ese día ya pasó y se queda. Solo se puede cambiar la vuelta (como pronto, hoy).`
+                  : 'Unas vacaciones aprobadas solo se mueven a días que aún no han llegado: como pronto, desde mañana.')
+               : 'Esto CORRIGE este tramo, no abre uno nuevo. Si lo que pasa es que vuelve antes de tiempo, '
+                 + 'usa "Cambiar situación" y ponlo activo desde el día que vuelve.' });
     if (!v) return;
     if (cat.fin_previsible && !v.hasta) {
       await Dialogo.aviso({ titulo: 'Falta la fecha de vuelta', tono: 'aviso',
@@ -1741,11 +1752,13 @@
             // lo que deja a alguien de vacaciones hasta fin de año, y quien lo
             // sabe es quien está mirando esta tabla.
             acciones: [
-              // Las de vacaciones, solo quien las aprueba (db/189).
+              // Las de vacaciones, solo quien las aprueba (db/189), y solo a
+              // futuro (16/10/2026): sin lápiz las que ya pasaron, sin papelera
+              // las que ya empezaron. El servidor lo vuelve a mirar.
               { icono: 'fa-pen', titulo: 'Corregir las fechas', onClick: editarAusencia,
-                visible: f => VAC.puede || f.estado !== 'vacaciones' },
+                visible: f => f.estado !== 'vacaciones' || (VAC.puede && !vacPasadas(f)) },
               { icono: 'fa-trash', titulo: 'Borrar (solo si se metió por error)', onClick: borrarAusencia,
-                visible: f => VAC.puede || f.estado !== 'vacaciones' },
+                visible: f => f.estado !== 'vacaciones' || (VAC.puede && !vacEmpezadas(f)) },
             ],
           },
         },

@@ -1,10 +1,13 @@
 # Vacaciones (`/vacaciones`)
 
-El saldo de vacaciones de cada persona con contrato abierto, y de dónde sale cada
+El saldo de vacaciones de cada persona de PLANTILLA PROPIA con contrato abierto
+(los de ETT, no: sus vacaciones se las da la agencia), y de dónde sale cada
 número. Poner o borrar unas vacaciones sigue siendo de Plantilla, con la llave de
 aprobar (una sola persona, db/189). CAMBIAR LAS FECHAS de unas ya aprobadas, solo
 lo que aún no ha llegado, se puede también desde aquí (16/10/2026), con la misma
 llave y sin soltarlas de su ticket, que apunta el cambio (`cambiarVacaciones`).
+La regla de «solo a futuro» vive en `services/vacacionesAFuturo.js` y la aplica
+también Plantilla al corregir o borrar unas vacaciones.
 
 ```
 vacaciones.controller.js   la pantalla y la API (/api/lista, /api/ficha/:id,

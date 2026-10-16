@@ -23,6 +23,11 @@
 // Lo programado (vacaciones y permisos de mañana en adelante) no toca el saldo
 // de hoy: se enseña aparte, con el saldo que quedará después.
 //
+// SOLO PLANTILLA PROPIA (16/10/2026, Camilo: «quita a la gente de la ETT, a
+// ellos no les damos vacaciones»). Las vacaciones de un conductor de ETT se las
+// da la agencia: aquí no lleva saldo. Sus ausencias se siguen poniendo en su
+// ficha (lo aparta del cuadrante), pero no salen en este módulo.
+//
 // CAMBIAR UNAS VACACIONES YA APROBADAS (16/10/2026, Camilo: «que se puedan
 // editar las vacaciones aprobadas pero solo a futuro, las que pasaron no, pero
 // siempre ligado todavía al ticket de requerimiento»). Ver `cambiarVacaciones`:
@@ -32,6 +37,7 @@
 const repo = require('./vacaciones.repo');
 const plantilla = require('../Conductores/plantilla.service');   // la puerta de las ausencias (y la llave de aprobar)
 const ticketera = require('../Ticketera/ticketera.service');      // la historia del ticket
+const aFuturo = require('../../services/vacacionesAFuturo');       // solo a futuro: la misma regla que Plantilla
 const nominas = require('../Nominas/nominas.service');   // la puerta de Nóminas: las horas de un día
 
 const TASA = 0.0821;
@@ -169,7 +175,12 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) throw new Error('Falta la persona');
   const { gente, festivos, porId } = await cargar({ id: n });
-  if (!gente.length) throw new Error('Esta persona no tiene un contrato abierto: no lleva saldo de vacaciones.');
+  if (!gente.length) {
+    const [ett] = await repo.personas({ id: n, conEtt: true });
+    throw new Error(ett
+      ? `${ett.nombre} es de ETT: sus vacaciones se las da la agencia, no nosotros, así que aquí no lleva saldo.`
+      : 'Esta persona no tiene un contrato abierto: no lleva saldo de vacaciones.');
+  }
   const p = gente[0];
   const x = porId.get(p.id);
   return {
@@ -183,37 +194,9 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
 
 const ddmmaaaa = d => String(d || '').split('-').reverse().join('/');
 
-/**
- * LO QUE SE PUEDE CAMBIAR DE UNAS VACACIONES, a fecha `hoy`. Pura: devuelve las
- * fechas nuevas o lanza con el porqué.
- *
- *   · Las que ya pasaron enteras (terminaron antes de hoy) no se tocan.
- *   · Las empezadas (desde hoy o antes): el primer día se queda, porque ya pasó;
- *     la vuelta se puede adelantar —como pronto, que terminen hoy— o retrasar.
- *   · Las que aún no han empezado: las dos fechas, a partir de mañana.
- *
- * Hoy cuenta como pasado: es un día que ya se está viviendo.
- */
-function validarCambio(t, { desde, hasta }, hoy) {
-  if (!t.hasta) throw new Error('Estas vacaciones no tienen fecha de vuelta: corrígelas en Plantilla.');
-  if (t.hasta < hoy) {
-    throw new Error(`Estas vacaciones ya pasaron (del ${ddmmaaaa(t.desde)} al ${ddmmaaaa(t.hasta)}): no se pueden cambiar.`);
-  }
-  const manana = mas(hoy, 1);
-  const iso = /^\d{4}-\d{2}-\d{2}$/;
-  const nd = desde || t.desde, nh = hasta || t.hasta;
-  if (!iso.test(nd) || !iso.test(nh)) throw new Error('Faltan las fechas');
-  if (t.desde <= hoy) {
-    if (nd !== t.desde) {
-      throw new Error(`Ya empezaron el ${ddmmaaaa(t.desde)}: el primer día no se puede mover. Sí se puede cambiar la vuelta.`);
-    }
-    if (nh < hoy) throw new Error('Como pronto pueden terminar hoy: lo de antes ya pasó y no se cambia.');
-  } else if (nd < manana) {
-    throw new Error(`Solo se pueden mover a días que aún no han llegado: como pronto, desde mañana (${ddmmaaaa(manana)}).`);
-  }
-  if (nh < nd) throw new Error('La vuelta no puede ser antes que el primer día');
-  return { desde: nd, hasta: nh };
-}
+// Lo que se puede cambiar de unas vacaciones (solo a futuro) vive en
+// services/vacacionesAFuturo.js: la misma regla la aplica Plantilla.
+const validarCambio = aFuturo.validarCambio;
 
 /**
  * CAMBIA UNAS VACACIONES YA APROBADAS (16/10/2026). Solo lo que aún no ha

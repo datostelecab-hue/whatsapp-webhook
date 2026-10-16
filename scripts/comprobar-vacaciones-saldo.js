@@ -125,6 +125,12 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
   igual('Las que terminan hoy aún se pueden alargar', prueba({ desde: '2026-10-10', hasta: HOY }, { hasta: '2026-10-16' }),
     { desde: '2026-10-10', hasta: '2026-10-16' });
   igual('La vuelta no antes que el primer día', /no puede ser antes/.test(prueba(fut, { desde: '2026-10-22', hasta: '2026-10-21' })), true);
+  // Borrar (Plantilla): solo las que aún no han empezado
+  const borra = t => { try { require('../services/vacacionesAFuturo').validarBorrado(t, HOY); return 'se borra'; } catch (e) { return e.message; } };
+  igual('Borrar: las futuras sí', borra(fut), 'se borra');
+  igual('Borrar: las empezadas no', /ya empezaron el 12\/10\/2026/.test(borra(emp)), true);
+  igual('Borrar: las de hoy tampoco', /ya empezaron/.test(borra({ desde: HOY, hasta: '2026-10-20' })), true);
+  igual('Borrar: las pasadas no', /ya pasaron/.test(borra({ desde: '2026-10-01', hasta: '2026-10-05' })), true);
   const conTicket = saldoDe({ alta: '2026-01-01' },
     [{ ...vac('2026-10-12', '2026-10-18'), ticket_id: '5', ticket_codigo: 'RH-1' }, vac('2026-10-01', '2026-10-05')], cal, H({}), HOY);
   igual('La ficha dice cuáles se pueden cambiar y de qué ticket salieron',

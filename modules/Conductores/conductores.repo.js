@@ -1033,6 +1033,14 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso },
   });
 }
 
+/** Un tramo del historial con sus fechas en 'AAAA-MM-DD' (o null si no es de esta persona). */
+async function ausenciaDe(id, filaId) {
+  const r = await db.consulta(
+    `SELECT estado, to_char(desde, 'YYYY-MM-DD') AS desde, to_char(hasta, 'YYYY-MM-DD') AS hasta
+       FROM conductor_estado_hist WHERE id = $1 AND conductor_id = $2`, [filaId, id]);
+  return r.rows[0] || null;
+}
+
 /** De qué es un tramo del historial de situaciones (o null si no es de esta persona). */
 async function situacionDe(id, filaId) {
   const r = await db.consulta(
@@ -1991,7 +1999,7 @@ module.exports = {
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe, tiposPermiso,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe, ausenciaDe, tiposPermiso,
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,

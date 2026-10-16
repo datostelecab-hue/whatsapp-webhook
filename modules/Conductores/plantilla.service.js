@@ -292,6 +292,7 @@ async function actualizar(id, datos = {}, quien = {}) {
 // («Cambiar situación» → Activo) sí lo puede apuntar cualquiera: es un hecho,
 // no una aprobación.
 const aprobarVac = require('../../services/aprobarVacaciones');
+const aFuturo = require('../../services/vacacionesAFuturo');
 const codigo = x => String(x && typeof x === 'object' ? x.valor : (x || ''));
 const sonVacaciones = x => codigo(x) === aprobarVac.ESTADO;
 const vacacionesParaLaPantalla = quien => aprobarVac.paraLaPantalla((quien || {}).usuarioId);
@@ -318,15 +319,24 @@ const anadirAusencia = async (id, datos, quien) => {
  * situación: esa abre un tramo nuevo desde una fecha; estas dos tocan la fila
  * que ya hay, que es lo que hace falta cuando lo que se metió está mal.
  */
-const exigirSiSonVacaciones = async (id, filaId, quien) => {
-  if (sonVacaciones(await con.situacionDe(Number(id), Number(filaId)))) await aprobarVac.exigir((quien || {}).usuarioId);
+// Las de VACACIONES, además, solo a futuro (16/10/2026, Camilo: «Sí,
+// bloquéalo también en Plantilla»): las que pasaron no se corrigen, de las
+// empezadas solo la vuelta, y solo se borran las que aún no han empezado. La
+// misma regla que en Vacaciones (services/vacacionesAFuturo.js).
+const vacacionesDe = async (id, filaId, quien) => {
+  const t = await con.ausenciaDe(Number(id), Number(filaId));
+  if (!t || !sonVacaciones(t.estado)) return null;
+  await aprobarVac.exigir((quien || {}).usuarioId);
+  return t;
 };
 const editarAusencia = async (id, filaId, datos, quien) => {
-  await exigirSiSonVacaciones(id, filaId, quien);
+  const t = await vacacionesDe(id, filaId, quien);
+  if (t) aFuturo.validarCambio(t, { desde: (datos || {}).desde, hasta: (datos || {}).hasta });
   return con.editarAusencia(Number(id), Number(filaId), datos, quien);
 };
 const borrarAusencia = async (id, filaId, quien) => {
-  await exigirSiSonVacaciones(id, filaId, quien);
+  const t = await vacacionesDe(id, filaId, quien);
+  if (t) aFuturo.validarBorrado(t);
   return con.borrarAusencia(Number(id), Number(filaId), quien);
 };
 

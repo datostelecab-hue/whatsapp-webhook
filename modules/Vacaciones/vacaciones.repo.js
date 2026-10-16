@@ -9,8 +9,13 @@ const db = require('../../services/db');
 
 const ESTADOS = ['vacaciones', 'permiso', 'suspendido', 'suspension_permiso'];
 
-/** Quien tiene el contrato abierto (o una persona, con `id`). */
-async function personas({ id = null } = {}) {
+/**
+ * Quien tiene el contrato abierto (o una persona, con `id`). Solo plantilla
+ * PROPIA (16/10/2026, Camilo: «quita a la gente de la ETT, a ellos no les damos
+ * vacaciones»); con `conEtt`, también los de ETT, para poder decirle a quien
+ * abre la ficha de uno por qué no tiene saldo.
+ */
+async function personas({ id = null, conEtt = false } = {}) {
   const r = await db.consulta(
     `SELECT c.id::text AS id,
             btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
@@ -21,7 +26,8 @@ async function personas({ id = null } = {}) {
        JOIN conductor c ON c.id = e.conductor_id
       WHERE e.baja IS NULL AND NOT c.es_centinela
         AND ($1::bigint IS NULL OR c.id = $1::bigint)
-      ORDER BY lower(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')))`, [id]);
+        AND ($2::boolean OR e.tipo = 'propia')
+      ORDER BY lower(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')))`, [id, !!conEtt]);
   return r.rows;
 }
 

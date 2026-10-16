@@ -44,17 +44,18 @@
     icono: 'fa-umbrella-beach',
     origen: '/vacaciones/api/lista',
     clave: 'id',
-    vacio: 'No hay nadie con contrato abierto.',
+    vacio: 'No hay nadie de plantilla propia con contrato abierto.',
     buscar: { campos: ['nombre', 'dni'] },
 
-    subtitulo: (visibles, todas) => `${visibles.length} de ${todas.length} personas con contrato abierto · saldo a hoy`,
+    // Solo plantilla propia (16/10/2026): a los de ETT las vacaciones se las da la agencia.
+    subtitulo: (visibles, todas) => `${visibles.length} de ${todas.length} personas de plantilla propia con contrato abierto · saldo a hoy`,
 
     kpis: filas => {
       const pendientes = filas.reduce((s, x) => s + Math.max(0, x.saldo), 0);
       const negativos = filas.filter(x => x.saldo < 0).length;
       const hoy = filas.filter(x => x.deVacacionesHasta).length;
       return [
-        { etiqueta: 'Personas', valor: filas.length, pie: 'con contrato abierto' },
+        { etiqueta: 'Personas', valor: filas.length, pie: 'de plantilla propia' },
         { etiqueta: 'Días por disfrutar', valor: num(pendientes, 0), pie: 'suma de los saldos a favor',
           ayuda: 'Lo que la empresa debe en vacaciones a día de hoy, sumando a todos los que tienen saldo a favor.' },
         { etiqueta: 'En negativo', valor: negativos, tono: negativos ? 'red' : 'text', pie: 'han disfrutado más de lo generado',
@@ -75,9 +76,6 @@
           { valor: 'hoy', texto: 'De vacaciones hoy' },
         ],
         pasa: (x, v) => (v === 'negativo' ? x.saldo < 0 : v === 'mas30' ? x.saldo > 30 : v === 'hoy' ? !!x.deVacacionesHasta : true) },
-      { id: 'contrato', textoTodos: 'Cualquier contrato', opciones: [
-          { valor: 'propia', texto: 'Propia' }, { valor: 'ett', texto: 'ETT' }],
-        pasa: (x, v) => x.tipo === v },
     ],
 
     columnas: [
@@ -90,8 +88,6 @@
                 ? `<span class="text-xs text-telecab-muted tabular-nums" title="Lo que le quedará cuando pasen las vacaciones y permisos ya puestos en su ficha.">→ ${conSigno(x.saldoTras)} tras lo programado</span>` : ''}${
               x.deVacacionesHasta ? etiqueta('De vacaciones hasta el ' + fc(x.deVacacionesHasta), 'green') : ''}</p>
           </div>` },
-      { titulo: 'Contrato', campo: 'contrato', clase: 'whitespace-nowrap text-sm',
-        pinta: (v, x) => (x.tipo === 'ett' ? etiqueta('ETT', 'muted') : '<span class="text-telecab-muted">Propia</span>') },
       { titulo: 'Desde', campo: 'inicio', clase: 'whitespace-nowrap tabular-nums text-sm',
         ayuda: `Desde cuándo se le calcula: su alta, o el ${f(R.desde)} si entró antes (el histórico de vacaciones empieza ahí).`,
         pinta: (v, x) => `${f(v)}${x.desdeElAlta ? '' : '<span class="block text-[11px] text-telecab-muted">alta ' + f(x.alta) + '</span>'}` },
