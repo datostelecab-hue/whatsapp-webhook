@@ -125,6 +125,35 @@
 //    nomina y lo que se congela son solo de plantilla propia, que es lo que
 //    se paga por nomina.
 //
+// 7. LAS VACACIONES Y LOS PERMISOS CUENTAN PARA EL OBJETIVO (16/10/2026).
+//    Camilo: «las vacaciones cuentan, pero como día natural porque coge también
+//    días de libranza y así está bien, entonces cada día de vacaciones se
+//    calculan como el 73 % de 8 horas para hacer la regla de 3 y así les suba
+//    las horas para alcanzar el target». Cada día de vacaciones suma
+//    8 × 0,73 = 5,84 h, y cada día de PERMISO RETRIBUIDO 8 h enteras. Entran en
+//    la diferencia igual que las J. Salen de los tramos de estado del conductor
+//    (los de Vacaciones); la suspensión, el permiso sin sueldo y la baja médica
+//    no suman.
+//
+// 8. LA NÓMINA BASE (16/10/2026). La nómina de un mes = SALARIO BASE BRUTO +
+//    las variables de este fichero. La base va A MES CORRIENTE y con CORTE EL 26:
+//    la de octubre, del 26 de septiembre al 25 de octubre; las variables siguen
+//    a mes vencido (la de octubre, septiembre del 1 al 30). Mientras el periodo
+//    no ha cerrado, va hasta AYER.
+//
+//      horas base = viaje + espera − espera quitada (el mismo recorte 75/85)
+//                   + horas de las J + vacaciones × 5,84 + permisos × 8
+//      importe    = horas base × € hora base (8,16)
+//      BASE BRUTA = el importe, con TOPE en el salario base de su jornada
+//                   (40 h → 1.443 €, 32 h → 1.154 €; otra, por regla de tres),
+//                   prorrateado por los días de contrato del periodo
+//
+//    Camilo: «si se pasa de ahí significa que tiene su salario base asegurado,
+//    lo que se pasó se paga en las variables de MBO o FAS o de horas. Si no
+//    llegan significa que, a parte de que se va a descontar de una vez, solo
+//    tendrán variables de propinas, peajes, etc.». Por eso el tope: la base
+//    nunca paga horas de más, eso es cosa del MBO.
+//
 // ── LO QUE SE GUARDA ────────────────────────────────────────────────────────
 // Solo el resultado CONGELADO. No hay "snapshot de datos crudos" como en las
 // hojas: allí hacía falta porque volver a bajar de BOLT tardaba minutos, aquí
@@ -137,12 +166,15 @@ const repo = require('./nominas.repo');
 // los valores verificados contra junio; se cambian desde el panel y lo que se
 // guarde en `nomina_config` manda sobre ellos.
 const DEFAULTS = {
-  // Sueldo base y umbral FAS son DISTINTOS por jornada (40h vs 32h). Los de 32h
-  // arrancan igual que los de 40h para no cambiar nada hasta poner los reales.
-  sueldoBase40: 1445, sueldoBase32: 1445,   // informativos (no entran en el total, como en el Excel)
-  horasMetaDia: 8,      // cuántas horas hacen un "día extra" (solo esa columna). Hasta
-                        // el 16/10/2026 era también lo que valía una J; ya no: cada J
-                        // vale sus horas (regla 3). No es el objetivo del mes.
+  // LA NÓMINA BASE (regla 8, 16/10/2026). El sueldo base era informativo; desde
+  // ese día es el TOPE de la base de cada jornada.
+  eurHoraBase: 8.16,    // € por hora de la base
+  sueldoBase40: 1443, sueldoBase32: 1154,   // tope de la base con 40 h y con 32 h (otra jornada, por regla de tres)
+  horasMetaDia: 8,      // lo que vale un día de PERMISO retribuido, la base del de vacaciones
+                        // y cuántas horas hacen un "día extra". Hasta el 16/10/2026 era
+                        // también lo que valía una J; ya no: cada J vale sus horas (regla 3).
+  pctDiaVacaciones: 0.73,  // un día de vacaciones vale este tanto de un día (8 × 0,73 = 5,84 h):
+                           // cuentan por día NATURAL, libranzas incluidas (regla 7)
   horasMetaMes40: 172,  // EL OBJETIVO DEL MES para una jornada de 40 h. El de
                         // cualquier otra jornada sale de aquí por regla de tres
                         // (32 h → 172 × 32/40 = 137,6), y se prorratea por los
@@ -171,8 +203,11 @@ const DEFAULTS = {
 
 // Orden y etiquetas para el panel. `usado` = si afecta al total (el resto son informativos).
 const CONFIG_CAMPOS = [
-  { key: 'sueldoBase40', label: 'Sueldo base 40h (€)', usado: false },
-  { key: 'sueldoBase32', label: 'Sueldo base 32h (€)', usado: false },
+  { key: 'eurHoraBase', label: '€ hora base (nómina base)', usado: true },
+  { key: 'sueldoBase40', label: 'Tope del salario base, 40 h (€)', usado: true },
+  { key: 'sueldoBase32', label: 'Tope del salario base, 32 h (€)', usado: true },
+  { key: 'horasMetaDia', label: 'Horas de un día de permiso retribuido', usado: true },
+  { key: 'pctDiaVacaciones', label: 'Día de vacaciones: lo que vale de un día (0.73 = 73 %)', usado: true },
   { key: 'horasMetaMes40', label: 'Objetivo del mes con jornada de 40 h', usado: true },
   { key: 'eurHoraExtra', label: '€ por hora extra', usado: true },
   { key: 'utilUmbral', label: 'Utilización con la que no se quitan horas (0.75 = 75 %)', usado: true },
@@ -182,7 +217,6 @@ const CONFIG_CAMPOS = [
   { key: 'pctMBOFAS', label: '% MBO FAS (fracción, 0.4 = 40%)', usado: true },
   { key: 'eurHoraNoc', label: '€ hora nocturna', usado: true },
   { key: 'factorNoc', label: 'Factor nocturnas', usado: true },
-  { key: 'horasMetaDia', label: 'Horas que hacen un «día extra» (solo esa columna)', usado: false },
   { key: 'ettEurHora', label: 'ETT · € por hora trabajada', usado: false },
   { key: 'ettPlusNocturno', label: 'ETT · € por hora nocturna (plus)', usado: false },
 ];
@@ -268,6 +302,31 @@ const jornadaDe = h => {
  */
 const objetivoDe = (jornada, cfg) => cfg.horasMetaMes40 * (jornada / 40);
 
+/**
+ * LAS HORAS DE ESPERA QUE SE QUITAN por utilización (regla 4). Quien llega al
+ * umbral (75 %) no pierde nada; a quien no llega se le retiran horas de ESPERA
+ * hasta dejarlo en la exigida (85 %). El viaje no se toca nunca, y la propia
+ * fórmula lo garantiza: X no puede pasar de la espera que tuvo. La usan las
+ * variables (el mes de trabajo) y la base (del 26 al 25), cada una con su
+ * periodo.
+ */
+function esperaQuitada(viajeH, esperaH, horasH, cfg) {
+  const viaje = viajeH || 0, espera = esperaH || 0;
+  const efectivas = viaje + espera;
+  if (!(cfg.utilExigida > 0 && cfg.utilExigida < 1 && efectivas > 0 && viaje < cfg.utilUmbral * efectivas)) return 0;
+  // Con el umbral por encima de la exigida (una config al reves) la cuenta
+  // saldria negativa: entonces no se quita nada.
+  const x = Math.max(0, efectivas - viaje / cfg.utilExigida);
+  // Cinturon: `horasH` es el total con los solapes FUNDIDOS y `efectivas` es
+  // la suma de los dos por separado, asi que si alguien tiene dos cuentas
+  // pisandose en situaciones distintas pueden diferir por unos minutos. El
+  // recorte no puede dejar a nadie en negativo.
+  return Math.min(x, Math.max(0, espera), horasH || 0);
+}
+
+/** Lo que vale un día de vacaciones: 8 × 0,73 = 5,84 h (regla 7). */
+const horasDiaVacaciones = cfg => cfg.horasMetaDia * cfg.pctDiaVacaciones;
+
 // ── El cálculo de UNA persona ───────────────────────────────────────────────
 // Es la cadena del .gs, intacta. Si algo de aquí cambia, cambia lo que cobra
 // la gente: no se toca sin rehacer la comprobación contra un mes ya pagado.
@@ -298,28 +357,22 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   const horasJustificadas = jus.reduce((a, d) => a + horasDeJ(d), 0);
   const jSinHoras = jus.filter(d => !(horasDeJ(d) > 0)).length;
 
-  // ── El recorte por utilizacion ───────────────────────────────────────────
-  // Quien llega al umbral (75 %) no pierde nada; a quien no llega se le
-  // retiran horas de ESPERA hasta dejarlo en la exigida (85 %). Ver la regla 4
-  // de la cabecera. El viaje no se toca nunca, y la propia formula lo
-  // garantiza: X no puede pasar de la espera que tuvo.
+  // ── El recorte por utilizacion (regla 4) ─────────────────────────────────
   const viaje = c.viajeH || 0, espera = c.esperaH || 0;
-  const efectivas = viaje + espera;
-  let horasEsperaQuitadas = 0;
-  if (cfg.utilExigida > 0 && cfg.utilExigida < 1 && efectivas > 0 && viaje < cfg.utilUmbral * efectivas) {
-    // Con el umbral por encima de la exigida (una config al reves) la cuenta
-    // saldria negativa: entonces no se quita nada.
-    horasEsperaQuitadas = Math.max(0, efectivas - viaje / cfg.utilExigida);
-    // Cinturon: `c.horas` es el total con los solapes FUNDIDOS y `efectivas` es
-    // la suma de los dos por separado, asi que si alguien tiene dos cuentas
-    // pisandose en situaciones distintas pueden diferir por unos minutos. El
-    // recorte no puede dejar a nadie en negativo.
-    horasEsperaQuitadas = Math.min(horasEsperaQuitadas, Math.max(0, espera), c.horas);
-  }
+  const horasEsperaQuitadas = esperaQuitada(viaje, espera, c.horas, cfg);
 
-  // LA DIFERENCIA SE MIDE CON LAS J DENTRO. Un dia justificado cuenta con las
-  // horas que se le reconocieron, asi que no le resta a nadie sus horas extra.
-  const horasComputadas = c.horas - horasEsperaQuitadas + horasJustificadas;
+  // ── Vacaciones y permisos retribuidos (regla 7) ──────────────────────────
+  // Por día natural, y solo los de su ventana: desde el arranque y hasta su baja.
+  const enSuVentana = iso => Number(String(iso).slice(8, 10)) >= primerDia && (!c.baja || iso <= c.baja);
+  const diasVacaciones = (c.vacDias || []).filter(enSuVentana).length;
+  const diasPermiso = (c.permDias || []).filter(enSuVentana).length;
+  const horasVacaciones = diasVacaciones * horasDiaVacaciones(cfg);
+  const horasPermiso = diasPermiso * cfg.horasMetaDia;
+
+  // LA DIFERENCIA SE MIDE CON LAS J, LAS VACACIONES Y LOS PERMISOS DENTRO. Un
+  // dia justificado o de vacaciones cuenta con las horas que se le reconocen,
+  // asi que no le resta a nadie sus horas extra.
+  const horasComputadas = c.horas - horasEsperaQuitadas + horasJustificadas + horasVacaciones + horasPermiso;
   const delta = horasComputadas - hsTgt;
 
   // Las dos caras de la misma cifra: lo que sobra es `delta`, y lo que falta es
@@ -369,6 +422,11 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     // J aprobadas a las que nadie puso horas: no suman. No se congela; solo
     // alimenta el aviso del panel.
     jSinHoras,
+    // Lo que suman para el objetivo las vacaciones y los permisos (regla 7).
+    diasVacaciones,
+    horasVacaciones: r2(horasVacaciones),
+    diasPermiso,
+    horasPermiso: r2(horasPermiso),
     horasObjetivo: r2(hsTgt),
     deltaHoras: r2(delta),
     utilPct: c.utilPct != null ? r2(c.utilPct) : null,
@@ -406,23 +464,32 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   const desde = `${anoD}-${pad(mesD)}-01`;
   const hasta = `${anoD}-${pad(mesD)}-${pad(diasDelMes)}`;
 
-  const [horas, dinero, fichas, justificantes] = await Promise.all([
+  const [horas, dinero, fichas, justificantes, ausencias] = await Promise.all([
     repo.horasDelMes(desde, hasta),
     repo.dineroDelMes(desde, hasta),
     repo.fichasDelMes(hasta),
     repo.justificantesDelMes(desde, hasta),
+    repo.ausenciasDelPeriodo(desde, hasta),
   ]);
 
-  // Entra quien TRABAJÓ ese mes. El dinero sin horas no hace nómina variable:
-  // son pedidos de alguien que ya no aparece en los tramos (una cuenta sin
-  // enlazar), y meterlo daría un objetivo de horas contra cero horas hechas.
-  const gente = [];
-  horas.forEach((h, cid) => {
+  // Entra quien TRABAJÓ ese mes, y también quien no rodó nada pero tiene J
+  // aprobadas o días de vacaciones o de permiso: sin eso, el mes entero de
+  // quien estuvo de baja con todo justificado, o de vacaciones, se perdía (ni
+  // horas, ni justificadas, ni fila). El dinero sin horas no hace nómina
+  // variable: son pedidos de alguien que ya no aparece en los tramos (una
+  // cuenta sin enlazar), y meterlo daría un objetivo contra cero horas hechas.
+  const ids = new Set(horas.keys());
+  justificantes.forEach((j, cid) => { if (j.aprobados.length) ids.add(cid); });
+  ausencias.forEach((a, cid) => ids.add(cid));
+  const diaDe = iso => Number(String(iso).slice(8, 10));
+  const gente = [...ids].map(cid => {
+    const h = horas.get(cid);
     const f = fichas.get(cid) || {};
     const d = dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
-    const efectivos = h.viajeSeg + h.esperaSeg;
-    const j = justificantes.get(cid) || { aprobados: [], pendientes: 0 };
-    gente.push({
+    const j = justificantes.get(cid) || { aprobados: [], horas: new Map(), pendientes: 0 };
+    const a = ausencias.get(cid) || { vacaciones: [], permiso: [] };
+    const efectivos = h ? h.viajeSeg + h.esperaSeg : 0;
+    return {
       conductorId: cid,
       nombre: f.nombre || `#${cid}`,
       nombreBolt: f.nombreBolt || '',
@@ -433,49 +500,20 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       jornada: f.jornada,
       alta: f.alta || '',
       baja: f.baja || '',
-      primerDia: h.primerDia,
-      horas: h.horasSeg / 3600,
-      viajeH: h.viajeSeg / 3600,
-      esperaH: h.esperaSeg / 3600,
+      // Solo se usa sin fecha de alta (el criterio viejo): el primer día con algo.
+      primerDia: h ? h.primerDia : Math.min(...j.aprobados, ...a.vacaciones.map(diaDe), ...a.permiso.map(diaDe)),
+      horas: h ? h.horasSeg / 3600 : 0,
+      viajeH: h ? h.viajeSeg / 3600 : 0,
+      esperaH: h ? h.esperaSeg / 3600 : 0,
       jDias: j.aprobados,
       jHoras: j.horas,
       jPendientes: j.pendientes,
-      nocturnasH: h.nocSeg / 3600,
+      vacDias: a.vacaciones,
+      permDias: a.permiso,
+      nocturnasH: h ? h.nocSeg / 3600 : 0,
       utilPct: efectivos > 0 ? (h.viajeSeg / efectivos) * 100 : null,
       neto: d.neto, propinas: d.propinas, peajes: d.peajes,
-    });
-  });
-
-  // QUIEN NO RODO NADA PERO TIENE J. No sale de `horas` —ahi solo esta quien
-  // tiene tramos—, y sin esto el mes entero de quien estuvo de baja con todo
-  // justificado se perdia: ni horas, ni justificadas, ni fila. Entra con cero
-  // horas de BOLT y sus J, que es exactamente lo que paso.
-  justificantes.forEach((j, cid) => {
-    if (horas.has(cid) || !j.aprobados.length) return;
-    const f = fichas.get(cid) || {};
-    const d = dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
-    gente.push({
-      conductorId: cid,
-      nombre: f.nombre || `#${cid}`,
-      nombreBolt: f.nombreBolt || '',
-      nombreSS: f.nombreSS || '',
-      nombreSSEnForma: f.nombreSSEnForma !== false,
-      dni: f.dni || '',
-      ett: !!f.ett,
-      jornada: f.jornada,
-      alta: f.alta || '',
-      baja: f.baja || '',
-      primerDia: Math.min(...j.aprobados),
-      horas: 0,
-      viajeH: 0,
-      esperaH: 0,
-      jDias: j.aprobados,
-      jHoras: j.horas,
-      jPendientes: j.pendientes,
-      nocturnasH: 0,
-      utilPct: null,
-      neto: d.neto, propinas: d.propinas, peajes: d.peajes,
-    });
+    };
   });
 
   // Quien entró DESPUÉS del mes de trabajo (p. ej. alta en julio para la nómina
@@ -503,9 +541,10 @@ async function calcular(mesNom, anoNom, opciones = {}) {
     t.diasExtra += f.diasExtra; t.total += f.total;
     t.horasJustificadas += f.horasJustificadas; t.horasNoJustificadas += f.horasNoJustificadas;
     t.horasEsperaQuitadas += f.horasEsperaQuitadas;
+    t.horasVacaciones += f.horasVacaciones; t.horasPermiso += f.horasPermiso;
     return t;
   }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0,
-       horasJustificadas: 0, horasNoJustificadas: 0, horasEsperaQuitadas: 0 });
+       horasJustificadas: 0, horasNoJustificadas: 0, horasEsperaQuitadas: 0, horasVacaciones: 0, horasPermiso: 0 });
   Object.keys(totales).forEach(k => { totales[k] = r2(totales[k]); });
 
   // ¿El mes de trabajo aún no terminó? → datos incompletos (aún no toca esa nómina).
@@ -541,13 +580,17 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       conJ: filas.filter(f => f.diasJustificados > 0).length,
       // J aprobadas sin horas puestas: no suman nada (regla 3).
       jSinHoras: filas.reduce((a, f) => a + (f.jSinHoras || 0), 0),
+      // Con vacaciones o permisos que suman para el objetivo (regla 7).
+      conVacaciones: filas.filter(f => f.diasVacaciones > 0).length,
+      conPermiso: filas.filter(f => f.diasPermiso > 0).length,
       // Los de ETT, que no salen aquí: van en su parte.
       ett: filasETT.length,
       // A quien no llegaba al umbral de utilizacion y se le ha recortado espera.
       conRecorte: filas.filter(f => f.horasEsperaQuitadas > 0).length,
       // Y, de esos, a quien el recorte le ha quitado las horas extra que tenia.
       recortadosSinExtra: filas.filter(f =>
-        f.horasEsperaQuitadas > 0 && f.horas + f.horasJustificadas > f.horasObjetivo
+        f.horasEsperaQuitadas > 0
+        && f.horas + f.horasJustificadas + f.horasVacaciones + f.horasPermiso > f.horasObjetivo
         && f.deltaHoras <= 0).length,
       // Quien sigue debiendo horas despues de contarle todo lo justificado.
       conHorasSinJustificar: filas.filter(f => f.horasNoJustificadas > 0).length,
@@ -560,6 +603,173 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       // Con horas pero alta POSTERIOR al mes: fuera de esta nómina (revisar la fecha).
       excluidos: fuera,
       sinSellar,
+    },
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LA NÓMINA BASE (regla 8, 16/10/2026)
+// ════════════════════════════════════════════════════════════════════════════
+
+/** El día en que empieza el periodo de la base: del 26 del mes anterior al 25. */
+const DIA_CORTE = 26;
+
+// Fechas AAAA-MM-DD sin zona horaria: se cuentan en UTC a medianoche, así que
+// pasar a Date y volver no mueve el día (el fallo de toISOString es leer un
+// DATE de PostgreSQL en hora de Madrid, que aquí no se hace).
+const msDe = iso => { const [y, m, d] = String(iso).split('-').map(Number); return Date.UTC(y, m - 1, d); };
+const isoDe = ms => new Date(ms).toISOString().slice(0, 10);
+const masDias = (iso, n) => isoDe(msDe(iso) + n * 86400000);
+const diasEntre = (a, b) => Math.round((msDe(b) - msDe(a)) / 86400000) + 1;   // los dos incluidos
+
+/**
+ * El periodo de la base de la nómina de un mes (el de PAGO): del 26 del mes
+ * anterior al 25 de ese mes. Mientras no ha cerrado, va hasta AYER (hoy aún no
+ * ha terminado).
+ */
+function ventanaBase(mes, ano, hoyIso) {
+  const ant = mesVencido(mes, ano);
+  const desde = `${ant.ano}-${pad(ant.mes)}-${pad(DIA_CORTE)}`;
+  const cierre = `${ano}-${pad(mes)}-${pad(DIA_CORTE - 1)}`;
+  const ayer = masDias(hoyIso, -1);
+  const hasta = ayer < cierre ? ayer : cierre;
+  return {
+    desde, cierre, hasta,
+    diasPeriodo: diasEntre(desde, cierre),
+    diasHastaAhora: hasta < desde ? 0 : diasEntre(desde, hasta),
+    enCurso: hasta < cierre,
+    sinEmpezar: hasta < desde,
+  };
+}
+
+/** El salario base de su jornada, que es el TOPE de la base. 40 y 32 h, de la config; otra, por regla de tres. */
+const topeDe = (jornada, cfg) => (jornada === 40 ? cfg.sueldoBase40
+  : jornada === 32 ? cfg.sueldoBase32 : cfg.sueldoBase40 * (jornada / 40));
+
+/**
+ * La base de UNA persona. Pura: recibe sus horas, sus J, sus vacaciones y
+ * permisos del periodo, y su contrato.
+ *
+ * El tope se prorratea por los días de CONTRATO del periodo entero (del 26 al
+ * 25): quien entra el día 10 tiene asegurada la parte de esos días, no el mes.
+ * Mientras el periodo está en curso el tope sigue siendo el del periodo entero,
+ * así que casi nadie llega: es la base «hasta el momento».
+ */
+function filaBase(p, cfg, v) {
+  const jornada = jornadaDe(p.jornada);
+  const ini = p.alta && p.alta > v.desde ? p.alta : v.desde;
+  const finContrato = p.baja && p.baja < v.cierre ? p.baja : v.cierre;
+  const diasContrato = finContrato >= ini ? diasEntre(ini, finContrato) : 0;
+  const finAhora = p.baja && p.baja < v.hasta ? p.baja : v.hasta;
+  const dentro = iso => iso >= ini && iso <= finAhora;
+
+  const horasEsperaQuitadas = esperaQuitada(p.viajeH, p.esperaH, p.horas, cfg);
+  let horasJustificadas = 0;
+  (p.jFechas || new Map()).forEach((seg, iso) => { if (dentro(iso)) horasJustificadas += seg / 3600; });
+  const diasVacaciones = (p.vacaciones || []).filter(dentro).length;
+  const diasPermiso = (p.permiso || []).filter(dentro).length;
+  const horasVacaciones = diasVacaciones * horasDiaVacaciones(cfg);
+  const horasPermiso = diasPermiso * cfg.horasMetaDia;
+  const horasBase = Math.max(0, (p.horas || 0) - horasEsperaQuitadas + horasJustificadas + horasVacaciones + horasPermiso);
+
+  // Con las horas tal como se enseñan (a dos decimales): quien las multiplique
+  // por 8,16 en el Excel tiene que sacar el mismo importe, no uno que difiera
+  // en céntimos por los decimales que no ve.
+  const importe = r2(horasBase) * cfg.eurHoraBase;
+  const tope = diasContrato > 0 ? topeDe(jornada, cfg) * (diasContrato / v.diasPeriodo) : 0;
+  const base = Math.min(importe, tope);
+  return {
+    jornada, diasContrato,
+    horas: r2(p.horas || 0), utilPct: p.utilPct == null ? null : r2(p.utilPct),
+    horasEsperaQuitadas: r2(horasEsperaQuitadas),
+    horasJustificadas: r2(horasJustificadas),
+    diasVacaciones, horasVacaciones: r2(horasVacaciones),
+    diasPermiso, horasPermiso: r2(horasPermiso),
+    horasBase: r2(horasBase),
+    importe: r2(importe),
+    tope: r2(tope),
+    llegaAlTope: diasContrato > 0 && importe >= tope,
+    // Lo que pasa del tope no lo paga la base: va a las variables (MBO).
+    sobreElTope: r2(Math.max(0, importe - tope)),
+    // Lo que le falta para el tope: se le descuenta, sin más.
+    faltaParaElTope: r2(Math.max(0, tope - importe)),
+    base: r2(base),
+  };
+}
+
+/**
+ * LA NÓMINA BASE de un mes (el de PAGO), y la nómina entera: base + variables.
+ *
+ * Las variables son las de la pantalla (la congelada si la hay): se pasan en
+ * `opciones.variables` para no calcularlas dos veces. Solo plantilla propia.
+ * Entra quien tiene contrato en el periodo hasta ahora, y quien tiene
+ * variables ese mes aunque ya se haya ido (cobra sus variables con base 0).
+ */
+async function nominaBase(mes, ano, opciones = {}) {
+  const cfg = opciones.config || await leerConfig();
+  const v = ventanaBase(mes, ano, opciones.hoy || hoyMadrid());
+  const vars = opciones.variables || (await cargar(mes, ano)).resultado;
+  const porVar = new Map(((vars && vars.filas) || [])
+    .filter(f => !f.ett && f.conductorId).map(f => [Number(f.conductorId), f]));
+
+  const vacio = new Map();
+  const [horas, fichas, jus, aus] = await Promise.all([
+    v.sinEmpezar ? vacio : repo.horasDelMes(v.desde, v.hasta),
+    repo.fichasDelMes(v.sinEmpezar ? v.desde : v.hasta),
+    v.sinEmpezar ? vacio : repo.justificantesDelMes(v.desde, v.hasta),
+    v.sinEmpezar ? vacio : repo.ausenciasDelPeriodo(v.desde, v.hasta),
+  ]);
+
+  const ids = new Set(porVar.keys());
+  if (!v.sinEmpezar) {
+    fichas.forEach((f, cid) => {
+      if (!f.ett && f.alta && f.alta <= v.hasta && (!f.baja || f.baja >= v.desde)) ids.add(cid);
+    });
+  }
+
+  const filas = [...ids].map(cid => {
+    const f = fichas.get(cid) || {};
+    const h = horas.get(cid);
+    const j = jus.get(cid);
+    const a = aus.get(cid) || { vacaciones: [], permiso: [] };
+    const efectivos = h ? h.viajeSeg + h.esperaSeg : 0;
+    const fv = porVar.get(cid);
+    const b = filaBase({
+      jornada: f.jornada, alta: f.alta || '', baja: f.baja || '',
+      horas: h ? h.horasSeg / 3600 : 0, viajeH: h ? h.viajeSeg / 3600 : 0, esperaH: h ? h.esperaSeg / 3600 : 0,
+      utilPct: efectivos > 0 ? (h.viajeSeg / efectivos) * 100 : null,
+      jFechas: j ? j.fechas : new Map(), vacaciones: a.vacaciones, permiso: a.permiso,
+    }, cfg, v);
+    const variables = fv ? Number(fv.total) || 0 : 0;
+    return {
+      conductorId: cid,
+      nombre: f.nombre || (fv && fv.nombre) || `#${cid}`,
+      nombreBolt: f.nombreBolt || (fv && fv.nombreBolt) || '',
+      nombreSS: f.nombreSS || (fv && fv.nombreSS) || '',
+      dni: f.dni || (fv && fv.dni) || '',
+      alta: f.alta || '', baja: f.baja || '',
+      ...b,
+      variables: r2(variables),
+      total: r2(b.base + variables),
+    };
+  }).sort((a, b) => b.total - a.total
+      || String(a.nombreSS || a.nombre).localeCompare(String(b.nombreSS || b.nombre), 'es'));
+
+  const suma = k => r2(filas.reduce((t, x) => t + (Number(x[k]) || 0), 0));
+  const totales = {};
+  ['horas', 'horasEsperaQuitadas', 'horasJustificadas', 'horasVacaciones', 'horasPermiso', 'horasBase',
+    'importe', 'tope', 'base', 'sobreElTope', 'faltaParaElTope', 'variables', 'total'].forEach(k => { totales[k] = suma(k); });
+
+  return {
+    mes, ano, mesNombre: MESES_NOM[mes - 1],
+    ventana: v, config: cfg,
+    variablesDe: vars ? { mesNombre: MESES_NOM[vars.mesDatos - 1], ano: vars.anoDatos, congelada: !!vars.congelada } : null,
+    filas, totales,
+    avisos: {
+      enCurso: v.enCurso, sinEmpezar: v.sinEmpezar,
+      llegan: filas.filter(x => x.llegaAlTope).length,
+      noLlegan: filas.filter(x => x.diasContrato > 0 && !x.llegaAlTope).length,
+      soloVariables: filas.filter(x => x.diasContrato === 0).length,
     },
   };
 }
@@ -792,11 +1002,13 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
   const diasDelMes = new Date(ano, mes, 0).getDate();
   const desde = `${ano}-${pad(mes)}-01`;
   const hasta = `${ano}-${pad(mes)}-${pad(diasDelMes)}`;
-  const [horas, dinero, jus] = await Promise.all([
+  const [horas, dinero, jus, aus] = await Promise.all([
     repo.horasDelMes(desde, hasta, { conductorId: cid }),
     repo.dineroPorDia(cid, desde, hasta),
     repo.justificantesDelMes(desde, hasta, { conductorId: cid }),
+    repo.ausenciasDelPeriodo(desde, hasta, { conductorId: cid }),
   ]);
+  const a = aus.get(cid) || { vacaciones: [], permiso: [] };
   const h = horas.get(cid) || { dias: new Map() };
   const j = jus.get(cid) || { aprobados: [], horas: new Map(), pendientesDias: [] };
   const primerDia = fila ? fila.primerDia : 1;
@@ -819,6 +1031,12 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
       espera: x.esperaSeg / 3600,
       // La J vale sus horas, sumadas a las rodadas (regla 3).
       horasJustificadas: cuentaJ ? ((j.horas && j.horas.get(d)) || 0) / 3600 : 0,
+      // Las vacaciones (5,84 h) y los permisos (8 h), igual que en la fila del
+      // mes: desde el arranque y hasta la baja (regla 7).
+      vacaciones: a.vacaciones.includes(fecha), permiso: a.permiso.includes(fecha),
+      horasVacPerm: d < primerDia || (persona.baja && fecha > persona.baja) ? 0
+        : a.permiso.includes(fecha) ? cfg.horasMetaDia
+        : a.vacaciones.includes(fecha) ? horasDiaVacaciones(cfg) : 0,
       jSinHoras: cuentaJ && !((j.horas && j.horas.get(d)) > 0),
       jAprobada, jAntesDelArranque: jAprobada && !cuentaJ,
       jPendiente: (j.pendientesDias || []).includes(d),
@@ -888,9 +1106,11 @@ module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM,
   leerConfig, guardarConfig,
   calcular, cargar, congelar, descongelar, mesesCongelados, paraETT, finiquito, extras, mesesDeExtras,
+  nominaBase,
   horasDelDia,
   leerCongelada: (mes, ano) => repo.leerCongelada(mes, ano),
   // Expuestos para poder probar el prorrateo y el cálculo sin base de datos.
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,
   _objetivoDe: objetivoDe, _mesSiguiente: mesSiguiente,
+  _ventanaBase: ventanaBase, _filaBase: filaBase, _esperaQuitada: esperaQuitada,
 };

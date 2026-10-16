@@ -12,7 +12,9 @@
 //       consulta a PostgreSQL, así que GET /cargar lo hace y contesta.
 //
 // Y HAY DOS EXCEL, con dos meses distintos a propósito:
-//   GET /nomina.xlsx  va por mes de PAGO    (septiembre paga el trabajo de agosto)
+//   GET /nomina.xlsx  va por mes de PAGO    (septiembre paga el trabajo de agosto),
+//                     con la pestaña «Nómina base»: el salario base del 26 al 25
+//                     de ese mes más las variables, la nómina entera
 //   GET /ett.xlsx     va por mes TRABAJADO  (agosto son los datos de agosto)
 // No es un descuido: la nómina es un pago y el parte de la ETT es un parte de
 // trabajo. Cada uno lleva el mes que le corresponde.
@@ -116,7 +118,9 @@ router.get('/nomina.xlsx', async (req, res) => {
     const { mes, ano } = mesAno(req.query);
     const { resultado } = await nominas.cargar(mes, ano);
     if (!resultado) return res.status(404).send('No hay nómina para ese mes');
-    const bytes = await excel.generarExcelNomina(resultado);
+    // La base del 26 al 25 con ESTAS variables (la congelada si la hay).
+    const base = await nominas.nominaBase(mes, ano, { variables: resultado });
+    const bytes = await excel.generarExcelNomina(resultado, base);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${excel.nombreFichero(resultado)}"`);
     res.end(Buffer.from(bytes));

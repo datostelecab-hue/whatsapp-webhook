@@ -87,6 +87,19 @@ Las J **cuentan también para el exceso**: la diferencia contra el objetivo se m
 
 Solo cuentan las **aprobadas**. Las pendientes no (el panel avisa de cuántas hay en la cola) y las rechazadas tampoco.
 
+## Las vacaciones y los permisos cuentan para el objetivo (16/10/2026)
+
+Camilo: *«las vacaciones cuentan, pero como día natural porque coge también días de libranza y así está bien, entonces cada día de vacaciones se calculan como el 73 % de 8 horas para hacer la regla de 3 y así les suba las horas para alcanzar el target»*. Y los permisos retribuidos, *«8 horas puras»* también para el objetivo.
+
+- Cada día de **vacaciones** suma `horasMetaDia × pctDiaVacaciones` = 8 × 0,73 = **5,84 h**, por **día natural** (libranzas incluidas: por eso el 73 %).
+- Cada día de **permiso retribuido** suma `horasMetaDia` = **8 h**.
+- Solo los de su ventana: desde el arranque del mes (su alta, si entró ese mes) y hasta su baja.
+- Salen de los tramos de estado del conductor (`conductor_estado_hist`, estados `vacaciones` y `permiso`, los mismos que lee [[Vacaciones]]), recortados al mes; un tramo abierto llega hasta el final. Si dos tramos se pisan, el día cuenta una vez (gana el permiso). **No suman** `suspendido`, `suspension_permiso` (sin sueldo) ni la baja médica (la paga la mutua).
+- Entran en la **diferencia** igual que las J, y con ella en el MBO por horas extra. También entra quien no rodó nada pero estuvo de vacaciones o de permiso.
+- La pantalla lo enseña en la columna **«Vac./perm.»**; el Excel, en «Horas de vacaciones» y «Horas de permiso», y en el resumen por conductor.
+
+Medido al cambiarlo, con la nómina de octubre (trabajo de septiembre): **27 personas con 276 días de vacaciones (1.606 h)** y 3 con permisos (64 h); las variables pasan de 17.854 € a **18.943 €**.
+
 ## La hora extra se paga por conducir, no por estar conectado
 
 Las horas efectivas son viaje + espera, así que quien pasa el mes con la app abierta y poca carrera acumula horas igual que quien no para. El caso que lo destapó: 211,4 h en el mes y 35,4 de exceso sobre el objetivo… con un **52,7 % de utilización**. De sus 211 horas, 100 fueron espera.
@@ -146,13 +159,49 @@ Todo lo numérico se edita desde el panel y se guarda en `nomina_config`. Los va
 | `umbralFAS40` / `umbralFAS32` | neto a partir del cual hay MBO FAS, por jornada | sí |
 | `pctMBOFAS` | fracción del exceso de facturación (0,4) | sí |
 | `eurHoraNoc`, `factorNoc` | € hora nocturna (9,9) y su multiplicador (0,1) | sí |
-| `horasMetaDia` | cuántas horas hacen un «día extra»; solo esa columna | no |
-| `sueldoBase40` / `sueldoBase32` | informativos, como en el Excel | no |
+| `horasMetaDia` | lo que vale un día de permiso retribuido (8), la base del de vacaciones, y cuántas horas hacen un «día extra» | sí |
+| `pctDiaVacaciones` | lo que vale un día de vacaciones de un día de permiso (0,73 → 5,84 h) | sí |
+| `eurHoraBase` | € por hora de la [[#La nómina base (16/10/2026)\|nómina base]] (8,16) | sí (la base) |
+| `sueldoBase40` / `sueldoBase32` | el **tope** de la base con 40 h (1.443) y con 32 h (1.154); otra jornada, el de 40 por regla de tres. Hasta el 16/10/2026 eran informativos | sí (la base) |
 | `ettEurHora`, `ettPlusNocturno` | los dos precios del parte de la agencia | no (van al Excel de la ETT) |
 
 Lo que llega del navegador se filtra: **solo claves conocidas y numéricas**, tanto al guardar como al simular. Un cálculo de dinero no se hace con lo que venga en un cuerpo de petición sin mirarlo.
 
 Y lo que se **lee** de `nomina_config` también: siguen guardadas claves retiradas (`diasObjetivo`, `utilMinima`, `lUtilizacion`), y `leerConfig` solo deja pasar las de `DEFAULTS`, para que una nómina congelada no diga que se calculó con ellas.
+
+## La nómina base (16/10/2026)
+
+La nómina de un mes = **SALARIO BASE BRUTO + las variables**. Camilo: *«El salario base ya no vale, ahora será la hora base que en estos momentos la pagamos a 8,16 euros por hora»*.
+
+| | Periodo | La de octubre |
+|---|---|---|
+| **Salario base bruto** | mes CORRIENTE, con **corte el 26**: del 26 del mes anterior al 25 de este | del 26/09 al 25/10 |
+| **Variables** (lo de arriba) | mes VENCIDO: el mes anterior, del 1 al último | del 01/09 al 30/09 |
+
+Mientras el periodo de la base no ha cerrado, va **hasta ayer** (hoy aún no ha terminado): el 16/10, del 26/09 al 15/10, 20 de 30 días.
+
+```
+horas base  = viaje + espera − espera quitada (el mismo recorte 75/85, sobre el periodo de la base)
+              + horas de las J aprobadas + vacaciones × 5,84 + permisos × 8
+importe     = horas base × € hora base (8,16)        ← con las horas a dos decimales, como se ven
+BASE BRUTA  = el importe, con TOPE en el salario base de su jornada
+              (40 h → 1.443 €, 32 h → 1.154 €; otra, por regla de tres),
+              prorrateado por los días de contrato del periodo
+TOTAL NÓMINA = base bruta + TOTAL de las variables
+```
+
+**El tope**, en palabras de Camilo: *«si se pasa de ahí significa que tiene su salario base asegurado, lo que se pasó se paga en las variables de MBO o FAS o de horas. Si no llegan significa que, a parte de que se va a descontar de una vez, solo tendrán variables de propinas, peajes, etc.»*. Así la base nunca paga horas de más: eso es cosa del MBO, que **no cambia de fórmula** (diferencia × € hora extra × utilización, o el FAS si es mayor).
+
+- El tope se prorratea por los **días de contrato del periodo entero**: quien entra el día 6 de octubre tiene 20 de 30 días; quien se fue el 2, 7. Mientras el periodo está en curso el tope sigue siendo el del periodo entero, así que casi nadie llega todavía: es la base «hasta el momento».
+- Entra quien tiene contrato de **plantilla propia** en el periodo hasta ahora, y quien tiene variables ese mes aunque ya se haya ido antes del 26 (base 0, cobra sus variables). Los de ETT no: los paga la agencia.
+- Las variables son las de la pantalla, **la congelada si la hay**. La base **no se congela** todavía: se calcula al bajar el Excel.
+- Las horas de BOLT del periodo cuentan todas, aunque caigan en un día sin contrato (un cambio de ETT a propia a mitad de periodo es el caso raro que podría colarse).
+
+**Dónde se ve**: en el Excel de la nómina, la pestaña **«Nómina base»**, segunda, de mayor a menor TOTAL NÓMINA, con los grupos «Horas de la base», «Salario base» y «Nómina», y una nota por persona («Llega al tope: 68,48 € de más, que se cobran por las variables», «Le faltan 142,38 € para el tope», «Tope de 7 de 30 días (baja el 02/10/2026)»). La pantalla avisa de que está ahí. En el servicio: `nominaBase(mes, ano, { variables })`, con `ventanaBase` y `filaBase` puras y probadas en `scripts/comprobar-nomina.js`.
+
+El 16/10/2026, con lo trabajado hasta el 15/10: 176 personas (26 solo con variables), 3 ya en el tope, y la nómina entera de octubre va por **101.484 €** (82.542 de base + 18.943 de variables).
+
+**Lo congelado**: la fila guarda también los días y las horas de vacaciones y permisos desde `db/207` (y la facturación neta desde `db/206`, ya aplicada). Sin aplicar, se congela y se lee como antes (el repositorio mira qué columnas existen). Ensayado en copias temporales: sin la 207 y con ella, 146 filas iguales al céntimo.
 
 ## Los de ETT van en su parte, no en la nómina
 

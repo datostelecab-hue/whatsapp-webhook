@@ -91,6 +91,19 @@ que se hace.
 La columna de **% Utilización** sigue enseñando la **real**, la de antes del recorte: es el
 diagnóstico, y esconderla dejaría la cifra retirada sin explicación.
 
+**Las vacaciones y los permisos cuentan para el objetivo** (16/10/2026): cada día de
+vacaciones suma 8 × 0,73 = **5,84 h** por día natural (libranzas incluidas), y cada día de
+permiso retribuido **8 h**, desde el arranque del mes y hasta la baja. Salen de los tramos de
+estado del conductor (`vacaciones` y `permiso`); la suspensión, el permiso sin sueldo y la baja
+médica no suman.
+
+**La nómina entera = salario base bruto + variables** (16/10/2026). La base va a mes
+corriente con corte el 26 (la de octubre, del 26/09 al 25/10; hasta ayer mientras no cierra):
+horas (con el mismo recorte por utilización) + J + vacaciones + permisos, × 8,16 €, con
+**tope** en el salario base de su jornada (1.443 € con 40 h, 1.154 € con 32 h) prorrateado por
+los días de contrato. Lo que pasa del tope lo pagan las variables (el MBO). Va en la pestaña
+«Nómina base» del Excel; `nominaBase` en el servicio.
+
 **El mes es el mes: del día 1 a las 00:00 al último a las 23:59.** Sin cortes raros y sin la
 jornada operativa 05→05 del resto del ERP.
 

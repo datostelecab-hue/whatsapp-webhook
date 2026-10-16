@@ -244,7 +244,8 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
 /**
  * Los dias con JUSTIFICANTE del mes, por persona.
  * Devuelve Map(conductor_id -> { aprobados: [dia del mes...], horas: Map(dia ->
- * segundos de las aprobadas), pendientes: n, pendientesDias: [...] }).
+ * segundos de las aprobadas), fechas: Map('AAAA-MM-DD' -> segundos), pendientes:
+ * n, pendientesDias: [...] }).
  *
  * SOLO CUENTAN LAS APROBADAS. Una J nace pendiente y el area responsable la
  * aprueba o la rechaza; contar una pendiente seria darla por buena antes del
@@ -267,6 +268,7 @@ async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = 
   const r = await db.consulta(
     `SELECT conductor_id,
             EXTRACT(DAY FROM dia_operativo)::int AS dia,
+            to_char(dia_operativo, 'YYYY-MM-DD') AS fecha,
             (aprobado_at IS NOT NULL) AS aprobada,
             COALESCE(horas_seg_momento, 0)::int AS seg
        FROM justificante
@@ -279,9 +281,14 @@ async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = 
   const out = new Map();
   for (const x of r.rows) {
     const cid = Number(x.conductor_id);
-    if (!out.has(cid)) out.set(cid, { aprobados: [], horas: new Map(), pendientes: 0, pendientesDias: [] });
+    if (!out.has(cid)) out.set(cid, { aprobados: [], horas: new Map(), fechas: new Map(), pendientes: 0, pendientesDias: [] });
     const o = out.get(cid), d = Number(x.dia);
-    if (x.aprobada) { o.aprobados.push(d); o.horas.set(d, (o.horas.get(d) || 0) + Number(x.seg)); }
+    if (x.aprobada) {
+      o.aprobados.push(d);
+      o.horas.set(d, (o.horas.get(d) || 0) + Number(x.seg));
+      // Por fecha también: la base va del 26 al 25 y cruza dos meses.
+      o.fechas.set(x.fecha, (o.fechas.get(x.fecha) || 0) + Number(x.seg));
+    }
     else { o.pendientes++; o.pendientesDias.push(d); }
   }
   return out;
@@ -445,6 +452,41 @@ async function sinSellarEnBitacora(desdeIso, hastaIso, ids) {
   return r.rows.map(x => ({ id: Number(x.id), nombre: x.nombre }));
 }
 
+/**
+ * LAS VACACIONES Y LOS PERMISOS RETRIBUIDOS de un periodo, día a día
+ * (16/10/2026). Map(conductor_id → { vacaciones: ['AAAA-MM-DD'…], permiso: […] }).
+ *
+ * Salen de los tramos de estado de cada conductor (`conductor_estado_hist`,
+ * los mismos que lee Vacaciones), recortados al periodo; un tramo abierto
+ * llega hasta el final del periodo. Cada día cuenta UNA vez: si dos tramos se
+ * pisan, gana el permiso.
+ *
+ * Por día NATURAL a propósito: las vacaciones cogen también los días de
+ * libranza, y por eso valen el 73 % de un día (ver el servicio). Lo que NO
+ * entra: `suspendido` y `suspension_permiso` (no se pagan) ni la baja médica
+ * (la paga la mutua).
+ */
+async function ausenciasDelPeriodo(desdeIso, hastaIso, { conductorId = null } = {}) {
+  const r = await db.consulta(
+    `SELECT DISTINCT ON (h.conductor_id, d.dia) h.conductor_id, h.estado, to_char(d.dia, 'YYYY-MM-DD') AS dia
+       FROM conductor_estado_hist h
+       CROSS JOIN LATERAL generate_series(GREATEST(h.desde, $1::date),
+                                          LEAST(COALESCE(h.hasta, $2::date), $2::date),
+                                          interval '1 day') AS d (dia)
+      WHERE h.estado IN ('vacaciones', 'permiso')
+        AND h.desde <= $2::date AND (h.hasta IS NULL OR h.hasta >= $1::date)
+        AND ($3::bigint IS NULL OR h.conductor_id = $3::bigint)
+      ORDER BY h.conductor_id, d.dia, (h.estado = 'permiso') DESC`,
+    [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId)]);
+  const out = new Map();
+  for (const x of r.rows) {
+    const cid = Number(x.conductor_id);
+    if (!out.has(cid)) out.set(cid, { vacaciones: [], permiso: [] });
+    out.get(cid)[x.estado === 'permiso' ? 'permiso' : 'vacaciones'].push(x.dia);
+  }
+  return out;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // LO CONGELADO
 // ────────────────────────────────────────────────────────────────────────────
@@ -465,27 +507,37 @@ const valoresDeFila = f => [
   f.nocturnas, f.nocturnasHoras, f.mboFAS, f.mboHsExt, f.compensacion, f.diasExtra, f.total,
 ];
 
-// LA FACTURACIÓN NETA llegó con db/206 (16/10/2026), para el resumen por
-// conductor del Excel. Sin la migración aplicada se congela y se lee como
-// antes: se pregunta si la columna existe, y solo se recuerda el sí (al
-// aplicarla, la siguiente vez ya la usa sin reiniciar).
-let _hayNeto = false;
-async function hayNeto(consulta) {
-  if (_hayNeto) return true;
+// LAS COLUMNAS QUE LLEGARON DESPUÉS, cada una con su migración:
+//   neto                                      db/206  la facturación, para el resumen
+//   dias_/horas_vacaciones, dias_/horas_permiso  db/207  lo que suman para el objetivo
+// Sin la migración aplicada se congela y se lee como antes: se pregunta qué
+// columnas existen, y solo se recuerda cuando están todas (al aplicarla, la
+// siguiente vez ya las usa sin reiniciar).
+const OPCIONALES = [
+  ['neto', 'neto'],
+  ['dias_vacaciones', 'diasVacaciones'], ['horas_vacaciones', 'horasVacaciones'],
+  ['dias_permiso', 'diasPermiso'], ['horas_permiso', 'horasPermiso'],
+];
+let _todas = null;
+async function opcionalesQueHay(consulta) {
+  if (_todas) return _todas;
   // Por el search_path, como la resuelven las consultas de abajo.
   const r = await consulta(
-    `SELECT 1 FROM pg_attribute
-      WHERE attrelid = to_regclass('nomina_fila') AND attname = 'neto' AND NOT attisdropped`);
-  _hayNeto = r.rows.length > 0;
-  return _hayNeto;
+    `SELECT attname FROM pg_attribute
+      WHERE attrelid = to_regclass('nomina_fila') AND attname = ANY($1::text[]) AND NOT attisdropped`,
+    [OPCIONALES.map(o => o[0])]);
+  const hay = new Set(r.rows.map(x => x.attname));
+  const lista = OPCIONALES.filter(([col]) => hay.has(col));
+  if (lista.length === OPCIONALES.length) _todas = lista;
+  return lista;
 }
 
 /** Congela una nómina. Reescribe la del mes si ya hubiera una. */
 async function congelar(r, usuarioId) {
   return db.transaccion(async cli => {
-    const conNeto = await hayNeto((s, p) => cli.query(s, p));
-    const cols = conNeto ? [...COLS_FILA, 'neto'] : COLS_FILA;
-    const valores = f => (conNeto ? [...valoresDeFila(f), f.neto == null ? null : f.neto] : valoresDeFila(f));
+    const extra = await opcionalesQueHay((s, p) => cli.query(s, p));
+    const cols = [...COLS_FILA, ...extra.map(o => o[0])];
+    const valores = f => [...valoresDeFila(f), ...extra.map(([, k]) => (f[k] == null ? null : f[k]))];
     await cli.query('DELETE FROM nomina_mes WHERE mes = $1 AND ano = $2', [r.mes, r.ano]);
     const cab = await cli.query(
       `INSERT INTO nomina_mes (mes, ano, mes_datos, ano_datos, dias_del_mes, config, totales, avisos, usuario_id)
@@ -522,9 +574,9 @@ async function leerCongelada(mes, ano) {
        FROM nomina_mes n WHERE n.mes = $1 AND n.ano = $2`, [mes, ano]);
   if (!c.rowCount) return null;
   const n = c.rows[0];
-  const conNeto = await hayNeto(db.consulta);
+  const extra = await opcionalesQueHay(db.consulta);
   const f = await db.consulta(
-    `SELECT ${COLS_FILA.join(', ')}${conNeto ? ', neto' : ''} FROM nomina_fila WHERE nomina_id = $1 ORDER BY total DESC`, [n.id]);
+    `SELECT ${[...COLS_FILA, ...extra.map(o => o[0])].join(', ')} FROM nomina_fila WHERE nomina_id = $1 ORDER BY total DESC`, [n.id]);
   return {
     mes: n.mes, ano: n.ano, mesDatos: n.mes_datos, anoDatos: n.ano_datos,
     diasDelMes: n.dias_del_mes, config: n.config, totales: n.totales, avisos: n.avisos || {},
@@ -545,8 +597,12 @@ async function leerCongelada(mes, ano) {
       utilPct: x.util_pct == null ? null : Number(x.util_pct),
       propinas: Number(x.propinas), peajes: Number(x.peajes), nocturnas: Number(x.nocturnas),
       nocturnasHoras: Number(x.nocturnas_horas),
-      // Sin db/206, o congelada antes: no se sabe (null, no cero).
+      // Sin db/206 o db/207, o congelada antes: no se sabe (null, no cero).
       neto: x.neto == null ? null : Number(x.neto),
+      diasVacaciones: x.dias_vacaciones == null ? null : Number(x.dias_vacaciones),
+      horasVacaciones: x.horas_vacaciones == null ? null : Number(x.horas_vacaciones),
+      diasPermiso: x.dias_permiso == null ? null : Number(x.dias_permiso),
+      horasPermiso: x.horas_permiso == null ? null : Number(x.horas_permiso),
       mboFAS: Number(x.mbo_fas), mboHsExt: Number(x.mbo_hs_ext), compensacion: Number(x.compensacion),
       diasExtra: Number(x.dias_extra), total: Number(x.total),
     })),
@@ -605,6 +661,7 @@ module.exports = {
   personaConBaja,
   leerConfig, guardarConfig,
   horasDelMes, dineroDelMes, dineroPorDia, fichasDelMes, justificantesDelMes, sinSellarEnBitacora,
+  ausenciasDelPeriodo,
   congelar, leerCongelada, mesesCongelados, descongelar,
   // Expuestos para poder probarlos sin base de datos.
   _fundir: fundir, _segundosNocturnos: segundosNocturnos,

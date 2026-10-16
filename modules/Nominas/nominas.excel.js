@@ -3,12 +3,15 @@
 // ============================================================
 // Lo que RRHH manda a la gestoría para que lo sume al recibo del mes. Solo
 // plantilla propia: los de ETT los paga la agencia y van en su parte (abajo).
-// Tres hojas, con el diseño de la casa (banda con el logo, cabecera oscura,
+// Cuatro hojas, con el diseño de la casa (banda con el logo, cabecera oscura,
 // ámbar para los avisos, rojo para lo que falta y el oro solo en el TOTAL):
 //
-//   Nómina                 una fila por persona, con el desglose de cada euro.
-//   Resumen por conductor  el cálculo de cada uno en el orden en que se hace,
-//                          con la cuenta escrita en palabras y su total.
+//   Nómina                 las VARIABLES (mes vencido): una fila por persona,
+//                          con el desglose de cada euro.
+//   Nómina base            el salario base bruto (del 26 al 25, mes corriente)
+//                          más esas variables: la nómina entera (16/10/2026).
+//   Resumen por conductor  el cálculo de las variables de cada uno en el orden
+//                          en que se hace, con la cuenta escrita en palabras.
 //   Cómo se calculó        la config usada y cómo sale cada columna, en tablas.
 //
 // La segunda hoja no es adorno: cuando alguien pregunta "¿por qué he cobrado
@@ -80,6 +83,8 @@ const COLUMNAS = [
   ['Horas de espera quitadas', 12, 'horasEsperaQuitadas', HORAS],
   ['Horas justificadas', 12, 'horasJustificadas', HORAS],
   ['Días justificados', 11, 'diasJustificados', '0'],
+  ['Horas de vacaciones', 11, 'horasVacaciones', HORAS],
+  ['Horas de permiso', 10, 'horasPermiso', HORAS],
   ['Objetivo (h)', 10, 'horasObjetivo', HORAS],
   ['Horas no justificadas', 12, 'horasNoJustificadas', HORAS],
   ['Diferencia (h)', 11, 'deltaHoras', HORAS],
@@ -96,6 +101,7 @@ const COLUMNAS = [
 
 // Las que se suman en el pie.
 const SUMABLES = new Set(['horas', 'horasEsperaQuitadas', 'horasJustificadas', 'diasJustificados', 'horasNoJustificadas',
+  'horasVacaciones', 'horasPermiso',
   'propinas', 'peajes', 'nocturnas', 'mboFAS', 'mboHsExt', 'compensacion', 'diasExtra', 'total']);
 
 function valorDe(f, clave) {
@@ -128,7 +134,7 @@ const PAGINA = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitTo
   margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
 
 /** El libro. Devuelve los bytes; quien llama solo tiene que servirlo. */
-async function generarExcelNomina(r) {
+async function generarExcelNomina(r, base = null) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Telecab';
   const idLogo = E.registrarLogo(wb);
@@ -202,12 +208,13 @@ async function generarExcelNomina(r) {
     ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: COLUMNAS.length } };
   }
 
+  if (base) hojaNominaBase(wb, idLogo, base);
   hojaResumen(wb, idLogo, r, filas, cfg);
   hojaComoSeCalculo(wb, idLogo, sub, cfg);
   return wb.xlsx.writeBuffer();
 }
 
-// ── Hoja 3: cómo se calculó ─────────────────────────────────────────────────
+// ── Hoja 4: cómo se calculó ─────────────────────────────────────────────────
 // Tres tablas de la casa en vez de un texto alineado a espacios (que en una
 // letra proporcional nunca quedaba alineado): los parámetros con su valor, cómo
 // sale cada columna, y de dónde salen los datos.
@@ -227,23 +234,28 @@ const PARAMS = [
   ['% MBO FAS', 'pctMBOFAS', '0%', 'Parte del exceso de facturación sobre el umbral que se paga.', true],
   ['€ hora nocturna', 'eurHoraNoc', DOS, 'Precio de la hora entre las 22:00 y las 06:00.', true],
   ['Factor nocturnas', 'factorNoc', DOS, 'La nocturnidad es € hora × horas × factor.', true],
-  ['Horas que hacen un «día extra»', 'horasMetaDia', HORAS, 'Solo para la columna «Días extra»: no entra en el total.', false],
-  ['Sueldo base 40 h (€)', 'sueldoBase40', DOS, 'Informativo: no entra en el total.', false],
-  ['Sueldo base 32 h (€)', 'sueldoBase32', DOS, 'Informativo: no entra en el total.', false],
+  ['Horas de un día de permiso', 'horasMetaDia', HORAS, 'Lo que suma cada día de permiso retribuido, y la base del de vacaciones. También cuántas horas hacen un «día extra».', true],
+  ['Día de vacaciones', 'pctDiaVacaciones', '0%', 'Lo que vale un día de vacaciones de uno de permiso: 8 × 73 % = 5,84 h. Cuentan por día natural, libranzas incluidas.', true],
+  ['€ hora base', 'eurHoraBase', DOS, 'Cada hora de la nómina base: rodadas (con el recorte por utilización) + J + vacaciones + permisos.', true],
+  ['Tope del salario base, 40 h (€)', 'sueldoBase40', DOS, 'Lo máximo que paga la base con 40 h, prorrateado por los días de contrato. Lo que pasa lo pagan las variables.', true],
+  ['Tope del salario base, 32 h (€)', 'sueldoBase32', DOS, 'Lo mismo con 32 h. Otra jornada: el de 40 h por regla de tres.', true],
 ];
 
 function reglas(cfg) {
   return [
     ['Objetivo (h)', 'Objetivo del mes de su jornada × (días desde el arranque ÷ días del mes). El arranque es el día 1 si ya estaba de alta, o su día de alta si entró ese mes.'],
     ['Horas justificadas', 'La suma de las horas de sus J APROBADAS: cada J vale las horas que se le pusieron al justificarla, y se SUMAN a las rodadas ese día, igual que en la bitácora. Una J sin horas no suma. Las pendientes y las rechazadas no cuentan.'],
+    ['Vacaciones y permisos', `Cada día de vacaciones suma ${num(cfg.horasMetaDia * cfg.pctDiaVacaciones)} h (${num(cfg.horasMetaDia)} × ${pctTxt(cfg.pctDiaVacaciones)}), por día NATURAL: cogen también las libranzas. Cada día de permiso retribuido suma ${num(cfg.horasMetaDia)} h. Desde el arranque del mes y hasta la baja. No suman la suspensión, el permiso sin sueldo ni la baja médica.`],
     ['Horas de espera quitadas', `Utilización = viaje ÷ (viaje + espera). Quien llega al ${pctTxt(cfg.utilUmbral)} no pierde nada. A quien no llega se le exige el ${pctTxt(cfg.utilExigida)}: se le quitan X = (viaje + espera) − viaje ÷ ${num(cfg.utilExigida)} horas de ESPERA, y queda exactamente en el ${pctTxt(cfg.utilExigida)}. Nunca se quita viaje, ni más espera de la que tuvo.`],
-    ['Diferencia (h)', 'Horas rodadas − horas de espera quitadas + horas justificadas − objetivo. Con las justificadas dentro: un día justificado no le resta a nadie sus horas extra.'],
+    ['Diferencia (h)', 'Horas rodadas − espera quitada + justificadas + vacaciones + permisos − objetivo. Con todo eso dentro: un día justificado o de vacaciones no le resta a nadie sus horas extra.'],
     ['Horas no justificadas', 'La diferencia cuando sale negativa; cero si llegó al objetivo. Es lo que falta y no tiene explicación: va en rojo.'],
     ['MBO horas extra', `Diferencia × ${num(cfg.eurHoraExtra)} € × utilización. Solo si la diferencia es positiva.`],
     ['MBO FAS', `(Facturación neta − umbral de su jornada) × ${pctTxt(cfg.pctMBOFAS)}. Solo si supera el umbral.`],
     ['Nocturnas', `${num(cfg.eurHoraNoc)} € × horas nocturnas × ${num(cfg.factorNoc)}: ${num((Number(cfg.eurHoraNoc) || 0) * (Number(cfg.factorNoc) || 0))} € por cada hora entre las 22:00 y las 06:00.`],
     ['TOTAL', 'Nocturnas + peajes + propinas + el MAYOR de los dos MBO. Los MBO no se suman: se cobra el que salga más alto, y por eso «Compensación» va a cero cuando gana el FAS.'],
     ['Días extra', `La diferencia en días de ${num(cfg.horasMetaDia)} h, cuando pasa de un día. Informativo: no entra en el total.`],
+    ['Salario base bruto', `Pestaña «Nómina base», del 26 del mes anterior al 25 de este: (rodadas − espera quitada + J + vacaciones + permisos) × ${eur2(cfg.eurHoraBase)} €, con TOPE en el salario base de su jornada (${eur2(cfg.sueldoBase40)} € con 40 h, ${eur2(cfg.sueldoBase32)} € con 32 h) prorrateado por sus días de contrato. Lo que pasa del tope lo pagan las variables; quien no llega cobra lo que hizo.`],
+    ['Nómina entera', 'Salario base bruto (del 26 al 25, mes corriente) + el TOTAL de estas variables (el mes anterior, del 1 al último).'],
   ];
 }
 
@@ -252,6 +264,7 @@ const DATOS = [
   ['Utilización', 'Viaje ÷ (viaje + espera). La columna enseña la real, antes del recorte.'],
   ['Propinas, peajes y facturación', 'Las órdenes de BOLT ya ingeridas.'],
   ['Horas justificadas', 'Los justificantes APROBADOS, con sus horas: los mismos que pinta la bitácora.'],
+  ['Vacaciones y permisos', 'Los tramos de estado de cada conductor (vacaciones y permiso), los mismos que lee Vacaciones.'],
   ['DNI, jornada y fecha de alta', 'La ficha del conductor y su periodo de empleo.'],
   ['Los dos nombres', 'El de BOLT, del padrón de la plataforma; el de la seguridad social, de la ficha de RRHH.'],
   ['Quién entra', 'Solo plantilla propia. Los de ETT los paga la agencia y van en el «Parte de trabajo de la ETT».'],
@@ -312,7 +325,162 @@ function hojaComoSeCalculo(wb, idLogo, sub, cfg) {
   nota.font = { size: 9, color: { argb: E.TENUE } };
 }
 
-// ── Hoja 2: el resumen por conductor (16/10/2026) ───────────────────────────
+// ── Hoja 2: la nómina base (16/10/2026) ─────────────────────────────────────
+// La nómina entera de cada uno: el SALARIO BASE BRUTO del 26 del mes anterior
+// al 25 de este (mes corriente) más el TOTAL de las variables del mes anterior
+// (mes vencido, la hoja «Nómina»). Mientras el periodo no ha cerrado, la base
+// va hasta ayer. Ver la regla 8 de nominas.service.js.
+
+/** Los grupos encima de la cabecera: en qué paso del cálculo está cada columna. Devuelve la fila siguiente. */
+function filaDeGrupos(ws, fila, grupos, dorado) {
+  const n = grupos.length;
+  const row = ws.getRow(fila);
+  let desde = 1;
+  for (let i = 2; i <= n + 1; i++) {
+    if (i <= n && grupos[i - 1] === grupos[desde - 1]) continue;
+    const nombre = grupos[desde - 1];
+    if (i - 1 > desde) ws.mergeCells(fila, desde, fila, i - 1);
+    for (let k = desde; k < i; k++) {
+      const ck = row.getCell(k);
+      ck.fill = E.relleno(nombre ? E.DARK : 'FFFFFFFF');
+      if (nombre) ck.border = E.TODOS_BORDES;
+    }
+    const c = row.getCell(desde);
+    c.value = nombre || null;
+    c.font = { size: 9, bold: true, color: { argb: nombre === dorado ? E.GOLD : 'FFC9CED6' } };
+    c.alignment = { vertical: 'middle', horizontal: 'center' };
+    desde = i;
+  }
+  row.height = 18;
+  return fila + 1;
+}
+
+const fechaTxt = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+
+/** Lo que hay que saber de la base de alguien, en palabras. */
+function notaBase(x, b) {
+  const v = b.ventana, n = [];
+  if (x.diasContrato === 0) {
+    n.push('Sin contrato en este periodo: solo cobra sus variables');
+  } else {
+    if (x.diasContrato < v.diasPeriodo) {
+      n.push(`Tope de ${x.diasContrato} de ${v.diasPeriodo} días` +
+        (x.alta > v.desde ? ` (alta el ${fechaTxt(x.alta)})` : '') +
+        (x.baja && x.baja < v.cierre ? ` (baja el ${fechaTxt(x.baja)})` : ''));
+    }
+    n.push(x.llegaAlTope
+      ? (x.sobreElTope > 0 ? `Llega al tope: ${eur2(x.sobreElTope)} € de más, que se cobran por las variables` : 'Llega al tope')
+      : `Le faltan ${eur2(x.faltaParaElTope)} € para el tope`);
+  }
+  if (x.diasVacaciones) n.push(`${x.diasVacaciones} ${x.diasVacaciones === 1 ? 'día' : 'días'} de vacaciones`);
+  if (x.diasPermiso) n.push(`${x.diasPermiso} ${x.diasPermiso === 1 ? 'día' : 'días'} de permiso`);
+  if (x.horasEsperaQuitadas > 0) n.push(`utilización ${h1(x.utilPct)} %: se le exige el ${pctTxt(b.config.utilExigida)}`);
+  return n.join(' · ');
+}
+
+// [grupo, título, ancho, de dónde, formato]
+const COL_BASE = [
+  ['', 'Conductor', 32, x => x.nombreSS || x.nombre || '', null],
+  ['', 'DNI/NIE', 11, x => x.dni || '', null],
+  ['', 'Jornada', 8, x => (x.jornada ? x.jornada + ' h' : ''), null],
+  ['', 'Días de contrato', 9, x => x.diasContrato, '0'],
+  ['HORAS DE LA BASE', 'Rodadas', 9, x => x.horas, HORAS],
+  ['HORAS DE LA BASE', '− Espera quitada', 10, x => x.horasEsperaQuitadas, HORAS],
+  ['HORAS DE LA BASE', '+ Justificadas', 11, x => x.horasJustificadas, HORAS],
+  ['HORAS DE LA BASE', '+ Vacaciones', 11, x => x.horasVacaciones, HORAS],
+  ['HORAS DE LA BASE', '+ Permisos', 10, x => x.horasPermiso, HORAS],
+  ['HORAS DE LA BASE', '= Horas base', 10, x => x.horasBase, HORAS],
+  ['SALARIO BASE', '× € hora', 9, (x, b) => Number(b.config.eurHoraBase) || 0, DOS],
+  ['SALARIO BASE', '= Importe', 12, x => x.importe, EUROS],
+  ['SALARIO BASE', 'Tope de su jornada', 12, x => x.tope, EUROS],
+  ['SALARIO BASE', 'SALARIO BASE BRUTO', 13, x => x.base, EUROS],
+  ['NÓMINA', '+ Variables', 12, x => x.variables, EUROS],
+  ['NÓMINA', 'TOTAL NÓMINA', 13, x => x.total, EUROS],
+  ['', 'Nota', 64, (x, b) => notaBase(x, b), null],
+];
+const SUMA_BASE = new Set(['Rodadas', '− Espera quitada', '+ Justificadas', '+ Vacaciones', '+ Permisos', '= Horas base',
+  '= Importe', 'Tope de su jornada', 'SALARIO BASE BRUTO', '+ Variables', 'TOTAL NÓMINA']);
+
+function hojaNominaBase(wb, idLogo, b) {
+  const ws = wb.addWorksheet('Nómina base', { pageSetup: PAGINA });
+  COL_BASE.forEach(([, , ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+  const n = COL_BASE.length;
+  const v = b.ventana, cfg = b.config;
+  const iDe = titulo => COL_BASE.findIndex(c => c[1] === titulo) + 1;
+  const deVariables = b.variablesDe ? `${b.variablesDe.mesNombre} ${b.variablesDe.ano}` : 'el mes anterior';
+  const sub = `Nómina de ${b.mesNombre} ${b.ano} · base del ${fechaTxt(v.desde)} al ${fechaTxt(v.cierre)}` +
+    (v.sinEmpezar ? ' — AÚN NO HA EMPEZADO' : v.enCurso
+      ? ` — EN CURSO: con lo trabajado hasta el ${fechaTxt(v.hasta)} (${v.diasHastaAhora} de ${v.diasPeriodo} días)` : '') +
+    ` · variables del trabajo de ${deVariables}${b.variablesDe && b.variablesDe.congelada ? ' (congeladas)' : ''}` +
+    ` · hora base ${eur2(cfg.eurHoraBase)} € · tope ${eur2(cfg.sueldoBase40)} € con 40 h y ${eur2(cfg.sueldoBase32)} € con 32 h` +
+    ` · ${b.filas.length} conductores · generado ${sello()}`;
+  let fila = E.bandaCabecera(ws, idLogo, 'NÓMINA BASE · SALARIO BASE + VARIABLES', sub, n);
+  fila = filaDeGrupos(ws, fila, COL_BASE.map(c => c[0]), 'NÓMINA');
+
+  const filaCab = fila;
+  const titulos = COL_BASE.map(c => (c[1] === '+ Variables' ? `+ Variables de ${deVariables.split(' ')[0].toLowerCase()}` : c[1]));
+  fila = E.cabeceraTabla(ws, fila, titulos, { alto: 32, ajustar: true });
+  const cabTotal = ws.getRow(filaCab).getCell(iDe('TOTAL NÓMINA'));
+  cabTotal.fill = E.relleno(E.GOLD);
+  cabTotal.font = { size: 10, bold: true, color: { argb: E.DARK } };
+  const primera = fila;
+
+  for (const x of b.filas) {
+    const row = ws.getRow(fila++);
+    COL_BASE.forEach(([, titulo, , saca, fmt], i) => {
+      const c = row.getCell(i + 1);
+      const val = saca(x, b);
+      c.value = val === undefined ? null : val;
+      if (fmt) c.numFmt = fmt;
+      c.border = E.TODOS_BORDES;
+      c.font = { color: { argb: x.diasContrato === 0 && i > 0 && titulo !== '+ Variables' && titulo !== 'TOTAL NÓMINA' ? E.TENUE : E.TEXTO } };
+      c.alignment = { vertical: 'top', wrapText: titulo === 'Nota' };
+    });
+    row.getCell(iDe('SALARIO BASE BRUTO')).font = { bold: true, color: { argb: E.DARK } };
+    const tot = row.getCell(iDe('TOTAL NÓMINA'));
+    tot.font = { bold: true, color: { argb: E.DARK } };
+    tot.fill = E.relleno(ORO_SUAVE);
+    if (x.horasEsperaQuitadas > 0) tono(row.getCell(iDe('− Espera quitada')), AMBAR);
+    // Quien llega al tope: la base está asegurada, y lo que pasa va a las variables.
+    if (x.llegaAlTope) row.getCell(iDe('Tope de su jornada')).font = { bold: true, color: { argb: E.DARK } };
+    row.height = altoPara(notaBase(x, b), 64);
+  }
+
+  const ultima = fila - 1;
+  const pie = ws.getRow(fila);
+  COL_BASE.forEach(([, titulo, , , fmt], i) => {
+    const c = pie.getCell(i + 1);
+    c.fill = E.relleno('FFF3F4F6');
+    c.border = E.TODOS_BORDES;
+    c.font = { bold: true, color: { argb: E.DARK } };
+    if (!SUMA_BASE.has(titulo) || ultima < primera) return;
+    const L = E.colLetra(i + 1);
+    c.value = { formula: `SUM(${L}${primera}:${L}${ultima})` };
+    c.numFmt = fmt;
+  });
+  pie.getCell(1).value = `TOTAL (${b.filas.length})`;
+  pie.getCell(iDe('TOTAL NÓMINA')).fill = E.relleno(E.GOLD);
+  pie.height = 20;
+
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: filaCab }];
+  if (ultima >= primera) ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: n } };
+
+  nota(ws, fila, [
+    `SALARIO BASE BRUTO = (rodadas − espera quitada + justificadas + vacaciones + permisos) × ${eur2(cfg.eurHoraBase)} €, ` +
+      'con TOPE en el salario base de su jornada, prorrateado por sus días de contrato del periodo.',
+    `Cada día de vacaciones suma ${num(cfg.horasMetaDia * cfg.pctDiaVacaciones)} h (${num(cfg.horasMetaDia)} × ${pctTxt(cfg.pctDiaVacaciones)}, ` +
+      `por día natural) y cada día de permiso retribuido ${num(cfg.horasMetaDia)} h. La espera se quita como en las variables: ` +
+      `quien no llega al ${pctTxt(cfg.utilUmbral)} de utilización queda en el ${pctTxt(cfg.utilExigida)}.`,
+    'Quien pasa del tope tiene su base asegurada: lo que pasa se cobra por las variables (el MBO de horas o el FAS). ' +
+      'Quien no llega cobra lo que hizo.',
+    'TOTAL NÓMINA = salario base bruto (del 26 al 25, mes corriente) + el TOTAL de las variables (el mes anterior, del 1 al último).',
+    v.enCurso && !v.sinEmpezar
+      ? 'El periodo aún no ha cerrado: la base va con lo trabajado hasta ayer contra el tope del periodo entero, así que casi nadie llega todavía.'
+      : 'Solo plantilla propia: los de ETT los paga la agencia.',
+  ]);
+}
+
+// ── Hoja 3: el resumen por conductor (16/10/2026) ───────────────────────────
 // Camilo: «Hazme una pestaña con el resumen del cálculo por cada conductor con
 // su total». La hoja de la nómina tiene todas las cifras; esta las pone EN EL
 // ORDEN EN QUE SE CALCULAN —las horas que cuentan, la diferencia, los dos MBO y
@@ -333,7 +501,7 @@ const eur2 = x => {
 const h1 = x => (Number(x) || 0).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const umbralDe = (f, cfg) => (Number(f.jornada) === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40);
 const horasQueCuentan = f => Math.round(((Number(f.horas) || 0) - (Number(f.horasEsperaQuitadas) || 0)
-  + (Number(f.horasJustificadas) || 0)) * 100) / 100;
+  + (Number(f.horasJustificadas) || 0) + (Number(f.horasVacaciones) || 0) + (Number(f.horasPermiso) || 0)) * 100) / 100;
 const ganaDe = f => (f.mboHsExt > f.mboFAS ? 'Horas extra' : f.mboFAS > 0 ? 'FAS' : '');
 
 /** La cuenta de una persona, en palabras. */
@@ -346,7 +514,11 @@ function comoSale(f, cfg) {
       `${pctTxt(cfg.utilUmbral)}: se le exige el ${pctTxt(cfg.utilExigida)})`;
   }
   if (f.horasJustificadas > 0) horas += ` + ${h1(f.horasJustificadas)} de J`;
-  if (f.horasEsperaQuitadas > 0 || f.horasJustificadas > 0) horas += ` = ${h1(horasQueCuentan(f))} h`;
+  if (f.horasVacaciones > 0) horas += ` + ${h1(f.horasVacaciones)} de vacaciones (${f.diasVacaciones} ${f.diasVacaciones === 1 ? 'día' : 'días'})`;
+  if (f.horasPermiso > 0) horas += ` + ${h1(f.horasPermiso)} de permiso (${f.diasPermiso} ${f.diasPermiso === 1 ? 'día' : 'días'})`;
+  if (f.horasEsperaQuitadas > 0 || f.horasJustificadas > 0 || f.horasVacaciones > 0 || f.horasPermiso > 0) {
+    horas += ` = ${h1(horasQueCuentan(f))} h`;
+  }
   const dif = Number(f.deltaHoras) || 0;
   p.push(`${horas} contra ${h1(f.horasObjetivo)} h de objetivo: ` +
     (dif > 0 ? `+${h1(dif)} h.` : `le faltan ${h1(-dif)} h.`));
@@ -383,6 +555,8 @@ const COL_RESUMEN = [
   ['HORAS', 'Rodadas', 9, f => f.horas, HORAS],
   ['HORAS', '− Espera quitada', 10, f => f.horasEsperaQuitadas, HORAS],
   ['HORAS', '+ Justificadas', 11, f => f.horasJustificadas, HORAS],
+  ['HORAS', '+ Vacaciones', 11, f => (f.horasVacaciones == null ? null : f.horasVacaciones), HORAS],
+  ['HORAS', '+ Permisos', 10, f => (f.horasPermiso == null ? null : f.horasPermiso), HORAS],
   ['HORAS', '= Cuentan', 9, f => horasQueCuentan(f), HORAS],
   ['HORAS', 'Objetivo', 9, f => f.horasObjetivo, HORAS],
   ['HORAS', 'Diferencia', 10, f => f.deltaHoras, HORAS],
@@ -399,7 +573,7 @@ const COL_RESUMEN = [
   ['LO QUE COBRA', 'TOTAL', 12, f => f.total, EUROS],
   ['', 'Cómo sale su total', 92, (f, cfg) => comoSale(f, cfg), null],
 ];
-const SUMA_RESUMEN = new Set(['Rodadas', '− Espera quitada', '+ Justificadas', '= Cuentan',
+const SUMA_RESUMEN = new Set(['Rodadas', '− Espera quitada', '+ Justificadas', '+ Vacaciones', '+ Permisos', '= Cuentan',
   'Por horas extra', 'FAS', 'MBO', 'Nocturnidad', 'Propinas', 'Peajes', 'TOTAL']);
 
 function hojaResumen(wb, idLogo, r, filas, cfg) {
@@ -413,26 +587,7 @@ function hojaResumen(wb, idLogo, r, filas, cfg) {
 
   // Los grupos, encima de la cabecera: dicen en qué paso del cálculo está cada
   // columna.
-  const grupos = ws.getRow(fila);
-  let desde = 1;
-  for (let i = 1; i <= n + 1; i++) {
-    const g = i <= n ? COL_RESUMEN[i - 1][0] : null;
-    if (i <= n && g === COL_RESUMEN[desde - 1][0]) continue;
-    const nombre = COL_RESUMEN[desde - 1][0];
-    if (i - 1 > desde) ws.mergeCells(fila, desde, fila, i - 1);
-    const c = grupos.getCell(desde);
-    c.value = nombre || null;
-    for (let k = desde; k < i; k++) {
-      const ck = grupos.getCell(k);
-      ck.fill = E.relleno(nombre ? E.DARK : 'FFFFFFFF');
-      if (nombre) ck.border = E.TODOS_BORDES;
-    }
-    c.font = { size: 9, bold: true, color: { argb: nombre === 'LO QUE COBRA' ? E.GOLD : 'FFC9CED6' } };
-    c.alignment = { vertical: 'middle', horizontal: 'center' };
-    desde = i;
-  }
-  grupos.height = 18;
-  fila += 1;
+  fila = filaDeGrupos(ws, fila, COL_RESUMEN.map(c => c[0]), 'LO QUE COBRA');
 
   const filaCab = fila;
   fila = E.cabeceraTabla(ws, fila, COL_RESUMEN.map(c => c[1]), { alto: 32, ajustar: true });
@@ -828,6 +983,9 @@ async function libroDeMeses(r, { hoja, titulo, subtitulo, etiquetaTotal, avisos 
     linea('   Horas rodadas (viaje + espera)', f.horas, null);
     if (f.horasEsperaQuitadas > 0) linea('   Horas de espera descontadas por baja utilización', -f.horasEsperaQuitadas, null);
     linea('   Horas justificadas', f.horasJustificadas, null);
+    if (f.horasVacaciones > 0 || f.horasPermiso > 0) {
+      linea('   Vacaciones y permisos', Math.round(((Number(f.horasVacaciones) || 0) + (Number(f.horasPermiso) || 0)) * 100) / 100, null);
+    }
     linea('   Objetivo del mes según su jornada', f.horasObjetivo, null);
     linea('   Diferencia sobre el objetivo', f.deltaHoras, null);
     fila++;
@@ -863,6 +1021,8 @@ function notaDelDia(d) {
   if (d.jAprobada && !d.jAntesDelArranque) n.push(d.jSinHoras ? 'J aprobada sin horas: no suma' : 'J aprobada');
   if (d.jAntesDelArranque) n.push('J aprobada antes de su alta: no cuenta');
   if (d.jPendiente) n.push('J pendiente de aprobar: no cuenta');
+  if (d.permiso) n.push(d.horasVacPerm ? 'Permiso retribuido' : 'Permiso retribuido (fuera de su mes: no cuenta)');
+  else if (d.vacaciones) n.push(d.horasVacPerm ? 'Vacaciones' : 'Vacaciones (fuera de su mes: no cuentan)');
   if (d.hoy) n.push('Hoy: el día va a medias');
   if (d.futuro) n.push('Aún no ha llegado');
   return n.join(' · ');
@@ -879,6 +1039,7 @@ const COL_DIA = [
   ['En viaje', 10, d => o(d.viaje), DOS],
   ['Esperando', 11, d => o(d.espera), DOS],
   ['Horas justificadas (J)', 14, d => o(d.horasJustificadas), DOS],
+  ['Vacaciones y permisos (h)', 13, d => o(d.horasVacPerm), DOS],
   ['Horas nocturnas', 12, d => o(d.nocturnasHoras), DOS],
   ['Nocturnidad', 13, d => o(d.nocturnas), CONTA],
   ['Propinas', 12, d => o(d.propinas), CONTA],
@@ -933,15 +1094,17 @@ function hojaDiaADia(wb, idLogo, p, m, cfg) {
   pon(1, 'Según la nómina');
   if (f) {
     pon(3, f.horas, DOS); pon(4, f.horasViaje, DOS); pon(5, f.horasEspera, DOS);
-    pon(6, f.horasJustificadas, DOS); pon(7, f.nocturnasHoras, DOS); pon(8, f.nocturnas, CONTA);
-    pon(9, f.propinas, CONTA); pon(10, f.peajes, CONTA);
-    pon(11, Math.round((f.nocturnas + f.propinas + f.peajes) * 100) / 100, CONTA);
+    pon(6, f.horasJustificadas, DOS);
+    pon(7, Math.round(((Number(f.horasVacaciones) || 0) + (Number(f.horasPermiso) || 0)) * 100) / 100, DOS);
+    pon(8, f.nocturnasHoras, DOS); pon(9, f.nocturnas, CONTA);
+    pon(10, f.propinas, CONTA); pon(11, f.peajes, CONTA);
+    pon(12, Math.round((f.nocturnas + f.propinas + f.peajes) * 100) / 100, CONTA);
   } else {
     pon(3, 'sin fila en la nómina: no trabajó ese mes');
   }
 
   // Lo que se decide con el mes entero, y el total a pagar.
-  const COL_EUROS = 11;
+  const COL_EUROS = 12;
   const resumen = (texto, valor, fmt, { fuerte = false } = {}) => {
     const row = ws.getRow(fila++);
     ws.mergeCells(row.number, 1, row.number, COL_EUROS - 1);
@@ -970,6 +1133,8 @@ function hojaDiaADia(wb, idLogo, p, m, cfg) {
     'Cada día es un día natural, de 00:00 a 23:59: un turno de noche reparte sus horas entre los dos días que toca.',
     'Horas rodadas = viaje + espera, con los ratos que se pisan entre dos cuentas contados una sola vez.',
     'Una J aprobada suma las horas que se le pusieron al justificarla, encima de lo rodado ese día; una sin horas no suma, y las pendientes no cuentan hasta que se aprueben.',
+    `Cada día de vacaciones suma ${String(Math.round(cfg.horasMetaDia * cfg.pctDiaVacaciones * 100) / 100).replace('.', ',')} h ` +
+      `(por día natural) y cada día de permiso retribuido ${String(cfg.horasMetaDia).replace('.', ',')} h, desde que arranca su mes y hasta la baja.`,
     'Extras del día = nocturnidad + propinas + peajes. La facturación neta solo cuenta para el MBO de facturación.',
     'La fila «Según la nómina» es la de la pantalla de Nóminas para ese mes: tiene que coincidir con el total de los días.',
   ]);
