@@ -29,6 +29,12 @@ const CORREO_TRAFICO = process.env.CORREO_TRAFICO || 'traficotelecab@gmail.com';
 // el correo sale de verdad pero TODO va a esa dirección, sea para quien sea:
 // el destinatario original no recibe nada, y se dice en el asunto y arriba del
 // texto a quién habría ido. Esto manda sobre el buzón falso.
+//
+// LA CONTRASEÑA, SIN ESCRIBIRLA EN NINGÚN SITIO. Camilo: «usa la contraseña que
+// puse en la base de datos que está bien cifrada». Sin SMTP_PASS, se usa la
+// contraseña de correo que SMTP_USER tiene guardada en su ficha (Mi perfil,
+// cifrada con CRED_KEY), descifrada en memoria al enviar, como hace
+// `enviarComoUsuario`. Si no se puede descifrar, al buzón falso.
 const pruebas = require('./modoPruebas');
 
 function buzonDePruebas() {
@@ -39,15 +45,26 @@ function buzonDePruebas() {
 /** La dirección a la que se desvía todo en pruebas: UNA, bien escrita, o nada. */
 function desvioDePruebas() {
   const a = String(process.env.CORREO_PRUEBAS_A || '').trim();
-  const smtp = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+  const smtp = process.env.SMTP_HOST && process.env.SMTP_USER && (process.env.SMTP_PASS || process.env.CRED_KEY);
   return smtp && /^[^@\s,;<>]+@[^@\s,;<>]+\.[A-Za-z]{2,}$/.test(a) ? a : null;
+}
+
+/** La contraseña del desvío: SMTP_PASS, o la cifrada en la ficha de SMTP_USER. */
+async function passDelDesvio() {
+  if (process.env.SMTP_PASS) return process.env.SMTP_PASS;
+  try {
+    const usuarios = require('../modules/Usuarios/usuarios.service');
+    return usuarios.descifrarPassCorreo(await usuarios.buscarUsuario(process.env.SMTP_USER)) || null;
+  } catch (_) { return null; }
 }
 
 const escHtml = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function enviarEnPruebas(mail) {
   const a = desvioDePruebas();
-  if (a) {
+  const pass = a ? await passDelDesvio() : null;
+  if (a && !pass) console.log(`🧪 [PRUEBAS] No puedo descifrar la contraseña de correo de ${process.env.SMTP_USER} (¿CRED_KEY?): va al buzón falso`);
+  if (a && pass) {
     const port = Number(process.env.SMTP_PORT) || 587;
     const aviso = `Entorno de pruebas: en producción este correo iría a ${mail.to}.`;
     const banda = `<p style="margin:0;padding:10px 14px;background:#fff4e0;color:#7a4a00;font:13px/1.4 Segoe UI,Arial,sans-serif;">${escHtml(aviso)}</p>`;
@@ -56,7 +73,7 @@ async function enviarEnPruebas(mail) {
       : undefined;
     const transport = require('nodemailer').createTransport({
       host: process.env.SMTP_HOST, port, secure: port === 465, requireTLS: port !== 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      auth: { user: process.env.SMTP_USER, pass },
       connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
     });
     const info = await transport.sendMail({

@@ -61,7 +61,26 @@ const CORREO = {
   await correo.enviarCorreo(CORREO);
   igual('Sin contraseña del SMTP: al buzón falso', envios[0].host, '127.0.0.1');
 
-  // ── 3. Sin nada: no sale ─────────────────────────────────────────────────
+  // ── 3. Con la contraseña cifrada de la ficha ─────────────────────────────
+  const usuarios = require('../modules/Usuarios/usuarios.service');
+  let pedido = null;
+  usuarios.buscarUsuario = async email => { pedido = email; return { email, pass_correo: 'cifrada' }; };
+  usuarios.descifrarPassCorreo = u => (u && u.pass_correo === 'cifrada' ? 'la-de-su-ficha' : null);
+  let auth = null;
+  const crear = nodemailer.createTransport;
+  nodemailer.createTransport = o => { auth = o.auth; return crear(o); };
+  entorno({ SMTP_HOST: 'smtp.ejemplo.com', SMTP_USER: 'datos@ejemplo.com', CRED_KEY: 'llave', CORREO_PRUEBAS_A: 'datostelecab@gmail.com', CORREO_PRUEBAS: '127.0.0.1:1025' });
+  await correo.enviarCorreo(CORREO);
+  igual('Sin SMTP_PASS, con la contraseña cifrada de su ficha', [pedido, auth && auth.pass, envios[0].to],
+    ['datos@ejemplo.com', 'la-de-su-ficha', 'datostelecab@gmail.com']);
+  usuarios.descifrarPassCorreo = () => null;
+  envios = [];
+  await correo.enviarCorreo(CORREO);
+  igual('…y si no se puede descifrar, al buzón falso', [envios[0].host, envios[0].to], ['127.0.0.1', 'conductor@ejemplo.com']);
+  nodemailer.createTransport = crear;
+  delete process.env.CRED_KEY;
+
+  // ── 4. Sin nada: no sale ─────────────────────────────────────────────────
   entorno({ CORREO_PRUEBAS: 'smtp.dondominio.com:587' });
   r = await correo.enviarCorreo(CORREO);
   igual('Un «buzón falso» que no es de este PC no vale: se frena', [r.enviado, envios.length], [false, 0]);

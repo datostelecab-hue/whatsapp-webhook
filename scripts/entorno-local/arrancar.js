@@ -41,7 +41,9 @@ if (up.status !== 0) {
 // (Camilo, 19/10/2026) si en correo.env hay un SMTP de verdad. Ese fichero no se
 // sube a GitHub (lleva una contraseña) y solo puede poner estas claves: nada de
 // la base ni del modo pruebas.
-const CLAVES_CORREO = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'CORREO_PRUEBAS_A'];
+// CRED_KEY va aquí para descifrar la contraseña de correo que SMTP_USER tiene en
+// su ficha (Mi perfil), en vez de escribirla en claro en SMTP_PASS.
+const CLAVES_CORREO = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'CORREO_PRUEBAS_A', 'CRED_KEY'];
 const correoEnv = {};
 try {
   require('fs').readFileSync(path.join(__dirname, 'correo.env'), 'utf8').split(/\r?\n/).forEach(l => {
@@ -49,7 +51,7 @@ try {
     if (m && CLAVES_CORREO.includes(m[1]) && m[2] !== '') correoEnv[m[1]] = m[2].replace(/^(["'])(.*)\1$/, '$2');
   });
 } catch (_) { /* sin correo.env: al buzón falso */ }
-const desvio = correoEnv.SMTP_HOST && correoEnv.SMTP_USER && correoEnv.SMTP_PASS;
+const desvio = correoEnv.SMTP_HOST && correoEnv.SMTP_USER && (correoEnv.SMTP_PASS || correoEnv.CRED_KEY);
 // Las de SMTP de fuera no valen aquí: o las de correo.env, o ninguna.
 CLAVES_CORREO.forEach(k => { delete process.env[k]; });
 Object.assign(process.env, correoEnv);
