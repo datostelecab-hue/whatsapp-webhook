@@ -100,6 +100,18 @@ Camilo: *«quita a la gente de la ETT, a ellos no les damos vacaciones»*. La li
 
 Sus ausencias **se siguen poniendo en su ficha** de Plantilla (es lo que lo aparta del cuadrante); solo dejan de salir en este módulo.
 
+## Las previstas de Caverel, fuera desde mayo (19/10/2026, db/209)
+
+Camilo: *«nosotros nos hicimos cargo de los trabajadores de mayo en adelante … Caverel tenía vacaciones previstas, pero las que se hicieron efectivas sí o sí es de las vacaciones de la plantilla de RRHH»*, y *«Sí, quítalos del ERP»*.
+
+`db/209` borra los **9 tramos de mayo en adelante que solo venían del Excel de Caverel** (su motivo dice Caverel y no nombra la PLANTILLA TRABAJADORES de RRHH), de las 8 personas que se le enseñaron: Carlos Eduardo Gómez Quirama (15–31/07), Elian Fernando Bonilla Ruiz (17/06–06/07), Jamal Halbouz El Kariraa (24–28/05), Juan Francisco Ruiz Cano (01–03/05), Juan Manuel Álvarez Akieme (30–31/05), Kevin Johan Ferreira Montilla (04–30/05), Soufyane El Hadri (28–30/05 y 01–08/06) y Aquila Daniel Andrade da Silva (06–13/05, baja voluntaria el 19/10).
+
+- **El saldo sube esos días**: ensayado, Carlos Eduardo 8,82 → 25,82; Elian 26,86 → 46,86; Jamal −2,47 → 2,53; Juan Francisco 10,94 → 13,94; Juan Manuel 11,89 → 13,89; Kevin 12,30 → 39,30; Soufyane 8,94 → 19,94.
+- **Se salta la llave de Laura y el «solo a futuro»**, a propósito: lo pidió y lo autorizó Camilo, y firma él (usuario 7). Cada borrado queda en `cambio_campo` como cuando la pantalla borra una ausencia, con origen `migracion`.
+- Solo actúa sobre lo que está como se vio; se puede pasar dos veces.
+- **Quedan sin tocar** los de tres personas que ya no estaban: Emilio Espinoza, Laurentiu Teodor Meran y Younes Hammaouda.
+- Lo de antes de mayo no se toca: Caverel llevaba entonces a esa gente.
+
 ## La llave
 
 `/vacaciones`, en el grupo RRHH del catálogo ([[Usuarios y permisos]]). db/197 se la da a quien ya tenía `/rrhh` o la de aprobar vacaciones, que son 8 usuarios. **Mirar los saldos no da permiso para aprobar**: `/vacaciones/aprobar` se mira exacta (`services/aprobarVacaciones.js`) y no por prefijo.

@@ -17,6 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## La baja programada y el contrato de Aaron (13/10/2026)
 
+- **Aplicar `db/209`**: borra las 9 vacaciones previstas de Caverel de mayo en adelante (8 personas) y les devuelve esos días al saldo. Ver [[Vacaciones#Las previstas de Caverel, fuera desde mayo (19/10/2026, db/209)]].
 - **Desplegar y aplicar `db/208`** (la transferencia en [[Administracion#La transferencia (16/10/2026, db/208)|Recaudación]]): sin ella todo sigue igual, pero el botón «Transferencia» contesta que falta la migración.
 - **Desplegar y aplicar `db/207`** (los días y las horas de vacaciones y permisos en la nómina congelada; la [[Nominas#La nómina base (16/10/2026)|nómina base]] ya funciona sin ella). Conviene antes de congelar la nómina de octubre: sin ella, lo congelado no explica qué parte de la diferencia salió de las vacaciones. `db/206` ya está aplicada.
 - **La nómina base no se congela todavía**: se calcula al bajar el Excel. Cuando se cierre el periodo del 26 al 25 habrá que decidir si se guarda como las variables.
