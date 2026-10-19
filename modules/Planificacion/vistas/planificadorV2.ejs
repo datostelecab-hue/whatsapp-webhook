@@ -2463,7 +2463,7 @@
     const sinTel = ids.filter(id => !((porId.get(id) || {}).telefono)).length;
     const ok = await Dialogo.confirmar({
       titulo: `Enviar turnos · ${nombre}`, tono: 'pregunta', si: 'Enviar', no: 'Cancelar',
-      html: `<p class="text-sm">Se avisa por WhatsApp a la gente de ${lista.length === 1 ? 'este coche' : `estos ${lista.length} coches`} — ${ids.length} persona(s)${sinTel ? `, ${sinTel} sin teléfono` : ''} — de que tienen sus turnos listos. ${off === 0 ? 'Solo a quienes trabajan de hoy a 7 días.' : `Solo a quienes trabajan la semana del <b>${isoAes(T.fechas[0])}</b>.`}</p><p class="text-sm mt-2 text-telecab-muted">Al pulsar «Ver mis turnos», cada uno ve los suyos de ese día a 7 días: su coche, de quién lo recibe y a quién se lo entrega.</p>`,
+      html: `<p class="text-sm">Se avisa por WhatsApp a la gente de ${lista.length === 1 ? 'este coche' : `estos ${lista.length} coches`} — ${ids.length} persona(s)${sinTel ? `, ${sinTel} sin teléfono` : ''} — de que tienen sus turnos listos. ${off === 0 ? 'Solo a quienes trabajan de hoy a 7 días.' : `Solo a quienes trabajan la semana del <b>${isoAes(T.fechas[0])}</b>.`}</p><p class="text-sm mt-2 text-telecab-muted">Al pulsar «Ver mis turnos», cada uno ve los suyos de ese día a 7 días: su coche, de quién lo recibe y a quién se lo entrega. A quien haya escrito a Telecab en las últimas 24 h le llegan sus turnos directamente en un texto, sin la plantilla (que Meta cobra); si cambiaron desde el último aviso, con «Cambios en tus turnos».</p>`,
     });
     if (!ok) return;
     const previo = btn.innerHTML;

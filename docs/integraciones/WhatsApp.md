@@ -61,7 +61,7 @@ El detalle completo, con los textos exactos y las reglas de Meta, está en [[PLA
 |---|---|---|
 | `atencion_hora` | `nombre` (nombrada) | **ya no se manda** desde el 08/09/2026; su función se quitó el 01/10/2026. Queda como ejemplo del formato nombrado (`enviarPlantillaNombre`) |
 | `ballenoil` | `nombre` (nombrada) | **ya no se usa** (24/09/2026): era la bienvenida con el PIN de Ballenoil. Se puede borrar en Meta |
-| `detalle_turnos` | 1 posicional | aviso de turnos, con botón "Ver mis turnos" |
+| `detalle_turnos` | 1 posicional | aviso de turnos, con botón "Ver mis turnos". **Con la ventana abierta no se manda** (19/10/2026): van los turnos en texto, ver abajo |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | sanciones por exceso de velocidad |
 
 **Pendiente de aprobación — la cita del taller (08/10/2026):** `cita_taller`, 4 posicionales (nombre de pila, matrícula, «viernes 10 de octubre», «10:00»), con los botones de respuesta rápida «Confirmo» y «No puedo ir». Va al conductor dos días antes de la cita → [[Citas del taller]]. Lo que pulsa entra por el webhook como botón de plantilla y `handleTemplateButton` lo apunta en la cita antes de mirar si es el de los turnos.
@@ -75,6 +75,23 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 **Aprobar la plantilla no enciende las alertas.** Hacen falta tres cosas independientes: la plantilla aprobada, elegir destinatarios en `/alertas/config` (ese permiso nace apagado) y pasar el modo a `live` — en `test` la alerta se registra y no sale nada, con estado `simulada`.
 
 **Categoría.** Meta puede recategorizar una UTILITY como MARKETING por su cuenta, y se cobra distinto. Son avisos internos a empleados, que no encaja del todo en la definición de UTILITY ("una transacción, cuenta o pedido concretos").
+
+## Lo que cobra Meta, y el aviso de turnos sin plantilla (19/10/2026)
+
+Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](https://developers.facebook.com/docs/whatsapp/pricing), [cambios](https://developers.facebook.com/docs/whatsapp/pricing/updates-to-pricing)):
+
+- **Desde el 01/07/2025 se cobra POR MENSAJE**, no por conversación de 24 h: ya no hay «la primera plantilla del día».
+- **Desde el 01/10/2026 se cobra CADA plantilla, también con la ventana abierta.** Las de utilidad (turnos, avisos, citas) fueron gratis con la ventana abierta del 01/07/2025 al 30/09/2026; ya no. Las de marketing y autenticación, siempre.
+- **El texto libre** (los «mensajes de servicio»: también los botones del bot) es **gratis hasta 1.000 al mes por número**; del 1.001 en adelante, desde el 01/10/2026, se cobra.
+- Contado en el chat del 07 al 19/10/2026: el bot mandó 3.771 mensajes (2.503 de botones y 1.268 textos), unos 9.000 al mes, así que los 1.000 gratis se acaban en tres o cuatro días; las plantillas fueron 458 (410 de turnos).
+
+**El aviso de turnos con la ventana abierta va SIN PLANTILLA** (Camilo: *«si William o cualquiera le manda la plantilla de los turnos a alguien que tiene la ventana abierta entonces no mandemos petición de plantilla a Meta … que mande los turnos directamente sin la plantilla del principio, si hay cambios entonces que diga "Cambios en tus turnos" y el texto que siempre mandamos»*). `cobertura.service.avisarTurnos`, por donde pasan todos los envíos (uno, el masivo, el del cuadrante y Control → Próximas incorporaciones):
+
+- Si escribió en las últimas 24 h (y le quedan al menos 5 min: `services/whatsapp.ventanaAbierta`, la regla del chat), le llegan **sus turnos directamente en texto**, los mismos que al pulsar «Ver mis turnos» (`turnos.service.textoTurnos`): **un mensaje en vez de dos** y sin pulsar nada. Se pudo simular el botón (un mensaje interactivo no necesita plantilla), pero eran dos mensajes; Camilo eligió los turnos directamente.
+- Si ya se le avisó esa semana y su **huella** ha cambiado desde entonces, el texto empieza por **«Cambios en tus turnos»**.
+- Si la ventana está cerrada, si el teléfono no es de esa persona o si Meta no acepta el texto, **la plantilla de siempre**.
+- En el libro de avisos (`aviso_turnos.detalle`) queda «texto (ventana abierta)» (y «· cambios»), para contar lo ahorrado.
+
 
 ## Lo que entra: el webhook y el bot
 

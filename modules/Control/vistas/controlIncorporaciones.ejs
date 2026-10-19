@@ -319,7 +319,8 @@
     const ok = await Dialogo.confirmar({
       titulo: `Enviar sus turnos a ${f.nombre}`,
       texto: `Le llega por WhatsApp la plantilla de turnos de Telecab, la misma que manda el planificador, con el botón «Ver mis turnos». `
-        + `Al pulsarlo verá sus turnos de hoy a 7 días.${f.avisoTurnos && f.avisoTurnos.ok ? ` Ya se le mandaron el ${f.avisoTurnos.cuando}.` : ''}`,
+        + `Al pulsarlo verá sus turnos de hoy a 7 días. Si ha escrito a Telecab en las últimas 24 h, le llegan sus turnos directamente en un texto, sin la plantilla (que Meta cobra).`
+        + `${f.avisoTurnos && f.avisoTurnos.ok ? ` Ya se le mandaron el ${f.avisoTurnos.cuando}.` : ''}`,
       si: 'Enviar', no: 'Cancelar',
     });
     if (!ok) return;

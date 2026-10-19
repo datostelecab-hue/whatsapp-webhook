@@ -303,6 +303,23 @@ async function estadoCuenta() {
 }
 
 /**
+ * ¿TIENE ESTA PERSONA LA VENTANA DE 24 H ABIERTA, y le quedan al menos
+ * `margenMs`? La misma regla que el chat (services/whatsappChat.ventana), sobre
+ * su último mensaje entrante. Con el margen, un texto que sale justo cuando se
+ * cierra no se queda sin entregar. Ante cualquier duda (sin chat, sin
+ * teléfono, la base no contesta), NO: se manda como si estuviera cerrada.
+ */
+async function ventanaAbierta(telefono, margenMs = 5 * 60000) {
+  const W = require('./whatsappChat');
+  let tel = W.soloDigitos(telefono);
+  if (tel.length === 9) tel = '34' + tel;
+  if (!tel) return false;
+  const c = await require('./repo/whatsappChat').chat(tel).catch(() => null);
+  if (!c || !c.existe) return false;
+  return W.ventana(c.ultima_entrante_at, Date.now() + margenMs).abierta;
+}
+
+/**
  * Mensaje de texto suelto (dentro de la ventana de 24 h). `opciones.origen` dice
  * de quién es para el chat: el bot si no se dice; 'oficina' con su `usuarioId`.
  */
@@ -398,4 +415,4 @@ async function descargarMedia(mediaId, { maxBytes = null } = {}) {
  */
 const registrarEstados = statuses => require('./repo/whatsappEnvios').registrarEstados(statuses);
 
-module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, enviarVideo, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, definiciones, definicionDe, olvidarDefiniciones, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, ventanaAbierta, enviarVideo, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, definiciones, definicionDe, olvidarDefiniciones, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };

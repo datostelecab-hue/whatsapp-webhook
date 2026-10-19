@@ -56,6 +56,18 @@ async function registrar({ usuarioId, usuario, conductorId, telefono, cuadrante,
 }
 
 /**
+ * La huella del ÚLTIMO aviso que le llegó (ok) esa semana, o null si no se le
+ * avisó: con ella se sabe si lo que se le manda ahora son «cambios».
+ */
+async function huellaAvisada({ conductorId, lunes }) {
+  const r = await db.consulta(
+    `SELECT huella FROM aviso_turnos
+      WHERE conductor_id = $1 AND semana_lunes = $2::date AND resultado = 'ok'
+      ORDER BY enviado_at DESC LIMIT 1`, [conductorId, lunes]);
+  return r.rows.length ? (r.rows[0].huella || '') : null;
+}
+
+/**
  * El estado de los avisos de UNA semana, por conductor:
  *   { id: { veces, ultimoAt, ultimoPor, avisado, cambiado } }
  * `cambiado` = su huella ACTUAL no es la del último aviso que le llegó (ok).
@@ -150,4 +162,4 @@ async function informeDia({ dia } = {}) {
   };
 }
 
-module.exports = { huellas, registrar, estadoSemana, informeDia };
+module.exports = { huellas, registrar, huellaAvisada, estadoSemana, informeDia };

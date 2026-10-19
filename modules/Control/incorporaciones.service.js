@@ -247,7 +247,8 @@ async function apuntarLlamada(conductorId, b = {}, quien = {}) {
 /**
  * MANDARLE SUS TURNOS POR WHATSAPP: la misma plantilla que manda el planificador
  * («detalle_turnos», con el botón que le enseña sus turnos de hoy a 7 días), y
- * queda en el mismo libro de avisos.
+ * queda en el mismo libro de avisos. Con la ventana de 24 h abierta, sus turnos
+ * directamente en texto, sin plantilla (19/10/2026, ver cobertura.avisarTurnos).
  */
 const enviarTurnos = (conductorId, quien = {}) =>
   require('../Planificacion/cobertura.service').enviarAUno({ id: conductorId, semana: 0 }, quien);

@@ -31,7 +31,7 @@
 
 const cob = require('./cobertura.repo');
 const avisos = require('./avisos.repo');
-const { enviarAvisoTurnos } = require('../../services/whatsapp');
+const { enviarAvisoTurnos, enviarTexto, ventanaAbierta } = require('../../services/whatsapp');
 
 const TZ = 'Europe/Madrid';
 
@@ -102,6 +102,51 @@ async function apuntar(datos) {
   catch (e) { console.error('⚠️ [Turnos] no se pudo registrar el aviso:', e.message); }
 }
 
+/**
+ * EL AVISO DE TURNOS, SIN PAGAR LA PLANTILLA SI SE PUEDE (19/10/2026). Camilo:
+ * «si William o cualquiera le manda la plantilla de los turnos a alguien que
+ * tiene la ventana abierta entonces no mandemos petición de plantilla a Meta
+ * … que mande los turnos directamente sin la plantilla del principio, si hay
+ * cambios entonces que diga "Cambios en tus turnos" y el texto que siempre
+ * mandamos, sino entonces simplemente el texto».
+ *
+ * Desde el 01/10/2026 Meta cobra CADA plantilla, también con la ventana
+ * abierta; el texto libre entra en los 1.000 mensajes gratis del mes. Así que:
+ *
+ *   · VENTANA ABIERTA (con 5 min por delante): sus turnos directamente, en
+ *     texto —lo mismo que le llegaría al pulsar «Ver mis turnos»—. Si ya se le
+ *     avisó esa semana y su huella ha cambiado desde entonces, encabezados por
+ *     «Cambios en tus turnos». Un mensaje en vez de dos, y sin pulsar nada.
+ *   · VENTANA CERRADA, o si algo no cuadra (el teléfono no es de esta persona,
+ *     no se le encuentra, Meta no acepta el texto): la plantilla de siempre.
+ *
+ * Devuelve { ok, error, via: 'texto' | 'plantilla', cambio }.
+ */
+async function avisarTurnos(entrada, { lunes, huella }) {
+  if (await ventanaAbierta(entrada.telefono).catch(() => false)) {
+    try {
+      // Que el teléfono sea de ESTA persona: el texto se arma por el teléfono.
+      const p = await cob.conductorPorTelefono(entrada.telefono).catch(() => null);
+      const t = p && String(p.conductorId) === String(entrada.id)
+        ? await require('./turnos.service').textoTurnos({ phone: entrada.telefono })
+        : null;
+      if (t && t.texto && (t.nombre || t.como === 'evento')) {
+        const antes = await avisos.huellaAvisada({ conductorId: entrada.id, lunes }).catch(() => null);
+        const cambio = antes != null && antes !== (huella || '');
+        const r = await enviarTexto(entrada.telefono, (cambio ? '*Cambios en tus turnos*\n\n' : '') + t.texto, { origen: 'turnos' });
+        if (r.ok) return { ok: true, via: 'texto', cambio };
+        console.error(`⚠️ [Turnos] el texto a ${entrada.nombre} no salió (${r.error}): va la plantilla`);
+      }
+    } catch (e) {
+      console.error(`⚠️ [Turnos] texto con la ventana abierta a ${entrada.nombre}: ${e.message}; va la plantilla`);
+    }
+  }
+  const r = await enviarAvisoTurnos(entrada.telefono, entrada.nombre);
+  return { ...r, via: 'plantilla', cambio: false };
+}
+// Lo que queda en el libro de avisos: por dónde salió (para contar lo ahorrado).
+const detalleDe = r => (r.ok ? (r.via === 'texto' ? (r.cambio ? 'texto (ventana abierta) · cambios' : 'texto (ventana abierta)') : null) : r.error);
+
 /** A UN conductor. `idBolt` es como lo llama la pantalla desde siempre; hoy es su id. */
 async function enviarAUno({ id, semana }, quienEs) {
   const conductorId = String(id || '').trim();
@@ -135,12 +180,12 @@ async function enviarAUno({ id, semana }, quienEs) {
     throw new Error(`${entrada.nombre} ya no está de alta: no se le envían turnos`);
   }
 
-  const r = await enviarAvisoTurnos(entrada.telefono, entrada.nombre);
-  await apuntar({ ...base, resultado: r.ok ? 'ok' : 'error', detalle: r.ok ? null : r.error });
+  const r = await avisarTurnos(entrada, { lunes: h.lunes, huella: base.huella });
+  await apuntar({ ...base, resultado: r.ok ? 'ok' : 'error', detalle: detalleDe(r) });
   if (!r.ok) throw new Error(r.error);
 
-  console.log(`📅 [Turnos] Aviso enviado a ${entrada.nombre} (semana ${s})`);
-  return { enviado: true };
+  console.log(`📅 [Turnos] Aviso enviado a ${entrada.nombre} (semana ${s}, por ${r.via})`);
+  return { enviado: true, via: r.via, cambio: !!r.cambio };
 }
 
 // El progreso del masivo vive en memoria: lo sondea el panel mientras dura y no
@@ -190,16 +235,16 @@ async function enviarABastantes(semana, soloIds = null, ctx = {}) {
         await apunte(e, 'sin-telefono');
         continue;
       }
-      const r = await enviarAvisoTurnos(e.telefono, e.nombre);
-      if (r.ok) _prog.enviados++;
+      const r = await avisarTurnos(e, { lunes: h.lunes, huella: h.porConductor.get(String(e.id)) || '' });
+      if (r.ok) { _prog.enviados++; if (r.via === 'texto') _prog.porTexto = (_prog.porTexto || 0) + 1; }
       else { _prog.errores++; _prog.detalle.push(`${e.nombre}: ${r.error}`); }
-      await apunte(e, r.ok ? 'ok' : 'error', r.ok ? null : r.error);
+      await apunte(e, r.ok ? 'ok' : 'error', detalleDe(r));
       await sleep(RITMO_MS);
     }
   } finally {
     _prog.activo = false; _prog.fin = sello();
   }
-  console.log(`📅 [Turnos] Bulk semana ${s}: ${_prog.enviados} enviados · ` +
+  console.log(`📅 [Turnos] Bulk semana ${s}: ${_prog.enviados} enviados (${_prog.porTexto || 0} por texto, sin plantilla) · ` +
     `${_prog.errores} err · ${_prog.sinTel} sin tel`);
 }
 
