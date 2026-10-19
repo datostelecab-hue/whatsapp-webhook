@@ -46,6 +46,11 @@ con.editarAusencia = async () => { hechos.push(['editar']); return {}; };
 con.borrarAusencia = async () => { hechos.push(['borrar']); return {}; };
 const FILAS = { 10: 'vacaciones', 11: 'baja_medica' };
 con.situacionDe = async (id, filaId) => FILAS[filaId] || null;
+// Desde el 16/10/2026 Plantilla mira la ausencia con `ausenciaDe` (estado y
+// fechas: la regla de «solo a futuro» las necesita). Sin este doble la fila no
+// aparecía, la llave no se pedía y estas pruebas fallaban sin que nada estuviera
+// roto. Unas vacaciones en el futuro, para que Laura pueda corregirlas y borrarlas.
+con.ausenciaDe = async (id, filaId) => (FILAS[filaId] ? { estado: FILAS[filaId], desde: '2099-12-01', hasta: '2099-12-10' } : null);
 
 const tRepo = require('../modules/Ticketera/ticketera.repo');
 const TICKETS = {

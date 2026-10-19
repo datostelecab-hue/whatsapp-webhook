@@ -7,9 +7,13 @@
 //               sistema (el del contrato abierto). Cuentan la libranza, la baja
 //               médica, las vacaciones y los permisos; NO cuentan los días de
 //               suspensión (de empleo y sueldo, o por retirada del permiso de
-//               conducir). Quien entró antes de 2025 empieza el 01/01/2025: el
-//               histórico de vacaciones empieza ahí y lo anterior se da por
-//               cerrado.
+//               conducir). Quien entró antes de 2026 empieza el 01/01/2026
+//               (19/10/2026, Camilo: «Reinicia las vacaciones desde el 1, si
+//               están dados de alta antes pues muy de malas, perdieron esos
+//               días, que empiecen a contar desde este año»). Hasta entonces
+//               era el 01/01/2025. Lo de antes no cuenta para NADA: ni lo
+//               generado, ni las vacaciones cogidas, ni los permisos, ni los
+//               festivos trabajados.
 //   FESTIVOS    + 1 día entero por cada festivo nacional o de la Comunidad de
 //               Madrid en el que trabajó MÁS DE 6 HORAS (las de la nómina: viaje
 //               + espera de BOLT, por día natural).
@@ -41,7 +45,9 @@ const aFuturo = require('../../services/vacacionesAFuturo');       // solo a fut
 const nominas = require('../Nominas/nominas.service');   // la puerta de Nóminas: las horas de un día
 
 const TASA = 0.0821;
-const DESDE_HISTORICO = '2025-01-01';
+// Desde aquí cuenta todo (ver arriba). saldoDe recorta a esta fecha lo generado,
+// las vacaciones, los permisos, las suspensiones y los festivos.
+const DESDE_HISTORICO = '2026-01-01';
 const UMBRAL_FESTIVO = 6 * 3600;          // más de 6 horas
 // Desde aquí las horas de un festivo salen de `fv_tramo` (las calcula el
 // sistema). Antes, de db/198 (historial de BOLT) o no hay datos.

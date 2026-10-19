@@ -367,7 +367,7 @@ No son de los seis, pero forman parte de la misma red:
   jornada llega a la ficha y a la candidatura; con vacante sale de ella si no se marca, y
   si no coincide no se da el alta. Quien vuelve también recibe su turno.
 - **`comprobar-vacaciones-saldo.js`** (14/10/2026) — el saldo de vacaciones: 0,0821 por día
-  natural desde el alta o el 01/01/2025, sin suspensiones (la baja médica sí genera);
+  natural desde el alta o el 01/01/2026 (lo de 2025 no cuenta, ni sus vacaciones ni sus festivos), sin suspensiones (la baja médica sí genera);
   vacaciones que cruzan hoy, de antes del alta y programadas; cada día de permiso resta
   uno solo si es de asuntos propios (sin tipo u otro tipo, no restan); un festivo suma con MÁS de 6 h (6 justas no), «sin datos» antes de junio de 2025
   y «calculándose» si el sistema aún no tiene sus horas. Y el cálculo de las horas de los

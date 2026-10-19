@@ -18,7 +18,7 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 | **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron. |
 | **−** | Asuntos propios | **Cada día de permiso por ASUNTOS PROPIOS resta un día entero** del saldo. Los demás permisos retribuidos no restan. |
 
-- **Quien entró antes de 2025 empieza el 01/01/2025**: el histórico de vacaciones empieza ahí y lo anterior se da por cerrado. Quien entró después, desde su alta. Las vacaciones de un contrato anterior no cuentan.
+- **Quien entró antes de 2026 empieza el 01/01/2026** (desde el 19/10/2026; hasta entonces, el 01/01/2025): lo anterior no cuenta para nada. Quien entró después, desde su alta. Las vacaciones de un contrato anterior no cuentan. Ver [[#Todo empieza el 01/01/2026 (19/10/2026)]].
 - **Lo programado** (vacaciones y permisos de mañana en adelante, ya puestos en la ficha) no toca el saldo de hoy. Se enseña aparte, con lo que quedará después.
 - El saldo puede ser **negativo**: ha disfrutado más de lo generado.
 
@@ -99,6 +99,15 @@ Ensayado también por la puerta de Plantilla, sobre copias temporales (28 casos 
 Camilo: *«quita a la gente de la ETT, a ellos no les damos vacaciones»*. La lista y las fichas del módulo son **solo de plantilla propia** (136 personas ese día, de 223 con contrato abierto): a los de ETT las vacaciones se las da la agencia, y aquí no llevan saldo. Si alguien abre por enlace la ficha de uno de ETT, se le dice: *«… es de ETT: sus vacaciones se las da la agencia, no nosotros, así que aquí no lleva saldo»*. Ya no hay columna «Contrato» ni filtro Propia/ETT.
 
 Sus ausencias **se siguen poniendo en su ficha** de Plantilla (es lo que lo aparta del cuadrante); solo dejan de salir en este módulo.
+
+## Todo empieza el 01/01/2026 (19/10/2026)
+
+Camilo: *«Reinicia las vacaciones desde el 1, si están dados de alta antes pues muy de malas, perdieron esos días, que empiecen a contar desde este año»*.
+
+- El saldo de quien entró **antes de 2026** se calcula desde el **01/01/2026**. Lo de antes **no cuenta para nada**: ni lo generado en 2025, ni las vacaciones que cogió entonces, ni los permisos, ni los festivos trabajados. Unas vacaciones que cruzan el 1 de enero cuentan solo sus días de 2026.
+- Quien entró en 2026 sigue igual: desde su alta.
+- Es una sola constante, `DESDE_HISTORICO` (`vacaciones.service.js`): `saldoDe` ya recortaba a esa fecha lo generado, las vacaciones, los permisos, las suspensiones y los festivos. Los festivos «sin datos» (los de antes de junio de 2025, que BOLT ya no guarda) dejan de salir.
+- **Lo que cambió ese día** (134 personas de plantilla propia, con db/209 ya aplicada): 46 arrancan ahora el 01/01/2026 y cambian de saldo, 42 a menos y 4 a más (quien había gastado en 2025 más de lo que generó). El saldo medio pasa de 13,11 a 9,74 días; los saldos negativos, de 5 a 12. Lo que más baja: Javier Sánchez Núñez (65,94 → 30,97) y José Miguel Cañas del Olmo (53,94 → 23,97); lo que más sube: Leslie Andrea Arbeláez Vargas (−2,06 → 23,97) y Luis David Sarzosa Garzón (6,94 → 23,97).
 
 ## Las previstas de Caverel, fuera desde mayo (19/10/2026, db/209)
 

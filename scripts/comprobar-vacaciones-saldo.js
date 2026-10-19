@@ -1,7 +1,8 @@
 // ============================================================
 // EL SALDO DE VACACIONES, CON LAS REGLAS DE CAMILO (14/10/2026)
 // ============================================================
-//   + 0,0821 días por día natural desde el alta (o el 01/01/2025), sin las
+//   + 0,0821 días por día natural desde el alta (o el 01/01/2026; hasta el
+//     19/10/2026 era el 01/01/2025), sin las
 //     suspensiones; la baja médica y la libranza sí generan
 //   + 1 día por festivo trabajado MÁS de 6 horas
 //   − vacaciones disfrutadas  − cada día de permiso de ASUNTOS PROPIOS (los demás
@@ -39,8 +40,12 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
   igual('…se le calcula desde el alta', [s.inicio, s.desdeElAlta], ['2026-07-13', true]);
 
   s = saldoDe({ alta: '2023-11-13' }, [], [], new Map(), HOY);
-  igual('Alta en 2023: se le calcula desde el 01/01/2025', [s.inicio, s.desdeElAlta, s.diasNaturales], ['2025-01-01', false, 652]);
-  igual('…652 × 0,0821 = 53,53', s.generadas, 53.53);
+  // 19/10/2026, Camilo: «Reinicia las vacaciones desde el 1 … que empiecen a contar desde este año».
+  igual('Alta en 2023: se le calcula desde el 01/01/2026', [s.inicio, s.desdeElAlta, s.diasNaturales], ['2026-01-01', false, 287]);
+  igual('…287 × 0,0821 = 23,56', s.generadas, 23.56);
+  s = saldoDe({ alta: '2023-11-13' }, [vac('2025-08-01', '2025-08-20'), vac('2025-12-28', '2026-01-03')], [], new Map(), HOY);
+  igual('Las vacaciones de 2025 no restan; las que cruzan el 1 de enero, solo sus días de 2026 (3)',
+    [s.disfrutadas, s.detalle.vacaciones.length], [3, 1]);
 
   s = saldoDe({ alta: '2026-07-13' }, [susp('2026-08-01', '2026-08-10')], [], new Map(), HOY);
   igual('Diez días de suspensión no generan: 84 × 0,0821', [s.diasSuspension, s.generadas], [10, 6.9]);
@@ -84,8 +89,8 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
   s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-08-15': 6 * 3600 + 1 }), HOY);
   igual('Un segundo más, sí', s.festivosSuman, 1);
   s = saldoDe({ alta: '2023-01-01' }, [], cal, H({ '2025-12-25': 8 * 3600 }), HOY);
-  igual('Uno de antes de junio de 2025 sin horas: sin datos, y no suma', [s.detalle.festivos[0].estado, s.festivosSinDatos], ['sin-datos', 1]);
-  igual('…el 25/12/2025 sí suma (horas de BOLT)', s.detalle.festivos.find(f => f.fecha === '2025-12-25').estado, 'suma');
+  igual('Los festivos de 2025 ya no entran (todo empieza el 01/01/2026)',
+    [s.detalle.festivos.some(f => f.fecha < '2026-01-01'), s.festivosSinDatos, s.festivosSuman], [false, 0, 0]);
   s = saldoDe({ alta: '2026-07-13' }, [], cal, new Map(), HOY);
   igual('Un festivo con horas calculadas y sin fila suya: no trabajó, no suma', s.detalle.festivos[0].estado, 'no-suma');
 

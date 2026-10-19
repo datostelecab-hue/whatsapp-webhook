@@ -19,7 +19,8 @@ vistas/vacaciones.ejs      el Listado: el saldo debajo de cada nombre y, en la f
 ```
 
 Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,0821 días por día
-natural desde el alta (o desde el 01/01/2025), sin los días de suspensión; + 1 día
+natural desde el alta (o desde el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—;
+lo de antes no cuenta para nada), sin los días de suspensión; + 1 día
 por festivo trabajado más de 6 h; − vacaciones disfrutadas; − cada día de permiso
 retribuido.
 
