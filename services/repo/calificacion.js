@@ -384,8 +384,12 @@ async function diasConTelemetria(desde, hasta) {
 /**
  * Calcula la calificación de toda la plantilla para el periodo que acaba en
  * `hasta`. No escribe: eso lo hace `recalcular`.
+ *
+ * El periodo es el mes corrido. Con `desde`, el que se pida: la puntuación de
+ * cada SEMANA del portal de conductores (puntuacionSemanal.js, db/210) es esta
+ * misma cuenta, del lunes al domingo.
  */
-async function calcular(hasta, promedioHoras) {
+async function calcular(hasta, promedioHoras, { desde } = {}) {
   // EL PROMEDIO DE HORAS ES EL DE LA CASA, y lo tiene la bitácora: quien
   // recalcula lo pasa (bitacora.service.recalcularPromedios). Sin él no se
   // calcula: una letra con otra cuenta de horas es justo lo que se quitó.
@@ -393,7 +397,7 @@ async function calcular(hasta, promedioHoras) {
     throw new Error('La calificación se calcula con el promedio de la casa: recalcúlala con bitacora.service.recalcularPromedios');
   }
   const fin = String(hasta).slice(0, 10);
-  const ini = inicioDe(fin);
+  const ini = desde ? String(desde).slice(0, 10) : inicioDe(fin);
 
   const [filas, excesos, tele, plantilla, estandar] = await Promise.all([
     metricas(ini, fin),

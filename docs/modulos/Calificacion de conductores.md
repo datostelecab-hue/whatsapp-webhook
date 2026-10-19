@@ -206,6 +206,24 @@ Guardar es un `ON CONFLICT (conductor_id, periodo_inicio, periodo_fin, version_m
 
 Las cuentas fantasma tocan esto de cerca: cuando se enlaza, cambia o anula un enlace, el servicio vuelve a sellar los días afectados **y rehace el promedio del mes**, porque si no la media sigue siendo la de antes hasta que pase el cron de la noche. Ver [[Conductores]].
 
+## La puntuación de cada semana, para el portal de conductores (19/10/2026, db/210)
+
+El conductor ve su puntuación **semana a semana** en su portal (`conductorestelecab.es`), pero no sus horas. Camilo: *«la puntuación que llevan semana tras semana, entonces toca que no se reinicien los puntajes ya que hay que mostrarlos semanalmente a los conductores, como el sistema nació apenas en septiembre entonces desde septiembre no más»*. Eligió que **cada semana tenga su nota**.
+
+La letra de arriba no sirve tal cual: es del mes corrido, se rehace cada día y el día 1 vuelve a empezar. Enseñada al conductor, su nota caería a N/E a principio de cada mes. Por eso hay una tabla aparte, `conductor_puntuacion_semana`:
+
+- **Una fila por conductor y semana**, de lunes a domingo (jornadas 05→05). La primera es la del 31/08/2026, contada desde el 01/09 (el sistema nació ese día).
+- **La misma cuenta que la letra.** `calificacion.calcular` acepta ahora un `desde`, y la semana es ese periodo con el promedio de horas de la casa. Las mismas tablas, bandas, topes y el mismo «menos de 5 días → N/E». Sin `desde`, la letra sigue siendo del mes.
+- **Sellada.** Se calcula en la pasada de las **12:00** (la del lunes sella la semana que acabó el domingo), cuando la jornada de ayer está cerrada para todos. Después **no cambia**: un disparador de db/210 no deja actualizar una fila. Si algún día hay que rehacer una semana a propósito, se borran sus filas y se vuelve a sellar.
+- **Se rellena sola.** Cada pasada sella las semanas cerradas que falten desde el 01/09. La primera vez, en un servidor recién actualizado, hace todas de golpe (en la copia local, siete semanas en un segundo). Si un lunes falla, la pasada siguiente la recoge.
+- **Lo que ve el conductor**: la nota, la letra y los puntos de cada parte (horas, utilización, velocidad), más los excesos que le cuentan, porque ya se le avisaron por WhatsApp. **No ve horas ni porcentajes**: el promedio y la utilización se guardan para el ERP. Es `puntuacionSemanal.semanasDe`.
+
+La primera semana solo tiene **4 días de telemetría**: los excesos avisados empiezan el 03/09. El log del cron lo dice («telemetría incompleta»).
+
+Lo que salió en la copia local de producción del 19/10/2026, semana a semana, de unas 150 a 210 personas por semana: entre **66 y 86 A**, una media de **77 a 86 puntos** y de **30 a 50 N/E**. Casi todos los N/E son de gente que esa semana no tenía nada que promediar: ni salió ni le tocaba salir.
+
+El comprobador es `scripts/comprobar-puntuacion-semanal.js`.
+
 ## Detalles que conviene saber
 
 - **Si la tabla no se puede leer, las pantallas van igual, sin la letra.** Ni `leer()` de calificación ni el de rendimiento tumban nada: se quejan en consola y devuelven un mapa vacío.

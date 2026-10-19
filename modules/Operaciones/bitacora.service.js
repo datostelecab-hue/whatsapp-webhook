@@ -257,8 +257,24 @@ async function recalcularPromedios({ hasta } = {}) {
   return { rendimiento, calificacion };
 }
 
+/**
+ * SELLA LA PUNTUACIÓN DE LAS SEMANAS CERRADAS que falten (db/210, el portal de
+ * conductores), con el mismo promedio de la casa que la letra. Solo desde la
+ * pasada del mediodía: es cuando la jornada de ayer está cerrada para todos, y
+ * una semana sellada ya no cambia. Ver services/repo/puntuacionSemanal.js.
+ */
+async function sellarPuntuacionSemanal() {
+  olvidar();
+  const hoy = llamadas.diaOperativoHoy();
+  const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  return require('../../services/repo/puntuacionSemanal').sellar({
+    promedioHoras: (desde, h) => promedioHoras({ desde, hasta: h }),
+    ultimoDiaCerrado: ayer,
+  });
+}
+
 module.exports = {
-  mediaDelMes, promedioHoras, recalcularPromedios,
+  mediaDelMes, promedioHoras, recalcularPromedios, sellarPuntuacionSemanal,
   datos, vacaciones, llamadasDelDia,
   justificar, anularJustificante, libranza, resellar,
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el

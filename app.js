@@ -649,6 +649,17 @@ programar('0 12 * * *', async () => {
     console.log(`⭐ [Rendimiento] mediodía (todos): ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
     console.log(`⚖️  [Calificación] mediodía: ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
       (c.mesAnterior ? ` · rehecho ${c.mesAnterior.periodoInicio} → ${c.mesAnterior.periodoFin} con el modelo nuevo` : ''));
+    // Y LA PUNTUACIÓN DE LA SEMANA (db/210, el portal de conductores): el lunes
+    // sella la que acabó ayer; los demás días solo recoge una que se quedara sin
+    // sellar. La primera vez rellena todas desde el 01/09/2026.
+    try {
+      const s = await require('./modules/Operaciones/bitacora.service').sellarPuntuacionSemanal();
+      s.selladas.forEach(x => console.log(`🗓️  [Puntuación semanal] semana del ${x.lunes}: ${x.filas} persona(s) sellada(s)` +
+        (x.filas ? `, ${x.conLetra} con nota` : '') + (x.filas && !x.telemetriaCompleta ? ' · OJO: telemetría incompleta' : '')));
+      if (s.quedan) console.log(`🗓️  [Puntuación semanal] quedan ${s.quedan} semana(s) para la próxima pasada`);
+    } catch (e) {
+      console.error(`⚠️  [Puntuación semanal] sellado: ${e.message}`);
+    }
   } catch (error) {
     console.error(`⚠️  [Rendimiento] recálculo del mediodía: ${error.message}`);
   }
