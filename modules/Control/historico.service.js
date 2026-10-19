@@ -302,6 +302,11 @@ async function parte(dia) {
   const noSaldraPorMotivo = MOTIVOS_NO_SALE.map(m => ({
     motivo: m.codigo, etiqueta: m.etiqueta, n: conNoSale.filter(c => c.noSale.motivo === m.codigo).length,
   }));
+  // Y los que estaban en el cuadrante ya de baja (marca automática, 19/10/2026),
+  // solo si hay: no es un motivo que se elija.
+  const { MOTIVO_BAJA } = require('./marcas.repo');
+  const nBaja = conNoSale.filter(c => c.noSale.motivo === MOTIVO_BAJA.codigo).length;
+  if (nBaja) noSaldraPorMotivo.push({ motivo: MOTIVO_BAJA.codigo, etiqueta: MOTIVO_BAJA.etiqueta, n: nBaja });
   return {
     dia: d,
     // Si el núcleo no respondió, el cockpit pone a todos «pendiente» y el día

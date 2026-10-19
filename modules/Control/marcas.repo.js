@@ -28,6 +28,17 @@ const MOTIVOS_NO_SALE = [
 ];
 const ETQ_MOTIVO = Object.fromEntries(MOTIVOS_NO_SALE.map(m => [m.codigo, m.etiqueta]));
 
+// «DE BAJA EN LA EMPRESA» (19/10/2026). Camilo, con Carlos Julio Carrera Mojica:
+// «le dieron de baja hoy y sale así en control» (NO HA SALIDO). La baja corta su
+// plaza a la fecha de baja INCLUIDA, así que ese día sigue en el cuadrante; y
+// eso se deja así (lo eligió él: «Solo que Control no le persiga»). Control lo
+// sabe por el contrato, como Plantilla: quien ese día ya no tiene contrato
+// vigente lleva un «No saldrá» AUTOMÁTICO con este motivo. Con eso sale aparte,
+// sin «No llegará», y las campañas no le llaman. No está en el CHECK de
+// `control_no_sale` ni en la lista de arriba a propósito: no se apunta a mano,
+// y desde Control no se quita (es su contrato: se cambia en Plantilla).
+const MOTIVO_BAJA = { codigo: 'baja_empresa', etiqueta: 'De baja en la empresa' };
+
 // LOS CANALES DE SLACK DE LA EMPRESA, con su nombre EXACTO (también el «13-
 // insidencias», que se escribe así en Slack: corregirlo aquí sería apuntar a un
 // canal que no existe). Fuera queda `datos`, que es privado de Camilo. Sin CHECK
@@ -67,7 +78,25 @@ async function delDia(dia) {
        FROM control_traza_slack s
        LEFT JOIN usuario u ON u.id = s.usuario_id
       WHERE s.dia_operativo = $1::date AND s.quitado_at IS NULL`;
-  const [n, s] = await Promise.all([
+  // Quien ese día ya no tiene contrato vigente: su último periodo cerró en esa
+  // fecha o antes, y no hay otro abierto. Con quién dio la baja y cuándo, de la
+  // auditoría (la misma cuenta que la ficha de Plantilla).
+  const bajasSql = `
+    SELECT c.id AS conductor_id, to_char(p.baja, 'DD/MM/YYYY') AS baja, COALESCE(p.motivo_baja, '') AS motivo,
+           quien.nombre AS quien, to_char(quien.cambiado_at AT TIME ZONE 'Europe/Madrid', 'DD/MM HH24:MI') AS puesta
+      FROM conductor c
+      JOIN LATERAL (SELECT baja, motivo_baja FROM conductor_periodo_empleo
+                     WHERE conductor_id = c.id ORDER BY alta DESC LIMIT 1) p ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS nombre, cc.cambiado_at
+          FROM cambio_campo cc JOIN usuario u ON u.id = cc.usuario_id
+         WHERE cc.tabla = 'conductor' AND cc.registro_id = c.id AND cc.campo = 'baja'
+           AND left(cc.valor_ahora, 10) = to_char(p.baja, 'YYYY-MM-DD')
+         ORDER BY cc.cambiado_at DESC LIMIT 1) quien ON TRUE
+     WHERE NOT c.es_centinela AND p.baja IS NOT NULL AND p.baja <= $1::date
+       AND NOT EXISTS (SELECT 1 FROM conductor_periodo_empleo x
+                        WHERE x.conductor_id = c.id AND x.alta <= $1::date AND (x.baja IS NULL OR x.baja > $1::date))`;
+  const [n, s, b] = await Promise.all([
     db.consulta(
       `SELECT n.id, n.conductor_id, n.motivo, n.comentario, n.turno, n.creado_at,
               to_char(n.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
@@ -80,12 +109,21 @@ async function delDia(dia) {
     db.consulta(slackSql('s.canales'), [dia])
       .catch(e => (e && e.code === '42703' ? db.consulta(slackSql('ARRAY[s.canal]'), [dia]) : Promise.reject(e)))
       .catch(sinNada),
+    // Si esto falla, el cockpit sale igual: solo se pierde la marca automática.
+    db.consulta(bajasSql, [dia]).catch(e => { console.error('⚠️  [MARCAS] bajas del día:', e.message); return { rows: [] }; }),
   ]);
+  // Primero las automáticas de la baja; encima, las apuntadas a mano, que mandan.
+  const noSale = new Map(b.rows.map(x => [String(x.conductor_id), {
+    id: null, automatica: true, motivo: MOTIVO_BAJA.codigo, etiqueta: MOTIVO_BAJA.etiqueta,
+    comentario: `Baja con fecha ${x.baja} en Plantilla${x.motivo ? ' · ' + x.motivo : ''}`,
+    turno: '', at: null, hora: x.puesta || '', quien: x.quien || '',
+  }]));
+  n.rows.forEach(x => noSale.set(String(x.conductor_id), {
+    id: String(x.id), motivo: x.motivo, etiqueta: ETQ_MOTIVO[x.motivo] || x.motivo,
+    comentario: x.comentario, turno: x.turno || '', at: x.creado_at, hora: x.hora, quien: x.quien,
+  }));
   return {
-    noSale: new Map(n.rows.map(x => [String(x.conductor_id), {
-      id: String(x.id), motivo: x.motivo, etiqueta: ETQ_MOTIVO[x.motivo] || x.motivo,
-      comentario: x.comentario, turno: x.turno || '', at: x.creado_at, hora: x.hora, quien: x.quien,
-    }])),
+    noSale,
     slack: new Map(s.rows.map(x => [String(x.conductor_id), {
       id: String(x.id), canales: x.canales || [], at: x.creado_at, hora: x.hora, quien: x.quien,
     }])),
@@ -143,6 +181,6 @@ async function quitarSlack({ conductorId, dia, usuarioId }) {
 }
 
 module.exports = {
-  MOTIVOS_NO_SALE, CANALES_SLACK, ETQ_MOTIVO,
+  MOTIVOS_NO_SALE, CANALES_SLACK, ETQ_MOTIVO, MOTIVO_BAJA,
   delDia, marcarNoSale, anularNoSale, marcarSlack, quitarSlack,
 };

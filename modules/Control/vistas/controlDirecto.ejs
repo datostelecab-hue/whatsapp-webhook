@@ -850,7 +850,10 @@
     // «No saldrá» y «Traza por Slack» (db/170), con quién y cuándo.
     const marcasHTML = (f.noSale || f.slack)
       ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 p-2 mb-3 space-y-1">' +
-          (f.noSale ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-ban text-telecab-muted mr-1"></i>' +
+          (f.noSale && f.noSale.automatica ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-user-slash text-telecab-muted mr-1"></i>' +
+              '<b>' + esc(f.noSale.etiqueta) + '</b>' + (f.noSale.quien ? ' · la dio ' + esc(f.noSale.quien) + (f.noSale.hora ? ' el ' + esc(f.noSale.hora) : '') : '') +
+              '<div class="text-telecab-muted mt-0.5">' + esc(f.noSale.comentario) + '. Por eso no se le espera hoy, aunque siga en el cuadrante.</div></div>'
+            : f.noSale ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-ban text-telecab-muted mr-1"></i>' +
               '<b>No saldrá · ' + esc(f.noSale.etiqueta) + '</b>' +
               ' · ' + esc(f.noSale.hora || '') + (f.noSale.quien ? ' · por ' + esc(f.noSale.quien) : '') +
               '<div class="text-telecab-muted mt-0.5">«' + esc(f.noSale.comentario) + '»</div></div>' : '') +
@@ -865,8 +868,9 @@
             '<i class="fa-solid fa-phone-flip mr-1"></i> He llamado</button>' +
           '<button data-justdir="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-sky-500 hover:text-sky-500">' +
             '<i class="fa-solid fa-file-circle-check mr-1"></i> Justificar horas</button>' +
+          (f.noSale && f.noSale.automatica ? '' :
           '<button data-nosale="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
-            '<i class="fa-solid fa-ban mr-1"></i> ' + (f.noSale ? 'Cambiar «No saldrá»' : 'No saldrá') + '</button>' +
+            '<i class="fa-solid fa-ban mr-1"></i> ' + (f.noSale ? 'Cambiar «No saldrá»' : 'No saldrá') + '</button>') +
           '<button data-slack="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
             '<i class="fa-brands fa-slack mr-1"></i> ' + (f.slack
               ? 'Traza en ' + ((f.slack.canales || []).length === 1 ? esc(canalesTexto(f.slack)) : (f.slack.canales || []).length + ' canales')
@@ -1151,7 +1155,9 @@
     // «NO SALDRÁ»: gris lleno si ya está apuntado (con el motivo al pasar el ratón).
     const ns = f.noSale;
     const btnNo = '<button data-nosale="' + esc(f.clave) + '" ' +
-      'title="' + esc(ns
+      'title="' + esc(ns && ns.automatica
+        ? ns.etiqueta + ': ' + ns.comentario + '. Se cambia en Plantilla, no aquí.'
+        : ns
         ? 'No saldrá · ' + ns.etiqueta + ': «' + ns.comentario + '» — ' + (ns.quien || '—') + ', ' + (ns.hora || '') + '. Pulsa para cambiarlo o quitarlo.'
         : 'No saldrá: apunta por qué (motivo y comentario). Le quita la alerta de «No llegará» y las campañas dejan de llamarle.') + '" ' +
       'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (ns
@@ -1198,6 +1204,12 @@
   const canalesTexto = sl => ((sl && sl.canales) || []).map(c => '#' + c).join(', ');
 
   function chipNoSale(ns) {
+    // La de la baja es automática (marcas.repo, MOTIVO_BAJA): se dice tal cual.
+    if (ns.automatica) {
+      return '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-telecab-border/50 text-telecab-text" ' +
+        'title="' + esc(ns.comentario + (ns.quien ? ' — la dio ' + ns.quien + (ns.hora ? ' el ' + ns.hora : '') : '')) + '">' +
+        '<i class="fa-solid fa-user-slash"></i> ' + esc(ns.etiqueta) + '</span>';
+    }
     return '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-telecab-border/50 text-telecab-text" ' +
       'title="' + esc('«' + ns.comentario + '» — ' + (ns.quien || '—') + ', ' + (ns.hora || '')) + '">' +
       '<i class="fa-solid fa-ban"></i> No saldrá · ' + esc(ns.etiqueta) + '</span>';
@@ -1226,6 +1238,12 @@
    */
   async function noSaldra(f) {
     const ya = f.noSale;
+    if (ya && ya.automatica) {
+      await Dialogo.aviso({ titulo: ya.etiqueta, tono: 'info',
+        texto: ya.comentario + (ya.quien ? ' (la dio ' + ya.quien + (ya.hora ? ' el ' + ya.hora : '') + ')' : '') +
+          '. Por eso Control no le espera hoy, aunque siga en el cuadrante. Si la baja está mal, se corrige en Plantilla.' });
+      return;
+    }
     if (ya) {
       const que = await Dialogo.elegir({
         titulo: 'No saldrá · ' + ya.etiqueta,

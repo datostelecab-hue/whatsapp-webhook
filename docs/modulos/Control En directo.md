@@ -229,6 +229,16 @@ Las dos: **una vigente por conductor y jornada** (índice único parcial). Marca
 
 Un conductor puede tener tres alertas abiertas a la vez y se le llama **una** vez para preguntarle por las tres: por eso la respuesta va **por alerta**, en su propia fila de `llamada_alerta` (`db/98-llamada-por-alerta.sql`). Una sola nota para las tres no servía: al día siguiente nadie sabía qué contestó sobre cuál.
 
+### «De baja en la empresa»: un «No saldrá» automático (19/10/2026)
+
+Camilo, con Carlos Julio Carrera Mojica: *«le dieron de baja hoy y sale así en control»* (NO HA SALIDO, «No llegará»). Victor le dio la baja a las 09:52 con fecha de hoy, y la baja corta su plaza a esa fecha **incluida**: ese día sigue en el cuadrante. Eso se deja así —Camilo eligió *«Solo que Control no le persiga»*—, y Control lo arregla por su lado:
+
+- Quien ese día **ya no tiene contrato vigente** (su último periodo cerró en esa fecha o antes, lo mismo que dice Plantilla) lleva un **«No saldrá» automático** con el motivo **«De baja en la empresa»**: la fecha de la baja, su motivo y quién la dio y cuándo (de la auditoría). Lo pone `marcas.repo.delDia`; si alguien apuntó un «No saldrá» a mano, manda el suyo.
+- Con eso va al grupo de «No saldrán», **sin «No llegará»**, y **las campañas no le llaman**. El chip dice «De baja en la empresa» (no «No saldrá · …») y al pulsar su botón se explica en vez de ofrecer quitarlo: es su contrato, se cambia en Plantilla.
+- No es un motivo que se elija: no está en el catálogo de la pantalla ni en el CHECK de `control_no_sale`. El histórico lo cuenta aparte en su desglose por motivo, solo si hay.
+- Si quien está de baja **sí sale**, se ve igual que siempre (conectado, en viaje…) con el chip al lado: el mismo 19/10, Raúl Briz Martínez, de baja con fecha de hoy, había hecho 4,6 h.
+- De paso salió que los dos tenían **dos plazas abiertas a la vez** (Carlos Julio en el 9511MMX y el 0802MJY; Raúl en el 1212MJY y el 3724KZS): pendiente de mirar en el planificador.
+
 ## Lo que cuesta pintar esta pantalla
 
 Medido el **21/09/2026**: **45 consultas**, unos **21 s de SQL sumado** que caben en **3–4 s de reloj** porque van en paralelo. O sea que **el cuello no es el orden: es el trabajo**. Reordenar no la acelera; hacer menos, sí.
