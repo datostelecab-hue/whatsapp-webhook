@@ -152,7 +152,40 @@ const codigoDe = m => m.subject.match(/(\d{6})$/)[1];
   d = await svc.dinero({ id: '9' }, '2026-01-10');
   igual('En enero, lo de diciembre del año anterior; y sin nada el mes pasado, no se enseña', [d.mes.cobro, d.anterior, d.objetivo], ['febrero', null, 4750]);
 
-  // ── 5. La frontera entre dominios ────────────────────────────────────────
+  // ── 5. El efectivo (la ficha de Recaudación, recortada) ───────────────────
+  const recRepo = require('../modules/Administracion/recaudacion.repo');
+  const rec = require('../modules/Administracion/recaudacion.service');
+  const mov = (fecha, tipo, importe, extra = {}) => ({ fecha, tipo, importe, anulado: false, observacion: 'nota interna',
+    quien: 'Laura', desglose: { 5000: 1 }, referencia: '', ...extra });
+  recRepo.quincenaHoy = () => ({ anio: 2026, mes: 10, quincena: 2 });
+  recRepo.ficha = async () => ({
+    total: { pendiente: 70 },
+    quincenas: [   // de la más nueva a la más vieja, como la ficha de la ventanilla
+      { anio: 2026, mes: 10, quincena: 2, etiqueta: '16–31 oct 2026', deuda: 120, ajuste: -10, saldo: 70, movimientos: [
+        mov('2026-10-18', 'presencial', 50), mov('2026-10-17', 'presencial', 999, { anulado: true }),
+        mov('2026-10-16', 'transferencia', 20, { referencia: 'ABC123' }), mov('2026-10-16', 'cambio', 20)] },
+      { anio: 2026, mes: 6, quincena: 2, etiqueta: '16–30 jun 2026', deuda: 100, ajuste: 0, saldo: 0, movimientos: [mov('2026-06-20', 'nomina', 100)] },
+      { anio: 2026, mes: 5, quincena: 1, etiqueta: '1–15 may 2026', deuda: 80, ajuste: 0, saldo: 0, movimientos: [mov('2026-05-12', 'presencial', 80)] },
+    ],
+  });
+  const ex = await rec.extractoDe('7');
+  igual('Desde junio: mayo no sale como quincena', ex.quincenas.map(q => q.etiqueta), ['16–31 oct 2026', '16–30 jun 2026']);
+  igual('…y lo de antes entra como saldo de partida', ex.saldoInicial, 0);
+  igual('El pendiente es el de la ventanilla', ex.pendiente, 70);
+  igual('La quincena de hoy va marcada', ex.quincenas.map(q => q.enCurso), [true, false]);
+  igual('Sin los anulados, y en orden de fecha', ex.quincenas[0].movimientos.map(m => m.fecha + ' ' + m.importe),
+    ['2026-10-16 20', '2026-10-16 20', '2026-10-18 50']);
+  igual('Lo que ve de cada movimiento: fecha, qué, importe, si baja lo que debe y el ID de la transferencia; nada más',
+    ex.quincenas[0].movimientos.find(m => m.que === 'Transferencia'), { fecha: '2026-10-16', que: 'Transferencia', importe: 20, baja: true, referencia: 'ABC123' });
+  const cambio = ex.quincenas[0].movimientos.find(m => m.que === 'Cambio que te dimos');
+  igual('El cambio que se le da sube lo que debe', cambio && cambio.baja, false);
+  igual('Cada quincena trae lo que llegaba de la anterior (la más vieja, el saldo de antes de junio)', ex.quincenas.map(q => q.arrastre), [0, 0]);
+  igual('Ni observaciones, ni quién lo apuntó, ni billetes', ex.quincenas.flatMap(q => q.movimientos).some(m => 'observacion' in m || 'quien' in m || 'desglose' in m), false);
+  igual('Del ajuste, la cifra', ex.quincenas[0].ajuste, -10);
+  igual('Cobrado, entregado y lo que se le dio, desde junio', [ex.cobrado, ex.entregado, ex.dado], [220, 170, 20]);
+  igual('…y con eso el resumen da el pendiente', +(ex.saldoInicial + ex.cobrado - ex.entregado + ex.dado).toFixed(2), ex.pendiente);
+
+  // ── 6. La frontera entre dominios ────────────────────────────────────────
   const req = host => ({ hostname: host });
   igual('El dominio de los conductores es del portal', ['conductorestelecab.es', 'www.conductorestelecab.es', 'conductorestelecab.localhost'].map(h => ctl.esDelPortal(req(h))), [true, true, true]);
   igual('El del ERP y el de Render no', ['erptelecab.es', 'serverdeprueba-q2wq.onrender.com', 'localhost'].map(h => ctl.esDelPortal(req(h))), [false, false, false]);

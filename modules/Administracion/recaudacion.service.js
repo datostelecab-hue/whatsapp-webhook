@@ -80,6 +80,64 @@ const comprobar = () => repo.comprobar();
 /** La ficha de un conductor: su histórico entero por quincenas. */
 const ficha = id => repo.ficha(id);
 
+/**
+ * LO QUE VE EL CONDUCTOR DE SU EFECTIVO, en su portal (19/10/2026). Camilo: «el
+ * efectivo a recaudar, con todo su histórico, pero desde junio, con los datos
+ * que tenemos en el módulo de recaudación del ERP».
+ *
+ * Es la MISMA ficha de la ventanilla —quincena a quincena, lo que BOLT dice que
+ * cobró en efectivo, lo que ha entregado y el saldo acumulado—, recortada a lo
+ * que es suyo de saber:
+ *   · desde junio de 2026 (PORTAL_DESDE). Lo de antes entra como saldo de
+ *     partida, que el 19/10/2026 era cero para todo el mundo: las dos personas
+ *     con algo de mayo lo dejaron a cero el 31/05;
+ *   · sin observaciones, sin quién lo apuntó, sin el desglose de billetes y sin
+ *     los movimientos anulados;
+ *   · de un ajuste de la oficina, la cifra, no el motivo.
+ * El pendiente es el de la ventanilla, al céntimo.
+ */
+const PORTAL_DESDE = { anio: 2026, mes: 6 };
+const PARA_EL_CONDUCTOR = {
+  presencial: 'Entregado en mano', nomina: 'Descontado de tu nómina', transferencia: 'Transferencia',
+  entrega: 'Te devolvimos', cambio: 'Cambio que te dimos',
+};
+// Lo que baja lo que debe (entrega él) y lo que lo sube (se le da dinero).
+const BAJA = new Set(['presencial', 'nomina', 'transferencia']);
+
+async function extractoDe(conductorId) {
+  const f = await repo.ficha(conductorId);
+  const hoy = repo.quincenaHoy();
+  const n = q => q.anio * 12 + q.mes;
+  const desde = q => n(q) >= n(PORTAL_DESDE);
+  const antes = f.quincenas.filter(q => !desde(q));        // de la más nueva a la más vieja
+  const saldoInicial = antes.length ? antes[0].saldo : 0;
+  const vivas = f.quincenas.filter(desde);
+  const quincenas = vivas.map((q, i) => ({
+    etiqueta: q.etiqueta,
+    enCurso: q.anio === hoy.anio && q.mes === hoy.mes && q.quincena === hoy.quincena,
+    // Con lo que llegaba de la quincena anterior, la cuenta de cada una se hace
+    // sola: arrastre + cobrado − entregado + lo que se le dio = saldo.
+    arrastre: i + 1 < vivas.length ? vivas[i + 1].saldo : saldoInicial,
+    cobrado: q.deuda, ajuste: q.ajuste || 0, saldo: q.saldo,
+    // En orden de fecha, de la más vieja a la más nueva: se lee como pasó.
+    movimientos: q.movimientos.filter(m => !m.anulado && PARA_EL_CONDUCTOR[m.tipo]).map(m => ({
+      fecha: m.fecha, que: PARA_EL_CONDUCTOR[m.tipo], importe: m.importe, baja: BAJA.has(m.tipo),
+      referencia: m.tipo === 'transferencia' ? (m.referencia || '') : '',
+    })).reverse(),
+  }));
+  const suma = fn => +quincenas.reduce((a, q) => a + fn(q), 0).toFixed(2);
+  return {
+    pendiente: f.total.pendiente,
+    saldoInicial,
+    cobrado: suma(q => q.cobrado),
+    entregado: suma(q => q.movimientos.reduce((a, m) => a + (m.baja ? m.importe : 0), 0)),
+    // El cambio y lo que se le devolvió: sin esto, cobrado − entregado no daría
+    // el pendiente y el resumen no se podría comprobar.
+    dado: suma(q => q.movimientos.reduce((a, m) => a + (m.baja ? 0 : m.importe), 0)),
+    quincenas,
+  };
+}
+
 /** El desplegable de "Nuevo ingreso". */
 const candidatos = async () => ({ conductores: await repo.candidatos() });
 
@@ -153,7 +211,7 @@ const importarCierre = (b, usuarioId) => repo.importarCierre({
 
 module.exports = {
   puedeNomina, paraLaPantalla,
-  cuadro, comprobar, ficha, candidatos, loQueDiceBolt,
+  cuadro, comprobar, ficha, extractoDe, candidatos, loQueDiceBolt,
   anotar, anular,
   recalcular, recalcularReciente, ajustarCierre, guardarCierre, importarCierre,
 };

@@ -25,6 +25,7 @@ const correo = require('../../services/correo');
 const cobertura = require('../Planificacion/cobertura.service');
 const puntuacion = require('../../services/repo/puntuacionSemanal');
 const nominas = require('../Nominas/nominas.service');
+const recaudacion = require('../Administracion/recaudacion.service');
 const { nombrePropio } = require('./formato');
 
 const CODIGO_MINUTOS = 10;
@@ -248,15 +249,30 @@ async function dinero(persona, hoy = hoyMadrid()) {
   };
 }
 
-/** La portada: el próximo turno, el dinero del mes y la última nota. */
+/**
+ * SU EFECTIVO: lo que ha cobrado en efectivo en BOLT y lo que ha entregado,
+ * quincena a quincena desde junio, de la ficha de Recaudación
+ * (recaudacion.extractoDe). Quien no tiene ficha allí, sin nada.
+ */
+async function efectivo(persona) {
+  try { return await recaudacion.extractoDe(persona.id); }
+  catch (e) {
+    if (/no existe/.test(e.message)) return { pendiente: 0, saldoInicial: 0, cobrado: 0, entregado: 0, dado: 0, quincenas: [] };
+    throw e;
+  }
+}
+
+/** La portada: el próximo turno, el dinero del mes, el efectivo y la última nota. */
 async function inicio(persona) {
-  const [t, s, d] = await Promise.all([
+  // Si el dinero o el efectivo no se pueden leer, la portada sale igual, sin esa tarjeta.
+  const fallo = que => e => { console.error(`❌ [Portal] ${que}:`, e.message); return null; };
+  const [t, s, d, ef] = await Promise.all([
     turnos(persona), puntuacion.semanasDe(persona.id),
-    // Si el dinero no se puede leer, la portada sale igual, sin esa tarjeta.
-    dinero(persona).catch(e => { console.error('❌ [Portal] dinero:', e.message); return null; }),
+    dinero(persona).catch(fallo('dinero')),
+    efectivo(persona).catch(fallo('efectivo')),
   ]);
   return {
-    hoy: t.desde, hasta: t.hasta, dinero: d,
+    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef,
     proximo: t.dias.find(d => d.trabaja) || null,
     hayPlan: t.dias.some(d => !d.sinPlan),
     evento: t.evento,
@@ -266,7 +282,7 @@ async function inicio(persona) {
 }
 
 module.exports = {
-  pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero,
+  pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero, efectivo,
   SESION_DIAS,
   // Para el comprobador.
   _normalizarDni: normalizarDni, _ocultarEmail: ocultarEmail, _pilaDe: pilaDe, _correoDelCodigo: correoDelCodigo,

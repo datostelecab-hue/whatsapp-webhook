@@ -48,6 +48,22 @@
 </section>
 <% } %>
 
+<% if (efectivo) { const e = efectivo; %>
+<section class="caja" aria-labelledby="t-efectivo">
+  <div class="caja-tit"><h2 id="t-efectivo">Efectivo por entregar</h2><a href="/efectivo">Ver el detalle</a></div>
+  <div class="caja-in dinero">
+  <% if (e.pendiente > 0) { %>
+    <p class="dinero-cifra"><b><%= f.euros(e.pendiente) %></b></p>
+    <p class="suave peq">Es el efectivo que has cobrado en BOLT y todavía no has entregado.</p>
+  <% } else if (e.pendiente < 0) { %>
+    <p>Has entregado <b><%= f.euros(-e.pendiente) %></b> de más.</p>
+  <% } else { %>
+    <p>Estás al día: no tienes efectivo por entregar.</p>
+  <% } %>
+  </div>
+</section>
+<% } %>
+
 <section class="caja" aria-labelledby="t-nota">
   <div class="caja-tit"><h2 id="t-nota">Tu última nota</h2><% if (ultima) { %><a href="/puntuacion">Todas las semanas</a><% } %></div>
   <div class="caja-in">

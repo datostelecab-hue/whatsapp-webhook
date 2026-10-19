@@ -120,6 +120,7 @@ const pagina = (nombre, titulo, datos) => async (req, res, next) => {
 router.get('/', pagina('portalInicio', 'Inicio', portal.inicio));
 router.get('/turnos', pagina('portalTurnos', 'Mis turnos', portal.turnos));
 router.get('/puntuacion', pagina('portalPuntuacion', 'Mi puntuación', portal.semanas));
+router.get('/efectivo', pagina('portalEfectivo', 'Mi efectivo', async p => ({ efectivo: await portal.efectivo(p) })));
 
 /**
  * Lo que app.js monta delante del ERP. Si la petición no es del dominio del

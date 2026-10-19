@@ -73,7 +73,7 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
   background: rgb(var(--sup)); border-top: 1px solid rgb(var(--linea));
   padding-bottom: env(safe-area-inset-bottom);
 }
-.barra-in { max-width: 36rem; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+.barra-in { max-width: 36rem; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
 .barra a {
   display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .55rem .25rem .6rem;
   min-height: 56px; text-decoration: none; color: rgb(var(--suave)); font-size: .75rem; font-weight: 500;
@@ -139,11 +139,26 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
 .progreso { height: 10px; border-radius: 5px; background: rgb(var(--sup2)); border: 1px solid rgb(var(--linea)); overflow: hidden; }
 .progreso i { display: block; height: 100%; border-radius: 5px; background: rgb(var(--acento)); transition: width .4s cubic-bezier(.23, 1, .32, 1); }
 .progreso-lleno { border-color: rgb(var(--acento)); }
-.extras { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: .25rem 0 0; }
+.extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; margin: .25rem 0 0; }
 .extras div { background: rgb(var(--sup2)); border-radius: 10px; padding: .55rem .75rem; }
 .extras dt { font-size: .8125rem; color: rgb(var(--suave)); }
 .extras dd { margin: 0; font-weight: 600; font-size: 1.0625rem; }
 .dinero-anterior { border-top: 1px solid rgb(var(--linea)); padding-top: .6rem; }
+
+/* ── El efectivo ─────────────────────────────────────────────────────────── */
+.chip { display: inline-block; font-size: .75rem; font-weight: 600; padding: .05rem .45rem; border-radius: 999px;
+  border: 1px solid rgb(var(--acento) / .5); color: rgb(var(--acento)); margin-left: .35rem; vertical-align: .1em; }
+.sem-saldo { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.sem-saldo small { font-size: .6875rem; color: rgb(var(--suave)); }
+.sem-saldo b { font-size: 1.0625rem; font-weight: 600; }
+.movs { list-style: none; margin: 0; padding: 0 1.1rem .9rem; display: flex; flex-direction: column; }
+.movs li { display: grid; grid-template-columns: 1fr auto; gap: .1rem .75rem; padding: .5rem 0; border-top: 1px solid rgb(var(--linea)); font-size: .9375rem; }
+.movs li:first-child { border-top: 0; }
+.movs .imp { font-weight: 600; white-space: nowrap; text-align: right; }
+.movs .imp.baja { color: rgb(var(--verde)); }
+.movs .nota { grid-column: 1 / -1; font-size: .8125rem; color: rgb(var(--suave)); }
+.movs li.cierre { font-weight: 600; }
+.movs li.cierre span:first-child { font-weight: 500; }
 
 /* ── La nota ─────────────────────────────────────────────────────────────── */
 .nota { display: flex; align-items: center; gap: 1rem; }

@@ -47,6 +47,8 @@ El correo sale por el «Correo para procesos» de siempre ([[Correo]]). El asunt
 - **La ETT no ve la barra**, porque el MBO es solo de plantilla propia, pero **sí sus propinas y peajes**.
 - El dinero es el de la nómina: `v_ordenes_conductor` por **día natural** (`nominas.dineroDe`), no por jornada operativa.
 
+**Efectivo** (19/10/2026): lo que tiene por entregar, en la portada, y una pestaña con todo su histórico desde junio, quincena a quincena. Cada quincena enseña lo que traía de antes, lo que cobró en efectivo según BOLT, cada entrega con su fecha y lo que le quedó. Arriba, lo cobrado, lo entregado y el cambio o las devoluciones que se le dieron, que con lo de antes suman el pendiente. Sale de la ficha de Recaudación tal cual (`recaudacion.extractoDe`), sin notas internas ni anulados; ver [[Administracion#Lo que ve el conductor en su portal (19/10/2026)]]. La ETT también lo ve: el efectivo es de todos.
+
 **Turnos**: de hoy a 7 días, lo mismo que le contesta el bot a «Ver mis turnos». Sale de `cobertura.service.proximosDe`, que guarda un minuto la ventana de toda la flota, porque es la misma para todos. Si hay un evento en marcha, se avisa de que esos días los turnos son temporales. Cuando recibe el coche y se lo devuelve a la misma persona en relevo directo (las parejas fijas), se dice en una línea: *«Compartes el coche con…»*.
 
 **Puntuación**: la nota de cada semana, que es la de [[Calificacion de conductores#La puntuación de cada semana, para el portal de conductores (19/10/2026, db/210)|la puntuación semanal sellada]]:

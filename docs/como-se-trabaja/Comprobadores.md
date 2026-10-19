@@ -377,7 +377,9 @@ No son de los seis, pero forman parte de la misma red:
   testigo y deja de valer al salir; y por el dominio del ERP el portal deja pasar. Y el
   dinero del mes: el objetivo es el umbral del FAS de la nómina (40 h → 4.750, 32 h → 3.750,
   las demás el de 40 h), por día natural del 1 a hoy y el mes pasado entero, a mes vencido;
-  la ETT sin objetivo pero con propinas y peajes.
+  la ETT sin objetivo pero con propinas y peajes. Y el efectivo: desde junio (lo de antes,
+  saldo de partida), sin anulados, en orden de fecha, sin observaciones ni quién ni billetes,
+  con lo que llegaba de la quincena anterior, y cobrado − entregado + lo dado = el pendiente.
 - **`comprobar-puntuacion-semanal.js`** (19/10/2026) — la puntuación de cada semana del
   portal de conductores: las semanas van de lunes a domingo desde el 01/09/2026 (la primera,
   la del 31/08, cuenta desde el martes 01/09), solo se sellan las cerradas que faltan, lo

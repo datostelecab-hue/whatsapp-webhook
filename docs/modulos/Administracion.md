@@ -151,6 +151,17 @@ Camilo: *«algunos conductores querrán dar el dinero vía transferencia, por lo
 - Para que cupiera el botón, las celdas del cuadro van **más juntas por debajo de 1536 px** (8 px en vez de 12): a 1280 la tabla ya no entraba. La cabecera de la ficha se parte en dos líneas cuando no cabe (en el móvil los botones se salían de la tarjeta).
 - Ensayado contra la base real en una copia temporal, sin la migración y con ella (aplicada dos veces): 22 casos, y las diez comprobaciones en verde.
 
+## Lo que ve el conductor en su portal (19/10/2026)
+
+Camilo: *«el efectivo a recaudar, con todo su histórico, pero desde junio, con los datos que tenemos en el módulo de recaudación del ERP»*. El [[Portal de conductores]] lo pide a `recaudacion.service.extractoDe(id)`, que es **la misma ficha de la ventanilla**, recortada:
+
+- **Desde junio de 2026.** Lo de antes entra como saldo de partida. El 19/10/2026 era cero para todo el mundo: solo dos personas tenían algo de mayo, y las dos lo dejaron a cero el 31/05.
+- **Sin** observaciones, sin quién lo apuntó, sin el desglose de billetes y **sin los anulados**. De un ajuste de la oficina se ve la cifra, no el motivo.
+- Cada quincena trae **lo que llegaba de la anterior**, para que la cuenta se haga sola: lo de antes + lo cobrado − lo entregado + el cambio o las devoluciones = lo que queda.
+- **El pendiente es el de la ventanilla, al céntimo.** Se comprobó en la copia local con los 82 conductores de alta que salen en el cuadro: los 82 iguales, y en todos la cuenta suma.
+
+Los nombres que ve: *Entregado en mano*, *Descontado de tu nómina*, *Transferencia* (con su ID), *Te devolvimos* y *Cambio que te dimos*.
+
 ## El cron
 
 Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia.
