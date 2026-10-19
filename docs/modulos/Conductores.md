@@ -158,6 +158,14 @@ Sin eso, a quien vuelve de una baja —y se le queda un `activo` abierto— **no
 
 El **Historial de situaciones** enseña, además de las fechas, **quién lo puso** y —si vino de la [[Ticketera]]— el **ticket** y el **justificante de Drive**, los dos leídos del ticket cada vez que se pinta, no copiados. El tramo solo guarda el número: `conductor_estado_hist.ticket_id`.
 
+### Quién dio la baja (19/10/2026)
+
+Camilo: *«en la ficha agrega las iniciales del usuario que le dio de baja»*. Al lado de la fecha de baja salen las **iniciales de quien la dio** (la del nombre y la del primer apellido: «Laura Blanco» → LB; «Victor», sin apellidos → V) y, en la ayuda, su nombre y **cuándo la apuntó**: una baja puesta días después de su fecha se ve ahí. Está en la cabecera de la ficha («Causó baja el») y en la tabla **Empleo**, periodo a periodo.
+
+Sale de la auditoría: `darDeBaja` apunta el campo `baja` en `cambio_campo` con quién y cuándo, y el valor empieza por la fecha. Una sola definición, `QUIEN_BAJA` en `conductores.repo.js`, para el listado y la ficha. Las bajas de la carga inicial no tienen usuario y salen sin iniciales (252 de las 258 bajas tienen su apunte; las demás, ninguno).
+
+Lo pidió el caso de Ronnie Adrián Cuñas Maldonado: baja con fecha 13/10 apuntada por Victor el 19/10 a las 09:42, cuando del 14 al 18 siguió conduciendo y planificado (su plaza no se cerró hasta que se apuntó la baja).
+
 ## La libranza sale del cuadrante
 
 **Ya no se teclea.** El fijo libra el descanso de su coche; el CT, los días que no le pusieron. La columna "Libra" lo enseña y el tooltip distingue si viene del cuadrante o de un patrón puesto a mano. La regla vive **una sola vez**, en la vista `v_conductor_libranza` (`db/113`), para que Plantilla y la agenda de PostgreSQL no puedan decir cosas distintas de la misma persona.

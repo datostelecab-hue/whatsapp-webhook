@@ -1640,8 +1640,12 @@
                 pinta: (v, f) => etiqueta(v === 'ett' ? (f.ett_nombre || 'ETT') : 'Propia',
                   v === 'ett' ? 'violet' : 'green') },
               { titulo: 'Alta', campo: 'alta', pinta: v => fecha(v) },
+              // Con las iniciales de quien la dio y, en la ayuda, cuándo la apuntó (19/10/2026).
               { titulo: 'Baja', campo: 'baja',
-                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">En activo</span>' },
+                pinta: (v, f) => (v ? fecha(v) + (f.baja_iniciales
+                  ? ` <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted font-semibold" ` +
+                    `title="${esc(`Dio la baja: ${f.baja_por}${f.baja_puesta_at ? ' · lo apuntó el ' + fechaHora(f.baja_puesta_at) : ''}`)}">${esc(f.baja_iniciales)}</span>`
+                  : '') : '<span class="text-telecab-green">En activo</span>') },
               { titulo: 'Antigüedad', campo: 'fecha_antiguedad', pinta: v => fecha(v) },
               { titulo: 'Motivo', campo: 'motivo_baja' },
             ],

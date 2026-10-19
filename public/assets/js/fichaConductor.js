@@ -60,6 +60,17 @@
      </div>`;
 
   /** Una línea "etiqueta … valor" de las tablas a dos columnas. */
+  // Las iniciales de quien dio la baja, al lado de la fecha (19/10/2026), y
+  // en la ayuda su nombre y cuándo la puso: una baja apuntada días después de
+  // su fecha se ve aquí.
+  const quienDioLaBaja = p => {
+    if (!p.baja_iniciales) return '';
+    const cuando = p.baja_puesta_at ? new Date(p.baja_puesta_at).toLocaleString('es-ES',
+      { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '';
+    return ` <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted font-semibold align-middle"
+      title="${esc(`Dio la baja: ${p.baja_por}${cuando ? ' · lo apuntó el ' + cuando : ''}`)}">${esc(p.baja_iniciales)}</span>`;
+  };
+
   const linea = (et, val, clase) =>
     `<div class="flex items-baseline justify-between gap-3 py-[3px] border-b border-telecab-border/30 last:border-0">
        <span class="text-[13px] text-telecab-muted shrink-0">${esc(et)}</span>
@@ -224,7 +235,7 @@
 
       ${p.empleo_vigente === false ? `
       ${epigrafe('Baja')}
-      <div>${linea('Causó baja el', fmt(p.fecha_baja || p.baja), 'text-telecab-red')}</div>
+      <div>${linea('Causó baja el', fmt(p.fecha_baja || p.baja) + quienDioLaBaja(p), 'text-telecab-red')}</div>
       <div>${linea('Motivo', esc(p.motivo_baja || '—'))}</div>` : ''}
 `;
 

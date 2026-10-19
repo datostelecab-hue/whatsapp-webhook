@@ -27,6 +27,16 @@ const NOMBRE = `btrim(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), COALESCE(c.apel
 // guion; y si tampoco tiene, su id. Requiere el LATERAL `bolt` (externo_nombre).
 const NOMBRE_BOLT = `COALESCE(NULLIF(btrim(bolt.externo_nombre), ''), NULLIF(${NOMBRE}, '') || ' (sin nombre de BOLT)', '#' || c.id::text)`;
 
+// QUIÉN DIO UNA BAJA (19/10/2026, Camilo: «en la ficha agrega las iniciales del
+// usuario que le dio de baja»). Sale de la auditoría: `darDeBaja` apunta en
+// cambio_campo el campo 'baja' con quién y cuándo, y el valor empieza por la
+// fecha de la baja. Las de la carga inicial no tienen usuario: sin iniciales.
+// Las iniciales, la del nombre y la del primer apellido («Laura Blanco» → LB;
+// «Victor», sin apellidos → V). Necesita `u` (usuario) y `cc` (cambio_campo).
+const QUIEN_BAJA = `btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS baja_por,
+       upper(left(btrim(u.nombre), 1)) || COALESCE(upper(left(split_part(btrim(u.apellidos), ' ', 1), 1)), '') AS baja_iniciales,
+       cc.cambiado_at AS baja_puesta_at`;
+
 /**
  * El listado con todo lo que la pantalla necesita, en UNA consulta.
  *
@@ -90,6 +100,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            s.hasta_previsto,
            ultimo.baja        AS fecha_baja,
            ultimo.motivo_baja,
+           ultimo.baja_por, ultimo.baja_iniciales, ultimo.baja_puesta_at,
 
            -- Turno: el del historial si alguien lo puso a mano; si no, el de su
            -- PLAZA, que es donde vive de verdad (ver el LATERAL pl, abajo).
@@ -154,10 +165,18 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
        LIMIT 1) e ON TRUE
     -- El último contrato CERRADO, para saber cuándo y por qué se fue quien ya
     -- no está. Sin esto, una baja es una fila sin fecha y sin explicación.
+    -- Y QUIÉN la dio (ver QUIEN_BAJA).
     LEFT JOIN LATERAL (
-      SELECT baja, motivo_baja FROM conductor_periodo_empleo
-       WHERE conductor_id = c.id AND baja IS NOT NULL
-       ORDER BY baja DESC LIMIT 1) ultimo ON NOT c.empleo_vigente
+      SELECT p.baja, p.motivo_baja, quien.baja_por, quien.baja_iniciales, quien.baja_puesta_at
+        FROM conductor_periodo_empleo p
+        LEFT JOIN LATERAL (
+          SELECT ${QUIEN_BAJA}
+            FROM cambio_campo cc JOIN usuario u ON u.id = cc.usuario_id
+           WHERE cc.tabla = 'conductor' AND cc.registro_id = c.id AND cc.campo = 'baja'
+             AND left(cc.valor_ahora, 10) = to_char(p.baja, 'YYYY-MM-DD')
+           ORDER BY cc.cambiado_at DESC LIMIT 1) quien ON TRUE
+       WHERE p.conductor_id = c.id AND p.baja IS NOT NULL
+       ORDER BY p.baja DESC LIMIT 1) ultimo ON NOT c.empleo_vigente
     -- El estado vigente, UNO solo: el más reciente que cubre hoy. Antes era un JOIN
     -- a pelo y, si quedaba un 'activo' viejo sin cerrar solapando con una ausencia
     -- nueva (p. ej. una baja médica), tomaba el que fuera -o duplicaba la fila-. Se
@@ -409,6 +428,25 @@ async function ponerleCara(situaciones) {
   });
 }
 
+/**
+ * A cada periodo de empleo cerrado, quién le dio la baja y cuándo (ver
+ * QUIEN_BAJA): `baja_por`, `baja_iniciales` y `baja_puesta_at`. Se casa por la
+ * fecha, y si hay varias apuntes con la misma, manda el último.
+ */
+async function conQuienDioLaBaja(id, empleos) {
+  if (!empleos.some(e => e.baja)) return;
+  const r = await db.consulta(
+    `SELECT left(cc.valor_ahora, 10) AS fecha, ${QUIEN_BAJA}
+       FROM cambio_campo cc JOIN usuario u ON u.id = cc.usuario_id
+      WHERE cc.tabla = 'conductor' AND cc.registro_id = $1 AND cc.campo = 'baja'
+      ORDER BY cc.cambiado_at DESC`, [id]);
+  empleos.forEach(e => {
+    if (!e.baja) return;
+    const q = r.rows.find(x => x.fecha === vig.dia(e.baja));
+    if (q) Object.assign(e, { baja_por: q.baja_por, baja_iniciales: q.baja_iniciales, baja_puesta_at: q.baja_puesta_at });
+  });
+}
+
 /** Un conductor con todo lo suyo: quién es, dónde está y por dónde ha pasado. */
 async function ficha(id, { momento } = {}) {
   const [c] = (await db.consulta(`
@@ -426,6 +464,7 @@ async function ficha(id, { momento } = {}) {
   ]);
 
   await ponerleCara(situaciones);
+  await conQuienDioLaBaja(id, empleos);
 
   const cuentas = (await db.consulta(
     `SELECT id, sistema, externo_id, externo_nombre, estado_externo, visto_desde, visto_hasta
