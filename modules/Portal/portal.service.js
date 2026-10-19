@@ -24,6 +24,7 @@ const repo = require('./portal.repo');
 const correo = require('../../services/correo');
 const cobertura = require('../Planificacion/cobertura.service');
 const puntuacion = require('../../services/repo/puntuacionSemanal');
+const nominas = require('../Nominas/nominas.service');
 const { nombrePropio } = require('./formato');
 
 const CODIGO_MINUTOS = 10;
@@ -202,11 +203,60 @@ async function semanas(persona) {
   };
 }
 
-/** La portada: el próximo turno y la última nota. */
-async function inicio(persona) {
-  const [t, s] = await Promise.all([turnos(persona), puntuacion.semanasDe(persona.id)]);
+// ── El dinero del mes ───────────────────────────────────────────────────────
+//
+// LA FACTURACIÓN, CON SU OBJETIVO (19/10/2026). Camilo: «una barra de progreso
+// de la facturación que lleva, dependiendo si es 32 o 40 horas … si tiene que
+// llegar a 4750 o 3750 euros», y luego: «los de la ETT exclúyeles esta función
+// ya que ellos no tienen tal cosa. Las propinas y peajes ponlas también, pero
+// recuerda que es a mes vencido esto de los extras. Las propinas y peajes sí
+// deben de poder verlos los de la ETT».
+//
+//   · El objetivo es el UMBRAL DEL MBO FAS de su jornada, el mismo número que
+//     usa la nómina (nominas.umbralFASDe): 40 h → 4.750, 32 h → 3.750, y las
+//     demás jornadas, el de 40 h, como en la nómina. Se cambia en /nominas.
+//   · El dinero es el de la nómina: facturación neta, propinas y peajes por DÍA
+//     NATURAL (nominas.dineroDe), del día 1 a hoy.
+//   · LA ETT NO VE LA BARRA: el MBO es solo de plantilla propia. Sí ve sus
+//     propinas y peajes.
+//   · A MES VENCIDO: lo de este mes va en la nómina del mes que viene, y se
+//     dice. Por eso se enseña también el mes pasado, que es lo que entra en la
+//     nómina de este mes.
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+  'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',
+  { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const dos = n => String(n).padStart(2, '0');
+
+async function dinero(persona, hoy = hoyMadrid()) {
+  const [y, m] = hoy.split('-').map(Number);
+  const ant = m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 };
+  const finAnt = new Date(Date.UTC(ant.y, ant.m, 0)).getUTCDate();
+  const [c, actual, anterior] = await Promise.all([
+    repo.contrato(persona.id),
+    nominas.dineroDe(persona.id, `${y}-${dos(m)}-01`, hoy),
+    nominas.dineroDe(persona.id, `${ant.y}-${dos(ant.m)}-01`, `${ant.y}-${dos(ant.m)}-${dos(finAnt)}`),
+  ]);
+  const ett = !c || c.tipo === 'ett';
+  const algo = d => d.neto > 0 || d.propinas > 0 || d.peajes > 0;
   return {
-    hoy: t.desde, hasta: t.hasta,
+    ett, hoy,
+    objetivo: ett ? null : await nominas.umbralFASDe(c.jornada),
+    mes: { nombre: MESES[m - 1], cobro: MESES[m % 12], ...actual },
+    anterior: algo(anterior) ? { nombre: MESES[ant.m - 1], cobro: MESES[m - 1], ...anterior } : null,
+  };
+}
+
+/** La portada: el próximo turno, el dinero del mes y la última nota. */
+async function inicio(persona) {
+  const [t, s, d] = await Promise.all([
+    turnos(persona), puntuacion.semanasDe(persona.id),
+    // Si el dinero no se puede leer, la portada sale igual, sin esa tarjeta.
+    dinero(persona).catch(e => { console.error('❌ [Portal] dinero:', e.message); return null; }),
+  ]);
+  return {
+    hoy: t.desde, hasta: t.hasta, dinero: d,
     proximo: t.dias.find(d => d.trabaja) || null,
     hayPlan: t.dias.some(d => !d.sinPlan),
     evento: t.evento,
@@ -216,7 +266,7 @@ async function inicio(persona) {
 }
 
 module.exports = {
-  pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas,
+  pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero,
   SESION_DIAS,
   // Para el comprobador.
   _normalizarDni: normalizarDni, _ocultarEmail: ocultarEmail, _pilaDe: pilaDe, _correoDelCodigo: correoDelCodigo,

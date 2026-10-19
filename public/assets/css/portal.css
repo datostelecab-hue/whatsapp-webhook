@@ -132,6 +132,19 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
 .proximo-turno { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; font-size: 1.375rem; font-weight: 600; letter-spacing: -.01em; }
 .proximo-turno .matricula { font-size: 1rem; }
 
+/* ── El dinero del mes ───────────────────────────────────────────────────── */
+.dinero { display: flex; flex-direction: column; gap: .6rem; }
+.dinero-cifra { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; }
+.dinero-cifra b { font-size: 1.75rem; font-weight: 600; letter-spacing: -.02em; }
+.progreso { height: 10px; border-radius: 5px; background: rgb(var(--sup2)); border: 1px solid rgb(var(--linea)); overflow: hidden; }
+.progreso i { display: block; height: 100%; border-radius: 5px; background: rgb(var(--acento)); transition: width .4s cubic-bezier(.23, 1, .32, 1); }
+.progreso-lleno { border-color: rgb(var(--acento)); }
+.extras { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: .25rem 0 0; }
+.extras div { background: rgb(var(--sup2)); border-radius: 10px; padding: .55rem .75rem; }
+.extras dt { font-size: .8125rem; color: rgb(var(--suave)); }
+.extras dd { margin: 0; font-weight: 600; font-size: 1.0625rem; }
+.dinero-anterior { border-top: 1px solid rgb(var(--linea)); padding-top: .6rem; }
+
 /* ── La nota ─────────────────────────────────────────────────────────────── */
 .nota { display: flex; align-items: center; gap: 1rem; }
 .nota-num { font-size: 3.25rem; line-height: 1; font-weight: 600; letter-spacing: -.04em; }

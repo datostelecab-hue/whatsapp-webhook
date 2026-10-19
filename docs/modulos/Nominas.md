@@ -156,7 +156,7 @@ Todo lo numérico se edita desde el panel y se guarda en `nomina_config`. Los va
 | `eurHoraExtra` | € por hora extra (8,16 desde el 16/10/2026) | sí |
 | `utilUmbral` | utilización con la que no se quitan horas (0,75) | sí |
 | `utilExigida` | utilización que se exige a quien no llega (0,85) | sí |
-| `umbralFAS40` / `umbralFAS32` | neto a partir del cual hay MBO FAS, por jornada | sí |
+| `umbralFAS40` / `umbralFAS32` | neto a partir del cual hay MBO FAS, por jornada: 4.750 y 3.750 (el de 32 h era 4.750 hasta el 19/10/2026). Las demás jornadas, el de 40 h (`umbralDe`). Es también el objetivo que ve el conductor en su [[Portal de conductores\|portal]] | sí |
 | `pctMBOFAS` | fracción del exceso de facturación (0,4) | sí |
 | `eurHoraNoc`, `factorNoc` | € hora nocturna (9,9) y su multiplicador (0,1) | sí |
 | `horasMetaDia` | lo que vale un día de permiso retribuido (8), la base del de vacaciones, y cuántas horas hacen un «día extra» | sí |

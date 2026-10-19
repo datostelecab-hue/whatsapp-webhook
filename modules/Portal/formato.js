@@ -56,6 +56,14 @@ const telHref = t => { const n = String(t || '').replace(/\D/g, '').slice(-9); r
 /** El total como se lee: 88, o 84,5 si tiene decimales. */
 const total = n => (n == null ? '' : String(Math.round(Number(n) * 10) / 10).replace('.', ','));
 
+/** «4750» → «4.750,00 €»; con 0 decimales, «4.750 €». El punto de los miles también en cuatro cifras. */
+function euros(n, decimales = 2) {
+  const v = Number(n) || 0;
+  const [ent, dec] = Math.abs(v).toFixed(decimales).split('.');
+  // Con espacio que no se parte: el «€» nunca se queda solo en otra línea.
+  return (v < 0 ? '−' : '') + ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (dec ? ',' + dec : '') + '\u00a0€';
+}
+
 /** Por qué una semana no tiene nota, dicho para el conductor. */
 function sinNota(motivo) {
   const m = String(motivo || '');
@@ -80,4 +88,4 @@ function nombrePropio(s) {
     : w.replace(/(^|[-'])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()))).join(' ');
 }
 
-module.exports = { fecha, nombreDia, semana, semanaLarga, corta, telefono, telHref, total, sinNota, claseLetra, nombrePropio };
+module.exports = { fecha, nombreDia, semana, semanaLarga, corta, telefono, telHref, total, euros, sinNota, claseLetra, nombrePropio };

@@ -12,6 +12,7 @@ const correo = require('../services/correo');
 const svc = require('../modules/Portal/portal.service');
 const f = require('../modules/Portal/formato');
 const ctl = require('../modules/Portal/portal.controller');
+const nominas = require('../modules/Nominas/nominas.service');
 
 let fallos = 0;
 function igual(nombre, real, esperado) {
@@ -123,7 +124,35 @@ const codigoDe = m => m.subject.match(/(\d{6})$/)[1];
   reloj += 11;
   igual('A los 10 minutos, caducado', (await svc.entrar({ dni: '12345678Z', codigo: codigoDe(correos[0]) })).motivo, 'caducado');
 
-  // ── 4. La frontera entre dominios ────────────────────────────────────────
+  // ── 4. El dinero del mes ─────────────────────────────────────────────────
+  const U = (j, cfg = nominas.DEFAULTS) => nominas._umbralDe(j, cfg);
+  igual('El objetivo es el umbral del FAS de la nómina: 40 h → 4.750, 32 h → 3.750', [U(40), U(32)], [4750, 3750]);
+  igual('…y las demás jornadas, el de 40 h, como en la nómina', [U(20), U(null)], [4750, 4750]);
+  igual('El dinero se escribe con el punto de los miles, y el € pegado a la cifra', [f.euros(4750, 0), f.euros(2340.5)], ['4.750\u00a0€', '2.340,50\u00a0€']);
+
+  const pedidos = [];
+  nominas.dineroDe = async (id, desde, hasta) => {
+    pedidos.push([desde, hasta]);
+    return desde.endsWith('-10-01') ? { neto: 2340.5, propinas: 12, peajes: 7.5 } : { neto: 5100, propinas: 30, peajes: 0 };
+  };
+  nominas.umbralFASDe = async j => U(j);
+  repo.contrato = async () => ({ tipo: 'propia', jornada: 32 });
+  let d = await svc.dinero({ id: '7' }, '2026-10-19');
+  igual('Del día 1 a hoy, y el mes pasado entero (por día natural, como la nómina)', pedidos, [['2026-10-01', '2026-10-19'], ['2026-09-01', '2026-09-30']]);
+  igual('Plantilla propia de 32 h: su facturación contra 3.750', [d.ett, d.objetivo, d.mes.neto], [false, 3750, 2340.5]);
+  igual('A mes vencido: lo de octubre, en la nómina de noviembre; lo de septiembre, en la de octubre',
+    [d.mes.nombre, d.mes.cobro, d.anterior.nombre, d.anterior.cobro], ['octubre', 'noviembre', 'septiembre', 'octubre']);
+
+  repo.contrato = async () => ({ tipo: 'ett', jornada: 40 });
+  d = await svc.dinero({ id: '8' }, '2026-10-19');
+  igual('La ETT no tiene objetivo (no ve la barra), pero sí sus propinas y peajes', [d.ett, d.objetivo, d.mes.propinas, d.mes.peajes], [true, null, 12, 7.5]);
+
+  nominas.dineroDe = async () => ({ neto: 0, propinas: 0, peajes: 0 });
+  repo.contrato = async () => ({ tipo: 'propia', jornada: 40 });
+  d = await svc.dinero({ id: '9' }, '2026-01-10');
+  igual('En enero, lo de diciembre del año anterior; y sin nada el mes pasado, no se enseña', [d.mes.cobro, d.anterior, d.objetivo], ['febrero', null, 4750]);
+
+  // ── 5. La frontera entre dominios ────────────────────────────────────────
   const req = host => ({ hostname: host });
   igual('El dominio de los conductores es del portal', ['conductorestelecab.es', 'www.conductorestelecab.es', 'conductorestelecab.localhost'].map(h => ctl.esDelPortal(req(h))), [true, true, true]);
   igual('El del ERP y el de Render no', ['erptelecab.es', 'serverdeprueba-q2wq.onrender.com', 'localhost'].map(h => ctl.esDelPortal(req(h))), [false, false, false]);

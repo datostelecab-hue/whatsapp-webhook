@@ -39,6 +39,14 @@ El correo sale por el «Correo para procesos» de siempre ([[Correo]]). El asunt
 
 **Inicio**: su próximo turno (cuándo, día o noche, el coche, de quién lo recibe y a quién se lo entrega, con el teléfono para llamar) y su última nota, con cuánto ha cambiado respecto a la semana anterior.
 
+**El dinero del mes**, en la portada (19/10/2026). Camilo: *«una barra de progreso de la facturación que lleva, dependiendo si es 32 o 40 horas»*, y después: *«los de la ETT exclúyeles esta función ya que ellos no tienen tal cosa. Las propinas y peajes ponlas también, pero recuerda que es a mes vencido esto de los extras. Las propinas y peajes sí deben de poder verlos los de la ETT»*.
+
+- **La barra**: su facturación neta del mes, del día 1 a hoy, contra **el umbral del MBO FAS de su jornada**. Es el mismo número que la nómina (`nominas.umbralFASDe`): **40 h → 4.750 €, 32 h → 3.750 €**, y las demás jornadas, el de 40 h, como en la nómina. Se cambia en la configuración de [[Nominas]] y el portal lo sigue solo. Debajo dice cuánto le falta, o cuánto lo ha pasado.
+- **Propinas y peajes** del mes.
+- **A mes vencido**: se dice que lo del mes se cobra en la nómina del mes siguiente. Y se enseña el mes pasado, que es lo que entra en la nómina de este mes.
+- **La ETT no ve la barra**, porque el MBO es solo de plantilla propia, pero **sí sus propinas y peajes**.
+- El dinero es el de la nómina: `v_ordenes_conductor` por **día natural** (`nominas.dineroDe`), no por jornada operativa.
+
 **Turnos**: de hoy a 7 días, lo mismo que le contesta el bot a «Ver mis turnos». Sale de `cobertura.service.proximosDe`, que guarda un minuto la ventana de toda la flota, porque es la misma para todos. Si hay un evento en marcha, se avisa de que esos días los turnos son temporales. Cuando recibe el coche y se lo devuelve a la misma persona en relevo directo (las parejas fijas), se dice en una línea: *«Compartes el coche con…»*.
 
 **Puntuación**: la nota de cada semana, que es la de [[Calificacion de conductores#La puntuación de cada semana, para el portal de conductores (19/10/2026, db/210)|la puntuación semanal sellada]]:

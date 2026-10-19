@@ -42,6 +42,21 @@ async function porId(id) {
   return r.rows[0] || null;
 }
 
+/**
+ * Su contrato de hoy (o, si aún no ha empezado, el que viene): de qué tipo es
+ * (propia o ett) y de cuántas horas. Decide si ve la barra de facturación.
+ */
+async function contrato(conductorId) {
+  const r = await db.consulta(
+    `SELECT e.tipo, e.jornada_horas
+       FROM conductor_periodo_empleo e
+      WHERE e.conductor_id = $1
+        AND (e.baja IS NULL OR e.baja >= (now() AT TIME ZONE 'Europe/Madrid')::date)
+      ORDER BY (e.alta <= (now() AT TIME ZONE 'Europe/Madrid')::date) DESC, e.alta DESC
+      LIMIT 1`, [conductorId]);
+  return r.rows[0] ? { tipo: r.rows[0].tipo, jornada: r.rows[0].jornada_horas } : null;
+}
+
 // ── Códigos ─────────────────────────────────────────────────────────────────
 
 /** Cuántos códigos se han pedido para esta persona, o desde esta IP, en los últimos `minutos`. */
@@ -131,6 +146,6 @@ async function cerrar(huella) {
 }
 
 module.exports = {
-  porDni, porId, codigosRecientes, nuevoCodigo, marcarEnviado, codigoVivo, intentar,
+  porDni, porId, contrato, codigosRecientes, nuevoCodigo, marcarEnviado, codigoVivo, intentar,
   nuevaSesion, sesion, renovar, cerrar,
 };

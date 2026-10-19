@@ -188,7 +188,11 @@ const DEFAULTS = {
   utilUmbral: 0.75,     // USADO — quien llega a esta utilización no pierde ninguna hora
   utilExigida: 0.85,    // USADO — a quien no llega se le exige esta: se le retiran horas
                         // de ESPERA hasta dejarlo exactamente aquí
-  umbralFAS40: 4750, umbralFAS32: 4750,     // USADO — a partir de este neto hay MBO FAS, según jornada
+  // USADO — a partir de este neto hay MBO FAS, según jornada. El de 32 h es
+  // 3.750 desde el 19/10/2026 (Camilo: «es 40 h → 4.750, 32 h → 3.750, también
+  // en la nómina»); hasta entonces eran 4.750 los dos. Es también el objetivo
+  // que ve el conductor en su portal (umbralFASDe).
+  umbralFAS40: 4750, umbralFAS32: 3750,
   pctMBOFAS: 0.4,       // fracción del exceso de facturación sobre el umbral
   eurHoraNoc: 9.9,      // € hora nocturna (9,9 desde el 16/10/2026; antes 8,16)
   factorNoc: 0.1,       // multiplicador de nocturnas (€hora × horas × 0.1 = 0,99 € la hora)
@@ -297,6 +301,13 @@ const jornadaDe = h => {
 };
 
 /**
+ * EL UMBRAL DEL MBO FAS DE UNA JORNADA: el de 32 h para 32 h, y el de 40 h para
+ * todas las demás. Es la ÚNICA regla: la usa la nómina y el portal de
+ * conductores, que lo enseña como el objetivo de facturación del mes.
+ */
+const umbralDe = (jornada, cfg) => (jornadaDe(jornada) === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40);
+
+/**
  * El objetivo del mes de esa jornada, por regla de tres sobre el de 40 h.
  *   40 h → 172      32 h → 172 × 32/40 = 137,6
  */
@@ -379,7 +390,7 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   // `delta` en negativo. Se guarda aparte porque es la pregunta de RRHH.
   const horasNoJustificadas = Math.max(0, -delta);
 
-  const umbral = jornada === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40;
+  const umbral = umbralDe(jornada, cfg);
   const eurNoc = cfg.eurHoraNoc * c.nocturnasH * cfg.factorNoc;
 
   // EL MBO ES SOLO DE PLANTILLA PROPIA (regla 6). A quien viene por ETT lo
@@ -1102,8 +1113,26 @@ async function horasDelDia(dia) {
   return out;
 }
 
+/**
+ * PARA EL PORTAL DE CONDUCTORES (19/10/2026): el dinero de UNA persona en un
+ * tramo de días naturales —facturación neta, propinas y peajes—, de la misma
+ * vista y con la misma ventana que la nómina. Devuelve { neto, propinas, peajes }.
+ */
+async function dineroDe(conductorId, desdeIso, hastaIso) {
+  const dias = await repo.dineroPorDia(conductorId, desdeIso, hastaIso);
+  const t = { neto: 0, propinas: 0, peajes: 0 };
+  dias.forEach(d => { t.neto += d.neto; t.propinas += d.propinas; t.peajes += d.peajes; });
+  return { neto: r2(t.neto), propinas: r2(t.propinas), peajes: r2(t.peajes) };
+}
+
+/** El umbral del MBO FAS de esa jornada, con la config guardada (para el portal). */
+async function umbralFASDe(jornada) {
+  return umbralDe(jornada, await leerConfig());
+}
+
 module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM,
+  dineroDe, umbralFASDe,
   leerConfig, guardarConfig,
   calcular, cargar, congelar, descongelar, mesesCongelados, paraETT, finiquito, extras, mesesDeExtras,
   nominaBase,
@@ -1111,6 +1140,6 @@ module.exports = {
   leerCongelada: (mes, ano) => repo.leerCongelada(mes, ano),
   // Expuestos para poder probar el prorrateo y el cálculo sin base de datos.
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,
-  _objetivoDe: objetivoDe, _mesSiguiente: mesSiguiente,
+  _objetivoDe: objetivoDe, _mesSiguiente: mesSiguiente, _umbralDe: umbralDe,
   _ventanaBase: ventanaBase, _filaBase: filaBase, _esperaQuitada: esperaQuitada,
 };

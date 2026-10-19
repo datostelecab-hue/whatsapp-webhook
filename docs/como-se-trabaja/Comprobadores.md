@@ -374,7 +374,10 @@ No son de los seis, pero forman parte de la misma red:
   limpia; a quien no está, no tiene email o no tiene contrato se le contesta lo mismo; tres
   códigos cada 15 minutos y solo vale el último; el código no se guarda en claro, sirve una
   vez, caduca a los 10 minutos y se anula al quinto fallo; la sesión guarda la huella del
-  testigo y deja de valer al salir; y por el dominio del ERP el portal deja pasar.
+  testigo y deja de valer al salir; y por el dominio del ERP el portal deja pasar. Y el
+  dinero del mes: el objetivo es el umbral del FAS de la nómina (40 h → 4.750, 32 h → 3.750,
+  las demás el de 40 h), por día natural del 1 a hoy y el mes pasado entero, a mes vencido;
+  la ETT sin objetivo pero con propinas y peajes.
 - **`comprobar-puntuacion-semanal.js`** (19/10/2026) — la puntuación de cada semana del
   portal de conductores: las semanas van de lunes a domingo desde el 01/09/2026 (la primera,
   la del 31/08, cuenta desde el martes 01/09), solo se sellan las cerradas que faltan, lo

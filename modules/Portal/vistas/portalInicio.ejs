@@ -20,6 +20,34 @@
   </div>
 </section>
 
+<% if (dinero) { const d = dinero, mes = d.mes; %>
+<section class="caja" aria-labelledby="t-dinero">
+  <div class="caja-tit"><h2 id="t-dinero"><%= d.ett ? 'Tus propinas y peajes de ' + mes.nombre : 'Tu facturación de ' + mes.nombre %></h2></div>
+  <div class="caja-in dinero">
+  <% if (!d.ett && d.objetivo) {
+       const pct = Math.max(0, Math.min(100, mes.neto / d.objetivo * 100));
+       const falta = Math.round((d.objetivo - mes.neto) * 100) / 100; %>
+    <p class="dinero-cifra"><b><%= f.euros(mes.neto) %></b> <span class="suave">de <%= f.euros(d.objetivo, 0) %></span></p>
+    <div class="progreso<%= falta <= 0 ? ' progreso-lleno' : '' %>" role="progressbar" aria-label="Facturación neta del mes"
+         aria-valuemin="0" aria-valuemax="<%= d.objetivo %>" aria-valuenow="<%= Math.round(mes.neto) %>"
+         aria-valuetext="<%= f.euros(mes.neto) %> de <%= f.euros(d.objetivo, 0) %>"><i style="width:<%= pct.toFixed(1) %>%"></i></div>
+    <p class="peq <%= falta <= 0 ? 'cambio-mas' : 'suave' %>"><%= falta <= 0
+      ? (falta === 0 ? 'Has llegado justo al objetivo.' : 'Has pasado el objetivo en ' + f.euros(-falta) + '.')
+      : 'Te faltan ' + f.euros(falta) + ' para el objetivo.' %></p>
+  <% } %>
+    <dl class="extras">
+      <div><dt>Propinas</dt><dd><%= f.euros(mes.propinas) %></dd></div>
+      <div><dt>Peajes</dt><dd><%= f.euros(mes.peajes) %></dd></div>
+    </dl>
+    <p class="suave peq">Va a mes vencido: lo de <%= mes.nombre %> se cobra en la nómina de <%= mes.cobro %>.</p>
+  <% if (d.anterior) { const a = d.anterior; %>
+    <p class="peq dinero-anterior">En la nómina de <%= a.cobro %> entra lo de <%= a.nombre %>:
+      <%= d.ett ? '' : 'facturaste ' + f.euros(a.neto) + ', ' %><%= f.euros(a.propinas) %> de propinas y <%= f.euros(a.peajes) %> de peajes.</p>
+  <% } %>
+  </div>
+</section>
+<% } %>
+
 <section class="caja" aria-labelledby="t-nota">
   <div class="caja-tit"><h2 id="t-nota">Tu última nota</h2><% if (ultima) { %><a href="/puntuacion">Todas las semanas</a><% } %></div>
   <div class="caja-in">
