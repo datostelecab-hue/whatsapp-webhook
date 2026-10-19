@@ -15,6 +15,32 @@ const { descifrar } = require('./cripto');
 
 const CORREO_TRAFICO = process.env.CORREO_TRAFICO || 'traficotelecab@gmail.com';
 
+// ── EN PRUEBAS, NINGÚN CORREO SALE (19/10/2026) ─────────────────────────────
+// El cortafuegos de modoPruebas frenaba WhatsApp, Mapon y las hojas, pero no el
+// correo: un servidor de ensayo con la configuración de producción podía mandar
+// por DonDominio a gente de verdad. Con MODO_PRUEBAS=1, todo correo —el de
+// procesos y el que va «como» un usuario— va al buzón falso de CORREO_PRUEBAS
+// (Mailpit en el entorno local, ver scripts/entorno-local), y solo si ese buzón
+// está en este mismo PC. Sin CORREO_PRUEBAS se frena y se apunta, como lo demás.
+const pruebas = require('./modoPruebas');
+
+function buzonDePruebas() {
+  const m = /^(127\.0\.0\.1|localhost):(\d{2,5})$/.exec(String(process.env.CORREO_PRUEBAS || '').trim());
+  return m ? { host: m[1], port: Number(m[2]) } : null;
+}
+
+async function enviarEnPruebas(mail) {
+  const b = buzonDePruebas();
+  if (!b) {
+    pruebas.permite('Correo', `«${mail.subject}» → ${mail.to}`);
+    return { enviado: false, motivo: 'modo pruebas: el correo no sale' };
+  }
+  const transport = require('nodemailer').createTransport({ host: b.host, port: b.port, secure: false, ignoreTLS: true });
+  const info = await transport.sendMail(mail);
+  console.log(`🧪 [PRUEBAS] Correo al buzón de pruebas (${b.host}:${b.port}) · «${mail.subject}» → ${mail.to}`);
+  return { enviado: true, id: info.messageId, pruebas: true };
+}
+
 /** Resuelve los ajustes SMTP (app primero, luego entorno) o null si no hay. */
 async function ajustesEnvio() {
   try {
@@ -54,6 +80,7 @@ async function estadoCorreo() {
 /** Envía (o registra) un correo. Nunca lanza: un fallo de correo no rompe el flujo. */
 async function enviarCorreo({ to, subject, text, html } = {}) {
   try {
+    if (pruebas.ACTIVO) return await enviarEnPruebas({ from: 'Telecab <pruebas@telecab.local>', to, subject, text, html });
     const a = await ajustesEnvio();
     if (!a) {
       console.log(`✉️  [CORREO] Sin configurar → no se envía a ${to} · «${subject}» (revisa "Correo para procesos" y la variable CRED_KEY)`);
@@ -117,6 +144,9 @@ function componerRaw(mail) {
 
 async function enviarComoUsuario(emailRemitente, { to, subject, text, html, attachments } = {}) {
   try {
+    if (pruebas.ACTIVO) {
+      return { ...(await enviarEnPruebas({ from: emailRemitente, to, subject, text, html, attachments })), from: emailRemitente };
+    }
     const usuarios = require('../modules/Usuarios/usuarios.service');
     const u = await usuarios.buscarUsuario(emailRemitente);
     if (!u) return { enviado: false, motivo: `El remitente ${emailRemitente} no existe` };

@@ -9,6 +9,9 @@ Cómo se prueba la seguridad del ERP y qué endurecimiento lleva puesto. La idea
 
 ## El laboratorio aislado
 
+> [!note] No es el [[Entorno de pruebas local]]
+> Aquel lleva una copia de producción con personas reales, y es para **ver funcionar** el ERP antes de subir algo. Este lleva datos sintéticos y es para **atacarlo**.
+
 Un montaje de VirtualBox donde **Kali Linux** (el atacante) y una **copia del ERP** (el objetivo) viven en la misma red privada, sin salida a la red de casa ni a internet.
 
 - **Objetivo** — el ERP en Docker (`Documents\lab-erp`): su código, un **Postgres local desechable** y **claves ficticias**. Arranca con `MODO_PRUEBAS=1`, que apaga los 16 crons y bloquea toda escritura externa (Sheets, WhatsApp, Mapon). Escucha **solo** en `192.168.56.1:3000` (la red host-only), no en la LAN.

@@ -1,0 +1,51 @@
+# ============================================================
+# ENTORNO DE PRUEBAS LOCAL — la base y el buzón falso
+# ============================================================
+# Ver LEEME.md de esta carpeta. Dos contenedores, los dos solo en este PC
+# (127.0.0.1: nadie de la red los ve):
+#
+#   · telecab-pg      PostgreSQL 18, la misma versión mayor que producción, con
+#                     una COPIA de producción (la trae refrescar.js).
+#   · telecab-correo  Mailpit: un servidor de correo falso. Todo lo que el ERP
+#                     manda en pruebas cae aquí y se ve en http://localhost:8025.
+#                     No sale nada del PC.
+#
+# Los datos de la base viven en el volumen `telecab-pruebas_pg`: sobreviven a
+# apagar Docker y se rehacen enteros con refrescar.js.
+
+name: telecab-pruebas
+
+services:
+  pg:
+    image: postgres:18.1-alpine
+    container_name: telecab-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: telecab
+      POSTGRES_PASSWORD: pruebas
+      POSTGRES_DB: telecab
+      TZ: Europe/Madrid
+      PGTZ: Europe/Madrid
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telecab -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  correo:
+    image: axllent/mailpit:v1.27
+    container_name: telecab-correo
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Madrid
+      MP_MAX_MESSAGES: 2000
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  pg:

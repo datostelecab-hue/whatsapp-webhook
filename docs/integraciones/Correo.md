@@ -50,6 +50,12 @@ Quién lo usa: `routes/reportes.js` (el reporte de horas de ETT, con el Excel ad
 
 El destinatario habitual se recuerda en `config_app` para la próxima vez. Hay además un buzón de tráfico fijo en `CORREO_TRAFICO` (variable de entorno, con valor por defecto en el código).
 
+## En modo pruebas no sale ningún correo (19/10/2026)
+
+Con `MODO_PRUEBAS=1`, los dos envíos de arriba **no usan la configuración de nadie**: mandan a `CORREO_PRUEBAS` (`host:puerto`), y solo si ese buzón está en el mismo PC (`127.0.0.1` o `localhost`). En el [[Entorno de pruebas local]] es Mailpit, que enseña el correo tal cual le llegaría a la persona en `http://localhost:8025`. Sin `CORREO_PRUEBAS`, el correo se frena y queda apuntado en `/modo-pruebas`, como un WhatsApp.
+
+Hasta entonces el cortafuegos de pruebas cubría WhatsApp, Mapon y las hojas, **pero no el correo**. Un servidor de ensayo con la configuración de producción podía mandar correos de verdad por DonDominio.
+
 ## Lo que hay que saber
 
 - **Un fallo de correo nunca rompe el proceso.** Crear un usuario funciona aunque el aviso no salga; por eso las pantallas devuelven `correoEnviado` y, cuando hace falta, la contraseña provisional a la vista de quien la creó.

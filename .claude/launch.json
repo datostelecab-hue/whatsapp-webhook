@@ -6,6 +6,13 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["app.js"],
       "port": 3000
+    },
+    {
+      "name": "entorno-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/entorno-local/arrancar.js"],
+      "port": 3100,
+      "url": "http://erptelecab.localhost:3100"
     }
   ]
 }

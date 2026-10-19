@@ -8,12 +8,14 @@
 // duplicarían el gasto de la cuota de Sheets (60/min, compartida — ya tumbó el
 // ERP entero una vez) y mandarían WhatsApps a conductores de verdad.
 //
-// Se bloquean TRES cosas:
+// Se bloquean CUATRO cosas:
 //   1. Toda escritura en Google Sheets (services/sheets.js llama a `permite`).
 //   2. Todo envío de WhatsApp — se corta en `fetch`, así también cae lo que
 //      manda routes/botPuertas.js por su cuenta.
 //   3. Toda escritura en Mapon (crear/mover conductores, relés, comandos): el
 //      fichaje mueve conductores REALES entre coches REALES.
+//   4. Todo correo (19/10/2026): services/correo.js lo manda al buzón falso de
+//      CORREO_PRUEBAS si está en este PC (el entorno local), o lo frena.
 //
 // Lo que NO se bloquea: las lecturas. El ensayo necesita leer datos de verdad.
 //
