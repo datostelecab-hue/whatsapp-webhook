@@ -40,6 +40,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Administracion]]** — Hoy este módulo es, en la práctica, recaudación: el dinero que el conductor debe a la casa. Desde el 16/10/2026 también lo que pagan por transferencia, con su ID (db/208).
 - **[[Auditoria de flota]]** — Compara los kilómetros que hizo el coche con lo que ese coche facturó en BOLT, y reparte cada metro según en qué estado estaba el conductor cuando lo recorrió.
 - **[[Bitacora]]** — El calendario de la plantilla: qué hizo cada persona cada día —cuántas horas, si libró, si estaba de vacaciones o de baja, si hay una J puesta—.
+- **[[Portal de conductores]]** — conductorestelecab.es (19/10/2026): cada conductor ve desde el móvil sus turnos de hoy a 7 días y su puntuación semana a semana. Entra con su DNI y un código que le llega al email.
 - **[[Calificacion de conductores]]** — Una letra por conductor y periodo. Es lo que Tráfico ve al lado del nombre —*"Juan Manuel Akieme (9,4 h · A)"*— en el planificador, en el cockpit, en las campañas y en el reporte de…
 - **[[Conductores]]** — Quién trabaja aquí y en qué condiciones: la ficha de la persona, su contrato, sus papeles y su cuenta de BOLT.
 - **[[Control Alertas]] · [[Control Coches sin cuadrante]]** — /alertas es la vigilancia de las franjas críticas: cuando un conductor se pasa de la raya, un WhatsApp a los controladores elegidos.

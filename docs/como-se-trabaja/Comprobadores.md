@@ -366,6 +366,11 @@ No son de los seis, pero forman parte de la misma red:
   sin jornada (día o noche) ni contrato (40, 32 o 20 h), y lo dice antes de crear nada. La
   jornada llega a la ficha y a la candidatura; con vacante sale de ella si no se marca, y
   si no coincide no se da el alta. Quien vuelve también recibe su turno.
+- **`comprobar-portal.js`** (19/10/2026) — el portal de conductores, con dobles: el DNI se
+  limpia; a quien no está, no tiene email o no tiene contrato se le contesta lo mismo; tres
+  códigos cada 15 minutos y solo vale el último; el código no se guarda en claro, sirve una
+  vez, caduca a los 10 minutos y se anula al quinto fallo; la sesión guarda la huella del
+  testigo y deja de valer al salir; y por el dominio del ERP el portal deja pasar.
 - **`comprobar-puntuacion-semanal.js`** (19/10/2026) — la puntuación de cada semana del
   portal de conductores: las semanas van de lunes a domingo desde el 01/09/2026 (la primera,
   la del 31/08, cuenta desde el martes 01/09), solo se sellan las cerradas que faltan, lo

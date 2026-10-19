@@ -1,0 +1,47 @@
+<h1>Hola<%= conductor.pila ? ', ' + conductor.pila : '' %></h1>
+
+<% if (evento) { %>
+<p class="aviso"><b><%= evento.nombre %>.</b> Del <%= f.fecha(evento.desde) %> al <%= f.fecha(evento.hasta) %> los turnos son temporales.</p>
+<% } %>
+
+<section class="caja" aria-labelledby="t-proximo">
+  <div class="caja-tit"><h2 id="t-proximo">Tu próximo turno</h2><a href="/turnos">Ver los 8 días</a></div>
+  <div class="caja-in proximo">
+  <% if (proximo) { const n = f.nombreDia(proximo.fecha, hoy); %>
+    <p class="suave"><%= n.nombre %>, <%= n.fecha %></p>
+    <div class="proximo-turno"><span>Turno de <%= String(proximo.turno).toLowerCase() %></span><span class="matricula"><%= proximo.matricula %></span></div>
+    <%- include('portalRelevo', { d: proximo, f }) %>
+  <% } else if (hayPlan) { %>
+    <p>No tienes turnos de hoy al <%= f.fecha(hasta) %>.</p>
+    <p class="suave peq">Si crees que es un error, avisa a la oficina.</p>
+  <% } else { %>
+    <p>Todavía no están cargados tus turnos de los próximos días.</p>
+  <% } %>
+  </div>
+</section>
+
+<section class="caja" aria-labelledby="t-nota">
+  <div class="caja-tit"><h2 id="t-nota">Tu última nota</h2><% if (ultima) { %><a href="/puntuacion">Todas las semanas</a><% } %></div>
+  <div class="caja-in">
+  <% if (!ultima) { %>
+    <p class="suave">Todavía no tienes ninguna semana con nota. La de cada semana sale el lunes.</p>
+  <% } else if (ultima.letra === 'N/E') { %>
+    <p><%= f.sinNota(ultima.motivo) %></p>
+    <p class="suave peq">Semana <%= f.semanaLarga(ultima.desde, ultima.hasta) %></p>
+  <% } else {
+       const dif = anterior && anterior.total != null ? Math.round((ultima.total - anterior.total) * 10) / 10 : null; %>
+    <div class="nota">
+      <div class="nota-num"><%= f.total(ultima.total) %><small>/100</small></div>
+      <span class="letra letra-<%= ultima.letra %>" aria-label="Letra <%= ultima.letra %>"><%= ultima.letra %></span>
+    </div>
+    <div class="nota-texto" style="margin-top:.6rem">
+      <p class="suave peq">Semana <%= f.semanaLarga(ultima.desde, ultima.hasta) %></p>
+      <% if (dif != null) { %>
+      <p class="peq <%= dif > 0 ? 'cambio-mas' : dif < 0 ? 'cambio-menos' : 'suave' %>"><%=
+        dif === 0 ? 'Igual que la semana anterior.'
+        : (Math.abs(dif) === 1 ? '1 punto' : f.total(Math.abs(dif)) + ' puntos') + (dif > 0 ? ' más' : ' menos') + ' que la semana anterior.' %></p>
+      <% } %>
+    </div>
+  <% } %>
+  </div>
+</section>

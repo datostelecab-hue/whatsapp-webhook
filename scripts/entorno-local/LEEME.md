@@ -19,6 +19,9 @@ node scripts/entorno-local/arrancar.js
 | Buzón de pruebas (Mailpit) | http://localhost:8025 |
 | Base local | `postgresql://telecab:pruebas@127.0.0.1:5433/telecab` |
 
+Para entrar al portal sin el DNI de nadie de verdad, `node scripts/entorno-local/conductor-de-prueba.js [id_de_ficha]`
+le pone a un conductor de la copia un DNI y un email de prueba (los dice al acabar).
+
 Hace falta Docker Desktop abierto. Para pararlo todo:
 
 ```

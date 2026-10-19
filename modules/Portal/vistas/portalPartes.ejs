@@ -1,0 +1,17 @@
+<%
+  /* Las tres partes de una nota, en puntos (nunca horas ni porcentajes: Camilo,
+     «que todavía no vean sus horas»). Y los excesos que le cuentan, que ya se
+     le avisaron por WhatsApp. */
+  const barra = p => '<span class="parte-barra"><i class="' + (p >= 100 ? 'lleno' : '') + '" style="width:' + Math.max(0, Math.min(100, Number(p) || 0)) + '%"></i></span>';
+  const ex = Number(s.excesos) || 0;
+%>
+<div class="partes">
+  <div class="parte"><span>Horas</span><span class="parte-pts"><%= s.ptsHoras %> <small>/ 100</small></span><%- barra(s.ptsHoras) %></div>
+  <div class="parte"><span>Utilización</span><span class="parte-pts"><%= s.ptsUtilizacion %> <small>/ 100</small></span><%- barra(s.ptsUtilizacion) %></div>
+  <div class="parte"><span>Velocidad</span><span class="parte-pts"><%= s.ptsVelocidad %> <small>/ 100</small></span><%- barra(s.ptsVelocidad) %>
+    <span class="parte-nota"><%= ex === 0 ? 'Sin excesos de velocidad.' : ex === 1 ? '1 exceso de velocidad, ya avisado por WhatsApp.' : ex + ' excesos de velocidad, ya avisados por WhatsApp.' %></span>
+  </div>
+  <% if (s.topeAplicado && s.letraPorPuntos) { %>
+  <p class="parte-nota">Por los excesos de velocidad, la letra se queda en <%= s.letra %>: por puntos sería <%= s.letraPorPuntos %>.</p>
+  <% } %>
+</div>

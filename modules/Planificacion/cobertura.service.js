@@ -273,8 +273,33 @@ async function proximosDeCadaUno(pilaDe = () => '') {
     [String(e.id), { texto: mensajeProximos(e, { ...v, pila: pilaDe(String(e.id)) || '' }) }]));
 }
 
+/**
+ * LOS PRÓXIMOS DÍAS DE UNA PERSONA, para su portal (conductorestelecab.es,
+ * 19/10/2026): de hoy a 7 días, lo mismo que le contesta el bot a «Ver mis
+ * turnos», y el evento que esté en marcha si lo hay (esos días el cuadrante es
+ * un apaño temporal y conviene decirlo).
+ *
+ * La ventana de toda la flota se guarda un minuto: la piden doscientas personas
+ * desde el móvil y es la misma para todas. Devuelve { desde, hasta, entrada,
+ * evento } — `entrada` es null si no le toca nada en la ventana.
+ */
+let _proximos = null;
+async function proximosDe(conductorId) {
+  if (!_proximos || Date.now() - _proximos.ts > 60 * 1000) {
+    _proximos = { ts: Date.now(), v: cob.proximos() };
+    _proximos.v.catch(() => { _proximos = null; });
+  }
+  const v = await _proximos.v;
+  const evento = await require('./eventos.repo').vigenteEn(v.desde).catch(() => null);
+  return {
+    desde: v.desde, hasta: v.hasta,
+    entrada: (v.porConductor || []).find(e => String(e.id) === String(conductorId)) || null,
+    evento: evento ? { nombre: evento.nombre, desde: evento.desde, hasta: evento.hasta } : null,
+  };
+}
+
 module.exports = {
-  proximosDeCadaUno,
+  proximosDeCadaUno, proximosDe,
   paraLaPantalla, datos, conductorPorTelefono, estadoDeAvisos, informeDeAvisos,
   enviarAUno, lanzarMasivo, progreso, hayEnvioEnMarcha,
   semanaDe, diaDeSemana,

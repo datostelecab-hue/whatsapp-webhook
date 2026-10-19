@@ -18,8 +18,9 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 ## El portal de conductores (19/10/2026)
 
 - **Los dominios están pedidos**: `erptelecab.es` (el ERP) y `conductorestelecab.es` (el portal). Los gestiona otra persona. Cuando estén, hay que añadirlos en Render y pasarle a quien los gestiona los registros DNS que dé Render.
-- **Se prueba primero en el PC**, en el [[Entorno de pruebas local]], que ya está montado.
-- **Al desplegar, aplicar `db/210`** (la puntuación de cada semana). La primera pasada de las 12:00 sella todas las semanas desde el 01/09 de golpe. Ver [[Calificacion de conductores#La puntuación de cada semana, para el portal de conductores (19/10/2026, db/210)]].
+- **Se prueba primero en el PC**, en el [[Entorno de pruebas local]], que ya está montado. El [[Portal de conductores]] funciona ahí entero: DNI, código en el buzón falso, inicio, turnos y puntuación.
+- **Al desplegar, aplicar `db/210`** (la puntuación de cada semana) **y `db/211`** (los códigos y las sesiones del portal). La primera pasada de las 12:00 sella todas las semanas desde el 01/09 de golpe. Ver [[Calificacion de conductores#La puntuación de cada semana, para el portal de conductores (19/10/2026, db/210)]].
+- **En Render**, cuando estén los dominios: añadirlos al servicio y pasar los registros DNS. `PORTAL_SECRETO` es opcional.
 - **51 conductores de alta no tienen email** (47 de la ETT) y **23 no tienen DNI**: sin email no les puede llegar el código para entrar al portal. Es trabajo de RRHH.
 
 ## La baja programada y el contrato de Aaron (13/10/2026)

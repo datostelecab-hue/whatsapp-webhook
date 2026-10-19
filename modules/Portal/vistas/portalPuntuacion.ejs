@@ -1,0 +1,79 @@
+<div>
+  <h1>Mi puntuación</h1>
+  <p class="suave" style="margin-top:.25rem">Cada semana, de lunes a domingo, tiene su nota. Sale el lunes y ya no cambia.</p>
+</div>
+
+<% if (!semanas.length) { %>
+<section class="caja"><p class="vacio">Todavía no tienes ninguna semana con nota. La de cada semana sale el lunes.</p></section>
+<% } else {
+     const ult = semanas[0];
+     // La racha: las últimas diez semanas, de la más antigua a la más reciente.
+     const racha = semanas.slice(0, 10).reverse(); %>
+
+<section class="caja" aria-labelledby="t-ultima">
+  <div class="caja-tit"><h2 id="t-ultima">Semana <%= f.semanaLarga(ult.desde, ult.hasta) %></h2></div>
+  <div class="caja-in">
+  <% if (ult.letra === 'N/E') { %>
+    <p><%= f.sinNota(ult.motivo) %></p>
+  <% } else { %>
+    <div class="nota">
+      <div class="nota-num"><%= f.total(ult.total) %><small>/100</small></div>
+      <span class="letra letra-<%= ult.letra %>" aria-label="Letra <%= ult.letra %>"><%= ult.letra %></span>
+    </div>
+    <%- include('portalPartes', { s: ult }) %>
+  <% } %>
+  </div>
+</section>
+
+<% if (racha.length > 1) { %>
+<section class="caja" aria-labelledby="t-racha">
+  <div class="caja-tit"><h2 id="t-racha">Semana a semana</h2></div>
+  <div class="racha" role="img" aria-label="<%= racha.map(s => f.semana(s.desde, s.hasta) + ': ' + (s.letra === 'N/E' ? 'sin nota' : f.total(s.total) + ' ' + s.letra)).join('; ') %>">
+  <% racha.forEach(s => { %>
+    <div class="racha-sem"><div class="racha-barra l-<%= f.claseLetra(s.letra) %>" style="height:<%= s.letra === 'N/E' ? 4 : Math.max(4, Number(s.total) || 0) %>%"></div></div>
+  <% }) %>
+  </div>
+  <div class="racha-pie" aria-hidden="true"><% racha.forEach(s => { %><span><%= f.corta(s.desde) %></span><% }) %></div>
+</section>
+<% } %>
+
+<% if (semanas.length > 1) { %>
+<section class="caja" aria-labelledby="t-antes">
+  <div class="caja-tit"><h2 id="t-antes">Semanas anteriores</h2></div>
+  <ul class="semanas" style="margin-top:.35rem">
+  <% semanas.slice(1).forEach(s => { %>
+    <li>
+      <details>
+        <summary>
+          <span class="sem-fecha"><%= f.semana(s.desde, s.hasta) %></span>
+          <% if (s.letra === 'N/E') { %>
+          <span class="letra letra-peq letra-NE">Sin nota</span>
+          <% } else { %>
+          <span class="sem-total"><%= f.total(s.total) %></span>
+          <span class="letra letra-peq letra-<%= s.letra %>"><%= s.letra %></span>
+          <% } %>
+        </summary>
+        <% if (s.letra === 'N/E') { %>
+        <p class="peq suave" style="padding:0 1.1rem 1rem"><%= f.sinNota(s.motivo) %></p>
+        <% } else { %>
+        <%- include('portalPartes', { s }) %>
+        <% } %>
+      </details>
+    </li>
+  <% }) %>
+  </ul>
+</section>
+<% } %>
+<% } %>
+
+<details class="caja como">
+  <summary>Cómo se calcula la nota</summary>
+  <div class="como-in">
+    <p>La nota va de 0 a 100 y se hace con tres partes:</p>
+    <p><b>Horas, <%= modelo.pesos.horas %> %.</b> Las horas que haces de media los días que trabajas. Si te toca salir y no sales, ese día cuenta como 0.</p>
+    <p><b>Utilización, <%= modelo.pesos.utilizacion %> %.</b> Cuánto de tu tiempo conectado llevas pasajero.</p>
+    <p><b>Velocidad, <%= modelo.pesos.velocidad %> %.</b> Los excesos de velocidad que se te han avisado por WhatsApp. Sin ninguno, 100 puntos. Con excesos, además, la letra tiene un tope aunque los puntos den para más.</p>
+    <p><b>La letra:</b> <%= modelo.bandas.map(b => b.letra + ' desde ' + b.desde + ' puntos').join(', ') %>; por debajo, D.</p>
+    <p>Una semana en la que cuentan menos de <%= modelo.minDias %> días no tiene nota. Las vacaciones, las bajas, los permisos y los días que libras no bajan la nota.</p>
+  </div>
+</details>

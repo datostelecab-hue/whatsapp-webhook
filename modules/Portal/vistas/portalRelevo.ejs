@@ -1,0 +1,20 @@
+<%
+  /* De quién recibe el coche y a quién se lo entrega. Lo mismo que dice el bot
+     en «Ver mis turnos»: la fecha solo cuando el coche se queda parado en medio
+     (relevo no directo); en el directo pasa de mano en el momento. El teléfono
+     sale de f.telefono/f.telHref, que solo dejan cifras. */
+  const tel = x => (x.telefono && f.telHref(x.telefono)
+    ? ' · <a href="' + f.telHref(x.telefono) + '">' + f.telefono(x.telefono) + '</a>' : '');
+%>
+<% if (d.recibeDe && d.entregaA && d.recibeDe.directo && d.entregaA.directo && d.recibeDe.nombre === d.entregaA.nombre) {
+     /* La pareja de siempre: le da el coche al empezar y se lo devuelve al
+        terminar. Una línea en vez de dos con el mismo nombre. */ %>
+<p class="relevo">Compartes el coche con <b><%= d.recibeDe.nombre %></b><%- tel(d.recibeDe) %>: te lo da al empezar y se lo devuelves al terminar.</p>
+<% } else { %>
+<% if (d.recibeDe) { %>
+<p class="relevo">Recibes el coche de <b><%= d.recibeDe.nombre %></b><%- tel(d.recibeDe) %><% if (!d.recibeDe.directo && d.recibeDe.fecha && d.recibeDe.fecha !== d.fecha) { %>. Lo deja el <%= f.fecha(d.recibeDe.fecha) %><% } %>.</p>
+<% } %>
+<% if (d.entregaA) { %>
+<p class="relevo">Al terminar, se lo entregas a <b><%= d.entregaA.nombre %></b><%- tel(d.entregaA) %><% if (!d.entregaA.directo && d.entregaA.fecha && d.entregaA.fecha !== d.fecha) { %>. Lo coge el <%= f.fecha(d.entregaA.fecha) %><% } %>.</p>
+<% } %>
+<% } %>

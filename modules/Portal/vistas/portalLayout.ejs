@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
+  <title>Telecab · <%= titulo || 'Conductores' %></title>
+  <link rel="icon" type="image/png" href="/assets/logo-sinfondo-256.png">
+  <link rel="apple-touch-icon" href="/assets/logo-sinfondo-256.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="<%= est('/assets/css/portal.css') %>">
+</head>
+<body>
+  <header class="cab">
+    <div class="cab-in">
+      <a class="cab-marca" href="/" aria-label="Telecab, inicio">
+        <svg class="tc-marca" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+          <path class="tc-marca-via" d="M5 53 Q31 37 61 39"/>
+          <path class="tc-marca-carril" d="M12 58.5 Q35 45 61 44"/>
+          <path class="tc-marca-via" d="M20 64 Q41 51 61 49"/>
+          <ellipse class="tc-marca-sombra" cx="32" cy="41.2" rx="6" ry="1.5"/>
+          <g class="tc-marca-pin"><path fill-rule="evenodd" d="M32 39.5C28.6 35.2 19 26.2 19 17.5a13 13 0 0 1 26 0c0 8.7-9.6 17.7-13 22Z M32 12.3a5.2 5.2 0 1 0 0 10.4a5.2 5.2 0 1 0 0-10.4Z"/></g>
+        </svg>
+        <span class="cab-nombre">Tele<span>cab</span></span>
+      </a>
+      <% if (conductor) { %>
+      <div class="cab-quien">
+        <b><%= conductor.nombre %></b>
+        <form method="post" action="/salir"><button class="cab-salir" type="submit">Salir</button></form>
+      </div>
+      <% } %>
+    </div>
+  </header>
+
+  <main class="col<%= conductor ? '' : ' col-acceso' %>">
+    <%- body %>
+  </main>
+
+  <% if (conductor) { %>
+  <nav class="barra" aria-label="Secciones">
+    <div class="barra-in">
+      <a href="/" <%- pagina === 'portalInicio' ? 'aria-current="page"' : '' %>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h4.75v-6h3.5v6h4.75V9"/></svg>
+        Inicio
+      </a>
+      <a href="/turnos" <%- pagina === 'portalTurnos' ? 'aria-current="page"' : '' %>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+        Turnos
+      </a>
+      <a href="/puntuacion" <%- pagina === 'portalPuntuacion' ? 'aria-current="page"' : '' %>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20.5h16"/><path d="M6.5 17v-5M12 17V6.5M17.5 17v-8"/></svg>
+        Puntuación
+      </a>
+    </div>
+  </nav>
+  <% } %>
+</body>
+</html>

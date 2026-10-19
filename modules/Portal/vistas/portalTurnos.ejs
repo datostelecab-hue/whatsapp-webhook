@@ -1,0 +1,32 @@
+<div>
+  <h1>Mis turnos</h1>
+  <p class="suave" style="margin-top:.25rem">De hoy al <%= f.fecha(hasta) %>.</p>
+</div>
+
+<% if (evento) { %>
+<p class="aviso"><b><%= evento.nombre %>.</b> Del <%= f.fecha(evento.desde) %> al <%= f.fecha(evento.hasta) %> los turnos son temporales.</p>
+<% } %>
+
+<section class="caja">
+<% if (!dias.length) { %>
+  <p class="vacio">No tienes turnos de hoy al <%= f.fecha(hasta) %>. Si crees que es un error, avisa a la oficina.</p>
+<% } else { %>
+  <ul class="dias">
+  <% dias.forEach(d => { const n = f.nombreDia(d.fecha, desde); %>
+    <li class="dia<%= d.hoy ? ' dia-hoy' : '' %>">
+      <div class="dia-cuando"><b><%= n.nombre %></b><%= n.fecha %></div>
+      <div class="dia-que">
+      <% if (d.sinPlan) { %>
+        <span class="libra">Sin cuadrante todavía</span>
+      <% } else if (!d.trabaja) { %>
+        <span class="libra">Libras</span>
+      <% } else { %>
+        <div class="dia-turno"><span>Turno de <%= String(d.turno).toLowerCase() %></span><span class="matricula"><%= d.matricula %></span></div>
+        <%- include('portalRelevo', { d, f }) %>
+      <% } %>
+      </div>
+    </li>
+  <% }) %>
+  </ul>
+<% } %>
+</section>

@@ -33,6 +33,14 @@ node scripts/entorno-local/arrancar.js
 
 Para entrar al ERP local valen los usuarios y contraseñas de producción, porque la copia los trae.
 
+Para entrar al [[Portal de conductores]] sin escribir el DNI de nadie de verdad:
+
+```
+node scripts/entorno-local/conductor-de-prueba.js [id_de_ficha]
+```
+
+Le pone a un conductor de la copia un DNI y un email de prueba (están en el propio script). Sin id, elige a quien más semanas con nota tenga y turnos esta semana. El código llega al buzón falso. La próxima copia de producción lo deja todo como estaba.
+
 ## Por qué no puede tocar producción
 
 Son cuatro candados, y cada uno basta por sí solo para lo suyo:

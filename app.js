@@ -195,6 +195,12 @@ const authRoutes = require('./modules/Usuarios/auth.controller');
 const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
 const sesion = require('./services/sesion');
 
+// EL PORTAL DE CONDUCTORES (conductorestelecab.es, 19/10/2026) va ANTES que todo
+// lo del ERP: las peticiones de su dominio se quedan en él (con su página, su
+// 404 o su error) y no llegan a ninguna pantalla del ERP, ni a su sesión. Ver
+// modules/Portal/portal.controller.js.
+app.use(require('./modules/Portal/portal.controller').porDominio);
+
 // Carga la sesión (si hay cookie) en req.usuario / res.locals para todas las peticiones.
 app.use(sesion.cargarSesion);
 

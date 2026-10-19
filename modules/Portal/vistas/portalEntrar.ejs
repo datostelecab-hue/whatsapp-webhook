@@ -1,0 +1,41 @@
+<section class="acceso" aria-labelledby="titulo">
+<% if (paso === 'dni') { %>
+  <div class="acceso-cab">
+    <h1 id="titulo">Entra con tu DNI</h1>
+    <p class="suave">Te mandamos un código al email que diste al empezar en Telecab.</p>
+  </div>
+  <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
+  <form class="acceso" style="margin:0" method="post" action="/entrar">
+    <div class="campo">
+      <label for="dni">DNI o NIE</label>
+      <input id="dni" name="dni" value="<%= dni %>" required maxlength="20" autocomplete="username"
+             autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="12345678Z" autofocus>
+    </div>
+    <button class="boton" type="submit">Mandarme el código</button>
+  </form>
+<% } else { %>
+  <div class="acceso-cab">
+    <h1 id="titulo">Escribe el código</h1>
+    <p class="suave">Te lo hemos mandado a <b><%= email %></b>. Caduca en 10 minutos.</p>
+  </div>
+  <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
+  <form class="acceso" style="margin:0" method="post" action="/entrar/codigo">
+    <input type="hidden" name="dni" value="<%= dni %>">
+    <input type="hidden" name="email" value="<%= email %>">
+    <div class="campo campo-codigo">
+      <label for="codigo">Código de 6 cifras</label>
+      <input id="codigo" name="codigo" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}"
+             autocomplete="one-time-code" autofocus>
+    </div>
+    <button class="boton" type="submit">Entrar</button>
+  </form>
+  <div class="acceso-pie">
+    <form method="post" action="/entrar">
+      <input type="hidden" name="dni" value="<%= dni %>">
+      <button class="boton-sec" type="submit">No me ha llegado: mandar otro</button>
+    </form>
+    <a href="/entrar">Usar otro DNI</a>
+  </div>
+  <p class="suave peq">Si no lo ves, mira en la carpeta de spam o de correo no deseado.</p>
+<% } %>
+</section>
