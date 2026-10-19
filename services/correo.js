@@ -22,6 +22,13 @@ const CORREO_TRAFICO = process.env.CORREO_TRAFICO || 'traficotelecab@gmail.com';
 // procesos y el que va «como» un usuario— va al buzón falso de CORREO_PRUEBAS
 // (Mailpit en el entorno local, ver scripts/entorno-local), y solo si ese buzón
 // está en este mismo PC. Sin CORREO_PRUEBAS se frena y se apunta, como lo demás.
+//
+// O A UN BUZÓN DE VERDAD, PERO SIEMPRE EL MISMO (19/10/2026). Camilo: «que en
+// entorno de pruebas siempre llegue a datostelecab@gmail.com». Con
+// CORREO_PRUEBAS_A (UNA dirección) y un SMTP de verdad en SMTP_HOST/USER/PASS,
+// el correo sale de verdad pero TODO va a esa dirección, sea para quien sea:
+// el destinatario original no recibe nada, y se dice en el asunto y arriba del
+// texto a quién habría ido. Esto manda sobre el buzón falso.
 const pruebas = require('./modoPruebas');
 
 function buzonDePruebas() {
@@ -29,7 +36,37 @@ function buzonDePruebas() {
   return m ? { host: m[1], port: Number(m[2]) } : null;
 }
 
+/** La dirección a la que se desvía todo en pruebas: UNA, bien escrita, o nada. */
+function desvioDePruebas() {
+  const a = String(process.env.CORREO_PRUEBAS_A || '').trim();
+  const smtp = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+  return smtp && /^[^@\s,;<>]+@[^@\s,;<>]+\.[A-Za-z]{2,}$/.test(a) ? a : null;
+}
+
+const escHtml = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 async function enviarEnPruebas(mail) {
+  const a = desvioDePruebas();
+  if (a) {
+    const port = Number(process.env.SMTP_PORT) || 587;
+    const aviso = `Entorno de pruebas: en producción este correo iría a ${mail.to}.`;
+    const banda = `<p style="margin:0;padding:10px 14px;background:#fff4e0;color:#7a4a00;font:13px/1.4 Segoe UI,Arial,sans-serif;">${escHtml(aviso)}</p>`;
+    const html = mail.html
+      ? (/<body[^>]*>/i.test(mail.html) ? mail.html.replace(/<body[^>]*>/i, m => m + banda) : banda + mail.html)
+      : undefined;
+    const transport = require('nodemailer').createTransport({
+      host: process.env.SMTP_HOST, port, secure: port === 465, requireTLS: port !== 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
+    });
+    const info = await transport.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER, to: a,
+      subject: `[PRUEBAS] ${mail.subject || ''}`,
+      text: `${aviso}\n\n${mail.text || ''}`, html, attachments: mail.attachments,
+    });
+    console.log(`🧪 [PRUEBAS] Correo DESVIADO a ${a} (iba a ${mail.to}) · «${mail.subject}»`);
+    return { enviado: true, id: info.messageId, pruebas: true, desviadoA: a };
+  }
   const b = buzonDePruebas();
   if (!b) {
     pruebas.permite('Correo', `«${mail.subject}» → ${mail.to}`);

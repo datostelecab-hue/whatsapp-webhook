@@ -366,6 +366,10 @@ No son de los seis, pero forman parte de la misma red:
   sin jornada (día o noche) ni contrato (40, 32 o 20 h), y lo dice antes de crear nada. La
   jornada llega a la ficha y a la candidatura; con vacante sale de ella si no se marca, y
   si no coincide no se da el alta. Quien vuelve también recibe su turno.
+- **`comprobar-correo-pruebas.js`** (19/10/2026) — en modo pruebas el correo no le llega a
+  nadie de verdad: con SMTP y `CORREO_PRUEBAS_A` sale desviado a esa única dirección (con
+  `[PRUEBAS]` y a quién habría ido), también el que va «como» un usuario; dos direcciones
+  o sin contraseña, al buzón falso; un buzón falso que no es de este PC, o nada, se frena.
 - **`comprobar-portal.js`** (19/10/2026) — el portal de conductores, con dobles: el DNI se
   limpia; a quien no está, no tiene email o no tiene contrato se le contesta lo mismo; tres
   códigos cada 15 minutos y solo vale el último; el código no se guarda en claro, sirve una

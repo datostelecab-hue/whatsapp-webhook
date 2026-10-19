@@ -47,7 +47,9 @@ Son cuatro candados, y cada uno basta por sí solo para lo suyo:
 
 - **La base es la local, fijada en `arrancar.js`.** No se lee de ninguna variable de fuera. Además, la base tiene que llevar la marca que le pone `refrescar.js` (la tabla `entorno_local`): sin ella, no arranca.
 - **`MODO_PRUEBAS=1`.** No arranca ningún cron. El cortafuegos frena todo envío de [[WhatsApp]] y toda escritura en Mapon y en las hojas. Ver `services/modoPruebas.js`.
-- **El correo va al buzón falso.** Desde el 19/10/2026 el cortafuegos también cubre el correo: con `MODO_PRUEBAS=1`, `services/correo.js` lo manda a `CORREO_PRUEBAS`, y solo si es de este PC (`127.0.0.1` o `localhost`). Sin esa variable lo frena y lo apunta. Antes de esto, un servidor de ensayo con la configuración de producción podía mandar correos de verdad por DonDominio. Ver [[Correo]].
+- **El correo va al buzón falso, o siempre a la misma dirección.** Desde el 19/10/2026 el cortafuegos también cubre el correo: con `MODO_PRUEBAS=1`, `services/correo.js` lo manda a `CORREO_PRUEBAS`, y solo si es de este PC (`127.0.0.1` o `localhost`). Sin esa variable lo frena y lo apunta. Antes de esto, un servidor de ensayo con la configuración de producción podía mandar correos de verdad por DonDominio. Ver [[Correo]].
+
+  Camilo quiso verlo en un buzón de verdad: *«que en entorno de pruebas siempre llegue a datostelecab@gmail.com»*. Si en `scripts/entorno-local/correo.env` hay un SMTP de verdad, **todo correo sale desviado a esa dirección y a ninguna otra**, sea para quien sea. El asunto lleva `[PRUEBAS]` y arriba se dice a quién habría ido. El fichero se copia de `correo.env.ejemplo`, lleva la contraseña del SMTP y **no se sube a GitHub** (está en `.gitignore`). Solo puede poner las claves del correo, nada de la base ni del modo pruebas. Al arrancar, el log dice adónde van los correos.
 - **La copia no tiene con qué mandar correo.** `refrescar.js` apaga el «Correo para procesos» y borra su contraseña cifrada.
 
 La copia **solo lee** de producción: `pg_dump` no escribe, y además va con la sesión en solo lectura.

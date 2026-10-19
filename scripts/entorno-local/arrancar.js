@@ -37,6 +37,24 @@ if (up.status !== 0) {
   process.exit(1);
 }
 
+// EL CORREO: al buzón falso, o desviado SIEMPRE a datostelecab@gmail.com
+// (Camilo, 19/10/2026) si en correo.env hay un SMTP de verdad. Ese fichero no se
+// sube a GitHub (lleva una contraseña) y solo puede poner estas claves: nada de
+// la base ni del modo pruebas.
+const CLAVES_CORREO = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'CORREO_PRUEBAS_A'];
+const correoEnv = {};
+try {
+  require('fs').readFileSync(path.join(__dirname, 'correo.env'), 'utf8').split(/\r?\n/).forEach(l => {
+    const m = /^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(l);
+    if (m && CLAVES_CORREO.includes(m[1]) && m[2] !== '') correoEnv[m[1]] = m[2].replace(/^(["'])(.*)\1$/, '$2');
+  });
+} catch (_) { /* sin correo.env: al buzón falso */ }
+const desvio = correoEnv.SMTP_HOST && correoEnv.SMTP_USER && correoEnv.SMTP_PASS;
+// Las de SMTP de fuera no valen aquí: o las de correo.env, o ninguna.
+CLAVES_CORREO.forEach(k => { delete process.env[k]; });
+Object.assign(process.env, correoEnv);
+if (desvio && !process.env.CORREO_PRUEBAS_A) process.env.CORREO_PRUEBAS_A = 'datostelecab@gmail.com';
+
 Object.assign(process.env, {
   DATABASE_URL: LOCAL,
   MODO_PRUEBAS: '1',
@@ -64,7 +82,9 @@ Object.assign(process.env, {
   }
   console.log(`🧪 [ENTORNO LOCAL] ERP      http://erptelecab.localhost:${PUERTO}`);
   console.log(`🧪 [ENTORNO LOCAL] Portal   http://conductorestelecab.localhost:${PUERTO}`);
-  console.log('🧪 [ENTORNO LOCAL] Correos  http://localhost:8025');
+  console.log(desvio
+    ? `🧪 [ENTORNO LOCAL] Correos  TODOS desviados a ${process.env.CORREO_PRUEBAS_A} (por ${process.env.SMTP_HOST})`
+    : '🧪 [ENTORNO LOCAL] Correos  http://localhost:8025 (sin correo.env: no sale ninguno del PC)');
   process.chdir(path.join(__dirname, '..', '..'));
   require(path.join(__dirname, '..', '..', 'app.js'));
 })();

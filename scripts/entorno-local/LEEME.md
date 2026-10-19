@@ -22,6 +22,9 @@ node scripts/entorno-local/arrancar.js
 Para entrar al portal sin el DNI de nadie de verdad, `node scripts/entorno-local/conductor-de-prueba.js [id_de_ficha]`
 le pone a un conductor de la copia un DNI y un email de prueba (los dice al acabar).
 
+Para que los correos lleguen de verdad, pero SIEMPRE a datostelecab@gmail.com, copia
+`correo.env.ejemplo` como `correo.env`, pon el SMTP y vuelve a arrancar. No se sube a GitHub.
+
 Hace falta Docker Desktop abierto. Para pararlo todo:
 
 ```
