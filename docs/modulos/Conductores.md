@@ -389,6 +389,14 @@ Para eso la lógica se movió a **Documentos** (`fotoDe`, `foto`, `subirFoto` en
 
 El botón de la cámara va **siempre visible** en la esquina, no al pasar el ratón: en un móvil no hay ratón. El hueco en la cabecera es una opción nueva del [[Componentes de la casa|Listado]], `detalle.avatar(d, hueco)`, que funciona como `pinta` en los bloques.
 
+## Quien ya se fue: su último contrato, no «Plantilla propia» (20/10/2026)
+
+La ficha cogía el tipo de contrato del periodo **vivo**, y quien ya está de baja no tiene ninguno. Sin él, la cabecera ponía **«Plantilla propia» por defecto**. Camilo lo vio con María del Pilar Torres Galán, de GiGroup, el día después de su baja: *«Cambia a María del Pilar de plantilla propia a ETT»*. Su contrato ya era de ETT; lo que mentía era la pantalla. El 20/10/2026 eran **94 de las 275 personas de baja**.
+
+Ahora la lista trae también el **último contrato** de quien se fue (`ultimo_tipo`, `ultimo_ett_nombre`, `ultimo_jornada_horas`, `ultimo_alta`, en el mismo `LATERAL ultimo` de la baja). La cabecera y «Origen y contrato» de la ficha lo usan cuando no hay uno vivo: *«ETT · GiGroup · 40 h/semana · alta 01/08/2026»*. Si no hay ninguno, no se dice nada. «Volver a dar de alta» propone ese mismo contrato.
+
+La **tabla** y el **Excel** siguen sin atribuirle contrato a quien ya no está («SS / ETT» y «Contrato» vacíos), a propósito: allí se mira quién está contratado por quién **hoy**.
+
 ## Lo que se borró, y el fallo que apareció al ir a borrarlo
 
 `/fichas`, `/libranzas` y `/agenda` **se borraron** el 15/09/2026. La agenda de tráfico era un segundo sitio para mirar lo que ya está aquí —turno, libranzas, coche, teléfono— y encima era la única pantalla que **escribía** en la hoja `AGENDA_V2`. `/fichas` era un expediente montado sobre un Excel para tapar la falta de información: dos sitios para lo mismo, y el de menos datos era el que tenía los papeles en una hoja.

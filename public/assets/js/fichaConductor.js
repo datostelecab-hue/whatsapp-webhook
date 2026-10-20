@@ -220,10 +220,11 @@
 
       ${epigrafe('Origen y contrato')}
       <div>
-        ${linea('Tipo de contrato', esc(p.empleo_tipo === 'ett'
-      ? `ETT${p.ett_nombre ? ' · ' + p.ett_nombre : ''}` : 'Plantilla propia'))}
-        ${linea('Jornada', p.jornada_horas ? esc(p.jornada_horas) + ' h/semana' : '—')}
-        ${linea('Alta', fmt(p.alta))}
+        ${linea('Tipo de contrato', esc((t => (t === 'ett'
+      ? `ETT${(p.empleo_tipo ? p.ett_nombre : p.ultimo_ett_nombre) ? ' · ' + (p.empleo_tipo ? p.ett_nombre : p.ultimo_ett_nombre) : ''}`
+      : t === 'propia' ? 'Plantilla propia' : '—'))(p.empleo_tipo || p.ultimo_tipo)))}
+        ${linea('Jornada', (p.jornada_horas || p.ultimo_jornada_horas) ? esc(p.jornada_horas || p.ultimo_jornada_horas) + ' h/semana' : '—')}
+        ${linea('Alta', fmt(p.alta || p.ultimo_alta))}
         ${linea('Antigüedad reconocida', fmt(p.antiguedad))}
       </div>
       <div>

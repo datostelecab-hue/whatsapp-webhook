@@ -101,6 +101,12 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            ultimo.baja        AS fecha_baja,
            ultimo.motivo_baja,
            ultimo.baja_por, ultimo.baja_iniciales, ultimo.baja_puesta_at,
+           -- Y DE QUÉ ERA ese último contrato (20/10/2026). Quien ya se fue no
+           -- tiene periodo vivo (e = NULL), y la ficha ponía «Plantilla propia»
+           -- por defecto: María del Pilar Torres Galán, de GiGroup, salió así el
+           -- día después de su baja. Las pantallas usan esto cuando no hay «e».
+           ultimo.tipo AS ultimo_tipo, ultimo.ett_nombre AS ultimo_ett_nombre,
+           ultimo.jornada_horas AS ultimo_jornada_horas, ultimo.alta AS ultimo_alta,
 
            -- Turno: el del historial si alguien lo puso a mano; si no, el de su
            -- PLAZA, que es donde vive de verdad (ver el LATERAL pl, abajo).
@@ -167,7 +173,8 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- no está. Sin esto, una baja es una fila sin fecha y sin explicación.
     -- Y QUIÉN la dio (ver QUIEN_BAJA).
     LEFT JOIN LATERAL (
-      SELECT p.baja, p.motivo_baja, quien.baja_por, quien.baja_iniciales, quien.baja_puesta_at
+      SELECT p.baja, p.motivo_baja, quien.baja_por, quien.baja_iniciales, quien.baja_puesta_at,
+             p.tipo, p.ett_nombre, p.jornada_horas, p.alta
         FROM conductor_periodo_empleo p
         LEFT JOIN LATERAL (
           SELECT ${QUIEN_BAJA}

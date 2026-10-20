@@ -572,10 +572,11 @@
   async function volverAAlta(d) {
     const previos = (d.empleos || []).length;
     const v = await pedirDatos(`Volver a dar de alta a ${d.nombre_completo}`, [
+      // Se propone el contrato que tuvo la última vez (quien vuelve no tiene uno vivo).
       { id: 'tipo', etiqueta: 'Tipo de contrato', tipo: 'lista', obligatorio: true,
-        valor: d.empleo_tipo || 'propia',
+        valor: d.empleo_tipo || d.ultimo_tipo || 'propia',
         opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
-      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: d.ett_nombre || '' },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: d.ett_nombre || d.ultimo_ett_nombre || '' },
       { id: 'alta', etiqueta: 'Fecha de alta *', tipo: 'fecha', valor: fecha(new Date()) },
       { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', tipo: 'fecha',
         ayuda: 'Si se le respeta la antigüedad de su etapa anterior, ponla aquí.' },
@@ -1417,11 +1418,14 @@
       ],
       // La cabecera de arriba lo dice TODO: la hoja no vuelve a repetir el nombre
       // ni la línea de identidad, que es lo que hacía que pareciera dos fichas.
+      // Quien ya se fue no tiene contrato vivo: se dice el ÚLTIMO que tuvo, no
+      // «Plantilla propia» por defecto (20/10/2026, ver conductores.repo).
       subtitulo: d => [
         d.dni_nie,
-        d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
-        d.jornada_horas ? d.jornada_horas + ' h/semana' : null,
-        d.alta ? 'alta ' + fecha(d.alta) : null,
+        (t => (t === 'ett' ? `ETT${(d.empleo_tipo ? d.ett_nombre : d.ultimo_ett_nombre) ? ' · ' + (d.empleo_tipo ? d.ett_nombre : d.ultimo_ett_nombre) : ''}`
+          : t === 'propia' ? 'Plantilla propia' : null))(d.empleo_tipo || d.ultimo_tipo),
+        (d.jornada_horas || d.ultimo_jornada_horas) ? (d.jornada_horas || d.ultimo_jornada_horas) + ' h/semana' : null,
+        (d.alta || d.ultimo_alta) ? 'alta ' + fecha(d.alta || d.ultimo_alta) : null,
         // EL ID DE BOLT NO VA AQUI: son 36 caracteres que no lee nadie y
         // ensanchaban la cabecera hasta tirar los botones a otra fila. Se ve en
         // el bloque de las cuentas de BOLT. Lo que si se dice es que NO tiene
