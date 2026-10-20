@@ -263,26 +263,50 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
  * `pendientesDias` dice QUE dias estan en la cola, para el dia a dia del
  * finiquito: ahi se ensenan, aunque no cuenten. Con `conductorId`, solo esa
  * persona.
+ *
+ * UNA J EN UN DIA DE VACACIONES, PERMISO O BAJA NO CUENTA (20/10/2026). Manda
+ * la marca, como en la bitacora, que ese dia pinta la V, la P o la B y no la J.
+ * Camilo, con Juan Manuel Alvarez Akieme: «Por que aparece con 16 horas
+ * justificadas cuando en la bitacora claramente me sale solo 1 de 8 horas».
+ * Tenia dos J de 8 h aprobadas; la del 07/09, con la nota «vacaciones», caia en
+ * el primer dia de sus vacaciones, y la nomina pagaba ese dia dos veces: como
+ * vacaciones (5,84 h) y como J (8 h). En septiembre habia 8 asi (45 h). Y las de
+ * baja tampoco: «y las de baja que tampoco cuenten». Las marcas son los estados
+ * con `marca_bitacora` (vacaciones, permiso, baja medica), los mismos que pinta
+ * la bitacora. Esas J van aparte, en `tapadas`, para poder decir cuales no
+ * contaron y por que.
  */
 async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
   const r = await db.consulta(
-    `SELECT conductor_id,
-            EXTRACT(DAY FROM dia_operativo)::int AS dia,
-            to_char(dia_operativo, 'YYYY-MM-DD') AS fecha,
-            (aprobado_at IS NOT NULL) AS aprobada,
-            COALESCE(horas_seg_momento, 0)::int AS seg
-       FROM justificante
-      WHERE dia_operativo BETWEEN $1::date AND $2::date
-        AND anulado_at IS NULL
-        AND ($3::bigint IS NULL OR conductor_id = $3::bigint)
-      ORDER BY conductor_id, dia_operativo`,
+    `SELECT j.conductor_id,
+            EXTRACT(DAY FROM j.dia_operativo)::int AS dia,
+            to_char(j.dia_operativo, 'YYYY-MM-DD') AS fecha,
+            (j.aprobado_at IS NOT NULL) AS aprobada,
+            COALESCE(j.horas_seg_momento, 0)::int AS seg,
+            t.estado AS tapada
+       FROM justificante j
+       LEFT JOIN LATERAL (
+         SELECT h.estado
+           FROM conductor_estado_hist h
+           JOIN cat_estado_conductor e ON e.codigo = h.estado AND e.marca_bitacora IS NOT NULL
+          WHERE h.conductor_id = j.conductor_id
+            AND h.desde <= j.dia_operativo AND (h.hasta IS NULL OR h.hasta >= j.dia_operativo)
+          ORDER BY h.desde DESC LIMIT 1) t ON TRUE
+      WHERE j.dia_operativo BETWEEN $1::date AND $2::date
+        AND j.anulado_at IS NULL
+        AND ($3::bigint IS NULL OR j.conductor_id = $3::bigint)
+      ORDER BY j.conductor_id, j.dia_operativo`,
     [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId)]);
 
   const out = new Map();
   for (const x of r.rows) {
     const cid = Number(x.conductor_id);
-    if (!out.has(cid)) out.set(cid, { aprobados: [], horas: new Map(), fechas: new Map(), pendientes: 0, pendientesDias: [] });
+    if (!out.has(cid)) out.set(cid, { aprobados: [], horas: new Map(), fechas: new Map(), pendientes: 0, pendientesDias: [], tapadas: [] });
     const o = out.get(cid), d = Number(x.dia);
+    if (x.tapada) {
+      o.tapadas.push({ dia: d, fecha: x.fecha, estado: x.tapada, horas: Number(x.seg) / 3600, aprobada: !!x.aprobada });
+      continue;
+    }
     if (x.aprobada) {
       o.aprobados.push(d);
       o.horas.set(d, (o.horas.get(d) || 0) + Number(x.seg));

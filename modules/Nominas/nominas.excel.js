@@ -504,6 +504,8 @@ const horasQueCuentan = f => Math.round(((Number(f.horas) || 0) - (Number(f.hora
   + (Number(f.horasJustificadas) || 0) + (Number(f.horasVacaciones) || 0) + (Number(f.horasPermiso) || 0)) * 100) / 100;
 const ganaDe = f => (f.mboHsExt > f.mboFAS ? 'Horas extra' : f.mboFAS > 0 ? 'FAS' : '');
 
+const ESTADO_TXT = { vacaciones: 'de vacaciones', permiso: 'de permiso', baja_medica: 'de baja' };
+
 /** La cuenta de una persona, en palabras. */
 function comoSale(f, cfg) {
   const p = [];
@@ -514,6 +516,14 @@ function comoSale(f, cfg) {
       `${pctTxt(cfg.utilUmbral)}: se le exige el ${pctTxt(cfg.utilExigida)})`;
   }
   if (f.horasJustificadas > 0) horas += ` + ${h1(f.horasJustificadas)} de J`;
+  // Las J que no cuentan porque ese día tenía vacaciones, permiso o baja.
+  const tapadas = f.jTapadas || [];
+  if (tapadas.length) {
+    const cual = t => `del ${String(t.fecha).slice(8, 10)}/${String(t.fecha).slice(5, 7)}, ${ESTADO_TXT[t.estado] || 'con otra marca'}`;
+    horas += tapadas.length === 1
+      ? ` (sin la J ${cual(tapadas[0])})`
+      : ` (sin las J ${tapadas.slice(0, -1).map(cual).join('; ')} y ${cual(tapadas[tapadas.length - 1])})`;
+  }
   if (f.horasVacaciones > 0) horas += ` + ${h1(f.horasVacaciones)} de vacaciones (${f.diasVacaciones} ${f.diasVacaciones === 1 ? 'día' : 'días'})`;
   if (f.horasPermiso > 0) horas += ` + ${h1(f.horasPermiso)} de permiso (${f.diasPermiso} ${f.diasPermiso === 1 ? 'día' : 'días'})`;
   if (f.horasEsperaQuitadas > 0 || f.horasJustificadas > 0 || f.horasVacaciones > 0 || f.horasPermiso > 0) {
@@ -1021,6 +1031,7 @@ function notaDelDia(d) {
   if (d.jAprobada && !d.jAntesDelArranque) n.push(d.jSinHoras ? 'J aprobada sin horas: no suma' : 'J aprobada');
   if (d.jAntesDelArranque) n.push('J aprobada antes de su alta: no cuenta');
   if (d.jPendiente) n.push('J pendiente de aprobar: no cuenta');
+  if (d.jTapada) n.push(`J ${d.jTapadaAprobada ? 'aprobada' : 'pendiente'} en un día ${ESTADO_TXT[d.jTapada] || 'con otra marca'}: no cuenta`);
   if (d.permiso) n.push(d.horasVacPerm ? 'Permiso retribuido' : 'Permiso retribuido (fuera de su mes: no cuenta)');
   else if (d.vacaciones) n.push(d.horasVacPerm ? 'Vacaciones' : 'Vacaciones (fuera de su mes: no cuentan)');
   if (d.hoy) n.push('Hoy: el día va a medias');
@@ -1162,4 +1173,6 @@ const nombreFicheroExtras = r => {
 };
 
 module.exports = { generarExcelNomina, nombreFichero, generarExcelETT, nombreFicheroETT,
-  generarExcelFiniquito, nombreFicheroFiniquito, generarExcelExtras, nombreFicheroExtras };
+  generarExcelFiniquito, nombreFicheroFiniquito, generarExcelExtras, nombreFicheroExtras,
+  // Para el comprobador.
+  _comoSale: comoSale };

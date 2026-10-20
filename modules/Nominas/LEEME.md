@@ -47,7 +47,9 @@ día sin trabajar: es un día que alguien dio por bueno. De ahí salen dos colum
 
 Cada J vale **las horas que se le pusieron al justificarla**, y se **suman** a las de
 BOLT de ese día: es el estándar de la bitácora, la letra y el reporte de horas. Una J
-aprobada sin horas no suma nada (el panel avisa de cuántas hay).
+aprobada sin horas no suma nada (el panel avisa de cuántas hay). Y una J en un día de
+vacaciones, permiso o baja tampoco: manda la marca, como en la bitácora (20/10/2026,
+`justificantesDelMes` las aparta en `tapadas`).
 
 Hasta el 16/10/2026 toda J valía la jornada entera (8 h) topada por lo que faltara de ese
 día, porque las horas de la tabla eran un "8" puesto a ojo (114 de 182 en agosto). Ya no:

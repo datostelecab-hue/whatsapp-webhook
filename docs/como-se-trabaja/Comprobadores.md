@@ -370,6 +370,9 @@ No son de los seis, pero forman parte de la misma red:
   nadie de verdad: con SMTP y `CORREO_PRUEBAS_A` sale desviado a esa única dirección (con
   `[PRUEBAS]` y a quién habría ido), también el que va «como» un usuario; dos direcciones
   o sin contraseña, al buzón falso; un buzón falso que no es de este PC, o nada, se frena.
+- **`comprobar-nomina.js`**, desde el 20/10/2026 también: una J aprobada en un día de
+  vacaciones, permiso o baja no suma (manda la marca, como en la bitácora), se avisa y
+  «Cómo sale su total» dice cuál no ha contado.
 - **`comprobar-portal.js`** (19/10/2026) — el portal de conductores, con dobles: el DNI se
   limpia; a quien no está, no tiene email o no tiene contrato se le contesta lo mismo; tres
   códigos cada 15 minutos y solo vale el último; el código no se guarda en claro, sirve una

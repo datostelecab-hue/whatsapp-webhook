@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-20 · Nómina: una J en un día de vacaciones, permiso o baja no cuenta
+
+Manda la marca, como en la bitácora. La nómina pagaba dos veces el día de vacaciones de Akieme que tenía además una J de 8 h. *«Haz la 1, y las de baja que tampoco cuenten»*. Ver [[Nominas#Una J en un día de vacaciones, permiso o baja no cuenta (20/10/2026)]].
+
 ## 2026-10-19 · El portal de conductores, con dominio propio; y antes, un entorno de pruebas en el PC
 
 Autorizaron sacar la ficha del conductor con dominios propios: **erptelecab.es** para el ERP y **conductorestelecab.es** para los conductores (los dominios no los gestiona Camilo: se pidieron por correo). Los conductores entran con su **DNI** y un **código que llega al email** que dieron al alta. De momento ven sus **turnos** y su **puntuación semana a semana**, pero no sus horas. Cada semana tiene su propia nota, se sella el lunes y ya no cambia, y se cuenta desde septiembre, cuando nació el sistema.

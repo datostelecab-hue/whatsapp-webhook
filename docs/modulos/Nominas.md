@@ -87,6 +87,17 @@ Las J **cuentan también para el exceso**: la diferencia contra el objetivo se m
 
 Solo cuentan las **aprobadas**. Las pendientes no (el panel avisa de cuántas hay en la cola) y las rechazadas tampoco.
 
+### Una J en un día de vacaciones, permiso o baja no cuenta (20/10/2026)
+
+**Manda la marca**, como en la bitácora: ese día la bitácora pinta la V, la P o la B, no la J. Camilo, con Juan Manuel Álvarez Akieme: *«Por qué aparece con 16 horas justificadas cuando en la bitácora claramente me sale solo 1 de 8 horas»*.
+
+Akieme tenía dos J de 8 h aprobadas. La del 07/09, con la nota «vacaciones», caía en el primer día de sus vacaciones (del 07/09 al 28/09). La nómina pagaba ese día **dos veces**: como vacaciones (5,84 h) y como J (8 h). Le sobraban 8 h, y su total pasa de 270,48 € a **215,77 €**. Y las de baja tampoco: *«y las de baja que tampoco cuenten»*.
+
+- Las marcas son los estados con `marca_bitacora`: **vacaciones, permiso y baja médica**, los mismos que pinta la bitácora. Lo decide `justificantesDelMes`, así que vale igual en las variables, en la base, en el día a día y en el parte de la ETT.
+- Esas J van aparte (`jTapadas`). El panel avisa de cuántas hay; «Cómo sale su total» dice cuál no ha contado: *«+ 8,0 de J (sin la J del 07/09, de vacaciones)»*; y el día a día lo apunta en su nota.
+- En septiembre de 2026 eran **8 J (45 h)**, 6 en plantilla propia y 2 de la ETT. A la ETT se le dejan de facturar las 8 h de Joselyn Quishpe del 10/09, de baja («urgencias»): **121,60 €**.
+- Si una J así era buena (alguien trabajó parte del día antes de irse de baja), lo que hay que corregir es la marca o la fecha de la baja, no la J.
+
 ## Las vacaciones y los permisos cuentan para el objetivo (16/10/2026)
 
 Camilo: *«las vacaciones cuentan, pero como día natural porque coge también días de libranza y así está bien, entonces cada día de vacaciones se calculan como el 73 % de 8 horas para hacer la regla de 3 y así les suba las horas para alcanzar el target»*. Y los permisos retribuidos, *«8 horas puras»* también para el objetivo.

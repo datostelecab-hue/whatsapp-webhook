@@ -3,7 +3,8 @@
 // ============================================================
 // Las que cambiaron el 16/10/2026 y las que no se pueden romper:
 //   · cada J vale SUS horas, sumadas a las rodadas (como en la bitácora); sin
-//     horas no suma, y antes del arranque no cuenta;
+//     horas no suma, y antes del arranque no cuenta; en un día de vacaciones,
+//     permiso o baja tampoco (20/10/2026: manda la marca, como en la bitácora);
 //   · utilización: quien llega al 75 % no pierde nada; a quien no llega se le
 //     quita espera hasta dejarlo en el 85 %, nunca viaje;
 //   · la ETT no cobra MBO y no sale en la nómina, pero sí en su parte;
@@ -56,8 +57,9 @@ sustituir('modules/Nominas/nominas.repo.js', {
   // J: a Uno una de 3,5 h el día 3 (en el que rodó 2 h) y otra sin horas el 4;
   // a Tres una de 8 h el día 5, ANTES de su alta del 10.
   justificantesDelMes: async () => new Map([
+    // Y una de 8 h el 20, en sus vacaciones: el repositorio la aparta (tapadas).
     [1, { aprobados: [3, 4], horas: new Map([[3, H(3.5)], [4, 0]]), fechas: new Map([['2026-09-03', H(3.5)], ['2026-09-04', 0]]),
-      pendientes: 1, pendientesDias: [9] }],
+      pendientes: 1, pendientesDias: [9], tapadas: [{ dia: 20, fecha: '2026-09-20', estado: 'vacaciones', horas: 8, aprobada: true }] }],
     [3, { aprobados: [5], horas: new Map([[5, H(8)]]), fechas: new Map([['2026-09-05', H(8)], ['2026-09-30', H(4)]]),
       pendientes: 0, pendientesDias: [] }],
   ]),
@@ -96,6 +98,10 @@ function igual(nombre, real, esperado) {
   igual('La diferencia lleva dentro las J, las vacaciones y los permisos',
     uno.deltaHoras, Math.round((180 + 3.5 + 11.68 + 8 - 172) * 100) / 100);
   igual('Las J pendientes no cuentan, pero se avisan', r.avisos.jPendientes, 1);
+  igual('Una J en un día de vacaciones no suma (manda la marca), y se dice cuál y se avisa',
+    [uno.horasJustificadas, uno.jTapadas, r.avisos.jTapadas], [3.5, [{ fecha: '2026-09-20', estado: 'vacaciones', horas: 8 }], 1]);
+  const texto = require('../modules/Nominas/nominas.excel.js')._comoSale(uno, cfg);
+  igual('«Cómo sale su total» dice qué J no ha contado y por qué', texto.includes('+ 3,5 de J (sin la J del 20/09, de vacaciones)'), true);
 
   // ── La utilización ────────────────────────────────────────────────────────
   igual('Con el 75 % justo no se quita nada', uno.horasEsperaQuitadas, 0);

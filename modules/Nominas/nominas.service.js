@@ -364,6 +364,10 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   // todavia no existia. Cada una vale SUS horas, sumadas a las de BOLT de ese
   // dia, como en la bitacora (regla 3).
   const jus = (c.jDias || []).filter(d => d >= primerDia);
+  // Las J aprobadas que caen en un día de vacaciones, permiso o baja: no
+  // cuentan (manda la marca, como en la bitácora). Solo para decirlo.
+  const jTapadas = (c.jTapadas || []).filter(t => t.aprobada && t.dia >= primerDia)
+    .map(t => ({ fecha: t.fecha, estado: t.estado, horas: r2(t.horas) }));
   const horasDeJ = d => ((c.jHoras && c.jHoras.get(d)) || 0) / 3600;
   const horasJustificadas = jus.reduce((a, d) => a + horasDeJ(d), 0);
   const jSinHoras = jus.filter(d => !(horasDeJ(d) > 0)).length;
@@ -433,6 +437,9 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     // J aprobadas a las que nadie puso horas: no suman. No se congela; solo
     // alimenta el aviso del panel.
     jSinHoras,
+    // J aprobadas en días de vacaciones, permiso o baja: no cuentan. Tampoco se
+    // congela: es para el aviso y para «Cómo sale su total».
+    jTapadas,
     // Lo que suman para el objetivo las vacaciones y los permisos (regla 7).
     diasVacaciones,
     horasVacaciones: r2(horasVacaciones),
@@ -519,6 +526,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       jDias: j.aprobados,
       jHoras: j.horas,
       jPendientes: j.pendientes,
+      jTapadas: j.tapadas || [],
       vacDias: a.vacaciones,
       permDias: a.permiso,
       nocturnasH: h ? h.nocSeg / 3600 : 0,
@@ -591,6 +599,9 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       conJ: filas.filter(f => f.diasJustificados > 0).length,
       // J aprobadas sin horas puestas: no suman nada (regla 3).
       jSinHoras: filas.reduce((a, f) => a + (f.jSinHoras || 0), 0),
+      // J aprobadas en días de vacaciones, permiso o baja: no cuentan. También
+      // las de la ETT, que dejan de ir en su parte.
+      jTapadas: [...filas, ...filasETT].reduce((a, f) => a + ((f.jTapadas || []).length), 0),
       // Con vacaciones o permisos que suman para el objetivo (regla 7).
       conVacaciones: filas.filter(f => f.diasVacaciones > 0).length,
       conPermiso: filas.filter(f => f.diasPermiso > 0).length,
@@ -1032,6 +1043,7 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
     const x = h.dias.get(d) || vacio;
     const din = dinero.get(d) || { neto: 0, propinas: 0, peajes: 0 };
     const jAprobada = j.aprobados.includes(d);
+    const tapada = (j.tapadas || []).find(t => t.dia === d) || null;
     const cuentaJ = jAprobada && d >= primerDia;
     const nocturnasHoras = x.nocSeg / 3600;
     const nocturnas = cfg.eurHoraNoc * nocturnasHoras * cfg.factorNoc;
@@ -1051,6 +1063,8 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
       jSinHoras: cuentaJ && !((j.horas && j.horas.get(d)) > 0),
       jAprobada, jAntesDelArranque: jAprobada && !cuentaJ,
       jPendiente: (j.pendientesDias || []).includes(d),
+      // Una J en un día de vacaciones, permiso o baja: no cuenta, manda la marca.
+      jTapada: tapada ? tapada.estado : null, jTapadaAprobada: !!(tapada && tapada.aprobada),
       nocturnasHoras, nocturnas,
       propinas: din.propinas, peajes: din.peajes, neto: din.neto,
       extras: nocturnas + din.propinas + din.peajes,
