@@ -117,7 +117,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El bot del conductor, nuevo (28/09/2026)
 
-- **El 16/10/2026 el botón de lavado desaparece solo** (`LAVADO_HASTA`). Queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`, y la migración ya aplicada se queda.
+- **El botón de lavado sigue hasta el 17/11/2026** (`LAVADO_HASTA`), con los 338 códigos que entraron el 20/10 directo en la base. **Hasta que se despliegue ese cambio, el bot no enseña el botón** (en producción sigue la fecha vieja, el 15/10). Cuando caduquen, queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`.
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores. Desde el 29/09 el que escribe la matrícula se queda el coche aunque no le toque: las notas «no tenía ese coche en el cuadrante de hoy» son las que hay que mirar.
 - **Se quedó para todos (29/09):** abrir turno con la matrícula es de todo conductor de alta, como se desplegó el 28/09 (Camilo lo confirmó después de preguntar por qué lo tenían todos). El 29/09 por la mañana habían abierto turno 30 personas, y en Mapon queda creada la ficha de conductor de cada uno.
 
@@ -150,7 +150,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 - **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.
 - **El tramo de Ballenoil ya no existe** (24/09/2026): RRHH tramita y la ficha queda de alta directamente. El Excel de altas (`services/altasExcel.js`) sigue en la bandeja de RRHH mientras queden fichas viejas (39 el 24/09); cuando se vacíe, se puede retirar.
-- **El PIN de Ballenoil se quitó del todo** (24/09/2026): del bot, de Administración y del alta. **Los códigos de lavado vuelven al bot hasta el 15/10/2026** con la última tanda (28/09). Ver [[Historial de decisiones]].
+- **El PIN de Ballenoil se quitó del todo** (24/09/2026): del bot, de Administración y del alta. **Los códigos de lavado vuelven al bot** (28/09), ahora hasta el 17/11/2026 con la tanda del 20/10. Ver [[Historial de decisiones]].
 
 ## Fuera del ERP: lo que hay que crear en otro sitio (18/09/2026)
 

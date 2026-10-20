@@ -303,7 +303,7 @@ async function handleButton(phone, buttonId) {
     await sendText(phone, '🔄 Escribe la nueva matrícula (ej: 1234ABC):');
 
   } else if (buttonId === 'codigo_lavado') {
-    // Los códigos de lavado vuelven hasta el 15/10/2026 (services/lavadoBallenoil).
+    // Los códigos de lavado, mientras haya tanda (services/lavadoBallenoil, LAVADO_HASTA).
     if (!lavado.visible()) {
       await sendText(phone, 'ℹ️ Los códigos de lavado ya no se reparten por aquí.');
     } else {

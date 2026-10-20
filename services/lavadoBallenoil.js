@@ -1,5 +1,5 @@
 // ============================================================
-// CÓDIGOS DE LAVADO BALLENOIL — la última tanda, hasta el 15/10/2026
+// CÓDIGOS DE LAVADO BALLENOIL — hasta el 17/11/2026
 // ============================================================
 // Ballenoil se quitó del ERP el 24/09/2026 (ya se reposta en Petroprix), pero
 // quedaba una tanda de bonos de lavado pagada: 566 códigos que vencen el 17/10
@@ -10,8 +10,16 @@
 // importador, ni cron de limpieza. Solo repartir un código cuando un conductor
 // lo pide, y apuntar a quién se le dio.
 //
-// EL BOTÓN SE VA SOLO: a partir del 16/10/2026 `visible()` dice que no y el bot
+// EL BOTÓN SE VA SOLO: pasado LAVADO_HASTA, `visible()` dice que no y el bot
 // deja de enseñarlo. Quitar el código entero es lo que queda para después.
+//
+// UNA TANDA MÁS (20/10/2026). Camilo: «Nuevos códigos de ballenoil, el botón
+// sigue vigente, mételos directamente a la base de datos». 338 códigos del
+// relevamiento del portal de Ballenoil de ese día («Lavados_Ballenoil_vigentes»:
+// 339 vigentes, creados el 03/10 y que caducan el 17/11/2026), metidos directo
+// en `ballenoil_codigo` y firmados por él (usuario 7). El 26440296 ya estaba (se
+// le dio a la ficha 283 el 14/09, del lote que venció el 16/09) y se quedó con
+// su historia: Ballenoil volvió a usar el número. El botón, hasta que caducan.
 //
 // «Que no se reparta dos veces» lo garantiza la base, no el orden en que lleguen
 // los mensajes: el `FOR UPDATE SKIP LOCKED` hace que dos conductores pidiendo a
@@ -21,8 +29,9 @@ const db = require('./db');
 
 const TZ = 'Europe/Madrid';
 
-// El último día en que el botón sale en el bot (incluido).
-const LAVADO_HASTA = '2026-10-15';
+// El último día en que el botón sale en el bot (incluido): el de la caducidad
+// de la tanda que queda. Era el 15/10/2026 hasta la tanda del 20/10.
+const LAVADO_HASTA = '2026-11-17';
 
 // Un doble toque en el botón no puede gastar dos bonos: si el mismo teléfono ya
 // se llevó uno hace menos de esto, se le repite ese mismo.

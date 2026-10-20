@@ -8,7 +8,7 @@ aliases: [Cloud API, Bot de puertas]
 WhatsApp es **el canal con los conductores**. No usan la app de Mapon ni entran al ERP: lo que se les dice y lo que piden pasa por aquí. Son dos cosas distintas montadas sobre el mismo número:
 
 - **Lo que sale**: avisos de turnos, advertencias de velocidad, alertas a los controladores. Vive en `services/whatsapp.js`. (La bienvenida de Ballenoil se quitó el 24/09/2026.)
-- **Lo que entra**: el bot. Desde el 28/09/2026 el **conductor** tiene una conversación propia y ordenada (saludo → matrícula → su turno con botones fijos) en `services/fichajeBot.js`; la gente de oficina con el permiso `/puertas` sigue con el panel de puertas de `routes/botPuertas.js`. El PIN de repostaje de Ballenoil no vuelve; los **códigos de lavado** vuelven solo hasta el 15/10/2026 (la última tanda).
+- **Lo que entra**: el bot. Desde el 28/09/2026 el **conductor** tiene una conversación propia y ordenada (saludo → matrícula → su turno con botones fijos) en `services/fichajeBot.js`; la gente de oficina con el permiso `/puertas` sigue con el panel de puertas de `routes/botPuertas.js`. El PIN de repostaje de Ballenoil no vuelve; los **códigos de lavado** siguen hasta el 17/11/2026 (la tanda del 20/10).
 
 Es la **Cloud API de Meta**, contra `graph.facebook.com`, versión `v25.0`.
 
@@ -110,7 +110,7 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 | Mensaje | Botones |
 |---|---|
 | el coche, desde qué hora, puertas | 🔓 Abrir puertas · 🔒 Cerrar puertas · 🚗 Entregar coche |
-| «Más opciones» | 🧽 Código de lavado (hasta el 15/10) · 📅 Ver mis turnos · 🔴 Terminar turno |
+| «Más opciones» | 🧽 Código de lavado (hasta el 17/11) · 📅 Ver mis turnos · 🔴 Terminar turno |
 
 - **Entregar coche** = el antiguo «Voy al relevo» (mismo id de botón, `turno_relevo`). Se pulsa **justo antes de salir** hacia donde está el compañero, no al llegar: desde esa hora se cuentan los km del trayecto de entrega (`fichaje_turno.relevo_at` → `km_relevo`). Cuando el compañero escribe la matrícula, el turno del que entrega se cierra solo y **se le avisa** con sus km. Desde el 29/09 **lo pulsara o no**: quien escribe la matrícula se queda el coche (si al otro se le bloquearía el motor, con el coche parado y apagado). Ver [[Fichaje]].
 - **Terminar turno** cierra el turno y bloquea el motor — solo si esa persona tiene el bloqueo encendido (ver [[Fichaje]]).
@@ -127,7 +127,7 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 
 - Una **matrícula** → busca el coche en Mapon y abre el menú de botones. El filtro es `/^(?=.*\d)[A-Za-z0-9]{6,8}$/`: exige al menos un dígito porque con `{4,8}` a secas *"hola"* era una matrícula válida — Ignacio saludó al bot y le contestó «Matrícula "HOLA" no encontrada» sin saludarle siquiera. Lo mismo pasaba con "buenas", "gracias" o "vale".
 - **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio (`services/puertasBot.js`, que usan las dos conversaciones).
-- **Códigos de lavado Ballenoil**: vuelven del 28/09 al **15/10/2026** con la última tanda (566 códigos, db/164; vencen el 17/10). `services/lavadoBallenoil.js`: `visible()` deja de enseñar el botón solo a partir del 16/10, y un doble toque no gasta dos bonos (en 30 min se repite el mismo). El PIN de repostaje **no** vuelve: si alguien pulsa «VER PIN» en una bienvenida vieja, se le dice que ya no se usa.
+- **Códigos de lavado Ballenoil**: vuelven del 28/09 al 15/10/2026 con una tanda (566 códigos, db/164; vencían el 17/10). El 20/10/2026 llega otra: *«Nuevos códigos de ballenoil, el botón sigue vigente, mételos directamente a la base de datos»*. Son **338 códigos que caducan el 17/11/2026**, metidos directo en `ballenoil_codigo` desde el relevamiento del portal de Ballenoil de ese día; el 26440296 ya estaba (repartido en septiembre) y se quedó con su historia. `services/lavadoBallenoil.js`: `visible()` enseña el botón hasta `LAVADO_HASTA` (ahora el **17/11/2026**), y un doble toque no gasta dos bonos (en 30 min se repite el mismo). Se reparte primero el que antes caduca. El PIN de repostaje **no** vuelve: si alguien pulsa «VER PIN» en una bienvenida vieja, se le dice que ya no se usa.
 - **Ver turnos** → sus turnos **de hoy a 7 días** en texto libre (`turnos.service.textoTurnos`, ver [[Planificacion]]). Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
 - **Viajes de la empresa** (`services/fichajeBot.js`): quien tenga el fichaje encendido en `/usuarios` coge un coche y lo devuelve; va **antes** de la comprobación de acceso porque puede no tener el permiso de puertas. Ver [[Fichaje]].
 

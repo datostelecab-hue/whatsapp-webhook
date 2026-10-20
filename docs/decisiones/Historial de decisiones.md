@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-20 · Otra tanda de códigos de lavado, hasta el 17/11
+
+*«Nuevos códigos de ballenoil, el botón sigue vigente, mételos directamente a la base de datos.»* 338 códigos que caducan el 17/11/2026, directo en `ballenoil_codigo`; el botón del bot, hasta ese día. → [[WhatsApp]]
+
 ## 2026-10-20 · Nómina: una J en un día de vacaciones, permiso o baja no cuenta
 
 Manda la marca, como en la bitácora. La nómina pagaba dos veces el día de vacaciones de Akieme que tenía además una J de 8 h. *«Haz la 1, y las de baja que tampoco cuenten»*. Ver [[Nominas#Una J en un día de vacaciones, permiso o baja no cuenta (20/10/2026)]].
