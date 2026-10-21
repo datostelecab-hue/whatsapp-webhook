@@ -121,6 +121,17 @@ Camilo: *«nosotros nos hicimos cargo de los trabajadores de mayo en adelante �
 - **Quedan sin tocar** los de tres personas que ya no estaban: Emilio Espinoza, Laurentiu Teodor Meran y Younes Hammaouda.
 - Lo de antes de mayo no se toca: Caverel llevaba entonces a esa gente.
 
+## Quien se fue: su saldo a la baja (21/10/2026)
+
+Camilo: *«quiero ver las vacaciones generadas de la gente que fue dada de baja también»*. La pantalla trae ahora también a quien se fue **desde el 01/01/2026** (plantilla propia), con su **último contrato**. Su saldo es la misma cuenta que la de todos (`saldoDe`), pero con «hoy» en el día de su baja (`saldoPara`). Es lo que generó y no disfrutó hasta que dejó la empresa, lo que entra en su finiquito. Lo de después de la baja no cuenta: nada programado y nada que cambiar.
+
+- La lista se abre con **«De alta»** (`filtrosIniciales`). El filtro «Situación» enseña **«De baja»** o las dos cosas. Las cifras de arriba son de la gente de alta, más una aparte, **«Dados de baja»**, con los días sin disfrutar a su baja, que filtra al pulsarla.
+- Debajo del nombre: *«Baja el 21/10/2026 · saldo a esa fecha»*. En la ficha: *«Saldo a su baja (…)»*. En el Excel van la baja y su motivo.
+- Quien tiene la **baja programada** (más adelante) sigue contando a hoy, como cualquiera de alta, con la etiqueta *«Baja programada el …»*. Hasta ahora esa gente no salía, porque se miraba solo el contrato sin baja.
+- **Las suspensiones no generan**, ni aquí ni en la nómina. Wilson Santos Martínez (ficha 94) no se fue el 04/09: estuvo suspendido de empleo y sueldo del 04/09 al 21/10/2026 y causó baja el 21/10 (corregido directo en la base ese día, firmado por Camilo). Del 09/04 al 21/10 son 196 días, menos 48 de suspensión: 148, que dan 12,15, más 2 festivos = **14,15 días a su baja**.
+
+Medido el 21/10/2026: **134 de alta** y **161 que se fueron desde el 01/01/2026**, con **941,5 días sin disfrutar** a su baja (3 en contra). Ojo: **11 de plantilla propia tienen la baja el 04/09/2026**, que puede ser la fecha de relleno de la carga inicial (7 sin motivo). Su saldo sale cortado ese día hasta que RRHH confirme la fecha real.
+
 ## La llave
 
 `/vacaciones`, en el grupo RRHH del catálogo ([[Usuarios y permisos]]). db/197 se la da a quien ya tenía `/rrhh` o la de aprobar vacaciones, que son 8 usuarios. **Mirar los saldos no da permiso para aprobar**: `/vacaciones/aprobar` se mira exacta (`services/aprobarVacaciones.js`) y no por prefijo.

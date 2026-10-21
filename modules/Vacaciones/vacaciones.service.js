@@ -144,9 +144,9 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
   };
 }
 
-/** Las piezas de la base para una o todas las personas. */
+/** Las piezas de la base para una o todas las personas (también las que se fueron este año). */
 async function cargar({ id = null } = {}) {
-  const gente = await repo.personas({ id });
+  const gente = await repo.personas({ id, conBajas: true, desde: DESDE_HISTORICO });
   const ids = gente.map(p => p.id);
   let festivos, horas;
   try {
@@ -164,12 +164,31 @@ async function cargar({ id = null } = {}) {
 
 const contrato = p => (p.tipo === 'ett' ? `ETT${p.ett_nombre ? ' · ' + p.ett_nombre : ''}` : 'Propia');
 
-/** La lista: una fila por persona con contrato abierto, con su saldo. */
+/**
+ * EL SALDO DE QUIEN SE FUE, A SU BAJA (21/10/2026). Lo que generó y no disfrutó
+ * hasta el día que dejó la empresa, que es lo que entra en su finiquito: la
+ * misma cuenta (`saldoDe`) con «hoy» en su baja. Lo de después no existe para
+ * él: nada programado, nada que cambiar. Quien tiene la baja puesta más adelante
+ * (baja programada) sigue contando a hoy, como cualquiera de alta.
+ */
+function saldoPara(p, x, festivos, hoy) {
+  const deBaja = !!(p.baja && p.baja <= hoy);
+  const corte = deBaja ? p.baja : hoy;
+  const tramos = deBaja ? x.tramos.filter(t => t.desde <= p.baja) : x.tramos;
+  const s = saldoDe(p, tramos, festivos, x.horas, corte);
+  if (deBaja) {
+    s.programadas = 0; s.permisosProgramados = 0; s.saldoTras = s.saldo; s.deVacacionesHasta = null;
+    s.detalle.vacaciones.forEach(v => { v.editable = false; v.programados = 0; });
+  }
+  return { ...s, deBaja, baja: p.baja || null, motivoBaja: p.motivo_baja || '', corte };
+}
+
+/** La lista: una fila por persona —de alta, o que se fue este año—, con su saldo. */
 async function lista({ hoy = hoyMadrid() } = {}) {
   const { gente, festivos, porId } = await cargar();
   const filas = gente.map(p => {
     const x = porId.get(p.id);
-    const s = saldoDe(p, x.tramos, festivos, x.horas, hoy);
+    const s = saldoPara(p, x, festivos, hoy);
     delete s.detalle;
     return { id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, ...s };
   });
@@ -185,14 +204,14 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
     const [ett] = await repo.personas({ id: n, conEtt: true });
     throw new Error(ett
       ? `${ett.nombre} es de ETT: sus vacaciones se las da la agencia, no nosotros, así que aquí no lleva saldo.`
-      : 'Esta persona no tiene un contrato abierto: no lleva saldo de vacaciones.');
+      : 'Esta persona no tiene contrato este año: no lleva saldo de vacaciones.');
   }
   const p = gente[0];
   const x = porId.get(p.id);
   return {
     id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, hoy,
     reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, nucleoDesde: NUCLEO_DESDE },
-    ...saldoDe(p, x.tramos, festivos, x.horas, hoy),
+    ...saldoPara(p, x, festivos, hoy),
   };
 }
 

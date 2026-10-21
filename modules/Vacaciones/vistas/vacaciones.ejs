@@ -44,24 +44,33 @@
     icono: 'fa-umbrella-beach',
     origen: '/vacaciones/api/lista',
     clave: 'id',
-    vacio: 'No hay nadie de plantilla propia con contrato abierto.',
+    vacio: 'No hay nadie de plantilla propia que coincida.',
     buscar: { campos: ['nombre', 'dni'] },
+    // Se abre con los de alta; quien se fue está en «De baja» (21/10/2026).
+    filtrosIniciales: { situacion: 'alta' },
 
     // Solo plantilla propia (16/10/2026): a los de ETT las vacaciones se las da la agencia.
-    subtitulo: (visibles, todas) => `${visibles.length} de ${todas.length} personas de plantilla propia con contrato abierto · saldo a hoy`,
+    subtitulo: (visibles, todas) => `${visibles.length} de ${todas.length} personas de plantilla propia · saldo a hoy (a quien se fue, a su baja)`,
 
-    kpis: filas => {
+    // Las cifras de siempre son de la gente de alta; quien se fue va aparte.
+    kpis: todas => {
+      const filas = todas.filter(x => !x.deBaja);
+      const bajas = todas.filter(x => x.deBaja);
       const pendientes = filas.reduce((s, x) => s + Math.max(0, x.saldo), 0);
+      const porLiquidar = bajas.reduce((s, x) => s + Math.max(0, x.saldo), 0);
       const negativos = filas.filter(x => x.saldo < 0).length;
       const hoy = filas.filter(x => x.deVacacionesHasta).length;
       return [
-        { etiqueta: 'Personas', valor: filas.length, pie: 'de plantilla propia' },
+        { etiqueta: 'Personas', valor: filas.length, pie: 'de plantilla propia, de alta' },
         { etiqueta: 'Días por disfrutar', valor: num(pendientes, 0), pie: 'suma de los saldos a favor',
           ayuda: 'Lo que la empresa debe en vacaciones a día de hoy, sumando a todos los que tienen saldo a favor.' },
         { etiqueta: 'En negativo', valor: negativos, tono: negativos ? 'red' : 'text', pie: 'han disfrutado más de lo generado',
           filtro: { id: 'saldo', valor: 'negativo' }, ayuda: 'Pulsa para verlos.' },
         { etiqueta: 'De vacaciones hoy', valor: hoy, pie: 'según su ficha',
           filtro: { id: 'saldo', valor: 'hoy' }, ayuda: 'Pulsa para verlos.' },
+        { etiqueta: 'Dados de baja', valor: bajas.length, pie: `${num(porLiquidar, 0)} días sin disfrutar a su baja`,
+          filtro: { id: 'situacion', valor: 'baja' },
+          ayuda: `Quien se fue desde el ${f(R.desde)}: lo que generó y no disfrutó hasta el día de su baja, para su finiquito. Pulsa para verlos.` },
       ];
     },
 
@@ -70,6 +79,11 @@
         `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas · − días de asuntos propios (los demás permisos no restan).` }),
 
     filtros: [
+      { id: 'situacion', textoTodos: 'De alta y de baja', opciones: [
+          { valor: 'alta', texto: 'De alta' },
+          { valor: 'baja', texto: 'De baja' },
+        ],
+        pasa: (x, v) => (v === 'baja' ? x.deBaja : !x.deBaja) },
       { id: 'saldo', textoTodos: 'Cualquier saldo', opciones: [
           { valor: 'negativo', texto: 'En negativo' },
           { valor: 'mas30', texto: 'Más de 30 días' },
@@ -86,7 +100,9 @@
             <p class="mt-1 text-sm flex flex-wrap items-center gap-x-2 gap-y-1">${saldoTexto(x)}${
               x.programadas || x.permisosProgramados
                 ? `<span class="text-xs text-telecab-muted tabular-nums" title="Lo que le quedará cuando pasen las vacaciones y permisos ya puestos en su ficha.">→ ${conSigno(x.saldoTras)} tras lo programado</span>` : ''}${
-              x.deVacacionesHasta ? etiqueta('De vacaciones hasta el ' + fc(x.deVacacionesHasta), 'green') : ''}</p>
+              x.deVacacionesHasta ? etiqueta('De vacaciones hasta el ' + fc(x.deVacacionesHasta), 'green') : ''}${
+              x.deBaja ? etiqueta('Baja el ' + f(x.baja) + ' · saldo a esa fecha', 'muted')
+                : x.baja ? etiqueta('Baja programada el ' + f(x.baja), 'muted') : ''}</p>
           </div>` },
       { titulo: 'Desde', campo: 'inicio', clase: 'whitespace-nowrap tabular-nums text-sm',
         ayuda: `Desde cuándo se le calcula: su alta, o el ${f(R.desde)} si entró antes (el histórico de vacaciones empieza ahí).`,
@@ -109,12 +125,14 @@
       { titulo: 'Saldo', campo: 'saldo', soloExcel: true },
       { titulo: 'Saldo tras lo programado', campo: 'saldoTras', soloExcel: true },
       { titulo: 'DNI / NIE', campo: 'dni', soloExcel: true },
+      { titulo: 'Baja', campo: 'baja', soloExcel: true, valor: x => (x.deBaja ? f(x.baja) : '') },
+      { titulo: 'Motivo de la baja', campo: 'motivoBaja', soloExcel: true, valor: x => (x.deBaja ? x.motivoBaja : '') },
     ],
 
     detalle: {
       origen: id => `/vacaciones/api/ficha/${encodeURIComponent(id)}`,
       titulo: d => d.nombre,
-      subtitulo: d => `Alta ${f(d.alta)} · contrato ${d.contrato}` +
+      subtitulo: d => `Alta ${f(d.alta)}` + (d.deBaja ? ` · baja ${f(d.baja)}` : '') + ` · contrato ${d.contrato}` +
         (d.desdeElAlta ? '' : ` · se le calcula desde el ${f(d.inicio)}`),
 
       acciones: [
@@ -123,7 +141,7 @@
       ],
 
       bloques: [
-        { titulo: 'Saldo a hoy', icono: 'fa-scale-balanced', pinta: (d, hueco) => { hueco.innerHTML = extracto(d); } },
+        { titulo: 'Saldo', icono: 'fa-scale-balanced', pinta: (d, hueco) => { hueco.innerHTML = extracto(d); } },
         {
           titulo: 'Festivos', icono: 'fa-calendar-day',
           tabla: {
@@ -250,11 +268,11 @@
       <div class="px-5 py-2">
         ${linea('Generadas', d.generadas, `${d.diasQueGeneran} días naturales desde el ${f(d.inicio)}${sus} × ${tasa}`, '+')}
         ${linea('Festivos trabajados', d.festivosSuman, `${d.festivosSuman} de ${fest} festivo(s) con más de ${R.umbralHoras} h${sinD}${pend}`, '+')}
-        ${linea('Vacaciones disfrutadas', d.disfrutadas, tramosVac ? `${tramosVac} tramo(s) hasta hoy` : 'Ninguna hasta hoy', '−')}
+        ${linea('Vacaciones disfrutadas', d.disfrutadas, tramosVac ? `${tramosVac} tramo(s) hasta ${d.deBaja ? 'su baja' : 'hoy'}` : `Ninguna hasta ${d.deBaja ? 'su baja' : 'hoy'}`, '−')}
         ${linea('Asuntos propios', d.permisos, (diasPerm ? `${diasPerm} permiso(s); cada día resta uno entero` : 'Ninguno') +
           (otros ? ` · ${otros} permiso(s) de otro tipo, que no restan` : ''), '−')}
         <div class="flex items-baseline gap-4 pt-4 pb-2">
-          <p class="flex-1 text-sm font-semibold uppercase tracking-wide text-telecab-muted">Saldo a hoy</p>
+          <p class="flex-1 text-sm font-semibold uppercase tracking-wide text-telecab-muted">${d.deBaja ? 'Saldo a su baja (' + f(d.baja) + ')' : 'Saldo a hoy'}</p>
           <p class="tabular-nums text-right whitespace-nowrap">
             <span class="text-3xl font-bold ${neg ? 'text-telecab-red' : 'text-telecab-text'}">${conSigno(d.saldo, 2)}</span>
             <span class="text-sm text-telecab-muted ml-1">días${neg ? ' en contra' : ''}</span>

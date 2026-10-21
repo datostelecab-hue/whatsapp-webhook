@@ -14,20 +14,29 @@ const ESTADOS = ['vacaciones', 'permiso', 'suspendido', 'suspension_permiso'];
  * PROPIA (16/10/2026, Camilo: «quita a la gente de la ETT, a ellos no les damos
  * vacaciones»); con `conEtt`, también los de ETT, para poder decirle a quien
  * abre la ficha de uno por qué no tiene saldo.
+ *
+ * Con `conBajas` (21/10/2026), también quien ya se fue: Camilo, «quiero ver las
+ * vacaciones generadas de la gente que fue dada de baja también». De cada
+ * persona, su ÚLTIMO contrato (el abierto, si lo hay), con su baja; los que se
+ * fueron, solo si su baja es de `desde` en adelante (el histórico empieza ahí).
  */
-async function personas({ id = null, conEtt = false } = {}) {
+async function personas({ id = null, conEtt = false, conBajas = false, desde = '2026-01-01' } = {}) {
   const r = await db.consulta(
-    `SELECT c.id::text AS id,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
-            c.dni_nie,
-            to_char(e.alta, 'YYYY-MM-DD') AS alta,
-            e.tipo, e.ett_nombre
-       FROM conductor_periodo_empleo e
-       JOIN conductor c ON c.id = e.conductor_id
-      WHERE e.baja IS NULL AND NOT c.es_centinela
-        AND ($1::bigint IS NULL OR c.id = $1::bigint)
-        AND ($2::boolean OR e.tipo = 'propia')
-      ORDER BY lower(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')))`, [id, !!conEtt]);
+    `SELECT * FROM (
+       SELECT DISTINCT ON (c.id) c.id::text AS id,
+              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+              c.dni_nie,
+              to_char(e.alta, 'YYYY-MM-DD') AS alta,
+              to_char(e.baja, 'YYYY-MM-DD') AS baja, e.motivo_baja,
+              e.tipo, e.ett_nombre
+         FROM conductor_periodo_empleo e
+         JOIN conductor c ON c.id = e.conductor_id
+        WHERE NOT c.es_centinela
+          AND ($1::bigint IS NULL OR c.id = $1::bigint)
+        ORDER BY c.id, (e.baja IS NULL) DESC, e.alta DESC) x
+      WHERE ($2::boolean OR x.tipo = 'propia')
+        AND (x.baja IS NULL OR ($3::boolean AND x.baja::date >= $4::date))
+      ORDER BY lower(x.nombre)`, [id, !!conEtt, !!conBajas, desde]);
   return r.rows;
 }
 
