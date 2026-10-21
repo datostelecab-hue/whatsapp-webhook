@@ -30,7 +30,7 @@ Mirado con un script de análisis (fuera del repo) sobre las **109 unidades** de
 
 - **`can`** en 94: `odom` (94), `engine_rpm_avg` (92), `fuel_total` (38) y `can_fuel` (9).
 - **`fuel` viene en las 109, aunque esté vacío**: `[{ type: 'CAN', value: null }]`. Solo 88 traen litros. Contar el bloque como «tiene combustible» daría la flota entera.
-- **`ev_values`** (los híbridos): `can_ev_battery_rel` es el % de la batería y `ev_charging` si carga.
+- **`ev_values`** (los híbridos): `can_ev_battery_rel` es el % de la batería y `ev_charging` si carga (parado desde junio: son híbridos que no se enchufan). Lo del combustible, en [[#Combustible]].
 - **`relays`**: cada equipo enseña sus tres salidas, y **el corte cuenta solo con `enabled: 1`**. Hay corte configurado pero desactivado (`engine_block` con `enabled: 0`) en unidades que tienen otro activo; el título varía a mano («Bloqueo motor», «Bloque Motor», «Blqueo Motor»), así que se mira el `type`, nunca el título.
 - **`device`** solo trae `id`, `serial_number`, `imei` y `sim`: el modelo está en **`device/list.json`** (`model` + `model_ver`): 97 TELTONIKA FMC130 y 11 FMC880. `device/supported_models.json` da 1006 (sin permiso).
 - **No hay cámaras.** Ningún campo de vídeo en `unit/list`, ningún equipo de cámara en `device/list` y ningún método de vídeo en la documentación de la API: lo de cámaras de Mapon vive en su web (directo, eventos, tarjeta de memoria), no en esta API.
@@ -95,9 +95,44 @@ Trampas de esta llamada:
 
 El umbral de gravedad (`MAPON_UMBRAL_VELOCIDAD`, 150 por defecto) es **nuestro**, no de Mapon: el setup de la cuenta avisa a 130, así que todo lo que pasa de 150 ya viene incluido y cambiar el umbral no obliga a tocar la configuración de Mapon.
 
-## Combustible — `fuel/*`
+## Combustible
 
-`fuel/changes.json` da subidas (repostajes) y caídas bruscas (posible robo) con lugar y nivel previo; `fuel/summary.json` da repostado, drenado y consumido por unidad. Cada dato viene **por duplicado** desde la fuente `sensor` (varilla) y `can` (centralita): en turismos sin varillas la fuente real es el CAN, así que se prefiere `can` y se cae a `sensor` solo si el CAN no trae nada. Ventana de 31 días.
+Medido el **21/10/2026** sobre las 106 unidades de la cuenta, con un script de análisis de solo lectura (fuera del repo). Camilo pidió saber qué datos de combustible hay y de dónde salen. Hay tres, y **solo uno sirve para sacar números**. En ningún coche hay sonda ni varilla: todo sale del bus CAN.
+
+### El gastado de la centralita: `can.fuel_total` (el bueno)
+
+Son los litros que la centralita lleva gastados desde siempre. Funciona como el odómetro: es acumulado, así que dos lecturas se restan y ya está. La foto viene en `unit/list` (`include[]=can`) y la serie en `unit_data/can_period.json` con **`include[]=total_fuel`** (junto a `total_distance` salen los km del mismo tramo).
+
+- **Solo lo dan 38 Toyota Corolla.** Ningún Ioniq ni Ford lo trae.
+- **Llega cada pocas horas**: de 30 a 126 lecturas por semana, contra una cada 90 segundos del odómetro. Vale para semana, mes o día. Para un turno sale aproximado, porque el borde puede caer horas antes o después.
+- **Contrastado del 14 al 21/10/2026**: 33 de los 38 dan serie, y suman **5.478 L en 114.811 km, 4,77 L/100 km**. Coche a coche va de 4,22 (0730MMZ) a 5,71 (1212MJY), creíble para un Corolla híbrido haciendo VTC. No dan serie el 0715MMZ, el 0756MMZ, el 0870MMZ, el 1073MJY y el 1223MJY.
+
+### El nivel del depósito: `fuel` de `unit/list`
+
+`[{ type: 'CAN', no: 1, metrics: 'L', value, last_update }]` son los litros que marca el aforador, leídos por el CAN, en litros enteros. Sirve para la foto: cuánto lleva ahora.
+
+- Trae valor en 88 unidades: 57 de 64 Toyota, 22 de 24 Ioniq, los 9 Ford y ninguna de las 9 sin modelo. 16 tienen la lectura de hace más de un día.
+- En los Ford, `can.can_fuel` es el mismo número repetido.
+- `fuel_tank` (la capacidad del depósito) solo está puesta en **una unidad**, el 3035LTX (43 L).
+
+### Lo que Mapon calcula del nivel: `fuel/changes.json` y `fuel/summary.json` (hoy no vale)
+
+`fuel/changes.json` da subidas (repostajes) y caídas bruscas (posible robo), con lugar y nivel previo. `fuel/summary.json` da por unidad el nivel de inicio y de fin, lo repostado, lo drenado y lo consumido. Cada dato viene por fuente, `sensor` (varilla) y `can`. Aquí `sensor` sale vacío en todas, así que se usa `can`. Ventana de 31 días.
+
+> [!warning] En Madrid no detecta ni un repostaje
+> En la semana medida, la flota gastó unos 5.500 L según la centralita y Mapon **no vio ni un repostaje en Madrid**. Solo tiene eventos el **3035LTX** (Barcelona), que es justo la única unidad con la capacidad del depósito puesta. Todo apunta a que sin `fuel_tank` no detecta nada, pero no está confirmado con Mapon.
+>
+> Ni ahí es fiable: de 24 eventos, los de verdad son 4, de +24 a +32 L, todos en la gasolinera de Carrer de la Ciutat d'Asunción (08030). El resto son subidas de +5 o +6 L en mitad de la calle cada pocas horas, el aforador bailando.
+
+Sin repostajes, `total_consumed` (nivel de inicio − nivel de fin + repostado) no dice nada: **43 coches salen con consumo negativo**. Los 33 Toyota de arriba suman −59 L según el nivel, contra 5.478 L reales. Caso del **0348MMZ**: 15 L según el nivel y 140,5 L según la centralita.
+
+Otros campos que parecen de combustible y no lo son:
+
+- **`avg_fuel_consumption`** es `{ norm, measurement: 'l/100km' }`: una norma puesta a mano (0 en casi todas, 4,3 en algunas), no una medida.
+- **`fuel_type`** (P, D o vacío) también es de la ficha de Mapon, puesta a mano.
+- Los eventos traen `driver_id: 0`: Mapon no sabe quién conducía. El conductor sale del libro de turnos, como en `route/list`.
+
+**En el ERP** solo lo usa la auditoría de flota: `mapon.leerCombustible` (changes + summary) desde `modules/Operaciones/auditoria.service.js`, una pantalla que casi no se usa (ver [[Auditoria de flota]]). Con lo de arriba, sus repostajes de Madrid salen vacíos. El consumo de verdad, el de `can.fuel_total`, no lo lee nadie todavía.
 
 ## Relés: el corte de motor
 
