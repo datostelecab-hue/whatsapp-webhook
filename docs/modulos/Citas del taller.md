@@ -5,7 +5,7 @@ aliases: [Citas de taller, Citas del taller, Citas de mantenimiento]
 
 # Citas del taller
 
-El taller manda un Excel con las citas de mantenimiento de los coches. Se sube en **Mantenimientos** (`/taller`, pestaña «Citas del taller») y cada cita sale con **quién lleva el coche ese día y a esa hora** según el planificador. Dos días antes, el sistema le avisa por WhatsApp. **Control** (`/control/citas-taller`) le llama para que la confirme y apunta lo que diga.
+El taller manda un Excel con las citas de mantenimiento de los coches. Se sube en **Mantenimientos** (`/taller`, pestaña «Citas del taller»), o se pone una a mano con **«Nueva cita»**, y cada cita sale con **quién lleva el coche ese día y a esa hora** según el planificador. Dos días antes, el sistema le avisa por WhatsApp. **Control** (`/control/citas-taller`) le llama para que la confirme y apunta lo que diga.
 
 Lo pidió Camilo el 08/10/2026 para usarlo ese mismo día con el Excel real (`MOBILITY.xlsx`, 40 citas del 09/10 al 29/10).
 
@@ -29,6 +29,17 @@ Cuatro columnas, buscadas **por su título** y no por su posición: `MATRICULA`,
 - **Solo los coches de Madrid dados de alta en Vehículos.** Lo demás no se cita, y el informe de la subida dice por qué: «No está en el sistema», «No es de Madrid: es de Barcelona» o «Está dado de baja en Vehículos». Con el Excel real fueron el **1888LTJ** y el **0970LJJ**, de Barcelona, y el **7750KYT**, que no está dado de alta.
 - **Las de días que ya pasaron no se importan.**
 - Las que ya había entre esas fechas y **no vienen** en el Excel nuevo **no se anulan solas**: se listan, por si el taller las ha quitado, y se anulan a mano con «Estado».
+
+## A mano: «Nueva cita» (21/10/2026)
+
+Camilo: *«dame un botón en mantenimientos para poner citas de taller a mano, no solamente por medio del excel»*. Está en dos sitios: **«Nueva cita»**, al lado de «Importar Excel del taller», y **«Poner cita»** en la ficha de un coche del estado de la flota, que abre el formulario con ese coche ya elegido.
+
+- **Se pide el coche** (los de Madrid dados de alta, con buscador), **el día, la hora** («09:30», «9.30» o «10h») y una nota opcional. Las reglas son las de una fila del Excel: ni coches de otra sede ni de baja, ni días que ya pasaron. Si el servidor no la acepta, el formulario vuelve con lo escrito.
+- **Desde ahí, el mismo camino que las del Excel**: el responsable lo dice el planificador, el sistema avisa dos días antes, Control llama y sale en el estado de la flota. Al ponerla se dice cuándo se le avisará: «El domingo 25 de octubre el sistema avisará por WhatsApp…», o, si es para hoy o mañana, que hay que avisar a mano.
+- **Un coche, una cita por día.** Si ya tiene una ese día, se dice y no se toca. Si la que tenía está **anulada**, vuelve con la hora nueva, y el aviso y la confirmación de antes se borran. Así se le cambia la hora a una cita: se anula con «Estado» y se vuelve a poner.
+- **Se distingue por no tener fichero** (`taller_cita.fichero` vacío; `creado_por`, quién la puso). En la lista sale «Puesta a mano», con quién y cuándo al pasar el ratón. El primer apunte del seguimiento es «Puesta a mano», con la hora y la nota. **No hizo falta migración.**
+- **Al reimportar el Excel**, una cita puesta a mano que no venga en él **no sale** en «Estaban y no vienen en este Excel». Si el taller la manda el mismo día con otra hora, el Excel la cambia como a cualquier otra.
+- Rutas: `GET /taller/api/citas/coches` (el desplegable; va antes que `/api/citas/:id`, que si no se quedaría con «coches» como id) y `POST /taller/api/citas` (`citas.service.crear`). Pruebas en `scripts/comprobar-citas-taller.js`.
 
 ## Quién la lleva: el planificador, cada vez
 
@@ -75,7 +86,7 @@ En la pestaña **Estado de la flota**, cada coche con una cita pendiente lleva, 
 ## Permisos
 
 - Mirar las citas en Mantenimientos: `/taller`.
-- Subir el Excel, avisar, «Avisado» y «Estado»: `/taller/apuntar` (el servidor lo comprueba en cada ruta, no solo escondiendo el botón).
+- Subir el Excel, poner una a mano, avisar, «Avisado» y «Estado»: `/taller/apuntar` (el servidor lo comprueba en cada ruta, no solo escondiendo el botón).
 - La pantalla de Control y sus llamadas: `/control`.
 
 ## Ver también

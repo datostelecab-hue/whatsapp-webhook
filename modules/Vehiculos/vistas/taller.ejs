@@ -131,7 +131,7 @@
   <div id="v-citas" class="hidden">
     <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
       <p class="text-sm text-telecab-muted max-w-3xl">
-        Sube el Excel del taller y cada cita sale con <b>quien lleva el coche ese día</b> según el
+        Sube el Excel del taller o pon una cita a mano, y cada cita sale con <b>quien lleva el coche ese día</b> según el
         planificador. <b><%= citasDiasAntes %> días antes</b> el sistema le avisa por WhatsApp (a las 10:00)
         y Control le llama para que la confirme. Las de mañana y hoy se avisan a mano: copia el
         mensaje y mándalo desde el chat.
@@ -139,6 +139,10 @@
       <div class="flex flex-wrap items-center gap-2">
         <div id="ct-tramos" class="flex items-center gap-1 p-1 rounded-xl bg-telecab-card border border-telecab-border"></div>
         <% if (puedeApuntar) { %>
+        <button id="ct-nueva" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm font-semibold text-telecab-text hover:border-telecab-gold/40"
+                title="Una cita de una en una: el coche, el día y la hora. Sigue el mismo camino que las del Excel.">
+          <i class="fa-solid fa-plus mr-1"></i> Nueva cita
+        </button>
         <button id="ct-importar" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
           <i class="fa-solid fa-file-import mr-1"></i> Importar Excel del taller
         </button>
@@ -445,6 +449,9 @@
         html += '<button id="pf-anclar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">' +
           '<i class="fa-solid fa-anchor mr-1"></i> Anclar odómetro</button>';
       }
+      html += '<button id="pf-cita" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text"' +
+        ' title="Ponerle una cita del taller a este coche: el día y la hora.">' +
+        '<i class="fa-solid fa-calendar-plus mr-1"></i> Poner cita</button>';
       html += '<button id="pf-intervalo" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted">' +
         'Intervalo: ' + n(f.intervalo) + ' km' + (f.intervaloPropio ? ' (propio)' : '') + '</button>';
     }
@@ -487,6 +494,12 @@
       verPestana('citas');
     });
     if ($('#pf-anclar')) $('#pf-anclar').addEventListener('click', () => abrirAncla(f));
+    if ($('#pf-cita')) $('#pf-cita').addEventListener('click', async () => {
+      if (await nuevaCita({ vehiculoId: f.id })) {
+        cargar().catch(() => { /* la lista se repinta en la próxima */ });
+        abrirFicha(f.id).catch(() => { /* la ficha ya estaba */ });
+      }
+    });
     if ($('#pf-intervalo')) $('#pf-intervalo').addEventListener('click', () => cambiarIntervalo(f));
     document.querySelectorAll('#pf-cuerpo .anular').forEach(b => b.addEventListener('click', async () => {
       const motivo = prompt('¿Por qué se anula? Queda apuntado con tu nombre.');
@@ -686,7 +699,7 @@
 
     if (!CITAS.citas.length) {
       $('#ct-lista').innerHTML = `<div class="rounded-2xl border border-telecab-border bg-telecab-card px-4 py-10 text-center text-sm text-telecab-muted">
-        ${tramo === 'pasadas' ? 'No hubo citas en los últimos 30 días.' : 'No hay citas próximas.' + (PUEDE ? ' Sube el Excel del taller con «Importar Excel del taller».' : '')}</div>`;
+        ${tramo === 'pasadas' ? 'No hubo citas en los últimos 30 días.' : 'No hay citas próximas.' + (PUEDE ? ' Sube el Excel del taller con «Importar Excel del taller» o pon una con «Nueva cita».' : '')}</div>`;
       return;
     }
     $('#ct-lista').innerHTML = C.porDia(CITAS.citas, CITAS.hoy).map(g => `
@@ -735,7 +748,8 @@
     return `<tr class="${atencion ? 'bg-telecab-red/5' : ''} ${pendiente ? '' : 'opacity-70'} align-top">
       <td class="px-4 py-3 font-semibold tabular-nums text-telecab-text">${esc(c.hora)}</td>
       <td class="px-3 py-3"><span class="font-mono font-semibold text-telecab-text">${esc(c.matricula)}</span>
-        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div></td>
+        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div>
+        ${c.a_mano ? `<div class="text-[11px] text-telecab-muted" title="${esc('No viene del Excel del taller: la puso ' + (c.creado_por_nombre || 'alguien') + ' el ' + (c.creado_at || '—') + '.')}"><i class="fa-solid fa-pen mr-1"></i>Puesta a mano</div>` : ''}</td>
       <td class="px-3 py-3">${C.responsable(c)}</td>
       <td class="px-3 py-3 text-xs">${C.aviso(c, CITAS.hoy, DIAS_ANTES)}</td>
       <td class="px-3 py-3">${C.confirmacion(c)}${c.ultima_llamada ? `<div class="mt-1">${C.ultimaLlamada(c)}</div>` : ''}</td>
@@ -825,6 +839,53 @@
     entrada.click();
   }
   if ($('#ct-importar')) $('#ct-importar').addEventListener('click', importarCitas);
+
+  // ── UNA CITA A MANO (21/10/2026) ──
+  // Camilo: «un botón en mantenimientos para poner citas de taller a mano, no
+  // solamente por medio del excel». El coche, el día y la hora; desde ahí, el
+  // mismo camino que las del Excel. Si el servidor no la acepta, el formulario
+  // vuelve con lo escrito. Devuelve true si se puso.
+  let COCHES = null;
+  const aDdmm = iso => (iso ? iso.split('-').reverse().join('/') : '');
+  async function nuevaCita({ vehiculoId } = {}) {
+    try {
+      if (!COCHES) COCHES = (await api('/taller/api/citas/coches')).coches;
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudieron cargar los coches', texto: e.message, tono: 'error' });
+      return false;
+    }
+    let previo = { coche: vehiculoId ? String(vehiculoId) : '', fecha: '', hora: '', nota: '' };
+    for (;;) {
+      const v = await Dialogo.formulario('Nueva cita del taller', [
+        { id: 'coche', etiqueta: 'Coche', tipo: 'lista', obligatorio: true, valor: previo.coche,
+          opciones: COCHES.map(x => ({ valor: x.id, texto: x.matricula + (x.modelo ? ' · ' + x.modelo : '') })),
+          buscador: { marcador: 'Busca la matrícula', tope: 5 } },
+        { id: 'fecha', etiqueta: 'Día', tipo: 'fecha', obligatorio: true, valor: aDdmm(previo.fecha) },
+        { id: 'hora', etiqueta: 'Hora', tipo: 'texto', obligatorio: true, valor: previo.hora, marcador: '09:30', max: 5 },
+        { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', valor: previo.nota, max: 300,
+          marcador: 'Qué se le hace, quién la pidió… (queda en el seguimiento)' },
+      ], { textoBoton: 'Poner la cita',
+        nota: 'Sigue el mismo camino que las del Excel: quién lo lleva lo dice el planificador y, ' +
+          DIAS_ANTES + ' días antes, el sistema le avisa por WhatsApp.' });
+      if (!v) return false;
+      previo = v;
+      try {
+        const r = await postCita('/taller/api/citas', { vehiculoId: v.coche, fecha: v.fecha, hora: v.hora, nota: v.nota });
+        await Dialogo.aviso({ titulo: 'Cita puesta', tono: 'ok',
+          html: `<p class="text-sm"><b class="font-mono">${esc(r.matricula)}</b>, ${esc(r.fechaLarga)} a las ${esc(r.hora)}.` +
+            `${r.repuesta ? ' Tenía una anulada ese día: vuelve con esta hora.' : ''}</p>` +
+            `<p class="text-sm mt-2 text-telecab-muted">${esc(r.aviso)}</p>` });
+        tramo = 'proximas';
+        await cargarCitas();
+        return true;
+      } catch (e) {
+        await Dialogo.aviso({ titulo: 'No se ha puesto la cita', texto: e.message, tono: 'error' });
+      }
+    }
+  }
+  if ($('#ct-nueva')) $('#ct-nueva').addEventListener('click', () => {
+    nuevaCita().then(ok => { if (ok) cargar().catch(() => { /* la flota se repinta en la próxima */ }); });
+  });
 
   cargarCitas().catch(e => { $('#ct-lista').innerHTML = `<p class="px-4 py-10 text-center text-sm text-telecab-red">No se pudieron cargar las citas: ${esc(e.message)}</p>`; });
 })();

@@ -4,7 +4,7 @@
 // Las del módulo de citas (db/187, 08/10/2026): cómo se lee el Excel del
 // taller, qué matrículas no se citan y por qué, quién lleva el coche a la hora
 // de la cita, el aviso por WhatsApp, los botones del conductor y las llamadas
-// de Control.
+// de Control. Y las que se ponen a mano (21/10/2026).
 //
 //   node scripts/comprobar-citas-taller.js
 //
@@ -142,6 +142,12 @@ const dia = n => S.sumarDias(hoy, n);
   igual('La que había y no viene se lista, no se anula', r.noVienen, [`5736LGK · ${dia(4).split('-').reverse().join('/')} 11:00`]);
   igual('El duplicado se avisa', r.avisos.length, 1);
   igual('El fichero queda apuntado', guardado[0].fichero, 'MOBILITY.xlsx');
+  // Una puesta a mano que no viene en el Excel no es «estaba y no viene».
+  const yaHabia = await repo.entreFechas();
+  repo.entreFechas = async () => [...yaHabia,
+    { id: '103', vehiculo_id: '11', matricula: '0802MJY', fecha: dia(5), hora: '10:00', estado: 'pendiente', avisada: false, confirmacion: null, a_mano: true }];
+  const r2 = await S.importar({ base64, nombre: 'MOBILITY.xlsx' }, { usuarioId: 7 });
+  igual('La puesta a mano no sale como «no viene en el Excel»', r2.noVienen, [`5736LGK · ${dia(4).split('-').reverse().join('/')} 11:00`]);
 
   // ── El responsable y el aviso ───────────────────────────────────────────
   const cita = { id: '5', vehiculo_id: '10', matricula: '5736LGK', fecha: dia(2), hora: '10:00', estado: 'pendiente',
@@ -226,6 +232,49 @@ const dia = n => S.sumarDias(hoy, n);
   repo.lista = async () => { throw new Error('relation "taller_cita" does not exist'); };
   const sinCitas = await T.estadoDeLaFlota({});
   igual('Si las citas fallan, el estado sale igual, sin ellas', [sinCitas.filas.length, sinCitas.filas[0].cita, pedido], [2, undefined, null]);
+
+  // ── A mano (21/10/2026) ─────────────────────────────────────────────────
+  igual('Para hoy: a mano', S.cuandoSeAvisa(dia(0), hoy, 12).startsWith('Es para hoy'), true);
+  igual('Para mañana: a mano', S.cuandoSeAvisa(dia(1), hoy, 12).startsWith('Es para mañana'), true);
+  igual('Para pasado, antes de las 10: sale a las 10:00', S.cuandoSeAvisa(dia(2), hoy, 8).includes('a las 10:00'), true);
+  igual('Para pasado, a media tarde: en la próxima hora', S.cuandoSeAvisa(dia(2), hoy, 15).includes('en la próxima hora'), true);
+  igual('Para pasado, de noche: el de hoy ya pasó', S.cuandoSeAvisa(dia(2), hoy, 21).includes('ya pasó'), true);
+  igual('Más adelante: el día del aviso', S.cuandoSeAvisa(dia(6), hoy, 12), `El ${S.fechaLarga(dia(4))} el sistema avisará por WhatsApp a quien lleve el coche.`);
+
+  const coches = {
+    10: { id: '10', matricula: '5736 LGK', matricula_norm: '5736LGK', sede: 'madrid', de_baja: false },
+    13: { id: '13', matricula: '1888LTJ', matricula_norm: '1888LTJ', sede: 'barcelona', de_baja: false },
+    14: { id: '14', matricula: '7777BBB', matricula_norm: '7777BBB', sede: 'madrid', de_baja: true },
+  };
+  repo.vehiculoPorId = async id => coches[id] || null;
+  let yaEseDia = [];
+  repo.entreFechas = async () => yaEseDia;
+  const creadas = [], repuestas = [];
+  repo.crearAMano = async (x, q) => { creadas.push([x, q]); return { id: '200' }; };
+  repo.reponerAMano = async (id, x, q) => { repuestas.push([id, x, q]); return { id: String(id) }; };
+  const enDdmm = iso => iso.split('-').reverse().join('/');
+  await lanza('Sin coche', () => S.crear({ fecha: dia(5), hora: '10:00' }, {}), 'Elige el coche');
+  await lanza('Un coche que no existe', () => S.crear({ vehiculoId: 99, fecha: dia(5), hora: '10:00' }, {}), 'no está en el sistema');
+  await lanza('Uno de Barcelona', () => S.crear({ vehiculoId: 13, fecha: dia(5), hora: '10:00' }, {}), 'No se le puede poner cita al 1888LTJ. No es de Madrid: es de Barcelona.');
+  await lanza('Uno dado de baja', () => S.crear({ vehiculoId: 14, fecha: dia(5), hora: '10:00' }, {}), 'Está dado de baja en Vehículos');
+  await lanza('Sin día', () => S.crear({ vehiculoId: 10, hora: '10:00' }, {}), 'Elige el día');
+  await lanza('Un día que ya pasó', () => S.crear({ vehiculoId: 10, fecha: dia(-1), hora: '10:00' }, {}), 'Ese día ya pasó');
+  await lanza('Sin hora', () => S.crear({ vehiculoId: 10, fecha: dia(5) }, {}), 'Pon la hora');
+  await lanza('Una hora que no se entiende', () => S.crear({ vehiculoId: 10, fecha: dia(5), hora: 'por la mañana' }, {}), 'La hora: no se entiende');
+  igual('Nada de eso llega a la base', creadas.length + repuestas.length, 0);
+
+  const ok = await S.crear({ vehiculoId: { valor: '10' }, fecha: enDdmm(dia(5)), hora: '9.30', nota: '  Revisión de 15.000  ' }, { usuarioId: 7 });
+  igual('Se pone con la matrícula limpia, el día en ISO y la hora entendida',
+    [creadas[0][0], creadas[0][1].usuarioId], [{ vehiculoId: 10, matricula: '5736LGK', fecha: dia(5), hora: '09:30', nota: 'Revisión de 15.000' }, 7]);
+  igual('Y se dice cuándo se avisará', [ok.ok, ok.repuesta, ok.aviso], [true, false, S.cuandoSeAvisa(dia(5), hoy)]);
+
+  yaEseDia = [{ id: '150', vehiculo_id: '10', matricula: '5736LGK', fecha: dia(5), hora: '11:00', estado: 'pendiente' }];
+  await lanza('Ya tiene una ese día: no se duplica', () => S.crear({ vehiculoId: 10, fecha: dia(5), hora: '09:30' }, {}), 'ya tiene cita');
+  yaEseDia = [{ id: '150', vehiculo_id: '10', matricula: '5736LGK', fecha: dia(5), hora: '11:00', estado: 'anulada' }];
+  const rep = await S.crear({ vehiculoId: 10, fecha: dia(5), hora: '12:00' }, { usuarioId: 7 });
+  igual('Con la de ese día anulada, vuelve con la hora nueva', [repuestas[0][0], repuestas[0][1].hora, rep.repuesta, creadas.length], [150, '12:00', true, 1]);
+  yaEseDia = [{ id: '151', vehiculo_id: '11', matricula: '0802MJY', fecha: dia(5), hora: '11:00', estado: 'pendiente' }];
+  igual('La de otro coche ese día no estorba', (await S.crear({ vehiculoId: 10, fecha: dia(5), hora: '09:00' }, {})).ok && creadas.length, 2);
 
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);

@@ -57,6 +57,9 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 
 `tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista` u `opciones`.
 
+- **Los botones se quedan abajo, siempre visibles** (21/10/2026). Iban dentro de lo que se desplaza: con un formulario alto, «Guardar» quedaba por debajo del borde y había que bajar para encontrarlo. Le pasó a «Nueva cita del taller», con su lista de coches, en una pantalla de 729 px. Ahora la fila va pegada al fondo (`sticky -bottom-5`, porque el relleno del formulario cuenta) y los campos pasan por detrás.
+- **`marcador` vale también en `texto-largo`** (21/10/2026). Se pasaba en varios formularios («Obligatoria si se anula o no se presentó») y el `textarea` no lo pintaba.
+
 - **`max`** es lo que cabe en la columna: las casillas de texto llevan `maxlength` y no dejan escribir más (09/10/2026). Los campos de la persona y de la candidatura ya lo traen de su catálogo (`conductores.repo.campos`, `candidaturas.service.catalogos`), leído de la base.
 - **`opciones` es el selector de la casa** y `lista` es el mismo por fuera; lo que cambia es lo que devuelven (abajo). Los dos aceptan `buscador: { marcador, tope }`: pinta un filtro, enseña `tope` (10 por defecto) y dice cuántas quedan fuera. Con `grupos` pinta dos niveles.
 - `grupo` mete una cabecera cuando cambia: con treinta campos seguidos no se distingue la dirección de la Seguridad Social.

@@ -15,6 +15,11 @@
 // QUÉ SE IMPORTA. Solo los coches de la flota de Madrid que están vivos. Lo
 // demás se ignora y se dice por qué: que no está en el sistema, que es de otra
 // sede (el 1888LTJ, de Barcelona) o que está dado de baja.
+//
+// A MANO (21/10/2026). Camilo: «dame un botón en mantenimientos para poner citas
+// de taller a mano, no solamente por medio del excel». Las mismas reglas que una
+// fila del Excel, y desde ahí la cita sigue el mismo camino: responsable, aviso,
+// Control y el estado de la flota.
 
 const repo = require('./citas.repo');
 const { SEDE_FLOTA, HORA_DIA, HORA_NOCHE, nombreDePila } = require('../../services/nucleo');
@@ -23,6 +28,9 @@ const PLANTILLA = (process.env.PLANTILLA_CITA_TALLER || 'cita_taller').trim();
 // Cuántos días antes avisa el sistema solo. El de la víspera y el del mismo día
 // se avisan a mano (Camilo): el sistema no manda nada fuera de este día.
 const DIAS_ANTES = 2;
+// Las horas del cron del aviso (`0 10-20 * * *` en app.js). Solo para decir, al
+// poner una cita a mano, si el aviso de hoy aún saldrá solo.
+const AVISO_DESDE = 10, AVISO_HASTA = 20;
 
 const ESTADOS = [
   { codigo: 'pendiente', etiqueta: 'Pendiente' },
@@ -255,8 +263,9 @@ async function importar({ base64, nombre } = {}, quien = {}) {
     cambios.push({ id: antes.id, hora: f.hora, horaAntes: antes.hora, marca: f.marca, matricula: f.matricula,
       reiniciar: !!(antes.avisada || antes.confirmacion) });
   }
+  // Las puestas a mano no son del Excel: que no vengan en él no dice nada.
   const noVienen = yaHay
-    .filter(c => !vistas.has(String(c.id)) && c.estado === 'pendiente' && c.fecha >= hoy)
+    .filter(c => !vistas.has(String(c.id)) && c.estado === 'pendiente' && c.fecha >= hoy && !c.a_mano)
     .map(c => `${c.matricula} · ${c.fecha.split('-').reverse().join('/')} ${c.hora}`);
 
   await repo.guardarImportacion({ nuevas, cambios, fichero }, quien);
@@ -269,6 +278,69 @@ async function importar({ base64, nombre } = {}, quien = {}) {
       (c.reiniciar ? ' (ya avisado: hay que volver a avisar)' : '')),
     iguales: iguales.length, ignoradas: ign, pasadas: pasadas.length, noVienen, avisos,
   };
+}
+
+// ── A mano ──────────────────────────────────────────────────────────────────
+
+/** Los coches que se pueden citar, para el desplegable: los de Madrid dados de alta. */
+async function cochesParaCita() {
+  return { coches: (await repo.cochesCitables(SEDE_FLOTA)).map(v => ({ id: String(v.id), matricula: v.matricula, modelo: v.marca_modelo || '' })) };
+}
+
+/**
+ * CUÁNDO SE LE AVISARÁ, dicho para quien acaba de poner la cita. El sistema solo
+ * avisa dos días antes, de 10:00 a 20:00; lo de mañana y hoy, a mano.
+ */
+function cuandoSeAvisa(fecha, hoy = hoyMadrid(), hora = Number(new Intl.DateTimeFormat('en-GB',
+  { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date())) % 24) {
+  const dias = Math.round((Date.parse(fecha + 'T12:00:00Z') - Date.parse(hoy + 'T12:00:00Z')) / 86400000);
+  if (dias <= 0) return 'Es para hoy: el sistema no avisa solo. Avísale ahora con «Avisar» o «Copiar».';
+  if (dias < DIAS_ANTES) return 'Es para mañana: el sistema no avisa solo. Avísale con «Avisar» o «Copiar».';
+  if (dias === DIAS_ANTES) {
+    return hora < AVISO_HASTA
+      ? `El sistema avisará hoy por WhatsApp a quien lleve el coche${hora < AVISO_DESDE ? `, a las ${AVISO_DESDE}:00` : ', en la próxima hora'}.`
+      : `El aviso automático de hoy ya pasó (sale de ${AVISO_DESDE}:00 a ${AVISO_HASTA}:00): avísale tú con «Avisar» o «Copiar».`;
+  }
+  return `El ${fechaLarga(sumarDias(fecha, -DIAS_ANTES))} el sistema avisará por WhatsApp a quien lleve el coche.`;
+}
+
+/**
+ * PONE UNA CITA A MANO. Las reglas de una fila del Excel: un coche de Madrid
+ * dado de alta, un día que no haya pasado y una hora. Un coche, una cita por día:
+ * si ya tiene una ese día se dice y no se toca, salvo que esté ANULADA, que se
+ * recupera con la hora nueva (es la forma de cambiarle la hora a una cita:
+ * anularla y volver a ponerla).
+ */
+async function crear({ vehiculoId, fecha, hora, nota } = {}, quien = {}) {
+  const idCoche = Number(vehiculoId && typeof vehiculoId === 'object' ? vehiculoId.valor : vehiculoId);
+  if (!Number.isInteger(idCoche) || idCoche <= 0) throw new Error('Elige el coche');
+  const v = await repo.vehiculoPorId(idCoche);
+  const motivo = motivoIgnorada(v);
+  if (motivo) throw new Error(v ? `No se le puede poner cita al ${v.matricula}. ${motivo}.` : 'Ese coche no está en el sistema');
+
+  if (!String(fecha || '').trim()) throw new Error('Elige el día de la cita');
+  let dia, h;
+  try { dia = fechaDe(fecha); } catch (e) { throw new Error(`El día: ${e.message}`); }
+  const hoy = hoyMadrid();
+  if (dia < hoy) throw new Error('Ese día ya pasó');
+  if (!String(hora || '').trim()) throw new Error('Pon la hora de la cita (por ejemplo, 09:30)');
+  try { h = horaDe(hora); } catch (e) { throw new Error(`La hora: ${e.message}`); }
+  const n = String(nota || '').trim().slice(0, 300);
+  const matricula = v.matricula_norm || normMat(v.matricula);
+
+  const [antes] = (await repo.entreFechas(dia, dia)).filter(c => String(c.vehiculo_id) === String(idCoche));
+  let r, repuesta = false;
+  if (antes && antes.estado === 'anulada') {
+    r = await repo.reponerAMano(Number(antes.id), { hora: h, nota: n }, quien);
+    repuesta = true;
+  } else if (antes) {
+    throw new Error(`El ${matricula} ya tiene cita el ${fechaLarga(dia)} a las ${antes.hora} (${(ETQ_ESTADO[antes.estado] || antes.estado).toLowerCase()}). ` +
+      'Un coche tiene una cita por día: si cambia la hora, anúlala con «Estado» y vuelve a ponerla.');
+  } else {
+    r = await repo.crearAMano({ vehiculoId: idCoche, matricula, fecha: dia, hora: h, nota: n }, quien);
+  }
+  console.log(`🔧 [Citas taller] A mano: ${matricula} el ${dia} a las ${h}${repuesta ? ' (estaba anulada)' : ''} · usuario ${quien.usuarioId || '?'}`);
+  return { ok: true, id: r.id, matricula, fecha: dia, hora: h, fechaLarga: fechaLarga(dia), repuesta, aviso: cuandoSeAvisa(dia, hoy) };
 }
 
 // ── El responsable ──────────────────────────────────────────────────────────
@@ -555,9 +627,9 @@ async function cambiarEstado(id, { estado, nota } = {}, quien = {}) {
 
 module.exports = {
   PLANTILLA, DIAS_ANTES, ESTADOS, CONFIRMACIONES, RESULTADOS_LLAMADA,
-  importar, lista, proximas, proximaPorCoche, deCoche, ficha, avisar, marcarAvisado, avisarLasDeDentroDeDos,
+  importar, cochesParaCita, crear, lista, proximas, proximaPorCoche, deCoche, ficha, avisar, marcarAvisado, avisarLasDeDentroDeDos,
   respuestaDelConductor, apuntarLlamada, cambiarEstado,
   // Sueltas para las pruebas.
   leerExcel, fechaDe, horaDe, turnoDeLaCita, motivoIgnorada, fechaLarga, textoAviso, valoresAviso,
-  botonDeCita, sumarDias,
+  botonDeCita, sumarDias, cuandoSeAvisa,
 };

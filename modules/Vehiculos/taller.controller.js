@@ -122,7 +122,14 @@ router.post('/api/intervalo', responde(exigeApuntar(req => taller.intervalo(req.
 // '/taller/apuntar'. Las llamadas para confirmarlas son de Control
 // (/control/citas-taller).
 router.get('/api/citas', responde(req => citas.lista({ desde: req.query.desde, hasta: req.query.hasta })));
+// Los coches para poner una cita a mano. Antes que '/api/citas/:id', que si no
+// se quedaría con «coches» como si fuera el id de una cita.
+router.get('/api/citas/coches', responde(() => citas.cochesParaCita()));
 router.get('/api/citas/:id', responde(async req => ({ cita: await citas.ficha(req.params.id) })));
+
+// Una cita a mano (21/10/2026): lo mismo que una fila del Excel, de una en una.
+router.post('/api/citas', responde(exigeApuntar((req, usuarioId) =>
+  citas.crear(req.body || {}, { usuarioId }))));
 
 // El Excel viaja en base64 dentro del JSON: esta ruta está en SUBEN_ARCHIVOS de
 // app.js, se salta el parser global de 2 MB y pone el suyo.

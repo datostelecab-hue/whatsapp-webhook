@@ -296,7 +296,9 @@
                          ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
                          : 'bg-telecab-card2 text-telecab-muted border-telecab-border'}">${DIAS[n]}</button>`).join('')}</div>`;
               } else if (c.tipo === 'texto-largo') {
-                campo = `<textarea id="pd-${c.id}" rows="2" class="${base}"${c.max ? ` maxlength="${Number(c.max)}"` : ''}>${esc(c.valor || '')}</textarea>`;
+                // El `marcador` también aquí (21/10/2026): se pasaba en varios
+                // formularios («Obligatoria si se anula…») y no se pintaba.
+                campo = `<textarea id="pd-${c.id}" rows="2" class="${base}"${c.marcador ? ` placeholder="${esc(c.marcador)}"` : ''}${c.max ? ` maxlength="${Number(c.max)}"` : ''}>${esc(c.valor || '')}</textarea>`;
               } else {
                 // `max`: lo que cabe en la columna. Más no se deja escribir.
                 campo = `<input id="pd-${c.id}" class="${c.tipo === 'fecha' ? 'js-fecha ' : ''}${base}"
@@ -315,7 +317,12 @@
               </div>`;
             }).join('')}
             <p class="hidden text-sm text-telecab-red col-span-full" data-error></p>
-            <div class="flex items-center gap-2 pt-1 col-span-full">
+            <!-- Los botones, pegados abajo (21/10/2026): con un formulario alto se
+                 quedaban dentro de lo que se desplaza, por debajo del borde, y había
+                 que bajar para encontrar «Guardar». Le pasó a «Nueva cita del taller»
+                 en una pantalla de 729 px. Va a -bottom-5 y no a bottom-0: el relleno
+                 del formulario (p-5) cuenta, y con 0 asomaba un campo por debajo. -->
+            <div class="sticky -bottom-5 z-10 -mx-5 -mb-5 px-5 pb-5 pt-2 bg-telecab-card flex items-center gap-2 col-span-full">
               <button type="submit" class="flex-1 px-4 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">${esc(textoBoton)}</button>
               <button type="button" data-cancelar class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">${esc(textoCancelar)}</button>
             </div>

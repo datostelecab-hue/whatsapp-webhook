@@ -7,6 +7,10 @@ actualizado: 2026-10-21
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-21 · Citas del taller también a mano
+
+*«Dame un botón en mantenimientos para poner citas de taller a mano, no solamente por medio del excel.»* «Nueva cita» en la pestaña de las citas y «Poner cita» en la ficha del coche, con las reglas de una fila del Excel. Una cita a mano es la misma fila sin fichero, sin migración. → [[Citas del taller#A mano: «Nueva cita» (21/10/2026)]]
+
 ## 2026-10-21 · Con Mapon funcionando, no se termina el turno con el coche encendido
 
 *«Obligatoriamente el coche debe de estar parado y apagado, sin excepción»*, y luego: *«que pase lo que está pasando ahora cuando Mapon nos diga que está fallando o la API está bloqueada, pero si Mapon está funcionando correctamente que le diga siempre que debe apagar el coche, sí o sí»*. Se le pregunta a Mapon en el momento, no a la ingesta. La puerta ya existía, pero se la saltaba cualquier coche que llevara más de 10 minutos encendido: la hora del contacto es la del encendido, no la de la lectura. → [[Fichaje#Con Mapon funcionando, apagado sí o sí (21/10/2026)]]

@@ -12,6 +12,9 @@
 //
 // Las fechas salen ya escritas de la base: un DATE pasado por JS se va al día
 // anterior en Madrid.
+//
+// UNA CITA A MANO (21/10/2026) es una fila igual que las del Excel, pero SIN
+// `fichero`: así se sabe que la puso alguien (`creado_por`) y no el taller.
 
 const db = require('../../services/db');
 
@@ -36,15 +39,83 @@ async function vehiculosPorMatricula(mats) {
   return m;
 }
 
-/** Las citas que ya hay entre dos fechas: para saber qué es nuevo, qué cambia y qué ya no viene. */
+/** Un coche por su id, con lo que hace falta para saber si se le puede poner cita. */
+async function vehiculoPorId(id) {
+  const r = await db.consulta(
+    `SELECT id, matricula, matricula_norm, sede, marca_modelo, (baja_at IS NOT NULL) AS de_baja
+       FROM vehiculo WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+/** Los coches a los que se les puede poner una cita a mano: los vivos de esa sede. */
+async function cochesCitables(sede) {
+  const r = await db.consulta(
+    `SELECT id, matricula, marca_modelo FROM vehiculo
+      WHERE baja_at IS NULL AND sede = $1 ORDER BY matricula`, [sede]);
+  return r.rows;
+}
+
+/**
+ * Las citas que ya hay entre dos fechas: para saber qué es nuevo, qué cambia y
+ * qué ya no viene. `a_mano`: sin fichero, la puso alguien y no el Excel.
+ */
 async function entreFechas(desde, hasta) {
   const r = await db.consulta(
     `SELECT c.id, c.vehiculo_id, c.matricula, to_char(c.fecha, 'YYYY-MM-DD') AS fecha,
             to_char(c.hora, 'HH24:MI') AS hora, c.marca, c.estado,
-            (c.aviso_at IS NOT NULL) AS avisada, c.confirmacion
+            (c.aviso_at IS NOT NULL) AS avisada, c.confirmacion, (c.fichero IS NULL) AS a_mano
        FROM taller_cita c
       WHERE c.fecha BETWEEN $1::date AND $2::date`, [desde, hasta]);
   return r.rows;
+}
+
+/**
+ * UNA CITA A MANO: la cita y, en su seguimiento, que se puso a mano con lo que
+ * se escribiera. Si mientras tanto alguien puso otra a ese coche ese día, el
+ * índice único lo para y se dice con palabras.
+ */
+async function crearAMano({ vehiculoId, matricula, fecha, hora, nota }, { usuarioId } = {}) {
+  try {
+    return await db.transaccion(async cli => {
+      const r = await cli.query(
+        `INSERT INTO taller_cita (vehiculo_id, matricula, fecha, hora, creado_por)
+         VALUES ($1, $2, $3::date, $4::time, $5) RETURNING id`,
+        [vehiculoId, matricula, fecha, hora, usuarioId || null]);
+      const id = String(r.rows[0].id);
+      await cli.query(
+        `INSERT INTO taller_cita_seguimiento (cita_id, tipo, resultado, nota, usuario_id)
+         VALUES ($1, 'estado', 'Puesta a mano', $2, $3)`,
+        [id, [`A las ${hora}`, nota].filter(Boolean).join(' · '), usuarioId || null]);
+      return { id };
+    });
+  } catch (e) {
+    if (e.code === '23505') throw new Error(`El ${matricula} ya tiene una cita ese día`);
+    throw e;
+  }
+}
+
+/**
+ * VUELVE UNA ANULADA, puesta a mano y con la hora nueva. Un coche tiene una cita
+ * por día (el índice único), así que poner otra a un coche con la de ese día
+ * anulada es recuperar aquella: el aviso y la confirmación de antes se borran
+ * (eran de otra cita) y quedan en el seguimiento.
+ */
+async function reponerAMano(id, { hora, nota }, { usuarioId } = {}) {
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `UPDATE taller_cita
+          SET estado = 'pendiente', hora = $2::time, fichero = NULL, actualizado_at = now(),
+              aviso_via = NULL, aviso_conductor_id = NULL, aviso_telefono = NULL, aviso_at = NULL,
+              aviso_wamid = NULL, aviso_error = NULL, aviso_intento_at = NULL, aviso_por = NULL,
+              confirmacion = NULL, confirmacion_via = NULL, confirmacion_at = NULL, confirmacion_por = NULL
+        WHERE id = $1 AND estado = 'anulada' RETURNING id`, [id, hora]);
+    if (!r.rowCount) throw new Error('Esa cita ya no está anulada: vuelve a cargar la lista');
+    await cli.query(
+      `INSERT INTO taller_cita_seguimiento (cita_id, tipo, resultado, nota, usuario_id)
+       VALUES ($1, 'estado', 'Vuelve a ponerse a mano', $2, $3)`,
+      [id, [`Estaba anulada. A las ${hora}`, nota].filter(Boolean).join(' · '), usuarioId || null]);
+    return { id: String(id) };
+  });
 }
 
 /**
@@ -98,6 +169,7 @@ async function lista({ desde, hasta, id, vehiculoId } = {}) {
             c.confirmacion, c.confirmacion_via, ${HORA_MADRID('c.confirmacion_at')} AS confirmacion_at,
             uc.nombre AS confirmacion_por,
             c.fichero, ${HORA_MADRID('c.creado_at')} AS creado_at,
+            (c.fichero IS NULL) AS a_mano, ucr.nombre AS creado_por_nombre,
             (SELECT count(*) FROM taller_cita_seguimiento s
               WHERE s.cita_id = c.id AND s.tipo = 'llamada')::int AS llamadas,
             ul.ultima AS ultima_llamada
@@ -106,6 +178,7 @@ async function lista({ desde, hasta, id, vehiculoId } = {}) {
        LEFT JOIN conductor ca ON ca.id = c.aviso_conductor_id
        LEFT JOIN usuario ua ON ua.id = c.aviso_por
        LEFT JOIN usuario uc ON uc.id = c.confirmacion_por
+       LEFT JOIN usuario ucr ON ucr.id = c.creado_por
        LEFT JOIN LATERAL (
          SELECT json_build_object('resultado', s.resultado, 'nota', s.nota,
                                   'cuando', ${HORA_MADRID('s.creado_at')}, 'quien', u.nombre) AS ultima
@@ -259,6 +332,7 @@ async function deRespuesta({ telefono, wamid, hoy }) {
 }
 
 module.exports = {
-  vehiculosPorMatricula, entreFechas, guardarImportacion, lista, una, cobertura, conductor,
+  vehiculosPorMatricula, vehiculoPorId, cochesCitables, entreFechas, guardarImportacion,
+  crearAMano, reponerAMano, lista, una, cobertura, conductor,
   paraAvisar, marcarAviso, marcarIntento, apuntarRespuesta, cambiarEstado, seguimiento, deRespuesta,
 };
