@@ -101,7 +101,7 @@ Medido el **21/10/2026** sobre las 106 unidades de la cuenta, con un script de a
 
 ### El gastado de la centralita: `can.fuel_total` (el bueno)
 
-Son los litros que la centralita lleva gastados desde siempre. Funciona como el odómetro: es acumulado, así que dos lecturas se restan y ya está. La foto viene en `unit/list` (`include[]=can`) y la serie en `unit_data/can_period.json` con **`include[]=total_fuel`** (junto a `total_distance` salen los km del mismo tramo).
+Son los litros que la centralita lleva gastados desde siempre (con un decimal). Funciona como el odómetro: es acumulado, así que dos lecturas se restan y ya está. **Solo sube al quemar gasolina: al repostar no se mueve** (ver [[#Repostajes: se ven en el nivel, no en el gastado]]). La foto viene en `unit/list` (`include[]=can`) y la serie en `unit_data/can_period.json` con **`include[]=total_fuel`** (junto a `total_distance` salen los km del mismo tramo).
 
 - **Solo lo dan 38 Toyota Corolla.** Ningún Ioniq ni Ford lo trae.
 - **Llega cada pocas horas**: de 30 a 126 lecturas por semana, contra una cada 90 segundos del odómetro. Vale para semana, mes o día. Para un turno sale aproximado, porque el borde puede caer horas antes o después.
@@ -109,10 +109,13 @@ Son los litros que la centralita lleva gastados desde siempre. Funciona como el 
 
 ### El nivel del depósito: `fuel` de `unit/list`
 
-`[{ type: 'CAN', no: 1, metrics: 'L', value, last_update }]` son los litros que marca el aforador, leídos por el CAN, en litros enteros. Sirve para la foto: cuánto lleva ahora.
+`[{ type: 'CAN', no: 1, metrics: 'L', value, last_update }]` son los litros que marca el aforador, leídos por el CAN, en litros enteros. La serie está en **`fuel/data.json`** (`unit_id` sin corchetes, `from`, `till`): `data.can.values = [{ gmt, value }]`.
 
 - Trae valor en 88 unidades: 57 de 64 Toyota, 22 de 24 Ioniq, los 9 Ford y ninguna de las 9 sin modelo. 16 tienen la lectura de hace más de un día.
-- En los Ford, `can.can_fuel` es el mismo número repetido.
+- **En vivo solo con el coche encendido.** Lee cada **28 segundos** de mediana mientras anda, y en `unit/list` la lectura va una mediana de **1,6 minutos** por detrás (47 coches en marcha el 21/10/2026). Apagado, el CAN se duerme y se queda la última: en los 41 parados la lectura tenía una mediana de 7 horas.
+- Baila poco: en dos minutos, 1 L como mucho (p95). Toyota, unas 6.100 lecturas por semana; Ioniq, unas 450, que también bastan.
+- **Techo del aforador**: 31 Toyota no marcan nunca más de **40 L**, 19 llegan a 45 y los Ioniq a 43–44. Lo que se eche por encima del techo no se ve.
+- Los **Ford no tienen serie** (0 lecturas en la semana): solo la foto, y vieja. En ellos, `can.can_fuel` es el mismo número repetido.
 - `fuel_tank` (la capacidad del depósito) solo está puesta en **una unidad**, el 3035LTX (43 L).
 
 ### Lo que Mapon calcula del nivel: `fuel/changes.json` y `fuel/summary.json` (hoy no vale)
@@ -122,7 +125,7 @@ Son los litros que la centralita lleva gastados desde siempre. Funciona como el 
 > [!warning] En Madrid no detecta ni un repostaje
 > En la semana medida, la flota gastó unos 5.500 L según la centralita y Mapon **no vio ni un repostaje en Madrid**. Solo tiene eventos el **3035LTX** (Barcelona), que es justo la única unidad con la capacidad del depósito puesta. Todo apunta a que sin `fuel_tank` no detecta nada, pero no está confirmado con Mapon.
 >
-> Ni ahí es fiable: de 24 eventos, los de verdad son 4, de +24 a +32 L, todos en la gasolinera de Carrer de la Ciutat d'Asunción (08030). El resto son subidas de +5 o +6 L en mitad de la calle cada pocas horas, el aforador bailando.
+> Ni ahí es fiable: de 24 eventos, los de verdad son 5, de +24 a +32 L, todos en la gasolinera de Carrer de la Ciutat d'Asunción (08030). El resto son subidas de +5 o +6 L en mitad de la calle cada pocas horas, el aforador bailando.
 
 Sin repostajes, `total_consumed` (nivel de inicio − nivel de fin + repostado) no dice nada: **43 coches salen con consumo negativo**. Los 33 Toyota de arriba suman −59 L según el nivel, contra 5.478 L reales. Caso del **0348MMZ**: 15 L según el nivel y 140,5 L según la centralita.
 
@@ -131,6 +134,18 @@ Otros campos que parecen de combustible y no lo son:
 - **`avg_fuel_consumption`** es `{ norm, measurement: 'l/100km' }`: una norma puesta a mano (0 en casi todas, 4,3 en algunas), no una medida.
 - **`fuel_type`** (P, D o vacío) también es de la ficha de Mapon, puesta a mano.
 - Los eventos traen `driver_id: 0`: Mapon no sabe quién conducía. El conductor sale del libro de turnos, como en `route/list`.
+
+### Repostajes: se ven en el nivel, no en el gastado
+
+Camilo, 21/10/2026: *«si alguien reposta, ¿el fuel_total sube y así podemos decir "Repostó"?»*. No: el gastado solo cuenta lo quemado. Lo que delata un repostaje es **el nivel, que sube de golpe**. Medido sobre la semana del 14 al 21/10/2026, solo lectura (scripts fuera del repo, en «Scripts de análisis», carpeta `mapon-combustible`):
+
+- **El gastado no reacciona.** En 31 Toyota, 1.472 pasos, ninguno hacia abajo, y nunca más de 4,7 L/h, que es lo que quema un coche en autovía. En 50 repostajes con lecturas del gastado a menos de una hora a cada lado, se movió una mediana de **0,5 L** (máx. 3,6) mientras el nivel subía de 10 a 28 L.
+- **El nivel salta en segundos**: 11 → 39 L en una lectura (0454MMZ, 15/10 04:40), 26 → 39 L en 17 segundos (1210MJY). Detector usado: mediana de las 5 lecturas siguientes − mediana de las 5 anteriores **≥ 10 L**, y como mucho uno cada 45 minutos.
+- **509 repostajes en 68 coches** (51 Toyota y 17 Ioniq), unos 7 por coche y semana, con una subida mediana de **17 L**: repostan a medias, no llenan.
+- **Caen en gasolineras.** Con la última posición GPS antes del salto (`unit_data/history_point.json` con `include[]=position`; `datetime` en UTC), el **73 %** cae en sitios con 3 repostajes o más. Los tres primeros: Vicálvaro, junto a Calle del Parque Biológico 7 (61 repostajes, 21 coches; sin confirmar qué gasolinera es), Calle Valgrande, Alcobendas (42 repostajes, 16 coches; hay una Petroprix en el n.º 11 y una Ballenoil en el 30) y Calle Secoya 12, 28054 (35 repostajes, 20 coches; Petroprix).
+- **El litro de cada repostaje sale corto.** Por el techo del aforador, en 18 Toyota la semana cuadra en **2.971 L repostados** (nivel final − nivel inicial + gastado) contra **2.364 L** sumando las subidas: un **20 % menos**. Cuántas veces, cuándo y dónde, sí. Los litros de la semana, por el cuadre, solo en los Toyota con gastado.
+- Por debajo de 10 L hay de todo: 81 subidas de 7 a 10 L (pueden ser rellenos hasta arriba) y cientos de 3 a 5 L, que son el baile. El umbral de 10 L deja fuera algún relleno pequeño.
+- Mapon no vio **ninguno** de estos repostajes en `fuel/changes.json` (ver arriba).
 
 **En el ERP** solo lo usa la auditoría de flota: `mapon.leerCombustible` (changes + summary) desde `modules/Operaciones/auditoria.service.js`, una pantalla que casi no se usa (ver [[Auditoria de flota]]). Con lo de arriba, sus repostajes de Madrid salen vacíos. El consumo de verdad, el de `can.fuel_total`, no lo lee nadie todavía.
 
