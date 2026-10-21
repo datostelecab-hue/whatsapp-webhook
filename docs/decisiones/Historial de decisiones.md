@@ -7,6 +7,10 @@ actualizado: 2026-10-21
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-21 · Una J aprobada se ve al momento en la bitácora
+
+*«Ya muestra como aprobada, ¿por qué demoró tanto?»* La bitácora guarda su rejilla tres minutos y solo la tiraba al escribir desde ella. Ahora cualquier cambio de una J, desde /justificantes o Control, la tira. *«Sí, hazlo.»* → [[Bitacora#La caché]]
+
 ## 2026-10-21 · Citas del taller también a mano
 
 *«Dame un botón en mantenimientos para poner citas de taller a mano, no solamente por medio del excel.»* «Nueva cita» en la pestaña de las citas y «Poner cita» en la ficha del coche, con las reglas de una fila del Excel. Una cita a mano es la misma fila sin fichero, sin migración. → [[Citas del taller#A mano: «Nueva cita» (21/10/2026)]]

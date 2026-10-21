@@ -24,6 +24,23 @@ const TIPOS_J = [
 ];
 const ES_TIPO_J = new Set(TIPOS_J.map(t => t.codigo));
 
+// ── QUIEN GUARDA LAS J EN CACHÉ SE ENTERA DE QUE CAMBIAN (21/10/2026) ───────
+// La bitácora guarda su rejilla tres minutos y solo la tiraba al escribir desde
+// ella misma. Una J aprobada en /justificantes —la del 11/10 de Jorge Eduardo
+// Rodríguez Lezcano, aprobada a las 17:37:51— seguía «pendiente» en la bitácora
+// hasta que pasaban los tres minutos. Toda J se escribe aquí (la bitácora,
+// /justificantes y Control), así que es aquí donde se avisa: quien guarda copia
+// se apunta con `avisarCambios` y la tira. Solo tras un cambio que salió bien, y
+// un aviso que falla no tumba la escritura, que ya está hecha.
+const alCambiar = new Set();
+/** Para quien guarda las J en caché: `fn` se llama después de cada cambio. */
+const avisarCambios = fn => { alCambiar.add(fn); };
+function cambiaron() {
+  alCambiar.forEach(fn => {
+    try { fn(); } catch (e) { console.error('⚠️ [Justificantes] aviso de cambio:', e.message); }
+  });
+}
+
 /**
  * Guarda/actualiza el justificante del día y pone la 'J' en la bitácora, por
  * conductor_id ya resuelto. `diaIso` = 'AAAA-MM-DD'. `horas` = horas QUE SE
@@ -47,7 +64,7 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usu
     horasSeg = Math.round(n * 3600);
   }
 
-  return db.transaccion(async cli => {
+  const res = await db.transaccion(async cli => {
     // Una libranza puesta A MANO por RRHH no se pisa con una J sin que nadie lo
     // vea: antes la J la machacaba y, al anularla, se borraba la fila entera y
     // la L manual desaparecía sin aviso.
@@ -77,6 +94,8 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usu
       [conductorId, diaIso, justId]);
     return { ok: true, conductorId, justificanteId: justId, enBitacora: true };
   });
+  cambiaron();
+  return res;
 }
 
 /**
@@ -142,7 +161,7 @@ async function anularPorId({ conductorId, diaIso }) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
-  return db.transaccion(async cli => {
+  const res = await db.transaccion(async cli => {
     const r = await cli.query(
       `UPDATE justificante SET anulado_at = now()
         WHERE conductor_id = $1 AND dia_operativo = $2::date AND anulado_at IS NULL
@@ -154,6 +173,8 @@ async function anularPorId({ conductorId, diaIso }) {
     await quitarMarcaJ(cli, cid, diaIso, r.rows[0].id);
     return { ok: true, justificanteId: r.rows[0].id };
   });
+  cambiaron();
+  return res;
 }
 
 // ── LA APROBACIÓN (el módulo /justificantes) ────────────────────────────────
@@ -266,6 +287,7 @@ async function aprobar(id, { usuarioId } = {}) {
       WHERE id = $1 AND aprobado_at IS NULL AND anulado_at IS NULL
       RETURNING id`, [Number(id), usuarioId || null]);
   if (!r.rows.length) throw new Error('Esa J no está pendiente (ya se aprobó, se rechazó, o no existe)');
+  cambiaron();
   return { ok: true, id: String(id) };
 }
 
@@ -277,7 +299,7 @@ async function aprobar(id, { usuarioId } = {}) {
 async function rechazar(id, { usuarioId, motivo } = {}) {
   motivo = String(motivo || '').trim();
   if (!motivo) throw new Error('El motivo del rechazo es obligatorio: el que la puso tiene que saber por qué');
-  return db.transaccion(async cli => {
+  const res = await db.transaccion(async cli => {
     const r = await cli.query(
       `UPDATE justificante SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
         WHERE id = $1 AND anulado_at IS NULL
@@ -287,6 +309,8 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
     await quitarMarcaJ(cli, j.conductor_id, j.dia_operativo, j.id);
     return { ok: true, id: String(j.id) };
   });
+  cambiaron();
+  return res;
 }
 
 /**
@@ -332,6 +356,7 @@ async function cerrar(id, { usuarioId, nota } = {}) {
       WHERE id = $1 AND anulado_at IS NOT NULL AND cerrada_at IS NULL
       RETURNING id`, [Number(id), usuarioId || null, nota.slice(0, 300)]);
   if (!r.rows.length) throw new Error('Esa J no está rechazada, o ya se había cerrado');
+  cambiaron();
   return { ok: true, id: String(id) };
 }
 
@@ -341,6 +366,7 @@ async function reabrir(id) {
     `UPDATE justificante SET cerrada_at = NULL, cerrada_por = NULL, cerrada_nota = NULL
       WHERE id = $1 AND cerrada_at IS NOT NULL RETURNING id`, [Number(id)]);
   if (!r.rows.length) throw new Error('Esa J no estaba cerrada');
+  cambiaron();
   return { ok: true, id: String(id) };
 }
 
@@ -373,6 +399,6 @@ async function cuentas({ desde, hasta } = {}) {
 }
 
 module.exports = {
-  guardarPorId, anularPorId, leerPorFecha, TIPOS_J,
+  guardarPorId, anularPorId, leerPorFecha, TIPOS_J, avisarCambios,
   listar, pendientesPorTipo, aprobar, rechazar, rehacer, cerrar, reabrir, cuentas,
 };

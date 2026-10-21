@@ -148,6 +148,8 @@ La rejilla se rehace en cada carga y es cara, así que se cachea **tres minutos*
 
 Pero **al escribir se tira**: al poner una J, anularla o marcar una libranza, la caché se invalida, para que el cambio salga **ya** y no dentro de tres minutos — que es cuando quien lo hizo ya se ha ido.
 
+**Y también cuando la J cambia en otra pantalla** (21/10/2026). Aprobarla, rechazarla, rehacerla, cerrarla o reabrirla en [[Justificantes|/justificantes]], o ponerla desde Control, no avisaba a la bitácora. La J del 11/10 de Jorge Eduardo Rodríguez Lezcano se aprobó a las 17:37:51, 33 s después de ponerla, y la bitácora la siguió enseñando «pendiente» hasta que caducó la caché. Ahora toda escritura de una J pasa por `services/repo/justificantes`, que avisa a quien se haya apuntado con `avisarCambios`; la bitácora se apunta al cargarse. Comprobador: `node scripts/comprobar-cache-justificantes.js`. La pantalla abierta sigue sin refrescarse sola: hay que recargarla.
+
 ## Justificar y librar
 
 - **Justificar** es con **horas exactas**, no con las 8 fijas. Va por `conductor_id`, que es lo que trae la vista: **el nombre no identifica**.

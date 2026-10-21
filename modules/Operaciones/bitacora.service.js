@@ -17,6 +17,9 @@
 //    cada carga y es cara; refrescar la pantalla no puede repetirla entera. Pero
 //    al poner una J o una libranza la caché se tira, para que el cambio salga YA
 //    y no dentro de tres minutos — que es cuando quien lo hizo ya se ha ido.
+//    Y TAMBIÉN cuando la J cambia en otra pantalla (21/10/2026): aprobarla o
+//    rechazarla en /justificantes, o ponerla desde Control. El repositorio de
+//    las J avisa (`justificantes.avisarCambios`).
 //
 // 3. LO PASADO ESTÁ SELLADO. `bitacora_horas` guarda el histórico ya calculado,
 //    y por eso un mes cerrado sigue diciendo lo mismo mañana. Resellar es la
@@ -40,6 +43,8 @@ let cacheVac = null, tsVac = 0;
 
 /** Que la próxima carga muestre lo que se acaba de escribir. Ver la nota 2. */
 const olvidar = () => { cache = null; };
+// Una J que cambia en otra pantalla también la tira (nota 2).
+justificantes.avisarCambios(olvidar);
 
 /** LA REJILLA. Ver la nota 1: la misma para las dos pantallas. */
 async function datos() {
