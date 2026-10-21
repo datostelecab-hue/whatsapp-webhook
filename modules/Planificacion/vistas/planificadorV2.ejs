@@ -68,7 +68,7 @@
   <div id="panel-fichaje" class="hidden mb-4"></div>
 
   <%# LAS BASES (05/10/2026, Camilo). El planificador empieza por las cinco bases,
-      por nombre (de Alcobendas a Usera), y debajo todos sus cuadrantes, base a
+      por nombre (en orden alfabético), y debajo todos sus cuadrantes, base a
       base y cada una de mejor a peor (iceberg.js). Cada tarjeta dice de un
       vistazo cómo está su base: la barra es su iceberg (completos, con plazas
       vacías, sin nadie) y debajo, lo que le falta. Pincharla deja solo esa. %>
@@ -205,6 +205,12 @@
     <% if (puedeEditar) { %>
     <button id="btn-nuevo-cua" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
       <i class="fa-solid fa-plus"></i>Nuevo cuadrante
+    </button>
+    <%# LAS ZONAS (21/10/2026): crear una, o cambiarle el nombre o la
+        ubicación. A un cuadrante se le cambia la zona desde su cabecera. %>
+    <button id="btn-zonas" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm transition"
+            title="Crear una zona, o cambiarle el nombre o la ubicación a una">
+      <i class="fa-solid fa-location-dot"></i>Zonas
     </button>
     <% } %>
     <button id="btn-avisos" class="ml-auto hidden items-center gap-2 px-3 py-2 rounded-xl bg-telecab-warn/10 border border-telecab-warn/30 text-telecab-warn text-sm">
@@ -1262,13 +1268,19 @@
                 ${nombre ? 'bg-telecab-violet/10 text-telecab-violet border-telecab-violet/30' : 'border-dashed border-telecab-border text-telecab-muted'} hover:border-telecab-gold/50">
               <i class="fa-solid fa-user-group"></i>CT ${turno}: ${nombre ? esc(nombre) : 'asignar'}${libra ? ` <span class="text-telecab-muted">libra ${esc(libra)}</span>` : ''}</button>`;
     };
+    // La zona del cuadrante. Quien puede editar la cambia aquí mismo
+    // (21/10/2026): sus coches van con él.
+    const zonaCab = !PUEDE_EDITAR ? (cu.zona ? esc(cu.zona) + ' · ' : '')
+      : `<button type="button" data-zona-cua title="Cambiar la zona de este cuadrante: sus coches van con él"
+                 class="tc-pulsable inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-telecab-gold">
+           <i class="fa-solid fa-location-dot text-[10px]"></i>${cu.zona ? esc(cu.zona) : 'poner zona'}</button> · `;
     const cab = document.createElement('div');
     cab.className = 'flex flex-wrap items-center gap-2 mb-2';
     cab.innerHTML = `
       <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex items-center gap-2">
         <span class="w-2 h-2 rounded-full ${ESCALON[escalonDe(cu)].punto}" title="${esc(ESCALON[escalonDe(cu)].tit)}"></span>
         ${esc(cu.nombre)}
-        <span class="text-telecab-muted font-normal normal-case">${cu.zona ? esc(cu.zona) + ' · ' : ''}${conCT.length} bloque(s)${
+        <span class="text-telecab-muted font-normal normal-case">${zonaCab}${conCT.length} bloque(s)${
           nSinCT ? ` · ${nSinCT} sin correturnos` : ''}</span>
       </h3>
       ${horasDelCuadrante(cu)}
@@ -1286,6 +1298,8 @@
     cab.querySelector('[data-ct="noche"]').addEventListener('click', () =>
       asignarCTCuadrante(cu.id, 'noche', conCT, (ctNoche && ctNoche !== 'varios') ? ctNoche.id : null));
     cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(cu.id, cu.nombre));
+    const bZona = cab.querySelector('[data-zona-cua]');
+    if (bZona) bZona.addEventListener('click', () => cambiarZonaDe(cu, lista.length));
     sec.appendChild(cab);
     if (lista.length) {
       sec.appendChild(cochesEnVista(lista, true));
@@ -2541,6 +2555,85 @@
     return j;
   }
 
+  // ── Zonas: las bases (21/10/2026) ─────────────────────────────────────────
+  // Crear una zona, cambiarle el nombre o la ubicación, y pasar un cuadrante a
+  // otra. Lo pidió Camilo el día que los coches de Usera pasaron a Getafe y se
+  // abrió Aravaca. La ubicación la lee el servidor (ubicacion.js): coordenadas o
+  // el enlace largo de Google Maps, y si no la entiende dice qué hacer.
+  const AYUDA_UBICACION = 'Las coordenadas de la base («40.4617, -3.7856»: en Google Maps, clic derecho sobre el sitio y se copian) o el enlace largo de Google Maps. Sirven para proponer la zona más cercana al buscar correturnos.';
+
+  async function gestionarZonas() {
+    const porClave = new Map(bases().map(b => [String(b.clave), b]));
+    const opciones = (T.zonas || []).map(z => {
+      const b = porClave.get(String(z.id)) || {};
+      const n = b.cochesTotal || 0, c = b.cuadrantes || 0;
+      return { valor: String(z.id), texto: `${z.nombre} (${n
+        ? `${n} coche${n === 1 ? '' : 's'} en ${c} cuadrante${c === 1 ? '' : 's'}`
+        : (c ? `${c} cuadrante${c === 1 ? '' : 's'} sin coches` : 'sin cuadrantes')})` };
+    });
+    opciones.push({ valor: '__nueva__', texto: 'Nueva zona…' });
+    const datos = await Dialogo.formulario('Zonas', [
+      { id: 'zona', etiqueta: 'Elige una para cambiarle el nombre o la ubicación', tipo: 'lista', opciones, obligatorio: true },
+    ], { textoBoton: 'Seguir', nota: 'Las zonas son las bases del planificador. A un cuadrante se le cambia la zona desde su cabecera.' });
+    if (!datos || !datos.zona) return;
+    await editarZona(datos.zona === '__nueva__' ? null : (T.zonas || []).find(z => String(z.id) === datos.zona));
+  }
+
+  /**
+   * Crear una zona (`zona` vacía) o editarla. Si el servidor no la acepta, el
+   * formulario vuelve con lo escrito y el motivo.
+   */
+  async function editarZona(zona) {
+    let valores = {
+      nombre: zona ? zona.nombre : '',
+      ubicacion: zona && zona.lat != null ? `${zona.lat}, ${zona.lng}` : '',
+    };
+    for (;;) {
+      const datos = await Dialogo.formulario(zona ? `Zona ${zona.nombre}` : 'Nueva zona', [
+        { id: 'nombre', etiqueta: 'Nombre', tipo: 'texto', valor: valores.nombre, obligatorio: true, marcador: 'Aravaca' },
+        { id: 'ubicacion', etiqueta: 'Ubicación de la base', tipo: 'texto', valor: valores.ubicacion, obligatorio: true,
+          marcador: '40.4617, -3.7856', ayuda: AYUDA_UBICACION },
+      ], {
+        textoBoton: zona ? 'Guardar' : 'Crear zona',
+        nota: zona ? 'El nombre nuevo sale a la vez en todas las pantallas.'
+                   : 'Nace sin cuadrantes. Después creas uno en ella, o pasas uno que ya existe desde su cabecera.',
+      });
+      if (!datos) return;
+      valores = datos;
+      try {
+        const j = await pedirTablero(
+          zona ? `/planificador-v2/api/zonas/${encodeURIComponent(zona.id)}` : '/planificador-v2/api/zonas',
+          { nombre: datos.nombre, ubicacion: datos.ubicacion, dia: DIA });
+        // Si la renombrada es la base abierta, la dirección cambia con ella.
+        if (zona && ZONA === String(zona.id)) elegirBase(ZONA, { apilar: false });
+        Dialogo.hecho(zona ? `Zona ${j.zona.nombre} guardada` : `Zona ${j.zona.nombre} creada`);
+        return;
+      } catch (e) {
+        await Dialogo.aviso({ titulo: zona ? 'No se pudo guardar la zona' : 'No se pudo crear la zona', texto: e.message, tono: 'error' });
+      }
+    }
+  }
+
+  /** Pasar un cuadrante a otra zona. Con una base abierta, se va de la vista: se dice adónde. */
+  async function cambiarZonaDe(cu, nCoches) {
+    const opciones = (T.zonas || []).map(z => ({ valor: String(z.id), texto: z.nombre }));
+    const datos = await Dialogo.formulario(`Zona del ${cu.nombre}`, [
+      { id: 'zona', etiqueta: 'Zona', tipo: 'lista', opciones, obligatorio: true, valor: cu.zonaId ? String(cu.zonaId) : '' },
+    ], {
+      textoBoton: 'Cambiar zona',
+      nota: nCoches ? `Sus ${nCoches} coche${nCoches === 1 ? '' : 's'} pasa${nCoches === 1 ? '' : 'n'} con él: la zona de un coche es la de su cuadrante.`
+                    : 'Todavía no tiene coches.',
+    });
+    if (!datos || !datos.zona || datos.zona === String(cu.zonaId || '')) return;
+    try {
+      const j = await pedirTablero(`/planificador-v2/api/cuadrantes/${encodeURIComponent(cu.id)}/zona`,
+        { zonaId: Number(datos.zona), dia: DIA });
+      Dialogo.hecho(`${cu.nombre} pasa a ${j.zona}`);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo cambiar la zona', texto: e.message, tono: 'error' });
+    }
+  }
+
   async function nuevoCuadrante() {
     const zonas = (T.zonas || []).map(z => ({ valor: String(z.id), texto: z.nombre }));
     if (!zonas.length) { await Dialogo.aviso({ titulo: 'Sin zonas', texto: 'No hay zonas dadas de alta.', tono: 'aviso' }); return null; }
@@ -3192,6 +3285,7 @@
   $('#btn-avisos').addEventListener('click', () => $('#avisos').classList.toggle('hidden'));
   // Estos dos no existen en modo solo lectura (los quita la plantilla).
   if ($('#btn-nuevo-cua')) $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
+  if ($('#btn-zonas')) $('#btn-zonas').addEventListener('click', gestionarZonas);
   if ($('#btn-evento')) $('#btn-evento').addEventListener('click', abrirEvento);
   if ($('#btn-fichaje')) $('#btn-fichaje').addEventListener('click', abrirFichaje);
 

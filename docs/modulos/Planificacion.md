@@ -25,6 +25,8 @@ El módulo vive en `modules/Planificacion/`. Se entra por dos puertas y nunca po
 /planificador-v2/api/guardar     POST   mover gente entre plazas
 /planificador-v2/api/eventos            el modo eventos (CT2 abiertas unos días)
 /planificador-v2/api/incorporaciones    la alerta de quien acaba de entrar
+/planificador-v2/api/zonas       POST   crear una zona; /:id, cambiarle nombre o ubicación
+/planificador-v2/api/cuadrantes/:id/zona  POST  pasar un cuadrante a otra zona
 /cobertura                              qué plazas quedan sin cubrir
 /cobertura/enviar-turnos         POST   el aviso por WhatsApp
 ```
@@ -33,7 +35,7 @@ El módulo vive en `modules/Planificacion/`. Se entra por dos puertas y nunca po
 
 Camilo: *«lo que necesitamos resolver del planificador es que no tenemos ordenada la información de forma ejecutiva para poder asignar los conductores a cada uno de los coches»*. Hasta ese día los cuadrantes salían por su **número**, que es el orden en que se crearon y no dice nada de cómo van.
 
-**El planificador empieza por las cinco bases**: Alcobendas, Alcorcón, Canillejas, Getafe y Usera, por nombre. Cada base es una tarjeta que dice de un vistazo cómo está: una barra con su iceberg (verde completos, naranja con plazas vacías, rojo sin nadie) y debajo lo que le falta («Faltan 2 fijos · 10 CT»).
+**El planificador empieza por las bases**, por nombre: hoy Alcobendas, Alcorcón, Aravaca, Canillejas y Getafe (Usera se cerró el 21/10/2026, ver «Las zonas»). Cada base es una tarjeta que dice de un vistazo cómo está: una barra con su iceberg (verde completos, naranja con plazas vacías, rojo sin nadie) y debajo lo que le falta («Faltan 2 fijos · 10 CT»).
 
 **Sin pulsar nada se ven todos los cuadrantes** (Camilo, 06/10/2026): base a base en el orden de las tarjetas, cada base con su cabecera (coches, cuadrantes, lo que le falta y «Ver solo …»), y dentro de cada una su iceberg. Los coches sin cuadrante van al final, bajo «Sin base». El primer día (05/10) sin base abierta no se pintaba ningún cuadrante; a Camilo le servía más verlo todo de un golpe.
 
@@ -69,6 +71,21 @@ Un **cuadrante** va en el escalón de sus coches —completo si lo están todos,
 **La base abierta viaja en la dirección** (`/planificador#base=getafe`): recargar o pasar el enlace abre la misma base, y «atrás» vuelve a las bases en vez de salir del planificador. Crear un cuadrante con una base abierta lo crea en ella y lleva la vista hasta él (un cuadrante vacío va al fondo del iceberg).
 
 Lo que **no** cambió: crear y editar cuadrantes, bloques, CT, eventos y fichaje funcionan igual. La **parrilla impresa** sigue por número de cuadrante: es papel colgado en la pared y ahí se busca por número.
+
+## Las zonas: crear, renombrar y mover cuadrantes (21/10/2026)
+
+Camilo: *«Deja editar también los nombres o crear nuevas zonas, porque los coches de Usera pasarán a Getafe y toca crear una nueva llamada Aravaca»*. Hasta ese día una zona (`base_zona`) solo se daba de alta por SQL, y un cuadrante se quedaba para siempre en la zona con la que nació.
+
+- **«Zonas»**, al lado de «Nuevo cuadrante»: se elige una zona para cambiarle el nombre o la ubicación, o «Nueva zona…». La lista dice cuántos coches y cuadrantes tiene cada una. Una zona nueva nace sin cuadrantes y sale como tarjeta con 0 coches.
+- **La zona de un cuadrante se cambia en su cabecera**: el nombre de la zona, subrayado, se pulsa y se elige otra. **Sus coches van con él**, porque la zona de un coche es la de su cuadrante (db/91). Con una base abierta, el cuadrante se va de la vista y un aviso dice adónde.
+- **La ubicación es obligatoria** (la tabla la exige): el generador de vacantes la usa para proponer la zona más cercana cuando una no completa un correturnos. Vale lo que da Google Maps tal cual: las coordenadas del clic derecho («40.4617, -3.7856»), las mismas con coma decimal, o el **enlace largo** de la barra del navegador. El enlace corto (`maps.app.goo.gl`) no lleva las coordenadas y se dice qué hacer. Unas coordenadas al revés o fuera de España se rechazan con el motivo. Lo lee `modules/Planificacion/ubicacion.js`.
+- **Solo las zonas activas.** Barcelona existe como etiqueta de sus coches y está inactiva a propósito (db/76): ni se renombra ni se elige, y si alguien intenta crear «Barcelona» se le dice por qué no sale. «Sin base» tampoco puede ser una zona: es como el planificador llama a los coches que no tienen ninguna. Dos zonas no pueden llamarse igual (sin mirar mayúsculas).
+- **Cada cambio queda apuntado** en `cambio_campo` (services/repo/auditoria) con quién lo hizo: el alta (`base_zona`, campo `alta`), cada campo que cambia al editar, y el paso de un cuadrante (`cuadrante`, campo `zona`, de qué zona a cuál). La tabla de zonas no tiene columnas para eso.
+- **Quién puede**: quien edita el planificador. Son POST, así que los cierra `controlAcceso` con `/planificador/editar`, como todo lo que escribe aquí. Sin ese permiso la zona del cuadrante es texto y no sale «Zonas».
+- **Sin migración.** SQL en `modules/Planificacion/zonas.repo.js`, entrada por `tablero.service` (`crearZona`, `editarZona`, `cambiarZonaCuadrante`). Pruebas en `scripts/comprobar-zonas.js`.
+
+> [!note] Usera → Getafe, Aravaca, y Usera fuera (21/10/2026)
+> Lo hizo Claude en producción, a petición de Camilo. Los **9 cuadrantes vivos de Usera** (3, 5, 6, 8, 9, 10, 15, 19 y 36, 18 coches) pasaron a **Getafe**, que quedó con 17 cuadrantes y 34 coches. Se creó **Aravaca** (id 10) a 0, hasta que William le pase cuadrantes a mano, con las coordenadas **aproximadas del centro del barrio** (40.4617, -3.7856): se corrigen desde «Zonas» con las de la base. Después Camilo pidió *«Elimina a Usera de la db, no la necesitamos ya»*: lo que aún le apuntaba —4 cuadrantes ya borrados (2, 7, 14, 37), 2 vacantes cerradas (15, 20) y 3 candidaturas de la bolsa ETT (24, 25, 37)— pasó también a Getafe, y la fila de Usera (id 2, 40.373329, -3.713892) se borró. Todo queda en `cambio_campo` a nombre de Camilo, con «Usera» en el valor de antes. `vacante_archivo_20260924` (la copia congelada de las vacantes, sin clave foránea) sigue con `base_zona_id = 2` en seis filas: es archivo. Las tablas `bi_*` guardan «Usera» como texto en lo que ya se calculó.
 
 ## El clásico y el V2: ya no son dos
 

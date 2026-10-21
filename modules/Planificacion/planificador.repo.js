@@ -762,8 +762,10 @@ async function tablero({ dia } = {}) {
   // `SELECT *` a propósito: `orden` lo puso db/178 y lo quitó db/179 el mismo
   // día, y el tablero no puede caerse por una columna que va y viene. Sin ella,
   // las bases van por nombre (iceberg.js).
+  // Con su ubicación, para el formulario de «Zonas» (21/10/2026).
   const zonasBase = (await db.consulta('SELECT * FROM base_zona WHERE activa')).rows
-    .map(z => ({ id: z.id, nombre: z.nombre, orden: z.orden == null ? null : Number(z.orden) }));
+    .map(z => ({ id: z.id, nombre: z.nombre, orden: z.orden == null ? null : Number(z.orden),
+                 lat: z.lat == null ? null : Number(z.lat), lng: z.lng == null ? null : Number(z.lng) }));
 
   // EL ICEBERG (05/10/2026): las bases, el escalón y las horas instaladas de
   // cada coche y cuadrante, y las tarjetas de cada base. Ver iceberg.js.

@@ -10,6 +10,8 @@ trabaja y la parrilla que se imprime.
 /planificador-v2/api/guardar     POST  mover gente entre plazas
 /planificador-v2/api/eventos           el modo eventos (CT2 abiertas unos días)
 /planificador-v2/api/incorporaciones   la alerta de quien acaba de entrar
+/planificador-v2/api/zonas       POST  crear una zona (/:id, editarla)
+/planificador-v2/api/cuadrantes/:id/zona  POST  pasar un cuadrante a otra zona
 /cobertura                             qué plazas quedan sin cubrir
 /cobertura/enviar-turnos         POST  el aviso por WhatsApp
 ```
@@ -21,6 +23,8 @@ tablero.controller.js     HTTP. No decide nada.
 tablero.service.js        el cuadrante, y LA PUERTA del módulo
 planificador.repo.js      el SQL del cuadrante (2.262 líneas)
 iceberg.js                las bases y el orden de mejor a peor (puro, sin base)
+zonas.repo.js             las zonas: crear, renombrar, pasar un cuadrante a otra
+ubicacion.js              las coordenadas de una zona desde lo que se pega (puro)
 eventos.repo.js           las plazas de refuerzo con fecha de caducidad
 cobertura.controller.js   HTTP de la semana y del aviso
 cobertura.service.js      a quién se avisa, a qué ritmo y qué se apunta

@@ -32,6 +32,8 @@
 
 const plan = require('./planificador.repo');
 const eventos = require('./eventos.repo');
+const zonas = require('./zonas.repo');
+const { leerUbicacion } = require('./ubicacion');
 const inc = require('../Seleccion/incorporaciones.service');   // la puerta de Selección
 // Por la PUERTA de los otros módulos, no por su repositorio.
 const veh = require('../Vehiculos/vehiculos.service');
@@ -180,6 +182,32 @@ async function crearCuadrante(zonaId, quien) {
 }
 
 const borrarCuadrante = async (id, dia) => conTablero(await plan.borrarCuadrante(id), dia);
+
+// ── Zonas: las bases (21/10/2026) ──────────────────────────────────────────
+// Crear una zona, cambiarle el nombre o la ubicación, y pasar un cuadrante a
+// otra. La ubicación llega como la pega la gente (coordenadas o un enlace de
+// Google Maps) y la lee `ubicacion.js`. Ver zonas.repo.js.
+
+async function crearZona(b, quien) {
+  const { lat, lng } = leerUbicacion(b.ubicacion);
+  const r = await zonas.crearZona({ nombre: b.nombre, lat, lng }, quien);
+  console.log(`📍 [TABLERO] Zona «${r.zona.nombre}» creada (${lat}, ${lng})`);
+  return conTablero(r, b.dia);
+}
+
+async function editarZona(id, b, quien) {
+  const { lat, lng } = leerUbicacion(b.ubicacion);
+  const r = await zonas.editarZona(id, { nombre: b.nombre, lat, lng }, quien);
+  console.log(`📍 [TABLERO] Zona ${id}: «${r.antes}» → «${r.zona.nombre}» (${lat}, ${lng})`);
+  return conTablero(r, b.dia);
+}
+
+/** Pasar un cuadrante a otra zona: sus coches van con él. */
+async function cambiarZonaCuadrante(id, b, quien) {
+  const r = await zonas.cambiarZonaCuadrante(id, b.zonaId, quien);
+  if (r.cambiado) console.log(`📍 [TABLERO] Cuadrante ${id}: ${r.antes || 'sin zona'} → ${r.zona}`);
+  return conTablero(r, b.dia);
+}
 
 /** Añadir un bloque (matrícula + días de libranza) a un cuadrante. */
 const anadirBloque = async ({ cuadranteId, vehiculoId, dias, dia } = {}, quien) =>
@@ -391,6 +419,7 @@ module.exports = {
   guardar, comprobar, quitarRelevo, cambiarCoche, reemplazarMatricula,
   fijarDescanso, sinCorreturnos, cubrirAusencia, libranzaExcepcional, borrarLibranzaExcepcional,
   cuadrantes, crearCuadrante, borrarCuadrante, anadirBloque, meterCoche, asignarCT,
+  crearZona, editarZona, cambiarZonaCuadrante,
   eventoEstado, crearEvento, editarEvento, cancelarEvento, restaurarEvento, mensajeDeEvento,
   incorporaciones, colocarIncorporacion, aceptarIncorporacion, rechazarIncorporacion,
   guardarBarrio,

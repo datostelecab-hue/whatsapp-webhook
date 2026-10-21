@@ -186,7 +186,7 @@ function compararGrupos(a, b) {
 /**
  * Las bases activas por `base_zona.orden` si la columna existe y, si no, por
  * nombre. La columna la puso db/178 y la quitó db/179 el mismo 05/10/2026: hoy
- * van por nombre, de Alcobendas a Usera, que es como las quiere Camilo.
+ * van por nombre, en orden alfabético, que es como las quiere Camilo.
  */
 function ordenarZonas(zonas) {
   return [...(zonas || [])].sort((a, b) =>

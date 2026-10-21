@@ -162,6 +162,20 @@ router.post('/api/cuadrante/coche', responde(req => tablero.meterCoche(req.body 
 router.post('/api/cuadrante/ct', responde(async req =>
   tablero.asignarCT(req.body || {}, await quien(req))));
 
+// ── Zonas: las bases (21/10/2026) ──────────────────────────────────────────
+// Crear una zona, renombrarla o cambiarle la ubicación, y pasar un cuadrante a
+// otra. Son POST: las cierra `controlAcceso` con la llave de editar el
+// planificador, como todo lo que escribe aquí.
+
+router.post('/api/zonas', responde(async req =>
+  tablero.crearZona(req.body || {}, await quien(req))));
+
+router.post('/api/zonas/:id', responde(async req =>
+  tablero.editarZona(req.params.id, req.body || {}, await quien(req))));
+
+router.post('/api/cuadrantes/:id/zona', responde(async req =>
+  tablero.cambiarZonaCuadrante(req.params.id, req.body || {}, await quien(req))));
+
 // ── Modo eventos ───────────────────────────────────────────────────────────
 
 router.get('/api/eventos', responde(req => tablero.eventoEstado(req.query.dia)));
