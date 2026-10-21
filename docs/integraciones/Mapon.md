@@ -117,7 +117,7 @@ Son los litros que la centralita lleva gastados desde siempre (con un decimal). 
 - Baila poco: en dos minutos, 1 L como mucho (p95). Toyota, unas 6.100 lecturas por semana; Ioniq, unas 450, que también bastan.
 - **Techo del aforador**: 31 Toyota no marcan nunca más de **40 L**, 19 llegan a 45 y los Ioniq a 43–44. Lo que se eche por encima del techo no se ve.
 - **Solo litros enteros, en todas partes.** Ni `unit/list`, ni `fuel/data.json`, ni `unit_data/can_point.json` dan décimas ni porcentaje: en `can_point`, `fuel_level` sale vacío (`value: null`). Es la boya del depósito, la misma que mueve la aguja del cuadro, no un contador de caudal como el del surtidor.
-- Los **Ford no tienen serie** (0 lecturas en la semana): solo la foto, y vieja. En ellos, `can.can_fuel` es el mismo número repetido.
+- **Los Ford Mondeo van en PORCENTAJE y su serie está en otro sitio** (comprobado el 21/10/2026). En `fuel/data.json` les llega a ceros, pero `unit_data/can_period.json` con **`include[]=fuel_level`** trae la serie buena: una lectura cada 3 minutos, de 0 a 99 (tras repostar marca 94–97). En la foto (`fuel` y `can.can_fuel`, el mismo número) Mapon pone «L», pero es el % del depósito. Los repostajes se ven igual: 15, 13 y 16 en 14 días en el 2350LHP, el 5886LBZ y el 5912LBZ. Para pasarlo a litros hace falta la capacidad del depósito, de la ficha técnica o sacada de un par de tickets (litros ÷ % subido). No dan gasto de la centralita. Los Ford Tourneo (en «Reserva») llevan semanas sin datos.
 - `fuel_tank` (la capacidad del depósito) solo está puesta en **una unidad**, el 3035LTX (43 L).
 
 ### Lo que Mapon calcula del nivel: `fuel/changes.json` y `fuel/summary.json` (hoy no vale)
