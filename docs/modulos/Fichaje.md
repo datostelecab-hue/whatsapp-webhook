@@ -313,7 +313,7 @@ Y las asimetrías, que son deliberadas:
 - **El interruptor apaga el bloqueo, no el desbloqueo.** Si apagara los dos, apagar la función dejaría encerrados para siempre a los coches ya cortados, y el interruptor de seguridad sería justo lo que impide arreglarlo.
 - **Con el coche en marcha no se corta, pero soltar sí se intenta siempre.** Antes la regla valía para las dos cosas y eso cerró una trampa: el 5646MDM se quedó parado con el corte puesto y, como Mapon lo daba por "Conduciendo" a 0 km/h, no había forma de soltarlo —y sin soltarlo no se podía apagar, y sin apagarlo no dejaba de estar "conduciendo"—. Hubo que mandar la orden a mano. **Soltar no deja tirado a nadie nunca; negarse a soltar, sí.**
 - **Si ya está como se quiere, no se manda nada.** No es solo ahorrar una llamada: confirmar el cambio espera hasta diez segundos, y eso son diez segundos de silencio en una conversación de WhatsApp.
-- La orden se **confirma** contra el coche: `change_relay` solo dice que la orden salió. Lo que no se confirma se marca `reintentable`, para que el conductor sepa si tiene que hacer algo.
+- La orden se **confirma** contra el coche: `change_relay` solo dice que la orden salió. Lo que no se confirma se marca `reintentable`. Al terminar, el bot le dice entonces *«Queda apuntado para Tráfico: no tienes que hacer nada más»*. Hasta el 21/10/2026 decía «se reintentará solo cuando el coche lleve un rato parado», y desde el 30/09 no lo reintentaba nadie.
 
 ## Terminar con el coche en marcha (o encendido) no se puede
 
@@ -321,7 +321,25 @@ Terminar es lo que corta el motor, así que cerrar el turno rodando dejaría el 
 
 Con el contacto puesto, lo mismo un paso más cerca: el corte entra y el coche ya no se deja apagar. Primero se apaga, luego se termina.
 
-Las dos comprobaciones solo se hacen **si el corte está encendido** —sin él, terminar no inmoviliza nada— y **solo si sabemos** que va en marcha: si Mapon calla o la medida es vieja se le deja cerrar, porque **no saberlo no puede dejar a nadie atrapado**. El mensaje se lo dice con todas las letras: *"tu turno sigue abierto: no has perdido nada"*.
+Las dos comprobaciones solo se hacen **si el corte está encendido**: sin él, terminar no inmoviliza nada. El mensaje se lo dice con todas las letras: *"tu turno sigue abierto: no has perdido nada"*.
+
+### Con Mapon funcionando, apagado sí o sí (21/10/2026)
+
+Camilo, tras ver a Carlos Mario Cavadia terminar con el **0698MMZ** encendido: *«si Mapon está funcionando correctamente, que le diga siempre que debe apagar el coche, sí o sí; cuando Mapon falle o la API esté bloqueada, que pueda cerrar el turno»*. Lo decide `hayQueApagar` en `services/fichaje.js`, para «Terminar turno» y para el relevo:
+
+| Lo que dice Mapon en ese momento | ¿Cierra? |
+|---|---|
+| Mapon caído, bloqueado o sin contestar | **Sí**, como hasta ahora |
+| En marcha | No: *«primero aparca»* |
+| El coche no da señal desde hace más de 15 min (`FICHAJE_MAX_SIN_SENAL`) | **Sí**: lo que dice es de antes y el corte tampoco le llegaría (un garaje sin cobertura no puede dejar a nadie atrapado). El motor no se corta si lo último era «encendido» |
+| Encendido | **No**, lleve lo que lleve encendido: *«apaga el coche primero»* |
+| Apagado | Sí, y se bloquea |
+
+**Se le pregunta a Mapon en ese momento** por ese coche (`estadoMotor` → `unit/list` con `unit_id`), no a la ingesta, que va con unos minutos de retraso. Es a propósito la excepción a «las pantallas leen de PostgreSQL»: aquí un minuto de retraso es cortar un coche encendido.
+
+**El fallo que había.** Se comprobaba que la lectura del contacto fuera de los últimos 10 minutos, para no frenar a nadie con un dato viejo. Pero la hora que trae Mapon con el contacto **no es la de la lectura: es la hora a la que se encendió** (ver [[Trampas conocidas#La hora del contacto es la del encendido, no la de la lectura]]). Con más de 10 minutos encendido parecía un dato viejo y se le dejaba cerrar. Carlos terminó a las 02:53:28 del 21/10, con el coche encendido desde las 21:36 del día anterior. El corte se negó, como debe («el coche está encendido»), y el coche se quedó libre. Ese 21/10, de 59 coches encendidos, **50 llevaban más de 10 minutos**: casi cualquiera podía terminar con el coche encendido. Los coches parados con el contacto puesto mandan datos cada 1,5 minutos de mediana. En los 7 días anteriores, 2 de los 65 cierres que tenían que cortar acabaron sin bloquear por «el coche está encendido».
+
+Las pruebas no lo veían: el Mapon de mentira de `scripts/probar-corte-motor.js` no traía la hora del contacto. Ahora la trae como el de verdad (cinco horas encendido por defecto), y la sección 18 repite el caso del 0698MMZ.
 
 ## Una orden de motor por coche, y mirar después de cortar (11/10/2026)
 

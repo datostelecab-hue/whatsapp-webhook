@@ -728,8 +728,10 @@ async function cerrar(telefono) {
       : m.hecho
         ? (m.yaEstaba ? '\n🔒 El motor ya estaba bloqueado' : `\n🔒 Motor bloqueado hasta el próximo ${w.cosa}`) +
           (faltan ? `\n⚠️ Ojo: este coche lo lleva ${faltan}, sin el bloqueo encendido. Si lo necesita, Tráfico se lo suelta desde el planificador.` : '')
+        // Desde el 30/09 no hay repaso: nadie lo reintenta. Lo ve Tráfico en el
+        // ciclo de bloqueo de motor (21/10/2026; antes decía «se reintentará»).
         : `\n⚠️ El motor NO se ha bloqueado (_${m.motivo || 'motivo desconocido'}_)` +
-          (m.reintentable ? '\n_Se reintentará solo cuando el coche lleve un rato parado._' : '');
+          (m.reintentable ? '\n_Queda apuntado para Tráfico: no tienes que hacer nada más._' : '');
   const resumen = `🔴 *${w.Cosa} terminado*\n\n🚘 ${t.matricula}\n🕐 ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${dur})\n` +
     `🛣️ *${t.km == null ? '—' : t.km} km* recorridos${entrega}${motor}`;
 

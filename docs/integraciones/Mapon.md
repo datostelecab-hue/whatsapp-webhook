@@ -30,6 +30,7 @@ Mirado con un script de análisis (fuera del repo) sobre las **109 unidades** de
 
 - **`can`** en 94: `odom` (94), `engine_rpm_avg` (92), `fuel_total` (38) y `can_fuel` (9).
 - **`fuel` viene en las 109, aunque esté vacío**: `[{ type: 'CAN', value: null }]`. Solo 88 traen litros. Contar el bloque como «tiene combustible» daría la flota entera.
+- **`ignition`** es `{ gmt, value: 'on'|'off' }`, y su `gmt` es **la hora a la que se encendió o se apagó**, no la de la lectura. Si el dato es reciente lo dice `last_update`. Leído al revés, dejaba terminar turnos con el coche encendido (ver [[Trampas conocidas#La hora del contacto es la del encendido, no la de la lectura]]).
 - **`ev_values`** (los híbridos): `can_ev_battery_rel` es el % de la batería y `ev_charging` si carga (parado desde junio: son híbridos que no se enchufan). Lo del combustible, en [[#Combustible]].
 - **`relays`**: cada equipo enseña sus tres salidas, y **el corte cuenta solo con `enabled: 1`**. Hay corte configurado pero desactivado (`engine_block` con `enabled: 0`) en unidades que tienen otro activo; el título varía a mano («Bloqueo motor», «Bloque Motor», «Blqueo Motor»), así que se mira el `type`, nunca el título.
 - **`device`** solo trae `id`, `serial_number`, `imei` y `sim`: el modelo está en **`device/list.json`** (`model` + `model_ver`): 97 TELTONIKA FMC130 y 11 FMC880. `device/supported_models.json` da 1006 (sin permiso).

@@ -766,8 +766,16 @@ function contactoPuesto(v) {
   return null;
 }
 
-/** Cuándo se midió el contacto, en segundos desde entonces (null si no se sabe). */
-const contactoVisto = v => (v && typeof v === 'object' && v.gmt) ? segundosDesde(v.gmt) : null;
+/**
+ * Cuánto lleva el contacto como está, en segundos (null si no se sabe).
+ *
+ * OJO: el `gmt` del contacto es la hora a la que SE ENCENDIÓ (o se apagó), no la
+ * de la última lectura. Comprobado el 21/10/2026 en seis coches encendidos: todos
+ * daban justo la hora de su encendido (`unit_data/ignitions.json`), el 0626MMZ la
+ * de las 06:00 aunque mandaba datos al minuto. Si el dato es reciente lo dice
+ * `last_update` (`segSinSenal`), no esto.
+ */
+const contactoDesde = v => (v && typeof v === 'object' && v.gmt) ? segundosDesde(v.gmt) : null;
 
 /**
  * Relés y estado de marcha de UNA unidad.
@@ -801,9 +809,10 @@ async function relesDeUnidad(unitId) {
     velocidad: Number(u.speed) || 0,
     // Contacto: true / false / null (no lo sabemos).
     ignicion: contactoPuesto(ign),
-    // Y de cuándo es esa medida: con un dato viejo no se le dice a nadie que
-    // tiene el coche encendido.
-    ignicionSeg: contactoVisto(ign),
+    // Y cuánto lleva así. NO es la edad del dato (ver `contactoDesde`): hasta el
+    // 21/10/2026 se tomó por eso y un coche encendido más de 10 minutos dejaba
+    // terminar el turno.
+    ignicionDesdeSeg: contactoDesde(ign),
     // Segundos que lleva en el estado actual. null = no lo sabemos.
     segParado: estado === 'driving' ? 0
       : (Number.isFinite(duracion) && duracion >= 0 ? Math.floor(duracion) : segundosDesde(desdeCuando)),

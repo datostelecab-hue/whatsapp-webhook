@@ -92,7 +92,11 @@ const falsoMapon = {
     return {
       unitId, matricula: c.matricula, estado: c.enMarcha ? 'driving' : 'standing',
       enMarcha: c.enMarcha, velocidad: c.enMarcha ? 40 : 0, ignicion: c.ignicion,
-      segParado: c.segParado, segSinSenal: 60,
+      // Como el de verdad (21/10/2026): con el contacto, cuánto lleva así —Mapon
+      // trae la hora a la que se encendió o se apagó, no la de la lectura—. Un
+      // coche de VTC lleva horas encendido; por defecto, cinco.
+      ignicionDesdeSeg: c.ignicionDesdeSeg ?? 5 * 3600,
+      segParado: c.segParado, segSinSenal: c.segSinSenal ?? 60,
       reles: c.sinRele ? [] : [{ relay_id: 1, tipo: 'engine_block', titulo: 'Bloqueo Motor', estado: c.rele, habilitado: 1 }],
     };
   },
@@ -636,6 +640,51 @@ const limpio = () => { ordenes.length = 0; };
   await primero;
   delete process.env.FICHAJE_ESPERA_FILA_MS; retrasoRele = 0;
   coche('2222BBB').rele = LIBRE; coche('3333CCC').rele = LIBRE;
+
+  console.log('\n== 18. El 0698MMZ (21/10/2026): encendido desde hace horas, NO termina ==');
+  // Carlos terminó a las 02:53 con el coche encendido desde las 21:36 del día
+  // anterior. La hora del contacto se tomaba por la de la lectura: con más de
+  // 10 minutos encendido parecía un dato viejo y se le dejaba cerrar.
+  // Camilo: «si Mapon está funcionando correctamente, que le diga siempre que
+  // debe apagar el coche, sí o sí; cuando falle o la API esté bloqueada, que
+  // pueda cerrar el turno».
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  comprobar('Ana abre turno en el 1111AAA', r.ok);
+  limpio();
+  Object.assign(coche('1111AAA'), { ignicion: true, ignicionDesdeSeg: 5 * 3600 + 17 * 60, segSinSenal: 20 });
+  r = await f.terminar(ANA);
+  comprobar('encendido desde hace 5 h y con señal de hace 20 s: NO termina', r.ok === false && r.motivo === 'coche-encendido',
+    JSON.stringify({ ok: r.ok, motivo: r.motivo }));
+  comprobar('… ni se manda nada al coche, y el turno sigue abierto', ordenes.length === 0 && (await f.estado(ANA)).abierto === true);
+  r = await f.iniciar({ telefono: CAMILO, matricula: '1111AAA' });
+  comprobar('… y tampoco pasa de manos con el contacto puesto', r.ok === false && r.motivo === 'ocupado-encendido',
+    JSON.stringify({ ok: r.ok, motivo: r.motivo }));
+  // Recién encendido, lo mismo (eso ya funcionaba).
+  coche('1111AAA').ignicionDesdeSeg = 30;
+  r = await f.terminar(ANA);
+  comprobar('recién encendido, tampoco', r.ok === false && r.motivo === 'coche-encendido');
+  // El coche lleva rato sin dar señal (un garaje sin cobertura): lo que dice es de
+  // antes y el corte tampoco le llegaría. Se le deja cerrar, sin cortar.
+  coche('1111AAA').segSinSenal = 20 * 60;
+  r = await f.terminar(ANA);
+  comprobar('sin señal desde hace 20 min: termina', r.ok);
+  comprobar('… y el motor NO se corta con el contacto puesto', r.ok && !r.motor.hecho && /encendido/.test(r.motor.motivo) && ordenes.length === 0,
+    JSON.stringify(r.motor));
+  // Mapon caído: como hasta ahora, se le deja cerrar.
+  coche('1111AAA').segSinSenal = 20;
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  maponVivo = false; limpio();
+  r = await f.terminar(ANA);
+  comprobar('Mapon caído y el coche encendido: termina, sin tocar el motor', r.ok && r.motor.sinMapon && ordenes.length === 0,
+    JSON.stringify({ ok: r.ok, motivo: r.motivo, motor: r.motor }));
+  maponVivo = true;
+  // Apagado y con Mapon bien: termina y bloquea, como siempre.
+  Object.assign(coche('1111AAA'), { ignicion: false, ignicionDesdeSeg: 60 });
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  limpio();
+  r = await f.terminar(ANA);
+  comprobar('apagado: termina y bloquea', r.ok && r.motor.hecho && ordenes.join() === '1111AAA:BLOQUEAR', ordenes.join());
+  delete coche('1111AAA').ignicionDesdeSeg; delete coche('1111AAA').segSinSenal;
 
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;

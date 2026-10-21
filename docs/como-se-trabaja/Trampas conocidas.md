@@ -300,6 +300,23 @@ no era cosmético — era lo que debía frenar el corte de motor.
 (`on`/`off`/`ign_on`…) y devuelve **`null` cuando no lo sabe**. *"No lo sé" nunca
 puede leerse como "no".*
 
+### La hora del contacto es la del encendido, no la de la lectura
+
+`services/mapon.js` (`contactoDesde`) · `services/fichaje.js` (`hayQueApagar`)
+
+El `gmt` de `{gmt, value:'on'}` es **la hora a la que se encendió** (o se apagó)
+el coche, no la de la última lectura. Comprobado el 21/10/2026 en seis coches
+encendidos contra `unit_data/ignitions.json`: el 0626MMZ marcaba las 06:00:39, su
+encendido, aunque mandaba datos al minuto. El fichaje lo tomaba por la edad del
+dato y solo frenaba el cierre si era «de los últimos 10 minutos». Así, un coche
+encendido más de 10 minutos dejaba **terminar el turno con el contacto puesto**:
+Carlos con el 0698MMZ el 21/10 a las 02:53, con cinco horas encendido.
+
+**Remedio:** que el dato es de ahora lo dice `last_update` (`segSinSenal`). El
+campo se llama `ignicionDesdeSeg`, cuánto lleva así. Y el Mapon de mentira de las
+pruebas trae las dos cosas como el de verdad: con un campo que el falso no traía,
+la prueba pasaba y producción no.
+
 ### `include` con varios valores va como ARRAY
 
 `services/mapon.js`

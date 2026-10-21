@@ -335,7 +335,9 @@ async function estadoMotor(unitId) {
       velocidad: info.velocidad,
       estado: info.estado,
       ignicion: info.ignicion,
-      ignicionSeg: info.ignicionSeg,
+      ignicionDesdeSeg: info.ignicionDesdeSeg,
+      // Cuándo se supo del coche por última vez: lo que dice si el dato es de ahora.
+      segSinSenal: info.segSinSenal,
     };
   } catch (e) {
     return { sabemos: false, motivo: e.message };
@@ -343,6 +345,38 @@ async function estadoMotor(unitId) {
 }
 // Con orden: lo ha pedido el conductor al terminar su turno.
 const bloquearMotor = (unitId, opciones) => motor(unitId, true, opciones);
+
+/**
+ * ¿Tiene que parar y apagar antes de cerrar? Para «Terminar turno» y para el
+ * relevo (cuando otro coge el coche). 'en-marcha', 'encendido' o null (cierra).
+ *
+ * LA REGLA (21/10/2026). Camilo: «si Mapon está funcionando correctamente, que
+ * le diga siempre que debe apagar el coche, sí o sí; cuando falle o la API esté
+ * bloqueada, que pueda cerrar el turno».
+ *
+ *   · Mapon caído, bloqueado o sin contestar (`sabemos: false`) → cierra.
+ *   · En marcha → no cierra.
+ *   · Sin señal del coche desde hace más de MAX_SIN_SENAL minutos → cierra. Lo
+ *     que dice Mapon es de antes y el corte tampoco le llegaría; sin esto, un
+ *     coche apagado en un garaje sin cobertura no dejaría terminar nunca.
+ *   · Encendido → no cierra, lleve lo que lleve encendido.
+ *
+ * `m` es `estadoMotor`, que le pregunta a Mapon EN ESE MOMENTO por ese coche, no
+ * a la ingesta, que va con unos minutos de retraso. Es a propósito la excepción a
+ * «se lee de PostgreSQL»: aquí un minuto de retraso es cortar un coche encendido.
+ *
+ * El fallo que arregla: se tomaba la hora del contacto por la de la lectura, y es
+ * la hora a la que se ENCENDIÓ. Con más de 10 minutos encendido parecía un dato
+ * viejo y se le dejaba cerrar: Carlos Mario Cavadia, 0698MMZ, el 21/10 a las
+ * 02:53, con el coche encendido desde las 21:36 del día anterior.
+ */
+function hayQueApagar(m) {
+  if (!m || !m.sabemos) return null;
+  if (m.enMarcha) return 'en-marcha';
+  if (m.segSinSenal != null && m.segSinSenal > MAX_SIN_SENAL * 60) return null;
+  if (m.ignicion === true) return 'encendido';
+  return null;
+}
 
 const ZONA = 'Europe/Madrid';
 const ahoraSeg = () => Math.floor(Date.now() / 1000);
@@ -761,12 +795,9 @@ async function iniciar({ telefono, nombre, matricula }) {
   if (ocupado) {
     if (BLOQUEO_ACTIVO && (await decidirBloqueo(ocupado)).bloquear) {
       const m = await estadoMotor(unidad.unitId);
-      if (m.sabemos && m.enMarcha) {
-        return { ok: false, motivo: 'ocupado-en-marcha', velocidad: m.velocidad, turno: ocupado };
-      }
-      if (m.sabemos && m.ignicion === true && (m.ignicionSeg == null || m.ignicionSeg <= 10 * 60)) {
-        return { ok: false, motivo: 'ocupado-encendido', turno: ocupado };
-      }
+      const falta = hayQueApagar(m);
+      if (falta === 'en-marcha') return { ok: false, motivo: 'ocupado-en-marcha', velocidad: m.velocidad, turno: ocupado };
+      if (falta === 'encendido') return { ok: false, motivo: 'ocupado-encendido', turno: ocupado };
     }
     const entregando = ocupado.tipo === 'turno' && !!ocupado.relevo;
     let fueraDelPlan = false;
@@ -922,28 +953,23 @@ async function terminar(telefono) {
   // Solo cuando el corte está encendido: sin él, terminar no inmoviliza nada y
   // no hay motivo para no dejarle cerrar.
   //
-  // Y solo si SABEMOS que va en marcha. Si Mapon no contesta se le deja cerrar:
-  // la duda nunca puede dejar a alguien sin poder terminar su jornada.
   // Y CON EL COCHE ENCENDIDO TAMPOCO.
   //
   // Es el mismo problema un paso más cerca: parado pero con el contacto puesto,
   // el corte entra y el coche ya no se deja apagar. Primero se apaga, luego se
   // termina. El turno se queda abierto mientras tanto.
   //
-  // No hay forma de saltarse esto: con el coche encendido el turno NO ha
-  // terminado. La única salida es la duda — si Mapon calla o la medida es vieja
-  // se le deja cerrar, porque no saberlo no puede dejar a nadie atrapado.
+  // Con Mapon funcionando no hay forma de saltarse esto, lleve el coche lo que
+  // lleve encendido. Solo cierra si Mapon falla o el coche no da señal: no
+  // saberlo no puede dejar a nadie atrapado (`hayQueApagar`, 21/10/2026).
   // Si este coche no se va a bloquear —lo coge luego alguien que no ficha—, no
   // hace falta pedirle que aparque y apague: terminar no inmoviliza nada.
   const dec = await decidirBloqueo(t);
   if (BLOQUEO_ACTIVO && dec.bloquear) {
     const m = await estadoMotor(t.unitId);
-    if (m.sabemos && m.enMarcha) {
-      return { ok: false, motivo: 'coche-en-marcha', velocidad: m.velocidad, turno: t };
-    }
-    if (m.sabemos && m.ignicion === true && (m.ignicionSeg == null || m.ignicionSeg <= 10 * 60)) {
-      return { ok: false, motivo: 'coche-encendido', turno: t };
-    }
+    const falta = hayQueApagar(m);
+    if (falta === 'en-marcha') return { ok: false, motivo: 'coche-en-marcha', velocidad: m.velocidad, turno: t };
+    if (falta === 'encendido') return { ok: false, motivo: 'coche-encendido', turno: t };
   }
 
   const fin = ahoraSeg();
@@ -1132,7 +1158,7 @@ module.exports = {
   activarConductor, estadoParaPanel, soltarCoche,
   quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
   conductorMapon,
-  liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, liberarConocidos, maponDisponible,
+  liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, hayQueApagar, liberarConocidos, maponDisponible,
   enFilaDelCoche,
   RELE_BLOQUEADO,
   horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO, MIN_PARADO,
