@@ -61,6 +61,7 @@ const PARES = [
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['modules/Vehiculos/vistas/taller.ejs', 'modules/Vehiculos/taller.controller.js', '/taller'],
   ['modules/Control/vistas/controlCitasTaller.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Combustible/vistas/combustible.ejs', 'modules/Combustible/combustible.controller.js', '/combustible'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],
   ['modules/Seleccion/vistas/seleccion.ejs', 'modules/Seleccion/seleccion.controller.js', '/seleccion'],

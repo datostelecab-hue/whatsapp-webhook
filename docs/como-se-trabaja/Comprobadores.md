@@ -438,6 +438,26 @@ No son de los seis, pero forman parte de la misma red:
   sobre una rejilla inventada: la J aprobada suma y la pendiente no, libranzas y
   vacaciones fuera, la ausencia a 0, días sin plaza y suspensiones fuera, antes del alta
   solo si trabajó, hoy no cuenta, y los periodos con «desde» y «hasta». 11 casos.
+- **`comprobar-combustible.js`** (22/10/2026) — los repostajes que llegan por correo
+  ([[Combustible]]) sin base, sin buzón y sin BOLT, con nombres inventados: el lector de
+  Ballenoil con los tres correos de ejemplo (PRAT con el «devuelto» de punto decimal,
+  COSLADA sin él, MONTMELÓ de tarjeta provisional) y uno reenviado desde Outlook; números
+  con coma o punto, el correo sin saltos de línea, lo que falta o no se entiende («no se
+  pudo leer», con el motivo); de quién es cada correo (los demás no se tocan; Petroprix,
+  preparado); de quién es la tarjeta y si coincide con BOLT; que el buzón se abre con
+  EXAMINE sin marcar, mover ni borrar nada (con un IMAP falso); y la pasada entera: no
+  duplica, el repetido, el correo que revienta, la contraseña que no vale, sin db/212, dos
+  a la vez y el modo pruebas. Se saboteó abriendo el buzón sin `readOnly` y haciendo
+  obligatorio el «devuelto»: los dos saltan. Tras la revisión del mismo día, además: el
+  correo entero en una línea con la frase y el pie, los valores que la base no aceptaría
+  (litros diminutos, km imposibles; 0 litros y 0 € sí), la fecha sin hora, `<br style>`,
+  los correos de Ballenoil que no son repostajes, la firma DKIM (con un correo firmado
+  ahí mismo y la línea partida como la parte sendmail, sin DNS), el correo que no se
+  puede bajar, el oyente de `'error'` de imapflow, el tope, INBOX y Spam, la red cuando
+  la base rechaza un correo, la contraseña que el cron no reintenta, la pasada colgada,
+  volver a casar el coche y la sede, y el día que no existe en la lista. 88 casos. Se
+  saboteó quitando el oyente, la red, el asunto obligatorio y el corte de la estación:
+  saltan los cuatro.
 - **`comprobar-cumpleanos.js`** (15/10/2026) — los [[Cumpleanos]] sin base: los del 29 de
   febrero el 28 en un año no bisiesto, quien cumple ve la felicitación y no «cumple hoy»,
   y los ids que Control pinta en azul. 6 casos.

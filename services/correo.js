@@ -1,5 +1,6 @@
 // ============================================================
-// CORREO — envío de avisos y correos de proceso (nodemailer)
+// CORREO — envío de avisos y correos de proceso (nodemailer), y
+//          leer un buzón en solo lectura (imapflow, `leerCorreos`)
 // ============================================================
 // Las credenciales de envío salen, por orden:
 //   1) De la app: Configuración → "Correo para procesos" (hoja CONFIG; la
@@ -172,6 +173,9 @@ async function enviarCorreo({ to, subject, text, html } = {}) {
 async function guardarEnEnviados({ user, pass, host, port = 993 }, raw) {
   const { ImapFlow } = require('imapflow');
   const client = new ImapFlow({ host, port, secure: port === 993, auth: { user, pass }, logger: false, emitLogs: false });
+  // Sin oyente de 'error', un corte de la conexión ya conectada se LANZA desde el
+  // socket (ver leerCorreos): aquí basta con que la promesa pendiente falle.
+  client.on('error', () => {});
   await client.connect();
   try {
     let carpeta = 'Sent';
@@ -184,6 +188,165 @@ async function guardarEnEnviados({ user, pass, host, port = 993 }, raw) {
     await client.append(carpeta, raw, ['\\Seen']);
     return carpeta;
   } finally {
+    await client.logout().catch(() => {});
+  }
+}
+
+// ── LEER UN BUZÓN, EN SOLO LECTURA (22/10/2026) ─────────────────────────────
+// Lo estrenaron los repostajes de Ballenoil (modules/Combustible), que llegan a
+// datos@telecab.es. Ese buzón lo usa Camilo en Thunderbird, así que leerlo NO
+// puede cambiar nada de lo que él ve:
+//
+//   · La carpeta se abre con EXAMINE (`readOnly: true`), no con SELECT: en ese
+//     modo el servidor no deja cambiar marcas, así que un correo sin leer sigue
+//     sin leer aunque se baje entero. No se mueve, no se borra, no se marca.
+//   · Primero se baja SOLO EL SOBRE (remitente, asunto, Message-ID) de lo que
+//     llegó desde `desde`, y `elegir(sobre)` decide qué merece bajarse entero.
+//     El resto ni se abre: el adaptador no sabe de repostajes y no tiene por
+//     qué leer el correo de nadie.
+//   · Tiempos límite cortos: un IMAP que no contesta no puede dejar colgada la
+//     pasada siguiente. Y un tope para la lectura entera (`topeMs`): un servidor
+//     que contesta a goteo no salta el tiempo de socket, y sin tope la pasada
+//     no acabaría nunca.
+//   · UN CORREO QUE NO SE PUEDE BAJAR NO TUMBA A LOS DEMÁS. Si se borra o se
+//     mueve entre el sobre y el cuerpo (Camilo lo archiva en Thunderbird justo
+//     entonces), `download` no trae contenido; ese correo vuelve con `error` y
+//     los demás siguen.
+//   · Varias carpetas en la misma conexión (`carpetas`): INBOX y Spam, porque el
+//     antispam de DonDominio puede mandar ahí un correo con «⛽️» en el asunto.
+//     Los UID son POR CARPETA: cada correo vuelve con la suya.
+//
+// Devuelve el texto de cada parte text/plain y text/html ya decodificado
+// (imapflow quita el quoted-printable y pasa el charset a UTF-8). Con `firma`,
+// además, la comprobación DKIM de cada correo elegido (services/dkim), sobre el
+// correo en crudo. Lo que se haga con todo ello es cosa de quien llama.
+const MAX_PARTE = 512 * 1024;       // un correo de repostaje son 4 KB; esto es un tope, no un tamaño
+const MAX_CRUDO = 2 * 1024 * 1024;  // el correo entero, para la firma
+const TOPE_LECTURA = 4 * 60 * 1000;
+
+/** Lee un flujo hasta `max` bytes. `cortado`: no cabía entero. */
+async function leerFlujo(flujo, max) {
+  const trozos = [];
+  let total = 0;
+  for await (const t of flujo) { total += t.length; if (total <= max) trozos.push(t); }
+  return { buf: Buffer.concat(trozos), cortado: total > max };
+}
+
+/** Las partes de texto de un correo (no los adjuntos), de su estructura MIME. */
+function partesDeTexto(estructura) {
+  const partes = [];
+  const recorrer = n => {
+    if (!n) return;
+    if (n.childNodes) return n.childNodes.forEach(recorrer);
+    const tipo = String(n.type || '').toLowerCase();
+    if ((tipo === 'text/plain' || tipo === 'text/html') && String(n.disposition || '').toLowerCase() !== 'attachment') {
+      partes.push({ parte: n.part || '1', tipo });
+    }
+  };
+  recorrer(estructura);
+  return partes;
+}
+
+async function leerCorreos({ user, pass, host, port = 993, carpeta = 'INBOX', carpetas, desde, elegir = () => true,
+  firma = false, topeMs = TOPE_LECTURA } = {}) {
+  const { ImapFlow } = require('imapflow');
+  const client = new ImapFlow({
+    host, port, secure: port === 993, auth: { user, pass }, logger: false, emitLogs: false,
+    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 60000,
+  });
+  // EL OYENTE DE 'error' NO ES OPCIONAL. Ya conectado, imapflow avisa de un
+  // corte (tiempo de socket, ECONNRESET, un BYE del servidor) EMITIENDO 'error';
+  // sin oyente, Node lo lanza desde el manejador del socket: en el ERP lo recoge
+  // la red de app.js como «excepción no capturada» y un script se cae entero. Y
+  // la promesa pendiente falla con un «Connection not available» que no dice
+  // nada: lo que se relanza es el error de verdad, que sí lo dice.
+  let errorImap = null;
+  client.on('error', e => { if (!errorImap) errorImap = e; });
+  const tope = setTimeout(() => {
+    if (!errorImap) errorImap = Object.assign(new Error(`el servidor tardó más de ${Math.round(topeMs / 1000)} s en dar el buzón`), { code: 'ETOPE' });
+    try { client.close(); } catch (_) { /* ya estaba cerrada */ }
+  }, topeMs);
+
+  const lista = carpetas && carpetas.length ? carpetas : [carpeta];
+  const res = { carpeta: lista[0], uidValidity: null, vistos: 0, correos: [], carpetas: [] };
+  const cacheDns = new Map();
+  try {
+    await client.connect();
+    for (const [i, c] of lista.entries()) {
+      let lock;
+      try {
+        lock = await client.getMailboxLock(c, { readOnly: true });
+      } catch (e) {
+        // La primera (INBOX) tiene que abrirse. Las demás pueden no existir en
+        // otro servidor, o la conexión caerse antes: se apunta y se devuelve lo
+        // que ya se bajó, que no tiene por qué perderse.
+        if (i === 0) throw e;
+        res.carpetas.push({ carpeta: c, error: (errorImap && errorImap.message) || e.responseText || e.message });
+        continue;
+      }
+      try {
+        const uidValidity = client.mailbox && client.mailbox.uidValidity != null ? Number(client.mailbox.uidValidity) : null;
+        const uids = (await client.search(desde ? { since: desde } : { all: true }, { uid: true })) || [];
+
+        // Los sobres, todos de una vez. Mientras dura este bucle no se puede pedir
+        // nada más al servidor (imapflow se quedaría esperando a sí mismo): por eso
+        // los cuerpos se bajan después.
+        const sobres = [];
+        if (uids.length) {
+          for await (const m of client.fetch(uids, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) {
+            const env = m.envelope || {};
+            const de = (env.from && env.from[0]) || {};
+            sobres.push({
+              carpeta: c, uid: m.uid, uidValidity,
+              messageId: env.messageId ? String(env.messageId).trim() : null,
+              de: (de.address || '').toLowerCase(), deNombre: de.name || '',
+              asunto: env.subject || '',
+              fecha: m.internalDate || env.date || null,
+              estructura: m.bodyStructure || null,
+            });
+          }
+        }
+        if (i === 0) res.uidValidity = uidValidity;
+        res.vistos += sobres.length;
+        res.carpetas.push({ carpeta: c, uidValidity, vistos: sobres.length });
+
+        for (const s of sobres) {
+          if (!elegir(s)) continue;
+          const { estructura, ...sobre } = s;
+          const correo = { ...sobre, partes: [] };
+          try {
+            if (errorImap || !client.usable) throw errorImap || new Error('la conexión con el servidor se cerró');
+            for (const p of partesDeTexto(estructura)) {
+              const { content } = await client.download(String(s.uid), p.parte, { uid: true });
+              if (!content) throw new Error(`el servidor no dio la parte ${p.parte} (¿se movió o se borró mientras se leía?)`);
+              correo.partes.push({ tipo: p.tipo, contenido: (await leerFlujo(content, MAX_PARTE)).buf.toString('utf8') });
+            }
+            if (firma) {
+              // La firma es un dato más: si no se puede comprobar, el correo sigue.
+              correo.firmas = null;
+              try {
+                const { content } = await client.download(String(s.uid), undefined, { uid: true });
+                const crudo = content ? await leerFlujo(content, MAX_CRUDO) : null;
+                if (crudo && !crudo.cortado) correo.firmas = await require('./dkim').comprobar(crudo.buf, { cache: cacheDns });
+              } catch (_) { /* queda en null: no se pudo comprobar */ }
+            }
+          } catch (e) {
+            correo.error = (errorImap && errorImap.message) || e.message;
+          }
+          res.correos.push(correo);
+        }
+      } finally {
+        lock.release();
+      }
+    }
+    // Si la conexión cayó a medias, lo bajado vale y los correos que faltaron
+    // traen su `error`; esto dice por qué, para quien lo apunte.
+    res.error = errorImap ? errorImap.message : null;
+    return res;
+  } catch (e) {
+    throw errorImap || e;
+  } finally {
+    clearTimeout(tope);
     await client.logout().catch(() => {});
   }
 }
@@ -244,4 +407,4 @@ function configurado() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-module.exports = { enviarCorreo, enviarComoUsuario, estadoCorreo, ajustesEnvio, configurado, CORREO_TRAFICO };
+module.exports = { enviarCorreo, enviarComoUsuario, estadoCorreo, ajustesEnvio, configurado, leerCorreos, CORREO_TRAFICO };

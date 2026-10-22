@@ -7,6 +7,12 @@ actualizado: 2026-10-21
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-22 · Los repostajes de Ballenoil se leen solos del correo
+
+*«Vamos con la conexión del correo telecab.es para que lea la estructura.»* Cada repostaje con la tarjeta DNI & GO llega a `datos@telecab.es`; el ERP lee ese buzón cada 10 minutos **en solo lectura** (es el de Camilo en Thunderbird: no se marca, mueve ni borra nada), con la contraseña cifrada de su ficha. Cada correo es una fila de `repostaje` (db/212), sin duplicar, también los que no se entienden («no se pudo leer», con el motivo y su texto) y los que reenvía la oficina. Cada uno con su coche y su sede —Madrid y Barcelona, en la misma pantalla—, la persona de la tarjeta (o tarjeta provisional) y quién llevaba el coche en BOLT a esa hora. Un lector por proveedor, elegido por el remitente: Petroprix, preparado. La auditoría con Mapon es la tanda siguiente. → [[Combustible]]
+
+Tras la revisión, el mismo día: **ningún correo se pierde** —tampoco el que la base no acepta: se guarda como «no se pudo leer» con el porqué y sus partes tal cual llegaron—; se leen **INBOX y Spam**; lo de Ballenoil que no es un repostaje (promociones) no se guarda; **la firma DKIM** dice si el correo es de verdad de Ballenoil (DonDominio no deja su veredicto; los nueve directos cuadran); y **la contraseña que el servidor rechaza no se reintenta sola** cada diez minutos, para que DonDominio no bloquee la IP desde la que salen todos los correos de @telecab.es.
+
 ## 2026-10-22 · WhatsApp: pestaña «Sin Wsp» y el chat a todo el ancho
 
 *«Si se le manda un mensaje a un número que no tiene WhatsApp aparezca en otra pestañita llamada "Sin Wsp" al lado del "Sin asignar".»* Sale de los fallos 131026 que Meta manda por el webhook de estados, sin guardar nada nuevo, y no cuenta en «Sin asignar». Fuera el párrafo de explicación de arriba, y la ventana del chat ocupa toda la pantalla con poco margen. → [[WhatsApp chat#Sin WhatsApp y a todo el ancho (22/10/2026)]]

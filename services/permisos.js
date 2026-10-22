@@ -128,6 +128,13 @@ const CATALOGO = [
     { clave: '/facturas', etiqueta: 'Facturas de taller', hijos: [
       { clave: '/facturas/apuntar', etiqueta: 'Facturas · dar de alta y anular' },
     ] },
+    // Los repostajes que llegan por correo (db/212, 22/10/2026). MIRARLOS es una
+    // llave; LEER EL BUZÓN AHORA es otra, marcada `escribir`: cualquier petición
+    // que no sea un GET a /combustible la exige sola. El buzón se lee también
+    // solo cada 10 minutos, así que sin ella no se pierde nada: se espera.
+    { clave: '/combustible', etiqueta: 'Combustible (repostajes por correo)', hijos: [
+      { clave: '/combustible/leer', etiqueta: 'Combustible · leer el buzón ahora', escribir: true },
+    ] },
   ] },
   { grupo: 'Operaciones', items: [
     { clave: '/operaciones', etiqueta: 'Alertas Mapon', hijos: [

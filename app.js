@@ -255,6 +255,9 @@ app.use('/taller', require('./modules/Vehiculos/taller.controller'));
 // Inspección de vehículos: el primer submódulo de taller (db/150).
 app.use('/inspecciones', require('./modules/Vehiculos/inspeccion.controller'));
 app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
+// Los repostajes que llegan por correo (Ballenoil DNI & GO, db/212): el cron de
+// abajo lee el buzón y esto los enseña. Ver modules/Combustible.
+app.use('/combustible', require('./modules/Combustible/combustible.controller'));
 app.use('/fichaje', require('./modules/Fichaje/fichaje.controller'));
 // El ciclo de bloqueo de motor: lo que bloquean los conductores al terminar y
 // lo que suelta Tráfico (30/09/2026). No es /fichaje, que es la jornada.
@@ -871,6 +874,36 @@ if (process.env.CITAS_TALLER_AVISOS !== 'off') {
       }
     } catch (error) {
       console.error(`❌ [CRON Citas taller] ${error.message}`);
+    }
+  }, { timezone: 'Europe/Madrid' });
+}
+
+// COMBUSTIBLE (db/212, 22/10/2026): cada repostaje con la tarjeta DNI & GO de
+// Ballenoil llega como un correo a datos@telecab.es. Cada 10 minutos se lee ese
+// buzón en SOLO LECTURA —es el de Camilo en Thunderbird: no se marca, mueve ni
+// borra nada— y lo nuevo se guarda en `repostaje`. Cada pasada deja su fila en
+// `repostaje_lectura`, también si no pudo entrar (y la pantalla lo dice en rojo).
+//
+// NO VA DENTRO DEL LATIDO DE LA INGESTA, a propósito: el latido es de minuto y va
+// en serie, y un DonDominio colgado (15 s para conectar, 60 de socket) retrasaría
+// los apuntes de BOLT de los que viven el mapa y En directo. Aquí lleva su propia
+// bandera: una lectura lenta hace que la siguiente se salte sola (y lo dice en el
+// log), y una que pasa de 8 minutos se da por muerta. Si el servidor rechaza la
+// contraseña del buzón, el cron no la reintenta hasta que cambie en su ficha.
+//
+// En el minuto 4 de cada diez, para no coincidir con lo que salta en punto.
+// `programar` no lo arranca con MODO_PRUEBAS=1, como a todo cron: en pruebas el
+// buzón se lee con el botón «Leer el buzón ahora», y el log dice que es el real.
+// Se apaga con COMBUSTIBLE_CORREO=off sin tocar código.
+if (process.env.COMBUSTIBLE_CORREO !== 'off') {
+  programar('4,14,24,34,44,54 * * * *', async () => {
+    try {
+      const bd = require('./services/db');
+      if (!bd.HAY_BD) return;
+      await require('./modules/Combustible/combustible.service').leerBuzon({ origen: 'cron' });
+    } catch (error) {
+      // leerBuzon no lanza; esto es por si revienta antes de entrar.
+      console.error(`❌ [CRON Combustible] ${error.stack || error.message}`);
     }
   }, { timezone: 'Europe/Madrid' });
 }

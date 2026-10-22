@@ -50,6 +50,26 @@ Quién lo usa: `routes/reportes.js` (el reporte de horas de ETT, con el Excel ad
 
 El destinatario habitual se recuerda en `config_app` para la próxima vez. Hay además un buzón de tráfico fijo en `CORREO_TRAFICO` (variable de entorno, con valor por defecto en el código).
 
+## Leer un buzón, en solo lectura: `leerCorreos` (22/10/2026)
+
+Hasta aquí el correo solo salía. Desde el 22/10/2026 también **se lee**: los repostajes de Ballenoil llegan a `datos@telecab.es` y los recoge [[Combustible]] cada 10 minutos. La pieza es genérica y no sabe de repostajes:
+
+```js
+correo.leerCorreos({ user, pass, host, desde, carpetas: ['INBOX', 'Spam'], firma: true, elegir: sobre => true / false })
+// → { uidValidity, vistos, error, carpetas: [{ carpeta, uidValidity, vistos } | { carpeta, error }],
+//     correos: [{ carpeta, uid, uidValidity, messageId, de, asunto, fecha, partes: [{ tipo, contenido }], firmas, error? }] }
+```
+
+- **Solo lectura de verdad.** Cada carpeta se abre con EXAMINE (`getMailboxLock(carpeta, { readOnly: true })`): en ese modo el servidor no deja cambiar marcas, así que nada pasa a «leído», ni se mueve, ni se borra. Ese buzón es el de Camilo en Thunderbird. Comprobado contra el buzón real: los correos sin leer siguieron sin leer después de bajarlos enteros. Y `scripts/comprobar-combustible.js` lo vigila con un IMAP falso que grita si alguien llama a algo que marque o mueva.
+- **Primero los sobres, luego solo lo elegido.** Se baja el remitente, el asunto y el Message-ID de lo que llegó desde `desde`, y `elegir(sobre)` decide qué cuerpo se baja. Lo demás ni se abre.
+- **Varias carpetas, una conexión** (`carpetas`; por defecto solo `carpeta`, INBOX). Los UID son por carpeta: cada correo vuelve con la suya y su UIDVALIDITY. La primera tiene que abrirse; una de las demás que no exista (o la conexión que cae antes) se apunta en `carpetas` y se devuelve lo ya bajado.
+- **Un correo que no se puede bajar no tumba a los demás.** Si se mueve o se borra entre el sobre y el cuerpo, `download` no trae contenido: ese correo vuelve con `error` y la lectura sigue.
+- **El texto, ya decodificado**: imapflow quita el quoted-printable y pasa el charset a UTF-8. Sin dependencias nuevas (nada de `mailparser`).
+- **La firma** (`firma: true`): se baja también el correo en crudo y se comprueba su DKIM con `services/dkim.js` → `firmas: [{ dominio, selector, resultado: 'valida' | 'no_valida' | 'no_se_pudo', motivo }]` (null si no se pudo bajar). DonDominio **no** deja su veredicto en `Authentication-Results`, así que se comprueba aquí, con `crypto` y `dns` de Node. Ojo con las líneas de más de 990 caracteres: un servidor del camino las parte con `!`, salto y espacio después de firmar, y hay que deshacerlo para que el cuerpo cuadre. → [[Trampas conocidas]]
+- **Tiempos límite cortos** (15 s de conexión y de saludo, 60 de socket) **y un tope para todo** (`topeMs`, 4 minutos por defecto): un servidor que contesta a goteo no salta el tiempo de socket, y sin tope la pasada no acabaría nunca. Al llegar, se cierra la conexión y el error dice `ETOPE`.
+- **El evento `'error'` se escucha siempre** (también en `guardarEnEnviados`). Ya conectado, imapflow avisa de un corte emitiéndolo; sin oyente, Node lo lanza desde el socket. Lo que se relanza es ese error de verdad (`ETIMEOUT`, `ECONNRESET`…), no el *«Connection not available»* de la promesa que esperaba. → [[Trampas conocidas]]
+- **La contraseña** la pone quien llama. Combustible usa la de correo de la ficha del buzón (cifrada con `CRED_KEY`, como `enviarComoUsuario`), y el servidor de `correo_imap_host` o, si no, `imap.dondominio.com`. Si el servidor la rechaza, Combustible no la reintenta en cada vuelta del cron (ver [[Combustible]]): muchos fallos seguidos pueden hacer que DonDominio bloquee la IP desde la que salen todos los correos.
+
 ## En modo pruebas no sale ningún correo (19/10/2026)
 
 Con `MODO_PRUEBAS=1`, los dos envíos de arriba **no usan la configuración de nadie**: mandan a `CORREO_PRUEBAS` (`host:puerto`), y solo si ese buzón está en el mismo PC (`127.0.0.1` o `localhost`). En el [[Entorno de pruebas local]] es Mailpit, que enseña el correo tal cual le llegaría a la persona en `http://localhost:8025`. Sin `CORREO_PRUEBAS`, el correo se frena y queda apuntado en `/modo-pruebas`, como un WhatsApp.

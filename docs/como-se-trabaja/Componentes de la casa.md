@@ -134,6 +134,10 @@ Lista → ficha → atrás, con buscador, filtros, KPIs, paginación, selección
 
 Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre las filas tal como llegan. No ordena, y el buscador tampoco ordena por relevancia — así que **el orden lo pone la consulta**, una vez, y vale bajo cualquier filtro. → [[Conductores]]
 
+**`buscar.campos` acepta funciones**, no solo nombres de campo: lo que devuelvan es lo que se busca. Combustible devuelve la matrícula en sus tres formas («8997LDK 8997 LDK 8997-LDK») para que se encuentre se escriba como se escriba (22/10/2026).
+
+**En el móvil, los botones bajan de línea** (22/10/2026). La fila del buscador y las `acciones` de la cabecera no podían partirse: con el buscador y dos botones («Lecturas» y «Leer el buzón ahora», en [[Combustible]]) se salía por la derecha a 375 px y la página entera se desplazaba de lado. Ahora llevan `flex-wrap` y se alinean a la derecha; en pantalla ancha no cambia nada.
+
 **Abrir una ficha desde otra pantalla**: `/plantilla#123` o `/plantilla?id=123`. El Listado abre la ficha con las dos, y con `?id=` deja la dirección con su hash, como si se hubiera pinchado allí (08/10/2026: los enlaces de Sanciones y de la Auditoría usaban `?id=` y abrían la lista, no la ficha).
 
 **Exportar** manda lo filtrado a `/exportar/excel` con los valores en crudo (sin el HTML de `pinta`). Cada columna viaja con una clave de texto propia (`c0`, `c1`…): hasta el 28/09/2026 la clave era el `campo` o **la función de `valor`**, y el JSON tira las funciones, así que **toda columna con `valor: f => …` salía vacía** en el Excel. Se vio en Inspección de vehículos (solo salían Matrícula y Observaciones) y afectaba igual a Selección y ETT.

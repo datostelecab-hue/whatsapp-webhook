@@ -209,14 +209,17 @@
                 </h2>
                 <p class="text-sm text-telecab-muted mt-0.5" data-parte="subtitulo"></p>
               </div>
-              <div class="ml-auto flex items-center gap-2">
+              <!-- flex-wrap (22/10/2026): con el buscador y dos botones, en un
+                   móvil la fila se salía por la derecha y la página entera se
+                   desplazaba de lado (Combustible). Ahora los botones bajan. -->
+              <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
                 ${c.buscar === false ? '' : `
                   <div class="relative">
                     <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
                     <input data-parte="busca" placeholder="${esc((c.buscar && c.buscar.texto) || 'Buscar…')}"
                            class="pl-8 pr-3 py-2 w-48 sm:w-64 bg-telecab-card border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
                   </div>`}
-                <div data-parte="acciones" class="flex items-center gap-2"></div>
+                <div data-parte="acciones" class="flex flex-wrap items-center justify-end gap-2"></div>
               </div>
             </div>
 

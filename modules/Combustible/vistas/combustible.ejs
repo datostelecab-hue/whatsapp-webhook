@@ -1,0 +1,438 @@
+<%#
+  COMBUSTIBLE (22/10/2026)
+  Los repostajes que llegan por correo a datos@telecab.es (Ballenoil DNI & GO;
+  Petroprix preparado): lista → ficha → atrás con el componente Listado. Cada
+  repostaje con su coche y su sede, la persona de la tarjeta y quién llevaba el
+  coche en BOLT a esa hora. Arriba, el estado de la última lectura del buzón y,
+  para quien puede, «Leer el buzón ahora».
+  Servicio: modules/Combustible/combustible.service.js
+%>
+
+<!-- LAS FECHAS van fuera del Listado, como el mes en Convenio: el componente
+     filtra en el navegador lo que ya tiene, y el rango de días se le pide al
+     servidor. Cambiar una fecha vuelve a pedir la lista. -->
+<div class="px-4 lg:px-6 pt-3 max-w-[1400px] mx-auto">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="text-sm text-telecab-muted">Repostajes del</span>
+    <input id="f-desde" class="js-fecha w-[7.5rem] px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-xl text-sm"
+           placeholder="dd/mm/aaaa" readonly title="Primer día que se enseña (hora de Madrid)">
+    <span class="text-sm text-telecab-muted">al</span>
+    <input id="f-hasta" class="js-fecha w-[7.5rem] px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-xl text-sm"
+           placeholder="dd/mm/aaaa" readonly title="Último día que se enseña, incluido">
+    <div class="flex flex-wrap gap-1" id="atajos">
+      <button type="button" data-dias="0"  class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">Hoy</button>
+      <button type="button" data-dias="6"  class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">7 días</button>
+      <button type="button" data-dias="mes" class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">Este mes</button>
+      <button type="button" data-dias="29" class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">30 días</button>
+    </div>
+  </div>
+</div>
+
+<div id="modulo"></div>
+
+<script>
+(() => {
+  const { esc, etiqueta, hace } = Listado.fmt;
+  const PUEDE = <%- JSON.stringify(!!puedeLeer) %>;
+  // Quien entra con la sede de Barcelona ve de entrada sus repostajes; el resto,
+  // los de todas, con la sede en su columna.
+  const SEDE_SESION = <%- JSON.stringify(typeof sede !== 'undefined' && sede ? sede : 'madrid') %>;
+
+  // ── Las fechas: dd/mm/aaaa en pantalla, ISO hacia el servidor ─────────────
+  const aIso = v => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+  const aDdmm = v => (v ? v.split('-').reverse().join('/') : '');
+  const hoy = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  // Se camina desde el mediodía UTC: restar 24 h se salta un día con el cambio de hora.
+  const menos = (d, n) => new Date(Date.parse(d + 'T12:00:00Z') - n * 864e5).toISOString().slice(0, 10);
+  const fDesde = document.getElementById('f-desde');
+  const fHasta = document.getElementById('f-hasta');
+  fHasta.value = aDdmm(hoy());
+  fDesde.value = aDdmm(menos(hoy(), 29));
+
+  // ── Cómo se escribe cada cosa ─────────────────────────────────────────────
+  const num = (v, dec) => (v == null || v === '' ? '' : Number(v).toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+  const eur = v => (v == null ? '' : num(v, 2) + ' €');
+  // Los litros con los TRES decimales del correo («24,405L»): la ficha enseña el
+  // correo justo debajo, y en una pantalla para auditar tienen que decir lo mismo.
+  // La suma de arriba, con dos.
+  const lit = (v, dec = 3) => (v == null ? '' : num(v, dec) + ' L');
+  const pl = v => (v == null ? '' : num(v, 3) + ' €/L');
+  // La matrícula como la escribe la gente: «8997LDK», «8997 LDK», «8997-LDK».
+  const matriculas = f => {
+    const m = String(f.matricula_norm || f.matricula || '');
+    const p = /^(\d{4})([A-Z]{3})$/.exec(m) || /^([A-Z]{1,2})(\d{4})([A-Z]{0,2})$/.exec(m);
+    return p ? [m, p.slice(1).filter(Boolean).join(' '), p.slice(1).filter(Boolean).join('-')].join(' ') : m;
+  };
+  const NADA = '<span class="text-telecab-muted">—</span>';
+  const SEDES = { madrid: 'Madrid', barcelona: 'Barcelona' };
+  const PROVEEDORES = { ballenoil: 'Ballenoil', petroprix: 'Petroprix' };
+  const SITUACION = { viaje: 'en viaje', espera: 'en espera', descanso: 'en descanso', desconectado: 'desconectado', otro_coche: 'ya con otro coche' };
+  const COMO = { exacto: 'el mismo nombre', parecido: 'nombre parecido (unas palabras contienen a las otras)',
+    ambiguo: 'el nombre vale para más de una persona: no se enlaza', nadie: 'no casa con nadie del ERP' };
+
+  const antiguedad = min => (min == null ? '' : min < 60 ? `${min} min` : min < 1440 ? `${Math.floor(min / 60)} h ${min % 60 ? (min % 60) + ' min' : ''}`.trim() : `${Math.round(min / 1440)} días`);
+
+  /** Lo que BOLT dice de esa hora, en una frase. */
+  function boltFrase(f) {
+    switch (f.bolt_estado) {
+      case 'conectado': return `${f.bolt_nombre || 'Alguien'} · ${SITUACION[f.bolt_situacion] || 'conectado'}`;
+      case 'ultimo': return `${f.bolt_nombre || 'Alguien'} · lo dejó hace ${antiguedad(f.bolt_antiguedad_min)}` +
+        (f.bolt_situacion === 'otro_coche' ? ' (ya con otro coche)' : '');
+      case 'nadie': return 'Nadie llevaba el coche en BOLT';
+      case 'sin_coche': return 'El coche no está en BOLT (se vuelve a mirar un mes, por si se da de alta)';
+      case 'pendiente': return 'BOLT aún no llega a esa hora: se vuelve a mirar sola, durante tres días';
+      case 'sin_datos': return 'BOLT no llegó a esa hora en tres días: ya no se mira';
+      default: return '';
+    }
+  }
+
+  // El estado de cada fila: la lectura y, si se leyó, el cruce con BOLT. Los
+  // tonos son de aviso; el oro se queda para lo que se pulsa.
+  function estadoDe(f) {
+    if (f.estado === 'no_leido') return { clave: 'no_leido', texto: 'No se pudo leer', tono: 'red', ayuda: f.motivo || '' };
+    if (f.estado === 'repetido') return { clave: 'repetido', texto: 'Repetido', tono: 'muted',
+      ayuda: 'El mismo repostaje ya llegó en otro correo (el de Ballenoil y uno reenviado, por ejemplo). No cuenta en las sumas.' };
+    if (f.coincide === false) return { clave: 'no_coincide', texto: 'No coincide con BOLT', tono: 'warn',
+      ayuda: `La tarjeta dice «${f.conductor_texto || ''}» y en BOLT llevaba el coche ${f.bolt_nombre || 'otra persona'}.` };
+    if (f.avisos && f.avisos.length) return { clave: 'avisos', texto: 'Leído, con avisos', tono: 'warn', ayuda: f.avisos.join('\n') };
+    if (f.bolt_estado === 'pendiente') return { clave: 'pendiente', texto: 'Esperando a BOLT', tono: 'muted',
+      ayuda: 'BOLT aún no ha llegado a la hora del repostaje: en cuanto llegue se mira quién llevaba el coche.' };
+    return { clave: 'leido', texto: 'Leído', tono: 'muted', ayuda: f.coincide ? 'La tarjeta y BOLT dicen la misma persona.' : '' };
+  }
+  const ESTADOS = [['no_leido', 'No se pudo leer'], ['no_coincide', 'No coincide con BOLT'], ['avisos', 'Leído, con avisos'],
+    ['pendiente', 'Esperando a BOLT'], ['leido', 'Leído'], ['repetido', 'Repetido']];
+
+  // Quién: la tarjeta tal cual y, debajo, BOLT cuando dice otra cosa o cuando la
+  // tarjeta no es de una persona (provisional, del taller): ahí quien repostó
+  // lo dice BOLT, no el correo.
+  function pintaQuien(f) {
+    // Lo de fuera de los corchetes es la tarjeta; lo de dentro, su nota. Una
+    // tarjeta que es solo nota («[TALLER GUTI]») se escribe una vez, no dos.
+    const fuera = String(f.conductor_texto || '').replace(/\s*\[[^\]]*\]\s*/g, ' ').trim();
+    const tarjeta = !f.conductor_texto ? NADA
+      : !fuera ? `<span title="La tarjeta no es de una persona: es lo que dice entre corchetes">[${esc(f.tarjeta_nota || f.conductor_texto)}]</span>`
+        : esc(fuera) +
+          (f.tarjeta_provisional ? ' ' + etiqueta('Provisional', 'muted') : '') +
+          (f.tarjeta_nota ? ` <span class="text-telecab-muted text-xs">[${esc(f.tarjeta_nota)}]</span>` : '');
+    const sinPersona = f.tarjeta_provisional || !f.conductor_texto || f.conductor_como == null;
+    const conBolt = f.bolt_nombre && (f.coincide === false || sinPersona);
+    return tarjeta + (conBolt
+      ? `<span class="block text-xs ${f.coincide === false ? 'text-telecab-warn' : 'text-telecab-muted'}" title="${esc(boltFrase(f))}">BOLT: ${esc(f.bolt_nombre)}</span>`
+      : '');
+  }
+
+  const cuentan = filas => filas.filter(f => f.estado === 'leido');
+
+  async function post(url, cuerpo) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.status !== 'ok') throw new Error(j.msg || 'Error ' + r.status);
+    return j;
+  }
+
+  async function leerAhora(lst) {
+    let l;
+    try {
+      l = (await post('/combustible/api/leer')).lectura;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo leer el buzón', texto: e.message, tono: 'error' });
+      return;
+    }
+    if (!l.ok) {
+      await Dialogo.aviso({ titulo: l.saltada ? 'Ya se está leyendo' : 'No se pudo entrar al buzón', texto: l.error, tono: l.saltada ? 'aviso' : 'error' });
+    } else if (l.nuevos || l.noLeidos || l.repetidos || l.releidos) {
+      const partes = [];
+      if (l.nuevos) partes.push(`${l.nuevos} repostaje(s) nuevo(s)`);
+      if (l.noLeidos) partes.push(`${l.noLeidos} correo(s) que no se entienden`);
+      if (l.repetidos) partes.push(`${l.repetidos} repetido(s)`);
+      if (l.releidos) partes.push(`${l.releidos} que antes no se entendían`);
+      await Dialogo.aviso({ titulo: 'Buzón leído', tono: l.noLeidos ? 'aviso' : 'ok',
+        texto: `${partes.join(', ')}. Vistos ${l.vistos} correo(s) desde el ${aDdmm(l.desde)}, ${l.candidatos} de proveedores.` });
+    } else {
+      Dialogo.hecho(`Nada nuevo: ${l.candidatos} correo(s) de proveedores, todos ya estaban`);
+    }
+    await lst.recargar();
+  }
+
+  async function verLecturas() {
+    let ls;
+    try {
+      const r = await fetch('/combustible/api/lecturas');
+      const j = await r.json();
+      if (!r.ok || j.status !== 'ok') throw new Error(j.msg || 'Error ' + r.status);
+      ls = j.lecturas || [];
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudieron traer las lecturas', texto: e.message, tono: 'error' });
+      return;
+    }
+    // Un bloque por lectura, con «qué pasó» DEBAJO de cuándo y quién, no una
+    // tabla de tres columnas: en el móvil la tercera —la que dice si falló y
+    // por qué— se quedaba fuera de la caja.
+    const filas = ls.map(l => `
+      <li class="py-2 border-t border-telecab-border/60 first:border-t-0">
+        <p class="text-xs text-telecab-muted">
+          <span class="tabular-nums text-telecab-text">${esc(l.empezada_local)}</span> ·
+          ${l.origen === 'manual' ? esc(l.usuario || 'a mano') : 'sola (cada 10 min)'}${l.modo_pruebas ? ' · pruebas' : ''}
+        </p>
+        <p class="text-sm mt-0.5 break-words">${l.error
+          ? `<span class="text-telecab-red">${esc(l.error)}</span>`
+          : esc(`${l.vistos} vistos · ${l.candidatos} de proveedores · ${l.nuevos} nuevos` +
+              (l.no_leidos ? ` · ${l.no_leidos} sin entender` : '') + (l.repetidos ? ` · ${l.repetidos} repetidos` : '') +
+              (l.releidos ? ` · ${l.releidos} releídos` : '') + (l.recasados ? ` · ${l.recasados} con coche o sede nuevos` : '') +
+              (l.otros ? ` · ${l.otros} del proveedor que no son repostajes` : '') + (l.fallos ? ` · ${l.fallos} con error` : ''))}</p>
+      </li>`).join('');
+    await Dialogo.aviso({ titulo: 'Últimas lecturas del buzón', tono: 'info', ancho: 'max-w-2xl',
+      html: ls.length
+        ? `<ul class="text-sm">${filas}</ul>`
+        : '<p class="text-sm text-telecab-muted">Todavía no se ha leído el buzón ninguna vez.</p>' });
+  }
+
+  // ── La pantalla ───────────────────────────────────────────────────────────
+  const lista = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Combustible',
+    icono: 'fa-gas-pump',
+    // Función, no cadena: se vuelve a leer en cada carga, así cambiar de fechas
+    // trae ese rango sin volver a montar nada.
+    origen: () => `/combustible/api/lista?desde=${encodeURIComponent(aIso(fDesde.value))}&hasta=${encodeURIComponent(aIso(fHasta.value))}`,
+    vacio: 'No hay repostajes en esas fechas.',
+    // Lo que queda por encima de la rejilla: la barra de las fechas, la cabecera,
+    // los filtros, las cifras y una nota de dos líneas. Con 19rem la rejilla se
+    // salía 45 px por debajo a 1529×729 y a 1280×593, y había doble barra.
+    alto: 'max-h-[calc(100vh-23rem)] min-h-[14rem]',
+    filtrosIniciales: SEDE_SESION === 'barcelona' ? { sede: 'barcelona' } : {},
+    buscar: { texto: 'Matrícula, conductor, estación…', campos: [matriculas, 'conductor_texto', 'bolt_nombre', 'conductor_ficha', 'estacion'] },
+    subtitulo: (v, t) => (v.length === t.length ? `${t.length} correos` : `${v.length} de ${t.length} correos`)
+      + ' de repostaje · llegan a datos@telecab.es y se leen solos',
+
+    acciones: [
+      // «Lecturas» y no «Últimas lecturas»: a 1280 px el nombre largo bajaba los botones a otra línea.
+      { texto: 'Lecturas', icono: 'fa-clock-rotate-left', principal: false, onClick: () => verLecturas() },
+      ...(PUEDE ? [{ texto: 'Leer el buzón ahora', icono: 'fa-envelope-open-text', onClick: lst => leerAhora(lst) }] : []),
+    ],
+
+    // Las cifras, de lo que se está viendo. Solo cuentan los «leido»: un
+    // repetido es el mismo repostaje otra vez, y uno sin leer no tiene cifras.
+    cifras: v => {
+      const c = cuentan(v);
+      const l = c.reduce((s, f) => s + (f.litros || 0), 0);
+      const e = c.reduce((s, f) => s + (f.importe || 0), 0);
+      const sinLeer = v.filter(f => f.estado === 'no_leido').length;
+      const noCoinciden = v.filter(f => estadoDe(f).clave === 'no_coincide').length;
+      return [
+        { valor: c.length, etiqueta: c.length === 1 ? 'repostaje' : 'repostajes' },
+        { valor: lit(l, 2), etiqueta: 'en total' },
+        { valor: eur(e), etiqueta: 'gastados' },
+        l > 0 ? { valor: pl(e / l), etiqueta: 'de media' } : null,
+        sinLeer ? { valor: sinLeer, etiqueta: 'sin leer', tono: 'red', filtro: { id: 'estado', valor: 'no_leido' } } : null,
+        noCoinciden ? { valor: noCoinciden, etiqueta: 'no coinciden con BOLT', tono: 'warn', filtro: { id: 'estado', valor: 'no_coincide' } } : null,
+      ];
+    },
+
+    // La última lectura del buzón: lo que hay que saber antes de fiarse de la
+    // lista. También que la lectura está PARADA: una lista sin nada nuevo puede
+    // ser que no ha habido repostajes o que nadie está mirando el buzón.
+    nota: (v, extra) => {
+      const lec = extra && extra.lectura;
+      const auto = !lec || lec.automatica !== false;
+      const sola = auto ? 'Se lee sola cada 10 minutos'
+        : 'Aquí la lectura automática está apagada (entorno de pruebas o COMBUSTIBLE_CORREO=off): solo se lee con «Leer el buzón ahora»';
+      if (!lec || !lec.ultima) {
+        return { tono: auto ? 'info' : 'aviso', icono: 'fa-envelope',
+          texto: 'Todavía no se ha leído el buzón. ' + sola + (PUEDE && auto ? ', o ahora con «Leer el buzón ahora».' : '.') };
+      }
+      const u = lec.ultima;
+      const quien = (u.origen === 'manual' ? `a mano${u.usuario ? ' por ' + u.usuario : ''}` : 'sola') +
+        (u.modo_pruebas ? ', desde el entorno de pruebas' : '');
+      if (u.error) {
+        const buena = lec.ultimaBuena ? ` La última que entró fue ${hace(lec.ultimaBuena.empezada_at)} (${lec.ultimaBuena.empezada_local}).` : ' Todavía no ha entrado ninguna vez.';
+        const pausa = lec.pausada ? ' No se vuelve a intentar sola hasta que se cambie la contraseña en la ficha del buzón (reintentarla cada 10 minutos puede hacer que el servidor bloquee la IP); «Leer el buzón ahora» sí lo intenta.' : '';
+        return { tono: 'mal', icono: 'fa-triangle-exclamation',
+          texto: `La última lectura del buzón ${u.buzon || ''} (${hace(u.empezada_at)}, ${quien}) no pudo entrar: ${u.error}.${buena}${pausa}` };
+      }
+      const minutos = (Date.now() - new Date(u.empezada_at).getTime()) / 60000;
+      if (auto && minutos > 30) {
+        return { tono: 'mal', icono: 'fa-triangle-exclamation',
+          texto: `El buzón no se lee desde ${hace(u.empezada_at)} (última lectura: ${u.empezada_local}, ${quien}). ` +
+            'Se tendría que leer sola cada 10 minutos: ¿está parado el servidor o su cron?' };
+      }
+      return { tono: u.no_leidos || u.fallos || !auto ? 'aviso' : 'info', icono: 'fa-envelope-circle-check',
+        texto: `Última lectura: ${hace(u.empezada_at)} (${u.empezada_local}, ${quien}) · ` +
+          `${u.vistos} correos desde el ${aDdmm(u.desde)}, ${u.candidatos} de proveedores, ${u.nuevos} ${u.nuevos === 1 ? 'nuevo' : 'nuevos'}` +
+          (u.no_leidos ? `, ${u.no_leidos} sin entender` : '') + (u.fallos ? `, ${u.fallos} con error` : '') +
+          (u.otros ? `, ${u.otros} del proveedor que no ${u.otros === 1 ? 'es un repostaje' : 'son repostajes'} (no se guardan)` : '') +
+          `. ${sola}.` };
+    },
+
+    filtros: [
+      { id: 'sede', textoTodos: 'Todas las sedes',
+        pasa: (f, v) => (v === 'sin' ? !f.sede : f.sede === v),
+        opciones: filas => [
+          ...Object.keys(SEDES).map(s => ({ valor: s, texto: SEDES[s], cuenta: filas.filter(f => f.sede === s).length })),
+          ...(filas.some(f => !f.sede) ? [{ valor: 'sin', texto: 'Sin sede', cuenta: filas.filter(f => !f.sede).length }] : []),
+        ] },
+      { id: 'estado', textoTodos: 'Todos los estados',
+        pasa: (f, v) => estadoDe(f).clave === v,
+        opciones: filas => ESTADOS.filter(([k]) => filas.some(f => estadoDe(f).clave === k))
+          .map(([k, t]) => ({ valor: k, texto: t, cuenta: filas.filter(f => estadoDe(f).clave === k).length })) },
+      { id: 'proveedor', campo: 'proveedor', textoTodos: 'Todos los proveedores',
+        opciones: filas => [...new Set(filas.map(f => f.proveedor))].map(p => ({ valor: p, texto: PROVEEDORES[p] || p })) },
+    ],
+
+    columnas: [
+      { titulo: 'Fecha y hora', campo: 'cuando', clase: 'whitespace-nowrap tabular-nums',
+        ayuda: 'La hora del repostaje que dice el correo (hora de Madrid). Si el correo no se pudo leer, la hora en que llegó.',
+        pinta: (v, f) => esc(v) + (f.estado === 'no_leido' ? '<span class="block text-xs text-telecab-muted">llegó</span>' : '') },
+      { titulo: 'Matrícula', campo: 'matricula', clase: 'font-mono font-semibold whitespace-nowrap',
+        ayuda: 'El coche del repostaje. En ámbar si no está dado de alta en Vehículos.',
+        pinta: (v, f) => (v
+          ? (f.vehiculo_id ? esc(v) : `<span class="text-telecab-warn" title="Esta matrícula no está dada de alta en Vehículos">${esc(v)}</span>`)
+          : NADA) },
+      { titulo: 'Sede', valor: f => SEDES[f.sede] || '', clase: 'whitespace-nowrap',
+        ayuda: 'La del coche en Vehículos o, si no está dado de alta, la de la empresa de BOLT que lo tiene; si nadie conoce el coche, la de la cuenta de BOLT de la persona de la tarjeta.',
+        pinta: v => (v ? esc(v) : NADA) },
+      { titulo: 'Estación', campo: 'estacion', clase: 'min-w-[8rem]',
+        // Un correo sin leer no tiene estación: se dice al menos de quién es.
+        pinta: (v, f) => (v ? esc(v) : f.estado === 'no_leido'
+          ? `<span class="text-telecab-muted">Correo de ${esc(PROVEEDORES[f.proveedor] || f.proveedor)}</span>` : NADA) },
+      { titulo: 'Conductor', valor: f => f.conductor_texto || '', clase: 'min-w-[10rem]',
+        ayuda: 'El de la tarjeta, tal cual lo dice el correo. Debajo, quién llevaba el coche en BOLT a esa hora cuando no es el mismo o la tarjeta no es de una persona (provisional, del taller).',
+        pinta: (v, f) => pintaQuien(f) },
+      { titulo: 'Litros', campo: 'litros', clase: 'whitespace-nowrap tabular-nums text-right', claseCabecera: 'text-right',
+        pinta: v => (v == null ? NADA : esc(lit(v))) },
+      { titulo: 'Importe', campo: 'importe', clase: 'whitespace-nowrap tabular-nums text-right', claseCabecera: 'text-right',
+        pinta: v => (v == null ? NADA : esc(eur(v))) },
+      { titulo: '€/litro', campo: 'precio_litro', clase: 'whitespace-nowrap tabular-nums text-right text-telecab-muted', claseCabecera: 'text-right',
+        ayuda: 'Importe entre litros.',
+        pinta: v => (v == null ? NADA : esc(num(v, 3))) },
+      { titulo: 'Estado', valor: f => estadoDe(f).texto, clase: 'whitespace-nowrap',
+        ayuda: 'Si el correo se pudo leer y si la persona de la tarjeta es la que llevaba el coche en BOLT. Pasa el cursor por encima para el detalle.',
+        pinta: (v, f) => { const e = estadoDe(f); return `<span title="${esc(e.ayuda)}">${etiqueta(e.texto, e.tono)}</span>`; } },
+      { titulo: 'Proveedor', valor: f => PROVEEDORES[f.proveedor] || f.proveedor, soloExcel: true },
+      { titulo: 'Conductor en BOLT', valor: f => f.bolt_nombre || '', soloExcel: true },
+      { titulo: 'KM', campo: 'km', soloExcel: true },
+      { titulo: 'Carburante', campo: 'carburante', soloExcel: true },
+    ],
+
+    detalle: {
+      origen: id => `/combustible/api/repostaje/${encodeURIComponent(id)}`,
+      titulo: d => `${d.matricula || 'Sin matrícula'} · ${d.cuando}`,
+      subtitulo: d => [d.estacion, PROVEEDORES[d.proveedor] || d.proveedor, estadoDe(d).texto].filter(Boolean).join(' · '),
+      bloques: [
+        {
+          titulo: 'El repostaje', icono: 'fa-gas-pump',
+          visible: d => d.estado !== 'no_leido',
+          campos: [
+            { etiqueta: 'Fecha del repostaje', valor: d => d.repostaje_local },
+            { etiqueta: 'Fecha del cargo', valor: d => d.cargo_local },
+            { etiqueta: 'Estación', valor: d => d.estacion },
+            { etiqueta: 'Carburante', valor: d => d.carburante },
+            { etiqueta: 'Litros', valor: d => lit(d.litros, 3) },
+            { etiqueta: 'Importe del repostaje', valor: d => eur(d.importe) },
+            { etiqueta: 'Precio por litro', valor: d => pl(d.precio_litro) },
+            { etiqueta: 'Recarga en la tarjeta', valor: d => eur(d.importe_recarga) },
+            { etiqueta: 'Devuelto al saldo', valor: d => eur(d.devuelto) },
+            { etiqueta: 'Ahorro que dice el proveedor', valor: d => eur(d.ahorro) },
+            { etiqueta: 'KM tecleados', valor: d => (d.km == null ? '' : num(d.km, 0) + ' km') },
+          ],
+        },
+        {
+          titulo: 'El coche', icono: 'fa-car-side',
+          campos: [
+            { etiqueta: 'Matrícula', html: true,
+              valor: d => (d.vehiculo_id
+                ? `<a class="font-mono font-semibold text-telecab-gold hover:underline" href="/vehiculos#${esc(d.vehiculo_id)}">${esc(d.matricula)}</a>`
+                : (d.matricula ? `<span class="font-mono">${esc(d.matricula)}</span> <span class="text-telecab-warn text-xs">no está dada de alta en Vehículos</span>` : '')) },
+            { etiqueta: 'Modelo', valor: d => d.vehiculo_modelo },
+            { etiqueta: 'Sede', valor: d => (SEDES[d.sede]
+              ? SEDES[d.sede] + (!d.vehiculo_id ? ' (el coche no está en Vehículos: la dice BOLT, del coche o de la tarjeta)' : '')
+              : (d.matricula ? 'No se sabe: ni Vehículos ni BOLT conocen el coche ni a la persona de la tarjeta' : '')) },
+          ],
+        },
+        {
+          titulo: 'Quién', icono: 'fa-user',
+          visible: d => d.estado !== 'no_leido',
+          campos: [
+            { etiqueta: 'La tarjeta dice', valor: d => d.conductor_texto },
+            { etiqueta: 'Tarjeta', valor: d => (d.tarjeta_provisional ? 'Provisional: no es de una persona'
+              : d.conductor_como == null ? (d.conductor_texto ? 'No es de una persona' : '') : 'De una persona') },
+            { etiqueta: 'Nota de la tarjeta', valor: d => d.tarjeta_nota, visible: d => !!d.tarjeta_nota },
+            { etiqueta: 'Ficha en el ERP', html: true, visible: d => d.conductor_como != null,
+              valor: d => (d.conductor_id
+                ? `<a class="text-telecab-gold hover:underline" href="/plantilla#${esc(d.conductor_id)}">${esc(d.conductor_ficha || 'Ver ficha')}</a> <span class="text-telecab-muted text-xs">· ${esc(COMO[d.conductor_como] || '')}</span>`
+                : esc(d.conductor_cuenta_bolt ? 'Sin ficha (cuenta de BOLT, ' + (COMO[d.conductor_como] || '') + ')' : COMO[d.conductor_como] || '')) },
+            { etiqueta: 'En BOLT a esa hora', valor: d => boltFrase(d), ancho: 'sm:col-span-2' },
+            { etiqueta: '¿Es la misma persona?', html: true,
+              valor: d => (d.coincide === true ? '<span class="text-telecab-green font-semibold">Sí</span>'
+                : d.coincide === false ? '<span class="text-telecab-warn font-semibold">No</span>'
+                  : '<span class="text-telecab-muted">No se puede comparar</span>') },
+            { etiqueta: 'Mirado en BOLT', valor: d => d.bolt_mirado_local },
+          ],
+        },
+        {
+          titulo: 'La lectura del correo', icono: 'fa-envelope',
+          campos: [
+            { etiqueta: 'Estado', html: true, valor: d => { const e = estadoDe(d); return etiqueta(e.texto, e.tono); } },
+            { etiqueta: 'Por qué no se pudo leer', valor: d => d.motivo, visible: d => d.estado === 'no_leido', ancho: 'sm:col-span-2', clase: 'text-telecab-red' },
+            { etiqueta: 'Avisos', html: true, visible: d => !!(d.avisos && d.avisos.length), ancho: 'sm:col-span-2 lg:col-span-3',
+              valor: d => `<ul class="list-disc pl-5 space-y-0.5 text-telecab-warn">${d.avisos.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` },
+            { etiqueta: 'Repetido de', html: true, visible: d => !!d.repetido_de,
+              valor: d => `<a class="text-telecab-gold hover:underline" href="#${esc(d.repetido_de)}">el correo n.º ${esc(d.repetido_de)}</a>` },
+            { etiqueta: 'Llegó también en', html: true, visible: d => !!(d.repetidos && d.repetidos.length), ancho: 'sm:col-span-2',
+              valor: d => d.repetidos.map(o => `<a class="text-telecab-gold hover:underline" href="#${esc(o.id)}">${esc(o.cuando)}</a>` +
+                (o.reenviado_por ? ` <span class="text-telecab-muted text-xs">reenviado por ${esc(o.reenviado_por)}</span>` : '')).join('<br>') },
+            { etiqueta: 'Llegó', valor: d => d.recibido_local },
+            { etiqueta: 'Proveedor', valor: d => PROVEEDORES[d.proveedor] || d.proveedor },
+            { etiqueta: 'Remitente', valor: d => d.remitente },
+            { etiqueta: 'Reenviado por', valor: d => d.reenviado_por, visible: d => !!d.reenviado_por },
+            // La cabecera «De:» no prueba nada; la firma DKIM del proveedor, sí.
+            { etiqueta: '¿Es de verdad del proveedor?', html: true, ancho: 'sm:col-span-2',
+              valor: d => (d.remitente_verificado === true ? `<span class="text-telecab-green font-semibold">Sí</span> <span class="text-telecab-muted text-xs">· ${esc(d.firma_detalle || '')}</span>`
+                : d.remitente_verificado === false ? `<span class="text-telecab-warn font-semibold">Sin verificar</span> <span class="text-telecab-muted text-xs">· ${esc(d.firma_detalle || '')}</span>`
+                  : `<span class="text-telecab-muted">No se puede saber${d.firma_detalle ? ' · ' + esc(d.firma_detalle) : ''}</span>`) },
+            { etiqueta: 'Buzón', valor: d => (d.buzon_carpeta && d.buzon_carpeta !== 'INBOX' ? `${d.buzon} · carpeta ${d.buzon_carpeta}` : d.buzon) },
+            { etiqueta: 'Asunto', valor: d => d.asunto, ancho: 'sm:col-span-2 lg:col-span-3' },
+            { etiqueta: 'Message-ID', valor: d => d.mensaje_id, ancho: 'sm:col-span-2 lg:col-span-3', clase: 'font-mono text-xs break-all' },
+          ],
+        },
+        {
+          titulo: 'El correo, tal cual se leyó', icono: 'fa-file-lines',
+          pinta: (d, hueco) => {
+            hueco.innerHTML = d.cuerpo_texto
+              ? `<pre class="whitespace-pre-wrap break-words text-xs leading-relaxed text-telecab-text/90 max-h-[28rem] overflow-auto font-mono">${esc(d.cuerpo_texto)}</pre>`
+              : '<p class="text-sm text-telecab-muted">No se guardó el texto de este correo.</p>';
+          },
+        },
+        {
+          titulo: 'Auditoría con Mapon', icono: 'fa-satellite-dish',
+          visible: d => d.estado === 'leido',
+          campos: [
+            { etiqueta: 'Estado', valor: d => (d.auditoria_estado === 'pendiente'
+              ? 'Pendiente: la auditoría con Mapon (¿estaba el coche en la estación?, ¿cuadran los km?) todavía no está hecha'
+              : d.auditoria_estado), ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+      ],
+    },
+  });
+
+  // ── Cambiar de fechas ─────────────────────────────────────────────────────
+  // Un rango al revés se da la vuelta solo, en vez de enseñar una lista vacía.
+  function fechasCambiadas() {
+    const d = aIso(fDesde.value), h = aIso(fHasta.value);
+    if (!d || !h) return;
+    if (d > h) { fDesde.value = aDdmm(h); fHasta.value = aDdmm(d); }
+    lista.recargar().catch(e => Dialogo.aviso({ titulo: 'No se pudo traer la lista', texto: e.message, tono: 'error' }));
+  }
+  fDesde.addEventListener('change', fechasCambiadas);
+  fHasta.addEventListener('change', fechasCambiadas);
+  document.getElementById('atajos').addEventListener('click', e => {
+    const b = e.target.closest('button[data-dias]');
+    if (!b) return;
+    const h = hoy();
+    fHasta.value = aDdmm(h);
+    fDesde.value = aDdmm(b.dataset.dias === 'mes' ? h.slice(0, 8) + '01' : menos(h, Number(b.dataset.dias)));
+    fechasCambiadas();
+  });
+})();
+</script>

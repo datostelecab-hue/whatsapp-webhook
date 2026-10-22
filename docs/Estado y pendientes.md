@@ -15,6 +15,15 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Combustible: los repostajes por correo (22/10/2026)
+
+- **Al desplegar, aplicar `db/212`** desde `/migraciones`. Hasta entonces `/combustible` dice que falta y el cron lo avisa una vez en el log. La primera pasada lee el buzón desde el 01/10/2026.
+- **Dar la llave** `/combustible` (y `/combustible/leer`, «Leer el buzón ahora») a quien la necesite en `/usuarios`: a los usuarios que ya existen no les llega sola (a propósito: quién ve los repostajes, con nombres, lo decide Camilo).
+- **La auditoría con Mapon** (¿estaba el coche en la estación?, ¿cuadran los km tecleados y los litros?): la tanda siguiente. Ver [[Combustible#Lo que queda]]. Que mire también `remitente_verificado`: un repostaje sin la firma de Ballenoil no se da por bueno sin mirarlo.
+- **Petroprix**: escribir su lector cuando llegue el primer correo, y su asunto (se guarda como «no se pudo leer» hasta entonces y se relee solo).
+- **`5369LHJ`, `6450LSR` y `7043LJN`** repostan con la tarjeta y no están dados de alta en Vehículos. `5369LHJ` ya sale de Barcelona por la persona de la tarjeta; los otros dos (provisional y taller), sin sede hasta que se den de alta.
+- **`velocidad.repo.quienConducia`** ([[Sanciones de velocidad]]) tiene el empate de `fv_tramo` que se arregló en Combustible: un tramo de 0 s y el siguiente con el mismo `desde`. Sin tocar: cambia a quién se atribuye un exceso, y lo decide Camilo. → [[Trampas conocidas]]
+
 ## El portal de conductores (19/10/2026)
 
 - **Los dominios están pedidos**: `erptelecab.es` (el ERP) y `conductorestelecab.es` (el portal). Los gestiona otra persona. Cuando estén, hay que añadirlos en Render y pasarle a quien los gestiona los registros DNS que dé Render.

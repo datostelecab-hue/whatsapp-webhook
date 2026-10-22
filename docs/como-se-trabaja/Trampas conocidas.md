@@ -1756,6 +1756,90 @@ contrato, jornada) y el de salidas de [[Administracion|Recaudación]].
 > Lo que se ve marcado tiene que ser lo que se envía. Una prueba de un formulario
 > que no lo envíe sin tocar nada no prueba el formulario.
 
+### Un INSERT que nombra una columna con NULL no se lleva su DEFAULT
+
+`modules/Combustible/combustible.repo.js` (22/10/2026)
+
+`tarjeta_provisional BOOLEAN NOT NULL DEFAULT FALSE` no protege de nada si el
+INSERT escribe la lista de columnas entera y pasa `null` en esa: PostgreSQL usa el
+DEFAULT solo cuando la columna **no se nombra**. Los nueve correos de verdad
+entraron bien porque todos se leían; el primer correo que no se entendiera —que no
+sabe si la tarjeta es provisional— habría reventado al guardarse. Salió al probar
+contra la base local, no con los dobles del comprobador, que no tienen NOT NULL.
+
+**Remedio:** el repositorio pone el valor de esas columnas (`valorDe`), y el
+comprobador lo vigila. Y una prueba con dobles no sustituye a una pasada contra la
+base de verdad.
+
+### `x = ANY ((SELECT arr FROM …))` compara un texto con un array entero
+
+`modules/Combustible/combustible.repo.js` (22/10/2026)
+
+Con un array en una CTE, `vehiculo_uuid = ANY ((SELECT uuids FROM veh))` no mira
+dentro del array: lo toma por una subconsulta de filas y compara el texto con el
+array completo — *«operator does not exist: character varying = character
+varying[]»*. **Remedio:** poner la CTE en el FROM y escribir `= ANY (veh.uuids)`.
+
+### En `fv_tramo`, `ORDER BY desde DESC LIMIT 1` no siempre coge el tramo bueno
+
+`modules/Combustible/combustible.repo.js` → `boltMadrid` (22/10/2026)
+
+fv_tramo tiene muchos pares con el mismo `desde`: un tramo de 0 segundos y el
+siguiente, que empieza en el mismo instante (3.284 en 60 días en la copia local,
+todos de la misma persona). Sin desempate, el LATERAL cogía a veces el de 0 s, el
+instante no caía «dentro» y se decía *«lo dejó hace 10 min»* de quien seguía
+conectado. Pasa justo en el cambio espera→descanso, que es cuando se para a
+repostar: de 200 empates medidos, 163 salían mal. La persona salía bien; lo que
+fallaba era el estado, la situación y la antigüedad.
+
+**Remedio:** desempatar por el que llega más lejos —`ORDER BY t.desde DESC,
+COALESCE(t.hasta, t.senal_at, t.desde) DESC, t.id DESC`—; con eso, 0 de 200. En
+`sede_bolt_state_log` (Barcelona) pasa lo mismo con los apuntes del mismo segundo:
+`, l.id DESC`. **`velocidad.repo.quienConducia` ([[Sanciones de velocidad]]), de
+donde se copió el patrón, tiene el mismo `ORDER BY` sin desempate** y no se ha
+tocado: es de otro módulo y cambia a quién se le atribuye un exceso.
+
+### Sin oyente de `'error'`, un corte de imapflow tira el proceso
+
+`services/correo.js` → `leerCorreos` y `guardarEnEnviados` (22/10/2026)
+
+Ya conectado, imapflow avisa de un corte (tiempo de socket, ECONNRESET, un BYE del
+servidor) **emitiendo** `'error'`. Si nadie lo escucha, Node lo lanza desde el
+manejador del socket: en el ERP lo recoge la red de `app.js` como «excepción no
+capturada» y un script se cae entero. Y la promesa que estaba esperando falla con
+un *«Connection not available»* (code `NoConnection`) que no dice nada.
+**Remedio:** `client.on('error', e => { errorImap = e; })` al crear el cliente, y
+en el `catch` relanzar `errorImap || e`. Ojo también con el código: imapflow dice
+`ETIMEOUT`, no `ETIMEDOUT`.
+
+### La firma DKIM de Ballenoil no cuadra… hasta deshacer los cortes de sendmail
+
+`services/dkim.js` (22/10/2026)
+
+DonDominio **no** deja su veredicto en `Authentication-Results`: para saber si un
+correo «de noreply@ballenoil.es» lo es de verdad hay que comprobar la firma DKIM
+aquí. De primeras no cuadraba en ninguno de los ocho: las cabeceras firmadas sí,
+el cuerpo no. Su pie legal es una línea de más de mil caracteres y un servidor del
+camino la parte —metiendo `!`, salto y un espacio— **después** de firmar (en el
+correo se lee *«comerciale! s»*). **Remedio:** si el cuerpo no cuadra tal cual, se
+prueba sin esos cortes (`/!\r\n /g`); con eso cuadran los ocho. No abre ninguna
+puerta: el cuerpo sin cortes tiene que ser, byte a byte, el que se firmó. Y el
+lector deshace el mismo corte antes de leer, por si un día cae en mitad de un dato.
+
+### Un correo que la base rechaza se pierde si no le queda fila
+
+`modules/Combustible/combustible.service.js` (22/10/2026)
+
+Lo ya guardado no se vuelve a bajar; lo demás, sí, en cada pasada, hasta que sale
+de la ventana de días. Así que un correo que el lector da por bueno pero la base
+rechaza (un texto que no cabe en su columna, un precio por litro que desborda con
+unos litros diminutos, unos km que no caben en un INTEGER) **no deja fila**: se
+vuelve a bajar y a fallar cada diez minutos y, a la semana, desaparece. Lo
+contrario de «lo que no se entiende no se pierde». **Remedio:** el lector no manda
+a la base lo que no puede ser (litros, importe, €/L y km con sus límites), y si aun
+así la base dice que no (SQLSTATE `22…`, `23502` o `23514`), el mismo correo se
+guarda como «no_leido» con el porqué y sin cifras.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

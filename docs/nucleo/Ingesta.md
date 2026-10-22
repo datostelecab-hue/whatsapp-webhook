@@ -78,6 +78,10 @@ De ahí sale la vista `v_ingesta_estado` y el panel, que marca una tarea **al d�
 
 [[Flota viva]] tiene su propio cron, también cada cinco minutos, y es la otra mitad de la puerta: de ahí salen `fv_tramo`, `fv_ruta` y `fv_odometro`. Sigue la misma regla —una sola llamada de flota por vuelta alimenta a todas las pantallas— pero con su propia conexión y su propio registro (`fv_vuelta`).
 
+## El correo de los repostajes, también por su cuenta (22/10/2026)
+
+Los repostajes de Ballenoil que llegan a `datos@telecab.es` ([[Combustible]]) entran por su propio cron cada diez minutos, no como una tarea más del latido. **A propósito**: el latido es de minuto y va en serie, y un DonDominio colgado (15 s para conectar, 60 de socket) retrasaría los apuntes de BOLT de los que viven el mapa y En directo. La regla es la misma —una sola puerta, y las pantallas leen de PostgreSQL—, con su propia bandera contra el solape y su propio registro (`repostaje_lectura`).
+
 ## La poda
 
 A las 00:00 se vacía el **payload crudo** de las descargas viejas (`purgar_descargas`, retención `INGESTA_CRUDO_DIAS`, 1 día por defecto), porque con las ventanas solapadas a propósito son **90–250 MB al día** del mismo dato. Nadie re-lee ese JSON: una orden que madura se **re-descarga** de BOLT.
