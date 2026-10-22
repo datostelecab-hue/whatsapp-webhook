@@ -34,9 +34,19 @@ Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de
 - **Arriba del chat**: el teléfono, los enlaces a su ficha y a **sus llamadas** si es conductor, hasta cuándo está abierta la ventana, el estado del bot (con **Pausar el bot** o **Devolver al bot**) y **quién la lleva** (con **Me la quedo** o **Cambiar**).
 - **Abajo, la caja para escribir**, con la ventana abierta. Intro envía; Mayús + Intro hace un salto de línea. El **rayo** (o «/» al empezar a escribir) abre las **respuestas rápidas**.
 - **Con la ventana cerrada, una plantilla**: «Mandar una plantilla» enseña las aprobadas por Meta; al elegir una sale su texto con el nombre de pila ya puesto, una casilla por variable y cómo le va a llegar. Antes de mandarla se confirma, porque **se paga**.
-- **Arriba de la lista**: «Todas», «No leídas» (las que tienen algo sin leer; la que está abierta no se cae al leerla, como en WhatsApp), «Mías» (las que lleva quien mira) y «Sin asignar», cada una con su número. Los números cuentan todas las conversaciones, sin mirar el buscador. El lápiz abre una conversación con **cualquier conductor de alta** con teléfono en su ficha, aunque nunca haya escrito: la primera vez es con plantilla.
+- **Arriba de la lista**: «Todas», «No leídas» (las que tienen algo sin leer; la que está abierta no se cae al leerla, como en WhatsApp), «Mías» (las que lleva quien mira), «Sin asignar» y **«Sin Wsp»** (los números sin WhatsApp, ver abajo), cada una con su número. Los números cuentan todas las conversaciones, sin mirar el buscador. El lápiz abre una conversación con **cualquier conductor de alta** con teléfono en su ficha, aunque nunca haya escrito: la primera vez es con plantilla.
 
 Abrir una conversación la da por leída. La pantalla se refresca sola: el chat abierto cada 4 segundos y la lista cada 10.
+
+## Sin WhatsApp y a todo el ancho (22/10/2026)
+
+Camilo: *«si se le manda un mensaje a un número que no tiene WhatsApp aparezca en otra pestañita llamada "Sin Wsp" al lado del "Sin asignar"»*. En la misma tanda pidió quitar el párrafo que explicaba el módulo arriba y *«haz más grande la ventana del módulo colocándole pocos márgenes»*.
+
+- **Cómo se sabe.** Meta acepta el envío y después avisa por el webhook de estados (`whatsapp_envio`) de que no lo pudo entregar, con el **error 131026** («Message undeliverable»): el número no tiene WhatsApp o no puede recibir mensajes de empresa.
+- **Cuándo cuenta.** Una conversación está sin WhatsApp si su último fallo 131026 es posterior a lo último que esa persona escribió y a lo último que sí se le entregó. Si después escribe o le llega algo, lo tiene, y vuelve sola a la lista normal. No se guarda nada nuevo ni hace falta migración: se lee de lo que ya apunta el webhook (`sinWsp` en `services/repo/whatsappChat.js`).
+- **Dónde sale.** En su pestaña, en «Todas» y en «Mías» si alguien la lleva, con una marca roja «Sin WhatsApp» en la lista y en la cabecera del chat. **No sale en «Sin asignar»**, que es trabajo pendiente: a un número sin WhatsApp no hay nada que contestarle.
+- **El 22/10 eran dos:** uno que nunca había escrito y otro que escribió el 13/10 y al que después ya no le llegó nada.
+- **La pantalla**, sin el párrafo de arriba (el título queda solo para lectores de pantalla), ocupa todo el ancho con 8-12 px de margen y todo el alto bajo la barra. La lista pasa de 340 a 400 px para que las cinco pestañas quepan en una línea (en el móvil, o si los números crecen, bajan a una segunda). Probado a 1529×729, 1280×593 y 375×812, sin desplazamiento de la página.
 
 ## Las reglas
 

@@ -112,15 +112,36 @@ const QUIEN = `
     ) x ORDER BY x.prio LIMIT 1
   ) q ON TRUE`;
 
+// SIN WHATSAPP (22/10/2026). Meta acepta el envío y DESPUÉS avisa (webhook de
+// estados, whatsapp_envio) de que no pudo entregarlo con el error 131026,
+// «Message undeliverable»: el número no tiene WhatsApp o no puede recibir
+// mensajes de empresa. Camilo: «si se le manda un mensaje a un número que no
+// tiene WhatsApp aparezca en otra pestañita llamada "Sin Wsp"».
+// Una conversación está sin WhatsApp si su último fallo de esos es posterior a lo
+// último que esa persona escribió y a lo último que sí se le entregó: si después
+// escribe o le llega algo, lo tiene, y vuelve sola a la lista normal. No hace falta
+// guardar nada: se lee de lo que ya apunta el webhook.
+const COD_SIN_WSP = 131026;
+const sufijo = col => `right(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), 9)`;
+const sinWsp = (tel, entrante) => `EXISTS (
+    SELECT 1 FROM whatsapp_envio e
+     WHERE e.estado = 'fallido' AND e.error_codigo = ${COD_SIN_WSP}
+       AND ${sufijo('e.telefono')} = right(${tel}, 9)
+       AND e.estado_at > COALESCE(${entrante}, '-infinity'::timestamptz)
+       AND NOT EXISTS (SELECT 1 FROM whatsapp_envio ok
+                        WHERE ok.estado IN ('entregado', 'leido') AND ok.estado_at > e.estado_at
+                          AND ${sufijo('ok.telefono')} = right(${tel}, 9)))`;
+
 /**
  * Las conversaciones, la más reciente primero, con quién es cada una, quién la
  * lleva, lo que la oficina no ha leído y la pausa del bot. `buscar` filtra por
  * nombre o teléfono; `filtro`: 'mias' (las que lleva `usuarioId`), 'libres' (las
- * que no lleva nadie) o nada (todas).
+ * que no lleva nadie y sí tienen WhatsApp), 'sinwsp' (los números sin WhatsApp)
+ * o nada (todas).
  */
 async function conversaciones({ buscar = '', filtro = '', usuarioId = null, mantener = null, limite = 200 } = {}) {
   const q = String(buscar || '').trim();
-  const f = ['mias', 'libres', 'noleidas'].includes(filtro) ? filtro : '';
+  const f = ['mias', 'libres', 'noleidas', 'sinwsp'].includes(filtro) ? filtro : '';
   // «No leídas» filtra por lo que queda sin leer, que se calcula en la propia
   // fila: por eso va fuera, sobre la subconsulta. La conversación abierta
   // (`mantener`) no se cae de la lista al leerla, como en WhatsApp.
@@ -131,23 +152,28 @@ async function conversaciones({ buscar = '', filtro = '', usuarioId = null, mant
               c.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado,
               (SELECT count(*) FROM whatsapp_mensaje m
                 WHERE m.telefono = c.telefono AND m.sentido = 'entrante'
-                  AND m.ocurrido_at > COALESCE(c.leido_at, '-infinity'::timestamptz))::int AS sin_leer
+                  AND m.ocurrido_at > COALESCE(c.leido_at, '-infinity'::timestamptz))::int AS sin_leer,
+              ${sinWsp('c.telefono', 'c.ultima_entrante_at')} AS sin_wsp
          FROM whatsapp_chat c
          LEFT JOIN usuario ua ON ua.id = c.asignado_a
          ${QUIEN}
         WHERE ($1::text = '' OR c.telefono LIKE '%' || regexp_replace($1::text, '[^0-9]', '', 'g') || '%' AND regexp_replace($1::text, '[^0-9]', '', 'g') <> ''
                OR q.nombre ILIKE '%' || $1::text || '%' OR c.nombre_perfil ILIKE '%' || $1::text || '%')
-          AND ($3::text IN ('', 'noleidas') OR ($3::text = 'mias' AND c.asignado_a = $4::bigint) OR ($3::text = 'libres' AND c.asignado_a IS NULL))
+          AND ($3::text IN ('', 'noleidas', 'sinwsp') OR ($3::text = 'mias' AND c.asignado_a = $4::bigint) OR ($3::text = 'libres' AND c.asignado_a IS NULL))
      ) x
-     WHERE $3::text <> 'noleidas' OR x.sin_leer > 0 OR x.telefono = $5::varchar
+     WHERE ($3::text <> 'noleidas' OR x.sin_leer > 0 OR x.telefono = $5::varchar)
+       -- «Sin asignar» es trabajo pendiente: un número sin WhatsApp no lo es, va a su pestaña.
+       AND ($3::text <> 'libres' OR NOT x.sin_wsp)
+       AND ($3::text <> 'sinwsp' OR x.sin_wsp)
      ORDER BY x.ultimo_at DESC
      LIMIT $2`, [q, limite, f, usuarioId == null ? null : Number(usuarioId), mantener ? W.soloDigitos(mantener) : null]);
   return r.rows;
 }
 
 /**
- * Cuántas hay en cada filtro de la lista (todas, sin leer, las de `usuarioId` y
- * las que no lleva nadie), sin mirar el buscador: son los números de los botones.
+ * Cuántas hay en cada filtro de la lista (todas, sin leer, las de `usuarioId`,
+ * las que no lleva nadie y los números sin WhatsApp), sin mirar el buscador: son
+ * los números de los botones.
  */
 async function cuentas(usuarioId) {
   const r = await db.consulta(
@@ -156,8 +182,10 @@ async function cuentas(usuarioId) {
                                             WHERE m.telefono = c.telefono AND m.sentido = 'entrante'
                                               AND m.ocurrido_at > COALESCE(c.leido_at, '-infinity'::timestamptz)))::int AS noleidas,
             count(*) FILTER (WHERE c.asignado_a = $1::bigint)::int AS mias,
-            count(*) FILTER (WHERE c.asignado_a IS NULL)::int AS libres
-       FROM whatsapp_chat c`, [usuarioId == null ? null : Number(usuarioId)]);
+            count(*) FILTER (WHERE c.asignado_a IS NULL AND NOT c.sin_wsp)::int AS libres,
+            count(*) FILTER (WHERE c.sin_wsp)::int AS sinwsp
+       FROM (SELECT w.*, ${sinWsp('w.telefono', 'w.ultima_entrante_at')} AS sin_wsp FROM whatsapp_chat w) c`,
+    [usuarioId == null ? null : Number(usuarioId)]);
   return r.rows[0];
 }
 
@@ -172,7 +200,8 @@ async function chat(telefono) {
     `SELECT c.telefono, (w.telefono IS NOT NULL) AS existe,
             w.nombre_perfil, w.ultima_entrante_at, w.bot_pausado_hasta,
             btrim(concat_ws(' ', u.nombre, u.apellidos)) AS pausado_por, q.nombre, q.que, q.conductor_id, ${FOTO},
-            w.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado
+            w.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado,
+            ${sinWsp('c.telefono', 'w.ultima_entrante_at')} AS sin_wsp
        FROM (SELECT $1::varchar AS telefono) c
        LEFT JOIN whatsapp_chat w ON w.telefono = c.telefono
        LEFT JOIN usuario u  ON u.id  = w.pausado_por

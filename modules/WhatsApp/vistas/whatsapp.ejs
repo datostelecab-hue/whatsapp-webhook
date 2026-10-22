@@ -1,27 +1,20 @@
 <style>
-  body .tc-selector.w-filtros { gap: .25rem; flex-wrap: nowrap; }
-  body .tc-selector.w-filtros button { padding: .35rem .55rem; font-size: .75rem; white-space: nowrap; }
+  body .tc-selector.w-filtros { gap: .2rem; flex-wrap: wrap; }
+  body .tc-selector.w-filtros button { padding: .35rem .4rem; font-size: .75rem; white-space: nowrap; }
   body .tc-selector.w-filtros [data-cuenta] { font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; }
   body .tc-selector.w-filtros [data-cuenta]:empty { display: none; }
 </style>
-<div class="max-w-[1400px] mx-auto">
+<%# A TODO EL ANCHO Y CON POCO MARGEN (22/10/2026, Camilo: «haz más grande la
+    ventana del módulo colocándole pocos márgenes»). Sin el párrafo de explicación
+    de arriba, que también pidió quitar: el chat ocupa todo lo que queda bajo la
+    barra. %>
+<div class="px-2 sm:px-3 pt-2 pb-2">
 
-  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
-    <div>
-      <h1 class="text-2xl font-semibold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-comments text-telecab-gold"></i> WhatsApp
-      </h1>
-      <p class="text-sm text-telecab-muted mt-1 max-w-[80ch]">
-        Lo que el bot les manda a los conductores y lo que escriben ellos. Se puede contestar gratis mientras
-        la ventana de 24 h esté abierta (desde su último mensaje); fuera de ella, con una plantilla, que se paga.
-        Al escribir, el bot deja de contestarle un rato.
-      </p>
-    </div>
-  </div>
+  <h1 class="sr-only">WhatsApp</h1>
 
-  <div id="w-aviso" class="hidden mb-4 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
+  <div id="w-aviso" class="hidden mb-2 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
 
-  <div id="w-marco" class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden grid grid-cols-1 md:grid-cols-[340px_minmax(0,1fr)] h-[calc(100svh-11rem)] min-h-[440px]">
+  <div id="w-marco" class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden grid grid-cols-1 md:grid-cols-[400px_minmax(0,1fr)] h-[calc(100svh-10.5rem)] md:h-[calc(100svh-5rem)] min-h-[440px]">
 
     <!-- ── Las conversaciones ─────────────────────────────────────────────── -->
     <aside id="w-lado" class="flex flex-col min-h-0 border-r border-telecab-border">
@@ -45,6 +38,7 @@
           <button type="button" data-v="noleidas" title="Las que tienen mensajes sin leer">No leídas <span data-cuenta="noleidas"></span></button>
           <button type="button" data-v="mias" title="Las que llevas tú">Mías <span data-cuenta="mias"></span></button>
           <button type="button" data-v="libres" title="Las que no lleva nadie">Sin asignar <span data-cuenta="libres"></span></button>
+          <button type="button" data-v="sinwsp" title="Números a los que Meta no pudo entregar el mensaje: no tienen WhatsApp">Sin Wsp <span data-cuenta="sinwsp"></span></button>
         </div>
       </div>
       <ul id="w-lista" class="flex-1 overflow-y-auto min-h-0" aria-label="Conversaciones">
@@ -76,6 +70,8 @@
   const SIN_TELEFONO = <%- JSON.stringify(!!sinTelefono) %>;
   // Los vídeos de la casa (services/videosWhatsapp.js), para mandarlos con la ventana abierta.
   const VIDEOS = <%- JSON.stringify(locals.videos || []) %>;
+  // Lo que se enseña al pasar por la marca «Sin WhatsApp» (pestaña «Sin Wsp»).
+  const SIN_WSP_AYUDA = 'Meta avisó de que no pudo entregarle el último mensaje (error 131026): el número no tiene WhatsApp o no puede recibir mensajes de empresa. Si escribe o le llega algo, vuelve a la lista normal.';
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   // Las marcas de WhatsApp, como las pinta el móvil: *negrita* (el bot la usa
@@ -178,6 +174,7 @@
         ? 'Nadie con ese nombre o teléfono.'
         : f === 'mias' ? 'No llevas ninguna conversación. Se te asigna la que contestas, o la que te quedas desde arriba del chat.'
         : f === 'libres' ? 'Todas las conversaciones tienen a alguien que las lleva.'
+        : f === 'sinwsp' ? 'Ningún número sin WhatsApp: todo lo que se ha mandado ha llegado.'
         : f === 'noleidas' ? 'No hay nada sin leer.'
         : 'Todavía no hay mensajes. El chat se guarda desde que se aplicó db/185: Meta no da los anteriores.'}</li>`;
       return;
@@ -203,6 +200,7 @@
             </span>
             <span class="flex items-center gap-2 mt-0.5">
               <span class="truncate text-xs text-telecab-muted mr-auto">${prefijo}${esc(c.ultimoTexto || '')}</span>
+              ${c.sinWsp ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-telecab-red/10 text-[10px] font-medium text-telecab-red" title="${esc(SIN_WSP_AYUDA)}">Sin WhatsApp</span>` : ''}
               ${lleva}
               ${c.botPausadoHasta ? '<i class="fa-solid fa-hand shrink-0 text-[11px] text-telecab-warn" title="El bot está en pausa con esta persona"></i>' : ''}
               ${c.sinLeer ? `<span class="shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-telecab-gold text-[11px] font-semibold flex items-center justify-center" style="color: rgb(var(--tc-on-gold))">${c.sinLeer > 99 ? '99+' : c.sinLeer}</span>` : ''}
@@ -409,6 +407,9 @@
       : v.abierta
         ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-green"><span class="w-2 h-2 rounded-full bg-telecab-green"></span>Ventana abierta hasta ${esc(hasta(v.cierraAt))}</span>`
         : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><span class="w-2 h-2 rounded-full bg-telecab-muted/60"></span>Ventana cerrada</span>`;
+    const sinWsp = c.sinWsp
+      ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-red" title="${esc(SIN_WSP_AYUDA)}"><i class="fa-solid fa-circle-exclamation"></i>Sin WhatsApp</span>`
+      : '';
     const bot = !c.existe ? '' : c.botPausadoHasta
       ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-warn"><i class="fa-solid fa-hand"></i>Bot en pausa hasta las ${esc(fmtHora(c.botPausadoHasta))}${c.pausadoPor ? ' (' + esc(c.pausadoPor) + ')' : ''}</span>`
       : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><i class="fa-solid fa-robot"></i>Bot activo</span>`;
@@ -438,7 +439,7 @@
         <div class="font-semibold text-telecab-text truncate">${esc(bonito(c.nombre))}</div>
         <div class="text-xs text-telecab-muted truncate">+${esc(c.telefono)}${c.que ? ' · ' + esc(c.que) : ''}${c.perfil ? ' · en WhatsApp «' + esc(c.perfil) + '»' : ''}${enlaces ? ' · ' + enlaces : ''}</div>
       </div>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">${ventana}${bot}${botonBot}</div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">${sinWsp}${ventana}${bot}${botonBot}</div>
       ${lleva || asignar ? `<div class="basis-full md:basis-auto flex items-center gap-2">${lleva}${asignar}</div>` : ''}`;
     const atras = $('#w-atras');
     if (atras) atras.addEventListener('click', cerrarEnMovil);

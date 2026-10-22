@@ -4,7 +4,7 @@
 // Traduce HTTP a llamadas al servicio. No decide nada.
 //
 //   /whatsapp[?tel=|?conductor=]    la pantalla: conversaciones y chat
-//   GET  /whatsapp/api/conversaciones?q=&filtro=&abierta=   filtro: '' | noleidas | mias | libres (con sus cuentas)
+//   GET  /whatsapp/api/conversaciones?q=&filtro=&abierta=   filtro: '' | noleidas | mias | libres | sinwsp (con sus cuentas)
 //   GET  /whatsapp/api/chat?tel=&despues=&antes=&llamadas=1   (abrirla la da por leída)
 //   GET  /whatsapp/api/adjunto/:id                  la foto, el audio o el documento
 //   GET  /whatsapp/api/foto/:conductorId?v=         la foto de su ficha, para el avatar

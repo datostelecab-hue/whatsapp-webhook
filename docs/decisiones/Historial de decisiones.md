@@ -7,6 +7,10 @@ actualizado: 2026-10-21
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-22 · WhatsApp: pestaña «Sin Wsp» y el chat a todo el ancho
+
+*«Si se le manda un mensaje a un número que no tiene WhatsApp aparezca en otra pestañita llamada "Sin Wsp" al lado del "Sin asignar".»* Sale de los fallos 131026 que Meta manda por el webhook de estados, sin guardar nada nuevo, y no cuenta en «Sin asignar». Fuera el párrafo de explicación de arriba, y la ventana del chat ocupa toda la pantalla con poco margen. → [[WhatsApp chat#Sin WhatsApp y a todo el ancho (22/10/2026)]]
+
 ## 2026-10-21 · Las zonas se editan desde el planificador; Usera se cierra
 
 *«Deja editar también los nombres o crear nuevas zonas, porque los coches de Usera pasarán a Getafe y toca crear una nueva llamada Aravaca.»* «Zonas» crea una o le cambia el nombre o la ubicación, y la zona de un cuadrante se cambia en su cabecera (sus coches van con él). Los 9 cuadrantes de Usera pasaron a Getafe, Aravaca nació a 0 y, *«Elimina a Usera de la db, no la necesitamos ya»*, Usera se borró. → [[Planificacion#Las zonas: crear, renombrar y mover cuadrantes (21/10/2026)]]

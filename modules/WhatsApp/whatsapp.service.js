@@ -54,13 +54,15 @@ function cabecera(c, ahora = Date.now()) {
     pausadoPor: pausa ? (c.pausado_por || null) : null,
     asignadoA: c.asignado_a ? Number(c.asignado_a) : null,
     asignado: c.asignado_a ? (c.asignado || null) : null,
+    // Meta no le pudo entregar lo último (error 131026): no tiene WhatsApp.
+    sinWsp: !!c.sin_wsp,
   };
 }
 
 /**
  * La lista de conversaciones, la más reciente primero, y cuántas hay en cada
- * filtro. `filtro`: '', 'noleidas', 'mias' o 'libres'; `abierta`, la que se
- * está mirando, que no se cae de «No leídas» al leerla.
+ * filtro. `filtro`: '', 'noleidas', 'mias', 'libres' o 'sinwsp'; `abierta`, la
+ * que se está mirando, que no se cae de «No leídas» al leerla.
  */
 function conversaciones({ buscar, filtro, abierta } = {}, usuarioId) {
   return conTablas(async () => {
@@ -73,7 +75,7 @@ function conversaciones({ buscar, filtro, abierta } = {}, usuarioId) {
         ...cabecera(c),
         ultimoAt: c.ultimo_at, ultimoTexto: c.ultimo_texto, ultimoSentido: c.ultimo_sentido, sinLeer: c.sin_leer,
       })),
-      cuentas: { todas: n.todas, noleidas: n.noleidas, mias: n.mias, libres: n.libres },
+      cuentas: { todas: n.todas, noleidas: n.noleidas, mias: n.mias, libres: n.libres, sinwsp: n.sinwsp },
       pausaMin: W.PAUSA_MIN,
       yo: usuarioId ? Number(usuarioId) : null,
     };
