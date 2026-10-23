@@ -179,7 +179,15 @@ async function quienConducia(placa, ocurridoAt) {
      WHERE t.vehiculo_uuid = veh.uuid
        AND t.conductor_uuid IS NOT NULL
        AND t.desde <= $2::timestamptz
-     ORDER BY t.desde DESC
+     -- LOS EMPATES (22/10/2026). Cuando BOLT manda dos apuntes en el mismo
+     -- segundo, el motor deja un tramo de 0 segundos («espera») y el siguiente
+     -- empieza en el mismo instante: 3.396 pares desde septiembre en producción,
+     -- siempre de la misma persona. Con «ORDER BY desde» a secas salía a veces el
+     -- de 0 s, el exceso no caía «dentro» y la antigüedad se contaba desde que
+     -- empezó el tramo: con más de media hora, un exceso de alguien que seguía
+     -- conectado quedaba «dudoso» y no se avisaba. Desempata el que llega más
+     -- lejos, como en Combustible (Trampas conocidas).
+     ORDER BY t.desde DESC, COALESCE(t.hasta, t.senal_at, t.desde) DESC, t.id DESC
      LIMIT 1`, [p, ocurridoAt]);
   const x = r.rows[0];
   if (!x || !x.conductor_uuid) return null;

@@ -1534,7 +1534,12 @@ ${SOLAPE_KM},
           WHERE ft.vehiculo_uuid = t.uuid
             AND ft.desde < w.fin
             AND COALESCE(ft.hasta, now()) > w.ini
-          ORDER BY ft.desde DESC LIMIT 1) ab ON TRUE
+          -- Con el desempate de los tramos de 0 s que empiezan a la vez que el
+          -- siguiente (Trampas conocidas): sin él salía a veces la «espera» de
+          -- 0 s en vez del tramo que de verdad siguió. Es la misma persona y la
+          -- misma hora; lo que cambiaba era la situación.
+          ORDER BY ft.desde DESC, COALESCE(ft.hasta, ft.senal_at, ft.desde) DESC, ft.id DESC
+          LIMIT 1) ab ON TRUE
        LEFT JOIN fv_conductor co ON co.uuid = ab.conductor_uuid
       WHERE t.metros - COALESCE(c.metros, 0) > 0
       ORDER BY 3 DESC`,

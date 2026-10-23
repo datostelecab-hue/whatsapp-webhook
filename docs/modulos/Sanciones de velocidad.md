@@ -61,6 +61,26 @@ Por encima de media hora el caso **se registra pero no se avisa a nadie**: queda
 
 *(La intención a futuro es que el propio `busy` haga de fichaje del relevo —el que entrega lo quita, el que recibe lo pone— y entonces la responsabilidad dejará de deducirse y pasará a estar declarada.)*
 
+## Dos tramos que empiezan en el mismo segundo (22/10/2026)
+
+Camilo, sobre el fallo que salió al hacer [[Combustible]]: *«Sí, arréglalo también en Sanciones»*.
+
+Cuando BOLT manda dos apuntes en el mismo segundo, el motor de [[Flota viva]] deja un tramo de **0 segundos** («espera») y el siguiente empieza en el mismo instante. En producción hay **3.396 pares desde septiembre, y en todos es la misma persona**. `quienConducia` elegía con `ORDER BY desde DESC` a secas y a veces cogía el de 0 s. Entonces el exceso no caía «dentro» y la antigüedad se contaba desde que empezó el tramo. Con más de media hora, un exceso de alguien que **seguía conectado** quedaba `dudoso` y no se le avisaba.
+
+Ahora desempata **el que llega más lejos**, como Combustible: `ORDER BY t.desde DESC, COALESCE(t.hasta, t.senal_at, t.desde) DESC, t.id DESC`. Lo comprueba `scripts/comprobar-sanciones.js` con datos que empatan, en el [[Entorno de pruebas local]]. Ver [[Trampas conocidas]].
+
+**Como los dos tramos son siempre de la misma persona, el desempate nunca cambia a quién se atribuye un exceso.** Lo que cambia es cuánto hace, y con eso si se avisa.
+
+**Lo ya registrado no se ha tocado: lo decide Camilo.** Medido en producción, en solo lectura, sobre los 245 excesos con conductor (160 avisados, 85 dudosos):
+
+- **ninguno cambia de conductor**, ni por el empate ni por nada;
+- **por el empate cambia uno, y solo la nota.** Es el de Alessio Pizzuto en el 0348MMZ (02/10 a las 04:43), que sigue avisado: el libro dice «se desconectó de la app 4 min antes» y estaba en la app, en descanso;
+- **los que cambian por otras causas** salen en el mismo listado:
+  - 20 de la época de la API de BOLT (03/09–10/09), con la misma persona y otra ventana. Dos de ellos, los de Adrián Martínez Andía del 07/09, salieron avisados y con la regla de hoy serían dudosos;
+  - un dudoso de Jesus Barranco Garcia (02/10), al que con los tramos de hoy se le habría avisado.
+
+El listado y el script están fuera del repo, en `Scripts de análisis/sanciones-desempate/` (`medir-desempate.js`, `excesos-que-cambian.csv` y su README).
+
 ## Los estados de un exceso
 
 | Estado | Qué es |

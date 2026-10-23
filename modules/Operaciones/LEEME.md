@@ -72,6 +72,13 @@ desarrollador: reescribe histórico.
 **La libranza manual vive en `bitacora_dia`; el planificador no se toca.** El
 cuadrante dice lo que estaba planificado y la bitácora lo que de verdad pasó.
 
+**Quién llevaba el coche en un exceso lo dice UN tramo de `fv_tramo`, y con
+desempate** (`velocidad.repo.quienConducia`, 22/10/2026). Dos tramos pueden empezar
+en el mismo segundo —una «espera» de 0 s y el que sigue— y sin desempate salía a
+veces el de 0 s: el exceso no caía «dentro» y quedaba `dudoso` el de alguien que
+seguía conectado. Gana el que llega más lejos, como en Combustible. Lo comprueba
+`scripts/comprobar-sanciones.js` contra la base local; ver [[Trampas conocidas]].
+
 ## La herramienta de Mapon
 
 `mapon.diagnostico.js` no tiene pantalla ni enlace, a propósito: se llama por URL
