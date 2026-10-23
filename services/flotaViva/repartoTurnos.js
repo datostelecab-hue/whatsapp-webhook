@@ -342,7 +342,20 @@ async function cargar(fechas) {
   const VACIO = new Set();
   const planDe = (persona, fecha) => ((planes.get(persona) || new Map()).get(fecha)) || VACIO;
 
-  return repartir(ivs.map(iv => ({ ...iv, persona: personaDe(iv.uuid, iv.ini) })), planDe);
+  // Las cuentas de BOLT de cada persona en estas fechas: con ellas se le busca
+  // en la foto del «ahora» (que va por cuenta) a quien aquí va por persona.
+  const cuentasDe = new Map();
+  const conPersona = ivs.map(iv => {
+    const persona = personaDe(iv.uuid, iv.ini);
+    if (iv.uuid) {
+      if (!cuentasDe.has(persona)) cuentasDe.set(persona, new Set());
+      cuentasDe.get(persona).add(iv.uuid);
+    }
+    return { ...iv, persona };
+  });
+  const r = repartir(conPersona, planDe);
+  r.cuentasDe = cuentasDe;
+  return r;
 }
 
 /**
@@ -351,13 +364,26 @@ async function cargar(fechas) {
  *
  * Devuelve Map('fecha|turno' → { viajeSeg, esperaSeg, personas: Set, nnSeg,
  * nnPersonas: Set }) para las fechas pedidas.
+ *
+ * Con `{ gente: true }` cada turno lleva además `gente`: [{ persona, seg, nn,
+ * cuentas }] con lo de cada persona en ESE turno (lo que suma `personas`, uno a
+ * uno). Lo usa el inicio para decir quién lleva ya su jornada y quién no: sale
+ * de la misma carga, así que la lista y el total no pueden decir cosas distintas.
  */
-async function porTurno(fechas) {
-  const { porClave } = await cargar(fechas);
+async function porTurno(fechas, { gente = false } = {}) {
+  const { porClave, porPersona, cuentasDe } = await cargar(fechas);
   const out = new Map();
   [...new Set(fechas.map(f => String(f).slice(0, 10)))].forEach(f => ['dia', 'noche'].forEach(t => {
     const k = clave(f, t);
     out.set(k, porClave.get(k) || { viajeSeg: 0, esperaSeg: 0, personas: new Set(), nnSeg: 0, nnPersonas: new Set() });
+    if (gente) {
+      const lista = [];
+      porPersona.forEach((claves, persona) => {
+        const x = claves.get(k);
+        if (x && x.seg > 0) lista.push({ persona, seg: x.seg, nn: x.nn, cuentas: [...(cuentasDe.get(persona) || [])] });
+      });
+      out.get(k).gente = lista;
+    }
   }));
   return out;
 }

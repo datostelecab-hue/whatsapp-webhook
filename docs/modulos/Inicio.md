@@ -24,6 +24,18 @@ Camilo: *«lo más importante siempre serán las horas del mes, las horas del tu
 
 **Los conductores de cada turno**, pequeños al lado de las horas, son los de Visibilidad partidos en **«del cuadrante + NN»**. Es como los cuenta Control: la pestaña del turno, los del cuadrante que salieron, y la de los NN. Camilo, el mismo día: *«cuadra bien, en control los de cuadrante y NN; eso da en visibilidad un total de día + NN de día y noche + NN de noche, déjalos así»*. No se cuentan aquí: si cambia la regla, cambia en `repartoTurnos`, que es de los dos.
 
+## Quién lleva ya su jornada (23/10/2026)
+
+Camilo: *«en la tarjeta del turno actual quiero una previsión: de los 64 conductores que están, cuántos ya cumplieron sus 8 horas, a cuántos les falta por cumplir sus 8 horas, y al darle click que me detalle los nombres y las horas que llevan, de mayor a menor, para saber si llegaremos o no; también agrégalos a las tarjetas del turno anterior»*.
+
+En el turno en curso, el anterior y la jornada pasada:
+
+- **Cuántos llevan ya su jornada y a cuántos les falta**, con las horas que faltan entre todos. La jornada es `jornada_h` de la configuración de Visibilidad (8 h si nadie la ha puesto), la misma de las horas no efectivas. En la jornada pasada, lo de cada uno es su día más su noche.
+- **La previsión**, mientras el turno aún suma: si todos los que faltan completaran su jornada, a cuánto llegaría el turno frente a su meta, y cuántos de ellos siguen conectados (esos aún pueden llegar). Con el turno cerrado se dice cuánto les faltó.
+- **Al pulsar**, la lista de la gente de mayor a menor (`Dialogo.aviso`), partida en «ya llevan sus 8 h» y «les faltan», con lo que hace cada uno ahora en BOLT (la foto compartida de `flotaViva/ahora`) y si es NN.
+
+La gente y sus horas salen de **la misma carga** que el total y los «X conductores»: `repartoTurnos.porTurno(fechas, { gente: true })`, que pasa por `visibilidad.resumen({ gente: true })`. Visibilidad no la pide y no cambia. El nombre es el de BOLT de la ficha, como en todo el ERP; sin ficha, el de su cuenta (`fv_conductor`).
+
 Después, **los kilómetros por turno** sin tocar (*«la de los KM está perfecta»*) y, abajo y en pequeño, **el resto**: hoy por día natural, la semana, el neto y la utilización del mes y las horas **no efectivas** (lo que faltó para la jornada de quien debía salir, por persona y sin compensar, solo de jornadas cerradas, de `bitacora_horas`).
 
 Las gráficas son SVG propio, sin librerías, con los colores del tema (`--tc-*`), para que el inicio cargue al momento.

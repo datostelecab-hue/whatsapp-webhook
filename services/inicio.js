@@ -146,6 +146,75 @@ async function kilometros(dia, turno) {
 }
 
 /**
+ * QUIÉN LLEVA YA SU JORNADA Y QUIÉN NO, en cada tarjeta de turno y en la de la
+ * jornada (Camilo, 23/10/2026: «de los 64 conductores que están, cuántos ya
+ * cumplieron sus 8 horas, a cuántos les falta… y al darle click que me detalle
+ * los nombres y las horas que llevan, de mayor a menor, para saber si llegaremos
+ * o no»).
+ *
+ * La gente y sus horas son las de Visibilidad (`resumen({ gente: true })`, la
+ * misma carga que el total y los «X conductores»). Aquí se le pone a cada uno su
+ * nombre —el de BOLT de su ficha, como en todo el ERP; sin ficha, el de su cuenta—
+ * y lo que hace AHORA según la foto compartida de BOLT (`flotaViva/ahora`): quien
+ * sigue conectado aún puede llegar a sus horas. La PREVISIÓN es la cuenta simple
+ * de si todos los que faltan completaran su jornada: lo que lleva el turno más lo
+ * que les falta.
+ *
+ * Cambia `turnoDia`, `turnoNoche` y `ayerJornada` en su sitio: su `gente` cruda
+ * (persona, segundos, cuentas) pasa a ser la lista para pintar, y se añade
+ * `prevision`.
+ */
+async function conLaGente(visib, jornadaH) {
+  const tarjetas = [visib.turnoDia, visib.turnoNoche, visib.ayerJornada].filter(t => t && Array.isArray(t.gente));
+  const todas = tarjetas.flatMap(t => t.gente);
+  const ids = [...new Set(todas.filter(g => /^c\d+$/.test(g.persona)).map(g => Number(g.persona.slice(1))))];
+  const uuids = [...new Set(todas.filter(g => g.persona.startsWith('u')).map(g => g.persona.slice(1)))];
+  const [rc, ru, foto] = await Promise.all([
+    ids.length ? db.consulta(
+      `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), btrim(nombre || ' ' || COALESCE(apellidos, ''))) AS nombre
+         FROM conductor WHERE id = ANY($1::bigint[])`, [ids]) : { rows: [] },
+    uuids.length ? db.consulta(
+      `SELECT uuid, nombre FROM fv_conductor WHERE uuid = ANY($1::text[])`, [uuids]) : { rows: [] },
+    // Sin la foto del ahora la lista sale igual, solo que sin decir quién sigue.
+    require('./flotaViva/ahora').foto().catch(() => null),
+  ]);
+  const nombreConductor = new Map(rc.rows.map(x => [Number(x.id), x.nombre]));
+  const nombreCuenta = new Map(ru.rows.map(x => [String(x.uuid), x.nombre]));
+  const nombreDe = p => (p.startsWith('c') ? nombreConductor.get(Number(p.slice(1))) : nombreCuenta.get(p.slice(1)))
+    || (p === 'sin-conductor' ? 'Sin conductor' : 'Sin nombre');
+  // Lo que hace ahora: de sus cuentas, la noticia más fresca.
+  const ahoraDe = cuentas => {
+    if (!foto) return null;
+    let mejor = null;
+    cuentas.forEach(u => {
+      const x = foto.porConductor.get(u);
+      if (x && (!mejor || new Date(x.desde) > new Date(mejor.desde))) mejor = x;
+    });
+    return mejor && mejor.conectado ? { situacion: mejor.situacion, matricula: mejor.matricula || null } : null;
+  };
+
+  const meta = jornadaH * 3600;
+  const r1 = v => Math.round(v * 10) / 10;
+  tarjetas.forEach(t => {
+    const lista = t.gente
+      .map(g => ({ nombre: nombreDe(g.persona), seg: g.seg, nn: !!g.nn, ahora: ahoraDe(g.cuentas || []) }))
+      .sort((a, b) => b.seg - a.seg || a.nombre.localeCompare(b.nombre, 'es'));
+    const faltan = lista.filter(p => p.seg < meta);
+    const faltanSeg = faltan.reduce((s, p) => s + (meta - p.seg), 0);
+    t.prevision = {
+      jornadaH,
+      cumplen: lista.length - faltan.length,
+      faltan: faltan.length,
+      faltanH: r1(faltanSeg / 3600),
+      // De los que faltan, cuántos siguen conectados: esos aún pueden llegar.
+      faltanConectados: faltan.filter(p => p.ahora).length,
+      siCompletan: r1((t.horasEfectivas || 0) + faltanSeg / 3600),
+    };
+    t.gente = lista.map(p => ({ nombre: p.nombre, h: r1(p.seg / 3600), nn: p.nn, ahora: p.ahora }));
+  });
+}
+
+/**
  * El panel entero, de una vez.
  *
  * Las cifras de Visibilidad se piden tal cual: si algún día cambia cómo se
@@ -191,7 +260,8 @@ async function panel() {
   const [Y, M] = hoy.split('-').map(Number);
 
   const [visib, serie, neCerrada, neMes, kmDia, kmNoche, kmAyer] = await Promise.all([
-    visibilidad.resumen(),
+    // Con la gente de cada turno: quién lleva ya su jornada y quién no.
+    visibilidad.resumen({ gente: true }),
     // Las horas de cada día del mes, para las barras de la tarjeta del mes. Es la
     // MISMA serie de las gráficas de Visibilidad (sus fotos diarias y hoy en vivo).
     visibilidad.serieMes(Y, M),
@@ -203,6 +273,7 @@ async function panel() {
     // de "Ayer · jornada".
     kilometros(cerrada, 'operativo'),
   ]);
+  await conLaGente(visib, jornadaH);
 
   return {
     hoy, jornadaEnCurso: enCurso, jornadaCerrada: cerrada, jornadaH,

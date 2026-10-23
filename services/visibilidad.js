@@ -218,7 +218,12 @@ function ventanaTurnos() {
   return { dia: turnoDia, noche: turnoNoche };
 }
 
-async function resumen() {
+/**
+ * Con `{ gente: true }` (el inicio), las tarjetas de turno y la jornada llevan
+ * además `gente`: lo de cada persona, [{ persona, seg, nn, cuentas }], de la
+ * misma carga que sus totales. Visibilidad no la pide: no la pinta.
+ */
+async function resumen({ gente = false } = {}) {
   const hoy = hoyISO();
   const ayer = diaISOhace(1);
   const [Y, M] = hoy.split('-').map(Number);
@@ -257,7 +262,7 @@ async function resumen() {
     slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
     // Los TURNOS de una vez, por la gente de cada uno (sliceDeTurno): el día y
     // la noche que tocan ahora, y los dos de la jornada de ayer.
-    reparto.porTurno([fechaDia, fechaNoche, ayerJornada]),
+    reparto.porTurno([fechaDia, fechaNoche, ayerJornada], { gente }),
     leerConfig(),
   ]);
   const turnoDia = sliceDeTurno(porTurno.get(fechaDia + '|dia'));
@@ -279,6 +284,24 @@ async function resumen() {
     dia: r1((jD.viajeSeg + jD.esperaSeg) / 3600),
     noche: r1((jN.viajeSeg + jN.esperaSeg) / 3600),
   };
+  // La gente de cada tarjeta, si se pidió. En la jornada, cada persona una vez,
+  // con lo de su día y lo de su noche sumado (quien dobla lleva las dos).
+  const conGente = {};
+  if (gente) {
+    conGente.dia = { gente: porTurno.get(fechaDia + '|dia').gente || [] };
+    conGente.noche = { gente: porTurno.get(fechaNoche + '|noche').gente || [] };
+    const junta = new Map();
+    [...(jD.gente || []), ...(jN.gente || [])].forEach(g => {
+      const x = junta.get(g.persona);
+      if (!x) junta.set(g.persona, { ...g, cuentas: [...g.cuentas] });
+      else {
+        x.seg += g.seg;
+        x.nn = x.nn && g.nn;
+        g.cuentas.forEach(c => { if (!x.cuentas.includes(c)) x.cuentas.push(c); });
+      }
+    });
+    conGente.jornada = { gente: [...junta.values()] };
+  }
   return {
     hoyISO: hoy,
     // POR DÍA (día natural 00:00→24:00)
@@ -288,9 +311,9 @@ async function resumen() {
     semana: { ...semana, etq: 'Esta semana' },
     // POR TURNO: las horas y la gente de cada turno, por el turno de cada
     // conductor (día 00→24, noche 12→12; los NN por su hora de inicio).
-    turnoDia: { ...turnoDia, etq: t.dia.etq, dia: fechaDia },
-    turnoNoche: { ...turnoNoche, etq: t.noche.etq, dia: fechaNoche },
-    ayerJornada: { ...ayerJor, dia: ayerJornada, parcial: jornadaAbierta, partes,
+    turnoDia: { ...turnoDia, ...conGente.dia, etq: t.dia.etq, dia: fechaDia },
+    turnoNoche: { ...turnoNoche, ...conGente.noche, etq: t.noche.etq, dia: fechaNoche },
+    ayerJornada: { ...ayerJor, ...conGente.jornada, dia: ayerJornada, parcial: jornadaAbierta, partes,
       etq: jornadaAbierta ? 'Ayer · jornada (se cierra a las 12:00)' : 'Ayer · jornada completa' },
     config,
   };

@@ -58,6 +58,27 @@
 
   <div id="i-error" class="hidden mb-4 px-4 py-3 rounded-xl border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red"></div>
 
+  <%
+    /* QUIÉN LLEVA YA SU JORNADA (Camilo, 23/10/2026): cuántos han hecho sus 8 h y
+       a cuántos les faltan, y al pulsar, los nombres con sus horas de mayor a
+       menor, «para saber si llegaremos o no». Va en el turno en curso, en el
+       anterior y en la jornada pasada. Lo pinta pintarPrevision(). */
+    function bloquePrevision(id) {
+      return `<button type="button" id="${id}-prev" class="hidden mt-4 w-full text-left rounded-xl border border-telecab-border bg-telecab-card2/50 px-3 py-2.5 transition hover:border-telecab-gold/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-telecab-gold">
+        <span class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span class="text-telecab-green"><i class="fa-solid fa-circle-check mr-1" aria-hidden="true"></i><b class="tabular-nums" id="${id}-prev-ok">—</b> <span id="${id}-prev-ok-txt">ya llevan su jornada</span></span>
+          <span class="text-telecab-warn"><i class="fa-solid fa-hourglass-half mr-1" aria-hidden="true"></i><b class="tabular-nums" id="${id}-prev-falta">—</b> <span id="${id}-prev-falta-txt">les faltan</span></span>
+          <span class="ml-auto text-xs text-telecab-muted whitespace-nowrap">Ver quiénes <i class="fa-solid fa-chevron-right ml-0.5" aria-hidden="true"></i></span>
+        </span>
+        <span class="mt-2 h-1.5 rounded-full bg-telecab-card2 overflow-hidden flex">
+          <span id="${id}-prev-bar-ok" class="h-full bg-telecab-green" style="width:0%"></span>
+          <span id="${id}-prev-bar-falta" class="h-full bg-telecab-warn/60" style="width:0%"></span>
+        </span>
+        <span class="block text-xs text-telecab-muted mt-1.5" id="${id}-prev-pie"></span>
+      </button>`;
+    }
+  %>
+
   <%#
     LO QUE IMPORTA, ARRIBA Y EN GRANDE (Camilo, 23/10/2026): «lo más importante
     siempre serán las horas del mes, las horas del turno actual, si es día o
@@ -129,6 +150,7 @@
         <div id="t-bar" class="h-full rounded-full transition-all" style="width:0%"></div>
       </div>
       <p class="text-sm text-telecab-muted mt-2.5" id="t-pie">—</p>
+      <%- bloquePrevision('t') %>
       <%# Viaje y espera: las dos partes de las horas efectivas. La utilización es la
           parte en viaje; se ve sin leer el número. %>
       <div class="mt-4">
@@ -182,6 +204,7 @@
         </div>
         <p class="text-xs text-telecab-muted mt-2" id="${id}-pie">—</p>
         ${extra || ''}
+        ${bloquePrevision(id)}
       </section>`;
     }
   %>
@@ -441,6 +464,11 @@
     pon('t-h', actual.horasEfectivas, 1);
     const pct = conMeta('t', actual.horasEfectivas, metaDe(enCurso));
     conductores('t', actual);
+    const jornadaH = Number(j.jornadaH) || 8;
+    pintarPrevision('t', actual, {
+      titulo: (enCurso === 'dia' ? 'Turno de día' : 'Turno de noche') + ' en curso · quién lleva ya su jornada',
+      abierta: true, meta: metaDe(enCurso), jornadaH,
+    });
     $('#t-pie').textContent = pct == null ? 'Sin meta del turno: se pone en Visibilidad.'
       : `${num(pct, 1)} % de la meta del turno de ${enCurso === 'dia' ? 'día' : 'noche'}`;
     const vi = Number(actual.viajeH) || 0, es = Number(actual.esperaH) || 0, tot = vi + es;
@@ -471,6 +499,10 @@
     const h = Number(j.horaMadrid);
     const abierto = otro === 'noche' ? (enCurso === 'dia' && h < 12) : (enCurso === 'noche' && h >= 12);
     txt('p-estado', abierto ? (otro === 'noche' ? 'aún suma hasta las 12:00' : 'aún suma hasta las 24:00') : 'cerrado');
+    pintarPrevision('p', antes, {
+      titulo: ($('#p-etq').textContent || 'Turno anterior') + ' · quién hizo su jornada',
+      abierta: abierto, meta: metaDe(otro), jornadaH,
+    });
   }
 
   function pintarJornada(j, cfg) {
@@ -490,7 +522,97 @@
     $('#j-noche').style.width = (t ? n / t * 100 : 0) + '%';
     pon('j-dia-h', d, 1); pon('j-noche-h', n, 1);
     $('#j-split').title = `Turno de día ${num(d, 1)} h · turno de noche ${num(n, 1)} h`;
+    // En la jornada, lo de cada uno es su día más su noche.
+    pintarPrevision('j', a, {
+      titulo: `Jornada pasada · ${esFecha(a.dia)} · quién hizo su jornada`,
+      abierta: !!a.parcial, meta, jornadaH: Number(j.jornadaH) || 8,
+    });
   }
+
+  // ── QUIÉN LLEVA YA SU JORNADA ─────────────────────────────────────────────
+  // Lo de cada tarjeta se guarda aquí para abrir su lista al pulsar.
+  const PREV = {};
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const AHORA = {
+    viaje: { txt: 'en viaje', cls: 'text-telecab-green' },
+    espera: { txt: 'en espera', cls: 'text-telecab-gold' },
+    descanso: { txt: 'en descanso', cls: 'text-telecab-warn' },
+  };
+
+  /**
+   * El resumen de la tarjeta: cuántos han hecho ya su jornada y a cuántos les
+   * falta. `abierta` = el turno aún suma: entonces se dice a cuánto llegaría si
+   * los que faltan la completaran; cerrado, cuánto les faltó.
+   */
+  function pintarPrevision(id, t, { titulo, abierta, meta, jornadaH }) {
+    const b = $('#' + id + '-prev');
+    const p = t && t.prevision;
+    if (!b || !p || !(t.gente || []).length) { if (b) b.classList.add('hidden'); return; }
+    PREV[id] = { t, titulo, abierta, meta, jornadaH };
+    b.classList.remove('hidden');
+    const total = p.cumplen + p.faltan;
+    pon(id + '-prev-ok', p.cumplen);
+    txt(id + '-prev-ok-txt', `ya llevan sus ${num(jornadaH)} h`);
+    pon(id + '-prev-falta', p.faltan);
+    txt(id + '-prev-falta-txt', p.faltan ? `les faltan · ${num(p.faltanH, 1)} h entre todos` : 'les faltan');
+    $('#' + id + '-prev-bar-ok').style.width = (total ? p.cumplen / total * 100 : 0) + '%';
+    $('#' + id + '-prev-bar-falta').style.width = (total ? p.faltan / total * 100 : 0) + '%';
+    let pie;
+    if (!p.faltan) pie = `Todos han hecho ya sus ${num(jornadaH)} h.`;
+    else if (abierta) {
+      const llega = meta > 0 && p.siCompletan >= meta;
+      pie = `Si los ${num(p.faltan)} completan sus ${num(jornadaH)} h, el turno llega a ` +
+        `<b class="tabular-nums ${meta > 0 ? (llega ? 'text-telecab-green' : 'text-telecab-red') : 'text-telecab-text'}">${num(p.siCompletan, 1)} h</b>` +
+        (meta > 0 ? ` de ${num(meta)}${llega ? '' : ' (no llega)'}` : '') +
+        ` · ${num(p.faltanConectados)} de ellos siguen conectados`;
+    } else pie = `A ${num(p.faltan)} les faltaron ${num(p.faltanH, 1)} h para llegar a sus ${num(jornadaH)} h.`;
+    $('#' + id + '-prev-pie').innerHTML = pie;
+    b.setAttribute('aria-label', `${p.cumplen} ya llevan sus ${jornadaH} h y a ${p.faltan} les faltan. Ver la lista.`);
+  }
+
+  /** La lista de la tarjeta, de más horas a menos, partida por la jornada. */
+  function abrirLista(id) {
+    const x = PREV[id];
+    if (!x || !window.Dialogo) return;
+    const { t, titulo, abierta, meta, jornadaH } = x;
+    const fila = (g, i) => {
+      const pct = Math.min(100, g.h / jornadaH * 100);
+      const ok = g.h >= jornadaH;
+      const a = g.ahora && AHORA[g.ahora.situacion];
+      const estado = a ? a.txt : 'desconectado', mat = a && g.ahora.matricula ? esc(g.ahora.matricula) : '';
+      // En el móvil no caben cuatro columnas: lo que hace ahora va debajo del nombre.
+      return `<div class="flex items-center gap-2 sm:gap-3 py-2 border-b border-telecab-border/50 last:border-0">
+        <span class="w-5 sm:w-6 shrink-0 text-right text-[11px] text-telecab-muted tabular-nums">${i + 1}</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-telecab-text truncate" title="${esc(g.nombre)}">${esc(g.nombre)}${g.nn ? ' <span class="ml-1 px-1.5 py-0.5 rounded bg-telecab-warn/15 text-telecab-warn text-[10px] font-semibold align-middle" title="Sin plan en el cuadrante: va por su hora de inicio">NN</span>' : ''}</p>
+          <div class="mt-1 h-1.5 rounded-full bg-telecab-card2 overflow-hidden"><div class="h-full rounded-full ${ok ? 'bg-telecab-green' : 'bg-telecab-warn/70'}" style="width:${pct}%"></div></div>
+          <p class="sm:hidden mt-0.5 text-[11px] ${a ? a.cls : 'text-telecab-muted'}">${estado}${mat ? ` <span class="text-telecab-muted tabular-nums">· ${mat}</span>` : ''}</p>
+        </div>
+        <span class="hidden sm:block w-28 shrink-0 text-[11px] text-right ${a ? a.cls : 'text-telecab-muted'}">${estado}${mat ? `<br><span class="text-telecab-muted tabular-nums">${mat}</span>` : ''}</span>
+        <span class="w-[4.5rem] sm:w-24 shrink-0 text-right tabular-nums">
+          <b class="text-sm text-telecab-text">${num(g.h, 1)} h</b><br>
+          <span class="text-[11px] ${ok ? 'text-telecab-green' : 'text-telecab-warn'}">${ok ? (g.h > jornadaH ? '+' + num(g.h - jornadaH, 1) + ' h' : 'justo') : 'faltan ' + num(jornadaH - g.h, 1) + ' h'}</span>
+        </span>
+      </div>`;
+    };
+    const gente = t.gente || [];
+    const hechos = gente.filter(g => g.h >= jornadaH), faltan = gente.filter(g => g.h < jornadaH);
+    const p = t.prevision || {};
+    const grupo = (etq, cls, lista, desde) => lista.length
+      ? `<p class="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wider ${cls}">${etq} · ${lista.length}</p>` + lista.map((g, i) => fila(g, desde + i)).join('')
+      : '';
+    const cabeza = `<p class="text-sm text-telecab-muted">${num(gente.length)} conductores · <b class="text-telecab-text tabular-nums">${num(t.horasEfectivas, 1)} h</b>` +
+      (meta > 0 ? ` de ${num(meta)}` : '') +
+      (p.faltan && abierta ? ` · si los que faltan completan sus ${num(jornadaH)} h: <b class="tabular-nums ${meta > 0 && p.siCompletan >= meta ? 'text-telecab-green' : 'text-telecab-red'}">${num(p.siCompletan, 1)} h</b>` : '') +
+      `</p><p class="text-[11px] text-telecab-muted mt-1">Horas efectivas (viaje + espera) de cada uno en este turno, con la regla de Visibilidad. «Desconectado» es lo que dice BOLT ahora mismo.</p>`;
+    Dialogo.aviso({
+      titulo, tono: 'info', ancho: 'max-w-2xl', boton: 'Cerrar',
+      html: cabeza + `<div class="mt-2 max-h-[60vh] overflow-y-auto pr-1">` +
+        grupo(`Ya llevan sus ${num(jornadaH)} h`, 'text-telecab-green', hechos, 0) +
+        grupo('Les faltan', 'text-telecab-warn', faltan, hechos.length) + '</div>',
+    });
+  }
+  ['t', 'p', 'j'].forEach(id => { const b = $('#' + id + '-prev'); if (b) b.addEventListener('click', () => abrirLista(id)); });
 
   function pintar(j) {
     const v = j.visibilidad || {};
