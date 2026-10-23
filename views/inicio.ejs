@@ -58,76 +58,148 @@
 
   <div id="i-error" class="hidden mb-4 px-4 py-3 rounded-xl border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red"></div>
 
-  <%
-    /* Una cifra grande con su pie. Es la única forma de tarjeta de esta pantalla:
-       sin gráficas, que esto se mira de pasada y de camino a otra cosa. */
-    function cifra(id, etq, unidad, pie, acento, ayuda) {
-      return `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card p-4"${
-        ayuda ? ` title="${ayuda.replace(/"/g, '&quot;')}"` : ''}>
-        <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${etq}</p>
-        <p class="text-3xl font-bold text-telecab-text mt-1 tabular-nums leading-none">
-          <span id="${id}">—</span>${unidad ? `<span class="text-sm text-telecab-muted font-normal ml-1">${unidad}</span>` : ''}
+  <%#
+    LO QUE IMPORTA, ARRIBA Y EN GRANDE (Camilo, 23/10/2026): «lo más importante
+    siempre serán las horas del mes, las horas del turno actual, si es día o
+    noche, y luego las horas del turno pasado, también de la jornada pasada, si
+    puede ser más gráfico mejor». Son las cifras y las metas de Visibilidad, tal
+    cual: el turno en curso es una de sus dos tarjetas de turno y el anterior, la
+    otra. Los conductores de cada turno, pequeños al lado de las horas, son los de
+    Visibilidad partidos en «del cuadrante + NN», que es como los cuenta Control
+    (la pestaña del turno y la de los NN).
+  %>
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+
+    <!-- ── EL MES ───────────────────────────────────────────────────────── -->
+    <section class="rounded-2xl border border-telecab-gold/40 bg-telecab-card p-5 md:p-6 flex flex-col min-w-0">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold text-telecab-muted uppercase tracking-wider flex items-center gap-2"
+            title="Horas EFECTIVAS de toda la flota en lo que va de mes, por día natural: viaje + espera, sin el descanso.&#10;Es la cifra con la que se vive, y la misma que el «Horas efectivas» de Visibilidad.">
+          <span class="inline-flex w-7 h-7 items-center justify-center rounded-full bg-telecab-gold/15 text-telecab-gold" aria-hidden="true"><i class="fa-solid fa-calendar-days text-[13px]"></i></span>
+          Horas del mes <span id="m-nombre" class="normal-case tracking-normal font-normal"></span>
+        </h2>
+        <span class="text-xs text-telecab-muted tabular-nums" id="m-cond"></span>
+      </div>
+      <p class="mt-4 flex items-baseline flex-wrap gap-x-2 leading-none">
+        <span id="m-h" class="text-6xl md:text-7xl font-bold text-telecab-gold tabular-nums tracking-tight">—</span>
+        <span id="m-meta" class="text-xl md:text-2xl text-telecab-muted font-semibold tabular-nums"></span>
+      </p>
+      <%# El avance hacia la meta en dos trozos: los días CERRADOS, enteros, y hoy, más
+          claro porque aún corre. La raya es el ideal a cierre de ayer: se compara con
+          el trozo entero, como el acumulado contra el ideal de Visibilidad. %>
+      <div class="mt-5 relative" id="m-barcaja">
+        <div class="h-3 rounded-full bg-telecab-card2 overflow-hidden flex">
+          <div id="m-bar" class="h-full bg-telecab-gold transition-all" style="width:0%"></div>
+          <div id="m-bar-hoy" class="h-full bg-telecab-gold/40 transition-all" style="width:0%"></div>
+        </div>
+        <div id="m-ideal" class="hidden absolute -top-1 h-5 w-0.5 rounded-full bg-telecab-text/80"></div>
+      </div>
+      <p class="text-sm text-telecab-muted mt-2.5" id="m-pie">—</p>
+      <div class="mt-5 flex-1 flex flex-col justify-end">
+        <div id="m-dias" class="h-24" role="img" aria-label="Horas efectivas de cada día del mes"></div>
+        <div class="flex justify-between text-[11px] text-telecab-muted tabular-nums mt-1.5" id="m-dias-eje"></div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-telecab-muted mt-2">
+          <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-telecab-gold"></span> días cerrados</span>
+          <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-telecab-gold/40"></span> hoy, en curso</span>
+          <span class="flex items-center gap-1.5"><span class="inline-block w-4 border-t border-dashed border-telecab-text/60"></span> ritmo que pide la meta <span id="m-ritmo" class="tabular-nums"></span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── EL TURNO EN CURSO ───────────────────────────────────────────── -->
+    <section class="rounded-2xl border border-telecab-gold/40 bg-telecab-card p-5 md:p-6 flex flex-col min-w-0">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold text-telecab-muted uppercase tracking-wider flex items-center gap-2">
+          <span id="t-icono" class="inline-flex w-7 h-7 items-center justify-center rounded-full bg-telecab-card2" aria-hidden="true"><i class="fa-solid fa-sun text-[13px]"></i></span>
+          <span id="t-etq">Turno en curso</span>
+        </h2>
+        <span class="text-xs text-telecab-muted tabular-nums" id="t-ventana"></span>
+      </div>
+      <div class="mt-4 flex items-end justify-between flex-wrap gap-x-6 gap-y-3">
+        <p class="flex items-baseline flex-wrap gap-x-2 leading-none">
+          <span id="t-h" class="text-6xl md:text-7xl font-bold text-telecab-text tabular-nums tracking-tight">—</span>
+          <span id="t-meta" class="text-xl md:text-2xl text-telecab-muted font-semibold tabular-nums"></span>
         </p>
-        <p class="text-xs text-telecab-muted mt-2" id="${id}-pie">${pie || ''}</p>
-      </div>`;
+        <div class="text-right" id="t-cond-caja">
+          <p class="text-sm text-telecab-text"><b class="text-lg tabular-nums" id="t-cond">—</b> conductores</p>
+          <p class="text-[11px] text-telecab-muted tabular-nums" id="t-cond-det"></p>
+        </div>
+      </div>
+      <div class="mt-5 h-3 rounded-full bg-telecab-card2 overflow-hidden" id="t-barcaja">
+        <div id="t-bar" class="h-full rounded-full transition-all" style="width:0%"></div>
+      </div>
+      <p class="text-sm text-telecab-muted mt-2.5" id="t-pie">—</p>
+      <%# Viaje y espera: las dos partes de las horas efectivas. La utilización es la
+          parte en viaje; se ve sin leer el número. %>
+      <div class="mt-4">
+        <div class="h-2 rounded-full bg-telecab-card2 overflow-hidden flex" id="t-split" title="">
+          <div id="t-viaje" class="h-full bg-telecab-green" style="width:0%"></div>
+          <div id="t-espera" class="h-full bg-telecab-azul/70" style="width:0%"></div>
+        </div>
+        <div class="flex justify-between text-[11px] mt-1.5 tabular-nums">
+          <span class="text-telecab-green"><span id="t-viaje-h">—</span> h en viaje</span>
+          <span class="text-telecab-muted"><span id="t-util">—</span> % utilización</span>
+          <span class="text-telecab-azul"><span id="t-espera-h">—</span> h en espera</span>
+        </div>
+      </div>
+      <%# El reloj del turno: cuánto lleva de sus 12 horas. Va con la hora estándar
+          (05:00 y 17:00), que es cuando se cambia de tarjeta. %>
+      <div class="mt-auto pt-5">
+        <div class="flex justify-between text-[11px] text-telecab-muted tabular-nums">
+          <span id="t-ini">—</span><span id="t-queda" class="text-telecab-text"></span><span id="t-fin">—</span>
+        </div>
+        <div class="mt-1 h-1.5 rounded-full bg-telecab-card2 overflow-hidden" id="t-reloj-caja">
+          <div id="t-reloj" class="h-full rounded-full bg-telecab-muted/70" style="width:0%"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <%
+    /* Una tarjeta de turno o de jornada ya hecha: las horas con su meta, los
+       conductores al lado, la barra de la meta, y debajo lo suyo (`extra`). */
+    function tarjetaHecha(id, icono, ayuda, extra) {
+      return `<section class="rounded-2xl border border-telecab-border bg-telecab-card p-5 flex flex-col min-w-0">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-xs font-semibold text-telecab-muted uppercase tracking-wider flex items-center gap-2" title="${ayuda.replace(/"/g, '&quot;')}">
+            <span id="${id}-icono" class="inline-flex w-6 h-6 items-center justify-center rounded-full bg-telecab-card2" aria-hidden="true"><i class="fa-solid ${icono} text-[11px]"></i></span>
+            <span id="${id}-etq">—</span>
+          </h2>
+          <span class="text-[11px] text-telecab-muted text-right" id="${id}-estado"></span>
+        </div>
+        <div class="mt-3 flex items-end justify-between flex-wrap gap-x-4 gap-y-2">
+          <p class="flex items-baseline gap-x-1.5 leading-none">
+            <span id="${id}-h" class="text-4xl md:text-5xl font-bold text-telecab-text tabular-nums tracking-tight">—</span>
+            <span id="${id}-meta" class="text-lg text-telecab-muted font-semibold tabular-nums"></span>
+          </p>
+          <div class="text-right">
+            <p class="text-sm text-telecab-text"><b class="tabular-nums" id="${id}-cond">—</b> conductores</p>
+            <p class="text-[11px] text-telecab-muted tabular-nums" id="${id}-cond-det"></p>
+          </div>
+        </div>
+        <div class="mt-4 h-2.5 rounded-full bg-telecab-card2 overflow-hidden" id="${id}-barcaja">
+          <div id="${id}-bar" class="h-full rounded-full transition-all" style="width:0%"></div>
+        </div>
+        <p class="text-xs text-telecab-muted mt-2" id="${id}-pie">—</p>
+        ${extra || ''}
+      </section>`;
     }
   %>
-
-  <!-- ── EL MES: la cifra con la que se vive ─────────────────────────────── -->
-  <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-6">
-    <div class="rounded-2xl border border-telecab-gold/40 bg-telecab-card p-5 xl:col-span-1">
-      <p class="text-[11px] text-telecab-muted uppercase tracking-wide"
-         title="Horas EFECTIVAS de toda la flota en lo que va de mes: viaje + espera, sin el descanso.&#10;Es la cifra con la que se vive, y la misma que usan el cockpit y los reportes.">Horas del mes</p>
-      <p class="text-4xl font-bold text-telecab-gold mt-1 tabular-nums leading-none">
-        <span id="k-mes-h">—</span><span class="text-base text-telecab-muted font-normal ml-1">h</span></p>
-      <p class="text-xs text-telecab-muted mt-2">
-        efectivas acumuladas · <span id="k-mes-cond">—</span> conductores</p>
-    </div>
-    <div class="xl:col-span-2 grid grid-cols-2 gap-3">
-      <%- cifra('k-mes-neto', 'Neto del mes', '€', '<span id="k-mes-viajes">—</span> viajes', false,
-        'Lo que queda después de la comisión de BOLT, sumando todos los viajes del mes.\nNo es la facturación: es lo que entra.') %>
-      <%- cifra('k-mes-util', 'Utilización del mes', '%', 'del tiempo conectado, con pasajero', false,
-        'Horas EN VIAJE sobre horas efectivas (viaje + espera).\nMide cuánto del tiempo conectado va cargado. Por debajo del 65 % hay demasiada espera.') %>
-    </div>
-  </div>
-
-  <!-- ── HOY ─────────────────────────────────────────────────────────────── -->
-  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">Hoy, en curso</h2>
-  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-    <%- cifra('k-hoy-h', 'Horas efectivas', 'h', 'viaje + espera', false,
-      'Lo que lleva rodado la flota en la JORNADA de hoy, que va de 05:00 a 05:00 y no de medianoche a medianoche.\nEl descanso no cuenta: efectivo es viaje + espera.') %>
-    <%- cifra('k-hoy-cond', 'Conductores', '', 'con actividad hoy', false,
-      'Personas distintas con al menos un apunte de BOLT en la jornada.\nNo es la plantilla ni el cuadrante: es quién se ha conectado de verdad.') %>
-    <%- cifra('k-hoy-neto', 'Neto', '€', '<span id="k-hoy-viajes">—</span> viajes', false,
-      'Lo que queda después de la comisión de BOLT, en la jornada de hoy.\nVa subiendo durante el día: a media mañana no se puede comparar con el cierre de ayer.') %>
-    <%- cifra('k-hoy-util', 'Utilización', '%', 'del tiempo conectado, con pasajero', false,
-      'Horas en viaje sobre horas efectivas de hoy.\nA primera hora baila mucho, porque el turno acaba de empezar y cualquier espera pesa el doble.') %>
-  </div>
-
-  <!-- ── POR TURNO ───────────────────────────────────────────────────────── -->
-  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
-    Por turno <span class="font-normal text-telecab-muted normal-case tracking-normal">· día 00–24 · noche 12–12, por el turno de cada conductor</span>
-  </h2>
-  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-    <%- cifra('k-tdia-h', 'Turno día', 'h', '<span id="k-tdia-cond">—</span> conductores') %>
-    <%- cifra('k-tnoche-h', 'Turno noche', 'h', '<span id="k-tnoche-cond">—</span> conductores') %>
-    <%- cifra('k-ayer-h', 'Ayer · jornada', 'h', 'su turno de día + su turno de noche', true) %>
-    <%- cifra('k-sem-h', 'Esta semana', 'h', 'desde el lunes') %>
-  </div>
-
-  <!-- ── LO QUE NO SE HIZO ───────────────────────────────────────────────────
-       Es la cifra nueva: no el descanso, sino LA RESTA. Quien tiene 2 h
-       justificadas y 3 h conectado lleva 5 de 8, así que deja 3 sin hacer. Se
-       cuenta por persona, sin compensar: que uno eche 12 h no tapa que otro
-       echara 4. Y solo de jornadas CERRADAS: a mitad del día aún se pueden hacer. -->
-  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
-    Horas no efectivas <span class="font-normal text-telecab-muted normal-case tracking-normal" id="i-ne-nota"></span>
-  </h2>
-  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-    <%- cifra('k-ne-h', 'Sin hacer · última jornada', 'h', '<span id="k-ne-pct">—</span> % de lo que tocaba') %>
-    <%- cifra('k-ne-sin', 'No salieron', '', 'de <span id="k-ne-personas">—</span> a los que tocaba') %>
-    <%- cifra('k-ne-just', 'Justificadas', 'h', 'de taller, gestiones… sí cuentan') %>
-    <%- cifra('k-ne-mes', 'Sin hacer · el mes', 'h', '<span id="k-ne-mes-pct">—</span> % de lo que tocaba') %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-7">
+    <%- tarjetaHecha('p', 'fa-moon',
+      'El turno de antes del que corre. Sus horas son las de SU GENTE: el de día cuenta de 00:00 a 24:00 y el de noche de 12:00 a 12:00, según el turno de cada conductor en el cuadrante (los NN, por su hora de inicio). Por eso puede seguir sumando un rato después de acabar.') %>
+    <%- tarjetaHecha('j', 'fa-clock-rotate-left',
+      'La última jornada: su turno de día más su turno de noche, por la gente de cada uno. No se cierra hasta las 12:00 del día siguiente, cuando acaba la ventana de su noche. Es la que cuadra con el Reporte de horas y la Bitácora.',
+      `<div class="mt-4">
+        <div class="h-2 rounded-full bg-telecab-card2 overflow-hidden flex" id="j-split">
+          <div id="j-dia" class="h-full bg-telecab-gold/80" style="width:0%"></div>
+          <div id="j-noche" class="h-full bg-telecab-azul/70" style="width:0%"></div>
+        </div>
+        <div class="flex justify-between text-[11px] mt-1.5 tabular-nums">
+          <span class="text-telecab-text"><i class="fa-solid fa-sun text-telecab-gold mr-1" aria-hidden="true"></i>día <span id="j-dia-h">—</span> h</span>
+          <span class="text-telecab-text">noche <span id="j-noche-h">—</span> h<i class="fa-solid fa-moon text-telecab-azul ml-1" aria-hidden="true"></i></span>
+        </div>
+      </div>`) %>
   </div>
 
   <!-- ── KILÓMETROS, POR TURNO ───────────────────────────────────────────────
@@ -165,7 +237,7 @@
     <%- kmTurno('k-ka') %>
   </div>
 
-  <p class="text-[11px] text-telecab-muted mb-8">
+  <p class="text-[11px] text-telecab-muted mb-7">
     La ventana de día es 05:00–17:00 y la de noche 17:00–05:00, las mismas que las horas. Ojo: cada ventana
     recoge también la <b class="text-telecab-text">cola del otro turno</b> —quien terminó a las 05:51 rodó
     dentro del día—, así que estos kilómetros son los de LA FRANJA, no los de la gente del turno.
@@ -176,6 +248,38 @@
     El detalle matrícula a matrícula está en
     <a href="/operaciones/auditoria" class="text-telecab-gold hover:underline">Auditoría de flota</a>.
   </p>
+
+  <%
+    /* Las demás cifras, en pequeño: siguen a mano, pero no compiten con las de
+       arriba. */
+    function cifraPeq(id, etq, unidad, pie, ayuda) {
+      return `<div class="rounded-xl border border-telecab-border bg-telecab-card px-3 py-2.5"${
+        ayuda ? ` title="${ayuda.replace(/"/g, '&quot;')}"` : ''}>
+        <p class="text-[11px] text-telecab-muted">${etq}</p>
+        <p class="text-lg font-bold text-telecab-text tabular-nums leading-tight mt-0.5">
+          <span id="${id}">—</span>${unidad ? `<span class="text-xs text-telecab-muted font-normal ml-1">${unidad}</span>` : ''}
+        </p>
+        <p class="text-[11px] text-telecab-muted" id="${id}-pie">${pie || ''}</p>
+      </div>`;
+    }
+  %>
+  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
+    Más cifras <span class="font-normal text-telecab-muted normal-case tracking-normal" id="i-ne-nota"></span>
+  </h2>
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
+    <%- cifraPeq('k-hoy-h', 'Hoy · día natural', 'h', '00:00 – 24:00, en curso',
+      'Lo que lleva la flota HOY de 00:00 a 24:00: lo que cuadra con el informe de BOLT.\nEl descanso no cuenta: efectivo es viaje + espera.') %>
+    <%- cifraPeq('k-sem-h', 'Esta semana', 'h', 'desde el lunes') %>
+    <%- cifraPeq('k-mes-neto', 'Neto del mes', '€', '<span id="k-mes-viajes">—</span> viajes',
+      'Lo que queda después de la comisión de BOLT, sumando todos los viajes del mes.\nNo es la facturación: es lo que entra.') %>
+    <%- cifraPeq('k-mes-util', 'Utilización del mes', '%', 'tiempo conectado con pasajero',
+      'Horas EN VIAJE sobre horas efectivas (viaje + espera).\nMide cuánto del tiempo conectado va cargado. Por debajo del 65 % hay demasiada espera.') %>
+    <%- cifraPeq('k-ne-h', 'Sin hacer · última jornada', 'h', '<span id="k-ne-pct">—</span> % de lo que tocaba',
+      'Lo que faltó para completar la jornada de quien debía salir: no es el descanso, es la resta.\nPor persona y sin compensar, y solo de jornadas cerradas.') %>
+    <%- cifraPeq('k-ne-sin', 'No salieron · última jornada', '', 'de <span id="k-ne-personas">—</span> a los que tocaba') %>
+    <%- cifraPeq('k-ne-just', 'Justificadas · última jornada', 'h', 'taller, gestiones… sí cuentan') %>
+    <%- cifraPeq('k-ne-mes', 'Sin hacer · el mes', 'h', '<span id="k-ne-mes-pct">—</span> % de lo que tocaba') %>
+  </div>
 </div>
 
 <script>
@@ -184,7 +288,21 @@
   const num = (n, d) => (n == null ? '—' : Number(n).toLocaleString('es-ES',
     { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }));
   const pon = (id, v, d) => { const e = $('#' + id); if (e) e.textContent = num(v, d); };
+  const txt = (id, t) => { const e = $('#' + id); if (e) e.textContent = t; };
   const esFecha = iso => { if (!iso) return ''; const [a, m, dd] = iso.split('-'); return `${dd}/${m}/${a}`; };
+  const hhmm = h => String(Math.floor(h) % 24).padStart(2, '0') + ':' + String(Math.round((h % 1) * 60) % 60).padStart(2, '0');
+  const duracion = h => { const m = Math.round(h * 60); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`; };
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  // EL COLOR DE LA META, el mismo de Visibilidad (views/visibilidad.ejs, colorMeta):
+  // de rojo a amarillo según se acerca y verde al cumplirla. Si un día cambia allí,
+  // que cambie aquí también: las dos pantallas enseñan las mismas metas.
+  function colorMeta(pct) {
+    const p = Math.max(0, Number(pct) || 0);
+    if (p >= 100) return 'hsl(120 72% 42%)';
+    const t = Math.max(0, (p - 40) / 60);
+    return `hsl(${Math.round(t * 55)} 78% 50%)`;
+  }
 
   async function cargar(forzar) {
     const b = $('#i-refrescar');
@@ -205,35 +323,199 @@
     } finally { if (b) b.disabled = false; }
   }
 
+  /** Las horas contra su meta: la cifra y la barra con el color de lo cerca que está. */
+  function conMeta(id, horas, meta) {
+    const bar = $('#' + id + '-bar'), h = $('#' + id + '-h');
+    if (!(meta > 0)) {
+      txt(id + '-meta', '');
+      if (bar) { bar.style.width = '0%'; }
+      return null;
+    }
+    const pct = (Number(horas) || 0) / meta * 100;
+    txt(id + '-meta', '/ ' + num(meta) + ' h');
+    const color = colorMeta(pct);
+    if (bar) { bar.style.width = Math.min(100, pct) + '%'; bar.style.backgroundColor = color; }
+    if (h) h.style.color = color;
+    const caja = $('#' + id + '-barcaja');
+    if (caja) caja.title = `${num(horas, 1)} h de ${num(meta)} · ${num(pct, 1)} % de la meta`;
+    return pct;
+  }
+
+  /** Los conductores de un turno, como los cuenta Control: los del cuadrante y los NN. */
+  function conductores(id, s) {
+    pon(id + '-cond', s.conductores);
+    const nn = Number(s.conductoresNN) || 0;
+    const plan = Math.max(0, (Number(s.conductores) || 0) - nn);
+    txt(id + '-cond-det', nn ? `${plan} del cuadrante + ${nn} NN` : 'todos del cuadrante');
+    const caja = $('#' + id + '-cond-det');
+    if (caja) caja.title = nn
+      ? `${plan} del cuadrante (en Control, los que salieron en la pestaña del turno) y ${nn} sin plan con ${num(s.horasNN, 1)} h (los NN, que van por su hora de inicio)`
+      : 'Todos los que han salido estaban en el cuadrante';
+  }
+
+  /** Las barras del mes, día a día, en SVG: sin librerías y con los colores del tema. */
+  function barrasMes(serie) {
+    const caja = $('#m-dias');
+    if (!caja || !serie || !serie.dias || !serie.dias.length) return;
+    const dias = serie.dias, n = dias.length;
+    const ultimo = serie.ultimoConDatos || 0, hoyD = serie.hoyDia;
+    const tope = Math.max(serie.idealDiario || 0, ...dias.map(d => d.total || 0)) * 1.12 || 1;
+    const W = n * 10, H = 60, ancho = 7;
+    const y = v => H - (v / tope) * H;
+    let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-full overflow-visible" aria-hidden="true">`;
+    dias.forEach((d, i) => {
+      const x = i * 10 + (10 - ancho) / 2;
+      const esHoy = d.dia === hoyD, futuro = d.dia > ultimo;
+      if (futuro) {
+        s += `<rect x="${x}" y="${H - 1.5}" width="${ancho}" height="1.5" rx="0.75" style="fill: rgb(var(--tc-card2))"><title>${d.dia}: aún no ha llegado</title></rect>`;
+        return;
+      }
+      const alto = Math.max(1.5, H - y(d.total || 0));
+      s += `<rect x="${x}" y="${H - alto}" width="${ancho}" height="${alto}" rx="1.2"
+               style="fill: rgb(var(--tc-gold) / ${esHoy ? 0.4 : 0.9})"><title>${d.dia}${esHoy ? ' (hoy, en curso)' : ''}: ${num(d.total, 1)} h</title></rect>`;
+    });
+    if (serie.idealDiario > 0) {
+      const yi = y(serie.idealDiario).toFixed(2);
+      s += `<line x1="0" x2="${W}" y1="${yi}" y2="${yi}" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"
+               style="stroke: rgb(var(--tc-text) / 0.55); stroke-width: 1"><title>Ritmo que pide la meta: ${num(serie.idealDiario)} h al día</title></line>`;
+    }
+    caja.innerHTML = s + '</svg>';
+    // El eje: el 1, cada semana y el último día del mes.
+    const marcas = [1, 8, 15, 22, n].filter((v, i, a) => v <= n && a.indexOf(v) === i);
+    $('#m-dias-eje').innerHTML = marcas.map(m => `<span>${m}</span>`).join('');
+  }
+
+  function pintarMes(j, cfg) {
+    const v = j.visibilidad || {}, mes = v.mes || {}, serie = j.mesSerie || {};
+    txt('m-nombre', serie.mes ? '· ' + MESES[serie.mes - 1] : '');
+    pon('m-h', mes.horasEfectivas, 0);
+    txt('m-cond', mes.conductores != null ? `${num(mes.conductores)} conductores` : '');
+    const meta = Number(cfg.meta) || 0;
+    const total = Number(mes.horasEfectivas) || 0;
+    // Lo de los días cerrados y lo de hoy, por separado: el ideal es a cierre de
+    // ayer, así que se compara con lo entero, no con lo que aún corre.
+    const dias = serie.dias || [], hoyD = serie.hoyDia;
+    const ayer = hoyD && hoyD > 1 ? dias[hoyD - 2] : null;
+    const cerrado = ayer ? Number(ayer.acumulado) || 0 : 0;
+    const deHoy = Math.max(0, total - cerrado);
+    const bar = $('#m-bar'), barHoy = $('#m-bar-hoy'), marca = $('#m-ideal');
+    if (meta > 0) {
+      txt('m-meta', '/ ' + num(meta) + ' h');
+      bar.style.width = Math.min(100, cerrado / meta * 100) + '%';
+      barHoy.style.width = Math.max(0, Math.min(100 - cerrado / meta * 100, deHoy / meta * 100)) + '%';
+      $('#m-barcaja').title = `${num(cerrado, 1)} h de los días cerrados + ${num(deHoy, 1)} h de hoy, de ${num(meta)} h`;
+      const pct = total / meta * 100;
+      let pie = `${num(pct, 1)} % de la meta`;
+      if (ayer) {
+        marca.classList.remove('hidden');
+        marca.style.left = `calc(${Math.min(100, ayer.ideal / meta * 100)}% - 1px)`;
+        marca.title = `El ideal a cierre de ayer: ${num(ayer.ideal)} h`;
+        const b = Number(ayer.brecha) || 0;
+        pie += ` · a cierre de ayer, <b class="${b >= 0 ? 'text-telecab-green' : 'text-telecab-red'} tabular-nums">${b >= 0 ? '+' : '−'}${num(Math.abs(b))} h</b> ${b >= 0 ? 'por delante del' : 'por detrás del'} ideal`;
+      } else marca.classList.add('hidden');
+      $('#m-pie').innerHTML = pie;
+    } else {
+      txt('m-meta', '');
+      txt('m-pie', 'Sin meta del mes: se pone en Visibilidad, en Configuración.');
+    }
+    txt('m-ritmo', serie.idealDiario ? `(${num(serie.idealDiario)} h/día)` : '');
+    barrasMes(serie);
+  }
+
+  function pintarTurnos(j, cfg) {
+    const v = j.visibilidad || {};
+    const enCurso = j.turnoActual === 'dia' ? 'dia' : 'noche';
+    const actual = (enCurso === 'dia' ? v.turnoDia : v.turnoNoche) || {};
+    const antes = (enCurso === 'dia' ? v.turnoNoche : v.turnoDia) || {};
+    const metaDe = t => Number(t === 'dia' ? cfg.meta_turno_dia_h : cfg.meta_turno_noche_h) || 0;
+    const otro = enCurso === 'dia' ? 'noche' : 'dia';
+
+    // El turno en curso.
+    const icono = $('#t-icono');
+    icono.className = 'inline-flex w-7 h-7 items-center justify-center rounded-full ' +
+      (enCurso === 'dia' ? 'bg-telecab-gold/15 text-telecab-gold' : 'bg-telecab-azul/15 text-telecab-azul');
+    icono.innerHTML = `<i class="fa-solid ${enCurso === 'dia' ? 'fa-sun' : 'fa-moon'} text-[13px]"></i>`;
+    txt('t-etq', enCurso === 'dia' ? 'Turno de día · en curso' : 'Turno de noche · en curso');
+    const [ini, fin] = (j.turnos || {})[enCurso] || [enCurso === 'dia' ? 5 : 17, enCurso === 'dia' ? 17 : 5];
+    txt('t-ventana', `${hhmm(ini)} – ${hhmm(fin)}`);
+    pon('t-h', actual.horasEfectivas, 1);
+    const pct = conMeta('t', actual.horasEfectivas, metaDe(enCurso));
+    conductores('t', actual);
+    $('#t-pie').textContent = pct == null ? 'Sin meta del turno: se pone en Visibilidad.'
+      : `${num(pct, 1)} % de la meta del turno de ${enCurso === 'dia' ? 'día' : 'noche'}`;
+    const vi = Number(actual.viajeH) || 0, es = Number(actual.esperaH) || 0, tot = vi + es;
+    $('#t-viaje').style.width = (tot ? vi / tot * 100 : 0) + '%';
+    $('#t-espera').style.width = (tot ? es / tot * 100 : 0) + '%';
+    pon('t-viaje-h', vi, 1); pon('t-espera-h', es, 1); pon('t-util', actual.utilizacion, 1);
+    // El reloj del turno.
+    const dur = ((fin - ini) + 24) % 24 || 12;
+    const lleva = Math.min(dur, ((Number(j.horaMadrid) - ini) + 24) % 24);
+    txt('t-ini', hhmm(ini)); txt('t-fin', hhmm(fin));
+    $('#t-reloj').style.width = (lleva / dur * 100) + '%';
+    txt('t-queda', lleva < 0.25 ? 'acaba de empezar' : `lleva ${duracion(lleva)} · quedan ${duracion(dur - lleva)}`);
+    $('#t-reloj-caja').title = `Ventana estándar del turno: ${hhmm(ini)} a ${hhmm(fin)}`;
+
+    // El turno anterior.
+    const ic = $('#p-icono');
+    ic.className = 'inline-flex w-6 h-6 items-center justify-center rounded-full ' +
+      (otro === 'dia' ? 'bg-telecab-gold/15 text-telecab-gold' : 'bg-telecab-azul/15 text-telecab-azul');
+    ic.innerHTML = `<i class="fa-solid ${otro === 'dia' ? 'fa-sun' : 'fa-moon'} text-[11px]"></i>`;
+    // «Turno noche · anoche», «Turno día · hoy»…: la etiqueta de Visibilidad.
+    txt('p-etq', (antes.etq || (otro === 'dia' ? 'Turno día' : 'Turno noche')).replace(/^Turno (día|noche)/, 'Turno de $1'));
+    pon('p-h', antes.horasEfectivas, 1);
+    const pp = conMeta('p', antes.horasEfectivas, metaDe(otro));
+    conductores('p', antes);
+    $('#p-pie').textContent = (pp == null ? '' : `${num(pp, 1)} % de la meta · `) +
+      `${num(antes.utilizacion, 1)} % utilización`;
+    // Lo que aún puede crecer: la noche suma hasta las 12:00 y el día hasta las 24:00.
+    const h = Number(j.horaMadrid);
+    const abierto = otro === 'noche' ? (enCurso === 'dia' && h < 12) : (enCurso === 'noche' && h >= 12);
+    txt('p-estado', abierto ? (otro === 'noche' ? 'aún suma hasta las 12:00' : 'aún suma hasta las 24:00') : 'cerrado');
+  }
+
+  function pintarJornada(j, cfg) {
+    const a = (j.visibilidad || {}).ayerJornada || {};
+    txt('j-etq', `Jornada pasada · ${esFecha(a.dia)}`);
+    const ic = $('#j-icono'); if (ic) ic.className = 'inline-flex w-6 h-6 items-center justify-center rounded-full bg-telecab-card2 text-telecab-muted';
+    txt('j-estado', a.parcial ? 'se cierra a las 12:00' : 'completa');
+    pon('j-h', a.horasEfectivas, 1);
+    // La meta de la jornada es la suma de las dos de turno, como en Visibilidad.
+    const meta = (Number(cfg.meta_turno_dia_h) || 0) + (Number(cfg.meta_turno_noche_h) || 0);
+    const pct = conMeta('j', a.horasEfectivas, meta);
+    conductores('j', a);
+    $('#j-pie').textContent = (pct == null ? '' : `${num(pct, 1)} % de la meta de día + noche · `) +
+      `${num(a.utilizacion, 1)} % utilización`;
+    const p = a.partes || {}, d = Number(p.dia) || 0, n = Number(p.noche) || 0, t = d + n;
+    $('#j-dia').style.width = (t ? d / t * 100 : 0) + '%';
+    $('#j-noche').style.width = (t ? n / t * 100 : 0) + '%';
+    pon('j-dia-h', d, 1); pon('j-noche-h', n, 1);
+    $('#j-split').title = `Turno de día ${num(d, 1)} h · turno de noche ${num(n, 1)} h`;
+  }
+
   function pintar(j) {
     const v = j.visibilidad || {};
+    const cfg = v.config || {};
     // De cuándo es lo que se está viendo. Hace falta decirlo: el panel sirve lo
     // último calculado y refresca por detrás, así que puede tener unos minutos.
     const edad = Math.round((j.edadMs || 0) / 1000);
     $('#i-jornada').textContent = `Jornada del ${esFecha(j.jornadaEnCurso)}` +
       (edad > 60 ? ` · datos de hace ${Math.round(edad / 60)} min` : '');
 
-    // Hoy (día natural: es lo que cuadra con el informe de BOLT).
-    const hoy = v.dia || {};
-    pon('k-hoy-h', hoy.horasEfectivas, 1);
-    pon('k-hoy-cond', hoy.conductores);
-    pon('k-hoy-neto', hoy.neto);
-    pon('k-hoy-viajes', hoy.viajes);
-    pon('k-hoy-util', hoy.utilizacion, 1);
+    pintarMes(j, cfg);
+    pintarTurnos(j, cfg);
+    pintarJornada(j, cfg);
 
-    // Por turno.
-    pon('k-tdia-h', (v.turnoDia || {}).horasEfectivas, 1);
-    pon('k-tdia-cond', (v.turnoDia || {}).conductores);
-    pon('k-tnoche-h', (v.turnoNoche || {}).horasEfectivas, 1);
-    pon('k-tnoche-cond', (v.turnoNoche || {}).conductores);
-    pon('k-ayer-h', (v.ayerJornada || {}).horasEfectivas, 1);
+    // Más cifras.
+    pon('k-hoy-h', (v.dia || {}).horasEfectivas, 1);
     pon('k-sem-h', (v.semana || {}).horasEfectivas, 1);
-
-    // Lo que no se hizo.
+    const mes = v.mes || {};
+    pon('k-mes-neto', mes.neto);
+    pon('k-mes-viajes', mes.viajes);
+    pon('k-mes-util', mes.utilizacion, 1);
     const ne = (j.noEfectivas || {}).cerrada || {};
     const nem = (j.noEfectivas || {}).mes || {};
     $('#i-ne-nota').textContent =
-      `· jornada del ${esFecha(j.jornadaCerrada)}, ya cerrada · ${j.jornadaH} h por persona`;
+      `· lo «sin hacer» es de la jornada del ${esFecha(j.jornadaCerrada)}, ya cerrada, con ${j.jornadaH} h por persona`;
     pon('k-ne-h', ne.horas, 1);
     pon('k-ne-pct', ne.porcentaje, 1);
     pon('k-ne-sin', ne.sinSalir);
@@ -241,14 +523,6 @@
     pon('k-ne-just', ne.justificadas, 1);
     pon('k-ne-mes', nem.horas, 1);
     pon('k-ne-mes-pct', nem.porcentaje, 1);
-
-    // El mes.
-    const mes = v.mes || {};
-    pon('k-mes-h', mes.horasEfectivas, 1);
-    pon('k-mes-cond', mes.conductores);
-    pon('k-mes-neto', mes.neto);
-    pon('k-mes-viajes', mes.viajes);
-    pon('k-mes-util', mes.utilizacion, 1);
 
     // Kilómetros por turno. La barra parte el total en lo que se rodó dentro de
     // BOLT y lo que se rodó fuera; los dos trozos suman el 100 %, así que se ve

@@ -272,6 +272,13 @@ async function resumen() {
   });
   // Su noche cuenta hasta las 12:00 de hoy: antes de eso, todavía crece.
   const jornadaAbierta = Date.now() < reparto.cierreDe(ayerJornada);
+  // Lo que puso cada turno de esa jornada, para que el inicio la pinte partida en
+  // día y noche. Son las mismas horas de arriba, separadas: suman ayerJor.
+  const r1 = v => Math.round(v * 10) / 10;
+  const partes = {
+    dia: r1((jD.viajeSeg + jD.esperaSeg) / 3600),
+    noche: r1((jN.viajeSeg + jN.esperaSeg) / 3600),
+  };
   return {
     hoyISO: hoy,
     // POR DÍA (día natural 00:00→24:00)
@@ -283,7 +290,7 @@ async function resumen() {
     // conductor (día 00→24, noche 12→12; los NN por su hora de inicio).
     turnoDia: { ...turnoDia, etq: t.dia.etq, dia: fechaDia },
     turnoNoche: { ...turnoNoche, etq: t.noche.etq, dia: fechaNoche },
-    ayerJornada: { ...ayerJor, dia: ayerJornada, parcial: jornadaAbierta,
+    ayerJornada: { ...ayerJor, dia: ayerJornada, parcial: jornadaAbierta, partes,
       etq: jornadaAbierta ? 'Ayer · jornada (se cierra a las 12:00)' : 'Ayer · jornada completa' },
     config,
   };

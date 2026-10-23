@@ -7,8 +7,12 @@
 // se ve la bienvenida, y con él, las cifras.
 //
 // Las cifras son las MISMAS de Visibilidad (mismas ventanas, mismas horas
-// efectivas) para que no haya dos verdades, pero sin gráficas: esto se mira de
-// pasada. Y añade dos cosas que Visibilidad no cuenta:
+// efectivas, mismas metas) para que no haya dos verdades. Desde el 23/10/2026
+// (Camilo: «lo más importante siempre serán las horas del mes, las horas del
+// turno actual, si es día o noche, y luego las horas del turno pasado, también de
+// la jornada pasada, si puede ser más gráfico mejor») esas van arriba y en
+// grande, con su meta y sus barras; el resto, abajo y en pequeño. Y añade dos
+// cosas que Visibilidad no cuenta:
 //
 //   · HORAS NO EFECTIVAS — lo que falta para completar la jornada. No es el
 //     descanso: es la resta. Quien tiene 2 h justificadas de taller y 3 h
@@ -173,8 +177,24 @@ async function panel() {
   // es el histórico SELLADO: del día en curso no hay nada ahí todavía y saldría
   // que nadie ha hecho nada. Y aunque lo hubiera, no significaría gran cosa: a
   // media jornada las horas que faltan aún se pueden hacer.
-  const [visib, neCerrada, neMes, kmDia, kmNoche, kmAyer] = await Promise.all([
+  // EL TURNO EN CURSO, con el reloj de siempre: de día de 05:00 a 17:00 y de
+  // noche de 17:00 a 05:00. Es la hora a la que Visibilidad cambia de tarjeta, así
+  // que el «turno en curso» de aquí es una de sus dos tarjetas de turno y el
+  // anterior, la otra (de madrugada, la noche que corre es la de ayer).
+  const T = require('./flotaViva/rutas').TURNOS;
+  const ahoraMad = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
+    .format(ahora).split(':').map(Number);
+  const horaDec = (ahoraMad[0] % 24) + ahoraMad[1] / 60;
+  const turnoActual = horaDec >= T.dia[0] && horaDec < T.noche[0] ? 'dia' : 'noche';
+  // El mes por el DÍA NATURAL, como las horas del mes de Visibilidad: el día 1 a
+  // las 02:00 la jornada en curso aún es la del mes anterior, pero el mes ya no.
+  const [Y, M] = hoy.split('-').map(Number);
+
+  const [visib, serie, neCerrada, neMes, kmDia, kmNoche, kmAyer] = await Promise.all([
     visibilidad.resumen(),
+    // Las horas de cada día del mes, para las barras de la tarjeta del mes. Es la
+    // MISMA serie de las gráficas de Visibilidad (sus fotos diarias y hoy en vivo).
+    visibilidad.serieMes(Y, M),
     noEfectivas(cerrada, cerrada, jornadaH),
     noEfectivas(primeroMes, cerrada, jornadaH),
     kilometros(vt.dia.v[0], 'dia'),
@@ -186,7 +206,17 @@ async function panel() {
 
   return {
     hoy, jornadaEnCurso: enCurso, jornadaCerrada: cerrada, jornadaH,
+    turnoActual, horaMadrid: Math.round(horaDec * 100) / 100,
+    turnos: { dia: [T.dia[0], T.dia[2]], noche: [T.noche[0], T.noche[2]] },
     visibilidad: visib,
+    // Solo lo que pintan las barras: el total de cada día, hasta qué día hay datos
+    // y el ritmo que pide la meta. El acumulado frente al ideal, a cierre de AYER:
+    // el de hoy aún corre (igual que en la gráfica de Visibilidad).
+    mesSerie: {
+      anio: serie.anio, mes: serie.mes, diasMes: serie.diasMes, hoyDia: serie.hoyDia,
+      ultimoConDatos: serie.ultimoConDatos, idealDiario: serie.idealDiario,
+      dias: serie.dias.map(d => ({ dia: d.dia, total: d.total, ideal: d.ideal, acumulado: d.acumulado, brecha: d.brecha })),
+    },
     noEfectivas: { cerrada: neCerrada, mes: neMes },
     km: {
       dia: { ...kmDia, etq: vt.dia.etq },

@@ -42,6 +42,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Bitacora]]** — El calendario de la plantilla: qué hizo cada persona cada día —cuántas horas, si libró, si estaba de vacaciones o de baja, si hay una J puesta—.
 - **[[Portal de conductores]]** — conductorestelecab.es (19/10/2026): cada conductor ve desde el móvil sus turnos de hoy a 7 días y su puntuación semana a semana. Entra con su DNI y un código que le llega al email.
 - **[[Calificacion de conductores]]** — Una letra por conductor y periodo. Es lo que Tráfico ve al lado del nombre —*"Juan Manuel Akieme (9,4 h · A)"*— en el planificador, en el cockpit, en las campañas y en el reporte de…
+- **[[Inicio]]** — La pantalla de entrada, que no se bloquea nunca. Desde el 23/10/2026, arriba y en grande las horas del mes contra su meta (con una barra por día) y las del turno en curso, día o noche; luego el turno anterior y la jornada pasada; los kilómetros y el resto, debajo. Todo sale de Visibilidad.
 - **[[Conductores]]** — Quién trabaja aquí y en qué condiciones: la ficha de la persona, su contrato, sus papeles y su cuenta de BOLT.
 - **[[Control Alertas]] · [[Control Coches sin cuadrante]]** — /alertas es la vigilancia de las franjas críticas: cuando un conductor se pasa de la raya, un WhatsApp a los controladores elegidos.
 - **[[Mapa de flota]]** — PILOTO: dónde está cada coche y si hay alguien dando servicio, en la misma pantalla. Lo que se busca es el rojo: rueda y nadie conectado.
