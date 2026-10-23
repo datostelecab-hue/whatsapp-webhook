@@ -221,7 +221,8 @@ function ventanaTurnos() {
 /**
  * Con `{ gente: true }` (el inicio), las tarjetas de turno y la jornada llevan
  * además `gente`: lo de cada persona, [{ persona, seg, nn, cuentas }], de la
- * misma carga que sus totales. Visibilidad no la pide: no la pinta.
+ * misma carga que sus totales; y las de turno, `planificados` (quien lo tenía en
+ * el plan, haya salido o no). Visibilidad no la pide: no la pinta.
  */
 async function resumen({ gente = false } = {}) {
   const hoy = hoyISO();
@@ -288,8 +289,11 @@ async function resumen({ gente = false } = {}) {
   // con lo de su día y lo de su noche sumado (quien dobla lleva las dos).
   const conGente = {};
   if (gente) {
-    conGente.dia = { gente: porTurno.get(fechaDia + '|dia').gente || [] };
-    conGente.noche = { gente: porTurno.get(fechaNoche + '|noche').gente || [] };
+    // Y quién lo tenía en el plan, haya salido o no (el inicio lo usa en el
+    // turno en curso: «deben salir»).
+    const de = k => ({ gente: porTurno.get(k).gente || [], planificados: porTurno.get(k).planificados || [] });
+    conGente.dia = de(fechaDia + '|dia');
+    conGente.noche = de(fechaNoche + '|noche');
     const junta = new Map();
     [...(jD.gente || []), ...(jN.gente || [])].forEach(g => {
       const x = junta.get(g.persona);

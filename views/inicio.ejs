@@ -150,6 +150,26 @@
         <div id="t-bar" class="h-full rounded-full transition-all" style="width:0%"></div>
       </div>
       <p class="text-sm text-telecab-muted mt-2.5" id="t-pie">—</p>
+      <%# EN VIVO (Camilo, 23/10/2026): cuántos deben salir (el planificador, como
+          en Control), cuántos han salido (planificador + NN: los «X conductores»
+          de arriba) y cuántos están conectados ahora mismo a BOLT. %>
+      <div class="mt-4 grid grid-cols-3 gap-2" id="t-vivo">
+        <div class="rounded-xl bg-telecab-card2/50 px-3 py-2 min-w-0" title="Quien tiene este turno hoy en el planificador, como en Control, haya salido o no. Las vacaciones y las bajas no cuentan.">
+          <p class="text-[11px] text-telecab-muted leading-tight">Deben salir</p>
+          <p class="text-2xl font-bold text-telecab-text tabular-nums leading-tight" id="t-vivo-deben">—</p>
+          <p class="text-[11px] text-telecab-muted leading-tight">del planificador</p>
+        </div>
+        <div class="rounded-xl bg-telecab-card2/50 px-3 py-2 min-w-0" title="Quien ya ha hecho horas en este turno: los del planificador y los NN (sin plan, por su hora de inicio).">
+          <p class="text-[11px] text-telecab-muted leading-tight">Han salido</p>
+          <p class="text-2xl font-bold text-telecab-text tabular-nums leading-tight" id="t-vivo-salido">—</p>
+          <p class="text-[11px] text-telecab-muted leading-tight" id="t-vivo-salido-det">planificador + NN</p>
+        </div>
+        <div class="rounded-xl bg-telecab-card2/50 px-3 py-2 min-w-0" title="De los que deben salir y de los NN que ya salieron, quién está ahora mismo conectado a BOLT: en viaje, en espera o en descanso.">
+          <p class="text-[11px] text-telecab-muted leading-tight">Conectados ahora</p>
+          <p class="text-2xl font-bold text-telecab-green tabular-nums leading-tight" id="t-vivo-con">—</p>
+          <p class="text-[11px] text-telecab-muted leading-tight">en BOLT</p>
+        </div>
+      </div>
       <%- bloquePrevision('t') %>
       <%# Viaje y espera: las dos partes de las horas efectivas. La utilización es la
           parte en viaje; se ve sin leer el número. %>
@@ -465,6 +485,16 @@
     const pct = conMeta('t', actual.horasEfectivas, metaDe(enCurso));
     conductores('t', actual);
     const jornadaH = Number(j.jornadaH) || 8;
+    // En vivo: deben salir, han salido y conectados ahora.
+    const vivo = actual.enVivo;
+    $('#t-vivo').classList.toggle('hidden', !vivo);
+    if (vivo) {
+      pon('t-vivo-deben', vivo.debenSalir);
+      pon('t-vivo-salido', vivo.hanSalido);
+      pon('t-vivo-con', vivo.conectados);
+      const nn = Number(actual.conductoresNN) || 0;
+      txt('t-vivo-salido-det', `${num(Math.max(0, vivo.hanSalido - nn))} del plan + ${num(nn)} NN`);
+    }
     pintarPrevision('t', actual, {
       titulo: (enCurso === 'dia' ? 'Turno de día' : 'Turno de noche') + ' en curso · quién lleva ya su jornada',
       abierta: true, meta: metaDe(enCurso), jornadaH,
@@ -554,12 +584,23 @@
     pon(id + '-prev-ok', p.cumplen);
     txt(id + '-prev-ok-txt', `ya llevan sus ${num(jornadaH)} h`);
     pon(id + '-prev-falta', p.faltan);
-    txt(id + '-prev-falta-txt', p.faltan ? `les faltan · ${num(p.faltanH, 1)} h entre todos` : 'les faltan');
+    // Sin «X h entre todos»: con los planificados que aún no han salido sumaba
+    // las 8 h de cada uno y se leía como horas perdidas.
+    txt(id + '-prev-falta-txt', t.enVivo && t.enVivo.planSinSalir
+      ? `les faltan (${num(t.enVivo.planSinSalir)} aún no han salido)` : 'les faltan');
     $('#' + id + '-prev-bar-ok').style.width = (total ? p.cumplen / total * 100 : 0) + '%';
     $('#' + id + '-prev-bar-falta').style.width = (total ? p.faltan / total * 100 : 0) + '%';
     let pie;
     if (!p.faltan) pie = `Todos han hecho ya sus ${num(jornadaH)} h.`;
-    else if (abierta) {
+    else if (t.enVivo) {
+      // El turno en curso: con todos los planificados, también los que aún no han
+      // salido. Lo que se puede hacer si cada uno echa su jornada.
+      const llega = meta > 0 && p.siCompletan >= meta;
+      pie = `Si los ${num(p.todos)} hacen sus ${num(jornadaH)} h, el turno llega a ` +
+        `<b class="tabular-nums ${meta > 0 ? (llega ? 'text-telecab-green' : 'text-telecab-red') : 'text-telecab-text'}">${num(p.siCompletan, 1)} h</b>` +
+        (meta > 0 ? ` de ${num(meta)}${llega ? '' : ' (no llega)'}` : '') +
+        ` · de los que faltan, ${num(p.faltanConectados)} están conectados`;
+    } else if (abierta) {
       const llega = meta > 0 && p.siCompletan >= meta;
       pie = `Si los ${num(p.faltan)} completan sus ${num(jornadaH)} h, el turno llega a ` +
         `<b class="tabular-nums ${meta > 0 ? (llega ? 'text-telecab-green' : 'text-telecab-red') : 'text-telecab-text'}">${num(p.siCompletan, 1)} h</b>` +
@@ -596,20 +637,27 @@
       </div>`;
     };
     const gente = t.gente || [];
-    const hechos = gente.filter(g => g.h >= jornadaH), faltan = gente.filter(g => g.h < jornadaH);
+    // En el turno en curso, los planificados que aún no han salido van aparte:
+    // no es que les falte poco, es que no han empezado.
+    const sinSalir = t.enVivo ? gente.filter(g => !g.salio) : [];
+    const hechos = gente.filter(g => g.h >= jornadaH);
+    const faltan = gente.filter(g => g.h < jornadaH && !sinSalir.includes(g));
     const p = t.prevision || {};
     const grupo = (etq, cls, lista, desde) => lista.length
       ? `<p class="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wider ${cls}">${etq} · ${lista.length}</p>` + lista.map((g, i) => fila(g, desde + i)).join('')
       : '';
-    const cabeza = `<p class="text-sm text-telecab-muted">${num(gente.length)} conductores · <b class="text-telecab-text tabular-nums">${num(t.horasEfectivas, 1)} h</b>` +
+    const vivo = t.enVivo;
+    const cabeza = (vivo ? `<p class="text-sm text-telecab-muted">Deben salir <b class="text-telecab-text tabular-nums">${num(vivo.debenSalir)}</b> · han salido <b class="text-telecab-text tabular-nums">${num(vivo.hanSalido)}</b> · conectados ahora <b class="text-telecab-green tabular-nums">${num(vivo.conectados)}</b></p>` : '') +
+      `<p class="text-sm text-telecab-muted">${num(gente.length)} conductores · <b class="text-telecab-text tabular-nums">${num(t.horasEfectivas, 1)} h</b>` +
       (meta > 0 ? ` de ${num(meta)}` : '') +
-      (p.faltan && abierta ? ` · si los que faltan completan sus ${num(jornadaH)} h: <b class="tabular-nums ${meta > 0 && p.siCompletan >= meta ? 'text-telecab-green' : 'text-telecab-red'}">${num(p.siCompletan, 1)} h</b>` : '') +
+      (p.faltan && abierta ? ` · si todos hacen sus ${num(jornadaH)} h: <b class="tabular-nums ${meta > 0 && p.siCompletan >= meta ? 'text-telecab-green' : 'text-telecab-red'}">${num(p.siCompletan, 1)} h</b>` : '') +
       `</p><p class="text-[11px] text-telecab-muted mt-1">Horas efectivas (viaje + espera) de cada uno en este turno, con la regla de Visibilidad. «Desconectado» es lo que dice BOLT ahora mismo.</p>`;
     Dialogo.aviso({
       titulo, tono: 'info', ancho: 'max-w-2xl', boton: 'Cerrar',
       html: cabeza + `<div class="mt-2 max-h-[60vh] overflow-y-auto pr-1">` +
         grupo(`Ya llevan sus ${num(jornadaH)} h`, 'text-telecab-green', hechos, 0) +
-        grupo('Les faltan', 'text-telecab-warn', faltan, hechos.length) + '</div>',
+        grupo('Les faltan', 'text-telecab-warn', faltan, hechos.length) +
+        grupo('Aún no han salido · del planificador', 'text-telecab-muted', sinSalir, hechos.length + faltan.length) + '</div>',
     });
   }
   ['t', 'p', 'j'].forEach(id => { const b = $('#' + id + '-prev'); if (b) b.addEventListener('click', () => abrirLista(id)); });

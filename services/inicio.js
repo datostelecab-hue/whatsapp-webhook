@@ -160,12 +160,32 @@ async function kilometros(dia, turno) {
  * de si todos los que faltan completaran su jornada: lo que lleva el turno más lo
  * que les falta.
  *
+ * EN EL TURNO EN CURSO, TODOS LOS PLANIFICADOS (Camilo, el mismo día: «pon a
+ * todos los planificados, así tengan 0 horas, y la previsión de cuántas horas se
+ * pueden hacer si todos hacen sus 8 horas»; con solo los que ya habían salido, a
+ * las 18:05 decía «si los 21 completan, 168 h» y confundía). La lista es quien
+ * lo tiene en el plan —el de Control, `f_cobertura` con los eventos— más los NN
+ * que ya han salido, y la previsión, cada uno con sus horas o con su jornada si
+ * aún no llega. Y en vivo (`enVivo`): cuántos DEBEN SALIR (el plan), cuántos HAN
+ * SALIDO (plan + NN, los «X conductores» de la tarjeta) y cuántos están
+ * CONECTADOS ahora. El turno anterior y la jornada siguen con quien hizo horas.
+ *
  * Cambia `turnoDia`, `turnoNoche` y `ayerJornada` en su sitio: su `gente` cruda
  * (persona, segundos, cuentas) pasa a ser la lista para pintar, y se añade
  * `prevision`.
  */
-async function conLaGente(visib, jornadaH) {
+async function conLaGente(visib, jornadaH, turnoActual) {
   const tarjetas = [visib.turnoDia, visib.turnoNoche, visib.ayerJornada].filter(t => t && Array.isArray(t.gente));
+  const actual = turnoActual === 'dia' ? visib.turnoDia : visib.turnoNoche;
+  // En el turno en curso, los planificados que aún no han hecho nada, con 0.
+  if (actual && Array.isArray(actual.gente)) {
+    const conHoras = new Set(actual.gente.map(g => g.persona));
+    const enPlan = new Set((actual.planificados || []).map(p => p.persona));
+    actual.gente = actual.gente.map(g => ({ ...g, plan: enPlan.has(g.persona) }))
+      .concat((actual.planificados || []).filter(p => !conHoras.has(p.persona))
+        .map(p => ({ persona: p.persona, seg: 0, nn: false, plan: true, cuentas: p.cuentas || [] })));
+    actual.conPlan = true;
+  }
   const todas = tarjetas.flatMap(t => t.gente);
   const ids = [...new Set(todas.filter(g => /^c\d+$/.test(g.persona)).map(g => Number(g.persona.slice(1))))];
   const uuids = [...new Set(todas.filter(g => g.persona.startsWith('u')).map(g => g.persona.slice(1)))];
@@ -197,7 +217,7 @@ async function conLaGente(visib, jornadaH) {
   const r1 = v => Math.round(v * 10) / 10;
   tarjetas.forEach(t => {
     const lista = t.gente
-      .map(g => ({ nombre: nombreDe(g.persona), seg: g.seg, nn: !!g.nn, ahora: ahoraDe(g.cuentas || []) }))
+      .map(g => ({ nombre: nombreDe(g.persona), seg: g.seg, nn: !!g.nn, plan: !!g.plan, ahora: ahoraDe(g.cuentas || []) }))
       .sort((a, b) => b.seg - a.seg || a.nombre.localeCompare(b.nombre, 'es'));
     const faltan = lista.filter(p => p.seg < meta);
     const faltanSeg = faltan.reduce((s, p) => s + (meta - p.seg), 0);
@@ -208,10 +228,28 @@ async function conLaGente(visib, jornadaH) {
       faltanH: r1(faltanSeg / 3600),
       // De los que faltan, cuántos siguen conectados: esos aún pueden llegar.
       faltanConectados: faltan.filter(p => p.ahora).length,
+      // Lo que llevan todos más lo que les falta para su jornada: cada uno con sus
+      // horas, o con su jornada si aún no llega. En el turno en curso, con los
+      // planificados que aún no han salido.
       siCompletan: r1((t.horasEfectivas || 0) + faltanSeg / 3600),
+      todos: lista.length,
     };
-    t.gente = lista.map(p => ({ nombre: p.nombre, h: r1(p.seg / 3600), nn: p.nn, ahora: p.ahora }));
+    if (t.conPlan) {
+      t.enVivo = {
+        debenSalir: (t.planificados || []).length,
+        hanSalido: lista.filter(p => p.seg > 0).length,
+        // De los que deben salir y de los NN que ya salieron, quién está ahora
+        // conectado a BOLT (en viaje, en espera o en descanso).
+        conectados: lista.filter(p => p.ahora).length,
+        planSinSalir: lista.filter(p => p.plan && !(p.seg > 0)).length,
+      };
+    }
+    t.gente = lista.map(p => ({ nombre: p.nombre, h: r1(p.seg / 3600), salio: p.seg > 0, nn: p.nn, plan: p.plan, ahora: p.ahora }));
+    // Lo crudo ya no hace falta: la lista para pintar lo lleva todo.
+    delete t.planificados;
+    delete t.conPlan;
   });
+  [visib.turnoDia, visib.turnoNoche].forEach(t => { if (t) delete t.planificados; });
 }
 
 /**
@@ -273,7 +311,7 @@ async function panel() {
     // de "Ayer · jornada".
     kilometros(cerrada, 'operativo'),
   ]);
-  await conLaGente(visib, jornadaH);
+  await conLaGente(visib, jornadaH, turnoActual);
 
   return {
     hoy, jornadaEnCurso: enCurso, jornadaCerrada: cerrada, jornadaH,

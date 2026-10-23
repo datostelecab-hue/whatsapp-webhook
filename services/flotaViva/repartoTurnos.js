@@ -343,18 +343,24 @@ async function cargar(fechas) {
   const planDe = (persona, fecha) => ((planes.get(persona) || new Map()).get(fecha)) || VACIO;
 
   // Las cuentas de BOLT de cada persona en estas fechas: con ellas se le busca
-  // en la foto del «ahora» (que va por cuenta) a quien aquí va por persona.
+  // en la foto del «ahora» (que va por cuenta) a quien aquí va por persona. Las
+  // de su ficha y las prestadas, aunque no hayan trabajado: el planificado que
+  // aún no ha hecho nada también puede estar conectado.
   const cuentasDe = new Map();
+  const apunta = (persona, uuid) => {
+    if (!cuentasDe.has(persona)) cuentasDe.set(persona, new Set());
+    cuentasDe.get(persona).add(String(uuid));
+  };
+  cuentas.rows.forEach(x => apunta('c' + x.conductor_id, x.externo_id));
+  prestadas.rows.forEach(x => apunta('c' + x.conductor_id, x.externo_id));
   const conPersona = ivs.map(iv => {
     const persona = personaDe(iv.uuid, iv.ini);
-    if (iv.uuid) {
-      if (!cuentasDe.has(persona)) cuentasDe.set(persona, new Set());
-      cuentasDe.get(persona).add(iv.uuid);
-    }
+    if (iv.uuid) apunta(persona, iv.uuid);
     return { ...iv, persona };
   });
   const r = repartir(conPersona, planDe);
   r.cuentasDe = cuentasDe;
+  r.planes = planes;
   return r;
 }
 
@@ -367,11 +373,14 @@ async function cargar(fechas) {
  *
  * Con `{ gente: true }` cada turno lleva además `gente`: [{ persona, seg, nn,
  * cuentas }] con lo de cada persona en ESE turno (lo que suma `personas`, uno a
- * uno). Lo usa el inicio para decir quién lleva ya su jornada y quién no: sale
- * de la misma carga, así que la lista y el total no pueden decir cosas distintas.
+ * uno), y `planificados`: [{ persona, cuentas }] con quien lo tiene en el plan
+ * (`f_cobertura` con los eventos, como Control), haya salido o no. Lo usa el
+ * inicio para decir quién lleva ya su jornada, quién no y quién debía salir:
+ * sale de la misma carga, así que la lista y el total no pueden decir cosas
+ * distintas.
  */
 async function porTurno(fechas, { gente = false } = {}) {
-  const { porClave, porPersona, cuentasDe } = await cargar(fechas);
+  const { porClave, porPersona, cuentasDe, planes } = await cargar(fechas);
   const out = new Map();
   [...new Set(fechas.map(f => String(f).slice(0, 10)))].forEach(f => ['dia', 'noche'].forEach(t => {
     const k = clave(f, t);
@@ -383,6 +392,11 @@ async function porTurno(fechas, { gente = false } = {}) {
         if (x && x.seg > 0) lista.push({ persona, seg: x.seg, nn: x.nn, cuentas: [...(cuentasDe.get(persona) || [])] });
       });
       out.get(k).gente = lista;
+      const plan = [];
+      planes.forEach((dias, persona) => {
+        if ((dias.get(f) || new Set()).has(t)) plan.push({ persona, cuentas: [...(cuentasDe.get(persona) || [])] });
+      });
+      out.get(k).planificados = plan;
     }
   }));
   return out;
