@@ -1992,6 +1992,7 @@ El 8203LTR pagó 23,93 L con la app y 22,87 L con tarjeta en el mismo minuto, y 
 depósito subió 27 L: comparado con cada uno, «subió lo pagado», verde los dos.
 **Remedio:** la boya se compara con la suma de los repostajes leídos del mismo
 coche en la misma parada (`repo.vecinosDe`): faltan 19,8 L de 46,8, amarillo.
+Desde la ventana fija (db/216), los de entre las dos lecturas de la boya.
 
 ### JSONB no guarda el orden de las claves
 
@@ -2052,6 +2053,75 @@ El déficit se redondea a un decimal de % y lo que falta, a un decimal de litro:
 la boya en 46 L y 46,04 L pagados salía «0,1 %» y «faltan 0,0 L», y la ficha decía
 «no falta nada». **Remedio:** que mande la cifra que se ve: si el % no es 0, lo
 que falta tampoco (con dos decimales si con uno saldría 0,0).
+
+### La parada de Mapon puede empezar con el depósito ya lleno
+
+`modules/Combustible/combustible.boya.js` → `ventana` (23/10/2026, db/216)
+
+La boya medía «antes de parar» y «al arrancar» la parada de Mapon que cubría la
+hora del repostaje. Pero Mapon no siempre ve la parada en el surtidor: el 1212MJY
+marcaba 10 L hasta las 17:43:54, repostó apagado, y la única parada que dio fue
+de 23 segundos a las 17:46:07, con el coche ya encendido y la aguja en 25 y
+subiendo. «Antes de parar» era 38 L, «al arrancar» 39: un 95 % rojo de un
+repostaje de 29 L. **Remedio** (el de Camilo): el nivel a horas fijas, 15
+minutos antes y 30 después de la hora del repostaje, sin mirar la parada. La
+parada sigue sirviendo al GPS.
+
+### El aforador de los Ioniq solo lee cuando cambia
+
+`modules/Combustible/combustible.boya.js` → `nivelEn`, `gastadoAndando` (23/10/2026)
+
+El de los Toyota manda una lectura cada ~30 s con el coche encendido; el de los
+Ioniq, solo cuando cambia el nivel (el 9775LRH estuvo 6 h 30 min en 43 L sin una).
+La mediana de «las 5 últimas lecturas» mezclaba niveles de horas distintas, y
+buscando la lectura a menos de 6 horas, ni la encontraba. Y el aforador no
+siempre baja al gastar: el 8930KVC marcaba 35 L a las 13:49 y otra vez 35 a las
+14:49, habiendo andado 36 km. **Remedio:** si junto a la lectura más cercana no
+hay al menos 3 (en sus 10 minutos), vale ella sola; se busca en toda la serie
+(hasta la revisión del 23/10/2026, 12 horas: abajo); y lo gastado se cuenta
+entre las dos lecturas que se usaron, no entre los dos instantes de la ventana,
+con los km de Mapon (aparcado no hay km, así que el hueco no suma).
+
+### Un tope de horas para buscar una lectura pierde los rojos de verdad
+
+`modules/Combustible/combustible.boya.js` → `nivelEn` (revisión del 23/10/2026)
+
+La lectura de cada lado se buscaba hasta 12 horas. El 0524MMZ repostó 19,81 L el
+05/10 a las 01:39, el aforador subió de 32 a 38-39 y el coche no volvió a leer
+hasta las 21:25: «Todavía no hay lecturas… el coche no ha vuelto a arrancar»,
+que era falso (la lectura estaba en la serie ya pedida), y tras dos intentos se
+cerraba «sin datos». Era un rojo de verdad, un 71 %, y desaparecía de las cifras;
+db/216 le borraba además el de la regla vieja. **Remedio:** buscar en toda la
+serie que ya se pide (72 h antes y 48 h después): aparcado el nivel no cambia, y
+lo andado lo suman los km. Y si falta la de antes, no reintentar: son horas del
+pasado.
+
+### Una marca que solo se escribe cuando algo sale bien no dice qué código lo escribió
+
+`db/216-boya-ventana-fija.sql` (revisión del 23/10/2026)
+
+db/216 devolvía a la cola lo que no llevaba la marca de la regla nueva
+(`auditoria_detalle.boya.regla = 'ventana'`). Pero esa marca solo se escribe
+cuando la ventana mide: lo que el código nuevo deja a medias (un Ioniq esperando
+a bajar del techo, uno de hace menos de T + 30) o «sin datos» no la lleva, y para
+la migración era «de la regla vieja». En local cumplían la condición los tres
+del 3110KSM auditados con el código nuevo. **Remedio:** mirar la versión del
+detalle, que el código escribe siempre (< 3). Y que un reintento no ponga otra
+vez la boya de la regla de antes con la versión nueva encima (`restaurarBoya`).
+
+### Al despertar, el aforador baila; y saltarse sus primeros minutos también engaña
+
+`modules/Combustible/combustible.boya.js` → `nivelEn` (revisión del 23/10/2026)
+
+Al arrancar tras repostar, la aguja sube en un par de minutos (el 0870MMZ: 16,
+16, 19, 28, 29…, 39): la mediana de las cinco primeras daría 19, un rojo de un
+repostaje bueno. Pero saltar siempre los 5 primeros minutos tras un hueco
+cambiaba unos 30 de 108 repostajes, y algunos a peor: parado, al despertar, el
+del 3814KYG marcó 44, 43, 42, nueve minutos nada, 38, 38, 39 y 43 (la mediana
+saltando cogía 38), y el de los Ioniq llega siempre tras un hueco porque solo
+lee al cambiar. **Remedio:** solo si la aguja SUBE 3 L o más en los 10 minutos
+de después de despertar, vale lo de pasados 5 minutos. En los 108 no cambia
+ninguno.
 
 ---
 

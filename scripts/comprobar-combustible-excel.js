@@ -270,6 +270,13 @@ const TEXTOS_MAP = new Map(ALIAS.map(a => [`petroprix|${a.clave}`, porNombre(a.n
   igual('La memoria: con la ventana del grupo pedida, la de cada repostaje sale de ella, igual que pedida, sin volver a preguntar',
     [JSON.stringify(deMem) === JSON.stringify(directo), MAPON_LLAMADAS.length - antesLl, mem.cuenta()], [true, 2, { pedidas: 2, deMemoria: 2 }]);
   igual('…y lo que no cabe en lo pedido se pregunta', (await mem.nivelDeposito('u1', T + 47 * H, T + 60 * H), mem.cuenta().pedidas), 3);
+  // Los km (desde la boya de la ventana fija: lo que gastó entre sus dos
+  // lecturas) también van con el grupo, y cada repostaje recorta los suyos.
+  const KM = [{ t: T - 2 * H, v: 100 }, { t: T, v: 120 }, { t: T + H, v: 150 }, { t: T + 3 * H, v: 170 }];
+  const memKm = conMemoria({ ...MAPON, gastadoYKm: async (u, d, h) => ({ gastado: [], km: KM.filter(p => p.t >= d && p.t <= h) }) });
+  await memKm.precargar('u1', { km: [T - 3 * H, T + 2 * H] });
+  igual('…los km también: pedidos una vez con el grupo, cada repostaje recorta los suyos de ahí',
+    [await memKm.gastadoYKm('u1', T - H, T + 90 * MIN), memKm.cuenta()], [{ gastado: [], km: [KM[1], KM[2]] }, { pedidas: 1, deMemoria: 1 }]);
   const g = A._agrupar([
     { rep: { id: 1 }, t: T, unidad: { unitId: 'u1' } }, { rep: { id: 2 }, t: T + 30 * H, unidad: { unitId: 'u1' } },
     { rep: { id: 3 }, t: T + 5 * 24 * H, unidad: { unitId: 'u1' } }, { rep: { id: 4 }, t: T, unidad: { unitId: 'u2' } },

@@ -816,43 +816,117 @@ const REENVIADO = {
     [SEM.peor('verde', 'rojo'), SEM.peor('rojo', 'amarillo'), SEM.peor('amarillo', null), SEM.peor(null, 'verde'), SEM.peor(null, null)],
     ['rojo', 'rojo', 'amarillo', 'verde', null]);
 
-  // ── LA BOYA, con lecturas de mentira ──────────────────────────────────────
+  // ── LA BOYA, con lecturas de mentira: LA VENTANA FIJA (23/10/2026) ───────
   // El repostaje de las 12:57 de Madrid del 22/10/2026 (10:57 UTC). Un Toyota
-  // lee cada 30 s con el coche encendido; parado, nada.
+  // lee cada 30 s con el coche encendido; parado, nada. Camilo: el nivel ANTES
+  // es el de 15 minutos antes de la hora del repostaje y el DESPUÉS, el de 30
+  // minutos después; ya no se busca la parada.
   const T = Date.UTC(2026, 9, 22, 10, 57), MIN = 60e3, H = 3600e3;
   const tramo = (desde, hasta, v, paso = 30e3) => { const s = []; for (let t = desde; t <= hasta; t += paso) s.push({ t, v: typeof v === 'function' ? v(t, s.length) : v }); return s; };
   const PARADA = { desde: T - 3 * MIN, hasta: T + 6 * MIN };
   const ANTES = tramo(T - H, T - 3 * MIN, (t, i) => [12, 13, 12, 11, 12][i % 5]);   // baila ±1 L
   const toyota = ANTES.concat(tramo(T + 6 * MIN, T + H, 35));
-  igual('Salto con parada: la mediana de las 5 de antes de parar (12, bailando ±1) y la de las 5 de después de arrancar (35): +23 L',
-    (m => [m.ok, m.antes, m.despues, m.salto, m.conParada])(BOYA.salto(toyota, T, { parada: PARADA })), [true, 12, 35, 23, true]);
+  // [antes, después, salto, minutos de la lectura de antes y de la de después respecto a T, cuántas se juntaron de cada lado]
+  const ven = (s, t = T, o) => (m => (m.ok ? [m.antes, m.despues, m.salto, (m.tAntes - t) / MIN, (m.tDespues - t) / MIN, m.nAntes, m.nDespues]
+    : [m.ok, m.reintentar, m.motivo]))(BOYA.ventana(s, t, o));
+  igual('Ventana fija: el nivel a T − 15 (la mediana de las 5 de sus 10 minutos: 12, bailando ±1) y a T + 30 (35): +23 L',
+    [ven(toyota), (m => [(m.instAntes - T) / MIN, (m.instDespues - T) / MIN])(BOYA.ventana(toyota, T)), [BOYA.ANTES_MIN, BOYA.DESPUES_MIN]],
+    [[12, 35, 23, -15, 30, 5, 5], [-15, 30], [15, 30]]);
   // Un Ioniq: la aguja sube despacio al arrancar (10 → 35 L en cuatro minutos).
+  // A T + 30 ya está arriba: la ventana no la coge a medias.
   const ioniq = ANTES.concat([10, 18, 26, 33, 35].map((v, i) => ({ t: T + (6 + i) * MIN, v })), tramo(T + 11 * MIN, T + H, 35, MIN));
-  igual('Salto en un Ioniq: se espera a que la aguja llegue arriba (5 min tras arrancar); con la primera lectura saldría +14',
-    BOYA.salto(ioniq, T, { parada: PARADA }).salto, 23);
+  igual('Un Ioniq con la aguja lenta (10 → 35 L en cuatro minutos tras arrancar): a T + 30 ya está arriba, +23', ven(ioniq).slice(0, 3), [12, 35, 23]);
+
+  // EL DE LA CAPTURA (1212MJY, Petroprix «Móstoles 2», 22/10/2026 17:46:16,
+  // 30,69 L). El aforador en 9 L hasta las 17:44, 41 a las 17:45 y luego
+  // 39-40; Mapon vio una parada de 23 segundos a las 17:46:07, con el depósito
+  // ya lleno. La regla de antes medía a través de esa parada.
+  const hora = (h, m, s = 0) => Date.UTC(2026, 9, 22, h - 2, m, s);
+  const T12 = hora(17, 46, 16);
+  const mjy = tramo(hora(16, 44), hora(17, 44), 9).concat([{ t: hora(17, 45), v: 41 }],
+    tramo(hora(17, 45, 30), hora(18, 50), (t, i) => (i % 2 ? 39 : 40)));
+  const paradaTarde = { desde: hora(17, 46, 7), hasta: hora(17, 46, 30) };
+  igual('El de la captura, con la regla de antes («antes de parar» y «al arrancar», a través de la parada de 23 s): el depósito «no subía», por eso salía rojo',
+    (m => [m.antes, m.despues, m.salto])(BOYA.subidaEnParada(mjy, paradaTarde)), [40, 40, 0]);
+  igual('…con la ventana fija: 9 L a las 17:31 y 40 a las 18:16 (la mediana de 39-40), +31 L',
+    ven(mjy, T12).slice(0, 3), [9, 40, 31]);
+
+  // EL COCHE APAGADO, SIN LECTURAS CERCA: aparcado de T − 3 h a T − 5 min; tras
+  // repostar anduvo 6 minutos y aparcó hasta T + 5 h. Aparcado el nivel no
+  // cambia: vale la última lectura de antes y la primera de después.
+  const apagado = tramo(T - 4 * H, T - 3 * H, 20).concat(tramo(T - 5 * MIN, T - 2 * MIN, 20), tramo(T + 2 * MIN, T + 8 * MIN, 41), tramo(T + 5 * H, T + 6 * H, 40));
+  igual('Coche apagado y sin lecturas cerca: la última de antes (de hace 3 h) y la primera de después (a las 5 h, con la aguja quieta): +20 L',
+    ven(apagado), [20, 40, 20, -180, 300, 5, 5]);
+  // EN TODA LA SERIE (revisión del 23/10/2026): hasta entonces solo 12 h, y
+  // dos rojos o amarillos de verdad se quedaban «sin medir».
+  igual('Aparcado 13 h antes de repostar (el 1210MJY del 01/10): vale la última lectura de antes, de hace 13 h',
+    ven(tramo(T - 14 * H, T - 13 * H, 20).concat(tramo(T + 2 * MIN, T + 2 * H, 40))), [20, 40, 20, -780, 30, 5, 5]);
+  const aparca20h = tramo(T - H, T - 3 * MIN, 32).concat([33, 35, 36, 38, 38, 39].map((v, i) => ({ t: T + (1 + 2 * i) * MIN, v })),
+    tramo(T + 19 * H + 46 * MIN, T + 21 * H, 38));
+  igual('Aparcado casi 20 h nada más repostar (el 0524MMZ del 05/10, un rojo de verdad que se perdía): vale la primera de después, al volver a arrancar',
+    ven(aparca20h, T, { ahora: T + 30 * H }), [32, 38, 6, -15, 19 * 60 + 46, 5, 5]);
+  igual('Sin ni una lectura de antes en toda la serie: no hay salto y NO se reintenta (son horas del pasado: no van a llegar)',
+    (m => [m.ok, m.reintentar, /^No hay lecturas del aforador en las 72 horas antes de las 12:42 \(15 minutos antes del repostaje\)/.test(m.motivo)])(
+      BOYA.ventana(tramo(T + 2 * MIN, T + 2 * H, 40), T, { desde: T - 72 * H })),
+    [false, false, true]);
+  // LA AGUJA AL ARRANCAR (el 0870MMZ del 02/10): repostó y no arrancó hasta
+  // T + 40; al arrancar, la aguja sube de 16 a 39 en dos minutos. La mediana de
+  // las cinco primeras sería 19, un rojo de un repostaje bueno.
+  const aguja = tramo(T - H, T - 3 * MIN, 16).concat([16, 16, 19, 28, 29, 29, 30, 31, 36, 38, 38, 39].map((v, i) => ({ t: T + 40 * MIN + i * 10e3, v })),
+    tramo(T + 42 * MIN, T + 2 * H, 39));
+  igual('La aguja al arrancar después de T + 30 (16 → 39 en dos minutos): sube 3 L o más tras un hueco, así que vale lo de pasados 5 minutos, 39 y no 19; y se dice cuándo arrancó',
+    (m => [m.antes, m.despues, (m.tDespues - T) / MIN, (m.arranque - T) / MIN])(BOYA.ventana(aguja, T)), [16, 39, 45, 40]);
+  igual('…si vuelve a parar antes de los 5 minutos, la última de ese rato; y si tras el hueco no sube (aparcado, el baile de ±1 L) o el coche andaba desde antes, nada cambia',
+    [(m => [m.despues, (m.tDespues - T) / MIN])(BOYA.ventana(tramo(T - H, T - 3 * MIN, 16).concat([20, 30, 38].map((v, i) => ({ t: T + 40 * MIN + i * MIN, v })), tramo(T + 3 * H, T + 4 * H, 37)), T)),
+      BOYA.ventana(toyota, T).arranque, BOYA.ventana(apagado, T).arranque,
+      BOYA.ventana(tramo(T - H, T - 3 * MIN, 30).concat([44, 44, 43, 43, 43, 43, 42].map((v, i) => ({ t: T + 40 * MIN + i * 40e3, v }))), T).despues],
+    [[38, 42], null, null, 43]);
+  // EL AFORADOR DE LOS IONIQ solo lee cuando cambia: una lectura suelta es el
+  // nivel que había. La mediana de las cinco de antes cogería niveles de horas.
+  const soloCambia = [{ t: T - 90 * MIN, v: 32 }, { t: T - 50 * MIN, v: 31 }, { t: T - 20 * MIN, v: 30 }, { t: T + 4 * MIN, v: 33 }, { t: T + 6 * MIN, v: 38 },
+    { t: T + 9 * MIN, v: 43 }, { t: T + 3 * H, v: 42 }, { t: T + 3.5 * H, v: 41 }];
+  igual('Un aforador que solo lee cuando cambia (Ioniq): la lectura más cercana de cada lado, sola: 30 → 42 L (lo gastado entre medias se suma aparte)',
+    ven(soloCambia), [30, 42, 12, -20, 180, 1, 1]);
+
+  // LO QUE GASTA ENTRE MEDIAS: andando de T − 15 a T + 30, el salto sale corto.
+  const kmAnda = tramo(T - 2 * H, T + 2 * H, t => 1000 + 30 * (t - (T - 2 * H)) / H, MIN);   // a 30 km/h todo el rato
+  igual('Lo que gasta andando entre las dos lecturas: 22,5 km a 4,77 L/100 km son 1,1 L; aparcado, 0; sin km, nada',
+    [BOYA.gastadoAndando(kmAnda, T - 15 * MIN, T + 30 * MIN), BOYA.gastadoAndando(tramo(T - 2 * H, T + 2 * H, 1000, MIN), T - 15 * MIN, T + 30 * MIN),
+      BOYA.gastadoAndando([], T, T + H)],
+    [{ km: 22.5, litros: 1.1 }, { km: 0, litros: 0 }, null]);
+  igual('…y si el coche acababa de arrancar (el primer km llega un minuto después de la lectura del aforador), vale ese: 44 min a 30 km/h',
+    BOYA.gastadoAndando(tramo(T - 14 * MIN, T + 2 * H, t => 1000 + 30 * (t - (T - 14 * MIN)) / H, MIN), T - 15 * MIN, T + 30 * MIN), { km: 22, litros: 1 });
+
+  igual('Sin lecturas de después de T + 30 todavía: no hay salto y se vuelve a mirar (no «0 L», que sería un rojo de mentira)',
+    (m => [m.ok, m.reintentar, /Todavía no hay lecturas del aforador de después de las 13:27 \(30 minutos después del repostaje\)/.test(m.motivo)])(BOYA.ventana(ANTES, T, { ahora: T + H })),
+    [false, true, true]);
+  igual('…y si aún no son las T + 30 (alguien le da a «Auditar ahora» antes), lo dice',
+    /^Todavía no son las 13:27 \(30 minutos después del repostaje\)/.test(BOYA.ventana(toyota.filter(p => p.t < T + 10 * MIN), T, { ahora: T + 10 * MIN }).motivo), true);
+  igual('Sin ni una lectura: el coche no da el nivel (no se reintenta)', (m => [m.ok, m.sinSerie, m.reintentar])(BOYA.ventana([], T)), [false, true, false]);
+  const conHuecos = tramo(T - H, T - 17 * MIN, 12).concat([{ t: T - 16.5 * MIN, v: null }, { t: T - 16 * MIN, v: '' }, { t: T - 15.5 * MIN, v: null },
+    { t: T - 15 * MIN, v: null }], tramo(T + 6 * MIN, T + H, 35));
+  igual('Una lectura vacía no es un 0 (con tres seguidas, la mediana sería un 0 y el salto, +35)', ven(conHuecos).slice(0, 3), [12, 35, 23]);
+  // UN FORD: el nivel en % (una lectura cada 3 min), con la misma ventana.
+  const pctFord = tramo(T - H, T - 3 * MIN, 20, 3 * MIN).concat(tramo(T + 6 * MIN, T + H, 90, 3 * MIN));
+  igual('Un Ford (en % del depósito, una lectura cada 3 min): la misma ventana, +70 %', ven(pctFord).slice(0, 3), [20, 90, 70]);
+
+  // LA PARADA, SOLO PARA EL GPS: ¿una parada larga lejos de la gasolinera tras
+  // la cual el depósito tiene 5 L más? (combustible.auditoria, subeEnElla). Es
+  // la cuenta de la boya de antes, y para eso se queda.
   const paraOtraVez = ANTES.concat(tramo(T + 6 * MIN, T + 8 * MIN, 35));
-  igual('…y si al poco vuelve a parar (sin 3 lecturas pasados los 5 min), valen las del principio', BOYA.salto(paraOtraVez, T, { parada: PARADA }).salto, 23);
-  const sinParar = tramo(T - H, T - 10 * MIN, 20).concat(tramo(T + 10 * MIN, T + H, 40));
-  igual('Salto sin parada: 10 minutos a cada lado de la hora del correo', (m => [m.salto, m.conParada])(BOYA.salto(sinParar, T)), [20, false]);
-  igual('Sin lecturas de después todavía: no hay salto y se vuelve a mirar (no «0 L», que sería un rojo de mentira)',
-    (m => [m.ok, m.reintentar, /Todavía no hay lecturas/.test(m.motivo)])(BOYA.salto(ANTES, T, { parada: PARADA })), [false, true, true]);
-  igual('El coche sigue parado en la gasolinera (parada sin fin): se espera a que arranque',
-    (m => [m.ok, m.reintentar])(BOYA.salto(toyota, T, { parada: { desde: T - 3 * MIN, hasta: null } })), [false, true]);
-  igual('Sin ni una lectura: el coche no da el nivel (no se reintenta)', (m => [m.ok, m.sinSerie, m.reintentar])(BOYA.salto([], T)), [false, true, false]);
-  igual('Sin lecturas antes del repostaje: no hay salto, y se reintenta',
-    (m => [m.ok, m.reintentar])(BOYA.salto(tramo(T + 6 * MIN, T + H, 35), T, { parada: PARADA })), [false, true]);
-  const conHuecos = ANTES.slice(0, -5).concat([{ t: T - 5 * MIN, v: 12 }, { t: T - 4.5 * MIN, v: null }, { t: T - 4 * MIN, v: '' },
-    { t: T - 3.5 * MIN, v: null }, { t: T - 3 * MIN, v: 12 }], tramo(T + 6 * MIN, T + H, 35));
-  igual('Una lectura vacía no es un 0 (tres seguidas harían de la mediana un 0 y del salto, +35)', BOYA.salto(conHuecos, T, { parada: PARADA }).salto, 23);
+  igual('Para el GPS, a través de una parada: las 5 de antes de parar y las de después de arrancar (pasados los 5 min de la aguja, o las del principio si vuelve a parar); sin fin, nada',
+    [BOYA.subidaEnParada(toyota, PARADA).salto, BOYA.subidaEnParada(ioniq, PARADA).salto, BOYA.subidaEnParada(paraOtraVez, PARADA).salto,
+      BOYA.subidaEnParada(toyota, { desde: T - 3 * MIN, hasta: null }).ok, BOYA.subidaEnParada(ANTES, PARADA).ok],
+    [23, 23, 23, false, false]);
 
   // EL TECHO: el aforador no marca más de 40 L, y lo de encima no se ve.
   const llena = ANTES.map(p => ({ ...p, v: 15 })).concat(tramo(T + 6 * MIN, T + 2 * H - 30e3, 40), tramo(T + 2 * H, T + 3 * H, 36));
-  const mT = BOYA.salto(llena, T, { parada: PARADA });
+  const mT = BOYA.ventana(llena, T);
   igual('Techo: el máximo de la serie, si llega a 38 L; por debajo no es un techo', [BOYA.techo(llena), BOYA.techo(toyota)], [40, null]);
   // Una lectura rota del CAN (255, 65535) no es el techo: fijaba ahí el techo
   // y el aforador ya no «topaba» nunca.
   const conRotas = llena.concat([{ t: T + 30 * MIN + 15e3, v: 255 }, { t: T + 31 * MIN + 15e3, v: 65535 }, { t: T + 32 * MIN + 15e3, v: -3 }]);
-  const mRotas = BOYA.salto(conRotas, T, { parada: PARADA });
+  const mRotas = BOYA.ventana(conRotas, T);
   igual('Techo con lecturas rotas (255, 65535, −3): sigue en 40, y el repostaje sigue topando',
     [BOYA.techo(conRotas), BOYA.topa(mRotas, BOYA.techo(conRotas))], [40, true]);
   igual('…y un valor alto suelto (dos lecturas de 44) tampoco es el techo: el techo se repite',
@@ -862,19 +936,26 @@ const REENVIADO = {
       { boya_tipo: 'litros', boya_corregida: false, boya_techo: 45, boya_despues: 43 }, { boya_tipo: 'porcentaje', boya_corregida: null, boya_techo: null, boya_despues: 90 },
       { boya_tipo: 'litros', boya_corregida: false, boya_techo: null, boya_despues: 35 }, null].map(BOYA.esMinimo),
     [true, false, false, false, false, false]);
-  igual('…después del repostaje marca el techo: topó', [mT.salto, BOYA.topa(mT, 40), BOYA.topa(BOYA.salto(toyota, T, { parada: PARADA }), null)], [25, true, false]);
+  igual('…a T + 30 marca el techo: topó', [mT.salto, BOYA.topa(mT, 40), BOYA.topa(BOYA.ventana(toyota, T), null)], [25, true, false]);
   const baja = BOYA.bajaDelTecho(llena, mT, 40);
   igual('…vuelve a bajar de verdad (mediana de 5 ≤ techo − 2) un minuto antes de las 2 h: 36 L',
     [baja && (baja.t2 - T) / MIN, baja && baja.v2], [119, 36]);
   igual('…y si no ha bajado todavía, no hay corrección (se espera)', BOYA.bajaDelTecho(llena.filter(p => p.t < T + 2 * H), mT, 40), null);
-  // 50 km/h: de las 13:08 (tDespues) a las 14:56 (t2) son 90 km → 4,29 L a 4,77 L/100 km.
+  // 50 km/h: de las 13:27 (la lectura de después) a las 14:56 (t2) son 74 km → 3,5 L a 4,77 L/100 km.
   const km = [{ t: T, v: 1000 }, { t: T + 4 * H, v: 1200 }];
-  igual('Corregir el techo con los km a 4,77 L/100 km: 36 + 4,29 − 15 = 25,3 L',
-    (c => [c.corregido, c.litros, c.gastadoEntre, c.como])(BOYA.corregirTecho(mT, baja, { km })), [true, 25.3, 4.3, '90 km a 4,77 L/100 km']);
+  igual('Corregir el techo con los km desde la lectura de después a 4,77 L/100 km: 36 + 3,5 − 15 = 24,5 L (lo de entre medias se suma aparte)',
+    (c => [c.corregido, c.litros, c.gastadoEntre, c.como])(BOYA.corregirTecho(mT, baja, { km })), [true, 24.5, 3.5, '74 km a 4,77 L/100 km']);
+  // POR KM, COMO LO DE ENTRE MEDIAS (revisión del 23/10/2026): hasta entonces
+  // mandaba el gastado de la centralita, interpolado entre lecturas de horas,
+  // y en una misma cuenta se mezclaban las dos fuentes.
   const gastado = [{ t: T, v: 5000 }, { t: T + 4 * H, v: 5010 }];
-  igual('…o con el gastado de la centralita si lo da (manda sobre los km): 36 + 4,5 − 15 = 25,5 L',
-    (c => [c.litros, c.como])(BOYA.corregirTecho(mT, baja, { gastado, km })), [25.5, 'gastado de la centralita']);
-  igual('…y sin ninguno de los dos, el salto sin corregir y por qué', (c => [c.corregido, c.litros, /no hay gastado ni km/.test(c.motivo)])(BOYA.corregirTecho(mT, baja, {})), [false, 25, true]);
+  igual('…con km y centralita, mandan los km (como lo de entre medias): 24,5 L, no los 24,7 de la centralita',
+    (c => [c.litros, c.como, c.kmEntre])(BOYA.corregirTecho(mT, baja, { gastado, km })), [24.5, '74 km a 4,77 L/100 km', 74.2]);
+  const gastadoJunto = tramo(T, T + 4 * H, t => 5000 + 2.5 * (t - T) / H, 5 * MIN);
+  igual('…sin km, la centralita, pero solo con lecturas a pocos minutos de los dos instantes (36 + 3,7 − 15 = 24,7 L); con un hueco de horas, no se interpola',
+    [(c => [c.litros, c.como])(BOYA.corregirTecho(mT, baja, { gastado: gastadoJunto })), (c => [c.corregido, c.litros])(BOYA.corregirTecho(mT, baja, { gastado }))],
+    [[24.7, 'gastado de la centralita'], [false, 25]]);
+  igual('…y sin ninguno de los dos, el salto sin corregir y por qué', (c => [c.corregido, c.litros, /no hay km ni gastado/.test(c.motivo)])(BOYA.corregirTecho(mT, baja, {})), [false, 25, true]);
   igual('Interpolar una serie acumulada entre dos lecturas (y fuera de ella, null)',
     [BOYA.enInstante(km, T + H), BOYA.enInstante(km, T - 1), BOYA.enInstante(km, T + 5 * H)], [1050, null, null]);
   igual('Déficit de la boya: max(0, pagado − boya) / pagado, con un decimal; subir de más es 0; con 0 litros pagados o sin boya, null; si bajó, más del 100 %',
@@ -905,7 +986,7 @@ const REENVIADO = {
   // ════════════════════════════════════════════════════════════════════════
   // Mapon de mentira, y MIRADO: si la auditoría tocara algo que no sea una
   // lectura (una orden, un relé), sale abajo. La base, otro doble.
-  const MAP = { caido: false, sinClave: false, revienta: null, series: {}, pct: {}, paradas: {}, puntos: {}, capacidad: {}, gk: {}, padron: {} };
+  const MAP = { caido: false, sinClave: false, revienta: null, series: {}, pct: {}, paradas: {}, puntos: {}, capacidad: {}, gk: {}, padron: {}, pedido: [] };
   const LECTURAS_MAPON = ['configurado', 'disponible', 'estadoCaida', 'unidadPorMatricula', 'paradasUnidad', 'posicionEn',
     'nivelDeposito', 'nivelPorcentaje', 'gastadoYKm', 'capacidadDeposito'];
   const tocadoMapon = new Set();
@@ -915,8 +996,9 @@ const REENVIADO = {
     disponible: () => !MAP.caido,
     estadoCaida: () => (MAP.caido ? { motivo: 'cuenta suspendida' } : null),
     unidadPorMatricula: async m => (MAP.padron[m] ? { unitId: MAP.padron[m] } : null),
-    paradasUnidad: async u => { falla('paradas'); return MAP.paradas[u] || []; },
-    posicionEn: async u => MAP.puntos[u] || null,
+    // Lo que se pregunta, apuntado (MAP.pedido): «solo la boya» no pide ni paradas ni posiciones.
+    paradasUnidad: async u => { MAP.pedido.push('paradas'); falla('paradas'); return MAP.paradas[u] || []; },
+    posicionEn: async u => { MAP.pedido.push('posicion'); return MAP.puntos[u] || null; },
     nivelDeposito: async u => { falla('nivel'); return MAP.series[u] || []; },
     nivelPorcentaje: async u => MAP.pct[u] || [],
     // Como Mapon: solo lo que cae en la ventana pedida.
@@ -926,7 +1008,7 @@ const REENVIADO = {
     },
     capacidadDeposito: async u => MAP.capacidad[u] || null,
   }, { get: (o, k) => { tocadoMapon.add(String(k)); return o[k]; } }));
-  const AUD = { filas: {}, alias: new Map(), textos: new Map(), vecinos: {}, cerrar: 0, aAuditar: [], guardarRevienta: null };
+  const AUD = { filas: {}, alias: new Map(), textos: new Map(), vecinos: {}, vecinosEntre: {}, cerrar: 0, aAuditar: [], guardarRevienta: null };
   const UNIDAD = { '8997LDK': 'u-coslada', '7909LRJ': 'u-clot', '2350LHP': 'u-ford', '6584KZV': 'u-sin', '9001LWJ': 'u-techo', '3814KYG': 'u-espera' };
   const paraCasar = f => ({ id: f.id, proveedor: f.proveedor, estacion: f.estacion, sede: f.sede, gasolinera_id: f.gasolinera_id || null,
     gasolinera_como: f.gasolinera_como || null, gps_lat: f.gps_lat == null ? null : f.gps_lat, gps_lng: f.gps_lng == null ? null : f.gps_lng });
@@ -937,7 +1019,8 @@ const REENVIADO = {
     textosGasolineras: async () => AUD.textos,
     // Otros repostajes del mismo coche en la misma parada: los que diga la prueba
     // (aquí casi todos comparten hora y coche, y no son de la misma parada).
-    vecinosDe: async id => AUD.vecinos[id] || [],
+    // Y entre qué instantes se buscan (los de las dos lecturas de la boya).
+    vecinosDe: async (id, mat, desde, hasta) => { AUD.vecinosEntre[id] = [desde, hasta]; return AUD.vecinos[id] || []; },
     ponerAlias: async ({ proveedor, clave, gasolineraId }) => { AUD.alias.set(`${proveedor}|${clave}`, gasolineraId); },
     quitarAlias: async ({ proveedor, clave }) => { AUD.alias.delete(`${proveedor}|${clave}`); },
     paraCasarGasolinera: async () => Object.values(AUD.filas).filter(f => f.estado === 'leido' && (!f.gasolinera_como || ['ninguna', 'ambiguo'].includes(f.gasolinera_como))).map(paraCasar),
@@ -1000,9 +1083,9 @@ const REENVIADO = {
   AUD.vecinos[40] = [{ id: 41, litros: 22.87, hora: '12:57:40' }];
   const pareja = await auditar(40);
   delete AUD.vecinos[40];
-  igual('Dos repostajes en la misma parada: solo, 23 L de 23,93 es un 3,9 % (verde); con el otro (22,87 L), 23 de 46,8: falta un 50,9 %, amarillo, y se dice',
+  igual('Dos repostajes entre las dos lecturas de la boya: solo, 23 L de 23,93 es un 3,9 % (verde); con el otro (22,87 L), 23 de 46,8: falta un 50,9 %, amarillo, y se dice',
     [solo.boyaErrorPct, pareja.boyaErrorPct, SEM.colorBoya(pareja.boyaErrorPct), pareja.detalle.boya.pagados, pareja.detalle.boya.juntos.length,
-      /En la misma parada hay otro repostaje de este coche \(12:57:40, 22,87 L\): la boya se compara con los 46,8 L de todos/.test(pareja.boyaMotivo)],
+      /Entre las dos lecturas hay otro repostaje de este coche \(12:57:40, 22,87 L\): la boya se compara con los 46,8 L de todos/.test(pareja.boyaMotivo)],
     [3.9, 50.9, 'amarillo', 46.8, 1, true]);
 
   // CLOT: la gasolinera no tiene coordenadas: sin color por GPS, y se dice la más cercana.
@@ -1063,9 +1146,9 @@ const REENVIADO = {
     (a => [a.boyaErrorPct, SEM.colorBoya(a.boyaErrorPct, { minimo: true }), a.estado])(await auditar(7)), [0, 'verde', 'incompleta']);
   MAP.series['u-techo'] = llena;
   MAP.gk['u-techo'] = { gastado: [], km: tramo(T - 2 * H, T + 4 * H, t => 1000 + 50 * (t - T) / H, MIN) };
-  igual('…cuando baja, se corrige con lo que gastó hasta entonces: 25,3 L de 30, un 15,7 %, y hecha',
-    (a => [a.boyaCorregida, a.boyaLitros, a.boyaErrorPct, a.estado, a.detalle.boya.correccion.como])(await auditar(6)),
-    [true, 25.3, 15.7, 'hecha', '90 km a 4,77 L/100 km']);
+  igual('…cuando baja, se corrige con lo que gastó desde la lectura de después (74 km, 3,5 L) más lo de entre medias (37,5 km, 1,8 L): 36 + 3,5 + 1,8 − 15 = 26,3 L de 30, un 12,3 %, y hecha',
+    (a => [a.boyaCorregida, a.boyaLitros, a.boyaErrorPct, a.estado, a.detalle.boya.correccion.como, a.detalle.boya.andando])(await auditar(6)),
+    [true, 26.3, 12.3, 'hecha', '74 km a 4,77 L/100 km', { km: 37.5, litros: 1.8 }]);
 
   // APARCA AL POCO DE REPOSTAR (el 3784LFV, 23/10/2026): el «después» es de
   // hora y media más tarde, cuando vuelve a arrancar, y aparcado no llegan km.
@@ -1078,9 +1161,10 @@ const REENVIADO = {
   MAP.gk['u-aparca'] = { km: [T - H, T + 6 * MIN, T + 90 * MIN].flatMap((d, i) => tramo(d + 10e3, [T - 3 * MIN, T + 7 * MIN, T + 4 * H][i], kmA)) };
   UNIDAD['3784LFV'] = 'u-aparca';
   rep(12, { estacion: 'HOSPITALET DE LLOBREGAT (L´)', matricula: '3784LFV', sede: 'barcelona', litros: 25.221 });
-  igual('Aparca al poco de repostar: el techo se corrige igual con los km de cuando vuelve a andar (36 + 3,5 − 15 = 24,5 L)',
-    (a => [a.boyaCorregida, a.boyaLitros, a.detalle.boya.correccion && a.detalle.boya.correccion.como, a.estado])(await auditar(12)),
-    [true, 24.5, '74 km a 4,77 L/100 km', 'hecha']);
+  igual('Aparca al poco de repostar: la lectura de después es de cuando vuelve a andar (T + 90), el techo se corrige con los km desde ahí (36 + 3,5 − 15 = 24,5 L) y lo de entre medias, solo lo que anduvo (11 km, 0,5 L): 25 L',
+    (a => [a.boyaCorregida, a.boyaLitros, a.detalle.boya.correccion && a.detalle.boya.correccion.como, a.detalle.boya.andando, (Date.parse(a.detalle.boya.tDespues) - T) / MIN,
+      a.detalle.boya.arranque, a.estado])(await auditar(12)),
+    [true, 25, '74 km a 4,77 L/100 km', { km: 11, litros: 0.5 }, 90, undefined, 'hecha']);
 
   // AÚN SIN LECTURAS DE DESPUÉS (el 3814KYG a las 16:57 del 22/10): no es un 0, se espera.
   MAP.paradas['u-espera'] = MAP.paradas['u-sin'];
@@ -1089,15 +1173,129 @@ const REENVIADO = {
   const a8 = await auditar(8);
   igual('Sin lecturas de después todavía: el GPS ya vale (0 m), la boya espera, y queda a medias para volver a mirarla',
     [a8.distancia, a8.boyaErrorPct, /Todavía no hay lecturas/.test(a8.boyaMotivo), a8.estado], [0, undefined, true, 'incompleta']);
+  // db/216 SOLO TOCA LO DEL CÓDIGO DE ANTES (revisión del 23/10/2026): miraba la
+  // marca de la boya (regla 'ventana'), que solo está si la ventana midió; esta
+  // a medias no la lleva y la migración le habría puesto una boyaAntes falsa.
+  // Ahora mira la versión del detalle, que el código de ahora escribe siempre.
+  const sql216 = require('fs').readFileSync(path.join(__dirname, '..', 'db', '216-boya-ventana-fija.sql'), 'utf8');
+  const where216 = sql216.slice(sql216.lastIndexOf('WHERE'), sql216.indexOf(';', sql216.lastIndexOf('WHERE')));
+  igual('…y aunque no mida la boya, el detalle va con la versión 3: db/216 lo deja (su condición es la versión, < 3, no la marca de la boya)',
+    [a8.detalle.version, a8.detalle.boya, /COALESCE\(\(auditoria_detalle ->> 'version'\)::int, 0\) < 3/.test(where216), /regla/.test(where216)],
+    [3, undefined, true, false]);
+  // Las horas del pasado no llegan: sin lecturas de antes, hecha (no se reintenta).
+  MAP.paradas['u-sinantes'] = MAP.paradas['u-sin'];
+  MAP.series['u-sinantes'] = tramo(T + 2 * MIN, T + 2 * H, 40);
+  UNIDAD['3814KYJ'] = 'u-sinantes';
+  rep(37, { estacion: 'BARCELONA- ASUNCION', matricula: '3814KYJ', sede: 'barcelona', litros: 21.901 });
+  igual('Sin lecturas del aforador de antes en los 3 días de la serie: la boya sin medir, con el porqué, y hecha (no se espera a nada)',
+    (a => [a.boyaLitros, /^No hay lecturas del aforador en las 72 horas antes de las 12:42/.test(a.boyaMotivo), a.estado])(await auditar(37)),
+    [undefined, true, 'hecha']);
+
+  // LA VENTANA FIJA, DE PUNTA A PUNTA (23/10/2026).
+  // Sin los km de Mapon, no se suma lo gastado entre medias, y se dice.
+  igual('Sin los km de Mapon de esas horas, el salto va tal cual (23 L) y la boya lo dice',
+    [a1.boyaLitros, /Sin los km de Mapon de esas horas no se suma lo que gastó entre las dos lecturas/.test(a1.boyaMotivo), a1.detalle.boya.andando,
+      (a1.detalle.boya.instantes.antes === new Date(T - 15 * MIN).toISOString()) && (a1.detalle.boya.instantes.despues === new Date(T + 30 * MIN).toISOString())],
+    [23, true, undefined, true]);
+  // EL QUE ANDA ENTRE MEDIAS: a 30 km/h de T − 15 a T + 30 gasta 1,1 L, que el
+  // aforador no ve como subida: se suma.
+  MAP.paradas['u-anda'] = MAP.paradas['u-coslada'];
+  MAP.series['u-anda'] = toyota;
+  MAP.gk['u-anda'] = { gastado: [], km: kmAnda };
+  UNIDAD['8997LDP'] = 'u-anda';
+  rep(31, { estacion: 'COSLADA', matricula: '8997LDP', litros: 24.405 });
+  igual('El coche que anda entre las dos lecturas: 23 L de salto + 1,1 L gastados (22,5 km) = 24,1 L de 24,405: un 1,2 %, y no lo de antes (5,8 %)',
+    (a => [a.boyaSalto, a.boyaLitros, a.boyaErrorPct, a.detalle.boya.andando, /Sin los km/.test(a.boyaMotivo || '')])(await auditar(31)),
+    [23, 24.1, 1.2, { km: 22.5, litros: 1.1 }, false]);
+  igual('…y los otros repostajes del coche que suman con este son los de entre sus dos lecturas (T − 15 a T + 30), no los de la parada',
+    AUD.vecinosEntre[31].map(t => (t - T) / MIN), [-15, 30]);
+  // CUANDO LA CIFRA LA DECIDEN LOS KM (revisión del 23/10/2026): un aforador
+  // que solo lee cuando cambia (el de los Ioniq), con la lectura de después a
+  // 3 h y 100 km entre medias. Se dice, para mirarlo en el dibujo.
+  MAP.paradas['u-km'] = MAP.paradas['u-coslada'];
+  MAP.series['u-km'] = [{ t: T - 2 * H, v: 31 }, { t: T - 20 * MIN, v: 30 }, { t: T + 3 * H, v: 32 }, { t: T + 3.6 * H, v: 31 }];
+  MAP.gk['u-km'] = { gastado: [], km: tramo(T - 3 * H, T + 4 * H, t => 1000 + 30 * (t - (T - 3 * H)) / H, MIN) };
+  UNIDAD['9775LRJ'] = 'u-km';
+  rep(38, { estacion: 'COSLADA', matricula: '9775LRJ', litros: 7 });
+  igual('Más de la mitad de los litros salen de los km (2 L del aforador + 4,8 L de 100 km): verde, pero se dice',
+    (a => [a.boyaLitros, a.boyaErrorPct, a.detalle.boya.deKm,
+      /^Más de la mitad de estos litros \(4,8 de 6,8\) no los marcó el aforador: salen de los 100 km que anduvo, a 4,77 L\/100 km/.test(a.boyaMotivo)])(await auditar(38)),
+    [6.8, 2.9, { litros: 4.8, km: 100 }, true]);
+  igual('…y lo del coche que anda 22,5 km en un repostaje de 24 L no se dice', /Más de la mitad/.test(AUD.filas[31].boya_motivo || ''), false);
+  // …ni con el depósito quieto y 2 km (0,1 de 0,1 L: el 8512LDS): no dice nada.
+  MAP.paradas['u-quieto'] = MAP.paradas['u-coslada'];
+  MAP.series['u-quieto'] = ANTES.map(q => ({ ...q, v: 14 })).concat(tramo(T + 6 * MIN, T + H, t => (t < T + 40 * MIN ? 14 : 14), 30e3));
+  MAP.gk['u-quieto'] = { gastado: [], km: tramo(T - 2 * H, T + 2 * H, t => 1000 + Math.max(0, Math.min(t, T + 30 * MIN) - (T - 15 * MIN)) / H * 2.7, MIN) };
+  UNIDAD['8512LDT'] = 'u-quieto';
+  rep(39, { estacion: 'COSLADA', matricula: '8512LDT', litros: 11.7 });
+  igual('…ni con el depósito quieto y 2 km entre medias (0,1 L de 0,1): rojo, sin el aviso de los km',
+    (a => [a.boyaLitros, SEM.colorBoya(a.boyaErrorPct), /Más de la mitad/.test(a.boyaMotivo || '')])(await auditar(39)), [0.1, 'rojo', false]);
+  igual('…y el dibujo solo guarda las lecturas de T − 60 a T + 90 (la de después, a 3 h, se dice aparte)',
+    AUD.filas[38].auditoria_detalle.boya.lecturas.map(q => (q[0] - T) / MIN), [-20]);
+
+  // EL DE LA CAPTURA (1212MJY, 22/10/2026 17:46:16, Petroprix Móstoles 2,
+  // 30,69 L): la regla de antes daba 38 → 39 L, un 95 % rojo. Con la ventana
+  // fija, 9 → 40: en el techo (40 L) y sin bajar, un mínimo que ya llega a lo
+  // pagado, verde; o sin color si no llegara. Nunca rojo.
+  MAP.paradas['u-1212'] = [{ ...paradaTarde, lat: 40.3365, lng: -3.8807, direccion: 'Pol. Ind. 1-Calle E, 18, Móstoles' }];
+  MAP.series['u-1212'] = mjy;
+  UNIDAD['1212MJY'] = 'u-1212';
+  rep(32, { proveedor: 'petroprix', origen: 'excel', estacion: 'Móstoles 2\nPol. Ind. 1-Calle E, 18 28938', matricula: '1212MJY', litros: 30.69, repostaje_at: new Date(T12) });
+  const c1212 = await auditar(32);
+  igual('El de la captura: 9 → 40 L, en el techo y sin bajar todavía: al menos 31 L de 30,69, verde (y a medias, para corregirlo cuando baje); nunca rojo',
+    [c1212.boyaAntes, c1212.boyaDespues, c1212.boyaTecho, c1212.boyaLitros, c1212.boyaErrorPct, SEM.colorBoya(c1212.boyaErrorPct, { minimo: BOYA.esMinimo(AUD.filas[32]) }), c1212.estado],
+    [9, 40, 40, 31, 0, 'verde', 'incompleta']);
+  // …y cuando baja del techo (38 L a las 19:00), con los km de Mapon (a 30 km/h):
+  // 38 + lo gastado desde las 18:16 hasta que bajó + lo de entre medias − 9.
+  MAP.series['u-1212'] = mjy.concat(tramo(hora(19, 0), hora(20, 0), 38));
+  MAP.gk['u-1212'] = { gastado: [], km: tramo(hora(17, 0), hora(20, 30), t => 140000 + 30 * (t - hora(17, 0)) / H, MIN) };
+  const c1212b = await auditar(32);
+  igual('…cuando baja del techo, corregido: 38 + 0,8 L (16,5 km desde las 18:16 hasta que bajó) + 1,1 L (22,8 km de entre medias) − 9 = 30,9 L de 30,69: 0 %, verde, y hecha',
+    [c1212b.boyaCorregida, c1212b.boyaLitros, c1212b.boyaErrorPct, SEM.colorBoya(c1212b.boyaErrorPct), c1212b.estado, c1212b.detalle.boya.andando],
+    [true, 30.9, 0, 'verde', 'hecha', { km: 22.8, litros: 1.1 }]);
+
+  // SOLO LA BOYA (db/216): lo auditado con la boya de antes vuelve a la cola
+  // con `soloBoya`. El GPS se queda (la distancia se rehace con la posición
+  // guardada) y a Mapon no se le piden ni paradas ni posiciones.
+  const enParada = { lat: enCoslada.lat, lng: enCoslada.lng };
+  rep(33, { estacion: 'COSLADA', matricula: '8997LDK', litros: 24.405, auditoria_intentos: 1,
+    gps_lat: enParada.lat, gps_lng: enParada.lng, gps_fuente: 'parada', gps_at: new Date(PARADA.desde), gps_hasta: new Date(PARADA.hasta), gps_direccion: 'Av. del Jarama, Coslada',
+    auditoria_detalle: { version: 2, soloBoya: 'db/216', parada: { desde: new Date(PARADA.desde).toISOString(), hasta: new Date(PARADA.hasta).toISOString(), direccion: 'Av. del Jarama, Coslada' },
+      boyaAntes: { regla: 'parada', antes: 13, despues: 35, litros: 22, deficitPct: 9.9 } } });
+  MAP.pedido = [];
+  const sb = await auditar(33);
+  igual('Solo la boya: ni paradas ni posición a Mapon; el GPS de antes se queda (11 m, la parada, su dirección) y la boya se mide con la ventana fija (23 L)',
+    [MAP.pedido, sb.distancia, sb.gpsFuente, sb.gpsDireccion, sb.detalle.parada.direccion, sb.boyaSalto, sb.detalle.boya.regla, sb.estado],
+    [[], 11, 'parada', 'Av. del Jarama, Coslada', 'Av. del Jarama, Coslada', 23, 'ventana', 'hecha']);
+  igual('…hecha, la marca se va; lo que decía la boya de antes se guarda (boyaAntes); el detalle pasa a la versión 3',
+    [sb.detalle.soloBoya, sb.detalle.boyaAntes, sb.detalle.version], [undefined, { regla: 'parada', antes: 13, despues: 35, litros: 22, deficitPct: 9.9 }, 3]);
+  // …y si aún no hay lecturas de después, sigue marcada: el reintento tampoco pregunta el GPS.
+  MAP.series['u-solo'] = ANTES;
+  UNIDAD['8997LDR'] = 'u-solo';
+  rep(34, { estacion: 'COSLADA', matricula: '8997LDR', litros: 24.405, gps_lat: enParada.lat, gps_lng: enParada.lng, gps_fuente: 'punto', gps_at: new Date(T),
+    auditoria_detalle: { soloBoya: 'db/216', punto: { t: new Date(T).toISOString() } } });
+  MAP.pedido = [];
+  igual('…a medias, sigue marcada (ni paradas ni posición en el reintento)', (a => [a.estado, a.detalle.soloBoya, a.distancia, MAP.pedido])(await auditar(34)),
+    ['incompleta', 'db/216', 11, []]);
+  // …y si el coche ya no sale en Mapon, el GPS que se midió se queda igual.
+  rep(35, { estacion: 'COSLADA', matricula: '0000ZZZ', vehiculo_id: null, litros: 24.405, gps_lat: enParada.lat, gps_lng: enParada.lng, gps_fuente: 'parada',
+    gps_at: new Date(PARADA.desde), gps_hasta: new Date(PARADA.hasta), auditoria_detalle: { soloBoya: 'db/216' } });
+  igual('…y si el coche ya no sale en Mapon, el GPS de antes se queda (11 m) y la boya dice por qué no hay',
+    (a => [a.distancia, a.gpsFuente, /no está en Mapon/.test(a.boyaMotivo), a.estado])(await auditar(35)), [11, 'parada', true, 'hecha']);
+  // Y en una pasada: un grupo con solo esos no pide paradas (`gps: false`).
+  const gSolo = A._agrupar([{ rep: { auditoria_detalle: { soloBoya: 'db/216' } }, t: T, unidad: { unitId: 'u9' } }, { rep: { auditoria_detalle: { soloBoya: 'db/216' } }, t: T + H, unidad: { unitId: 'u9' } },
+    { rep: {}, t: T, unidad: { unitId: 'u8' } }], T + 30 * 24 * H);
+  igual('En una pasada, el grupo de un coche con solo «solo la boya» no pide paradas; los km van con el grupo (de 3 h antes a 2 h después)',
+    gSolo.map(g => [g.unidad.unitId, g.gps, (g.km[1] - g.km[0]) / H]), [['u9', false, 6], ['u8', true, 5]]);
 
   // MAPON FALLA a media auditoría: no lanza, dice qué, queda a medias y NO
   // BORRA lo que ya se había medido (revisión del 23/10/2026).
   MAP.revienta = 'paradas';
   const a1b = await auditar(1);
-  igual('Mapon no contesta al pedir las paradas: el GPS de la vez anterior se queda (11 m, la parada), la boya se mide con esa parada y a medias',
+  igual('Mapon no contesta al pedir las paradas: el GPS de la vez anterior se queda (11 m, la parada), la boya se mide igual (no depende de la parada) y a medias',
     [/^Mapon no contestó/.test((a1b.detalle.fallos || {}).gps), a1b.distancia, a1b.gpsFuente, a1b.gpsAt === PARADA.desde, a1b.gpsMotivo, a1b.boyaSalto,
-      (a1b.detalle.boya || {}).conParada, (a1b.detalle.parada || {}).direccion, a1b.estado],
-    [true, 11, 'parada', true, null, 23, true, 'Av. del Jarama, Coslada', 'incompleta']);
+      (a1b.detalle.boya || {}).regla, (a1b.detalle.parada || {}).direccion, a1b.estado],
+    [true, 11, 'parada', true, null, 23, 'ventana', 'Av. del Jarama, Coslada', 'incompleta']);
   MAP.revienta = 'nivel';
   igual('…y al pedir el aforador, la boya de la vez anterior se queda (23 L, 5,8 %) y el GPS se mide',
     (a => [/^Mapon no contestó al pedir el aforador/.test((a.detalle.fallos || {}).boya), a.boyaSalto, a.boyaErrorPct, ((a.detalle.boya || {}).lecturas || []).length > 10,
@@ -1106,6 +1304,14 @@ const REENVIADO = {
   rep(15, { estacion: 'COSLADA', matricula: '8997LDK', litros: 24.405 });
   igual('…y si no había nada de antes, se queda sin boya y dice por qué',
     (a => [/^Mapon no contestó al pedir el aforador/.test(a.boyaMotivo), a.boyaSalto, a.distancia])(await auditar(15)), [true, undefined, 11]);
+  // LA BOYA DE LA REGLA DE ANTES NO SE DEVUELVE (revisión del 23/10/2026): un
+  // reintento del código nuevo la ponía otra vez con la versión 3 encima, y
+  // db/216 ya no la reconocía (la de antes, un 95 % rojo en el 1212MJY).
+  rep(36, { estacion: 'COSLADA', matricula: '8997LDK', litros: 24.405, auditoria_estado: 'incompleta', boya_tipo: 'litros', boya_antes: 38, boya_despues: 39,
+    boya_salto: 1, boya_litros: 1.5, boya_error_pct: 93.9, boya_motivo: 'de la regla de antes', auditoria_detalle: { version: 2, boya: { lecturas: [] } } });
+  igual('…una boya de la regla de antes (versión 2 del detalle) no se devuelve: sin boya, con el porqué, versión 3 y a medias',
+    (a => [a.boyaSalto, a.boyaLitros, a.boyaErrorPct, /^Mapon no contestó al pedir el aforador/.test(a.boyaMotivo), a.detalle.boya, a.detalle.version, a.estado])(await auditar(36)),
+    [undefined, undefined, undefined, true, undefined, 3, 'incompleta']);
   MAP.revienta = 'paradas';
   rep(16, { estacion: 'COSLADA', matricula: '8997LDK', litros: 24.405 });
   igual('…ni GPS: sin posición de antes, sin metros y con el porqué', (a => [/^Mapon no contestó/.test(a.gpsMotivo), a.distancia])(await auditar(16)), [true, null]);
@@ -1124,9 +1330,9 @@ const REENVIADO = {
   igual('N.º 20: primer intento con el GPS a 11 m y la boya en el techo (al menos 29 L, un mínimo); a medias',
     [n20a.distancia, n20a.boyaLitros, n20a.boyaErrorPct, BOYA.esMinimo(AUD.filas[17]), SEM.colorBoya(n20a.boyaErrorPct, { minimo: true }), n20a.estado],
     [11, 29, 0, true, 'verde', 'incompleta']);
-  igual('…segundo intento sin paradas de Mapon: la distancia sigue (11 m), la boya se mide con la parada guardada, y sigue a medias',
-    [n20b.distancia, n20b.gpsFuente, (n20b.detalle.boya || {}).conParada, n20b.boyaLitros, AUD.filas[17].gps_distancia_m, n20b.estado],
-    [11, 'parada', true, 29, 11, 'incompleta']);
+  igual('…segundo intento sin paradas de Mapon: la distancia sigue (11 m), la boya se mide igual con su ventana fija, y sigue a medias',
+    [n20b.distancia, n20b.gpsFuente, (n20b.detalle.boya || {}).regla, n20b.boyaLitros, AUD.filas[17].gps_distancia_m, n20b.estado],
+    [11, 'parada', 'ventana', 29, 11, 'incompleta']);
   igual('…y el mínimo lo dice: al menos 29 L, más que lo pagado (verde desde el 23/10/2026; antes, «como poco un 13,6 %», sin color)',
     /al menos 29 L, más que lo pagado: como poco entró lo pagado/.test(n20a.boyaMotivo), true);
 
@@ -1162,9 +1368,9 @@ const REENVIADO = {
   rep(18, { estacion: 'ALCALA DE HENARES', matricula: '8997LDL', litros: 24.86 });
   const n16 = await auditar(18);
   igual('N.º 16: la parada acabó 5 min antes y el coche ya iba andando: manda su posición a esa hora, y se cuenta dónde estuvo parado',
-    [n16.gpsFuente, n16.gpsLat, n16.detalle.paradaCerca.direccion, n16.detalle.paradaCerca.metros === G.metros(burgos, andando) && n16.detalle.paradaCerca.metros > 1600, n16.detalle.boya.conParada,
+    [n16.gpsFuente, n16.gpsLat, n16.detalle.paradaCerca.direccion, n16.detalle.paradaCerca.metros === G.metros(burgos, andando) && n16.detalle.paradaCerca.metros > 1600, n16.detalle.boya.regla,
       n16.distancia === G.metros(andando, gas('Ballenoil Alcalá de Henares')), SEM.colorGps(n16.distancia), n16.boyaSalto, n16.boyaErrorPct],
-    ['punto', andando.lat, 'Av. de Burgos', true, false, true, 'rojo', 0, 100]);
+    ['punto', andando.lat, 'Av. de Burgos', true, 'ventana', true, 'rojo', 0, 100]);
   // EL RELOJ DEL CORREO Y EL DE MAPON: paró 3 min después de la hora del correo
   // y a esa hora el coche ya estaba a 30 m: es esa parada.
   const surtidor = { lat: gas('Ballenoil Coslada I').lat, lng: gas('Ballenoil Coslada I').lng };
@@ -1174,9 +1380,9 @@ const REENVIADO = {
   UNIDAD['8997LDM'] = 'u-reloj';
   rep(19, { estacion: 'COSLADA', matricula: '8997LDM', litros: 24.405 });
   const reloj = await auditar(19);
-  igual('Relojes distintos: la parada empieza 3 min después pero a esa hora ya estaba a 30 m: se toma la parada (y se dice), y la boya con ella',
-    [reloj.gpsFuente, reloj.distancia, reloj.detalle.parada.noCubre, reloj.detalle.boya.conParada, reloj.boyaSalto],
-    ['parada', 0, { antes: true, minutos: 3, metros: 30 }, true, 23]);
+  igual('Relojes distintos: la parada empieza 3 min después pero a esa hora ya estaba a 30 m: se toma la parada (y se dice); la boya, con su ventana',
+    [reloj.gpsFuente, reloj.distancia, reloj.detalle.parada.noCubre, reloj.detalle.boya.regla, reloj.boyaSalto],
+    ['parada', 0, { antes: true, minutos: 3, metros: 30 }, 'ventana', 23]);
   MAP.puntos['u-reloj'] = null;
   igual('…y si Mapon no da su posición a esa hora, la parada de al lado es lo que hay (sin metros a la parada)',
     (a => [a.gpsFuente, a.distancia, a.detalle.parada.noCubre])(await auditar(19)), ['parada', 0, { antes: true, minutos: 3, metros: null }]);
@@ -1193,10 +1399,10 @@ const REENVIADO = {
   UNIDAD['9521MMX'] = 'u-roto';
   rep(21, { estacion: 'COSLADA', matricula: '9521MMX', litros: 18 });
   const roto = await auditar(21);
-  igual('Una «parada» de 24 h con el aforador moviéndose: el GPS no vale (sin metros, sin color, y se dice), y la boya se mide sin parada: +18 L de 18, verde',
+  igual('Una «parada» de 24 h con el aforador moviéndose: el GPS no vale (sin metros, sin color, y se dice), y la boya, que no la mira: +18 L de 18, verde',
     [roto.distancia, /el coche andaba y su GPS no lo vio/.test(roto.gpsMotivo), (roto.detalle.paradaRota || {}).horas, (r => !!r && r.max - r.min >= 3)(roto.detalle.paradaRota),
-      (roto.detalle.boya || {}).conParada, roto.boyaSalto, roto.boyaErrorPct, roto.estado],
-    [null, true, 24, true, false, 18, 0, 'hecha']);
+      (roto.detalle.boya || {}).regla, roto.boyaSalto, roto.boyaErrorPct, roto.estado],
+    [null, true, 24, true, 'ventana', 18, 0, 'hecha']);
   // La misma parada de 24 h con el aforador quieto: el coche estaba aparcado de
   // verdad, lejos de la gasolinera, y eso es justo lo que hay que ver.
   MAP.series['u-roto'] = tramo(T - 30 * H, T - 10 * H, 31, MIN).concat(tramo(T + 14 * H, T + 16 * H, 31, MIN));
@@ -1211,10 +1417,10 @@ const REENVIADO = {
   MAP.series['u-roto'] = tramo(T - 3 * H, T - 2 * MIN, 25, MIN).concat(tramo(T + 5.8 * H, T + 8 * H, 37, MIN));
   rep(23, { estacion: 'COSLADA', matricula: '9521MMX', litros: 17.92 });
   const sinSenal = await auditar(23);
-  igual('Una parada de 5,8 h lejos, sin lecturas dentro y con 12 L más al arrancar: el GPS no vale (sin color) y la boya, sin parada: 12 L de 17,92, verde',
+  igual('Una parada de 5,8 h lejos, sin lecturas dentro y con 12 L más al arrancar: el GPS no vale (sin color); la boya, con su ventana: 12 L de 17,92, verde',
     [sinSenal.distancia, /al arrancar tenía 12 L más \(25 → 37\): repostó en ese rato y su GPS no lo vio/.test(sinSenal.gpsMotivo), (sinSenal.detalle.paradaRota || {}).como,
-      (sinSenal.detalle.boya || {}).conParada, sinSenal.boyaSalto, SEM.colorBoya(sinSenal.boyaErrorPct)],
-    [null, true, 'sube', false, 12, 'verde']);
+      (sinSenal.detalle.boya || {}).regla, sinSenal.boyaSalto, SEM.colorBoya(sinSenal.boyaErrorPct)],
+    [null, true, 'sube', 'ventana', 12, 'verde']);
   // …la misma, pero en la gasolinera (repostó y se quedó hora y media): vale.
   MAP.paradas['u-roto'] = [{ desde: T - 2 * MIN, hasta: T + 1.5 * H, ...surtidor, direccion: 'Coslada' }];
   MAP.series['u-roto'] = tramo(T - 3 * H, T - 2 * MIN, 25, MIN).concat(tramo(T + 1.5 * H, T + 3 * H, 38, MIN));
@@ -1245,9 +1451,9 @@ const REENVIADO = {
   UNIDAD['8930KVC'] = 'u-pasajero';
   rep(22, { estacion: 'COSLADA', matricula: '8930KVC', litros: 24.4, origen: 'excel' });
   const pas = await auditar(22);
-  igual('Excel con la parada de antes a 1,5 km: se mira dónde estaba a esa hora (a 10 m) y vale eso; la boya, sin parada',
-    [pas.gpsFuente, pas.distancia, (pas.detalle.paradaCerca || {}).direccion, (pas.detalle.paradaCerca || {}).aLaGasolinera > 1400, (pas.detalle.boya || {}).conParada, pas.boyaSalto],
-    ['punto', 10, 'dejando a un pasajero', true, false, 23]);
+  igual('Excel con la parada de antes a 1,5 km: se mira dónde estaba a esa hora (a 10 m) y vale eso; la boya, con su ventana',
+    [pas.gpsFuente, pas.distancia, (pas.detalle.paradaCerca || {}).direccion, (pas.detalle.paradaCerca || {}).aLaGasolinera > 1400, (pas.detalle.boya || {}).regla, pas.boyaSalto],
+    ['punto', 10, 'dejando a un pasajero', true, 'ventana', 23]);
   MAP.puntos['u-pasajero'] = { t: T - 20e3, lat: surtidor.lat + 0.02, lng: surtidor.lng };
   igual('…y si a esa hora estaba aún más lejos, se queda la parada (nunca acusa más que ella)',
     (a => [a.gpsFuente, a.distancia === G.metros(pasajero, surtidor)])(await auditar(22)), ['parada', true]);

@@ -10,8 +10,9 @@ en la misma lista. Sin nombre: quién lo llevaba lo dicen BOLT y el BOT DE
 WHATSAPP (el turno abierto con esa matrícula), también para los de Ballenoil. Y
 cada repostaje se AUDITA CON MAPON (db/213), en solo lectura: a cuántos metros
 de su gasolinera estaba el coche (GPS) y cuánto le FALTA a lo que subió el
-aforador para llegar a lo pagado (boya; subir de más no cuenta). La fila se
-pinta con el peor de los dos.
+aforador para llegar a lo pagado (boya; subir de más no cuenta), con el nivel
+15 MINUTOS ANTES y 30 MINUTOS DESPUÉS de la hora del correo o del Excel (db/216).
+La fila se pinta con el peor de los dos.
 
 ```
 combustible.controller.js   /combustible: la pantalla y la API (lista, ficha, lecturas, importaciones, «Leer el buzón ahora», importar)
@@ -26,7 +27,7 @@ combustible.casar.js        puro: de quién es la tarjeta, si es quien llevaba e
 combustible.auditoria.js    la auditoría con Mapon: cuándo, qué se le pregunta y qué se guarda
 combustible.memoria.js      lo que ya se le preguntó a Mapon en una pasada (las ventanas de un coche, una vez)
 combustible.gasolinera.js   puro: con qué gasolinera casa la estación (por palabras, o por el texto exacto del Excel), y la distancia
-combustible.boya.js         puro: cuánto subió el aforador (medianas, la aguja, el techo y su corrección) y lo que FALTA
+combustible.boya.js         puro: cuánto subió el aforador (la ventana fija T − 15 / T + 30, lo gastado entre medias, el techo y su corrección) y lo que FALTA
 combustible.semaforo.js     puro: los umbrales de Camilo y el color de la fila (el peor de los dos)
 vistas/combustible.ejs      el Listado (lista → ficha → atrás) con las fechas encima
 ```
@@ -60,6 +61,10 @@ Fuera de la carpeta:
   viene cada repostaje (`origen`, `excel_clave`, `excel_crudo`), lo que trae el
   Excel (pago, «Vehículo»), quién llevaba el coche en el bot (`bot_*`) y la boya
   rehecha como lo que falta.
+- `db/216`: la boya con la ventana fija. Devuelve a la cola lo auditado con la
+  boya de antes (la versión 2 del detalle), marcado `soloBoya` (el GPS se queda
+  y no se pregunta), con la boya vieja quitada de las columnas y guardada en
+  `auditoria_detalle.boyaAntes`.
 - `fichaje_turno` (db/125, `services/repo/fichajeTurno.js`): se lee en SQL para
   saber quién había abierto turno en el bot con esa matrícula. Solo se lee.
 - `app.js`: `/combustible/api/importar` está en `SUBEN_ARCHIVOS` (el Excel viaja
@@ -100,7 +105,20 @@ Fuera de la carpeta:
   dirección; si no, por el nombre, y solo si es el mismo.
 - **La hora del Excel es la del FINAL del repostaje**: la parada que acabó hasta
   5 minutos antes es la del repostaje, y la que empieza después no.
-- **Dos repostajes del mismo coche en la misma parada**: la boya, contra la suma.
+- **La boya mide con la ventana fija** (Camilo, 23/10/2026): el nivel a T − 15
+  min y a T + 30 min, del lado bueno (la última lectura antes, la primera
+  después, EN TODA LA SERIE que se pide: 72 h antes y 48 h después; la mediana
+  de las de sus 10 minutos si son 3 o más, la más cercana si no), más lo que
+  gastó andando ENTRE LAS DOS LECTURAS (los km de Mapon a 4,77 L/100 km). No
+  mira la parada: la del 1212MJY empezaba con el depósito ya lleno y salía un
+  95 % rojo. El techo y el mínimo, como antes; la corrección del techo, por km
+  como lo de entre medias. Si al despertar la aguja sube 3 L o más, vale lo de
+  pasados 5 minutos. Sin lecturas de antes no se reintenta: son del pasado.
+- **db/216 solo toca lo del código de antes**: lo dice la versión del detalle
+  (< 3), que el código de ahora escribe siempre, mida la boya o no. Y un
+  reintento no devuelve una boya de la regla de antes (`restaurarBoya`).
+- **Dos repostajes del mismo coche entre las dos lecturas de la boya**: la boya,
+  contra la suma.
 - **Un correo, una fila, y nunca dos.** Message-ID único; sin él, el UID del
   buzón con su carpeta; y el mismo repostaje en dos correos (el de Ballenoil y
   uno reenviado por la oficina) deja uno «leido» y otro «repetido».
@@ -122,8 +140,10 @@ Fuera de la carpeta:
   seis lecturas de arriba y nada más.
 - **Y sin ahogarla** (db/215): de una en una, con 150 ms entre pregunta y
   pregunta, hasta 60 repostajes por pasada (los de las últimas 48 h primero) y
-  los de un coche en 4 días con UNA lectura del aforador y una de paradas
-  (`combustible.memoria`). Un Excel de tres semanas se pone al día en unas 5 h.
+  los de un coche en 4 días con UNA lectura del aforador, una de paradas y una
+  de km (`combustible.memoria`). Un Excel de tres semanas se pone al día en unas
+  5 h. Lo que db/216 devolvió a la cola (`soloBoya`) no pide ni paradas ni
+  posiciones: su GPS no cambia de regla.
 - **La gasolinera nunca se elige por el GPS**, solo por el nombre del correo (o
   lo puesto a mano). Si el nombre duda entre dos, ninguna, y se dice: casar mal
   pintaría de rojo a quien repostó donde decía. Y duda también cuando al correo
@@ -137,7 +157,7 @@ Fuera de la carpeta:
 - **Una parada de Mapon tiene que ser de verdad.** Una de más de una hora en la
   que el aforador se mueve 3 L, o lejos de la gasolinera y tras la cual el
   depósito tiene 5 L más, es un GPS clavado o un equipo sin señal (el 9521MMX,
-  el 0454MMZ): el GPS va sin color y la boya se mide sin parada. Una larga con
+  el 0454MMZ): el GPS va sin color (la boya no mira la parada). Una larga con
   el depósito quieto sí vale: un coche aparcado lejos es lo que hay que ver.
 - **El día del cambio de hora**, la hora repetida se desempata con la llegada
   del correo (`instante` en `combustible.auditoria`). Lo guardado no se toca.
@@ -162,8 +182,7 @@ Fuera de la carpeta:
   a los demás para siempre), y con Mapon caído o sin clave la pasada se salta
   sin gastar intentos.
 - **Un reintento no borra lo que ya se midió.** Si Mapon no contesta a una de
-  las dos preguntas, esa se queda con lo de la vez anterior (y la boya se mide
-  con la parada guardada).
+  las dos preguntas, esa se queda con lo de la vez anterior.
 
 ## La puerta
 

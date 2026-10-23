@@ -13,6 +13,14 @@
 //     amarillo < 65). Subir de más no cuenta, y un mínimo (el aforador en su
 //     techo) que ya llega a lo pagado es verde.
 //
+// LA BOYA, CON LA VENTANA FIJA (Camilo, 23/10/2026): el nivel del aforador 15
+// minutos antes de la hora del repostaje y el de 30 minutos después, más lo que
+// gastó andando entre las dos lecturas (combustible.boya.ventana y
+// gastadoAndando). Ya no depende de la parada: el 1212MJY repostó a las 17:46 y
+// la única parada que vio Mapon empezó con el depósito ya lleno, así que «antes
+// de parar» era después de repostar y salía un 95 % rojo de 29 L de verdad.
+// La parada sigue siendo cosa del GPS.
+//
 // DÓNDE ESTABA EL COCHE. La parada de Mapon (route/list) que CUBRE la hora del
 // repostaje —el correo da el minuto, así que vale una que empiece dentro de ese
 // minuto—: es donde estuvo apagado en el surtidor, y su posición es la de un
@@ -39,11 +47,16 @@
 //
 // CUÁNDO. Después de cada lectura del buzón (el cron de app.js), los que ya
 // tienen Mapon detrás: 45 minutos después del repostaje, para que haya lecturas
-// del aforador de cuando arrancó. Lo que se queda a medias (Mapon no contestó,
-// aún no hay lecturas de después, el aforador sigue en su techo) se vuelve a
-// mirar, cada vez más espaciado (30 min, 1, 2, 4, 8 y 12 h); a las 48 horas
-// del repostaje (con tres intentos al menos) o a los ocho intentos se cierra
-// «sin datos», con lo que tuviera. Y uno a mano, desde su ficha.
+// del aforador de después de las T + 30. Lo que se queda a medias (Mapon no
+// contestó, aún no hay lecturas de después, el aforador sigue en su techo) se
+// vuelve a mirar, cada vez más espaciado (30 min, 1, 2, 4, 8 y 12 h); a las 48
+// horas del repostaje (con tres intentos al menos) o a los ocho intentos se
+// cierra «sin datos», con lo que tuviera. Y uno a mano, desde su ficha.
+//
+// SOLO LA BOYA, OTRA VEZ (db/216). Lo auditado con la boya de antes vuelve a la
+// cola marcado con `soloBoya` en el detalle: el GPS no cambia de regla, así que
+// se queda tal cual estaba (la distancia se rehace con la posición guardada,
+// sin preguntar a Mapon) y solo se piden el aforador y los km. Ver db/216.
 //
 // NUNCA LANZA NI PARA LO DEMÁS. Un repostaje que revienta se cuenta, se le
 // apunta el intento (si no, sería el primero de todas las pasadas para siempre
@@ -52,10 +65,9 @@
 // correo ya terminó antes de empezar esto.
 //
 // UN REINTENTO NO BORRA LO QUE YA SE MIDIÓ. Si en un intento Mapon no contesta
-// a una de las dos preguntas, esa se queda con lo de la vez anterior (y la boya,
-// con la parada que se guardó): el n.º 20 tenía el GPS a 12 m y esperaba a la
-// boya; un tiempo agotado en las paradas lo dejaba sin GPS (revisión del
-// 23/10/2026).
+// a una de las dos preguntas, esa se queda con lo de la vez anterior: el n.º 20
+// tenía el GPS a 12 m y esperaba a la boya; un tiempo agotado en las paradas lo
+// dejaba sin GPS (revisión del 23/10/2026).
 //
 // LA BOYA SOLO CUENTA LO QUE FALTA (23/10/2026): el déficit frente a lo pagado
 // (combustible.boya.deficitPct). Subir de más no penaliza; un mínimo (el
@@ -70,8 +82,8 @@
 // andaba. Así que una parada de más de una hora en la que el aforador se mueve 3
 // litros o más no vale; ni una lejos de la gasolinera tras la cual el depósito
 // tiene 5 L o más (un coche aparcado no reposta: es el equipo de Mapon sin
-// señal, el 0454MMZ). Sin GPS de fiar, el GPS va sin color (y se dice), y la
-// boya se mide sin parada. Una parada larga con el depósito quieto sí vale: un
+// señal, el 0454MMZ). Sin GPS de fiar, el GPS va sin color (y se dice); la boya
+// no depende de la parada. Una parada larga con el depósito quieto sí vale: un
 // coche aparcado de verdad a esa hora es justo lo que hay que ver.
 //
 // PETROPRIX, POR EXCEL (db/215). Lo mismo que Ballenoil, con dos diferencias:
@@ -120,6 +132,8 @@ const PAGO_TRAS_ARRANCAR_MS = 5 * 60e3;         // el Excel apunta el final: has
 const JUNTO_A_LA_PARADA_M = 100;                // a esa hora seguía allí: es esa parada (relojes distintos)
 const PUNTO_MAX_MS = 20 * 60e3;
 const LECTURAS_FICHA = 90;                      // las del aforador que se guardan para dibujarlas en la ficha
+const DIBUJO_ANTES_MS = 45 * 60e3;              // el dibujo, desde 45 min antes de la marca de T − 15 (T − 60)…
+const DIBUJO_DESPUES_MS = 60 * 60e3;            // …hasta una hora después de la de T + 30 (T + 90)
 const PARADA_LARGA_MS = 60 * 60e3;              // una parada de más de esto se mira por dentro (¿andaba?)
 const ANDA_L = 3;                               // si dentro el aforador se mueve esto, el coche andaba
 const SUBE_L = 5;                               // si al acabar la parada tiene esto más, repostó en ella
@@ -260,8 +274,6 @@ function gpsAnterior(rep) {
     posicion: { lat: Number(rep.gps_lat), lng: Number(rep.gps_lng) },
     campos: { gpsFuente: rep.gps_fuente || null, gpsAt: ms(rep.gps_at), gpsHasta: ms(rep.gps_hasta), gpsDireccion: rep.gps_direccion || null },
     detalle,
-    // La parada que se guardó, para medir la boya con ella.
-    parada: rep.gps_fuente === 'parada' && rep.gps_at ? { desde: ms(rep.gps_at), hasta: ms(rep.gps_hasta) } : null,
   };
 }
 
@@ -275,11 +287,23 @@ function limpiarBoya(a) {
   delete a.detalle.boya;
 }
 
-/** La boya de la vez anterior, tal cual estaba. */
+/**
+ * ¿La boya guardada es de la regla de ahora? El detalle de la versión 3 (la
+ * ventana fija, db/216) la lleva siempre; la de antes, no. Una boya de la regla
+ * de antes NO se devuelve como «lo de la vez anterior» (revisión del
+ * 23/10/2026): entre el despliegue y db/216, un reintento en el que Mapon no
+ * contestaba volvía a poner la boya vieja con la versión 3 encima, y db/216 ya
+ * no la reconocía. Se queda sin boya, con el porqué, y se vuelve a mirar.
+ */
+const boyaDeAhora = rep => Number(rep && rep.auditoria_detalle && rep.auditoria_detalle.version) >= 3;
+
+/** La boya de la vez anterior, tal cual estaba (solo si es de la regla de ahora). */
 function restaurarBoya(a, rep) {
+  if (!boyaDeAhora(rep)) return false;
   for (const [k, col] of CAMPOS_BOYA) a[k] = rep[col] == null ? undefined : rep[col];
   if (rep.auditoria_detalle && rep.auditoria_detalle.boya) a.detalle.boya = rep.auditoria_detalle.boya;
   else delete a.detalle.boya;
+  return true;
 }
 
 // ── LAS DOS PREGUNTAS ───────────────────────────────────────────────────────
@@ -297,7 +321,11 @@ function medirDesde(a, rep, posicion, gas, sinPosicion) {
   a.gpsMotivo = d.motivo;
 }
 
-/** Pone en `a` el GPS de la vez anterior; → la parada guardada (para la boya), o null si no había GPS. */
+/**
+ * Pone en `a` el GPS de la vez anterior: la posición y de dónde salía, y la
+ * distancia rehecha con la gasolinera de ahora (sin preguntar a Mapon). Sin
+ * posición guardada, el porqué que se diga (`motivo`).
+ */
 function gpsDeAntes(a, rep, gas, motivo) {
   const antes = gpsAnterior(rep);
   if (!antes) {
@@ -305,12 +333,11 @@ function gpsDeAntes(a, rep, gas, motivo) {
     const rota = rep.auditoria_detalle && rep.auditoria_detalle.paradaRota;
     if (rota) a.detalle.paradaRota = rota;
     medirDesde(a, rep, null, gas, rota && rep.gps_motivo ? rep.gps_motivo : motivo);
-    return null;
+    return;
   }
   Object.assign(a, antes.campos);
   Object.assign(a.detalle, antes.detalle);
   medirDesde(a, rep, antes.posicion, gas, null);
-  return antes.parada;
 }
 
 const horaCorta = ms => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }).format(ms);
@@ -357,7 +384,7 @@ async function subeEnElla(p, ctx, gasolinera) {
   if (metros == null || metros < VERDE_M) return null;
   const serie = await aforadorDe(ctx);
   if (!serie) return null;
-  const m = B.salto(serie, p.desde, { parada: p });
+  const m = B.subidaEnParada(serie, p);
   return m.ok && m.salto >= SUBE_L ? { como: 'sube', horas: horasDe(p), antes: m.antes, despues: m.despues, metros } : null;
 }
 
@@ -371,9 +398,9 @@ function motivoParadaRota(p, anda) {
 }
 
 /**
- * Dónde estaba el coche y a cuánto de la gasolinera. Rellena `a`; devuelve la
- * parada en la que repostó (la usa la boya), o null si a esa hora no estaba
- * parado. `ctx`: { mapon (con memoria, en una pasada), ahora, aforador }.
+ * Dónde estaba el coche y a cuánto de la gasolinera. Rellena `a`. `ctx`:
+ * { mapon (con memoria, en una pasada), ahora, aforador }. La boya no lo
+ * necesita: mira el aforador a horas fijas (mirarBoya).
  */
 async function mirarGps(a, rep, unidad, t, gas, ctx) {
   const m = ctx.mapon;
@@ -384,17 +411,16 @@ async function mirarGps(a, rep, unidad, t, gas, ctx) {
 
     // UNA PARADA QUE NO ES DE VERDAD: el GPS no vale para decir dónde estaba.
     // Sin color por el GPS (ni su posición a esa hora, que es la del sitio
-    // donde se quedó clavado), y la boya, sin parada (andaDentro y subeEnElla, arriba).
+    // donde se quedó clavado; andaDentro y subeEnElla, arriba).
     const rota = (p, anda) => {
       a.detalle.paradaRota = { desde: iso(p.desde), hasta: iso(p.hasta), direccion: p.direccion || null, ...anda };
       medirDesde(a, rep, null, gas, motivoParadaRota(p, anda));
-      return null;
     };
     const candidata = cubre || antes || cerca;
     const dentro = await andaDentro(candidata, ctx);
-    if (dentro) return rota(candidata, dentro);
+    if (dentro) { rota(candidata, dentro); return; }
     const sube = cubre ? await subeEnElla(cubre, ctx, gas.elegida.gasolinera) : null;
-    if (sube) return rota(cubre, sube);
+    if (sube) { rota(cubre, sube); return; }
 
     if (antes) {
       // LA PARADA DE ANTES, LEJOS: quizá Mapon no apuntó la del surtidor (el
@@ -416,19 +442,19 @@ async function mirarGps(a, rep, unidad, t, gas, ctx) {
           a.detalle.paradaCerca = { desde: iso(antes.desde), hasta: iso(antes.hasta), direccion: antes.direccion, metros: G.metros(antes, p),
             aLaGasolinera: lejos };
           medirDesde(a, rep, { lat: p.lat, lng: p.lng }, gas, null);
-          return null;
+          return;
         }
       }
       // No hay nada más cerca: esa parada es el sitio del repostaje, si es de verdad.
       const subeAntes = await subeEnElla(antes, ctx, gas.elegida.gasolinera);
-      if (subeAntes) return rota(antes, subeAntes);
+      if (subeAntes) { rota(antes, subeAntes); return; }
       // Fila del Excel: la parada que acaba de acabar es la del repostaje, y
       // se mide desde ella. No hace falta saber dónde iba ya el coche.
       Object.assign(a, { gpsFuente: 'parada', gpsAt: antes.desde, gpsHasta: antes.hasta, gpsDireccion: antes.direccion });
       a.detalle.parada = { desde: iso(antes.desde), hasta: iso(antes.hasta), direccion: antes.direccion,
         trasArrancar: { segundos: Math.round((t - antes.hasta) / 1000) } };
       medirDesde(a, rep, { lat: antes.lat, lng: antes.lng }, gas, null);
-      return antes;
+      return;
     }
     if (!cubre) {
       const p = await m.posicionEn(unidad.unitId, t);
@@ -443,7 +469,8 @@ async function mirarGps(a, rep, unidad, t, gas, ctx) {
     const msg = `Mapon no contestó al preguntar dónde estaba el coche: ${e.message}`;
     a.detalle.fallos.gps = msg;
     a.reintentar = true;
-    return gpsDeAntes(a, rep, gas, msg);
+    gpsDeAntes(a, rep, gas, msg);
+    return;
   }
 
   // La parada de al lado vale si a esa hora el coche seguía junto a ella (el
@@ -474,29 +501,35 @@ async function mirarGps(a, rep, unidad, t, gas, ctx) {
     a.reintentar = true;
   }
   medirDesde(a, rep, posicion, gas, sinPosicion);
-  return parada;
 }
 
 /**
  * Cuánto subió el depósito según la boya y cuánto le falta para lo pagado.
- * Rellena `a`. Si a media cuenta Mapon no contesta, la boya de la vez anterior
- * se queda (si la había) y se vuelve a mirar.
+ * Rellena `a`. LA VENTANA FIJA (Camilo, 23/10/2026): el nivel del aforador a
+ * T − 15 min y a T + 30 min, más lo que gastó andando entre las dos lecturas
+ * (combustible.boya.ventana y gastadoAndando); no depende de la parada. Si a
+ * media cuenta Mapon no contesta, la boya de la vez anterior se queda (si la
+ * había) y se vuelve a mirar.
  */
-async function mirarBoya(a, rep, unidad, t, parada, ctx) {
+async function mirarBoya(a, rep, unidad, t, ctx) {
   const mp = ctx.mapon;
   const hasta = Math.min(ctx.ahora, t + 48 * H);
+  const coma = v => String(v).replace('.', ',');
+  const anadir = texto => { a.boyaMotivo = `${a.boyaMotivo ? a.boyaMotivo + '. ' : ''}${texto}`; };
   let fallo = null;
   try {
     // El aforador de 72 h antes a 48 h después: el mismo que ya miró el GPS si
-    // la parada era larga (ctx.aforador lo pide una vez).
+    // la parada era larga (ctx.aforador lo pide una vez). La lectura de cada
+    // lado se busca en toda esa serie (boya.nivelEn).
     let serie = await ctx.aforador();
+    let desde = t - 72 * H;
     a.boyaTipo = 'litros';
     // Los Ford mandan aquí ceros: su nivel va en % por otra serie.
     if (!serie.some(p => Number(p.v) > 0)) {
       const pct = await mp.nivelPorcentaje(unidad.unitId, t - 24 * H, hasta);
-      if (pct.some(p => Number(p.v) > 0)) { serie = pct; a.boyaTipo = 'porcentaje'; } else serie = [];
+      if (pct.some(p => Number(p.v) > 0)) { serie = pct; a.boyaTipo = 'porcentaje'; desde = t - 24 * H; } else serie = [];
     }
-    const m = B.salto(serie, t, { parada });
+    const m = B.ventana(serie, t, { ahora: ctx.ahora, desde });
     if (!m.ok) {
       if (m.sinSerie) {
         a.boyaTipo = 'sin';
@@ -508,39 +541,62 @@ async function mirarBoya(a, rep, unidad, t, parada, ctx) {
       return;
     }
     Object.assign(a, { boyaAntes: m.antes, boyaDespues: m.despues, boyaSalto: m.salto });
-    a.detalle.boya = { tAntes: iso(m.tAntes), tDespues: iso(m.tDespues), conParada: m.conParada,
-      lecturas: lecturasParaFicha(serie, m.tAntes - 45 * 60e3, m.tDespues + 45 * 60e3) };
+    // Para la ficha: la regla, los dos instantes, la hora de las lecturas que
+    // se usaron (con el coche aparcado, de horas antes o después), cuándo
+    // arrancó si se esperó a la aguja, y las del aforador de T − 60 a T + 90
+    // para el dibujo. Solo ese rato, aunque la lectura que vale sea de horas
+    // antes o después (la ficha la dice aparte): con todo el tramo, el dibujo
+    // abarcaba hasta 12 h, las dos marcas quedaban juntas y no se veía el salto
+    // (revisión del 23/10/2026, el 9775LRH del 10/10).
+    a.detalle.boya = { regla: 'ventana', instantes: { antes: iso(m.instAntes), despues: iso(m.instDespues) },
+      tAntes: iso(m.tAntes), tDespues: iso(m.tDespues),
+      lecturas: lecturasParaFicha(serie, m.instAntes - DIBUJO_ANTES_MS, m.instDespues + DIBUJO_DESPUES_MS) };
+    if (m.arranque) a.detalle.boya.arranque = iso(m.arranque);
 
-    let litros = null;
+    // EL TECHO: si a T + 30 el aforador marca su techo, lo que entró por encima
+    // no se vio; se espera a que vuelva a bajar de verdad (como hasta ahora).
+    let techo = null, baja = null;
     if (a.boyaTipo === 'litros') {
-      litros = m.salto;
-      a.boyaCorregida = false;
-      const techo = B.techo(serie);
+      techo = B.techo(serie);
       a.boyaTecho = techo;
+      a.boyaCorregida = false;
+      if (B.topa(m, techo)) baja = B.bajaDelTecho(serie, m, techo);
+    }
+
+    // LO GASTADO, con UNA pregunta de km: entre las dos lecturas y, si topó,
+    // hasta que bajó del techo. Desde una hora antes de la lectura de antes:
+    // con el coche aparcado no llegan km, y si la serie empezara en ese instante
+    // no habría con qué interpolarlo (3784LFV, 23/10/2026). Parado, el odómetro
+    // y el gastado no se mueven: el hueco no engaña.
+    let gk = null;
+    try {
+      gk = await mp.gastadoYKm(unidad.unitId, m.tAntes - H, (baja ? baja.t2 : m.tDespues) + 30 * 60e3);
+    } catch (e) {
+      // No es que no haya km: es que Mapon no contestó. Se vuelve a mirar.
+      fallo = `Mapon no contestó al pedir los km para sumar lo que gastó entre medias: ${e.message}`;
+    }
+    const andando = gk ? B.gastadoAndando(gk.km, m.tAntes, m.tDespues) : null;
+    if (andando) a.detalle.boya.andando = andando;
+    const sumar = andando ? andando.litros : 0;
+    const redondo = v => Math.round(v * 10) / 10;
+
+    let litros = null, corr = null;
+    if (a.boyaTipo === 'litros') {
+      litros = redondo(m.salto + sumar);
       if (B.topa(m, techo)) {
-        const baja = B.bajaDelTecho(serie, m, techo);
         if (!baja) {
           // Se vuelve a mirar cuando baje; hasta entonces, el salto es un mínimo.
           a.boyaMotivo = `El aforador sigue en su techo (${techo} L) desde el repostaje: se corrige cuando baje`;
           a.reintentar = true;
         } else {
-          let gk = {};
-          // Desde una hora antes de la última lectura de antes, no desde «después»:
-          // con el coche aparcado no llegan km ni gastado, y si el «después» es de
-          // cuando volvió a arrancar, horas más tarde, la serie empezaría pasado
-          // ese instante y no habría con qué interpolarlo (3784LFV, 23/10/2026).
-          // Parado, el odómetro y el gastado no se mueven: el hueco no engaña.
-          try {
-            gk = await mp.gastadoYKm(unidad.unitId, m.tAntes - H, baja.t2 + 30 * 60e3);
-          } catch (e) {
-            // No es que no haya km: es que Mapon no contestó. Se vuelve a mirar.
-            fallo = `Mapon no contestó al pedir los km para corregir el techo del aforador: ${e.message}`;
-          }
-          const c = B.corregirTecho(m, baja, gk);
-          litros = c.litros;
-          a.boyaCorregida = c.corregido;
-          if (c.corregido) a.detalle.boya.correccion = { t2: iso(c.t2), v2: c.v2, gastado: c.gastadoEntre, como: c.como };
-          else a.boyaMotivo = fallo || c.motivo;
+          // Lo que gastó desde la lectura de después hasta que bajó del techo
+          // (por km, como lo de entre medias), más lo de entre medias.
+          corr = B.corregirTecho(m, baja, gk || {});
+          a.boyaCorregida = corr.corregido;
+          if (corr.corregido) {
+            litros = redondo(corr.litros + sumar);
+            a.detalle.boya.correccion = { t2: iso(corr.t2), v2: corr.v2, gastado: corr.gastadoEntre, como: corr.como, km: corr.kmEntre };
+          } else a.boyaMotivo = fallo || corr.motivo;
         }
       }
     } else {
@@ -552,9 +608,12 @@ async function mirarBoya(a, rep, unidad, t, parada, ctx) {
         fallo = `Mapon no contestó al pedir la capacidad del depósito: ${e.message}`;
       }
       a.detalle.boya.capacidad = capacidad;
-      if (capacidad) litros = Math.round(m.salto * capacidad / 100 * 10) / 10;
+      if (capacidad) litros = redondo(m.salto * capacidad / 100 + sumar);
       else a.boyaMotivo = fallo || 'El nivel de este coche va en % del depósito (Ford) y Mapon no tiene su capacidad: sin ella no se pasa a litros';
     }
+    // Sin km de esas horas (el coche no los da por el CAN), no se suma nada: el
+    // salto puede salir algo corto, y se dice.
+    if (gk && !andando && litros != null) anadir('Sin los km de Mapon de esas horas no se suma lo que gastó entre las dos lecturas: puede salir algo corto');
     // TOPÓ Y NO SE HA PODIDO CORREGIR: el salto es un MÍNIMO, porque lo que
     // entró por encima del techo no se vio. Si se queda corto frente a lo
     // pagado, no dice nada —puede ser solo el techo— y no se compara: un rojo
@@ -564,36 +623,44 @@ async function mirarBoya(a, rep, unidad, t, parada, ctx) {
     // Hasta el 23/10/2026, con el error en valor absoluto, ese mínimo por encima
     // era «como poco ese error» y no podía ser verde.
     const minimo = a.boyaTipo === 'litros' && !a.boyaCorregida && B.topa(m, a.boyaTecho);
-    const coma = v => String(v).replace('.', ',');
     if (litros != null) {
       a.boyaLitros = litros;
-      // DOS REPOSTAJES EN LA MISMA PARADA suben el depósito juntos: la boya ve
-      // un salto, y se compara con la SUMA de lo pagado. Si no, cada uno por
-      // separado cabía en el salto y los dos salían verdes (8203LTR, tres días
-      // de octubre: uno con la app y otro con tarjeta o en efectivo, en el
-      // mismo minuto). Los de la parada, o los de 15 min a cada lado sin ella.
+      // CUANDO LA CIFRA LA DECIDEN LOS KM Y NO EL AFORADOR (revisión del
+      // 23/10/2026). Con el aforador de los Ioniq en su techo, la lectura que
+      // vale puede ser de horas después y lo de entre medias, de muchos km: el
+      // 9775LRH del 10/10 subió 4 L en el aforador y los 10,3 L salen de 214 km
+      // a 4,77 L/100 km, la media de los Corolla (la de los Ioniq no se ha podido
+      // medir: Mapon no da su gastado). Se dice, para mirarlo en el dibujo. Con
+      // un litro como poco: el 8512LDS (el depósito no subió) daba «0,1 de 0,1».
+      const deKm = redondo((andando ? andando.litros : 0) + (corr && corr.corregido && corr.kmEntre != null ? corr.gastadoEntre : 0));
+      const kmTotal = Math.round((andando ? andando.km : 0) + (corr && corr.corregido && corr.kmEntre != null ? corr.kmEntre : 0));
+      if (litros > 0 && deKm >= 1 && deKm > litros / 2) {
+        a.detalle.boya.deKm = { litros: deKm, km: kmTotal };
+        anadir(`Más de la mitad de estos litros (${coma(deKm)} de ${coma(litros)}) no los marcó el aforador: salen de los ${kmTotal} km ` +
+          `que anduvo, a ${coma(B.L100_FLOTA)} L/100 km. Mirar el dibujo`);
+      }
+      // OTRO REPOSTAJE DEL MISMO COCHE ENTRE LAS DOS LECTURAS sube el depósito
+      // con este: la boya ve un salto, y se compara con la SUMA de lo pagado.
+      // Si no, cada uno por separado cabía en el salto y los dos salían verdes
+      // (8203LTR, tres días de octubre: uno con la app y otro con tarjeta o en
+      // efectivo, en el mismo minuto).
       let pagados = Number(rep.litros);
-      const ventana = parada && parada.hasta != null ? [parada.desde - MARGEN_PARADA_MS, parada.hasta + MARGEN_PARADA_MS]
-        : [t - 15 * 60e3, t + 15 * 60e3];
-      const juntos = await repo.vecinosDe(rep.id, rep.matricula_norm, ventana[0], ventana[1]);
+      const juntos = await repo.vecinosDe(rep.id, rep.matricula_norm, m.tAntes, m.tDespues);
       if (juntos.length) {
         pagados = Math.round((pagados + juntos.reduce((s, x) => s + x.litros, 0)) * 1000) / 1000;
         a.detalle.boya.juntos = juntos;
         a.detalle.boya.pagados = pagados;
       }
       if (minimo && pagados > 0 && litros < pagados) {
-        a.boyaMotivo = `${a.boyaMotivo ? a.boyaMotivo + '. ' : ''}Subió al menos ${coma(litros)} L, menos que lo pagado, ` +
-          'y sin corregir el techo no se puede saber cuánto entró: no se compara';
+        anadir(`Subió al menos ${coma(litros)} L, menos que lo pagado, y sin corregir el techo no se puede saber cuánto entró: no se compara`);
       } else {
         // SOLO CUENTA LO QUE FALTA (boya.deficitPct): subir de más no penaliza.
         a.boyaErrorPct = B.deficitPct(litros, pagados);
         if (a.boyaErrorPct == null) a.boyaMotivo = 'El repostaje dice 0 litros (anulado): no hay con qué comparar';
-        else if (minimo) {
-          a.boyaMotivo = `${a.boyaMotivo ? a.boyaMotivo + '. ' : ''}Subió al menos ${coma(litros)} L, más que lo pagado: como poco entró lo pagado`;
-        }
+        else if (minimo) anadir(`Subió al menos ${coma(litros)} L, más que lo pagado: como poco entró lo pagado`);
         if (juntos.length) {
-          a.boyaMotivo = `${a.boyaMotivo ? a.boyaMotivo + '. ' : ''}En la misma parada hay ${juntos.length === 1 ? 'otro repostaje' : `otros ${juntos.length}`} ` +
-            `de este coche (${juntos.map(x => `${x.hora}, ${coma(x.litros)} L`).join('; ')}): la boya se compara con los ${coma(pagados)} L de todos`;
+          anadir(`Entre las dos lecturas hay ${juntos.length === 1 ? 'otro repostaje' : `otros ${juntos.length}`} de este coche ` +
+            `(${juntos.map(x => `${x.hora}, ${coma(x.litros)} L`).join('; ')}): la boya se compara con los ${coma(pagados)} L de todos`);
         }
       }
     }
@@ -612,6 +679,16 @@ async function mirarBoya(a, rep, unidad, t, parada, ctx) {
 }
 
 /**
+ * ¿Solo hay que volver a medir la boya? Lo marca db/216 (`soloBoya` en el
+ * detalle) en lo que se auditó con la boya de antes de la ventana fija: el GPS
+ * no cambió de regla, así que se queda como estaba —la distancia se rehace con
+ * la posición guardada y la gasolinera de ahora, sin preguntar a Mapon— y solo
+ * se piden el aforador y los km. Pedirle otra vez las paradas y la posición de
+ * cientos de repostajes daría lo mismo que ya está guardado.
+ */
+const soloBoya = rep => !!(rep && rep.auditoria_detalle && rep.auditoria_detalle.soloBoya);
+
+/**
  * Audita UN repostaje y guarda lo que salga. `gas`: { lista, alias }, cargados
  * una vez por pasada. `rep` trae también lo de la vez anterior (gps_*, boya_*,
  * auditoria_detalle): si Mapon no contesta a algo, eso se queda.
@@ -622,9 +699,10 @@ async function auditar(rep, gas, ctx = {}) {
   const { t, repite, primera } = instante(rep);
   const elegida = G.elegir(rep.estacion, { proveedor: rep.proveedor, sede: rep.sede, gasolineras: gas.lista,
     alias: gas.alias, textos: gas.textos });
+  // Versión 3 del detalle: la boya con la ventana fija (23/10/2026, db/216).
   const a = {
     gasolineraId: elegida.gasolineraId, gasolineraComo: elegida.como, candidatas: elegida.candidatas,
-    detalle: { version: 2, fallos: {} }, reintentar: false,
+    detalle: { version: 3, fallos: {} }, reintentar: false,
   };
   if (repite) {
     a.detalle.horaRepetida = { pasada: primera ? 'primera' : 'segunda', t: iso(t) };
@@ -640,8 +718,7 @@ async function auditar(rep, gas, ctx = {}) {
     a.detalle.fallos.unidad = msg;
     a.reintentar = true;
     gpsDeAntes(a, rep, conGas, msg);
-    if (rep.boya_tipo != null) restaurarBoya(a, rep);
-    else a.boyaMotivo = msg;
+    if (rep.boya_tipo == null || !restaurarBoya(a, rep)) a.boyaMotivo = msg;
   }
   if (unidad) {
     a.detalle.unidad = unidad;
@@ -649,12 +726,22 @@ async function auditar(rep, gas, ctx = {}) {
     // mira el GPS si la parada es larga (¿andaba?) y lo usa siempre la boya.
     let aforador = null;
     c.aforador = () => (aforador = aforador || c.mapon.nivelDeposito(unidad.unitId, t - 72 * H, Math.min(c.ahora, t + 48 * H)));
-    const parada = await mirarGps(a, rep, unidad, t, conGas, c);
-    await mirarBoya(a, rep, unidad, t, parada, c);
+    if (soloBoya(rep)) gpsDeAntes(a, rep, conGas, rep.gps_motivo || null);
+    else await mirarGps(a, rep, unidad, t, conGas, c);
+    await mirarBoya(a, rep, unidad, t, c);
   } else if (!a.reintentar) {
     a.gpsMotivo = a.boyaMotivo = `El ${rep.matricula || 'coche'} no está en Mapon: no hay GPS ni aforador que mirar`;
-    // Sin posición no hay distancia, pero la gasolinera sí se enseña.
+    // Sin posición no hay distancia, pero la gasolinera sí se enseña. Y si solo
+    // había que volver a medir la boya, el GPS que ya se midió se queda aunque
+    // el coche ya no salga en Mapon.
+    if (soloBoya(rep)) gpsDeAntes(a, rep, conGas, rep.gps_motivo || null);
   }
+  const antes216 = rep.auditoria_detalle || {};
+  // Lo que decía la boya de antes de la ventana fija (lo apartó db/216), para
+  // que no se pierda. Y la marca de «solo la boya» sigue mientras quede a
+  // medias: el reintento tampoco tiene por qué preguntar el GPS.
+  if (antes216.boyaAntes) a.detalle.boyaAntes = antes216.boyaAntes;
+  if (soloBoya(rep) && a.reintentar) a.detalle.soloBoya = antes216.soloBoya;
   if (!Object.keys(a.detalle.fallos).length) delete a.detalle.fallos;
   a.estado = a.reintentar ? 'incompleta' : 'hecha';
   await repo.guardarAuditoria(rep.id, a);
@@ -675,10 +762,13 @@ async function cargarGasolineras() {
  * LOS GRUPOS DE UNA PASADA. Los repostajes de un mismo coche (la misma unidad
  * de Mapon) cuyas horas caen en AGRUPAR_DIAS desde el primero van juntos: se
  * pide una vez el aforador de todos (de 72 h antes del primero a 48 h después
- * del último) y las paradas (de 3 h antes a 1 h después), y cada uno recorta lo
- * suyo (combustible.memoria). Con 4 días, la ventana del aforador es de 9 días,
- * lejos del tope de 31 de Mapon. Los que no tienen unidad no van en ninguno.
- * → [{ unidad, reps: [{ rep, t }], aforador: [d, h], paradas: [d, h] }]
+ * del último), las paradas (de 3 h antes a 1 h después) y los km (de 3 h antes
+ * a 2 h después: lo que gastó entre las dos lecturas de la boya), y cada uno
+ * recorta lo suyo (combustible.memoria). Con 4 días, la ventana del aforador es
+ * de 9 días, lejos del tope de 31 de Mapon. Las paradas, solo si alguno las
+ * necesita: los que db/216 devolvió a la cola para medir solo la boya no las
+ * piden (`gps: false`). Los que no tienen unidad no van en ninguno.
+ * → [{ unidad, reps: [{ rep, t }], aforador: [d, h], paradas: [d, h], km: [d, h], gps }]
  */
 function agrupar(conUnidad, ahora) {
   const porUnidad = new Map();
@@ -701,6 +791,8 @@ function agrupar(conUnidad, ahora) {
     const t0 = g.reps[0].t, t1 = g.reps[g.reps.length - 1].t;
     g.aforador = [t0 - 72 * H, Math.min(ahora, t1 + 48 * H)];
     g.paradas = [t0 - 3 * H, Math.min(ahora, t1 + H)];
+    g.km = [t0 - 3 * H, Math.min(ahora, t1 + 2 * H)];
+    g.gps = g.reps.some(x => !soloBoya(x.rep));
   }
   return grupos;
 }
@@ -762,7 +854,7 @@ async function auditarLista(lista, c, opciones = {}) {
     try {
       if (g && !precargados.has(g)) {
         precargados.add(g);
-        if (g.reps.length > 1) await mem.precargar(g.unidad.unitId, { aforador: g.aforador, paradas: g.paradas });
+        if (g.reps.length > 1) await mem.precargar(g.unidad.unitId, { aforador: g.aforador, paradas: g.gps ? g.paradas : null, km: g.km });
       }
       // Sin unidad (no está en Mapon, o no se pudo saber): auditar() lo resuelve como siempre.
       const r = await auditar(x.rep, gas, { mapon: mem, ahora, unidad: x.unidad === undefined ? undefined : x.unidad });

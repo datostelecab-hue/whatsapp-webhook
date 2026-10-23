@@ -8,12 +8,14 @@
 //
 // POR QUÉ (23/10/2026). Petroprix llega por Excel: 1.866 repostajes de golpe
 // (01-22/10) y unos 85 al día. La auditoría pide por cada repostaje el aforador
-// de 5 días (72 h antes y 48 h después) y las paradas de 4 horas, más la
-// posición en el instante y, si topó el aforador, los km. Un coche reposta dos o
+// de 5 días (72 h antes y 48 h después), las paradas de 4 horas y los km (lo
+// que gastó entre las dos lecturas de la boya, y hasta que bajó del techo), más
+// la posición en el instante si hace falta. Un coche reposta dos o
 // tres veces al día: pedir 5 días de aforador por cada repostaje es pedir lo
 // mismo tres veces. Con esto, los repostajes de un coche en unos días se miran
-// con UNA lectura del aforador y UNA de paradas para todos (`precargar`), y lo
-// demás se pide al ir haciendo falta. Medido en el entorno de pruebas: ver
+// con UNA lectura del aforador, UNA de paradas y UNA de km para todos
+// (`precargar`; los km, desde la boya de la ventana fija, que suma lo gastado
+// entre sus dos lecturas), y lo demás se pide al ir haciendo falta. Medido en el entorno de pruebas: ver
 // docs/modulos/Combustible.md, «El ritmo de la auditoría».
 //
 // LO RECORTADO ES LO MISMO QUE SE HABRÍA PEDIDO: las lecturas de una serie cuya
@@ -30,7 +32,7 @@ const dormir = ms => new Promise(ok => setTimeout(ok, ms));
 
 /**
  * `mapon`: el adaptador (services/mapon) o uno de mentira. → un objeto con las
- * mismas lecturas, más `precargar(unitId, { aforador, porcentaje, paradas })`
+ * mismas lecturas, más `precargar(unitId, { aforador, paradas, km })`
  * (cada una [desdeMs, hastaMs] o nada) y `cuenta()` (cuántas se pidieron de
  * verdad y cuántas salieron de la memoria).
  */
@@ -90,9 +92,10 @@ function conMemoria(mapon, { pausaMs = 0 } = {}) {
      * no pasa nada: cada repostaje lo volverá a pedir a su tamaño, y ahí se
      * apunta el fallo como siempre (combustible.auditoria).
      */
-    async precargar(unitId, { aforador, paradas } = {}) {
+    async precargar(unitId, { aforador, paradas, km } = {}) {
       if (paradas) await serie('paradasUnidad', unitId, paradas[0], paradas[1]).catch(() => null);
       if (aforador) await serie('nivelDeposito', unitId, aforador[0], aforador[1]).catch(() => null);
+      if (km) await serie('gastadoYKm', unitId, km[0], km[1]).catch(() => null);
     },
     cuenta: () => ({ ...c }),
   };

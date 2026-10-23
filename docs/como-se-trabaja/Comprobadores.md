@@ -515,6 +515,28 @@ No son de los seis, pero forman parte de la misma red:
   parada de antes lejos, los litros que nunca dicen 0, `to_jsonb`, el bot ya cerrado,
   Barcelona, la fecha del futuro, la hora corrida y los dos topes del Excel): saltan
   las once.
+  **Y la boya con la ventana fija** (23/10/2026, db/216): el nivel a T − 15 y a T + 30
+  con lecturas de mentira (la mediana de sus 10 minutos, la más cercana si son pocas),
+  el de la captura (el 1212MJY: 9 L hasta las 17:44, 41 a las 17:45 y 39-40 después;
+  con la regla de antes no subía, ahora verde y nunca rojo, también cuando baja del
+  techo), el coche que anda entre medias (se suman sus km), el apagado sin lecturas
+  cerca, el aforador que solo lee al cambiar, el techo, los Ford, «aún no
+  hay lecturas de después» y «aún no son las T + 30», los vecinos entre las dos
+  lecturas, y «solo la boya» (db/216: ni paradas ni posiciones a Mapon, el GPS de
+  antes se queda y la marca sigue mientras quede a medias). Se saboteó con la ventana
+  a 5 minutos y sin sumar lo gastado: saltan 11.
+  **Y su revisión** (23/10/2026, tarde): aparcado 13 h antes y casi 20 h después de
+  repostar (el 1210MJY y el 0524MMZ: se miden en toda la serie), sin lecturas de antes
+  (no se reintenta, y queda hecha), la aguja que sube al despertar después de T + 30
+  (16 → 39: vale lo de pasados 5 minutos) y la que no sube (el baile, que no se
+  toca), el techo por km aunque haya centralita (la centralita, solo sin km y con
+  lecturas a pocos minutos), la boya de la regla de antes que un reintento no
+  devuelve, que el detalle va siempre con la versión 3 y que db/216 mira la versión y
+  no la marca, el aviso de cuando la cifra la deciden los km (y que con 0,1 L no
+  salta), y que el dibujo solo guarda de T − 60 a T + 90. Se saboteó cada una (el
+  tope de 12 h, sin la aguja, la aguja siempre, la centralita mandando, el antes que
+  se reintenta, restaurar la boya vieja, db/216 con la marca, sin el aviso, el aviso
+  sin su mínimo y el dibujo con todo el tramo): salta su caso en las diez.
 - **`comprobar-cumpleanos.js`** (15/10/2026) — los [[Cumpleanos]] sin base: los del 29 de
   febrero el 28 en un año no bisiesto, quien cumple ve la felicitación y no «cumple hoy»,
   y los ids que Control pinta en azul. 6 casos.

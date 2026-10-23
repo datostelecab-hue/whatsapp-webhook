@@ -12,6 +12,8 @@
   web; sus filas salen en la misma lista, sin tarjeta, con quién llevaba el
   coche en BOLT y en el bot de WhatsApp (también en las de Ballenoil). La boya
   solo cuenta lo que FALTA: «faltan X L (Y %)» o «subió X L más de lo pagado».
+  Y mide con la VENTANA FIJA (db/216, 23/10/2026): el nivel 15 minutos antes y
+  30 minutos después de la hora del Excel o del correo; la ficha lo dibuja.
   Servicio: modules/Combustible/combustible.service.js
 %>
 
@@ -136,9 +138,13 @@
   // días, en el atraso, al ritmo de la auditoría (RITMO, de la lista). Decirle
   // «a los 45 minutos» a uno de hace tres semanas no era verdad.
   let RITMO = { porPasada: 60, cadaMin: 10 };
-  const espera = f => (f && deExcel(f)
-    ? `Se audita sola: los de los dos últimos días primero y luego el atraso, unos ${RITMO.porPasada} cada ${RITMO.cadaMin} minutos.`
-    : 'Se audita sola a los 45 minutos del repostaje, cuando ya hay lecturas de después.');
+  // Lo que db/216 devolvió a la cola para medir otra vez la boya con la ventana
+  // fija (`boya_otra_vez`) no espera a nada: va con los demás, y el GPS se queda.
+  const espera = f => (f && f.boya_otra_vez
+    ? `Se vuelve a medir la boya con la regla del 23/10/2026 (el nivel 15 minutos antes y 30 minutos después de la hora ${deExcel(f) ? 'del Excel' : 'del correo'}); el GPS se queda como estaba. Va en la cola con los demás, unos ${RITMO.porPasada} cada ${RITMO.cadaMin} minutos.`
+    : f && deExcel(f)
+      ? `Se audita sola: los de los dos últimos días primero y luego el atraso, unos ${RITMO.porPasada} cada ${RITMO.cadaMin} minutos.`
+      : 'Se audita sola a los 45 minutos del repostaje, cuando ya hay lecturas de después de las T + 30.');
   const sinAuditar = f => f.auditoria_estado === 'pendiente';
   // El aforador acabó en su techo y no se pudo corregir: lo que subió es un
   // MÍNIMO (lo dice el servidor, combustible.boya.esMinimo), y se escribe con
@@ -191,7 +197,7 @@
   const pagadoDe = f => (f.boya_pagados != null ? f.boya_pagados : f.litros);
   /** La frase entera, para la ayuda y la ficha: «faltan X L (Y %)» o «subió X L más de lo pagado». */
   function boyaFrase(f) {
-    const pagado = `${lit(pagadoDe(f), deExcel(f) ? 2 : 3)}${f.boya_pagados != null ? ' (con el otro repostaje de la misma parada)' : ''}`;
+    const pagado = `${lit(pagadoDe(f), deExcel(f) ? 2 : 3)}${f.boya_pagados != null ? ' (con el otro repostaje de entre las dos lecturas)' : ''}`;
     // Un depósito que baja se dice así, no «subió −1 L».
     const subio = f.boya_litros < 0 ? `el depósito bajó ${litB(-f.boya_litros)}` : `la boya subió ${litB(f.boya_litros)}`;
     if (f.boya_faltan > 0) return `Faltan ${litD(f.boya_faltan)} (${pct(f.boya_error_pct)}): ${subio} y se pagaron ${pagado}.`;
@@ -562,27 +568,46 @@
   }
 
   /**
-   * El aforador alrededor del repostaje, dibujado: la línea de las lecturas,
-   * la franja en que el coche estuvo parado y las dos medianas (antes y
-   * después). Es lo que deja ver de un vistazo si el salto es de verdad o un
-   * baile de la aguja.
+   * El aforador alrededor del repostaje, dibujado: la línea de las lecturas, las
+   * dos marcas de la boya —15 minutos antes y 30 minutos después de la hora del
+   * Excel o del correo (23/10/2026)— con el nivel de cada una, la hora del
+   * repostaje y, en gris, el rato que Mapon lo da parado. Es lo que deja ver de
+   * un vistazo si el salto es de verdad o un baile de la aguja.
    */
   function dibujoAforador(d) {
     const b = (d.auditoria_detalle && d.auditoria_detalle.boya) || {};
-    const ls = (b.lecturas || []).filter(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    const det = d.auditoria_detalle || {};
+    // Los dos instantes de la ventana fija (no los traen las boyas de antes de db/216).
+    const ins = b.instantes ? { a: Date.parse(b.instantes.antes), d: Date.parse(b.instantes.despues) } : null;
+    // EL DIBUJO VA DE T − 60 A T + 90 (revisión del 23/10/2026), aunque la
+    // lectura que vale sea de horas antes o después: con el tramo entero, el de
+    // un Ioniq en su techo abarcaba 7-12 h, las dos marcas quedaban juntas, una
+    // se quedaba sin rótulo y el salto apenas se veía (el 9775LRH del 10/10).
+    // La lectura lejana se dice debajo, con su hora.
+    const VENTANA = ins ? [ins.a - 45 * 60e3, ins.d + 60 * 60e3] : null;
+    const ls = (b.lecturas || []).filter(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
+      && (!VENTANA || (p[0] >= VENTANA[0] && p[0] <= VENTANA[1])));
     if (ls.length < 2) return '';
+    const tCorreo = (det.horaRepetida && Date.parse(det.horaRepetida.t)) || d.repostaje_ms;
     // El ancho del dibujo, el de la pantalla (hasta 640): con un viewBox fijo de
     // 640, en un móvil el SVG se encogía a la mitad y las letras de 11 px se
-    // quedaban en 5. Así cada unidad es casi un píxel y se leen igual.
-    const W = Math.round(Math.max(300, Math.min(640, window.innerWidth - 72))), Hh = 150, M = { i: 36, d: 12, a: 12, b: 24 };
-    const t0 = ls[0][0], t1 = ls[ls.length - 1][0];
+    // quedaban en 5. Así cada unidad es casi un píxel y se leen igual. Arriba,
+    // sitio para los rótulos de las dos marcas.
+    const W = Math.round(Math.max(300, Math.min(640, window.innerWidth - 72))), Hh = 164, M = { i: 36, d: 12, a: 24, b: 24 };
+    const t0 = VENTANA ? VENTANA[0] : ls[0][0], t1 = VENTANA ? VENTANA[1] : ls[ls.length - 1][0];
     const vs = ls.map(p => p[1]).concat([d.boya_antes, d.boya_despues].filter(v => v != null));
-    const v0 = Math.floor(Math.min(...vs) - 2), v1 = Math.ceil(Math.max(...vs) + 2);
+    // La escala, con 2 de margen arriba y abajo; el eje, con las cifras de
+    // verdad (la más baja y la más alta): con las del margen, el del 1212MJY
+    // decía «41» sin que ninguna lectura pasara de 39, y se leía «sube a 41».
+    const vMin = Math.min(...vs), vMax = Math.max(...vs);
+    const v0 = Math.floor(vMin - 2), v1 = Math.ceil(vMax + 2);
     const x = t => M.i + (W - M.i - M.d) * (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0));
     const y = v => M.a + (Hh - M.a - M.b) * (1 - (v - v0) / (v1 - v0 || 1));
-    const p = d.auditoria_detalle.parada;
-    const franja = p && p.desde && p.hasta
-      ? `<rect x="${x(Math.max(t0, Date.parse(p.desde))).toFixed(1)}" y="${M.a}" width="${Math.max(2, x(Math.min(t1, Date.parse(p.hasta))) - x(Math.max(t0, Date.parse(p.desde)))).toFixed(1)}" height="${Hh - M.a - M.b}" fill="rgb(var(--tc-muted) / .16)"/>`
+    const p = det.parada;
+    // La franja gris, solo si la parada cae dentro del dibujo.
+    const pDe = p && p.desde ? Math.max(t0, Date.parse(p.desde)) : null, pA = p && p.hasta ? Math.min(t1, Date.parse(p.hasta)) : null;
+    const franja = pDe != null && pA != null && pA > pDe
+      ? `<rect x="${x(pDe).toFixed(1)}" y="${M.a}" width="${Math.max(2, x(pA) - x(pDe)).toFixed(1)}" height="${Hh - M.a - M.b}" fill="rgb(var(--tc-muted) / .16)"/>`
       : '';
     const linea = ls.map((q, i) => `${i ? 'L' : 'M'}${x(q[0]).toFixed(1)},${y(q[1]).toFixed(1)}`).join(' ');
     // Las letras van ENCIMA de la línea de las lecturas (se pintan después) y
@@ -590,51 +615,112 @@
     // rótulo, y así se sigue leyendo.
     const HALO = 'paint-order="stroke" stroke="rgb(var(--tc-card))" stroke-width="3" stroke-linejoin="round"';
     const raya = v => (v == null ? '' : `<line x1="${M.i}" x2="${W - M.d}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="rgb(var(--tc-muted) / .7)" stroke-dasharray="4 4"/>`);
-    // LOS TRES RÓTULOS NO SE PISAN. «antes» a la izquierda y «después» a la
-    // derecha, como en el tiempo (si el depósito no subió, las dos rayas van
-    // juntas). «correo HH:MM» iba siempre arriba a la derecha de su raya, y
-    // «después» casi siempre es la raya más alta: a 375 px se pisaban en 8 de
-    // 12 fichas (revisión del 23/10/2026). Ahora se prueban sitios —«después»
-    // encima o debajo de su raya; «correo» arriba o abajo, a un lado o al otro
-    // de la suya— y se queda el primero en que ninguno toca a otro. Las cajas
-    // se estiman (6,4 px por letra a 11 px, de sobra).
-    const tCorreo = (d.auditoria_detalle.horaRepetida && Date.parse(d.auditoria_detalle.horaRepetida.t)) || d.repostaje_ms;
-    const enHora = tCorreo && tCorreo >= t0 && tCorreo <= t1;
+    const vertical = (t, trazo) => `<line x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${M.a}" y2="${Hh - M.b}" ${trazo}/>`;
+    // LOS RÓTULOS NO SE PISAN. Cada uno prueba sus sitios en orden —las marcas,
+    // arriba, hacia fuera de la ventana; los niveles, a su lado de la marca,
+    // encima o debajo de su raya; la hora del repostaje, abajo— y se queda el
+    // primero que cabe sin tocar a los ya puestos. Las cajas se estiman con
+    // holgura (6,6 px por letra a 11 px, y la letra entera de alto, con lo que
+    // baja de la línea): con 6,4 y 13 px de alto, medidas en el navegador
+    // (getBBox), dos rótulos que «no se tocaban» se montaban un píxel. A 375 px,
+    // con «correo HH:MM» siempre arriba, se pisaban en 8 de 12 fichas (revisión
+    // del 23/10/2026).
     const caja = (cx, cy, txt, ancla) => {
-      const w = txt.length * 6.4, x0 = ancla === 'end' ? cx - w : cx;
-      return { cx, cy, txt, ancla, x0, x1: x0 + w, y0: cy - 10, y1: cy + 3 };
+      const w = txt.length * 6.6, x0 = ancla === 'end' ? cx - w : cx;
+      return { cx, cy, txt, ancla, x0, x1: x0 + w, y0: cy - 11, y1: cy + 4 };
     };
-    const pisan = (a, b) => !!(a && b && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1);
-    const dentro = c => !c || (c.x0 >= 0 && c.x1 <= W && c.y0 >= 0 && c.y1 <= Hh - M.b + 2);
-    const unidadR = d.boya_tipo === 'porcentaje' ? '%' : 'L';
-    const rAntes = d.boya_antes == null ? null : caja(M.i + 4, y(d.boya_antes) - 4, `antes ${num(d.boya_antes, 0)} ${unidadR}`, 'start');
-    const tDesp = `después ${num(d.boya_despues, 0)} ${unidadR}`;
-    const opcionesDesp = d.boya_despues == null ? [null] : [caja(W - M.d, y(d.boya_despues) - 4, tDesp, 'end'), caja(W - M.d, y(d.boya_despues) + 13, tDesp, 'end')];
-    const tC = `${deExcel(d) ? 'Excel' : 'correo'} ${horaMadrid(tCorreo)}`, xC = enHora ? x(tCorreo) : 0;
-    const opcionesCorreo = !enHora ? [null] : [[xC + 4, M.a + 10, 'start'], [xC - 4, M.a + 10, 'end'], [xC + 4, Hh - M.b - 4, 'start'], [xC - 4, Hh - M.b - 4, 'end']]
-      .map(([cx, cy, an]) => caja(cx, cy, tC, an));
-    let rDesp = opcionesDesp[0], rCorreo = opcionesCorreo[0];
-    buscar: for (const od of opcionesDesp) {
-      for (const oc of opcionesCorreo) {
-        if (dentro(od) && dentro(oc) && !pisan(od, oc) && !pisan(rAntes, oc) && !pisan(rAntes, od)) { rDesp = od; rCorreo = oc; break buscar; }
+    const pisan = (a, c) => !!(a && c && a.x0 < c.x1 && c.x0 < a.x1 && a.y0 < c.y1 && c.y0 < a.y1);
+    const dentro = c => c.x0 >= 0 && c.x1 <= W && c.y0 >= 0 && c.y1 <= Hh - M.b + 2;
+    // Las cifras del eje (arriba y abajo a la izquierda) también ocupan sitio:
+    // «−15 min» se ponía encima del máximo cuando la marca caía al borde.
+    const ejeVals = vMax === vMin ? [vMax] : [vMax, vMin];
+    const ejeCajas = ejeVals.map(v => caja(M.i - 6, y(v) + 4, num(v, 0), 'end'));
+    const puestos = [];
+    const poner = (txt, sitios, color) => {
+      const c = sitios.map(([cx, cy, an]) => caja(cx, cy, txt, an)).find(k => dentro(k) && ![...ejeCajas, ...puestos].some(o => pisan(o, k)));
+      if (c) puestos.push({ ...c, color });
+      return !!c;
+    };
+    const unidad = d.boya_tipo === 'porcentaje' ? '%' : 'L';
+    const MARCA = 'stroke="rgb(var(--tc-text) / .6)" stroke-width="1.25"';
+    let marcas = '', puntos = '';
+    const sinRotulo = [];
+    if (ins) {
+      const xa = x(ins.a), xd = x(ins.d);
+      marcas = vertical(ins.a, MARCA) + vertical(ins.d, MARCA);
+      puntos = [[ins.a, d.boya_antes], [ins.d, d.boya_despues]].filter(([, v]) => v != null)
+        .map(([t, v]) => `<circle cx="${x(t).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.5" fill="rgb(var(--tc-text))" stroke="rgb(var(--tc-card))" stroke-width="1.5"/>`).join('');
+      // Las marcas, encima del dibujo y hacia fuera de la ventana. En un móvil
+      // (menos de 420 de ancho), solo la hora: con «−15 min · 17:31» las dos no
+      // cabían y «después» se quedaba sin sitio; el pie dice qué son.
+      const tope = M.a - 9, dentroArriba = M.a + 11, estrecho = W < 420;
+      const rotA = estrecho ? horaMadrid(ins.a) : `−15 min · ${horaMadrid(ins.a)}`;
+      const rotD = estrecho ? horaMadrid(ins.d) : `+30 min · ${horaMadrid(ins.d)}`;
+      const MARCA_TXT = 'rgb(var(--tc-text) / .8)';
+      const marcaA = poner(rotA, [[xa - 3, tope, 'end'], [xa + 3, tope, 'start']], MARCA_TXT);
+      const marcaD = poner(rotD, [[xd + 3, tope, 'start'], [xd - 3, tope, 'end']], MARCA_TXT);
+      // Los niveles van antes que el segundo sitio de las marcas: son la cifra.
+      if (d.boya_antes != null) {
+        const ya = y(d.boya_antes), t = `antes ${num(d.boya_antes, 0)} ${unidad}`;
+        poner(t, [[xa - 5, ya - 5, 'end'], [xa - 5, ya + 14, 'end'], [xa + 5, ya - 5, 'start'], [xa + 5, ya + 14, 'start']], 'rgb(var(--tc-muted))');
       }
+      if (d.boya_despues != null) {
+        const yd = y(d.boya_despues), t = `después ${num(d.boya_despues, 0)} ${unidad}`;
+        poner(t, [[xd + 5, yd - 5, 'start'], [xd + 5, yd + 14, 'start'], [xd - 5, yd - 5, 'end'], [xd - 5, yd + 14, 'end']], 'rgb(var(--tc-muted))');
+      }
+      // Si una marca no cupo arriba, baja a la primera línea de dentro; y si
+      // tampoco, se dice al pie cuál es cada raya: una raya sin nombre no se
+      // entiende (revisión del 23/10/2026).
+      if (!marcaA && !poner(rotA, [[xa - 3, dentroArriba, 'end'], [xa + 3, dentroArriba, 'start']], MARCA_TXT)) sinRotulo.push(`la raya de la izquierda es la de 15 minutos antes (${horaMadrid(ins.a)})`);
+      if (!marcaD && !poner(rotD, [[xd + 3, dentroArriba, 'start'], [xd - 3, dentroArriba, 'end']], MARCA_TXT)) sinRotulo.push(`la de la derecha, la de 30 minutos después (${horaMadrid(ins.d)})`);
     }
-    const texto = (c, color) => (c ? `<text x="${c.cx.toFixed(1)}" y="${c.cy.toFixed(1)}" text-anchor="${c.ancla}" font-size="11" fill="${color}" ${HALO}>${esc(c.txt)}</text>` : '');
-    const trRaya = enHora ? `<line x1="${xC.toFixed(1)}" x2="${xC.toFixed(1)}" y1="${M.a}" y2="${Hh - M.b}" stroke="rgb(var(--tc-text) / .55)" stroke-width="1"/>` : '';
-    const trRotulo = texto(rCorreo, 'rgb(var(--tc-text) / .8)');
-    const ejes = `<text x="${M.i - 6}" y="${(y(v1) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="rgb(var(--tc-muted))">${v1}</text>` +
-      `<text x="${M.i - 6}" y="${(y(v0) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="rgb(var(--tc-muted))">${v0}</text>` +
+    // La hora del repostaje, punteada y más suave: las marcas son las que miden.
+    const enHora = tCorreo && tCorreo >= t0 && tCorreo <= t1;
+    const lineaHora = enHora ? vertical(tCorreo, 'stroke="rgb(var(--tc-muted) / .8)" stroke-width="1" stroke-dasharray="2 3"') : '';
+    if (enHora) {
+      const xc = x(tCorreo), abajo = Hh - M.b - 4;
+      poner(`${deExcel(d) ? 'Excel' : 'correo'} ${horaMadrid(tCorreo)}`, [[xc + 4, abajo, 'start'], [xc - 4, abajo, 'end'], [xc + 4, M.a + 12, 'start'], [xc - 4, M.a + 12, 'end']],
+        'rgb(var(--tc-muted))');
+    }
+    const texto = c => `<text x="${c.cx.toFixed(1)}" y="${c.cy.toFixed(1)}" text-anchor="${c.ancla}" font-size="11" fill="${c.color}" ${HALO}>${esc(c.txt)}</text>`;
+    const ejes = ejeVals.map(v => `<text x="${M.i - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="rgb(var(--tc-muted))">${esc(num(v, 0))}</text>`).join('') +
       `<text x="${M.i}" y="${Hh - 6}" font-size="11" fill="rgb(var(--tc-muted))">${esc(horaMadrid(t0))}</text>` +
       `<text x="${W - M.d}" y="${Hh - 6}" text-anchor="end" font-size="11" fill="rgb(var(--tc-muted))">${esc(horaMadrid(t1))}</text>`;
-    const unidad = d.boya_tipo === 'porcentaje' ? '%' : 'L';
-    const resumen = `El aforador marcaba ${num(d.boya_antes, 0)} ${unidad} antes del repostaje y ${num(d.boya_despues, 0)} ${unidad} después.`;
-    return `<svg viewBox="0 0 ${W} ${Hh}" class="w-full h-auto max-h-48" role="img" aria-label="${esc(resumen)}">
-      ${franja}${raya(d.boya_antes)}${raya(d.boya_despues)}${trRaya}
+    const laHora = `la hora ${deExcel(d) ? 'del Excel' : 'del correo'}`;
+    const resumen = ins
+      ? `El aforador marcaba ${num(d.boya_antes, 0)} ${unidad} a las ${horaMadrid(ins.a)}, 15 minutos antes de ${laHora}, y ${num(d.boya_despues, 0)} ${unidad} a las ${horaMadrid(ins.d)}, 30 minutos después.`
+      : `El aforador marcaba ${num(d.boya_antes, 0)} ${unidad} antes del repostaje y ${num(d.boya_despues, 0)} ${unidad} después.`;
+    // La lectura que vale, si cae fuera del dibujo (el coche aparcado, o el
+    // aforador de los Ioniq, que solo lee cuando cambia): se dice con su hora.
+    const fuera = [];
+    if (ins && VENTANA) {
+      const tA = b.tAntes ? Date.parse(b.tAntes) : null, tD = b.tDespues ? Date.parse(b.tDespues) : null;
+      if (tA != null && tA < VENTANA[0]) fuera.push(`la lectura de antes (${num(d.boya_antes, 0)} ${unidad}) es ${cuandoLejos(tA, ins.a)}`);
+      if (tD != null && tD > VENTANA[1]) fuera.push(`la de después (${num(d.boya_despues, 0)} ${unidad}) es ${cuandoLejos(tD, ins.d)}`);
+    }
+    const frase = xs => (xs.length ? `${xs.join('; ').replace(/^./, c => c.toUpperCase())}. ` : '');
+    return `<svg viewBox="0 0 ${W} ${Hh}" class="w-full h-auto max-h-52" role="img" aria-label="${esc(resumen)}">
+      ${franja}${raya(d.boya_antes)}${raya(d.boya_despues)}${lineaHora}${marcas}
       <path d="${linea}" fill="none" stroke="rgb(var(--tc-azul))" stroke-width="2" stroke-linejoin="round"/>
-      ${texto(rAntes, 'rgb(var(--tc-muted))')}${texto(rDesp, 'rgb(var(--tc-muted))')}${trRotulo}${ejes}</svg>
+      ${puntos}${puestos.map(texto).join('')}${ejes}</svg>
       <p class="text-xs text-telecab-muted mt-1">Lecturas del aforador de Mapon (${unidad === '%' ? '% del depósito' : 'litros enteros'}). ` +
-      `${p ? 'La franja gris es el rato que el coche estuvo parado. ' : ''}Las líneas discontinuas son las medianas de 5 lecturas ` +
-      `${b.conParada ? 'antes de parar y después de arrancar' : `que acaban 10 minutos antes de la hora ${deExcel(d) ? 'del Excel' : 'del correo'} y las que empiezan 10 minutos después (no estuvo parado a esa hora)`}.</p>`;
+      (ins
+        ? `Las dos rayas son 15 minutos antes y 30 minutos después de ${laHora} (${esc(horaMadrid(tCorreo))}), y las discontinuas, el nivel a cada una. `
+        : 'Medido con la regla de antes del 23/10/2026: se vuelve a medir con la de 15 minutos antes y 30 después. ') +
+      esc(frase(sinRotulo)) + esc(frase(fuera)) +
+      `${franja ? 'La franja gris es el rato que Mapon lo da parado.' : ''}</p>`;
+  }
+
+  /**
+   * Cuándo es una lectura lejana, dicho: «de las 21:25 (19 h 46 min después)»,
+   * y el día si no es el mismo («de las 16:23 del 30/09, 13 h antes»). Con la
+   * lectura a horas, la hora sola no decía de qué día era.
+   */
+  function cuandoLejos(t, ref) {
+    // dd/mm siempre con dos cifras (el navegador escribía «9/10»).
+    const dia = ms => { const p = Object.fromEntries(new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit' }).formatToParts(ms).map(x => [x.type, x.value])); return `${p.day}/${p.month}`; };
+    const min = Math.round(Math.abs(t - ref) / 60e3);
+    return `de las ${horaMadrid(t)}${dia(t) !== dia(ref) ? ` del ${dia(t)}` : ''} (${antiguedad(min)} ${t < ref ? 'antes' : 'después'})`;
   }
 
   const mapa = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat + ',' + lng)}`;
@@ -984,10 +1070,10 @@
                     ? 'El correo llegó antes de la segunda, así que se ha auditado la primera (aún en horario de verano).'
                     : 'Por cuándo llegó el correo, se ha auditado la segunda (ya en horario de invierno).'));
             }
-            // Dos repostajes del mismo coche en la misma parada: la boya, contra la suma.
+            // Otro repostaje del mismo coche entre las dos lecturas de la boya: contra la suma.
             const juntos = (det.boya && det.boya.juntos) || [];
             if (juntos.length) {
-              avisos.push(`En la misma parada hay ${juntos.length === 1 ? 'otro repostaje' : `otros ${juntos.length}`} de este coche: ` +
+              avisos.push(`Entre las dos lecturas de la boya hay ${juntos.length === 1 ? 'otro repostaje' : `otros ${juntos.length}`} de este coche: ` +
                 juntos.map(x => `<a class="underline" href="#${esc(x.id)}">${esc(x.hora)}, ${esc(lit(x.litros))}</a>`).join(', ') +
                 `. El depósito sube una vez para todos: la boya se compara con los ${esc(lit(det.boya.pagados))} de todos.`);
             }
@@ -1050,15 +1136,54 @@
             const b = (d.auditoria_detalle && d.auditoria_detalle.boya) || {};
             const unidad = d.boya_tipo === 'porcentaje' ? '%' : 'L';
             fila('Qué da el coche', esc({ litros: 'El aforador en litros enteros', porcentaje: 'El nivel en % del depósito (Ford)', sin: 'Nada: no se lee el aforador por el CAN' }[d.boya_tipo] || (sinAuditar(d) ? 'Por auditar' : '—')));
+            // LA VENTANA FIJA (23/10/2026): el nivel 15 minutos antes y 30 después
+            // de la hora del Excel o del correo, cada uno con su hora. Si la
+            // lectura que vale es de bastante antes o después (el aforador no lee
+            // con el coche apagado, y el de los Ioniq solo cuando cambia), se dice.
+            const laHora = `la hora ${deExcel(d) ? 'del Excel' : 'del correo'}`;
+            // Si la lectura es de horas antes o después, con su día si no es el
+            // mismo (se busca en toda la serie: 72 h antes y 48 h después).
+            const nivel = (v, ins, t, cual, arranque) => {
+              const lejos = ins != null && t != null && Math.abs(t - ins) > 10 * 60e3;
+              return `<b class="tabular-nums">${esc(num(v, 0))} ${unidad}</b>` +
+                (ins != null ? ` <span class="text-xs text-telecab-muted">a las ${esc(horaMadrid(ins))}, ${cual} de ${esc(laHora)}</span>` : '') +
+                (arranque ? `<span class="block text-xs text-telecab-muted">El coche arrancó a las ${esc(horaMadrid(arranque))} y la aguja aún subía: se mira pasados 5 minutos, a las ${esc(horaMadrid(t))}.</span>`
+                  : lejos ? `<span class="block text-xs text-telecab-muted">${t < ins ? 'La última lectura antes' : 'La primera lectura después'} es ${esc(cuandoLejos(t, ins))}: ` +
+                  'el aforador no lee con el coche apagado (y el de algunos coches, solo cuando cambia el nivel); lo que gastó entre medias se suma abajo.</span>' : '');
+            };
             if (d.boya_antes != null) {
-              fila('Antes → después', `<b class="tabular-nums">${esc(num(d.boya_antes, 0))} → ${esc(num(d.boya_despues, 0))} ${unidad}</b>` +
-                (b.tAntes ? ` <span class="text-xs text-telecab-muted">(${esc(horaMadrid(Date.parse(b.tAntes)))} → ${esc(horaMadrid(Date.parse(b.tDespues)))}${b.conParada ? ', antes de parar y al arrancar' : ', sin parada: 10 min a cada lado'})</span>` : ''));
+              const ins = b.instantes ? { a: Date.parse(b.instantes.antes), d: Date.parse(b.instantes.despues) } : null;
+              if (ins) {
+                fila('Antes', nivel(d.boya_antes, ins.a, b.tAntes ? Date.parse(b.tAntes) : null, '15 minutos antes'));
+                fila('Después', nivel(d.boya_despues, ins.d, b.tDespues ? Date.parse(b.tDespues) : null, '30 minutos después', b.arranque ? Date.parse(b.arranque) : null));
+              } else {
+                // Una boya de antes de db/216, mientras no se vuelve a medir.
+                fila('Antes → después', `<b class="tabular-nums">${esc(num(d.boya_antes, 0))} → ${esc(num(d.boya_despues, 0))} ${unidad}</b>` +
+                  ' <span class="text-xs text-telecab-muted">(con la regla de antes del 23/10/2026: se vuelve a medir con la de 15 minutos antes y 30 después)</span>');
+              }
               fila('Subió', `<b class="tabular-nums">${esc((d.boya_salto >= 0 ? '+' : '') + num(d.boya_salto, 0))} ${unidad}</b>`);
+              // Lo que gastó andando entre las dos lecturas (los km de Mapon a 4,77 L/100 km).
+              if (b.andando) {
+                fila('Gastó entre medias', `<span class="tabular-nums">+${esc(litB(b.andando.litros))}</span> <span class="text-xs text-telecab-muted">(${esc(num(b.andando.km, 0))} km a 4,77 L/100 km)</span>`);
+              } else if (ins && b.regla === 'ventana') {
+                fila('Gastó entre medias', '<span class="text-telecab-muted">no se suma: Mapon no da los km de este coche a esas horas</span>');
+              }
             }
             if (d.boya_techo != null) {
               const c = b.correccion;
+              // LLENO A RAS (revisión del 23/10/2026): si lo que había más lo
+              // pagado pasa del techo, cerca del techo el aforador no es fiel y
+              // la corrección puede quedarse corta (el 9533MMX del 01/10: 36 L y
+              // 7,59 pagados, y a las 05:02 marcaba 38 cuando por lo gastado
+              // tendría que ir por 41). Solo se dice, y solo en amarillo o rojo
+              // (en verde no cambia nada): no cambia el color, porque pagar más de
+              // lo que cabe es justo lo que hay que ver.
+              const pagado = d.boya_pagados != null ? d.boya_pagados : d.litros;
+              const aRas = d.boya_corregida && c && (d.boya_color === 'amarillo' || d.boya_color === 'rojo') && d.boya_antes != null && pagado != null
+                && Number(d.boya_antes) + Number(pagado) >= Number(d.boya_techo);
               fila('Techo del aforador', `${esc(num(d.boya_techo, 0))} L` + (d.boya_corregida && c
-                ? ` · <span class="text-xs">topó: volvió a bajar a ${esc(num(c.v2, 0))} L a las ${esc(horaMadrid(Date.parse(c.t2)))} habiendo gastado ${esc(num(c.gastado, 1))} L (${esc(c.como)}), así que se repostaron ≈ ${esc(litB(d.boya_litros))}</span>`
+                ? ` · <span class="text-xs">topó: volvió a bajar a ${esc(num(c.v2, 0))} L a las ${esc(horaMadrid(Date.parse(c.t2)))}, habiendo gastado ${esc(num(c.gastado, 1))} L desde la lectura de después (${esc(c.como)}), así que se repostaron ≈ ${esc(litB(d.boya_litros))}</span>` +
+                  (aRas ? `<span class="block text-xs text-telecab-muted">Lo que había (${esc(litB(d.boya_antes))}) más lo pagado (${esc(lit(pagado, 2))}) pasa del techo: el depósito quedó lleno a ras o se pagó más de lo que cabía. Cerca del techo el aforador no es fiel y la corrección puede quedarse corta: mirar el dibujo.</span>` : '')
                 : d.boya_minimo ? ' · <span class="text-xs text-telecab-warn">topó y aún no se ha podido corregir</span>' : ''), 'sm:col-span-2');
             }
             if (b.capacidad) fila('Depósito (Mapon)', `${esc(num(b.capacidad, 0))} L`);
@@ -1066,7 +1191,7 @@
               // Sin corregir el techo, lo que subió es un mínimo.
               fila('Litros según la boya', `<b class="tabular-nums">${d.boya_minimo ? 'al menos ' : ''}${esc(litB(d.boya_litros))}</b>`);
               fila(deExcel(d) ? 'Litros pagados (Excel)' : 'Litros pagados (correo)', `<span class="tabular-nums">${esc(lit(d.litros, deExcel(d) ? 2 : 3))}</span>` +
-                (d.boya_pagados != null ? ` <span class="text-xs text-telecab-muted">· con el otro de la misma parada, ${esc(lit(d.boya_pagados))}</span>` : ''));
+                (d.boya_pagados != null ? ` <span class="text-xs text-telecab-muted">· con el otro de entre las dos lecturas, ${esc(lit(d.boya_pagados))}</span>` : ''));
               // Solo cuenta lo que falta: lo que sube de más se dice, sin penalizar.
               fila('Lo que falta', d.boya_error_pct != null
                 ? `<span class="inline-flex items-center gap-1.5">${punto(d.boya_color, true)}<b class="tabular-nums">${esc(pct(d.boya_error_pct))}</b> ` +

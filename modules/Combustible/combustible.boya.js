@@ -8,42 +8,92 @@
 // LO QUE SE SABE DEL AFORADOR (docs/integraciones/Mapon.md, «Combustible»,
 // medido del 14 al 21/10/2026):
 //
-//   · Litros ENTEROS, y baila ±1 L. Por eso se mira la mediana de 5 lecturas
-//     antes y la de 5 después, nunca una lectura suelta.
+//   · Litros ENTEROS, y baila ±1 L. Por eso, donde hay lecturas juntas, la
+//     mediana de hasta 5, nunca una lectura suelta.
 //   · Solo lee con el coche encendido: mientras se reposta, con el coche
-//     apagado, no hay lecturas. Las de antes son de cuando llegaba a la
-//     gasolinera y las de después, de cuando arrancó. En los Ioniq la aguja
-//     sube despacio (de 10 a 35 L en cuatro minutos tras arrancar, 8997LDK el
-//     22/10), así que «después» se busca hasta 15 minutos más allá del primer
-//     dato alto, no en el primero.
+//     apagado, no hay lecturas. En los Ioniq la aguja sube despacio (de 10 a 35
+//     L en cuatro minutos tras arrancar, 8997LDK el 22/10; de 39 a 43 en nueve,
+//     9775LRH el 10/10), y su aforador solo manda lectura cuando cambia.
 //   · Tiene TECHO: 31 Toyota no marcan nunca más de 40 L, 19 llegan a 45 y los
 //     Ioniq a 43-44. Lo que se eche por encima no se ve. Si después del
 //     repostaje el aforador está en el techo, se corrige como hizo el análisis
 //     del 9001LWJ (Scripts de análisis/mapon-combustible/6-auditar-repostaje.js):
 //     se busca cuándo vuelve a bajar de verdad del techo (mediana de 5 ≤ techo
-//     − 2) y se le suma lo que el coche gastó hasta entonces —el gastado de la
-//     centralita (`can.fuel_total`) si lo da, o los km a 4,77 L/100 km, la media
-//     de la flota—. Lo repostado ≈ (nivel entonces + gastado) − nivel antes.
+//     − 2) y se le suma lo que el coche gastó hasta entonces —los km a 4,77
+//     L/100 km, la media de la flota, como lo de entre medias; el gastado de la
+//     centralita (`can.fuel_total`) solo sin km y con lecturas a pocos minutos
+//     de los dos instantes (revisión del 23/10/2026)—. Lo repostado ≈ (nivel
+//     entonces + gastado) − nivel antes.
 //   · Los Ford Mondeo dan el nivel en PORCENTAJE (otra serie). Sin la capacidad
 //     del depósito no se pasa a litros: el salto se guarda en %, sin error.
 //
-// LA PARADA TIENE QUE SER DE VERDAD. Si dentro de una parada larga el aforador
-// se mueve (`cambioDentro`), el coche estaba encendido y andando: es el GPS el
-// que se quedó clavado, y esa parada no vale ni para el GPS ni para la boya.
+// LA VENTANA FIJA (Camilo, 23/10/2026). El nivel ANTES es el del aforador 15
+// minutos antes de la hora del repostaje (la del correo o la del Excel) y el
+// DESPUÉS, el de 30 minutos después (`ventana`). Ya no se busca la parada.
+// Camilo, con la ficha del 1212MJY delante: «dice que le falta el 100 % de
+// gasolina, pero porque mapon dio los datos después de repostar». Ese coche
+// marcaba 10 L hasta las 17:43:54, repostó apagado, y Mapon no vio la parada en
+// el surtidor: la que dio, de 23 segundos a las 17:46:07, era el coche ya
+// encendido y con el depósito lleno (la aguja subiendo de 25 a 39 L). «Antes de
+// parar» salía 38 L, «al arrancar» 39, y un 95 % rojo de un repostaje de 29 L.
+// Con la ventana fija: 11 L a las 17:31 y 39 a las 18:16, verde.
 //
-// EL SALTO, ALREDEDOR DE LA HORA DEL CORREO. No hace falta encontrar el
-// repostaje entre todos los de la semana (eso hacía 3-repostajes.js con su
-// umbral de 10 L, que dejaría fuera los de 9 L de verdad): se sabe cuándo fue.
-//
-//   · Con la PARADA de Mapon que cubre esa hora (el coche apagado en el
-//     surtidor): «antes» son las 5 últimas lecturas hasta que paró y
-//     «después», las 5 primeras pasados 5 minutos desde que arrancó. Los 5
-//     minutos son por la aguja de los Ioniq; en un Toyota la primera lectura ya
-//     es la buena, y 5 minutos andando gastan unas décimas.
-//   · Sin parada (el coche no se apagó, o Mapon no la vio): las 5 lecturas que
-//     acaban 10 minutos antes de la hora del correo y las 5 que empiezan 10
-//     minutos después. El correo da la hora en minutos y no se sabe si es el
-//     principio o el final del surtidor: 10 minutos a cada lado lo cubren.
+//   · 15 minutos antes, porque el repostaje acaba a la hora del Excel (o cae en
+//     el minuto del correo) y dura unos minutos: a T − 15 el depósito todavía no
+//     ha subido. 30 después, porque la aguja de los Ioniq tarda en llegar arriba
+//     (hasta 16 minutos tras arrancar el 9775LRH, que con la regla vieja salía
+//     −1 L de un repostaje bueno).
+//   · «EL NIVEL A ESA HORA», CON LECTURAS QUE VAN A RATOS (`nivelEn`). Se mira
+//     del lado bueno: para el antes, la última lectura a T − 15 o antes; para el
+//     después, la primera a T + 30 o después. Con ella, las de los 10 minutos
+//     de al lado hacia ese mismo lado (hasta 5), y la mediana si son 3 o más
+//     (los litros enteros bailan ±1 L); si son 1 o 2, la más cercana. Dos clases
+//     de aforador, medidas en la muestra del 23/10/2026: el de los Toyota lee
+//     cada ~30 s con el coche encendido (5 lecturas juntas en 2-3 minutos), y el
+//     de los Ioniq solo cuando cambia (el 9775LRH estuvo 6 h 30 min en 43 L sin
+//     una lectura). Para los dos, la última o la primera lectura ES el nivel que
+//     había: con el coche apagado el nivel no cambia (salvo repostando, y para
+//     llegar al surtidor hay que andar), y con el de los Ioniq la lectura dura
+//     hasta la siguiente. Por eso se busca EN TODA LA SERIE que se le pide a
+//     Mapon (72 h antes y 48 h después; los Ford, 24 h antes): un coche aparcado
+//     la noche entera tiene por la mañana el nivel con el que se quedó. Hasta la
+//     revisión del 23/10/2026 se buscaba solo 12 h, y un coche que se aparcaba
+//     justo antes o justo después de repostar se quedaba «sin medir» con la
+//     lectura en la serie: el 0524MMZ del 05/10 a las 01:39 sube de 32 a 39 L y
+//     no vuelve a leer hasta las 21:25 (19 h después), y era un rojo de verdad
+//     (un 71 %) que desaparecía; el 1210MJY del 01/10, aparcado 13 h antes. Lo
+//     que anduvo entre medias ya lo suman los km (abajo), y el aparcado no suma.
+//     Si falta la de ANTES, no se reintenta: son horas del pasado, y si Mapon
+//     ya tiene lecturas de después, las de antes no van a llegar.
+//   · LA AGUJA AL ARRANCAR. Si la lectura de después es de cuando el coche
+//     despierta (tras 5 minutos sin lecturas) y en sus 10 minutos la aguja SUBE
+//     3 L o más, todavía estaba subiendo: el 0870MMZ marca 16, 16, 19, 28, 29,
+//     29, 30, 31, 36, 38, 38, 39 en dos minutos al arrancar tras repostar, y la
+//     mediana de las cinco primeras sería 19, un rojo de un repostaje bueno (lo
+//     que denunció Camilo, por el otro lado). Entonces vale lo que marca cuando
+//     se asienta: las de pasados 5 minutos, o la última de ese rato. SOLO si
+//     sube: se probó a saltar siempre los 5 primeros minutos tras un hueco y,
+//     en 108 repostajes con las series ya bajadas, cambiaban unos 30 y algunos
+//     a peor —al despertar parado el aforador baila (el 3814KYG: 44, 43, 42,
+//     nueve minutos sin nada, 38, 38, 39 y 43), y el de los Ioniq viene SIEMPRE
+//     tras un hueco porque solo lee al cambiar—. Así no cambia ninguno de los
+//     108 (en todos, el coche arrancó antes de las T + 30 o la aguja ya estaba
+//     quieta) y la rampa se arregla.
+//   · LO QUE GASTA ENTRE MEDIAS SE SUMA (`gastadoAndando`). Entre T − 15 y
+//     T + 30 el coche anda —de mediana 23 km (1,1 L), y hasta 58—, y lo que gasta
+//     hace que el salto salga corto: en un repostaje de 7 L, eso es un 15 %.
+//     Medido en la muestra de 70 repostajes con aforador (23/10/2026): sin
+//     sumarlo, la boya se quedaba de mediana 2,3 L por debajo de lo pagado y
+//     salían 10 amarillos; sumando lo que gastó entre las dos lecturas con los
+//     km de Mapon a 4,77 L/100 km, 0,3 L por debajo y 3 amarillos (los de
+//     verdad). Los km, y no el gastado de la centralita: ese llega cada pocas
+//     horas, y repartirlo en 45 minutos lo reparte también por el rato aparcado
+//     (un 0454MMZ que anduvo 4 km salía con 0,8 L; y con él, 5 amarillos en vez
+//     de 3). Entre las dos LECTURAS que se usaron, no entre los dos instantes:
+//     es entre ellas donde se midió el nivel, y el aforador no siempre baja al
+//     gastar (el 8930KVC marcaba 35 L a las 13:49 y otra vez 35 a las 14:49,
+//     habiendo andado 36 km). Aparcado no hay km: el hueco no suma. Sin km, no
+//     se suma y se dice. El análisis, en Scripts de análisis/combustible-boya-ventana.
 //
 // NO se busca «la subida mayor» entre muchos cortes posibles: se probó el
 // 22/10/2026 con los repostajes de verdad y, con el aforador bailando ±2 L
@@ -51,23 +101,34 @@
 // de después (7909LRJ en el Clot: 13 L donde la subida era de 11). Y «después»
 // tiene que ser DESPUÉS: el 3814KYG repostó a las 16:57 y Mapon aún no tenía
 // lecturas de cuando arrancó; buscando la subida mayor salía «0 L», un rojo
-// de mentira. Sin lecturas de después, se espera y se vuelve a mirar.
+// de mentira. Sin lecturas de después de T + 30, se espera y se vuelve a mirar.
 //
 // Si no hubo repostaje en ese coche, la subida sale de 0-2 L y el déficit, cerca
 // del 100 %: es justo lo que se quiere ver.
 //
 // SOLO CUENTA LO QUE FALTA (23/10/2026, `deficitPct`). Si subió lo pagado o
 // más, no hay nada que auditar: el aforador de muchos coches marca de más.
+//
+// LA PARADA, SOLO PARA EL GPS. `subidaEnParada` y `cambioDentro` miran el
+// aforador alrededor de una parada de Mapon, pero ya no para la boya: para
+// saber si una parada larga es de verdad (combustible.auditoria, andaDentro y
+// subeEnElla).
 
 const L100_FLOTA = 4.77;        // L/100 km de los Corolla del 14 al 21/10/2026 (Mapon.md)
 const TECHO_MINIMO = 38;        // por debajo, el máximo de la serie no es un techo: es que nunca llenó
 const MAXIMO_POSIBLE_L = 80;    // más que esto no cabe en el depósito de un turismo: es una lectura rota
 const VECES_TECHO = 3;          // un techo se repite; una lectura suelta no lo es
-const ANTES_MAX_MS = 6 * 3600e3;      // la última lectura de antes, como mucho 6 h antes (parado no gasta)
-const DESPUES_MAX_MS = 6 * 3600e3;    // la primera de después, como mucho 6 h después
-const AGUJA_MS = 5 * 60e3;            // lo que tarda la aguja del Ioniq en llegar arriba tras arrancar
-const SIN_PARADA_MS = 10 * 60e3;      // sin parada, el margen a cada lado de la hora del correo
-const N = 5;                          // lecturas por lado, y como mínimo 3
+const ANTES_MIN = 15;                 // el nivel ANTES: a T − 15 min (Camilo, 23/10/2026)
+const DESPUES_MIN = 30;               // el nivel DESPUÉS: a T + 30 min
+const JUNTAS_MS = 10 * 60e3;          // las lecturas de al lado que cuentan como el mismo momento
+const KM_JUNTO_MS = 5 * 60e3;         // un km leído a esto de un instante vale para él (el coche acababa de arrancar)
+const HUECO_MS = 5 * 60e3;            // sin lecturas en esto, el coche estaba dormido (encendido, un Toyota lee cada ~30 s-2 min)
+const AGUJA_MS = 5 * 60e3;            // lo que tarda la aguja en llegar arriba tras arrancar con el depósito lleno
+const SUBE_AGUJA_L = 3;               // subir esto en los 10 min de después de despertar no es baile (±1 L): es la aguja
+// LA PARADA, SOLO PARA EL GPS (subidaEnParada): lo de la regla de antes de la boya.
+const PARADA_MAX_MS = 6 * 3600e3;     // la última lectura antes de parar o la primera tras arrancar, como mucho a 6 h
+const N = 5;                          // lecturas por lado, y la mediana con 3 o más
+const H = 3600e3;
 
 /** La mediana como en los análisis: el del medio, o el de arriba de los dos del medio. */
 function mediana(valores) {
@@ -87,46 +148,133 @@ const limpiar = lecturas => (lecturas || [])
   .filter(p => Number.isFinite(p.t) && Number.isFinite(p.v))
   .sort((a, b) => a.t - b.t);
 
+const horaCorta = ms => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }).format(ms);
+
 /**
- * La subida del aforador en el repostaje de las `t` (ms). `parada`: la de
- * Mapon que cubre esa hora, { desde, hasta } en ms, si la hay.
+ * EL NIVEL A UNA HORA `x` (ms), mirado de un lado: `lado` 'antes' (la última
+ * lectura a esa hora o antes) o 'despues' (la primera a esa hora o después),
+ * en toda la serie `s` (la que se le pidió a Mapon). Con ella, las que caen en
+ * sus 10 minutos hacia ese mismo lado (hasta 5): la mediana si son 3 o más —los
+ * litros enteros bailan ±1 L—, y si son 1 o 2, la más cercana —el aforador de
+ * los Ioniq solo lee cuando cambia, y su última lectura es el nivel que había—.
  *
- * → { ok: true, antes, despues, salto, tAntes, tDespues, iDespues, conParada }
+ * DESPUÉS, SI EL COCHE DESPIERTA CON LA AGUJA SUBIENDO (la lectura viene tras 5
+ * minutos sin ninguna y en sus 10 minutos sube 3 L o más), vale lo que marca
+ * cuando se asienta: las de pasados 5 minutos (la mediana si son 3), o la
+ * última de ese rato.
+ * → { v, t: la hora de la lectura que vale, n: cuántas se juntaron,
+ *     arranque: cuándo despertó, si se esperó a la aguja } o null.
+ */
+function nivelEn(s, x, lado) {
+  const antes = lado === 'antes';
+  // `s` va ordenada: para el antes, la última a esa hora o antes.
+  const primeraDespues = s.findIndex(p => (antes ? p.t > x : p.t >= x));
+  const i = antes ? (primeraDespues < 0 ? s.length : primeraDespues) - 1 : primeraDespues;
+  if (i < 0) return null;
+  const ref = s[i];
+  if (!antes && (i === 0 || ref.t - s[i - 1].t >= HUECO_MS)) {
+    const bloque = s.filter(p => p.t >= ref.t && p.t <= ref.t + JUNTAS_MS);
+    const u = bloque[bloque.length - 1];
+    if (bloque.length >= 2 && u.v - bloque[0].v >= SUBE_AGUJA_L) {
+      const tarde = bloque.filter(p => p.t >= ref.t + AGUJA_MS).slice(0, N);
+      return tarde.length >= 3
+        ? { v: mediana(tarde.map(p => p.v)), t: tarde[0].t, n: tarde.length, arranque: ref.t }
+        : { v: u.v, t: u.t, n: 1, arranque: ref.t };
+    }
+  }
+  const juntas = antes ? s.filter(p => p.t <= ref.t && p.t >= ref.t - JUNTAS_MS).slice(-N) : s.filter(p => p.t >= ref.t && p.t <= ref.t + JUNTAS_MS).slice(0, N);
+  return { v: juntas.length >= 3 ? mediana(juntas.map(p => p.v)) : ref.v, t: ref.t, n: juntas.length, arranque: null };
+}
+
+/**
+ * LO QUE SUBIÓ EL AFORADOR EN EL REPOSTAJE de las `t` (ms): el nivel a T − 15
+ * min y a T + 30 min (`nivelEn`). `ahora` (ms): para decir, si aún no se puede,
+ * que todavía no son las T + 30. `desde` (ms): desde cuándo se le pidió la
+ * serie a Mapon, para decirlo si no hay lecturas de antes.
+ *
+ * → { ok: true, antes, despues, salto, tAntes, tDespues, instAntes, instDespues, nAntes, nDespues, arranque }
+ *     tAntes y tDespues: la hora de las lecturas que se usaron (con el coche
+ *     aparcado pueden ser de horas antes o después de los instantes, que van en
+ *     instAntes e instDespues). Lo gastado se cuenta entre las dos lecturas.
+ *     arranque: si la de después se esperó a que subiera la aguja, cuándo arrancó.
  * → { ok: false, motivo, reintentar, sinSerie }
- *     reintentar: las lecturas que faltan pueden llegar luego.
+ *     reintentar: las lecturas que faltan pueden llegar luego (las de después).
  *     sinSerie: no hay ni una lectura en días: el coche no da el nivel.
  */
-function salto(lecturasCrudas, t, { parada } = {}) {
+function ventana(lecturasCrudas, t, { ahora = Date.now(), desde = null } = {}) {
   const s = limpiar(lecturasCrudas);
   if (!s.length) return { ok: false, motivo: 'Mapon no tiene ni una lectura del aforador de este coche en esos días', reintentar: false, sinSerie: true };
-  const conParada = !!(parada && Number.isFinite(parada.desde));
-  if (conParada && parada.hasta == null) {
-    return { ok: false, motivo: 'El coche sigue parado en la gasolinera según Mapon: falta el nivel de cuando arranque', reintentar: true };
+  const instAntes = t - ANTES_MIN * 60e3, instDespues = t + DESPUES_MIN * 60e3;
+  const a = nivelEn(s, instAntes, 'antes');
+  if (!a) {
+    // Son horas del pasado, y la serie tiene lecturas de después: el equipo ya
+    // mandó lo que tenía de antes. No se reintenta (la revisión del 23/10/2026:
+    // el 1210MJY se reintentaba esperando unos datos que no iban a llegar).
+    const horas = desde != null && instAntes > desde ? Math.round((instAntes - desde) / H) : null;
+    return { ok: false, reintentar: false,
+      motivo: `No hay lecturas del aforador ${horas ? `en las ${horas} horas antes de` : 'de antes de'} las ${horaCorta(instAntes)} ` +
+        '(15 minutos antes del repostaje): no se sabe con qué nivel llegó el coche' };
   }
-  // Hasta dónde llega «antes» y desde dónde empieza «después».
-  const finAntes = conParada ? parada.desde + 60e3 : t - SIN_PARADA_MS;
-  const arranque = conParada ? parada.hasta : t + SIN_PARADA_MS;
-
-  const previas = s.filter(p => p.t <= finAntes && p.t >= finAntes - ANTES_MAX_MS).slice(-N);
-  if (previas.length < 3) {
-    return { ok: false, motivo: 'No hay lecturas del aforador en las 6 horas antes del repostaje', reintentar: true };
-  }
-  // Pasados los 5 minutos de la aguja; si en ese rato el coche volvió a parar,
-  // valen las del principio (en un Toyota ya son las buenas).
-  const enVentana = desdeMs => s.filter(p => p.t >= desdeMs && p.t <= arranque + DESPUES_MAX_MS);
-  let siguientes = (conParada ? enVentana(arranque + AGUJA_MS) : enVentana(arranque)).slice(0, N);
-  if (conParada && siguientes.length < 3) siguientes = enVentana(arranque).slice(0, N);
-  if (siguientes.length < 3) {
+  const d = nivelEn(s, instDespues, 'despues');
+  if (!d) {
     return { ok: false, reintentar: true,
-      motivo: 'Todavía no hay lecturas del aforador de después del repostaje (el coche no ha vuelto a arrancar o Mapon aún no las tiene)' };
+      motivo: ahora < instDespues
+        ? `Todavía no son las ${horaCorta(instDespues)} (30 minutos después del repostaje): el nivel de después se mira a esa hora`
+        : `Todavía no hay lecturas del aforador de después de las ${horaCorta(instDespues)} (30 minutos después del repostaje): el coche no ha vuelto a arrancar o Mapon aún no las tiene` };
   }
-  const antes = mediana(previas.map(p => p.v));
-  const despues = mediana(siguientes.map(p => p.v));
-  return {
-    ok: true, antes, despues, salto: despues - antes, conParada,
-    tAntes: previas[previas.length - 1].t, tDespues: siguientes[0].t,
-    iDespues: s.indexOf(siguientes[0]),
-  };
+  return { ok: true, antes: a.v, despues: d.v, salto: d.v - a.v, tAntes: a.t, tDespues: d.t, instAntes, instDespues, nAntes: a.n, nDespues: d.n,
+    arranque: d.arranque };
+}
+
+/**
+ * Los km de una serie acumulada en un instante: interpolando entre las dos
+ * lecturas que lo rodean (`enInstante`) o, si el instante cae justo antes de la
+ * primera o justo después de la última (a 5 minutos), esa. Las lecturas de km
+ * llegan con el coche encendido: si acababa de arrancar, la anterior es de antes
+ * de aparcar y puede no estar en lo pedido, pero en esos segundos no anduvo.
+ */
+function kmEn(serie, t) {
+  const v = enInstante(serie, t);
+  if (v != null) return v;
+  const s = limpiar(serie);
+  if (!s.length) return null;
+  if (t < s[0].t && s[0].t - t <= KM_JUNTO_MS) return s[0].v;
+  const u = s[s.length - 1];
+  return t > u.t && t - u.t <= KM_JUNTO_MS ? u.v : null;
+}
+
+/**
+ * LO QUE GASTÓ ANDANDO entre dos lecturas del aforador (ms): los km de Mapon
+ * (`can.total_distance`) a 4,77 L/100 km, la media de la flota. Aparcado no hay
+ * km, así que un hueco de horas sin lecturas no suma nada.
+ * → { km, litros } (con un decimal) o null si no hay km de esos instantes.
+ */
+function gastadoAndando(km, t1, t2) {
+  const a = kmEn(km, t1), b = kmEn(km, t2);
+  if (a == null || b == null || b < a) return null;
+  return { km: Math.round((b - a) * 10) / 10, litros: Math.round((b - a) * L100_FLOTA / 100 * 10) / 10 };
+}
+
+/**
+ * PARA EL GPS, NO PARA LA BOYA: lo que subió el aforador a través de una parada
+ * de Mapon, { desde, hasta } en ms. «Antes», las 5 últimas lecturas hasta que
+ * paró; «después», las 5 primeras pasados 5 minutos desde que arrancó (la aguja
+ * de los Ioniq), o las del principio si volvió a parar. Es la regla de la boya
+ * de antes del 23/10/2026; se queda para `subeEnElla` (combustible.auditoria):
+ * una parada larga lejos de la gasolinera tras la cual el depósito tiene 5 L
+ * más no es de verdad. → { ok: true, antes, despues, salto } o { ok: false }.
+ */
+function subidaEnParada(lecturasCrudas, parada) {
+  const s = limpiar(lecturasCrudas);
+  if (!s.length || !parada || !Number.isFinite(parada.desde) || parada.hasta == null) return { ok: false };
+  const finAntes = parada.desde + 60e3, arranque = parada.hasta;
+  const previas = s.filter(p => p.t <= finAntes && p.t >= finAntes - PARADA_MAX_MS).slice(-N);
+  const enVentana = desdeMs => s.filter(p => p.t >= desdeMs && p.t <= arranque + PARADA_MAX_MS);
+  let siguientes = enVentana(arranque + AGUJA_MS).slice(0, N);
+  if (siguientes.length < 3) siguientes = enVentana(arranque).slice(0, N);
+  if (previas.length < 3 || siguientes.length < 3) return { ok: false };
+  const antes = mediana(previas.map(p => p.v)), despues = mediana(siguientes.map(p => p.v));
+  return { ok: true, antes, despues, salto: despues - antes };
 }
 
 /**
@@ -194,29 +342,54 @@ function bajaDelTecho(lecturasCrudas, m, techoL) {
 }
 
 /**
+ * El valor de una serie acumulada en `t`, solo si tiene lecturas a menos de 10
+ * minutos a cada lado: interpolar un hueco de horas reparte lo que se gastó
+ * también por el rato que el coche estuvo aparcado.
+ */
+function enInstanteJunto(serie, t) {
+  const s = limpiar(serie);
+  const d = s.findIndex(p => p.t >= t);
+  if (d < 0) return null;
+  if (s[d].t === t) return s[d].v;
+  if (d === 0 || t - s[d - 1].t > JUNTAS_MS || s[d].t - t > JUNTAS_MS) return null;
+  return enInstante(s, t);
+}
+
+/**
  * Lo repostado según la boya, corrigiendo el techo con lo gastado mientras el
- * aforador no podía bajar. `gastado`: la serie de `can.fuel_total` (L); `km`:
- * la del odómetro (km). Una de las dos basta.
+ * aforador no podía bajar. `km`: la serie del odómetro (km); `gastado`: la de
+ * `can.fuel_total` (L).
  *
- * → { litros, corregido: true, gastadoEntre, como, t2, v2 }
+ * POR KM, COMO LO DE ENTRE MEDIAS (revisión del 23/10/2026). Hasta entonces
+ * mandaba el gastado de la centralita, interpolado; pero lo de entre las dos
+ * lecturas se cuenta por km (gastadoAndando: la centralita llega cada pocas
+ * horas, y repartida en un rato reparte también lo aparcado), y en una misma
+ * cuenta salían las dos fuentes según qué lecturas cayeran en la pregunta. El
+ * 1090MJY del 02/10: de 21:46 a 23:23, con 67 km, la centralita daba 1,2 L y
+ * los km 3,2. Ahora, los km; la centralita solo si no hay km y tiene lecturas
+ * a pocos minutos de los dos instantes (`enInstanteJunto`).
+ *
+ * → { litros, corregido: true, gastadoEntre, como, kmEntre, t2, v2 }
  * → { litros: salto, corregido: false, motivo }   sin corregir, y por qué
  */
 function corregirTecho(m, { t2, v2 }, { gastado, km } = {}) {
-  const a = enInstante(gastado, m.tDespues), b = enInstante(gastado, t2);
-  let gastadoEntre = null, como = '';
-  if (a != null && b != null && b >= a) {
-    gastadoEntre = b - a;
-    como = 'gastado de la centralita';
+  let gastadoEntre = null, como = '', kmEntre = null;
+  const ka = kmEn(km, m.tDespues), kb = kmEn(km, t2);
+  if (ka != null && kb != null && kb >= ka) {
+    kmEntre = kb - ka;
+    gastadoEntre = kmEntre * L100_FLOTA / 100;
+    como = `${Math.round(kmEntre)} km a ${String(L100_FLOTA).replace('.', ',')} L/100 km`;
   } else {
-    const ka = enInstante(km, m.tDespues), kb = enInstante(km, t2);
-    if (ka != null && kb != null && kb >= ka) {
-      gastadoEntre = (kb - ka) * L100_FLOTA / 100;
-      como = `${Math.round(kb - ka)} km a ${String(L100_FLOTA).replace('.', ',')} L/100 km`;
+    const a = enInstanteJunto(gastado, m.tDespues), b = enInstanteJunto(gastado, t2);
+    if (a != null && b != null && b >= a) {
+      gastadoEntre = b - a;
+      como = 'gastado de la centralita';
     }
   }
-  if (gastadoEntre == null) return { litros: m.salto, corregido: false, motivo: 'El aforador topó en el techo y no hay gastado ni km de Mapon para corregirlo' };
+  if (gastadoEntre == null) return { litros: m.salto, corregido: false, motivo: 'El aforador topó en el techo y no hay km ni gastado de Mapon para corregirlo' };
   const litros = Math.round((v2 + gastadoEntre - m.antes) * 10) / 10;
-  return { litros, corregido: true, gastadoEntre: Math.round(gastadoEntre * 10) / 10, como, t2, v2 };
+  return { litros, corregido: true, gastadoEntre: Math.round(gastadoEntre * 10) / 10, como,
+    kmEntre: kmEntre == null ? null : Math.round(kmEntre * 10) / 10, t2, v2 };
 }
 
 /**
@@ -292,5 +465,8 @@ function cambioDentro(lecturasCrudas, desde, hasta) {
 }
 
 module.exports = {
-  mediana, salto, techo, topa, esMinimo, bajaDelTecho, corregirTecho, enInstante, deficitPct, diferencia, cambioDentro,
+  ANTES_MIN, DESPUES_MIN, L100_FLOTA,
+  mediana, ventana, gastadoAndando, techo, topa, esMinimo, bajaDelTecho, corregirTecho, enInstante, deficitPct, diferencia,
+  // Para el GPS (¿la parada es de verdad?), no para la boya.
+  subidaEnParada, cambioDentro,
 };

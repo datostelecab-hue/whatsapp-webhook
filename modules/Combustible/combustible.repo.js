@@ -865,10 +865,10 @@ async function paraAuditar({ margenMin, esperasMin, limite, recientesHoras = 48,
 
 /**
  * Los otros repostajes leídos del mismo coche entre dos instantes (ms): los de
- * la misma parada, que suben el depósito JUNTOS. El 8203LTR pagó dos veces en
- * el mismo minuto tres días de octubre (una con la app y otra con tarjeta o en
- * efectivo): la boya ve un solo salto, y comparado con cada uno por separado
- * los dos salían verdes. → [{ id, litros, hora }]
+ * entre las dos lecturas de la boya, que suben el depósito JUNTOS. El 8203LTR
+ * pagó dos veces en el mismo minuto tres días de octubre (una con la app y otra
+ * con tarjeta o en efectivo): la boya ve un solo salto, y comparado con cada uno
+ * por separado los dos salían verdes. → [{ id, litros, hora }]
  */
 async function vecinosDe(id, matriculaNorm, desdeMs, hastaMs) {
   if (!matriculaNorm) return [];
@@ -979,9 +979,13 @@ const CAMPOS_LISTA = `
   r.boya_tipo, r.boya_antes::float AS boya_antes, r.boya_despues::float AS boya_despues, r.boya_salto::float AS boya_salto,
   r.boya_litros::float AS boya_litros, r.boya_corregida, r.boya_techo::float AS boya_techo,
   r.boya_error_pct::float AS boya_error_pct, r.boya_motivo,
-  -- Con cuántos litros se compara la boya si hubo otro repostaje en la misma
-  -- parada (la suma; combustible.auditoria): sin él, los del repostaje.
+  -- Con cuántos litros se compara la boya si hubo otro repostaje del mismo
+  -- coche entre sus dos lecturas (la suma; combustible.auditoria): sin él, los
+  -- del repostaje.
   (r.auditoria_detalle -> 'boya' ->> 'pagados')::float AS boya_pagados,
+  -- Devuelto a la cola por db/216 para medir otra vez la boya (con la ventana
+  -- fija); el GPS se queda. NULL si no (la lista quita lo vacío: no pesa).
+  CASE WHEN r.auditoria_detalle ? 'soloBoya' THEN true END AS boya_otra_vez,
   -- El coche dado de baja en Vehículos (el 6287LBG reposta en octubre).
   (SELECT vb.baja_at IS NOT NULL FROM vehiculo vb WHERE vb.id = r.vehiculo_id) AS vehiculo_de_baja,
   -- Cómo acabó el turno del bot: un turno «auto-cerrado» lo cerró el sistema a

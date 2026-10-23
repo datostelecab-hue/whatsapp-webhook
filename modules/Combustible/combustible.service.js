@@ -693,8 +693,8 @@ function conColores(f) {
   const gps = semaforo.colorGps(f.gps_distancia_m);
   // LA BOYA SOLO CUENTA LO QUE FALTA (23/10/2026): `boya_error_pct` es el
   // déficit desde db/215, que rehízo los de antes desde lo medido. Se compara
-  // con lo pagado, o con la suma si hubo otro repostaje del mismo coche en la
-  // misma parada (`boya_pagados`, combustible.auditoria). Sin déficit guardado
+  // con lo pagado, o con la suma si hubo otro repostaje del mismo coche entre
+  // las dos lecturas de la boya (`boya_pagados`, combustible.auditoria). Sin déficit guardado
   // es que no se compara (falta la boya, o un mínimo que no llega a lo pagado).
   const deficit = f.boya_error_pct == null ? null : Number(f.boya_error_pct);
   const dif = deficit == null ? null : boya.diferencia(f.boya_litros, f.boya_pagados != null ? f.boya_pagados : f.litros);

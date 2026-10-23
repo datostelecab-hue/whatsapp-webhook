@@ -7,6 +7,32 @@ actualizado: 2026-10-23
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-23 · Combustible: la revisión de la ventana fija
+
+Una verificación aparte, con lo que da Mapon en crudo en 45 repostajes (36 de producción fuera de la muestra), antes de desplegar la ventana fija. Las decisiones:
+
+- **La lectura de cada lado se busca en toda la serie que se pide** (72 h antes y 48 h después), no 12 horas: el 0524MMZ del 05/10, aparcado casi 20 h nada más repostar, era un rojo de verdad (un 71 %) que se quedaba «sin medir» y db/216 le habría borrado. Sin lecturas de antes no se reintenta: son del pasado.
+- **db/216 solo toca lo que auditó el código de antes**, por la versión del detalle (< 3), que el código nuevo escribe siempre. La marca de la boya (`regla: 'ventana'`) solo está cuando la ventana mide, y lo que queda a medias entre el despliegue y la migración habría recibido una boya vieja falsa. Y un reintento ya no devuelve una boya de la regla de antes.
+- **La corrección del techo va por km**, como lo de entre medias; la centralita, solo sin km y con lecturas a pocos minutos. Se mezclaban las dos fuentes en una misma cuenta.
+- **La aguja al despertar, solo si sube**: si la lectura de después llega tras un hueco y sube 3 L o más en 10 minutos, vale la de pasados 5. Se descartó saltar siempre esos 5 minutos: cambiaba unos 30 de 108 y algunos a peor (al despertar parado el aforador baila; el de los Ioniq siempre llega tras un hueco).
+- **El dibujo va de T − 60 a T + 90** y la lectura lejana se dice al pie; el eje, con la lectura más baja y la más alta.
+- **Se dice cuándo la cifra la deciden los km** (más de la mitad de los litros y uno como poco). Se descartó una cifra de L/100 km para los Ioniq (Mapon no da su gastado: no hay con qué medirla) y tratar como mínimo lo corregido cuando lo que había más lo pagado pasa del techo (quitaría el color a quien paga más de lo que cabe); eso último, la ficha lo dice.
+
+Medido en la muestra (94, Mapon de verdad): la boya de 62 verdes, 5 amarillos, 5 rojos y 6 sin color con la regla vieja a 70, 3, 3 y 2; los tres del 3110KSM ya se miden; el GPS, igual en los 94. → [[Combustible#La revisión de la ventana fija (23/10/2026, tarde)]]
+
+## 2026-10-23 · Combustible: la boya con la ventana fija (db/216)
+
+*«Aquí hay un error de auditoría ya que dice que le falta el 100% de gasolina, pero porque mapon dio los datos después de repostar, audítalo con el nivel de combustible 15 minutos antes del excel y luego media hora después del excel.»* El 1212MJY (22/10 17:46, 30,69 L) salía rojo, un 95 %: Mapon no vio la parada en el surtidor, y la que dio empezaba con el depósito ya lleno, así que «antes de parar» ya era después de repostar.
+
+Las decisiones:
+
+- **La boya mide el nivel del aforador 15 minutos antes y 30 minutos después** de la hora del repostaje (la del Excel o la del correo), para Petroprix y para Ballenoil. Ya no busca la parada; el GPS sigue con la suya. El techo y el mínimo, como antes, con el después a T + 30.
+- **El nivel a esa hora, del lado bueno**: la última lectura a T − 15 o antes y la primera a T + 30 o después, hasta 12 horas (en la revisión, en toda la serie: arriba; aparcado el nivel no cambia), con la mediana de las de sus 10 minutos si son 3 o más y, si no, la más cercana: el aforador de los Ioniq solo lee cuando cambia.
+- **Se suma lo que gastó andando entre las dos lecturas**, con los km de Mapon a 4,77 L/100 km. Medido en 70 repostajes: sin sumarlo la boya salía de mediana 2,3 L corta y daba 10 amarillos; con los km, 0,3 L y 3 amarillos. Se descartó el gastado de la centralita para esto: llega cada pocas horas (5 amarillos).
+- **db/216 vuelve a medir solo la boya de lo ya auditado** (`soloBoya`: el GPS se queda y no se le pregunta a Mapon), quita la boya vieja de las columnas (la guarda en el detalle) y no pone los intentos a cero. Se descartó rehacer la auditoría entera: el GPS no ha cambiado de regla y serían cientos de preguntas de paradas y posiciones para lo mismo.
+
+Medido en la muestra (78 con boya, Mapon de verdad): de 62 verdes, 5 amarillos y 5 rojos a 67, 3 y 3; pasan a verde el 1212MJY y el 9775LRH (rojos de mentira), el 8930KVC y el 0730MMZ; los tres rojos de verdad (8997LDK dos veces, 8512LDS) siguen rojos. El GPS, idéntico en los 94. → [[Combustible#La boya con la ventana fija (23/10/2026, db/216)]]
+
 ## 2026-10-23 · Combustible, revisión del Excel: las paradas que no son de verdad y «el último» del bot
 
 La revisión del importador de Petroprix, con Mapon de verdad (solo lectura) y el Excel real en el entorno de pruebas. Las decisiones:
