@@ -42,6 +42,20 @@
 // gasolinera del correo: elegir la gasolinera por dónde estaba el coche sería
 // darle la razón antes de mirarlo. El GPS solo enseña, aparte, cuál de la lista
 // tenía más cerca.
+//
+// PETROPRIX, POR SU TEXTO EXACTO (db/215, 23/10/2026). Su Excel trae en la
+// celda «Gasolinera» el nombre, un salto de línea y la dirección con su código
+// postal, y Camilo: «las direcciones siempre llegan exactamente como ves». Por
+// palabras se confunden: «Alcobendas» y «Alcobendas 2», «Parla» y «Parla 2»,
+// «Leganés» y «Leganes 2 » (el «2» no es un romano, y con la dirección dentro
+// sobran palabras que señalan a otras). Así que cada texto de la celda es un
+// alias de su gasolinera (`gasolinera_alias` con tipo 'texto') y se casa con lo
+// mínimo normalizado (`textoExacto`): los saltos de línea, los espacios de los
+// bordes y los repetidos. La mala codificación («CantueÃ±a») se queda: llega
+// siempre igual. Si el texto no está, vale su DIRECCIÓN (la segunda línea) si
+// es la de una sola gasolinera —por si un día cambian el nombre—, y si tampoco,
+// por palabras como Ballenoil, pero solo con la PRIMERA línea (el nombre):
+// «Getafe 2\nCalle Fuenlabrada 3» por palabras casaría con «Fuenlabrada 3».
 
 const ROMANOS = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
 
@@ -156,18 +170,63 @@ function casar(estacion, gasolineras, { sede } = {}) {
 }
 
 /**
- * La gasolinera de un repostaje: primero lo que alguien casó a mano para ese
- * nombre de estación (`alias`: Map 'proveedor|clave' → id), y si no, por el
- * nombre entre las del mismo proveedor.
+ * El texto de una celda con lo MÍNIMO normalizado, para casarlo tal cual: los
+ * saltos de línea (\r\n, \r → \n), los espacios del principio y del final de
+ * cada línea, los repetidos y las líneas vacías; y la forma de las tildes
+ * (NFC), que no cambia lo que se lee. Nada más: «CantueÃ±a» sigue siendo
+ * «CantueÃ±a» y «C\ Plasencia» sigue con su barra.
+ */
+const textoExacto = texto => String(texto == null ? '' : texto)
+  .normalize('NFC')
+  .replace(/\r\n?/g, '\n')
+  .replace(/[ \t ]+/g, ' ')
+  .split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+
+/** La primera línea (el nombre) y lo de después (la dirección) de un texto ya exacto. */
+const primeraLinea = t => textoExacto(t).split('\n')[0] || '';
+const direccionDe = t => textoExacto(t).split('\n').slice(1).join('\n');
+
+/**
+ * La gasolinera de un repostaje, por este orden:
+ *   1. lo que alguien casó a mano para ese nombre de estación (`alias`: Map
+ *      'proveedor|clave' → id; la clave, por palabras);
+ *   2. el texto exacto de la celda del Excel (`textos`: Map 'proveedor|texto'
+ *      → id; los de db/215) → 'texto';
+ *   3. su dirección, si es la de UNA sola gasolinera de `textos` → 'direccion';
+ *   4. por las palabras de la primera línea, entre las del mismo proveedor.
+ *
+ * Lo puesto a mano va primero: es alguien que miró y decidió, también por
+ * encima de lo cargado en la migración.
  *
  * → { como, gasolinera, gasolineraId, candidatas (ids) }
  */
-function elegir(estacion, { proveedor, sede, gasolineras, alias }) {
+function elegir(estacion, { proveedor, sede, gasolineras, alias, textos }) {
   const delProveedor = (gasolineras || []).filter(g => g.proveedor === proveedor);
-  const aMano = alias && alias.get(`${proveedor}|${normalizar(estacion).clave}`);
-  const puesta = aMano && delProveedor.find(g => g.id === aMano);
-  if (puesta) return { como: 'alias', gasolinera: puesta, gasolineraId: puesta.id, candidatas: [] };
-  const r = casar(estacion, delProveedor, { sede });
+  const deId = id => (id ? delProveedor.find(g => g.id === id) : null);
+  const aMano = deId(alias && alias.get(`${proveedor}|${normalizar(estacion).clave}`));
+  if (aMano) return { como: 'alias', gasolinera: aMano, gasolineraId: aMano.id, candidatas: [] };
+
+  const exacto = textoExacto(estacion);
+  const porTexto = deId(textos && textos.get(`${proveedor}|${exacto}`));
+  if (porTexto) return { como: 'texto', gasolinera: porTexto, gasolineraId: porTexto.id, candidatas: [] };
+
+  const dir = direccionDe(exacto);
+  if (dir && textos) {
+    const ids = new Set();
+    for (const [k, id] of textos) {
+      const [p, ...resto] = k.split('|');
+      if (p === proveedor && direccionDe(resto.join('|')) === dir && deId(id)) ids.add(id);
+    }
+    if (ids.size === 1) { const g = deId([...ids][0]); return { como: 'direccion', gasolinera: g, gasolineraId: g.id, candidatas: [] }; }
+    if (ids.size > 1) return { como: 'ambiguo', gasolinera: null, gasolineraId: null, candidatas: [...ids] };
+  }
+
+  const r = casar(dir ? primeraLinea(exacto) : estacion, delProveedor, { sede });
+  // Con el Excel, por palabras solo vale lo EXACTO: su número es arábigo y no
+  // cuenta como el romano de Ballenoil, así que «Getafe 2» (una nueva) casaría
+  // «parecido» con «Getafe». Parecido es dudosa: ninguna, con la candidata, y
+  // se pone a mano.
+  if (dir && r.como === 'parecido') return { como: 'ambiguo', gasolinera: null, gasolineraId: null, candidatas: [r.gasolinera.id] };
   return { como: r.como, gasolinera: r.gasolinera, gasolineraId: r.gasolinera ? r.gasolinera.id : null,
     candidatas: r.candidatas.map(g => g.id) };
 }
@@ -205,12 +264,14 @@ function masCercana(punto, gasolineras) {
 function distanciaA({ posicion, gasolinera, como, estacion, sinPosicion }) {
   if (!posicion) return { distancia: null, motivo: sinPosicion || 'No se sabe dónde estaba el coche a esa hora' };
   if (!gasolinera) {
+    // La celda de Petroprix trae el nombre y la dirección en dos líneas: en una frase, con « · ».
+    const dicha = String(estacion || '').replace(/\s*\n\s*/g, ' · ');
     return { distancia: null, motivo: como === 'ambiguo'
-      ? `«${estacion || ''}» vale para varias gasolineras de la lista: no se casa con ninguna (se puede poner a mano)`
-      : `«${estacion || ''}» no casa con ninguna gasolinera de la lista (se puede poner a mano)` };
+      ? `«${dicha}» vale para varias gasolineras de la lista: no se casa con ninguna (se puede poner a mano)`
+      : `«${dicha}» no casa con ninguna gasolinera de la lista (se puede poner a mano)` };
   }
   if (!tieneCoordenadas(gasolinera)) return { distancia: null, motivo: `${gasolinera.nombre} no tiene coordenadas en la lista` };
   return { distancia: metros(posicion, gasolinera), motivo: null };
 }
 
-module.exports = { normalizar, casar, elegir, metros, masCercana, distanciaA };
+module.exports = { normalizar, textoExacto, primeraLinea, direccionDe, casar, elegir, metros, masCercana, distanciaA };

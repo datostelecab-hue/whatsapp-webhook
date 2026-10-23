@@ -9,8 +9,18 @@
 //   como me dijiste que llegaba hasta un 33% de error, entonces de verde < 35%,
 //   de amarillo <65% y rojo >= 65%.»
 //
-//   GPS   distancia del coche a la gasolinera del correo:  < 700 m · < 1600 m · ≥ 1600 m
-//   Boya  |litros de la boya − litros del correo| / litros: < 35 %  · < 65 %   · ≥ 65 %
+// Y el 23/10/2026, de la boya: «En la auditoría, si subió tanto % por encima no
+// importa, la auditoría va por debajo».
+//
+//   GPS   distancia del coche a la gasolinera:                       < 700 m · < 1600 m · ≥ 1600 m
+//   Boya  DÉFICIT: max(0, litros pagados − boya) / litros pagados:   < 35 %  · < 65 %   · ≥ 65 %
+//
+// LA BOYA SOLO CUENTA LO QUE FALTA (combustible.boya.deficitPct). Hasta el
+// 23/10/2026 era |boya − pagado| / pagado, por arriba y por abajo, y el 7909LRJ
+// (su aforador marca 3-4 L de más) salía amarillo en dos repostajes pequeños
+// sin que faltara gasolina. Si el depósito subió lo pagado o más, es 0 %: verde,
+// suba lo que suba. La pantalla lo dice: «faltan X L (Y %)» o «subió X L más de
+// lo pagado», sin penalizar.
 //
 // El 33 % es lo que se equivoca el aforador coche a coche sin calibrar (de un
 // 33 % menos en el 0802MJY a un 13 % más en el 1085MJY; Mapon.md). Por eso el
@@ -22,21 +32,23 @@
 // cambia todo el histórico con ellos.
 //
 // EL UMBRAL SE APLICA A LA CIFRA QUE SE VE. Los metros se guardan enteros y el
-// error con un decimal, y con eso se decide: 699,6 m son «700 m», amarillo, y
+// déficit con un decimal, y con eso se decide: 699,6 m son «700 m», amarillo, y
 // un 34,96 % es «35,0 %», amarillo. Decidido así el 23/10/2026 para que lo que
 // dice la pantalla y su color no se contradigan nunca («700 m» en verde no se
 // entendería). La diferencia no significa nada: el GPS se mueve varios metros y
 // el aforador va en litros enteros.
 //
-// UN MÍNIMO NO DA VERDE. Si el aforador topó en su techo y no se pudo corregir,
-// el error guardado es «como poco ese» (combustible.boya.esMinimo): basta para
-// decir amarillo o rojo, pero no para decir verde, porque el de verdad puede
-// ser mayor. Un mínimo por debajo del 35 % queda sin color (revisión del
-// 23/10/2026: el 3814KYG salía verde con «13,6 %» cuando eran al menos 29 L).
+// UN MÍNIMO SOLO DICE VERDE O NADA. Si el aforador topó en su techo y no se pudo
+// corregir, lo que subió es «como poco eso» (combustible.boya.esMinimo). Si ese
+// mínimo ya llega a lo pagado, el déficit es 0 y es VERDE: como poco entró lo
+// pagado. Si se queda corto, no se puede saber cuánto falta —puede ser solo el
+// techo— y va SIN COLOR (la auditoría ni guarda el déficit). Hasta el 23/10/2026
+// era al revés: con el error en valor absoluto, un mínimo por encima de lo
+// pagado era «como poco ese error» y solo podía decir amarillo o rojo.
 
 const UMBRALES = {
   gpsM: [700, 1600],        // verde por debajo del primero, amarillo del segundo, rojo desde ahí
-  boyaPct: [35, 65],
+  boyaPct: [35, 65],        // del déficit
 };
 
 const ORDEN = { verde: 1, amarillo: 2, rojo: 3 };
@@ -51,12 +63,13 @@ function tramo(valor, [verde, amarillo]) {
 const colorGps = metros => tramo(metros, UMBRALES.gpsM);
 
 /**
- * El color de la boya por su error en % (null sin error). Con `minimo` (el
- * error es como poco ese), solo amarillo o rojo: un verde no se puede afirmar.
+ * El color de la boya por su DÉFICIT en % (null sin déficit). Con `minimo` (lo
+ * que subió es como poco eso): 0 % es verde y cualquier otro, sin color.
  */
 function colorBoya(pct, { minimo } = {}) {
   const c = tramo(pct, UMBRALES.boyaPct);
-  return minimo && c === 'verde' ? null : c;
+  if (!minimo || c == null) return c;
+  return Number(pct) === 0 ? 'verde' : null;
 }
 
 /** El peor de varios colores; null si ninguno tiene. */

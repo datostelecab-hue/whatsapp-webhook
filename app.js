@@ -48,7 +48,7 @@ const jsonGlobal = express.json({ limit: '2mb' });
 // de su router. Tienen que saltarse este parser: si corre antes, rechaza la
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.
 const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento', '/facturas/api/pdf',
-  '/inspecciones/api/importar', '/taller/api/citas/importar'];
+  '/inspecciones/api/importar', '/taller/api/citas/importar', '/combustible/api/importar'];
 app.use((req, res, next) => {
   if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
@@ -902,18 +902,27 @@ if (process.env.CITAS_TALLER_AVISOS !== 'off') {
 // detrás y aparte: un Mapon caído no toca la lectura del correo, y un buzón que
 // no entra no impide auditar lo que ya está guardado. Se apaga sola con
 // COMBUSTIBLE_AUDITORIA=off.
-if (process.env.COMBUSTIBLE_CORREO !== 'off') {
+//
+// LAS DOS BANDERAS SON INDEPENDIENTES (db/215, 23/10/2026). Los repostajes del
+// Excel de Petroprix no llegan por correo: apagar el buzón (un problema de
+// DonDominio) no puede dejarlos sin auditar ni esperando a BOLT para siempre.
+// Con el correo apagado, el cron hace los repasos que no son del correo
+// (combustible.repasar: BOLT pendiente, el bot) y la auditoría.
+const COMBUSTIBLE_CORREO = process.env.COMBUSTIBLE_CORREO !== 'off';
+const COMBUSTIBLE_AUDITORIA = process.env.COMBUSTIBLE_AUDITORIA !== 'off';
+if (COMBUSTIBLE_CORREO || COMBUSTIBLE_AUDITORIA) {
   programar('4,14,24,34,44,54 * * * *', async () => {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
     const combustible = require('./modules/Combustible/combustible.service');
     try {
-      await combustible.leerBuzon({ origen: 'cron' });
+      if (COMBUSTIBLE_CORREO) await combustible.leerBuzon({ origen: 'cron' });
+      else await combustible.repasar();
     } catch (error) {
-      // leerBuzon no lanza; esto es por si revienta antes de entrar.
+      // leerBuzon y repasar no lanzan; esto es por si revienta antes de entrar.
       console.error(`❌ [CRON Combustible] ${error.stack || error.message}`);
     }
-    if (process.env.COMBUSTIBLE_AUDITORIA === 'off') return;
+    if (!COMBUSTIBLE_AUDITORIA) return;
     try {
       await combustible.auditarPendientes({ origen: 'cron' });
     } catch (error) {

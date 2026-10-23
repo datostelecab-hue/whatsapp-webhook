@@ -274,6 +274,163 @@ async function cocheDe(matricula) {
 }
 
 /**
+ * `cocheDe` para muchas matrículas de una vez (las 83 de un Excel), con el
+ * modelo (para el aviso del diésel) y si está dado de baja. Las mismas reglas:
+ * Vehículos (el vivo antes que el de baja), si no la empresa de BOLT que lo
+ * tiene. → Map(matrícula normalizada → { vehiculoId, sede, marcaModelo, deBaja })
+ */
+async function cochesDe(matriculas) {
+  const ms = [...new Set((matriculas || []).map(m => String(m || '').toUpperCase().replace(/[^A-Z0-9]/g, '')).filter(Boolean))];
+  if (!ms.length) return new Map();
+  const r = await db.consulta(
+    `SELECT m.norm, v.id AS vehiculo_id, v.marca_modelo, (v.baja_at IS NOT NULL) AS de_baja,
+            COALESCE(v.sede,
+              (SELECT s.sede FROM sede_bolt_vehiculo s WHERE s.matricula = m.norm ORDER BY s.visto_at DESC LIMIT 1),
+              (SELECT f.sede FROM fv_vehiculo fv JOIN flota f ON f.company_id = fv.flota_id
+                WHERE upper(regexp_replace(fv.matricula, '[^A-Za-z0-9]', '', 'g')) = m.norm
+                ORDER BY fv.visto_at DESC NULLS LAST LIMIT 1)) AS sede
+       FROM unnest($1::text[]) AS m(norm)
+       LEFT JOIN LATERAL (SELECT v.id, v.sede, v.marca_modelo, v.baja_at FROM vehiculo v WHERE v.matricula_norm = m.norm
+                           ORDER BY (v.baja_at IS NULL) DESC, v.id DESC LIMIT 1) v ON TRUE`, [ms]);
+  return new Map(r.rows.map(x => [x.norm, { vehiculoId: x.vehiculo_id ? Number(x.vehiculo_id) : null, sede: x.sede || null,
+    marcaModelo: x.marca_modelo || null, deBaja: !!x.de_baja }]));
+}
+
+// ── EL EXCEL DE PETROPRIX (db/215) ──────────────────────────────────────────
+
+/** Empieza una importación y devuelve su id. */
+async function empezarImportacion({ proveedor, fichero, hoja, huella, usuarioId, modoPruebas }) {
+  const r = await db.consulta(
+    `INSERT INTO repostaje_importacion (proveedor, fichero, hoja, huella, usuario_id, modo_pruebas)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [proveedor, fichero ? String(fichero).slice(0, 200) : null, hoja ? String(hoja).slice(0, 60) : null,
+     huella || null, usuarioId || null, !!modoPruebas]);
+  return Number(r.rows[0].id);
+}
+
+async function cerrarImportacion(id, c = {}) {
+  await db.consulta(
+    `UPDATE repostaje_importacion
+        SET terminada_at = now(), filas = $2, nuevas = $3, ya_estaban = $4, con_error = $5, con_aviso = $6,
+            desde_at = $7, hasta_at = $8, error = $9, detalle = $10
+      WHERE id = $1`,
+    [id, c.filas || 0, c.nuevas || 0, c.yaEstaban || 0, c.conError || 0, c.conAviso || 0,
+     c.desde ? new Date(c.desde) : null, c.hasta ? new Date(c.hasta) : null,
+     c.error ? String(c.error).slice(0, 2000) : null, c.detalle ? JSON.stringify(c.detalle) : null]);
+}
+
+const CAMPOS_IMPORTACION = `
+  i.id, i.proveedor, i.fichero, i.hoja, i.huella, i.empezada_at, i.terminada_at, ${LOCAL('i.empezada_at')} AS empezada_local,
+  i.filas, i.nuevas, i.ya_estaban, i.con_error, i.con_aviso, i.modo_pruebas, i.error, i.detalle,
+  ${LOCAL('i.desde_at')} AS desde_local, ${LOCAL('i.hasta_at')} AS hasta_local,
+  NULLIF(btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')), '') AS usuario`;
+
+/** Las últimas importaciones, para la pantalla. */
+async function importaciones(limite = 30) {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS_IMPORTACION} FROM repostaje_importacion i LEFT JOIN usuario u ON u.id = i.usuario_id
+      ORDER BY i.empezada_at DESC LIMIT $1`, [Math.min(Number(limite) || 30, 200)]);
+  return r.rows.map(x => ({ ...x, id: Number(x.id) }));
+}
+
+/** La última importación terminada de ese mismo fichero (por su huella), o null. */
+async function importacionConHuella(huella) {
+  if (!huella) return null;
+  const r = await db.consulta(
+    `SELECT ${CAMPOS_IMPORTACION} FROM repostaje_importacion i LEFT JOIN usuario u ON u.id = i.usuario_id
+      WHERE i.huella = $1 AND i.terminada_at IS NOT NULL ORDER BY i.empezada_at DESC LIMIT 1`, [huella]);
+  return r.rows[0] ? { ...r.rows[0], id: Number(r.rows[0].id) } : null;
+}
+
+/**
+ * Hasta cuándo llega cada proveedor que entra por Excel: el último repostaje y
+ * la última importación. Lo dice la nota de la pantalla: sin correo, la lista
+ * solo está al día hasta el último Excel que se subió. Lo del futuro no cuenta:
+ * el importador ya no lo deja entrar, pero «hasta el 25/10» un 23/10 no se
+ * entendería.
+ */
+async function ultimaImportacion() {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS_IMPORTACION},
+            (SELECT ${LOCAL('max(repostaje_at)')} FROM repostaje
+              WHERE origen = 'excel' AND estado = 'leido' AND repostaje_at <= now() + interval '10 minutes') AS ultimo_local
+       FROM repostaje_importacion i LEFT JOIN usuario u ON u.id = i.usuario_id
+      WHERE i.terminada_at IS NOT NULL AND i.error IS NULL
+      ORDER BY i.empezada_at DESC LIMIT 1`);
+  return r.rows[0] ? { ...r.rows[0], id: Number(r.rows[0].id) } : null;
+}
+
+// Las columnas que trae una fila del Excel, en el orden de jsonb_to_recordset.
+const COLUMNAS_EXCEL = `proveedor text, importacion_id bigint, excel_fila int, excel_clave text, excel_crudo jsonb,
+  avisos text[], estacion text, matricula text, repostaje_at timestamptz, importe numeric, litros numeric,
+  carburante text, metodo_pago text, vehiculo_tipo text, vehiculo_id bigint, sede text,
+  gasolinera_id bigint, gasolinera_como text, gasolinera_candidatas bigint[]`;
+
+/**
+ * Mete las filas del Excel que no estaban, todas en una sentencia, y dice
+ * cuáles entraron. Las que ya estaban (la misma `excel_clave`, o el mismo
+ * repostaje: proveedor, coche, segundo e importe) se quedan fuera sin error:
+ * `ON CONFLICT DO NOTHING` SIN diana, porque una fila puede chocar con dos
+ * índices únicos (Trampas conocidas). Ordenadas por la clave, para que dos
+ * importaciones a la vez cojan las filas en el mismo orden y no se crucen.
+ * → [{ id, clave }] de las que entraron.
+ */
+async function guardarDelExcel(filas) {
+  if (!filas || !filas.length) return [];
+  const datos = [...filas].sort((a, b) => (a.excel_clave < b.excel_clave ? -1 : 1));
+  const r = await db.consulta(
+    `INSERT INTO repostaje (proveedor, origen, importacion_id, excel_fila, excel_clave, excel_crudo, recibido_at, estado,
+                            avisos, estacion, matricula, repostaje_at, importe, litros, carburante, metodo_pago, vehiculo_tipo,
+                            vehiculo_id, sede, gasolinera_id, gasolinera_como, gasolinera_candidatas)
+     SELECT x.proveedor, 'excel', x.importacion_id, x.excel_fila, x.excel_clave, x.excel_crudo, now(), 'leido',
+            x.avisos, x.estacion, x.matricula, x.repostaje_at, x.importe, x.litros, x.carburante, x.metodo_pago, x.vehiculo_tipo,
+            x.vehiculo_id, x.sede, x.gasolinera_id, x.gasolinera_como, x.gasolinera_candidatas
+       FROM jsonb_to_recordset($1::jsonb) AS x(${COLUMNAS_EXCEL})
+     ON CONFLICT DO NOTHING
+     RETURNING id, excel_clave`, [JSON.stringify(datos)]);
+  return r.rows.map(x => ({ id: Number(x.id), clave: x.excel_clave }));
+}
+
+/** Las claves de esas filas que ya están en la base (para contar «ya estaban» sin intentar meterlas). */
+async function clavesYaGuardadas(proveedor, claves) {
+  if (!claves || !claves.length) return new Set();
+  const r = await db.consulta(
+    `SELECT excel_clave FROM repostaje WHERE proveedor = $1 AND excel_clave = ANY ($2::text[])`, [proveedor, claves]);
+  return new Set(r.rows.map(x => x.excel_clave));
+}
+
+/**
+ * LA MISMA FILA CON LA HORA CORRIDA. La clave es la hora tal cual la escribe el
+ * Excel (lector.petroprixExcel): si una exportación posterior pinta la misma
+ * fila una hora antes o después (un Petroprix que pasa sus horas con el desfase
+ * de HOY, después del cambio de hora del 25/10) o con unos segundos de
+ * diferencia, la clave es otra y entraría repetida. `ux_rep_repostaje` no lo
+ * para: el instante no es el mismo. Esto busca, para cada fila nueva, una del
+ * Excel ya guardada del mismo coche, los mismos litros y el mismo importe a
+ * ±2 s o a una hora ±2 s. Dos repostajes de verdad así no existen.
+ * `filas`: [{ clave, matricula, litros, importe, instante (ISO) }]
+ * → Map(clave → { id, segundos, guardada }) de las que ya estaban.
+ */
+async function casiIgualesDelExcel(proveedor, filas) {
+  if (!filas || !filas.length) return new Map();
+  const r = await db.consulta(
+    `SELECT x.clave, r.id, r.segundos, ${LOCAL('r.repostaje_at')} AS guardada
+       FROM jsonb_to_recordset($2::jsonb) AS x(clave text, matricula text, litros numeric, importe numeric, instante timestamptz)
+       JOIN LATERAL (
+         SELECT o.id, o.repostaje_at, EXTRACT(EPOCH FROM (x.instante - o.repostaje_at))::int AS segundos
+           FROM repostaje o
+          WHERE o.proveedor = $1 AND o.excel_clave IS NOT NULL AND o.excel_clave <> x.clave
+            AND o.matricula_norm = x.matricula AND o.litros = x.litros AND o.importe = x.importe
+            AND o.repostaje_at BETWEEN x.instante - interval '3602 seconds' AND x.instante + interval '3602 seconds'
+            AND (abs(EXTRACT(EPOCH FROM (x.instante - o.repostaje_at))) <= 2
+                 OR abs(abs(EXTRACT(EPOCH FROM (x.instante - o.repostaje_at))) - 3600) <= 2)
+          ORDER BY abs(EXTRACT(EPOCH FROM (x.instante - o.repostaje_at))), o.id
+          LIMIT 1) r ON TRUE`,
+    [proveedor, JSON.stringify(filas)]);
+  return new Map(r.rows.map(x => [x.clave, { id: Number(x.id), segundos: Number(x.segundos), guardada: x.guardada }]));
+}
+
+/**
  * Las personas con las que puede casar el nombre de una tarjeta: cada ficha con
  * su nombre y con su nombre de BOLT, y cada cuenta de BOLT con el suyo y la sede
  * de su empresa (las de Barcelona no tienen ficha: la persona es la cuenta).
@@ -331,12 +488,18 @@ async function frescuraBolt() {
  * que es cuando se para a repostar—. Desempata el que llega más lejos.
  */
 async function boltMadrid(id) {
+  return (await boltMadridDe([id])).get(Number(id)) || null;
+}
+
+/**
+ * Lo mismo para muchos de una vez (el Excel de Petroprix trae 1.866): una
+ * consulta, con el coche y el tramo de cada repostaje por LATERAL. → Map(id → …)
+ */
+async function boltMadridDe(ids) {
+  if (!ids || !ids.length) return new Map();
   const r = await db.consulta(
-    `WITH rep AS (SELECT matricula_norm, repostaje_at FROM repostaje WHERE id = $1),
-          veh AS (SELECT fv.uuid FROM fv_vehiculo fv, rep
-                   WHERE upper(regexp_replace(fv.matricula, '[^A-Za-z0-9]', '', 'g')) = rep.matricula_norm
-                   ORDER BY fv.visto_at DESC NULLS LAST LIMIT 1)
-     SELECT (SELECT uuid FROM veh) AS vehiculo_uuid, rep.repostaje_at,
+    `WITH rep AS (SELECT id, matricula_norm, repostaje_at FROM repostaje WHERE id = ANY ($1::bigint[]))
+     SELECT rep.id, veh.uuid AS vehiculo_uuid, rep.repostaje_at,
             t.conductor_uuid, t.situacion, COALESCE(cs.conectado, FALSE) AS conectado,
             (t.desde <= rep.repostaje_at AND COALESCE(t.hasta, t.senal_at, t.desde) >= rep.repostaje_at) AS dentro,
             GREATEST(0, EXTRACT(EPOCH FROM (rep.repostaje_at - COALESCE(t.hasta, t.senal_at, t.desde))))::int AS seg_fin,
@@ -345,24 +508,28 @@ async function boltMadrid(id) {
             COALESCE(${NOMBRE_FICHA('c')}, NULLIF(btrim(ce.externo_nombre), ''), fc.nombre) AS nombre
        FROM rep
        LEFT JOIN LATERAL (
+         SELECT fv.uuid FROM fv_vehiculo fv
+          WHERE upper(regexp_replace(fv.matricula, '[^A-Za-z0-9]', '', 'g')) = rep.matricula_norm
+          ORDER BY fv.visto_at DESC NULLS LAST LIMIT 1) veh ON TRUE
+       LEFT JOIN LATERAL (
          SELECT * FROM fv_tramo t
-          WHERE t.vehiculo_uuid = (SELECT uuid FROM veh)
+          WHERE t.vehiculo_uuid = veh.uuid
             AND t.conductor_uuid IS NOT NULL
             AND t.desde <= rep.repostaje_at
           ORDER BY t.desde DESC, COALESCE(t.hasta, t.senal_at, t.desde) DESC, t.id DESC LIMIT 1) t ON TRUE
        LEFT JOIN fv_cat_situacion cs ON cs.codigo = t.situacion
        LEFT JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = t.conductor_uuid
        LEFT JOIN conductor c ON c.id = ce.conductor_id
-       LEFT JOIN fv_conductor fc ON fc.uuid = t.conductor_uuid`, [id]);
-  const x = r.rows[0];
-  if (!x) return null;
-  const conectado = !!x.dentro && !!x.conectado;
-  return {
-    enBolt: !!x.vehiculo_uuid, repostajeAt: x.repostaje_at,
-    uuid: x.conductor_uuid || null, conductorId: x.conductor_id ? Number(x.conductor_id) : null,
-    nombre: x.nombre || null, situacion: x.situacion || null, conectado,
-    segundos: conectado ? 0 : (x.dentro ? Number(x.seg_inicio) || 0 : Number(x.seg_fin) || 0),
-  };
+       LEFT JOIN fv_conductor fc ON fc.uuid = t.conductor_uuid`, [ids.map(Number)]);
+  return new Map(r.rows.map(x => {
+    const conectado = !!x.dentro && !!x.conectado;
+    return [Number(x.id), {
+      enBolt: !!x.vehiculo_uuid, repostajeAt: x.repostaje_at,
+      uuid: x.conductor_uuid || null, conductorId: x.conductor_id ? Number(x.conductor_id) : null,
+      nombre: x.nombre || null, situacion: x.situacion || null, conectado,
+      segundos: conectado ? 0 : (x.dentro ? Number(x.seg_inicio) || 0 : Number(x.seg_fin) || 0),
+    }];
+  }));
 }
 
 /**
@@ -378,19 +545,15 @@ async function boltMadrid(id) {
  * en que se apuntaron, para que salga siempre el mismo.
  */
 async function boltOtraSede(id) {
+  return (await boltOtraSedeDe([id])).get(Number(id)) || null;
+}
+
+/** Lo mismo para muchos de una vez, con LATERAL por repostaje. → Map(id → …) */
+async function boltOtraSedeDe(ids) {
+  if (!ids || !ids.length) return new Map();
   const r = await db.consulta(
-    `WITH rep AS (SELECT matricula_norm, repostaje_at, sede FROM repostaje WHERE id = $1),
-          veh AS (SELECT array_agg(s.uuid) AS uuids FROM sede_bolt_vehiculo s, rep WHERE s.matricula = rep.matricula_norm),
-          ult AS (SELECT l.driver_uuid, l.ocurrido_at FROM sede_bolt_state_log l, rep, veh
-                   WHERE l.sede = rep.sede
-                     AND l.vehiculo_uuid = ANY (veh.uuids)
-                     AND l.ocurrido_at <= rep.repostaje_at
-                     AND l.ocurrido_at > rep.repostaje_at - interval '24 hours'
-                   ORDER BY l.ocurrido_at DESC, l.id DESC LIMIT 1),
-          suyo AS (SELECT l.vehiculo_uuid, l.estado, l.ocurrido_at FROM sede_bolt_state_log l, rep, ult
-                    WHERE l.driver_uuid = ult.driver_uuid AND l.ocurrido_at <= rep.repostaje_at
-                    ORDER BY l.ocurrido_at DESC, l.id DESC LIMIT 1)
-     SELECT veh.uuids, rep.repostaje_at,
+    `WITH rep AS (SELECT id, matricula_norm, repostaje_at, sede FROM repostaje WHERE id = ANY ($1::bigint[]))
+     SELECT rep.id, veh.uuids, rep.repostaje_at,
             ult.driver_uuid,
             -- Con el array en el FROM: «= ANY ((SELECT …))» lo toma por una
             -- subconsulta de filas y compara un texto con un array entero.
@@ -401,34 +564,113 @@ async function boltOtraSede(id) {
             ce.conductor_id,
             COALESCE(NULLIF(btrim(ce.externo_nombre), ''), ${NOMBRE_FICHA('c')}) AS nombre
        FROM rep
-       CROSS JOIN veh
-       LEFT JOIN ult ON TRUE
-       LEFT JOIN suyo ON TRUE
+       CROSS JOIN LATERAL (SELECT array_agg(s.uuid) AS uuids FROM sede_bolt_vehiculo s WHERE s.matricula = rep.matricula_norm) veh
+       LEFT JOIN LATERAL (
+         SELECT l.driver_uuid, l.ocurrido_at FROM sede_bolt_state_log l
+          WHERE l.sede = rep.sede
+            AND l.vehiculo_uuid = ANY (veh.uuids)
+            AND l.ocurrido_at <= rep.repostaje_at
+            AND l.ocurrido_at > rep.repostaje_at - interval '24 hours'
+          ORDER BY l.ocurrido_at DESC, l.id DESC LIMIT 1) ult ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT l.vehiculo_uuid, l.estado, l.ocurrido_at FROM sede_bolt_state_log l
+          WHERE l.driver_uuid = ult.driver_uuid AND l.ocurrido_at <= rep.repostaje_at
+          ORDER BY l.ocurrido_at DESC, l.id DESC LIMIT 1) suyo ON TRUE
        LEFT JOIN fv_estado_bolt eb ON eb.estado = suyo.estado
        LEFT JOIN fv_cat_situacion cs ON cs.codigo = eb.situacion
        LEFT JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = ult.driver_uuid
-       LEFT JOIN conductor c ON c.id = ce.conductor_id`, [id]);
-  const x = r.rows[0];
-  if (!x) return null;
-  const conectado = !!x.mismo_coche && !!x.conectado;
-  return {
-    enBolt: !!(x.uuids && x.uuids.length), repostajeAt: x.repostaje_at,
-    uuid: x.driver_uuid || null, conductorId: x.conductor_id ? Number(x.conductor_id) : null,
-    nombre: x.nombre || null, situacion: x.mismo_coche ? (x.situacion || null) : 'otro_coche', conectado,
-    segundos: conectado ? 0 : Number(x.mismo_coche ? x.seg : x.seg_coche) || 0,
-  };
+       LEFT JOIN conductor c ON c.id = ce.conductor_id`, [ids.map(Number)]);
+  return new Map(r.rows.map(x => {
+    const conectado = !!x.mismo_coche && !!x.conectado;
+    return [Number(x.id), {
+      enBolt: !!(x.uuids && x.uuids.length), repostajeAt: x.repostaje_at,
+      uuid: x.driver_uuid || null, conductorId: x.conductor_id ? Number(x.conductor_id) : null,
+      nombre: x.nombre || null, situacion: x.mismo_coche ? (x.situacion || null) : 'otro_coche', conectado,
+      segundos: conectado ? 0 : Number(x.mismo_coche ? x.seg : x.seg_coche) || 0,
+    }];
+  }));
+}
+
+// ── QUIÉN LO LLEVABA EN EL BOT DE WHATSAPP (db/215) ─────────────────────────
+
+/**
+ * El turno del bot de ese coche a esa hora (fichaje_turno, db/125): el último
+ * que empezó antes del repostaje. Si no se había cerrado aún a esa hora (o
+ * sigue abierto), esa persona tenía el coche en el bot; si no, es la última que
+ * lo tuvo y `segFin` dice hace cuánto lo dejó. Vale aunque no se conectara a
+ * BOLT: para eso existe el libro de turnos. Los viajes de la oficina (tipo
+ * 'viaje') también cuentan: alguien tenía el coche. La matrícula del libro va
+ * ya normalizada (la del índice idx_ft_coche_ventana). → Map(id → …)
+ */
+async function botDe(ids) {
+  if (!ids || !ids.length) return new Map();
+  const r = await db.consulta(
+    `WITH rep AS (SELECT id, matricula_norm, repostaje_at FROM repostaje WHERE id = ANY ($1::bigint[]))
+     SELECT rep.id, ft.id AS turno_id, ft.tipo, ft.estado, ft.conductor_id, ft.inicio, ft.fin,
+            COALESCE(NULLIF(btrim(ft.nombre), ''), ${NOMBRE_FICHA('c')},
+                     NULLIF(btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')), '')) AS nombre,
+            (ft.fin IS NULL OR ft.fin >= rep.repostaje_at) AS dentro,
+            GREATEST(0, EXTRACT(EPOCH FROM (rep.repostaje_at - ft.fin)))::int AS seg_fin
+       FROM rep
+       LEFT JOIN LATERAL (
+         SELECT * FROM fichaje_turno f
+          WHERE f.matricula = rep.matricula_norm AND f.inicio <= rep.repostaje_at
+          ORDER BY f.inicio DESC, f.id DESC LIMIT 1) ft ON TRUE
+       LEFT JOIN conductor c ON c.id = ft.conductor_id
+       LEFT JOIN usuario u ON u.id = ft.usuario_id`, [ids.map(Number)]);
+  return new Map(r.rows.map(x => [Number(x.id), x.turno_id == null ? { turnoId: null } : {
+    turnoId: Number(x.turno_id), tipo: x.tipo || 'turno', estadoTurno: x.estado,
+    conductorId: x.conductor_id ? Number(x.conductor_id) : null, nombre: x.nombre || null,
+    desde: x.inicio, hasta: x.fin, dentro: !!x.dentro, segFin: x.dentro ? 0 : Number(x.seg_fin) || 0,
+  }]));
+}
+
+/** Apunta lo del bot de muchos de una vez: [{ id, estado, turnoId, tipo, conductorId, nombre, desde, hasta, antiguedadMin }]. */
+async function ponerBot(filas) {
+  if (!filas || !filas.length) return;
+  await db.consulta(
+    `UPDATE repostaje r
+        SET bot_estado = x.estado, bot_turno_id = x.turno_id, bot_tipo = x.tipo, bot_conductor_id = x.conductor_id,
+            bot_nombre = x.nombre, bot_desde = x.desde, bot_hasta = x.hasta, bot_antiguedad_min = x.antiguedad_min,
+            bot_mirado_at = now(), actualizado_at = now()
+       FROM jsonb_to_recordset($1::jsonb) AS x(id bigint, estado text, turno_id bigint, tipo text, conductor_id bigint,
+                                                nombre text, desde timestamptz, hasta timestamptz, antiguedad_min int)
+      WHERE r.id = x.id`,
+    [JSON.stringify(filas.map(f => ({ id: f.id, estado: f.estado, turno_id: f.turnoId || null, tipo: f.tipo || null,
+      conductor_id: f.conductorId || null, nombre: f.nombre ? String(f.nombre).slice(0, 160) : null,
+      desde: f.desde || null, hasta: f.hasta || null, antiguedad_min: f.antiguedadMin == null ? null : f.antiguedadMin })))]);
+}
+
+/**
+ * Los leídos que aún no se miraron en el bot (los de antes de db/215, o un
+ * fallo): se miran en la pasada del buzón. El libro de turnos se escribe al
+ * momento, así que no hay que esperar a nada como con BOLT.
+ */
+async function paraMirarBot(limite = 500) {
+  const r = await db.consulta(
+    `SELECT id FROM repostaje WHERE estado = 'leido' AND bot_estado IS NULL ORDER BY id LIMIT $1`, [limite]);
+  return r.rows.map(x => Number(x.id));
 }
 
 /** Apunta quién estaba en BOLT con el coche, y si es quien dice la tarjeta. */
 async function ponerBolt(id, b) {
+  await ponerBoltDe([{ id, ...b }]);
+}
+
+/** Lo mismo para muchos de una vez: [{ id, estado, uuid, conductorId, nombre, situacion, antiguedadMin, coincide }]. */
+async function ponerBoltDe(filas) {
+  if (!filas || !filas.length) return;
   await db.consulta(
-    `UPDATE repostaje
-        SET bolt_estado = $2, bolt_conductor_uuid = $3, bolt_conductor_id = $4, bolt_nombre = $5,
-            bolt_situacion = $6, bolt_antiguedad_min = $7, coincide = $8, bolt_mirado_at = now(), actualizado_at = now()
-      WHERE id = $1`,
-    [id, b.estado, b.uuid || null, b.conductorId || null, b.nombre ? String(b.nombre).slice(0, 200) : null,
-     b.situacion ? String(b.situacion).slice(0, 20) : null, b.antiguedadMin == null ? null : b.antiguedadMin,
-     b.coincide == null ? null : !!b.coincide]);
+    `UPDATE repostaje r
+        SET bolt_estado = x.estado, bolt_conductor_uuid = x.uuid, bolt_conductor_id = x.conductor_id, bolt_nombre = x.nombre,
+            bolt_situacion = x.situacion, bolt_antiguedad_min = x.antiguedad_min, coincide = x.coincide,
+            bolt_mirado_at = now(), actualizado_at = now()
+       FROM jsonb_to_recordset($1::jsonb) AS x(id bigint, estado text, uuid text, conductor_id bigint, nombre text,
+                                                situacion text, antiguedad_min int, coincide boolean)
+      WHERE r.id = x.id`,
+    [JSON.stringify(filas.map(b => ({ id: Number(b.id), estado: b.estado, uuid: b.uuid || null, conductor_id: b.conductorId || null,
+      nombre: b.nombre ? String(b.nombre).slice(0, 200) : null, situacion: b.situacion ? String(b.situacion).slice(0, 20) : null,
+      antiguedad_min: b.antiguedadMin == null ? null : b.antiguedadMin, coincide: b.coincide == null ? null : !!b.coincide })))]);
 }
 
 /**
@@ -436,29 +678,33 @@ async function ponerBolt(id, b) {
  * «sin_datos». Si no, la pantalla seguiría diciendo «se vuelve a mirar sola» de
  * algo que ya no se mira (paraMirarBolt solo mira tres días atrás). Si a los
  * tres días no hay BOLT, el problema es la ingesta, y eso se ve en su panel.
+ *
+ * Los tres días cuentan desde que el repostaje LLEGÓ al ERP (creado_at), no
+ * desde que se hizo: una fila del Excel de Petroprix puede entrar tres semanas
+ * después, y por la hora del repostaje se cerraría sin mirarla nunca.
  */
 async function cerrarSinBolt() {
   const r = await db.consulta(
     `UPDATE repostaje
         SET bolt_estado = 'sin_datos', bolt_mirado_at = now(), actualizado_at = now()
       WHERE estado = 'leido' AND (bolt_estado = 'pendiente' OR bolt_estado IS NULL)
-        AND repostaje_at <= now() - interval '3 days'`);
+        AND GREATEST(repostaje_at, creado_at) <= now() - interval '3 days'`);
   return r.rowCount;
 }
 
 /**
  * Los leídos a los que les falta lo de BOLT: los que esperaban a que la ingesta
- * llegara a su hora y los que se quedaron sin mirar por un fallo. Solo los de
- * los tres últimos días (los de antes los cierra cerrarSinBolt).
+ * llegara a su hora y los que se quedaron sin mirar por un fallo. Solo los que
+ * llegaron en los tres últimos días (los de antes los cierra cerrarSinBolt).
  */
 async function paraMirarBolt() {
   const r = await db.consulta(
     `SELECT id, sede, conductor_id, conductor_cuenta_bolt, conductor_texto, tarjeta_provisional
        FROM repostaje
       WHERE estado = 'leido' AND (bolt_estado = 'pendiente' OR bolt_estado IS NULL)
-        AND repostaje_at > now() - interval '3 days'
+        AND GREATEST(repostaje_at, creado_at) > now() - interval '3 days'
       ORDER BY repostaje_at
-      LIMIT 200`);
+      LIMIT 500`);
   return r.rows.map(x => ({ id: Number(x.id), sede: x.sede, conductorId: x.conductor_id ? Number(x.conductor_id) : null,
     cuentaBolt: x.conductor_cuenta_bolt, conductorTexto: x.conductor_texto, provisional: x.tarjeta_provisional }));
 }
@@ -473,26 +719,42 @@ async function gasolineras() {
   return r.rows.map(x => ({ ...x, id: Number(x.id) }));
 }
 
-/** Los nombres de estación casados a mano: Map('proveedor|clave' → gasolinera_id). */
+// Sin db/215 la columna `tipo` aún no existe: todos los alias son «por
+// palabras», como antes. Se mira por si el código llega a producción antes que
+// la migración (Camilo la aplica desde /migraciones después de desplegar).
+const sinColumna = e => !!e && e.code === '42703';
+
+/** Los nombres de estación casados a mano (por palabras): Map('proveedor|clave' → gasolinera_id). */
 async function aliasGasolineras() {
-  const r = await db.consulta(`SELECT proveedor, estacion_clave, gasolinera_id FROM gasolinera_alias`);
+  const r = await db.consulta(`SELECT proveedor, estacion_clave, gasolinera_id FROM gasolinera_alias WHERE tipo = 'palabras'`)
+    .catch(e => { if (sinColumna(e)) return db.consulta(`SELECT proveedor, estacion_clave, gasolinera_id FROM gasolinera_alias`); throw e; });
   return new Map(r.rows.map(x => [`${x.proveedor}|${x.estacion_clave}`, Number(x.gasolinera_id)]));
 }
 
-/** Pone (o cambia) el alias de un nombre de estación. */
+/**
+ * Los textos exactos de la celda «Gasolinera» del Excel de Petroprix (db/215):
+ * Map('proveedor|texto' → gasolinera_id). El texto, con
+ * combustible.gasolinera.textoExacto.
+ */
+async function textosGasolineras() {
+  const r = await db.consulta(`SELECT proveedor, estacion_clave, gasolinera_id FROM gasolinera_alias WHERE tipo = 'texto'`);
+  return new Map(r.rows.map(x => [`${x.proveedor}|${x.estacion_clave}`, Number(x.gasolinera_id)]));
+}
+
+/** Pone (o cambia) el alias de un nombre de estación (por palabras: lo de la ficha). */
 async function ponerAlias({ proveedor, clave, estacion, gasolineraId, usuarioId }) {
   await db.consulta(
-    `INSERT INTO gasolinera_alias (proveedor, estacion_clave, estacion, gasolinera_id, usuario_id)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (proveedor, estacion_clave) DO UPDATE
+    `INSERT INTO gasolinera_alias (proveedor, tipo, estacion_clave, estacion, gasolinera_id, usuario_id)
+     VALUES ($1, 'palabras', $2, $3, $4, $5)
+     ON CONFLICT (proveedor, tipo, estacion_clave) DO UPDATE
        SET gasolinera_id = EXCLUDED.gasolinera_id, estacion = EXCLUDED.estacion,
            usuario_id = EXCLUDED.usuario_id, creado_at = now()`,
     [proveedor, clave, estacion ? String(estacion).slice(0, 160) : null, gasolineraId, usuarioId || null]);
 }
 
-/** Quita el alias: esos correos vuelven a casarse por el nombre. */
+/** Quita el alias puesto a mano: esos repostajes vuelven a casarse por el texto o el nombre. */
 async function quitarAlias({ proveedor, clave }) {
-  await db.consulta(`DELETE FROM gasolinera_alias WHERE proveedor = $1 AND estacion_clave = $2`, [proveedor, clave]);
+  await db.consulta(`DELETE FROM gasolinera_alias WHERE proveedor = $1 AND tipo = 'palabras' AND estacion_clave = $2`, [proveedor, clave]);
 }
 
 const CAMPOS_CASAR = `id, proveedor, estacion, sede, gasolinera_id, gasolinera_como,
@@ -546,8 +808,14 @@ async function ponerGasolinera(id, g) {
 // reintento Mapon no contesta a una de las dos preguntas, esa se queda como
 // estaba (combustible.auditoria). Y la hora de llegada del correo, para la
 // hora que pasa dos veces el día del cambio de hora.
+//
+// `origen` (correo o Excel) es de db/215, y se lee con to_jsonb para que valga
+// también ANTES de aplicarla: Camilo aplica la migración desde /migraciones
+// después de desplegar, y con `r.origen` a secas la auditoría de Ballenoil se
+// paraba entera en ese hueco (error 42703; revisión del 23/10/2026). Sin la
+// columna sale NULL, que es «del correo»: lo único que había.
 const CAMPOS_AUDITAR = `
-  r.id, r.proveedor, r.estacion, r.sede, r.matricula, r.matricula_norm, r.vehiculo_id, r.litros::float AS litros,
+  r.id, r.proveedor, to_jsonb(r) ->> 'origen' AS origen, r.estacion, r.sede, r.matricula, r.matricula_norm, r.vehiculo_id, r.litros::float AS litros,
   r.repostaje_at, r.recibido_at, r.gasolinera_id, r.gasolinera_como, r.auditoria_estado, r.auditoria_intentos, r.auditoria_at,
   r.gps_lat::float AS gps_lat, r.gps_lng::float AS gps_lng, r.gps_at, r.gps_hasta, r.gps_fuente, r.gps_direccion,
   r.boya_tipo, r.boya_antes::float AS boya_antes, r.boya_despues::float AS boya_despues, r.boya_salto::float AS boya_salto,
@@ -557,25 +825,60 @@ const filaAuditar = x => ({ ...x, id: Number(x.id), vehiculo_id: x.vehiculo_id ?
   gasolinera_id: x.gasolinera_id ? Number(x.gasolinera_id) : null, auditoria_intentos: Number(x.auditoria_intentos) || 0 });
 
 /**
- * Los que toca auditar ahora, del más antiguo al más nuevo:
+ * Los que toca auditar ahora:
  *   · los que nunca se miraron, pasado `margenMin` desde el repostaje (que
  *     haya lecturas de después);
  *   · los que se quedaron a medias, cuando ya ha pasado su espera, que crece
  *     con cada intento (`esperasMin[intentos]`, la última se repite).
+ *
+ * EN QUÉ ORDEN (23/10/2026, db/215). Un Excel de Petroprix mete de golpe
+ * semanas de repostajes. Para que los de hoy no esperen detrás de todo ese
+ * atraso, van primero los de las últimas `recientesHoras`, por su hora; y luego
+ * el atraso, del coche con lo más antiguo al más nuevo y, de cada coche, lo
+ * suyo de los `agruparDias` días desde su más antiguo, juntos: así una pasada
+ * mira cada coche con una sola lectura del aforador y de las paradas
+ * (combustible.memoria) en vez de una por repostaje.
  */
-async function paraAuditar({ margenMin, esperasMin, limite }) {
+async function paraAuditar({ margenMin, esperasMin, limite, recientesHoras = 48, agruparDias = 4 }) {
   const r = await db.consulta(
-    `SELECT ${CAMPOS_AUDITAR}
-       FROM repostaje r
-      WHERE r.estado = 'leido'
-        AND r.repostaje_at <= now() - make_interval(mins => $1::int)
-        AND (r.auditoria_estado = 'pendiente'
-             OR (r.auditoria_estado = 'incompleta'
-                 AND r.auditoria_at <= now() - make_interval(mins =>
-                       ($2::int[])[LEAST(GREATEST(r.auditoria_intentos, 1), array_length($2::int[], 1))])))
-      ORDER BY r.repostaje_at
-      LIMIT $3`, [margenMin, esperasMin, limite]);
+    `WITH toca AS (
+       SELECT r.id, COALESCE(r.matricula_norm, '') AS mat, r.repostaje_at,
+              (r.repostaje_at > now() - make_interval(hours => $4::int)) AS reciente
+         FROM repostaje r
+        WHERE r.estado = 'leido'
+          AND r.repostaje_at <= now() - make_interval(mins => $1::int)
+          AND (r.auditoria_estado = 'pendiente'
+               OR (r.auditoria_estado = 'incompleta'
+                   AND r.auditoria_at <= now() - make_interval(mins =>
+                         ($2::int[])[LEAST(GREATEST(r.auditoria_intentos, 1), array_length($2::int[], 1))])))),
+     coche AS (SELECT mat, min(repostaje_at) AS primero FROM toca WHERE NOT reciente GROUP BY mat),
+     elegidos AS (
+       SELECT t.id, t.reciente, c.primero, t.mat, t.repostaje_at
+         FROM toca t LEFT JOIN coche c ON c.mat = t.mat
+        WHERE t.reciente OR t.repostaje_at < c.primero + make_interval(days => $5::int))
+     SELECT ${CAMPOS_AUDITAR}
+       FROM elegidos e JOIN repostaje r ON r.id = e.id
+      ORDER BY e.reciente DESC, CASE WHEN e.reciente THEN e.repostaje_at END, e.primero, e.mat, e.repostaje_at
+      LIMIT $3`, [margenMin, esperasMin, limite, recientesHoras, agruparDias]);
   return r.rows.map(filaAuditar);
+}
+
+/**
+ * Los otros repostajes leídos del mismo coche entre dos instantes (ms): los de
+ * la misma parada, que suben el depósito JUNTOS. El 8203LTR pagó dos veces en
+ * el mismo minuto tres días de octubre (una con la app y otra con tarjeta o en
+ * efectivo): la boya ve un solo salto, y comparado con cada uno por separado
+ * los dos salían verdes. → [{ id, litros, hora }]
+ */
+async function vecinosDe(id, matriculaNorm, desdeMs, hastaMs) {
+  if (!matriculaNorm) return [];
+  const r = await db.consulta(
+    `SELECT id, litros::float AS litros, to_char(repostaje_at AT TIME ZONE ${MADRID}, 'HH24:MI:SS') AS hora
+       FROM repostaje
+      WHERE estado = 'leido' AND matricula_norm = $1 AND id <> $2
+        AND repostaje_at BETWEEN to_timestamp($3::float / 1000) AND to_timestamp($4::float / 1000)
+      ORDER BY repostaje_at`, [matriculaNorm, id, desdeMs, hastaMs]);
+  return r.rows.map(x => ({ id: Number(x.id), litros: Number(x.litros), hora: x.hora }));
 }
 
 /** Uno, para auditarlo a mano desde su ficha. */
@@ -675,7 +978,21 @@ const CAMPOS_LISTA = `
   r.gps_distancia_m, r.gps_fuente, r.gps_motivo, r.gps_cercana_m, gc.nombre AS gps_cercana_nombre,
   r.boya_tipo, r.boya_antes::float AS boya_antes, r.boya_despues::float AS boya_despues, r.boya_salto::float AS boya_salto,
   r.boya_litros::float AS boya_litros, r.boya_corregida, r.boya_techo::float AS boya_techo,
-  r.boya_error_pct::float AS boya_error_pct, r.boya_motivo`;
+  r.boya_error_pct::float AS boya_error_pct, r.boya_motivo,
+  -- Con cuántos litros se compara la boya si hubo otro repostaje en la misma
+  -- parada (la suma; combustible.auditoria): sin él, los del repostaje.
+  (r.auditoria_detalle -> 'boya' ->> 'pagados')::float AS boya_pagados,
+  -- El coche dado de baja en Vehículos (el 6287LBG reposta en octubre).
+  (SELECT vb.baja_at IS NOT NULL FROM vehiculo vb WHERE vb.id = r.vehiculo_id) AS vehiculo_de_baja,
+  -- Cómo acabó el turno del bot: un turno «auto-cerrado» lo cerró el sistema a
+  -- las 14 h porque nadie lo cerró, y su final no es de verdad.
+  (SELECT ft.estado FROM fichaje_turno ft WHERE ft.id = r.bot_turno_id) AS bot_turno_estado,
+  -- De dónde viene (db/215): el correo o el Excel, y lo que trae el Excel.
+  r.origen, r.metodo_pago, r.vehiculo_tipo, r.importacion_id, r.excel_fila,
+  -- Quién llevaba el coche en el bot de WhatsApp (db/215).
+  r.bot_estado, r.bot_tipo, r.bot_conductor_id, r.bot_nombre, r.bot_antiguedad_min,
+  to_char(r.bot_desde AT TIME ZONE ${MADRID}, 'DD/MM HH24:MI') AS bot_desde_local,
+  to_char(r.bot_hasta AT TIME ZONE ${MADRID}, 'DD/MM HH24:MI') AS bot_hasta_local`;
 // La gasolinera casada y la más cercana a donde estaba el coche (db/213).
 const JOIN_GASOLINERAS = `
        LEFT JOIN gasolinera g  ON g.id = r.gasolinera_id
@@ -714,11 +1031,18 @@ async function ficha(id) {
             gc.lat::float AS gps_cercana_lat, gc.lng::float AS gps_cercana_lng,
             (extract(epoch FROM r.repostaje_at) * 1000)::float AS repostaje_ms,
             (SELECT array_agg(o.nombre ORDER BY o.nombre) FROM gasolinera o
-              WHERE o.id = ANY (r.gasolinera_candidatas)) AS gasolinera_candidatas_nombres
+              WHERE o.id = ANY (r.gasolinera_candidatas)) AS gasolinera_candidatas_nombres,
+            -- La fila del Excel y la importación que la trajo (db/215).
+            r.excel_crudo, ri.fichero AS importacion_fichero, ${LOCAL('ri.empezada_at')} AS importacion_local,
+            NULLIF(btrim(COALESCE(ui.nombre, '') || ' ' || COALESCE(ui.apellidos, '')), '') AS importacion_usuario,
+            ${NOMBRE_FICHA('cbot')} AS bot_ficha
        FROM repostaje r
        LEFT JOIN conductor c  ON c.id = r.conductor_id
        LEFT JOIN conductor cb ON cb.id = r.bolt_conductor_id
        LEFT JOIN vehiculo v   ON v.id = r.vehiculo_id${JOIN_GASOLINERAS}
+       LEFT JOIN conductor cbot ON cbot.id = r.bot_conductor_id
+       LEFT JOIN repostaje_importacion ri ON ri.id = r.importacion_id
+       LEFT JOIN usuario ui ON ui.id = ri.usuario_id
       WHERE r.id = $1`, [id]);
   return r.rows[0] || null;
 }
@@ -727,9 +1051,12 @@ module.exports = {
   empezarLectura, cerrarLectura, ultimaLectura, lecturas, purgarLecturas,
   yaGuardados, claveUid, guardar, releido, paraReleer,
   paraRecasar, recasado, cocheDe, candidatosNombre,
-  frescuraBolt, boltMadrid, boltOtraSede, ponerBolt, paraMirarBolt, cerrarSinBolt,
-  gasolineras, aliasGasolineras, ponerAlias, quitarAlias, paraCasarGasolinera, leidosDelProveedor, ponerGasolinera,
-  paraAuditar, paraAuditarUno, unidadMapon, guardarAuditoria, apuntarFallo, cerrarAuditoriasSinDatos,
+  frescuraBolt, boltMadrid, boltOtraSede, boltMadridDe, boltOtraSedeDe, ponerBolt, ponerBoltDe, paraMirarBolt, cerrarSinBolt,
+  botDe, ponerBot, paraMirarBot,
+  cochesDe, empezarImportacion, cerrarImportacion, importaciones, importacionConHuella, ultimaImportacion,
+  guardarDelExcel, clavesYaGuardadas, casiIgualesDelExcel,
+  gasolineras, aliasGasolineras, textosGasolineras, ponerAlias, quitarAlias, paraCasarGasolinera, leidosDelProveedor, ponerGasolinera,
+  paraAuditar, paraAuditarUno, vecinosDe, unidadMapon, guardarAuditoria, apuntarFallo, cerrarAuditoriasSinDatos,
   lista, ficha,
   // Gancho de prueba (scripts/comprobar-combustible.js): las NOT NULL con valor por defecto.
   _valorDe: valorDe,

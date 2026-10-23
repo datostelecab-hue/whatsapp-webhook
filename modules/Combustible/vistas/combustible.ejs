@@ -4,10 +4,14 @@
   Petroprix preparado): lista → ficha → atrás con el componente Listado. Cada
   repostaje con su coche y su sede, la persona de la tarjeta, quién llevaba el
   coche en BOLT a esa hora y su AUDITORÍA CON MAPON (db/213): a cuántos metros
-  estaba el coche de la gasolinera (GPS) y cuánto se aleja lo que subió el
-  aforador de los litros del correo (boya). Cada fila se pinta con el peor de
+  estaba el coche de la gasolinera (GPS) y cuánto le falta a lo que subió el
+  aforador para llegar a lo pagado (boya). Cada fila se pinta con el peor de
   los dos colores. Arriba, la última lectura del buzón y los correos que no se
   pudieron leer; para quien puede, «Leer el buzón ahora».
+  Y PETROPRIX, POR EXCEL (db/215, 23/10/2026): «Importar Excel» sube el de su
+  web; sus filas salen en la misma lista, sin tarjeta, con quién llevaba el
+  coche en BOLT y en el bot de WhatsApp (también en las de Ballenoil). La boya
+  solo cuenta lo que FALTA: «faltan X L (Y %)» o «subió X L más de lo pagado».
   Servicio: modules/Combustible/combustible.service.js
 %>
 
@@ -28,6 +32,11 @@
       <button type="button" data-dias="mes" class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">Este mes</button>
       <button type="button" data-dias="29" class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">30 días</button>
     </div>
+    <!-- Hasta dónde llega Petroprix (por Excel, no por correo): aquí, al lado de
+         las fechas, y no como otra nota encima de la lista. A 1280×593 una línea
+         más de nota dejaba la rejilla por debajo de su mínimo y la página con
+         barra. Lo rellena la lista (pintarPetroprix). -->
+    <span id="petroprix-hasta" class="ml-auto text-xs text-telecab-muted hidden"></span>
   </div>
 </div>
 
@@ -97,7 +106,8 @@
   };
   let UMBRALES = { gpsM: [700, 1600], boyaPct: [35, 65] };
   const reglaGps = () => `Verde a menos de ${num(UMBRALES.gpsM[0], 0)} m, amarillo a menos de ${num(UMBRALES.gpsM[1], 0)} m y rojo desde ahí.`;
-  const reglaBoya = () => `Verde por debajo del ${UMBRALES.boyaPct[0]} % de error, amarillo por debajo del ${UMBRALES.boyaPct[1]} % y rojo desde ahí (el aforador se equivoca hasta un 33 % sin calibrar).`;
+  // La boya solo cuenta lo que FALTA (23/10/2026): subir de más no penaliza.
+  const reglaBoya = () => `Solo cuenta lo que falta para lo pagado: verde si falta menos del ${UMBRALES.boyaPct[0]} %, amarillo menos del ${UMBRALES.boyaPct[1]} % y rojo desde ahí; si subió lo pagado o más, verde (el aforador se equivoca hasta un 33 % sin calibrar).`;
   // `dicho`: el nombre del color ya va escrito al lado; el lector no lo repite.
   // El nombre va en el propio icono (role="img" + aria-label), no en un
   // `sr-only`: ese es absoluto, y dentro de la rejilla que se desplaza las filas
@@ -115,18 +125,37 @@
   // siempre: sobre una fila teñida, el gris se quedaba por debajo de 4,5:1.
   const SUAVE = 'text-telecab-text/75';
   const nombreGas = n => String(n || '').replace(/^(Ballenoil|Petroprix)\s+/i, '');
+  // La celda «Gasolinera» de Petroprix trae el nombre y, debajo, la dirección:
+  // en la lista va el nombre; la dirección, en la ayuda y en la ficha.
+  const primeraLinea = t => String(t || '').split('\n')[0];
+  const enUnaLinea = t => String(t || '').replace(/\s*\n\s*/g, ' · ');
+  const deExcel = f => f.origen === 'excel';
   const PRECISION = { geocodificada: 'coordenadas sacadas de la dirección (aproximadas)', aproximada: 'coordenadas aproximadas (carretera o número sin localizar)', sin: 'sin coordenadas en la lista' };
-  const ESPERA = 'Se audita sola a los 45 minutos del repostaje, cuando ya hay lecturas de después.';
+  // Cuándo se audita: uno del correo, a los 45 minutos; uno del Excel entra en
+  // la cola con los demás (los de los dos últimos días primero) y, si es de hace
+  // días, en el atraso, al ritmo de la auditoría (RITMO, de la lista). Decirle
+  // «a los 45 minutos» a uno de hace tres semanas no era verdad.
+  let RITMO = { porPasada: 60, cadaMin: 10 };
+  const espera = f => (f && deExcel(f)
+    ? `Se audita sola: los de los dos últimos días primero y luego el atraso, unos ${RITMO.porPasada} cada ${RITMO.cadaMin} minutos.`
+    : 'Se audita sola a los 45 minutos del repostaje, cuando ya hay lecturas de después.');
   const sinAuditar = f => f.auditoria_estado === 'pendiente';
-  // El aforador acabó en su techo y no se pudo corregir: lo que subió y el
-  // error son un MÍNIMO (lo dice el servidor, combustible.boya.esMinimo). Se
-  // escriben con «≥», y un mínimo no da verde.
+  // El aforador acabó en su techo y no se pudo corregir: lo que subió es un
+  // MÍNIMO (lo dice el servidor, combustible.boya.esMinimo), y se escribe con
+  // «≥». Un mínimo que ya llega a lo pagado es verde: como poco entró lo pagado
+  // (la boya solo cuenta lo que falta, 23/10/2026); uno que no llega va sin color.
   const ge = f => (f.boya_minimo ? '≥ ' : '');
+  // Lo que falta o sobra, en litros: con un decimal, o con dos si con uno
+  // saldría 0,0 (combustible.boya.diferencia nunca da 0 si el % no es 0).
+  const litD = v => (v == null ? '' : Number(v) > 0 && Number(v) < 0.1 ? num(v, 2) + ' L' : litB(v));
 
   /** Lo que se dice cuando el GPS no da metros, en dos o tres palabras. */
   function gpsCorto(f) {
     const m = f.gps_motivo || '';
     if (/no está en Mapon/.test(m)) return 'sin Mapon';
+    // Una «parada» que no es de verdad (el aforador se movía, o el depósito subió
+    // en ella lejos de la gasolinera): el GPS no valía (combustible.auditoria).
+    if (/su GPS no lo vio/.test(m)) return 'GPS sin señal';
     if (!f.gasolinera_id) return f.gasolinera_como === 'ambiguo' ? 'gasolinera dudosa' : 'gasolinera sin casar';
     if (f.gasolinera_precision === 'sin') return 'sin coordenadas';
     if (/no contestó/.test(m)) return 'Mapon no contestó';
@@ -135,7 +164,7 @@
 
   function pintaGps(f) {
     if (sinAuditar(f) && f.gps_distancia_m == null) {
-      return `<span class="text-xs ${SUAVE}" title="${esc(ESPERA)}">por auditar</span>`;
+      return `<span class="text-xs ${SUAVE}" title="${esc(espera(f))}">por auditar</span>`;
     }
     if (f.gps_distancia_m != null) {
       const c = COLORES[f.gps_color];
@@ -151,21 +180,37 @@
     return `<span class="inline-flex items-center gap-1.5 text-xs ${SUAVE} leading-tight" title="${esc((f.gps_motivo || 'Sin dato') + cerca)}">${punto(null)}<span>${esc(gpsCorto(f))}</span></span>`;
   }
 
+  /**
+   * Lo que dice la boya frente a lo pagado, en pocas palabras: «faltan 3,1 L»,
+   * «+3,5 L de más» o «lo pagado». Subir de más no penaliza (23/10/2026). Un
+   * mínimo (el aforador en su techo, sin corregir) que ya llega a lo pagado:
+   * «≥ +3,5 L de más».
+   */
+  const boyaCorto = f => (f.boya_faltan > 0 ? `faltan ${litD(f.boya_faltan)}`
+    : f.boya_de_mas > 0 ? `${ge(f)}+${litD(f.boya_de_mas)} de más` : f.boya_minimo ? 'como poco lo pagado' : 'lo pagado');
+  const pagadoDe = f => (f.boya_pagados != null ? f.boya_pagados : f.litros);
+  /** La frase entera, para la ayuda y la ficha: «faltan X L (Y %)» o «subió X L más de lo pagado». */
+  function boyaFrase(f) {
+    const pagado = `${lit(pagadoDe(f), deExcel(f) ? 2 : 3)}${f.boya_pagados != null ? ' (con el otro repostaje de la misma parada)' : ''}`;
+    // Un depósito que baja se dice así, no «subió −1 L».
+    const subio = f.boya_litros < 0 ? `el depósito bajó ${litB(-f.boya_litros)}` : `la boya subió ${litB(f.boya_litros)}`;
+    if (f.boya_faltan > 0) return `Faltan ${litD(f.boya_faltan)} (${pct(f.boya_error_pct)}): ${subio} y se pagaron ${pagado}.`;
+    if (f.boya_de_mas > 0) return `Subió ${f.boya_minimo ? 'al menos ' : ''}${litD(f.boya_de_mas)} más de lo pagado (${f.boya_minimo ? 'como poco ' : ''}${litB(f.boya_litros)} frente a ${pagado}): lo de más no cuenta, no falta nada.`;
+    return `Subió ${f.boya_minimo ? 'al menos ' : ''}lo pagado (${litB(f.boya_litros)} frente a ${pagado}): no falta nada.`;
+  }
+
   function pintaBoya(f) {
     if (f.boya_error_pct != null) {
       const c = COLORES[f.boya_color];
-      // Un mínimo (topó y no se pudo corregir): «≥ 13,6 %» y «≥ +29 L», y sin
-      // color si no llega al amarillo: «como poco ese error» no dice verde.
-      const ayuda = (c ? c.texto + ': ' : f.boya_minimo ? 'Sin color (un mínimo no da verde): ' : '') +
-        `la boya subió ${f.boya_minimo ? 'al menos ' : ''}${litB(f.boya_litros)}` +
-        (f.boya_corregida ? ` (corregido el techo del aforador: el salto fue de ${litB(f.boya_salto)})` : ` (de ${litB(f.boya_antes)} a ${litB(f.boya_despues)})`) +
-        ` y el correo dice ${lit(f.litros)}: ${f.boya_minimo ? 'como poco' : 'un'} ${pct(f.boya_error_pct)} de error.` +
+      const ayuda = (c ? c.texto + ': ' : '') + boyaFrase(f) +
+        (f.boya_corregida ? ` Corregido el techo del aforador: el salto fue de ${litB(f.boya_salto)}.` : ` El aforador fue de ${litB(f.boya_antes)} a ${litB(f.boya_despues)}.`) +
         (f.boya_motivo ? `\n${f.boya_motivo}.` : '') + '\n' + reglaBoya();
-      return `<span class="inline-flex items-center gap-1.5 whitespace-nowrap" title="${esc(ayuda)}">${punto(f.boya_color)}` +
-        `<span class="tabular-nums">${esc(ge(f) + pct(f.boya_error_pct))}</span>` +
-        `<span class="${SUAVE} text-xs tabular-nums">${esc(ge(f) + (f.boya_litros >= 0 ? '+' : '') + litB(f.boya_litros))}</span></span>`;
+      // Dos líneas: el % (lo que tiene color) y, debajo, lo que falta o sobra.
+      return `<span class="inline-flex flex-col leading-tight" title="${esc(ayuda)}">` +
+        `<span class="inline-flex items-center gap-1.5 whitespace-nowrap">${punto(f.boya_color)}<span class="tabular-nums">${esc(pct(f.boya_error_pct))}</span></span>` +
+        `<span class="${f.boya_faltan > 0 ? 'text-telecab-text' : SUAVE} text-xs tabular-nums whitespace-nowrap">${esc(boyaCorto(f))}</span></span>`;
     }
-    if (sinAuditar(f)) return `<span class="text-xs ${SUAVE}" title="${esc(ESPERA)}">por auditar</span>`;
+    if (sinAuditar(f)) return `<span class="text-xs ${SUAVE}" title="${esc(espera(f))}">por auditar</span>`;
     const corto = f.boya_tipo === 'sin' ? 'sin aforador'
       : f.boya_tipo === 'porcentaje' && f.boya_salto != null ? `+${num(f.boya_salto, 0)} % depósito`
         // Topó en el techo y no se ha podido corregir: lo que subió es un mínimo.
@@ -199,10 +244,77 @@
   const boltClave = f => (f.coincide === false ? 'no_coincide' : f.bolt_estado === 'pendiente' ? 'pendiente' : f.coincide === true ? 'coincide' : 'otro');
   const BOLT_FILTRO = [['no_coincide', 'No coincide con la tarjeta'], ['coincide', 'Coincide con la tarjeta'], ['pendiente', 'Esperando a BOLT']];
 
-  // Quién: la tarjeta tal cual y, debajo, BOLT cuando dice otra cosa o cuando la
-  // tarjeta no es de una persona (provisional, del taller): ahí quien repostó
-  // lo dice BOLT, no el correo.
+  // ── EL BOT DE WHATSAPP (db/215) ───────────────────────────────────────────
+  // Quién había abierto turno en el bot con esa matrícula. Un turno
+  // «auto-cerrado» no lo cerró nadie: lo cerró el sistema a las 14 h, así que
+  // su final no es de verdad y quizá el coche ya lo llevaba otro.
+  const SIN_CERRAR = ' (no lo cerró: lo cerró el sistema a las 14 h)';
+  // Barcelona casi no abre turno en el bot (combustible.casar.abreTurnoEnElBot):
+  // allí «nadie en el bot» es lo normal, no un aviso.
+  const abreTurnoEnElBot = f => !f.sede || f.sede === 'madrid';
+  function botFrase(f) {
+    const que = f.bot_tipo === 'viaje' ? 'viaje de la oficina' : 'turno';
+    const sinCerrar = f.bot_turno_estado === 'auto-cerrado' ? SIN_CERRAR : '';
+    switch (f.bot_estado) {
+      case 'en_turno': return `${f.bot_nombre || 'Alguien'} · ${que} abierto en el bot desde el ${f.bot_desde_local}${sinCerrar}`;
+      case 'ultimo': return `${f.bot_nombre || 'Alguien'} · cerró su ${que} en el bot hace ${antiguedad(f.bot_antiguedad_min)} (${f.bot_hasta_local})${sinCerrar}`;
+      case 'nadie': return 'Nadie había abierto turno en el bot con este coche, ni lo cerró en las 12 h de antes' +
+        (abreTurnoEnElBot(f) ? '' : ' (en Barcelona casi nadie abre turno en el bot)');
+      default: return 'Aún sin mirar en el bot';
+    }
+  }
+  // BOLT y el bot, juntos (combustible.casar.boltYBot, en el servidor).
+  const QUIEN = {
+    mismo: 'BOLT y el bot dicen la misma persona',
+    distinto: 'BOLT y el bot dicen personas distintas',
+    sin_comparar: 'BOLT y el bot tienen a alguien, pero a uno le falta el nombre',
+    // Un turno del bot ya cerrado a esa hora no contradice a BOLT: dice que el
+    // que cogió el coche no abrió el suyo (revisión del 23/10/2026).
+    bot_cerrado: 'BOLT tiene a quien llevaba el coche; el bot, a otra persona que ya había cerrado su turno: no se comparan (el que lo cogió no abrió el suyo)',
+    solo_bot: 'Solo el bot: abrió turno en el bot y en BOLT no había nadie',
+    solo_bolt: 'Solo BOLT: nadie abrió turno en el bot con este coche',
+    nadie: 'Ni BOLT ni el bot tienen a nadie',
+  };
+  const QUIEN_FILTRO = ['distinto', 'solo_bot', 'bot_cerrado', 'mismo', 'solo_bolt', 'nadie'];
+  const QUIEN_OPCION = { distinto: 'BOLT y bot, distintos', solo_bot: 'Solo en el bot', bot_cerrado: 'El bot, ya cerrado',
+    mismo: 'BOLT y bot, la misma', solo_bolt: 'Sin turno en el bot', nadie: 'Ni BOLT ni bot' };
+  const quienAyuda = f => [QUIEN[f.quien_caso], 'BOLT: ' + (boltFrase(f) || 'sin mirar'), 'Bot: ' + botFrase(f)].filter(Boolean).join('\n');
+  const conBot = f => f.bot_estado === 'en_turno' || f.bot_estado === 'ultimo';
+  const conBolt = f => f.bolt_estado === 'conectado' || f.bolt_estado === 'ultimo';
+  // «Bot (cerró hace 11 h)» cuando el turno del bot ya estaba cerrado a esa hora.
+  const elBot = f => (f.bot_estado === 'ultimo' ? `Bot (cerró hace ${antiguedad(f.bot_antiguedad_min)})` : 'Bot');
+
+  // Quién: la tarjeta tal cual (Ballenoil) o, si no hay tarjeta (Petroprix), la
+  // persona que dicen BOLT y el bot; y debajo, lo que dicen BOLT y el bot cuando
+  // añade algo: cuando no es la de la tarjeta, cuando no coinciden entre ellos o
+  // cuando el bot tiene a alguien y BOLT a nadie.
+  //
+  // EL AVISO, CON SU ICONO Y NO SOLO CON EL COLOR (revisión del 23/10/2026). Las
+  // líneas iban en ámbar o en gris pequeño, y en el tema claro, sobre una fila
+  // teñida, se quedaban en 3,9-4,4:1 (la casa pide 4,5:1 a lo pequeño). Ahora
+  // van todas con el texto de la casa al 75 % (SUAVE, como el GPS y la boya), y
+  // las que avisan llevan delante el triángulo de aviso, con su nombre para el
+  // lector de pantalla.
+  const AVISO = '<i class="fa-solid fa-triangle-exclamation text-telecab-warn text-[10px] mr-1" role="img" aria-label="Aviso"></i>';
   function pintaQuien(f) {
+    const linea = (txt, aviso) => `<span class="block text-xs ${SUAVE}" title="${esc(quienAyuda(f))}">${aviso ? AVISO : ''}${txt}</span>`;
+    const caso = f.quien_caso;
+    const sinCerrar = f.bot_turno_estado === 'auto-cerrado' ? ' (sin cerrar)' : '';
+    if (deExcel(f)) {
+      const principal = ['distinto', 'sin_comparar', 'bot_cerrado'].includes(caso) ? f.bolt_nombre
+        : f.quien_nombre || (conBolt(f) ? f.bolt_nombre : conBot(f) ? f.bot_nombre : null);
+      const cabeza = principal ? `<span title="${esc(quienAyuda(f))}">${esc(principal)}</span>` : NADA;
+      const debajo = {
+        mismo: linea('BOLT y bot'),
+        distinto: linea(`Bot: ${esc(f.bot_nombre)}${sinCerrar}`, true),
+        sin_comparar: linea(`Bot: ${esc(f.bot_nombre || '—')}`),
+        bot_cerrado: linea(`${esc(elBot(f))}: ${esc(f.bot_nombre || '—')}`),
+        solo_bot: linea(`solo el bot${f.bot_estado === 'ultimo' ? ` (cerró hace ${esc(antiguedad(f.bot_antiguedad_min))})` : sinCerrar} · BOLT: nadie`, true),
+        solo_bolt: linea('BOLT · sin turno en el bot'),
+        nadie: linea('ni BOLT ni el bot'),
+      }[caso] || linea(f.bolt_estado === 'pendiente' ? 'BOLT aún no llega a esa hora' : esc(boltFrase(f) || 'sin mirar'));
+      return cabeza + debajo;
+    }
     // Lo de fuera de los corchetes es la tarjeta; lo de dentro, su nota. Una
     // tarjeta que es solo nota («[TALLER GUTI]») se escribe una vez, no dos.
     const fuera = String(f.conductor_texto || '').replace(/\s*\[[^\]]*\]\s*/g, ' ').trim();
@@ -212,10 +324,24 @@
           (f.tarjeta_provisional ? ' ' + etiqueta('Provisional', 'muted') : '') +
           (f.tarjeta_nota ? ` <span class="text-telecab-muted text-xs">[${esc(f.tarjeta_nota)}]</span>` : '');
     const sinPersona = f.tarjeta_provisional || !f.conductor_texto || f.conductor_como == null;
-    const conBolt = f.bolt_nombre && (f.coincide === false || sinPersona);
-    return tarjeta + (conBolt
-      ? `<span class="block text-xs ${f.coincide === false ? 'text-telecab-warn' : 'text-telecab-muted'}" title="${esc(boltFrase(f))}">BOLT: ${esc(f.bolt_nombre)}</span>`
-      : '');
+    // BOLT, como hasta ahora: cuando no es la de la tarjeta o la tarjeta no es de nadie.
+    const verBolt = f.bolt_nombre && (f.coincide === false || sinPersona);
+    if (caso === 'mismo') {
+      return tarjeta + (f.coincide === true ? linea('BOLT y bot: la de la tarjeta')
+        : linea(`BOLT y bot: ${esc(f.bolt_nombre || f.bot_nombre)}`, f.coincide === false));
+    }
+    if (caso === 'distinto' || caso === 'sin_comparar') {
+      return tarjeta + linea(`BOLT: ${esc(f.bolt_nombre || '—')} · Bot: ${esc(f.bot_nombre || '—')}`, caso === 'distinto');
+    }
+    // El bot, de un turno ya cerrado: se dice, sin aviso (el aviso, si lo hay,
+    // es que la tarjeta no es la persona de BOLT).
+    if (caso === 'bot_cerrado') {
+      return tarjeta + linea(`BOLT: ${esc(f.bolt_nombre || '—')} · ${esc(elBot(f))}: ${esc(f.bot_nombre || '—')}`, f.coincide === false);
+    }
+    if (caso === 'solo_bot') return tarjeta + linea(`${esc(elBot(f))}: ${esc(f.bot_nombre)} · BOLT: nadie`, true);
+    return tarjeta + (verBolt
+      ? linea(`BOLT: ${esc(f.bolt_nombre)}${caso === 'solo_bolt' ? ' · sin turno en el bot' : ''}`, f.coincide === false)
+      : caso === 'solo_bolt' ? linea('sin turno en el bot') : '');
   }
 
   async function post(url, cuerpo) {
@@ -250,15 +376,88 @@
     await lst.recargar();
   }
 
+  async function getJson(url) {
+    const r = await fetch(url);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.status !== 'ok') throw new Error(j.msg || 'Error ' + r.status);
+    return j;
+  }
+
+  // ── El Excel de Petroprix (db/215) ────────────────────────────────────────
+  const listaHtml = xs => `<ul class="text-sm list-disc pl-5 mt-1 space-y-0.5">${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  const filasDichas = fs => (fs.length > 12 ? `filas ${fs.slice(0, 12).join(', ')}… (${fs.length})` : `fila${fs.length === 1 ? '' : 's'} ${fs.join(', ')}`);
+
+  /**
+   * El resumen de una importación, para el aviso de al acabar y para el
+   * historial. En el historial (`historial`) no se promete en cuántas horas se
+   * auditan: eso es de cuando se acaba de importar, y puede que ya estén. El
+   * ritmo, el de la importación o el de la lista (RITMO): en el historial salía
+   * «0 cada 0 minutos» (revisión del 23/10/2026).
+   */
+  function resumenImportacion(r, opciones) {
+    const { conQuien = true, historial = false } = opciones || {};
+    const n = v => num(v || 0, 0);
+    const avisos = Object.values(r.avisos || {});
+    const q = r.quien || {};
+    const ritmo = r.ritmo || RITMO;
+    // 1.866 / 60 × 10 min = 5,2 h: «unas 5 horas», lo mismo que dicen los documentos.
+    const horas = r.nuevas && ritmo && !historial ? Math.round(r.nuevas / ritmo.porPasada * ritmo.cadaMin / 60) : 0;
+    const ambar = v => (v ? 'text-telecab-warn' : '');
+    return `<p class="text-sm">«${esc(r.fichero || 'sin nombre')}»${r.hoja ? `, hoja «${esc(r.hoja)}»` : ''}: <b>${n(r.filas)}</b> filas` +
+        `${r.desde ? `, del ${esc(r.desde)} al ${esc(r.hasta)}` : ''}.</p>
+      <p class="text-sm mt-2"><b>${n(r.nuevas)}</b> nuevas · ${n(r.yaEstaban)} ya estaban · ` +
+        `<span class="${r.conError ? 'text-telecab-red font-semibold' : ''}">${n(r.conError)} con error</span></p>` +
+      (r.yaImportado ? `<p class="text-xs text-telecab-muted mt-1">Este mismo fichero ya se importó el ${esc(r.yaImportado.cuando)}${r.yaImportado.usuario ? ' (' + esc(r.yaImportado.usuario) + ')' : ''}: lo que ya estaba no se duplica.</p>` : '') +
+      ((r.errores || []).length ? `<p class="text-sm mt-3 font-semibold">No entraron (${r.errores.length})</p>
+        <div class="max-h-40 overflow-y-auto">${listaHtml(r.errores.slice(0, 100).map(x => `Fila ${esc(x.fila)}: ${esc(x.motivo)}`))}</div>` : '') +
+      (avisos.length ? `<p class="text-sm mt-3 font-semibold">Avisos (${n(r.conAviso)} filas)</p>
+        ${listaHtml(avisos.map(a => `${esc(a.texto)}: <b>${n(a.filas.length)}</b> <span class="text-xs text-telecab-muted">(${esc(filasDichas(a.filas))})</span>`))}` : '') +
+      (conQuien && r.nuevas ? `<p class="text-sm mt-3 font-semibold">Quién llevaba el coche (de las nuevas)</p>
+        ${listaHtml([`En BOLT: <b>${n(q.conBolt)}</b>${q.boltPendiente ? ` (${n(q.boltPendiente)} esperando a que BOLT llegue a esa hora)` : ''} · en el bot: <b>${n(q.conBot)}</b>`,
+          `BOLT y el bot, la misma persona: <b>${n(q.mismo)}</b> · personas distintas: <b class="${ambar(q.distinto)}">${n(q.distinto)}</b>` +
+            (q.botCerrado ? ` · el bot, de un turno ya cerrado (no se compara): ${n(q.botCerrado)}` : ''),
+          `Solo el bot (abrió turno y en BOLT nadie): <b class="${ambar(q.soloBot)}">${n(q.soloBot)}</b> · solo BOLT (sin turno en el bot): ${n(q.soloBolt)} · ninguno: ${n(q.nadie)}`,
+          ...(q.errorBot ? [`<span class="text-telecab-red">No se pudo mirar el bot (${esc(q.errorBot)}): se vuelve a mirar solo cada 10 minutos.</span>`] : [])])}` : '') +
+      (r.nuevas ? `<p class="text-xs text-telecab-muted mt-3">La auditoría con Mapon se hace sola, unos ${n(ritmo.porPasada)} cada ${n(ritmo.cadaMin)} minutos, los de los dos últimos días primero` +
+        `${horas > 1 ? `: estas, en unas ${horas} horas` : ''}. Petroprix no dice quién repostó: lo dicen BOLT y el bot.</p>` : '');
+  }
+
+  function importarExcel(lst) {
+    const entrada = document.createElement('input');
+    entrada.type = 'file';
+    entrada.accept = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    entrada.onchange = async () => {
+      const f = entrada.files && entrada.files[0];
+      if (!f) return;
+      const base64 = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+      // Se elige el fichero bastante después del clic: la carga de la casa no lo
+      // ve como una acción y hay que abrirla a mano (layout-gestion, telecabCarga).
+      const carga = window.telecabCarga || { abrir() {}, cerrar() {} };
+      carga.abrir();
+      let r;
+      try {
+        r = (await post('/combustible/api/importar', { base64, nombre: f.name })).importacion;
+      } catch (e) {
+        carga.cerrar();
+        await Dialogo.aviso({ titulo: 'No se ha importado', texto: e.message, tono: 'error', ancho: 'max-w-xl' });
+        return;
+      }
+      carga.cerrar();
+      await Dialogo.aviso({ titulo: r.nuevas ? 'Excel de Petroprix importado' : 'Nada nuevo en este Excel',
+        tono: r.conError ? 'aviso' : 'ok', ancho: 'max-w-2xl', html: resumenImportacion(r) });
+      await lst.recargar();
+    };
+    entrada.click();
+  }
+
   async function verLecturas() {
-    let ls;
+    let ls, imps;
     try {
-      const r = await fetch('/combustible/api/lecturas');
-      const j = await r.json();
-      if (!r.ok || j.status !== 'ok') throw new Error(j.msg || 'Error ' + r.status);
-      ls = j.lecturas || [];
+      const [a, b] = await Promise.all([getJson('/combustible/api/lecturas'), getJson('/combustible/api/importaciones').catch(() => ({ importaciones: [] }))]);
+      ls = a.lecturas || [];
+      imps = b.importaciones || [];
     } catch (e) {
-      await Dialogo.aviso({ titulo: 'No se pudieron traer las lecturas', texto: e.message, tono: 'error' });
+      await Dialogo.aviso({ titulo: 'No se pudo traer el historial', texto: e.message, tono: 'error' });
       return;
     }
     // Un bloque por lectura, con «qué pasó» DEBAJO de cuándo y quién, no una
@@ -277,10 +476,27 @@
               (l.releidos ? ` · ${l.releidos} releídos` : '') + (l.recasados ? ` · ${l.recasados} con coche o sede nuevos` : '') +
               (l.otros ? ` · ${l.otros} del proveedor que no son repostajes` : '') + (l.fallos ? ` · ${l.fallos} con error` : ''))}</p>
       </li>`).join('');
-    await Dialogo.aviso({ titulo: 'Últimas lecturas del buzón', tono: 'info', ancho: 'max-w-2xl',
-      html: ls.length
-        ? `<ul class="text-sm">${filas}</ul>`
-        : '<p class="text-sm text-telecab-muted">Todavía no se ha leído el buzón ninguna vez.</p>' });
+    // Las importaciones del Excel de Petroprix, igual: una debajo de otra, y el
+    // detalle (errores, avisos, quién) al abrirla.
+    const imp = imps.map(i => {
+      const d = i.detalle || {};
+      const r = { fichero: i.fichero, hoja: i.hoja, filas: i.filas, nuevas: i.nuevas, yaEstaban: i.ya_estaban, conError: i.con_error,
+        conAviso: i.con_aviso, errores: d.errores || [], avisos: d.avisos || {}, quien: d.quien || {},
+        desde: i.desde_local, hasta: i.hasta_local };
+      return `
+      <li class="py-2 border-t border-telecab-border/60 first:border-t-0">
+        <p class="text-xs text-telecab-muted"><span class="tabular-nums text-telecab-text">${esc(i.empezada_local)}</span> ·
+          ${esc(i.usuario || 'a mano')}${i.modo_pruebas ? ' · pruebas' : ''} · «${esc(i.fichero || 'sin nombre')}»</p>
+        ${i.error ? `<p class="text-sm mt-0.5 text-telecab-red break-words">Se quedó a medias: ${esc(i.error)}</p>` : ''}
+        <details class="mt-0.5"><summary class="text-sm cursor-pointer">${esc(`${num(i.filas, 0)} filas · ${num(i.nuevas, 0)} nuevas · ${num(i.ya_estaban, 0)} ya estaban · ${num(i.con_error, 0)} con error · ${num(i.con_aviso, 0)} con aviso`)}</summary>
+          <div class="mt-2 pl-1">${resumenImportacion(r, { historial: true })}</div></details>
+      </li>`;
+    }).join('');
+    await Dialogo.aviso({ titulo: 'Historial', tono: 'info', ancho: 'max-w-2xl',
+      html: `<p class="text-xs text-telecab-muted uppercase tracking-wide mb-1">Excel de Petroprix importados</p>` +
+        (imps.length ? `<ul class="text-sm mb-4">${imp}</ul>` : '<p class="text-sm text-telecab-muted mb-4">Todavía no se ha importado ninguno.</p>') +
+        `<p class="text-xs text-telecab-muted uppercase tracking-wide mb-1">Lecturas del buzón (Ballenoil)</p>` +
+        (ls.length ? `<ul class="text-sm">${filas}</ul>` : '<p class="text-sm text-telecab-muted">Todavía no se ha leído el buzón ninguna vez.</p>') });
   }
 
   // ── La ficha: auditar ahora y la gasolinera a mano ────────────────────────
@@ -308,20 +524,22 @@
       await Dialogo.aviso({ titulo: 'No se pudo traer la lista de gasolineras', texto: e.message, tono: 'error' });
       return;
     }
-    // Por provincia, con la del coche delante.
+    // Por sede, con la del coche delante. Las que no son de ninguna sede
+    // (Guadalajara, Benalmádena) van en «Sin sede»: sí tienen provincia, y la
+    // pestaña decía «Sin provincia» (revisión del 23/10/2026).
     const sedes = [...new Set(gs.map(g => g.sede || ''))].sort((a, b) => (b === d.sede) - (a === d.sede) || a.localeCompare(b));
-    const grupos = sedes.map(s => ({ codigo: s, etiqueta: SEDES[s] || 'Sin provincia',
+    const grupos = sedes.map(s => ({ codigo: s, etiqueta: SEDES[s] || 'Sin sede',
       opciones: gs.filter(g => (g.sede || '') === s).map(g => ({ valor: String(g.id), texto: nombreGas(g.nombre),
         detalle: [g.direccion, PRECISION[g.precision]].filter(Boolean).join(' · ') })) }));
     const r = await Dialogo.formulario('La gasolinera de este repostaje', [
-      { id: 'gasolinera', etiqueta: `El correo dice «${d.estacion}»`, tipo: 'lista', obligatorio: true, grupos,
+      { id: 'gasolinera', etiqueta: `${deExcel(d) ? 'El Excel' : 'El correo'} dice «${enUnaLinea(d.estacion)}»`, tipo: 'lista', obligatorio: true, grupos,
         valor: d.gasolinera_id ? String(d.gasolinera_id) : '', buscador: { marcador: 'Busca por nombre o dirección…', tope: 8 },
-        ayuda: `Vale para todos los correos de ${PROVEEDORES[d.proveedor] || d.proveedor} que digan «${d.estacion}», los de antes y los que lleguen. La distancia se rehace con la posición que ya se tenía.` },
+        ayuda: `Vale para todos los repostajes de ${PROVEEDORES[d.proveedor] || d.proveedor} que digan «${enUnaLinea(d.estacion)}», los de antes y los que lleguen. La distancia se rehace con la posición que ya se tenía.` },
     ], { textoBoton: 'Guardar', ancho: 'max-w-lg' });
     if (!r || !r.gasolinera) return;
     try {
       const x = (await post(`/combustible/api/repostaje/${encodeURIComponent(d.id)}/gasolinera`, { gasolineraId: r.gasolinera })).resultado;
-      Dialogo.hecho(`Gasolinera puesta: ${x.mismos} repostaje(s) con «${d.estacion}»`);
+      Dialogo.hecho(`Gasolinera puesta: ${x.mismos} repostaje(s) con «${enUnaLinea(d.estacion)}»`);
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' });
       return;
@@ -331,7 +549,7 @@
 
   async function quitarGasolinera(d, lst) {
     const ok = await Dialogo.confirmar({ titulo: 'Quitar la gasolinera puesta a mano',
-      texto: `Los correos que digan «${d.estacion}» se volverán a casar por el nombre. Si el nombre no basta, se quedarán sin gasolinera.`,
+      texto: `Los repostajes que digan «${enUnaLinea(d.estacion)}» se volverán a casar solos (por el texto del Excel o por el nombre). Si no basta, se quedarán sin gasolinera.`,
       si: 'Quitarla' });
     if (!ok) return;
     try {
@@ -392,7 +610,7 @@
     const rAntes = d.boya_antes == null ? null : caja(M.i + 4, y(d.boya_antes) - 4, `antes ${num(d.boya_antes, 0)} ${unidadR}`, 'start');
     const tDesp = `después ${num(d.boya_despues, 0)} ${unidadR}`;
     const opcionesDesp = d.boya_despues == null ? [null] : [caja(W - M.d, y(d.boya_despues) - 4, tDesp, 'end'), caja(W - M.d, y(d.boya_despues) + 13, tDesp, 'end')];
-    const tC = `correo ${horaMadrid(tCorreo)}`, xC = enHora ? x(tCorreo) : 0;
+    const tC = `${deExcel(d) ? 'Excel' : 'correo'} ${horaMadrid(tCorreo)}`, xC = enHora ? x(tCorreo) : 0;
     const opcionesCorreo = !enHora ? [null] : [[xC + 4, M.a + 10, 'start'], [xC - 4, M.a + 10, 'end'], [xC + 4, Hh - M.b - 4, 'start'], [xC - 4, Hh - M.b - 4, 'end']]
       .map(([cx, cy, an]) => caja(cx, cy, tC, an));
     let rDesp = opcionesDesp[0], rCorreo = opcionesCorreo[0];
@@ -416,7 +634,7 @@
       ${texto(rAntes, 'rgb(var(--tc-muted))')}${texto(rDesp, 'rgb(var(--tc-muted))')}${trRotulo}${ejes}</svg>
       <p class="text-xs text-telecab-muted mt-1">Lecturas del aforador de Mapon (${unidad === '%' ? '% del depósito' : 'litros enteros'}). ` +
       `${p ? 'La franja gris es el rato que el coche estuvo parado. ' : ''}Las líneas discontinuas son las medianas de 5 lecturas ` +
-      `${b.conParada ? 'antes de parar y después de arrancar' : 'que acaban 10 minutos antes de la hora del correo y las que empiezan 10 minutos después (no estuvo parado a esa hora)'}.</p>`;
+      `${b.conParada ? 'antes de parar y después de arrancar' : `que acaban 10 minutos antes de la hora ${deExcel(d) ? 'del Excel' : 'del correo'} y las que empiezan 10 minutos después (no estuvo parado a esa hora)`}.</p>`;
   }
 
   const mapa = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat + ',' + lng)}`;
@@ -434,6 +652,13 @@
     const nota = t => `<span class="block text-xs text-telecab-muted mt-0.5">${t}</span>`;
     if (d.gps_fuente === 'parada') {
       const base = `Parado de ${esc((d.gps_local || '').slice(11))} a ${esc(d.gps_hasta_local || '…')}${d.gps_direccion ? ` en ${esc(d.gps_direccion)}` : ''}`;
+      // Fila del Excel: la hora es la del FINAL del repostaje y a veces llega
+      // con el coche ya andando (Petroprix lo apunta al cerrarlo).
+      const ta = det.parada && det.parada.trasArrancar;
+      if (ta) {
+        return base + nota(`La hora del Excel cae ${esc(ta.segundos)} s después de que arrancara: Petroprix apunta el repostaje al cerrarlo, ` +
+          'a veces con el coche ya andando, así que se mide desde esta parada.');
+      }
       const nc = det.parada && det.parada.noCubre;
       if (!nc) return base;
       return base + nota(`La hora del correo cae ${nc.minutos} min ${nc.antes ? 'antes de que parara' : 'después de que arrancara'}. ` +
@@ -446,18 +671,46 @@
     if (!c) return base + ' (no hubo parada a esa hora)';
     const tCorreo = (det.horaRepetida && Date.parse(det.horaRepetida.t)) || d.repostaje_ms || 0;
     const luego = Date.parse(c.desde) > tCorreo;
+    const laHora = `la hora ${deExcel(d) ? 'del Excel' : 'del correo'}`;
+    // Fila del Excel con la parada de antes lejos de la gasolinera: Mapon no
+    // apuntó la del surtidor, y a esa hora el coche estaba más cerca.
+    if (c.aLaGasolinera != null) {
+      return base + nota(`La parada que acabó justo antes (de ${hm(c.desde)} a ${c.hasta ? hm(c.hasta) : '…'}${c.direccion ? ` en ${esc(c.direccion)}` : ''}) ` +
+        `queda a ${esc(metros(c.aLaGasolinera))} de la gasolinera, y a ${laHora} el coche estaba más cerca: Mapon no apuntó la parada del surtidor ` +
+        '(el coche no se apagó), así que se mide desde donde estaba.');
+    }
     return base + (luego ? ': aún iba andando' : ': ya iba andando') +
       nota(`${luego ? 'Paró' : 'Había estado parado'} de ${hm(c.desde)} a ${c.hasta ? hm(c.hasta) : '…'}${c.direccion ? ` en ${esc(c.direccion)}` : ''}` +
-        `${c.metros != null ? `, a ${esc(metros(c.metros))} de donde estaba a la hora del correo` : ''}. ` +
+        `${c.metros != null ? `, a ${esc(metros(c.metros))} de donde estaba a ${laHora}` : ''}. ` +
         `Esa parada no cuenta: el coche ${luego ? 'aún no había llegado' : 'ya se había ido'}.`);
   }
 
   const ESTADO_AUDITORIA = {
-    pendiente: 'Pendiente: ' + ESPERA.charAt(0).toLowerCase() + ESPERA.slice(1),
+    // El de «pendiente» depende de la fila (espera): se escribe en la ficha.
     incompleta: 'A medias: falta algo que puede llegar (abajo dice qué). Se vuelve a mirar sola, cada vez más espaciado, unos dos días.',
     hecha: 'Hecha',
     sin_datos: 'Sin datos: pasados los reintentos, se queda con lo que hubo',
   };
+
+  /**
+   * PETROPRIX NO MANDA CORREOS: la lista solo llega hasta el último Excel que se
+   * importó. Se dice al lado de las fechas, para que nadie lea un hueco como «no
+   * repostó»; el detalle (qué fichero, cuándo y quién), en su ayuda.
+   */
+  function pintarPetroprix(imp) {
+    const el = document.getElementById('petroprix-hasta');
+    if (!el) return;
+    if (!imp && !PUEDE) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.innerHTML = '<i class="fa-solid fa-file-excel mr-1" aria-hidden="true"></i>' + (imp
+      ? `Petroprix (Excel): ${imp.ultimo_local ? 'hasta el ' + esc(imp.ultimo_local) : 'importado'}`
+      : 'Petroprix: sin Excel importado');
+    el.title = imp
+      ? `Petroprix no manda un correo por repostaje: entran con «Importar Excel». El último, «${imp.fichero || 'sin nombre'}», ` +
+        `se importó ${hace(imp.empezada_at)} (${imp.empezada_local}${imp.usuario ? ', ' + imp.usuario : ''}) y llega hasta el ${imp.ultimo_local || '—'}. ` +
+        'Lo de después entra con el siguiente Excel.'
+      : 'Petroprix no manda un correo por repostaje: sus repostajes entran con «Importar Excel» (el que se baja de su web).';
+  }
 
   // ── La pantalla ───────────────────────────────────────────────────────────
   const lista = Listado.montar({
@@ -482,24 +735,32 @@
     // auditan con Mapon» el buscador y los botones bajaban a otra línea y la
     // rejilla perdía 44 px. Lo del buzón ya lo dice la nota de abajo.
     subtitulo: (v, t) => (v.length === t.length ? `${t.length} repostajes` : `${v.length} de ${t.length} repostajes`)
-      + ' · por correo, auditados con Mapon',
+      + ' · auditados con Mapon',
     // Cada fila, con el color de su auditoría (el peor del GPS y la boya).
     claseFila: f => FONDO[f.color] || '',
 
     acciones: [
-      // «Lecturas» y no «Últimas lecturas»: a 1280 px el nombre largo bajaba los botones a otra línea.
-      { texto: 'Lecturas', icono: 'fa-clock-rotate-left', principal: false, onClick: () => verLecturas() },
-      ...(PUEDE ? [{ texto: 'Leer el buzón ahora', icono: 'fa-envelope-open-text', onClick: lst => leerAhora(lst) }] : []),
+      // El historial (las lecturas del buzón y los Excel importados), solo con
+      // su icono: a 1280×593, con «Importar Excel» al lado, el buscador y los
+      // botones bajaban a otra línea y la página ganaba barra.
+      { texto: '', ayuda: 'Historial: las lecturas del buzón y los Excel de Petroprix importados', icono: 'fa-clock-rotate-left',
+        principal: false, onClick: () => verLecturas() },
+      ...(PUEDE ? [
+        { texto: 'Importar Excel', icono: 'fa-file-import', principal: false, onClick: lst => importarExcel(lst) },
+        { texto: 'Leer el buzón ahora', icono: 'fa-envelope-open-text', onClick: lst => leerAhora(lst) },
+      ] : []),
     ],
 
     // Las cifras, de lo que se está viendo. Las filas ya son solo repostajes
     // leídos: los repetidos y los que no se pudieron leer no vienen.
     cifras: (v, extra) => {
       if (extra && extra.umbrales) UMBRALES = extra.umbrales;
+      if (extra && extra.ritmo) RITMO = extra.ritmo;
       const l = v.reduce((s, f) => s + (f.litros || 0), 0);
       const e = v.reduce((s, f) => s + (f.importe || 0), 0);
       const cuenta = c => v.filter(f => f.color === c).length;
       const noCoinciden = v.filter(f => boltClave(f) === 'no_coincide').length;
+
       return [
         { valor: v.length, etiqueta: v.length === 1 ? 'repostaje' : 'repostajes' },
         { valor: lit(l, 2), etiqueta: 'en total' },
@@ -507,7 +768,11 @@
         l > 0 ? { valor: pl(e / l), etiqueta: 'de media' } : null,
         cuenta('rojo') ? { valor: cuenta('rojo'), etiqueta: 'en rojo', tono: 'red', filtro: { id: 'color', valor: 'rojo' } } : null,
         cuenta('amarillo') ? { valor: cuenta('amarillo'), etiqueta: 'en amarillo', tono: 'warn', filtro: { id: 'color', valor: 'amarillo' } } : null,
-        noCoinciden ? { valor: noCoinciden, etiqueta: 'no coinciden con BOLT', tono: 'warn', filtro: { id: 'bolt', valor: 'no_coincide' } } : null,
+        noCoinciden ? { valor: noCoinciden, etiqueta: 'tarjeta ≠ BOLT', tono: 'warn', filtro: { id: 'bolt', valor: 'no_coincide' },
+          ayuda: 'La persona de la tarjeta (Ballenoil) no es la que llevaba el coche en BOLT a esa hora.' } : null,
+        // BOLT y el bot (si dicen otra persona, o el bot tiene a alguien y BOLT a
+        // nadie) van en su filtro, con sus cuentas, y en ámbar en cada fila: dos
+        // cifras más partían esta fila en dos a 1280 px y la rejilla perdía su sitio.
       ];
     },
 
@@ -518,8 +783,13 @@
       const notas = [];
       const lec = extra && extra.lectura;
       const auto = !lec || lec.automatica !== false;
-      const sola = auto ? 'Se lee sola cada 10 minutos'
-        : 'Aquí la lectura automática está apagada (entorno de pruebas o COMBUSTIBLE_CORREO=off), y con ella la auditoría con Mapon: solo «Leer el buzón ahora» y «Auditar ahora» en cada ficha';
+      // La auditoría tiene su propia bandera: los del Excel no dependen del correo.
+      const auditaSola = !lec || lec.auditoriaAutomatica !== false;
+      const sola = auto
+        ? `Se lee sola cada 10 minutos${auditaSola ? '' : ', pero la auditoría con Mapon está apagada (COMBUSTIBLE_AUDITORIA=off): solo «Auditar ahora» en cada ficha'}`
+        : auditaSola ? 'Aquí el buzón no se lee solo (COMBUSTIBLE_CORREO=off), pero la auditoría con Mapon sí, también la de los del Excel'
+          // Corto: a 1280×593 una tercera línea de nota dejaba la rejilla en 164 px.
+          : 'Aquí no se lee ni se audita solo (entorno de pruebas, o las dos banderas en off): «Leer el buzón ahora» y «Auditar ahora» en cada ficha';
       if (!lec || !lec.ultima) {
         notas.push({ tono: auto ? 'info' : 'aviso', icono: 'fa-envelope',
           texto: 'Todavía no se ha leído el buzón. ' + sola + (PUEDE && auto ? ', o ahora con «Leer el buzón ahora».' : '.') });
@@ -546,6 +816,7 @@
               `. ${sola}.` });
         }
       }
+      pintarPetroprix(extra && extra.importacion);
       const nl = (extra && extra.noLeidos) || [];
       if (nl.length) {
         notas.push({ tono: 'mal', icono: 'fa-envelope-circle-xmark',
@@ -576,35 +847,45 @@
         pasa: (f, v) => boltClave(f) === v,
         opciones: filas => BOLT_FILTRO.filter(([k]) => filas.some(f => boltClave(f) === k))
           .map(([k, t]) => ({ valor: k, texto: t, cuenta: filas.filter(f => boltClave(f) === k).length })) },
+      // BOLT y el bot de WhatsApp (db/215): si dicen la misma persona, otra, o solo uno.
+      { id: 'quien', textoTodos: 'BOLT y bot: todos',
+        pasa: (f, v) => (v === 'distinto' ? ['distinto', 'sin_comparar'].includes(f.quien_caso) : f.quien_caso === v),
+        // «El bot, ya cerrado» va aparte de «distintos»: un turno del bot ya
+        // cerrado a esa hora no contradice a BOLT (combustible.casar.boltYBot).
+        opciones: filas => QUIEN_FILTRO.map(k => ({ valor: k, texto: QUIEN_OPCION[k],
+          cuenta: filas.filter(f => (k === 'distinto' ? ['distinto', 'sin_comparar'].includes(f.quien_caso) : f.quien_caso === k)).length })).filter(o => o.cuenta) },
       { id: 'proveedor', campo: 'proveedor', textoTodos: 'Todos los proveedores',
         opciones: filas => [...new Set(filas.map(f => f.proveedor))].map(p => ({ valor: p, texto: PROVEEDORES[p] || p })) },
     ],
 
     columnas: [
       { titulo: 'Fecha y hora', campo: 'cuando', clase: 'whitespace-nowrap tabular-nums',
-        ayuda: 'La hora del repostaje que dice el correo (hora de Madrid).',
+        ayuda: 'La hora del repostaje que dice el correo, o la del Excel de Petroprix (la del final del repostaje, con segundos), en hora de Madrid.',
         // Un correo que se leyó pero con algo raro (sin la firma del proveedor,
         // las cuentas que no cuadran) lleva su aviso aquí; el detalle, en la ficha.
         pinta: (v, f) => esc(v) + (f.avisos && f.avisos.length
           ? ` <i class="fa-solid fa-triangle-exclamation text-telecab-warn text-xs" title="${esc(f.avisos.join('\n'))}"></i>` : '') },
       { titulo: 'Matrícula', campo: 'matricula', clase: 'font-mono font-semibold whitespace-nowrap',
-        ayuda: 'El coche del repostaje. En ámbar si no está dado de alta en Vehículos.',
+        ayuda: 'El coche del repostaje. En ámbar si no está dado de alta en Vehículos, o si está dado de baja.',
         pinta: (v, f) => (v
-          ? (f.vehiculo_id ? esc(v) : `<span class="text-telecab-warn" title="Esta matrícula no está dada de alta en Vehículos">${esc(v)}</span>`)
+          ? (f.vehiculo_id && !f.vehiculo_de_baja ? esc(v)
+            : `<span class="text-telecab-warn" title="${f.vehiculo_id ? 'Este coche está dado de baja en Vehículos' : 'Esta matrícula no está dada de alta en Vehículos'}">${esc(v)}</span>`)
           : NADA) },
       { titulo: 'Sede', valor: f => SEDES[f.sede] || '', clase: 'whitespace-nowrap',
         ayuda: 'La del coche en Vehículos o, si no está dado de alta, la de la empresa de BOLT que lo tiene; si nadie conoce el coche, la de la cuenta de BOLT de la persona de la tarjeta.',
         pinta: v => (v ? esc(v) : NADA) },
       { titulo: 'Estación', campo: 'estacion', clase: 'min-w-[8rem]',
-        ayuda: 'Como la llama el correo. Si no casa con ninguna gasolinera de la lista, en ámbar: se puede poner a mano en su ficha.',
+        ayuda: 'Como la llama el correo, o el nombre de la celda del Excel de Petroprix (la dirección, al pasar el cursor). Si no casa con ninguna gasolinera de la lista, en ámbar: se puede poner a mano en su ficha.',
+        valor: f => (deExcel(f) ? primeraLinea(f.estacion) : f.estacion),
         pinta: (v, f) => (!v ? NADA : f.gasolinera_id
-          ? `<span title="${esc('En la lista: ' + f.gasolinera_nombre)}">${esc(v)}</span>`
+          ? `<span title="${esc((deExcel(f) ? enUnaLinea(f.estacion) + '\n' : '') + 'En la lista: ' + f.gasolinera_nombre)}">${esc(v)}</span>`
           : `<span class="text-telecab-warn" title="${esc(f.gasolinera_como === 'ambiguo' ? 'Vale para varias gasolineras de la lista: no se casa con ninguna' : f.gasolinera_como ? 'No casa con ninguna gasolinera de la lista' : 'Aún sin casar con la lista')}">${esc(v)}</span>`) },
-      { titulo: 'Conductor', valor: f => f.conductor_texto || '', clase: 'min-w-[10rem]',
-        ayuda: 'El de la tarjeta, tal cual lo dice el correo. Debajo, quién llevaba el coche en BOLT a esa hora cuando no es el mismo o la tarjeta no es de una persona (provisional, del taller).',
+      { titulo: 'Conductor', valor: f => f.conductor_texto || f.quien_nombre || '', clase: 'min-w-[10rem]',
+        ayuda: 'El de la tarjeta (Ballenoil), tal cual lo dice el correo; en Petroprix, que no lo dice, el que dicen BOLT y el bot de WhatsApp. Debajo, lo que dicen BOLT (quién llevaba el coche conectado, o el último) y el bot (quién había abierto turno con esa matrícula) cuando añade algo: en ámbar si no coinciden, o si el bot tiene a alguien y BOLT a nadie.',
         pinta: (v, f) => pintaQuien(f) },
       { titulo: 'Litros', campo: 'litros', clase: 'whitespace-nowrap tabular-nums text-right', claseCabecera: 'text-right',
-        pinta: v => (v == null ? NADA : esc(lit(v))) },
+        // Con los decimales de donde vienen: tres el correo, dos el Excel.
+        pinta: (v, f) => (v == null ? NADA : esc(lit(v, deExcel(f) ? 2 : 3))) },
       { titulo: 'Importe', campo: 'importe', clase: 'whitespace-nowrap tabular-nums text-right', claseCabecera: 'text-right',
         pinta: v => (v == null ? NADA : esc(eur(v))) },
       // El €/litro va al Excel y a la ficha, no a la tabla: con las columnas del
@@ -612,18 +893,25 @@
       // está en las cifras de arriba.
       { titulo: '€/litro', campo: 'precio_litro', soloExcel: true },
       { titulo: 'GPS', valor: f => f.gps_distancia_m, clase: 'min-w-[5.5rem]',
-        ayuda: 'A cuántos metros de la gasolinera del correo estaba el coche según Mapon (parado en ella, o su posición a esa hora). Verde a menos de 700 m, amarillo a menos de 1.600 m, rojo desde ahí. Pasa el cursor para el detalle.',
+        ayuda: 'A cuántos metros de la gasolinera del correo (o del Excel) estaba el coche según Mapon (parado en ella, o su posición a esa hora). Verde a menos de 700 m, amarillo a menos de 1.600 m, rojo desde ahí. Pasa el cursor para el detalle.',
         pinta: (v, f) => pintaGps(f) },
       { titulo: 'Boya', valor: f => f.boya_error_pct, clase: 'min-w-[6.5rem]',
-        ayuda: 'Cuánto se aleja lo que subió el aforador del depósito (Mapon) de los litros del correo, en %, y lo que subió. Verde por debajo del 35 %, amarillo del 65 %, rojo desde ahí.',
+        ayuda: 'Lo que FALTA para lo pagado según el aforador del depósito (Mapon), en %, y debajo los litros que faltan o los que subió de más (que no cuentan). Verde si falta menos del 35 %, amarillo menos del 65 %, rojo desde ahí.',
         pinta: (v, f) => pintaBoya(f) },
       { titulo: 'Proveedor', valor: f => PROVEEDORES[f.proveedor] || f.proveedor, soloExcel: true },
+      { titulo: 'Llegó por', valor: f => (deExcel(f) ? 'Excel' : 'Correo'), soloExcel: true },
+      { titulo: 'Método de pago', campo: 'metodo_pago', soloExcel: true },
+      { titulo: 'Vehículo (Petroprix)', campo: 'vehiculo_tipo', soloExcel: true },
       { titulo: 'Gasolinera (lista)', valor: f => nombreGas(f.gasolinera_nombre), soloExcel: true },
       { titulo: 'Color', valor: f => (f.color ? COLORES[f.color].texto : ''), soloExcel: true },
       { titulo: 'GPS (m)', valor: f => f.gps_distancia_m, soloExcel: true },
       { titulo: 'Boya: litros', valor: f => f.boya_litros, soloExcel: true },
-      { titulo: 'Boya: error %', valor: f => f.boya_error_pct, soloExcel: true },
+      { titulo: 'Boya: falta %', valor: f => f.boya_error_pct, soloExcel: true },
+      { titulo: 'Boya: faltan L', valor: f => f.boya_faltan, soloExcel: true },
+      { titulo: 'Boya: de más L', valor: f => f.boya_de_mas, soloExcel: true },
       { titulo: 'Conductor en BOLT', valor: f => f.bolt_nombre || '', soloExcel: true },
+      { titulo: 'En el bot', valor: f => (conBot(f) ? f.bot_nombre || '' : ''), soloExcel: true },
+      { titulo: 'BOLT y bot', valor: f => QUIEN[f.quien_caso] || '', soloExcel: true },
       { titulo: 'KM', campo: 'km', soloExcel: true },
       { titulo: 'Carburante', campo: 'carburante', soloExcel: true },
     ],
@@ -631,7 +919,7 @@
     detalle: {
       origen: id => `/combustible/api/repostaje/${encodeURIComponent(id)}`,
       titulo: d => `${d.matricula || 'Sin matrícula'} · ${d.cuando}`,
-      subtitulo: d => [d.estacion, PROVEEDORES[d.proveedor] || d.proveedor,
+      subtitulo: d => [primeraLinea(d.estacion), (PROVEEDORES[d.proveedor] || d.proveedor) + (deExcel(d) ? ' (Excel)' : ''),
         d.estado === 'leido' ? colorFrase(d) : d.estado === 'repetido' ? 'Repetido' : 'No se pudo leer'].filter(Boolean).join(' · '),
       acciones: [
         { texto: 'Auditar ahora', icono: 'fa-satellite-dish', visible: d => PUEDE && d.estado === 'leido',
@@ -656,19 +944,25 @@
             const gps = d.gps_distancia_m != null
               ? tarjeta('GPS', d.gps_color, esc(metros(d.gps_distancia_m)),
                   `de ${esc(nombreGas(d.gasolinera_nombre))}${PRECISION[d.gasolinera_precision] ? ` <span class="text-xs">(${esc(PRECISION[d.gasolinera_precision])})</span>` : ''}. ${esc(reglaGps())}`)
-              : tarjeta('GPS', null, '<span class="text-telecab-muted text-base">Sin dato</span>', esc(sinAuditar(d) ? ESPERA : d.gps_motivo || 'Sin dato'));
+              : tarjeta('GPS', null, '<span class="text-telecab-muted text-base">Sin dato</span>', esc(sinAuditar(d) ? espera(d) : d.gps_motivo || 'Sin dato'));
+            // LA BOYA SOLO CUENTA LO QUE FALTA: «faltan X L (Y %)» o «subió X L
+            // más de lo pagado», sin penalizar (23/10/2026).
             const boya = d.boya_error_pct != null
-              ? tarjeta('Boya', d.boya_color, esc(ge(d) + pct(d.boya_error_pct)) + ' <span class="text-sm font-normal text-telecab-muted">de error</span>',
-                  d.boya_minimo
-                    ? `subió al menos ${esc(litB(d.boya_litros))} (el aforador topó en su techo y aún no se ha podido corregir) y el correo dice ${esc(lit(d.litros))}. ` +
-                      `Es un mínimo: el error puede ser mayor, así que solo puede decir amarillo o rojo, nunca verde${d.boya_color ? '' : ' (por eso va sin color)'}. ${esc(reglaBoya())}`
-                    // Un depósito que baja («−1 L») se dice así, no «subió −1 L».
-                    : `${d.boya_litros < 0 ? `no subió (bajó ${esc(litB(-d.boya_litros))})` : `subió ${esc(litB(d.boya_litros))}`}` +
-                      `${d.boya_corregida ? ' (con el techo corregido)' : ''} y el correo dice ${esc(lit(d.litros))}. ${esc(reglaBoya())}`)
+              // El % que se ve siempre, y el texto elegido por él (no por los
+              // litros redondeados): «0,1 %» con «no falta nada» al lado no se
+              // entendería (revisión del 23/10/2026).
+              ? tarjeta('Boya', d.boya_color, `${esc(pct(d.boya_error_pct))} ` + (d.boya_error_pct > 0
+                  ? `<span class="text-sm font-normal text-telecab-muted">faltan ${esc(litD(d.boya_faltan))}</span>`
+                  : '<span class="text-sm font-normal text-telecab-muted">no falta nada</span>'),
+                  // boyaFrase dice «el depósito bajó 1 L» de uno que baja, no «subió −1 L».
+                  esc(boyaFrase(d)) +
+                  `${d.boya_corregida ? ' Con el techo del aforador corregido.' : ''}` +
+                  (d.boya_minimo ? ' El aforador topó en su techo y aún no se ha podido corregir: lo que subió es como poco eso, y ya llega a lo pagado.' : '') +
+                  ` ${esc(reglaBoya())}`)
               : tarjeta('Boya', null, d.boya_tipo === 'porcentaje' && d.boya_salto != null
                   ? `+${esc(num(d.boya_salto, 0))} % <span class="text-sm font-normal text-telecab-muted">del depósito</span>`
                   : '<span class="text-telecab-muted text-base">Sin dato</span>',
-                esc(sinAuditar(d) ? ESPERA : d.boya_motivo || 'Sin dato'));
+                esc(sinAuditar(d) ? espera(d) : d.boya_motivo || 'Sin dato'));
             const det = d.auditoria_detalle || {};
             // Lo que pasó en el último intento y no se ve en las cifras: Mapon
             // no contestó a algo (se quedó lo de antes), o la auditoría falló.
@@ -680,10 +974,22 @@
             if (det.error) avisos.push(`El último intento falló: ${esc(det.error)}. Se vuelve a mirar.`);
             // El día del cambio de hora de octubre, de 02:00 a 02:59 cada hora pasa dos veces.
             if (det.horaRepetida) {
+              const enExcel = (d.excel_crudo || {}).horaRepetida;
               avisos.push(`El ${esc((d.repostaje_local || '').slice(0, 10))} a las ${esc((d.repostaje_local || '').slice(11))} pasó dos veces (cambio de hora). ` +
-                (det.horaRepetida.pasada === 'primera'
-                  ? 'El correo llegó antes de la segunda, así que se ha auditado la primera (aún en horario de verano).'
-                  : 'Por cuándo llegó el correo, se ha auditado la segunda (ya en horario de invierno).'));
+                (det.horaRepetida.excel
+                  ? (enExcel === 'sin_saber'
+                    ? 'El Excel no deja saber cuál: se ha tomado la segunda (ya en horario de invierno). Si sale rojo, puede ser la primera, una hora antes.'
+                    : `Por el orden del Excel es la ${det.horaRepetida.pasada} (${det.horaRepetida.pasada === 'primera' ? 'aún en horario de verano' : 'ya en horario de invierno'}).`)
+                  : det.horaRepetida.pasada === 'primera'
+                    ? 'El correo llegó antes de la segunda, así que se ha auditado la primera (aún en horario de verano).'
+                    : 'Por cuándo llegó el correo, se ha auditado la segunda (ya en horario de invierno).'));
+            }
+            // Dos repostajes del mismo coche en la misma parada: la boya, contra la suma.
+            const juntos = (det.boya && det.boya.juntos) || [];
+            if (juntos.length) {
+              avisos.push(`En la misma parada hay ${juntos.length === 1 ? 'otro repostaje' : `otros ${juntos.length}`} de este coche: ` +
+                juntos.map(x => `<a class="underline" href="#${esc(x.id)}">${esc(x.hora)}, ${esc(lit(x.litros))}</a>`).join(', ') +
+                `. El depósito sube una vez para todos: la boya se compara con los ${esc(lit(det.boya.pagados))} de todos.`);
             }
             hueco.className = 'p-5 space-y-3';
             hueco.innerHTML = `
@@ -691,7 +997,9 @@
                 <span class="text-xs text-telecab-muted ml-1">La fila se pinta con el peor de los dos.</span></p>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${gps}${boya}</div>
               ${avisos.map(t => `<p class="text-xs text-telecab-warn"><i class="fa-solid fa-circle-info mr-1" aria-hidden="true"></i>${t}</p>`).join('')}
-              <p class="text-xs text-telecab-muted">${esc(ESTADO_AUDITORIA[d.auditoria_estado] || d.auditoria_estado || '')}` +
+              <p class="text-xs text-telecab-muted">${esc(d.auditoria_estado === 'pendiente'
+                ? 'Pendiente: ' + espera(d).charAt(0).toLowerCase() + espera(d).slice(1)
+                : ESTADO_AUDITORIA[d.auditoria_estado] || d.auditoria_estado || '')}` +
               `${d.auditoria_local ? ` · última vez ${esc(d.auditoria_local)} (${d.auditoria_intentos} ${d.auditoria_intentos === 1 ? 'intento' : 'intentos'})` : ''}` +
               `${det.unidad ? ` · equipo de Mapon ${esc(det.unidad.unitId)}` : ''}</p>`;
           },
@@ -704,17 +1012,21 @@
             { texto: 'Quitar lo puesto a mano', icono: 'fa-rotate-left', visible: d => PUEDE && d.gasolinera_como === 'alias', onClick: (d, lst) => quitarGasolinera(d, lst) },
           ],
           campos: [
-            { etiqueta: 'La estación del correo', valor: d => d.estacion },
+            { etiqueta: d => (deExcel(d) ? 'La gasolinera del Excel' : 'La estación del correo'), valor: d => enUnaLinea(d.estacion) },
             { etiqueta: 'Gasolinera de la lista', html: true, ancho: 'sm:col-span-2',
               valor: d => (d.gasolinera_id
-                ? `${esc(nombreGas(d.gasolinera_nombre))} <span class="text-telecab-muted text-xs">· ${esc({ exacto: 'mismo nombre', parecido: 'nombre parecido', alias: 'puesta a mano' }[d.gasolinera_como] || '')}</span>` +
+                ? `${esc(nombreGas(d.gasolinera_nombre))} <span class="text-telecab-muted text-xs">· ${esc({ exacto: 'mismo nombre', parecido: 'nombre parecido', alias: 'puesta a mano', texto: 'por el texto exacto del Excel', direccion: 'por su dirección' }[d.gasolinera_como] || '')}</span>` +
                   (d.gasolinera_direccion ? `<span class="block text-xs text-telecab-muted">${esc(d.gasolinera_direccion)}</span>` : '') +
                   (d.gasolinera_observaciones ? `<span class="block text-xs text-telecab-warn">${esc(d.gasolinera_observaciones)}</span>` : '')
                 : d.gasolinera_como === 'ambiguo'
-                  ? `<span class="text-telecab-warn">Vale para varias: ${esc((d.gasolinera_candidatas_nombres || []).map(nombreGas).join(', '))}</span>. <span class="text-telecab-muted text-xs">No se casa con ninguna hasta que se elija a mano.</span>`
+                  // Una sola candidata: el nombre se parece pero no es el mismo (el Excel: «Getafe 2» frente a «Getafe»).
+                  ? ((d.gasolinera_candidatas_nombres || []).length === 1
+                    ? `<span class="text-telecab-warn">Se parece a ${esc(nombreGas(d.gasolinera_candidatas_nombres[0]))}, pero no es el mismo nombre</span>.`
+                    : `<span class="text-telecab-warn">Vale para varias: ${esc((d.gasolinera_candidatas_nombres || []).map(nombreGas).join(', '))}</span>.`) +
+                    ' <span class="text-telecab-muted text-xs">No se casa con ninguna hasta que se elija a mano.</span>'
                   : `<span class="text-telecab-warn">No casa con ninguna de la lista.</span> <span class="text-telecab-muted text-xs">Se puede poner a mano y valdrá para los siguientes.</span>`) },
             { etiqueta: 'Dónde estaba', html: true, ancho: 'sm:col-span-2',
-              valor: d => (d.gps_lat == null ? `<span class="text-telecab-muted">${esc(sinAuditar(d) ? ESPERA : d.gps_motivo || 'No se sabe')}</span>`
+              valor: d => (d.gps_lat == null ? `<span class="text-telecab-muted">${esc(sinAuditar(d) ? espera(d) : d.gps_motivo || 'No se sabe')}</span>`
                 : dondeEstaba(d) + ` · ${enlace(mapa(d.gps_lat, d.gps_lng), 'ver en el mapa')}`) },
             { etiqueta: 'Distancia a la gasolinera', html: true,
               valor: d => (d.gps_distancia_m != null
@@ -726,7 +1038,7 @@
               visible: d => !!d.gps_cercana_nombre,
               valor: d => `${esc(nombreGas(d.gps_cercana_nombre))}, a ${esc(metros(d.gps_cercana_m))}` +
                 (d.gps_cercana_lat != null ? ` · ${enlace(mapa(d.gps_cercana_lat, d.gps_cercana_lng), 'ver en el mapa')}` : '') +
-                (d.gasolinera_id && d.gps_cercana_nombre === d.gasolinera_nombre ? ' <span class="text-telecab-muted text-xs">(la del correo)</span>' : '') },
+                (d.gasolinera_id && d.gps_cercana_nombre === d.gasolinera_nombre ? ` <span class="text-telecab-muted text-xs">(la del ${deExcel(d) ? 'Excel' : 'correo'})</span>` : '') },
           ],
         },
         {
@@ -751,15 +1063,19 @@
             }
             if (b.capacidad) fila('Depósito (Mapon)', `${esc(num(b.capacidad, 0))} L`);
             if (d.boya_litros != null) {
-              // Sin corregir el techo, lo que subió es un mínimo, y su error también.
+              // Sin corregir el techo, lo que subió es un mínimo.
               fila('Litros según la boya', `<b class="tabular-nums">${d.boya_minimo ? 'al menos ' : ''}${esc(litB(d.boya_litros))}</b>`);
-              fila('Litros del correo', `<span class="tabular-nums">${esc(lit(d.litros))}</span>`);
-              fila('Error', d.boya_error_pct != null
-                ? `<span class="inline-flex items-center gap-1.5">${punto(d.boya_color, true)}<b class="tabular-nums">${esc(ge(d) + pct(d.boya_error_pct))}</b> ` +
-                  `${d.boya_color ? esc(COLORES[d.boya_color].texto) : d.boya_minimo ? '<span class="text-telecab-muted text-xs">sin color: un mínimo no da verde</span>' : ''}</span>` : NADA);
+              fila(deExcel(d) ? 'Litros pagados (Excel)' : 'Litros pagados (correo)', `<span class="tabular-nums">${esc(lit(d.litros, deExcel(d) ? 2 : 3))}</span>` +
+                (d.boya_pagados != null ? ` <span class="text-xs text-telecab-muted">· con el otro de la misma parada, ${esc(lit(d.boya_pagados))}</span>` : ''));
+              // Solo cuenta lo que falta: lo que sube de más se dice, sin penalizar.
+              fila('Lo que falta', d.boya_error_pct != null
+                ? `<span class="inline-flex items-center gap-1.5">${punto(d.boya_color, true)}<b class="tabular-nums">${esc(pct(d.boya_error_pct))}</b> ` +
+                  `${d.boya_color ? esc(COLORES[d.boya_color].texto) : ''}</span>` +
+                  `<span class="block text-xs text-telecab-muted">${esc(d.boya_faltan > 0 ? `faltan ${litD(d.boya_faltan)}` : d.boya_de_mas > 0 ? `subió ${ge(d)}${litD(d.boya_de_mas)} más de lo pagado (no cuenta)` : 'subió lo pagado')}</span>`
+                : NADA);
             }
             if (d.boya_motivo) fila(d.boya_error_pct != null ? 'Ojo' : 'Por qué no hay dato', `<span class="${d.boya_error_pct != null ? 'text-telecab-warn' : 'text-telecab-muted'}">${esc(d.boya_motivo)}</span>`, 'sm:col-span-2 lg:col-span-3');
-            if (!d.boya_tipo && !d.boya_motivo) fila('Por qué no hay dato', `<span class="text-telecab-muted">${esc(ESPERA)}</span>`, 'sm:col-span-2 lg:col-span-3');
+            if (!d.boya_tipo && !d.boya_motivo) fila('Por qué no hay dato', `<span class="text-telecab-muted">${esc(espera(d))}</span>`, 'sm:col-span-2 lg:col-span-3');
             hueco.className = 'p-5';
             hueco.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">${filas.join('')}</div>` +
               (dibujoAforador(d) ? `<div class="mt-4">${dibujoAforador(d)}</div>` : '');
@@ -770,16 +1086,21 @@
           visible: d => d.estado !== 'no_leido',
           campos: [
             { etiqueta: 'Fecha del repostaje', valor: d => d.repostaje_local },
-            { etiqueta: 'Fecha del cargo', valor: d => d.cargo_local },
-            { etiqueta: 'Estación', valor: d => d.estacion },
+            { etiqueta: 'Fecha del cargo', valor: d => d.cargo_local, visible: d => !deExcel(d) },
+            { etiqueta: 'Estación', valor: d => enUnaLinea(d.estacion), ancho: 'sm:col-span-2' },
             { etiqueta: 'Carburante', valor: d => d.carburante },
-            { etiqueta: 'Litros', valor: d => lit(d.litros, 3) },
+            { etiqueta: 'Litros', valor: d => lit(d.litros, deExcel(d) ? 2 : 3) },
             { etiqueta: 'Importe del repostaje', valor: d => eur(d.importe) },
             { etiqueta: 'Precio por litro', valor: d => pl(d.precio_litro) },
-            { etiqueta: 'Recarga en la tarjeta', valor: d => eur(d.importe_recarga) },
-            { etiqueta: 'Devuelto al saldo', valor: d => eur(d.devuelto) },
-            { etiqueta: 'Ahorro que dice el proveedor', valor: d => eur(d.ahorro) },
-            { etiqueta: 'KM tecleados', valor: d => (d.km == null ? '' : num(d.km, 0) + ' km') },
+            // Lo que trae el Excel de Petroprix y el correo no.
+            { etiqueta: 'Método de pago', valor: d => d.metodo_pago, visible: deExcel },
+            { etiqueta: 'Vehículo (Petroprix)', valor: d => d.vehiculo_tipo, visible: deExcel },
+            { etiqueta: 'Recarga en la tarjeta', valor: d => eur(d.importe_recarga), visible: d => !deExcel(d) },
+            { etiqueta: 'Devuelto al saldo', valor: d => eur(d.devuelto), visible: d => !deExcel(d) },
+            { etiqueta: 'Ahorro que dice el proveedor', valor: d => eur(d.ahorro), visible: d => !deExcel(d) },
+            { etiqueta: 'KM tecleados', valor: d => (d.km == null ? '' : num(d.km, 0) + ' km'), visible: d => !deExcel(d) },
+            { etiqueta: 'Avisos', html: true, visible: d => deExcel(d) && !!(d.avisos && d.avisos.length), ancho: 'sm:col-span-2 lg:col-span-3',
+              valor: d => `<ul class="list-disc pl-5 space-y-0.5 text-telecab-warn">${d.avisos.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` },
           ],
         },
         {
@@ -787,7 +1108,8 @@
           campos: [
             { etiqueta: 'Matrícula', html: true,
               valor: d => (d.vehiculo_id
-                ? `<a class="font-mono font-semibold text-telecab-gold hover:underline" href="/vehiculos#${esc(d.vehiculo_id)}">${esc(d.matricula)}</a>`
+                ? `<a class="font-mono font-semibold text-telecab-gold hover:underline" href="/vehiculos#${esc(d.vehiculo_id)}">${esc(d.matricula)}</a>` +
+                  (d.vehiculo_de_baja ? ' <span class="text-telecab-warn text-xs">dado de baja en Vehículos</span>' : '')
                 : (d.matricula ? `<span class="font-mono">${esc(d.matricula)}</span> <span class="text-telecab-warn text-xs">no está dada de alta en Vehículos</span>` : '')) },
             { etiqueta: 'Modelo', valor: d => d.vehiculo_modelo },
             { etiqueta: 'Sede', valor: d => (SEDES[d.sede]
@@ -799,8 +1121,10 @@
           titulo: 'Quién', icono: 'fa-user',
           visible: d => d.estado !== 'no_leido',
           campos: [
-            { etiqueta: 'La tarjeta dice', valor: d => d.conductor_texto },
-            { etiqueta: 'Tarjeta', valor: d => (d.tarjeta_provisional ? 'Provisional: no es de una persona'
+            // Petroprix no dice quién repostó: lo dicen BOLT y el bot.
+            { etiqueta: 'Quién repostó', valor: () => 'Petroprix no lo dice: lo dicen BOLT y el bot de WhatsApp', visible: deExcel, ancho: 'sm:col-span-2 lg:col-span-3' },
+            { etiqueta: 'La tarjeta dice', valor: d => d.conductor_texto, visible: d => !deExcel(d) },
+            { etiqueta: 'Tarjeta', visible: d => !deExcel(d), valor: d => (d.tarjeta_provisional ? 'Provisional: no es de una persona'
               : d.conductor_como == null ? (d.conductor_texto ? 'No es de una persona' : '') : 'De una persona') },
             { etiqueta: 'Nota de la tarjeta', valor: d => d.tarjeta_nota, visible: d => !!d.tarjeta_nota },
             { etiqueta: 'Ficha en el ERP', html: true, visible: d => d.conductor_como != null,
@@ -808,15 +1132,25 @@
                 ? `<a class="text-telecab-gold hover:underline" href="/plantilla#${esc(d.conductor_id)}">${esc(d.conductor_ficha || 'Ver ficha')}</a> <span class="text-telecab-muted text-xs">· ${esc(COMO[d.conductor_como] || '')}</span>`
                 : esc(d.conductor_cuenta_bolt ? 'Sin ficha (cuenta de BOLT, ' + (COMO[d.conductor_como] || '') + ')' : COMO[d.conductor_como] || '')) },
             { etiqueta: 'En BOLT a esa hora', valor: d => boltFrase(d), ancho: 'sm:col-span-2' },
-            { etiqueta: '¿Es la misma persona?', html: true,
+            { etiqueta: '¿La tarjeta y BOLT son la misma persona?', html: true, visible: d => !deExcel(d),
               valor: d => (d.coincide === true ? '<span class="text-telecab-green font-semibold">Sí</span>'
                 : d.coincide === false ? '<span class="text-telecab-warn font-semibold">No</span>'
                   : '<span class="text-telecab-muted">No se puede comparar</span>') },
+            // El bot de WhatsApp (db/215): el turno abierto con esa matrícula.
+            { etiqueta: 'En el bot de WhatsApp', html: true, ancho: 'sm:col-span-2',
+              valor: d => esc(botFrase(d)) + (d.bot_conductor_id
+                ? ` · <a class="text-telecab-gold hover:underline" href="/plantilla#${esc(d.bot_conductor_id)}">ficha</a>` : '') },
+            { etiqueta: '¿BOLT y el bot dicen la misma persona?', html: true,
+              valor: d => (!d.quien_caso ? `<span class="text-telecab-muted">${d.bolt_estado === 'pendiente' ? 'Aún no: BOLT no llega a esa hora'
+                : !abreTurnoEnElBot(d) && d.bot_estado === 'nadie' ? 'No se compara: en Barcelona casi nadie abre turno en el bot' : 'No se puede decir todavía'}</span>`
+                : `<span class="${['distinto', 'solo_bot'].includes(d.quien_caso) ? 'text-telecab-warn font-semibold' : d.quien_caso === 'mismo' ? 'text-telecab-green font-semibold' : ''}">` +
+                  `${esc(QUIEN[d.quien_caso])}</span>`) },
             { etiqueta: 'Mirado en BOLT', valor: d => d.bolt_mirado_local },
           ],
         },
         {
           titulo: 'La lectura del correo', icono: 'fa-envelope',
+          visible: d => !deExcel(d),
           campos: [
             // El estado solo se dice cuando no es un repostaje normal: un
             // correo que no se pudo leer, o el mismo repostaje otra vez.
@@ -847,10 +1181,32 @@
         },
         {
           titulo: 'El correo, tal cual se leyó', icono: 'fa-file-lines',
+          visible: d => !deExcel(d),
           pinta: (d, hueco) => {
             hueco.innerHTML = d.cuerpo_texto
               ? `<pre class="whitespace-pre-wrap break-words text-xs leading-relaxed text-telecab-text/90 max-h-[28rem] overflow-auto font-mono">${esc(d.cuerpo_texto)}</pre>`
               : '<p class="text-sm text-telecab-muted">No se guardó el texto de este correo.</p>';
+          },
+        },
+        // La fila del Excel de Petroprix (db/215): de qué importación viene y
+        // sus celdas tal cual llegaron.
+        {
+          titulo: 'La fila del Excel', icono: 'fa-file-excel',
+          visible: deExcel,
+          pinta: (d, hueco) => {
+            const celdas = (d.excel_crudo && d.excel_crudo.celdas) || {};
+            const fila = (et, v, ancho) => `<div class="${ancho || ''}"><p class="text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(et)}</p><p class="text-sm break-words">${v}</p></div>`;
+            hueco.className = 'p-5';
+            hueco.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">` +
+              fila('Importado', esc(`${d.importacion_local || d.recibido_local || ''}${d.importacion_usuario ? ' por ' + d.importacion_usuario : ''}`)) +
+              fila('Fichero', esc(d.importacion_fichero || '—') + (d.excel_fila ? ` <span class="text-xs text-telecab-muted">· fila ${esc(d.excel_fila)}</span>` : '')) +
+              fila('Proveedor', 'Petroprix') + '</div>' +
+              `<div class="mt-4 rounded-xl border border-telecab-border overflow-hidden"><table class="w-full text-sm"><tbody>` +
+              // En el orden de la cabecera del Excel: la base (JSONB) no guarda el de las claves.
+              ['Fecha', 'Matricula', 'Vehículo', 'Combustible', 'Litros', 'Precio', 'Método de pago', 'Gasolinera'].filter(k => k in celdas).map(k => [k, celdas[k]]).map(([k, v]) => `<tr class="border-t border-telecab-border/60 first:border-t-0">
+                <th class="text-left font-normal text-xs text-telecab-muted uppercase tracking-wide px-3 py-1.5 w-40 align-top">${esc(k)}</th>
+                <td class="px-3 py-1.5 font-mono text-xs whitespace-pre-wrap break-words">${esc(v)}</td></tr>`).join('') +
+              '</tbody></table></div>';
           },
         },
       ],

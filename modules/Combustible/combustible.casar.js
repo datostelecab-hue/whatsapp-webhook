@@ -22,7 +22,7 @@
 // con ninguna («ambiguo»): enlazar mal es peor que no enlazar, porque luego se
 // audita a quien no era.
 
-const { normClave } = require('../../services/nucleo');
+const { normClave, SEDE_FLOTA } = require('../../services/nucleo');
 
 // Las palabras que no distinguen a nadie: «María del Mar» y «María Mar».
 const VACIAS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'do', 'dos']);
@@ -119,4 +119,70 @@ function coincide(t, b) {
   return null;
 }
 
-module.exports = { tarjeta, casarNombre, comoCasan, coincide };
+/**
+ * BOLT Y EL BOT DE WHATSAPP, ¿DICEN LA MISMA PERSONA? (db/215, 23/10/2026)
+ *
+ * Petroprix no trae el nombre de quien repostó: lo dicen BOLT (quién llevaba
+ * el coche conectado, o el último que lo llevó) y el bot (quién había abierto
+ * turno con esa matrícula, aunque no se conectara a BOLT). Camilo: «vamos a ver
+ * quién fue el último en cogerlo en BOLT y en el bot de WhatsApp si es que
+ * alguien inició turno en el bot sin conectarse a BOLT». Vale igual para los de
+ * Ballenoil, al lado de la tarjeta.
+ *
+ * `f` es la fila del repostaje (bolt_* y bot_*, y `sede`). Se compara por la
+ * ficha si las dos la tienen, y si no por el nombre (como la tarjeta con BOLT).
+ * → { caso, nombre }:
+ *     'mismo'       los dos dicen la misma persona
+ *     'distinto'    cada uno dice una, y el bot la tenía EN TURNO a esa hora
+ *     'bot_cerrado' BOLT tiene a alguien y el bot, a otra persona que ya había
+ *                   cerrado su turno (no se comparan: ver abajo)
+ *     'solo_bot'    el bot tiene a alguien y BOLT a nadie (lo que se buscaba)
+ *     'solo_bolt'   BOLT tiene a alguien y nadie abrió turno en el bot
+ *     'nadie'       ninguno de los dos
+ *     'sin_comparar' los dos tienen a alguien, pero a uno le falta la ficha y el nombre
+ *     null          todavía no se puede decir (BOLT pendiente, o el bot sin
+ *                   mirar), o la sede no abre turno en el bot y el bot no tiene a nadie
+ *   `nombre`: la persona que mejor responde (la del bot si solo la tiene él).
+ *
+ * «EL ÚLTIMO» DEL BOT NO CONTRADICE A BOLT (revisión del 23/10/2026). De los 236
+ * «distintos» del primer Excel, 143 tenían en el bot un turno ya cerrado (de
+ * media, 7 a 10 h antes) y en 85 BOLT tenía a alguien conectado a esa hora: el
+ * 5736LGK, el 17/10 a las 06:45, lo llevaba en BOLT Isaac Ernesto Checa y la
+ * lista decía, en ámbar, «Bot: Ruben Armendariz Utrilla», de un turno cerrado a
+ * las 19:04 del día anterior. Eso no dice que fueran dos personas a la vez: dice
+ * que el que lo cogió no abrió su turno. Así que solo se comparan cuando el bot
+ * lo tenía en turno a esa hora; con un turno ya cerrado es `bot_cerrado`, que se
+ * enseña en gris y no cuenta como «distintos». Si en BOLT no había nadie, el
+ * último del bot sigue siendo `solo_bot`: es la única pista de quién lo tenía.
+ *
+ * LA SEDE QUE NO ABRE TURNO EN EL BOT. En Barcelona casi nadie lo hace (en el
+ * último mes, 25 turnos en 6 coches, frente a 1.159 en Madrid): ahí «sin turno en
+ * el bot» es lo normal, no un aviso. Si el bot no tiene a nadie, no se dice nada;
+ * si tiene a alguien (esos 6 coches), se compara como en Madrid.
+ */
+function boltYBot(f) {
+  if (!f) return { caso: null, nombre: null };
+  const conBolt = f.bolt_estado === 'conectado' || f.bolt_estado === 'ultimo';
+  const conBot = f.bot_estado === 'en_turno' || f.bot_estado === 'ultimo';
+  const boltSabe = conBolt || ['nadie', 'sin_coche', 'sin_datos'].includes(f.bolt_estado);
+  if (!f.bot_estado || (!boltSabe && !conBot)) return { caso: null, nombre: null };
+  if (!conBot && !abreTurnoEnElBot(f.sede)) return { caso: null, nombre: conBolt ? f.bolt_nombre : null };
+  if (conBolt && conBot) {
+    const c = coincide({ conductorId: f.bot_conductor_id, nombre: f.bot_nombre },
+      { conductorId: f.bolt_conductor_id, uuid: f.bolt_conductor_uuid, nombre: f.bolt_nombre });
+    if (c === true) return { caso: 'mismo', nombre: f.bolt_nombre || f.bot_nombre };
+    // Un turno ya cerrado a esa hora no se compara: lo dice el comentario de arriba.
+    if (f.bot_estado === 'ultimo') return { caso: 'bot_cerrado', nombre: f.bolt_nombre || f.bot_nombre };
+    // Sin ficha ni nombre en uno de los dos no se acusa a nadie de nada.
+    return { caso: c === false ? 'distinto' : 'sin_comparar', nombre: f.bolt_nombre || f.bot_nombre };
+  }
+  if (conBot) return { caso: boltSabe ? 'solo_bot' : null, nombre: f.bot_nombre };
+  if (conBolt) return { caso: 'solo_bolt', nombre: f.bolt_nombre };
+  return { caso: 'nadie', nombre: null };
+}
+
+// Madrid abre turno en el bot con la matrícula; las otras sedes, casi nunca.
+// Sin sede (un coche que nadie conoce), como Madrid: es lo que más hay.
+const abreTurnoEnElBot = sede => !sede || sede === SEDE_FLOTA;
+
+module.exports = { tarjeta, casarNombre, comoCasan, coincide, boltYBot, abreTurnoEnElBot };

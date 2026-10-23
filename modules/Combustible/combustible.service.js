@@ -24,11 +24,28 @@
 // lo audita después de leer el buzón (auditarPendientes) y la pantalla lo pinta
 // con el color del peor de sus dos criterios (combustible.semaforo.js). Un
 // fallo de Mapon no toca la lectura del correo: es otra llamada, después.
+//
+// PETROPRIX, POR EXCEL (db/215, 23/10/2026). Petroprix no manda un correo por
+// repostaje: Camilo baja un Excel de su web y lo sube con «Importar Excel»
+// (importarExcel). Cada fila es un repostaje sin correo (`origen = 'excel'`),
+// con su clave contra los duplicados, y entra en la misma lista y la misma
+// auditoría. No trae quién repostó: lo dicen BOLT y el bot de WhatsApp.
+//
+// QUIÉN LLEVABA EL COCHE, EN BOLT Y EN EL BOT (atribuir). BOLT como hasta ahora
+// (el tramo que contiene la hora, o el último que lo llevó), y el bot: el turno
+// abierto en WhatsApp con esa matrícula a esa hora, o el último que se cerró
+// antes. Para todos, también los de Ballenoil. En lote: un Excel trae miles.
+//
+// LO QUE NO ES DEL CORREO (repasos): volver a casar, BOLT pendiente y el bot. Lo
+// hace la pasada del buzón y, con el correo apagado, `repasar` desde el cron:
+// los del Excel no dependen del correo.
 
 const crypto = require('crypto');
 const repo = require('./combustible.repo');
 const lector = require('./combustible.lector');
+const excel = require('./lector.petroprixExcel');
 const casar = require('./combustible.casar');
+const G = require('./combustible.gasolinera');
 const auditoria = require('./combustible.auditoria');
 const semaforo = require('./combustible.semaforo');
 const boya = require('./combustible.boya');
@@ -63,8 +80,11 @@ const ULTIMO_HASTA_SEG = 12 * 3600;
 const TOPE_PASADA_MS = 8 * 60 * 1000;
 
 // La lectura automática es el cron de app.js: no arranca en pruebas (como
-// ningún cron) ni con COMBUSTIBLE_CORREO=off. La pantalla lo dice.
+// ningún cron) ni con COMBUSTIBLE_CORREO=off. La auditoría con Mapon va en el
+// mismo cron pero con su propia bandera (COMBUSTIBLE_AUDITORIA=off): los del
+// Excel de Petroprix no dependen del correo. La pantalla dice las dos.
 const automatica = () => !pruebas.ACTIVO && process.env.COMBUSTIBLE_CORREO !== 'off';
+const auditoriaAutomatica = () => !pruebas.ACTIVO && process.env.COMBUSTIBLE_AUDITORIA !== 'off';
 
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 const restarDias = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') - n * 86400000).toISOString().slice(0, 10);
@@ -188,13 +208,13 @@ async function guardarConRed(fila, base) {
 }
 
 /**
- * Quién llevaba el coche en BOLT a la hora del repostaje, y si es el de la
- * tarjeta. `frescura`: hasta dónde llega BOLT por sede (repo.frescuraBolt).
+ * Lo que dice BOLT de un repostaje, ya decidido: conectado, el último (hasta
+ * 12 h), nadie, el coche no está en BOLT o pendiente (BOLT aún no llega a esa
+ * hora). Y si es la persona de la tarjeta. `frescura`: hasta dónde llega BOLT
+ * por sede (repo.frescuraBolt).
  */
-async function mirarBolt(id, { sede, conductorId, cuentaBolt, conductorTexto }, frescura) {
+function filaBolt(b, { sede, conductorId, cuentaBolt, conductorTexto }, frescura) {
   const otraSede = sede && sede !== SEDE_FLOTA;
-  const b = otraSede ? await repo.boltOtraSede(id) : await repo.boltMadrid(id);
-  if (!b) return null;
   const hasta = otraSede ? frescura.otras : frescura.madrid;
   let estado;
   if (!b.enBolt) estado = 'sin_coche';
@@ -209,7 +229,7 @@ async function mirarBolt(id, { sede, conductorId, cuentaBolt, conductorTexto }, 
   const coincide = conPersona && t.nombre
     ? casar.coincide({ conductorId, cuentaBolt, nombre: t.nombre }, { conductorId: b.conductorId, uuid: b.uuid, nombre: b.nombre })
     : null;
-  const fila = {
+  return {
     estado,
     uuid: conPersona ? b.uuid : null,
     conductorId: conPersona ? b.conductorId : null,
@@ -218,8 +238,98 @@ async function mirarBolt(id, { sede, conductorId, cuentaBolt, conductorTexto }, 
     antiguedadMin: conPersona ? Math.round(b.segundos / 60) : null,
     coincide,
   };
-  await repo.ponerBolt(id, fila);
-  return fila;
+}
+
+/**
+ * Lo que dice el bot de WhatsApp de un repostaje: en turno (lo tenía abierto),
+ * el último que lo cerró (hasta 12 h antes, como BOLT: no se le cuelga un
+ * repostaje a quien dejó el coche ayer) o nadie.
+ */
+function filaBot(x) {
+  if (!x || !x.turnoId) return { estado: 'nadie' };
+  const estado = x.dentro ? 'en_turno' : x.segFin <= ULTIMO_HASTA_SEG ? 'ultimo' : 'nadie';
+  if (estado === 'nadie') return { estado };
+  return { estado, turnoId: x.turnoId, tipo: x.tipo, conductorId: x.conductorId, nombre: x.nombre,
+    desde: x.desde, hasta: x.hasta, antiguedadMin: estado === 'ultimo' ? Math.round(x.segFin / 60) : 0 };
+}
+
+// Sin db/215 todavía no están las columnas del bot: lo de BOLT sigue igual.
+const sinColumna = e => !!e && e.code === '42703';
+let avisadoSinBot = false;
+
+/**
+ * QUIÉN LLEVABA EL COCHE, en BOLT y en el bot, de muchos repostajes a la vez
+ * (un Excel trae miles: una consulta por cada 500, no una por fila). `quienes`:
+ * [{ id, sede, conductorId, cuentaBolt, conductorTexto }]. Lo de BOLT y lo del
+ * bot se guardan aparte: si falla uno, el otro queda.
+ * → { bolt: Map, bot: Map, errorBot }
+ *
+ * Un fallo de BOLT lanza; uno del bot NO: vuelve en `errorBot`, para que quien
+ * llama lo apunte como del bot. Antes salía como «BOLT: …» aunque lo de BOLT sí
+ * se hubiera guardado (revisión del 23/10/2026). Los que se quedan sin bot
+ * (bot_estado NULL) los vuelve a mirar la pasada siguiente (repo.paraMirarBot).
+ */
+async function atribuir(quienes, frescura) {
+  const bolt = new Map(), bot = new Map();
+  let errorBot = null;
+  for (let i = 0; i < (quienes || []).length; i += 500) {
+    const trozo = quienes.slice(i, i + 500);
+    const otra = q => q.sede && q.sede !== SEDE_FLOTA;
+    const [bm, bo] = await Promise.all([repo.boltMadridDe(trozo.filter(q => !otra(q)).map(q => q.id)),
+      repo.boltOtraSedeDe(trozo.filter(otra).map(q => q.id))]);
+    const filas = [];
+    for (const q of trozo) {
+      const b = bm.get(Number(q.id)) || bo.get(Number(q.id));
+      if (!b) continue;
+      const f = filaBolt(b, q, frescura);
+      bolt.set(Number(q.id), f);
+      filas.push({ id: q.id, ...f });
+    }
+    await repo.ponerBoltDe(filas);
+    if (errorBot) continue;
+    try {
+      const xs = await repo.botDe(trozo.map(q => q.id));
+      const fb = trozo.map(q => ({ id: Number(q.id), ...filaBot(xs.get(Number(q.id))) }));
+      await repo.ponerBot(fb);
+      for (const f of fb) bot.set(f.id, f);
+    } catch (e) {
+      if (!sinColumna(e)) { errorBot = e.message || String(e); continue; }
+      if (!avisadoSinBot) console.warn('⚠️  [Combustible] Falta aplicar db/215: no se mira quién llevaba el coche en el bot hasta entonces');
+      avisadoSinBot = true;
+    }
+  }
+  if (errorBot) console.error(`❌ [Combustible] Quién llevaba el coche en el bot: ${errorBot}`);
+  return { bolt, bot, errorBot };
+}
+
+/**
+ * QUIÉN LLEVABA EL COCHE, en una pasada: de uno o de muchos a la vez, cada
+ * repostaje una vez por pasada, contado en `c` y con los fallos en `detalle`.
+ * Nunca lanza. Los que esperaban a BOLT van todos en una llamada (`atribuir`
+ * hace una consulta por cada 500): uno a uno eran cuatro consultas por fila, y
+ * con 500 «pendiente» de un Excel, hasta 2.000 cada diez minutos (revisión del
+ * 23/10/2026).
+ */
+function mirador({ c, detalle, frescura }) {
+  const mirados = new Set();
+  return async function mirar(quienes) {
+    const xs = (quienes || []).filter(q => q && !mirados.has(Number(q.id)));
+    if (!xs.length) return;
+    for (const q of xs) mirados.add(Number(q.id));
+    const ids = xs.length === 1 ? { id: xs[0].id } : { repostajes: xs.length };
+    try {
+      const r = await atribuir(xs, frescura);
+      for (const b of r.bolt.values()) if (b.estado !== 'pendiente') c.boltMirados++;
+      if (r.errorBot) {
+        c.fallos++;
+        detalle.fallos.push({ ...ids, error: 'Quién llevaba el coche en el bot: ' + r.errorBot });
+      }
+    } catch (e) {
+      c.fallos++;
+      detalle.fallos.push({ ...ids, error: 'BOLT: ' + e.message });
+      console.error(`❌ [Combustible] Quién llevaba el coche en BOLT (${xs.length === 1 ? 'repostaje ' + xs[0].id : xs.length + ' repostajes'}): ${e.message}`);
+    }
+  };
 }
 
 // ── LA PASADA ───────────────────────────────────────────────────────────────
@@ -349,22 +459,11 @@ async function pasada({ origen, usuarioId }, yo) {
     let candidatos = null;
     const personas = async () => (candidatos = candidatos || await repo.candidatosNombre());
 
-    // BOLT, aparte del correo: si falla, el repostaje ya está guardado y se
-    // queda sin lo de BOLT (bolt_estado NULL), que la pasada siguiente vuelve a
-    // mirar. Cada repostaje se mira una vez por pasada.
-    const mirados = new Set();
-    const mirar = async (id, quien) => {
-      if (mirados.has(id)) return;
-      mirados.add(id);
-      try {
-        const b = await mirarBolt(id, quien, frescura);
-        if (b && b.estado !== 'pendiente') c.boltMirados++;
-      } catch (e) {
-        c.fallos++;
-        detalle.fallos.push({ id, error: 'BOLT: ' + e.message });
-        console.error(`❌ [Combustible] Quién llevaba el coche del repostaje ${id} en BOLT: ${e.message}`);
-      }
-    };
+    // BOLT y el bot, aparte del correo: si falla, el repostaje ya está guardado
+    // y se queda sin eso (bolt_estado o bot_estado NULL), que la pasada
+    // siguiente vuelve a mirar. Cada repostaje se mira una vez por pasada.
+    const mirarLote = mirador({ c, detalle, frescura });
+    const mirar = (id, quien) => mirarLote([{ id, ...quien }]);
 
     for (const m of leido.correos) {
       // No se pudo bajar (se movió mientras se leía, la conexión cayó…): no
@@ -456,28 +555,8 @@ async function pasada({ origen, usuarioId }, yo) {
       }
     }
 
-    // Los que quizá casen mejor hoy: el coche se dio de alta después, o BOLT
-    // no lo tenía. Si cambia algo, se vuelve a mirar BOLT con la sede nueva.
-    for (const x of await repo.paraRecasar()) {
-      try {
-        const n = await casarLeido({ datos: { matricula: x.matricula, conductor_texto: x.conductor_texto } }, await personas());
-        const cambia = ['vehiculo_id', 'sede', 'conductor_id', 'conductor_cuenta_bolt', 'conductor_como']
-          .some(k => (n[k] == null ? null : String(n[k])) !== (x[k] == null ? null : String(x[k])));
-        if (cambia) { await repo.recasado(x.id, n); c.recasados++; }
-        if (cambia || x.bolt_estado === 'sin_coche') {
-          await mirar(x.id, { sede: n.sede, conductorId: n.conductor_id, cuentaBolt: n.conductor_cuenta_bolt, conductorTexto: x.conductor_texto });
-        }
-      } catch (e) {
-        c.fallos++;
-        detalle.fallos.push({ id: x.id, error: 'Al volver a casar: ' + e.message });
-        console.error(`❌ [Combustible] Al volver a casar el repostaje ${x.id}: ${e.message}`);
-      }
-    }
-
-    // Los que esperaron tres días a BOLT y no llegó, cerrados; y los que aún
-    // esperan (y los que se quedaron sin mirar por un fallo), otra vez.
-    await repo.cerrarSinBolt();
-    for (const x of await repo.paraMirarBolt()) await mirar(x.id, x);
+    // Lo que no es del correo: volver a casar, BOLT pendiente y el bot.
+    await repasos({ c, detalle, personas, mirar, mirarLote });
 
     const hayDetalle = detalle.noLeidos.length || detalle.fallos.length || detalle.otros.length || detalle.carpetas.length || detalle.conexion;
     await cerrar({ desde, detalle: hayDetalle ? detalle : null });
@@ -505,6 +584,85 @@ async function pasada({ origen, usuarioId }, yo) {
   }
 }
 
+// ── LOS REPASOS: LO QUE NO ES DEL CORREO ────────────────────────────────────
+
+/**
+ * Lo que cada pasada vuelve a mirar y no depende del buzón: los leídos que
+ * quizá casen mejor hoy, los que esperan a BOLT y los que aún no se miraron en
+ * el bot. Lo hace la pasada del buzón, con sus cuentas; y, si el correo está
+ * apagado, `repasar` (el cron), porque los del Excel de Petroprix no dependen
+ * del correo y también esperan a BOLT. Nunca lanza por un repostaje.
+ */
+async function repasos({ c, detalle, personas, mirar, mirarLote }) {
+  // Los que quizá casen mejor hoy: el coche se dio de alta después, o BOLT
+  // no lo tenía. Si cambia algo, se vuelve a mirar BOLT con la sede nueva.
+  for (const x of await repo.paraRecasar()) {
+    try {
+      const n = await casarLeido({ datos: { matricula: x.matricula, conductor_texto: x.conductor_texto } }, await personas());
+      const cambia = ['vehiculo_id', 'sede', 'conductor_id', 'conductor_cuenta_bolt', 'conductor_como']
+        .some(k => (n[k] == null ? null : String(n[k])) !== (x[k] == null ? null : String(x[k])));
+      if (cambia) { await repo.recasado(x.id, n); c.recasados++; }
+      if (cambia || x.bolt_estado === 'sin_coche') {
+        await mirar(x.id, { sede: n.sede, conductorId: n.conductor_id, cuentaBolt: n.conductor_cuenta_bolt, conductorTexto: x.conductor_texto });
+      }
+    } catch (e) {
+      c.fallos++;
+      detalle.fallos.push({ id: x.id, error: 'Al volver a casar: ' + e.message });
+      console.error(`❌ [Combustible] Al volver a casar el repostaje ${x.id}: ${e.message}`);
+    }
+  }
+
+  // Los que esperaron tres días a BOLT y no llegó, cerrados; y los que aún
+  // esperan (y los que se quedaron sin mirar por un fallo), otra vez: todos de
+  // una vez (mirador).
+  await repo.cerrarSinBolt();
+  await mirarLote(await repo.paraMirarBolt());
+
+  // Los que aún no se miraron en el bot (los de antes de db/215, o un fallo).
+  // El libro de turnos se escribe al momento: no hay que esperar a nada.
+  try {
+    const sinBot = await repo.paraMirarBot();
+    if (sinBot.length) {
+      const xs = await repo.botDe(sinBot);
+      await repo.ponerBot(sinBot.map(id => ({ id, ...filaBot(xs.get(id)) })));
+    }
+  } catch (e) {
+    if (!sinColumna(e)) {
+      c.fallos++;
+      detalle.fallos.push({ error: 'Quién llevaba el coche en el bot: ' + e.message });
+      console.error(`❌ [Combustible] Quién llevaba el coche en el bot: ${e.message}`);
+    }
+  }
+}
+
+/**
+ * LOS REPASOS SIN EL BUZÓN: el cron con el correo apagado
+ * (`COMBUSTIBLE_CORREO=off`). Sin esto, apagar el correo dejaba los del Excel
+ * de Petroprix esperando a BOLT para siempre (revisión del 23/10/2026). Nunca
+ * lanza: devuelve lo que hizo, o el error.
+ */
+async function repasar() {
+  const c = { recasados: 0, boltMirados: 0, fallos: 0 };
+  const detalle = { fallos: [] };
+  const t0 = Date.now();
+  try {
+    const frescura = await repo.frescuraBolt();
+    let candidatos = null;
+    const personas = async () => (candidatos = candidatos || await repo.candidatosNombre());
+    const mirarLote = mirador({ c, detalle, frescura });
+    await repasos({ c, detalle, personas, mirar: (id, quien) => mirarLote([{ id, ...quien }]), mirarLote });
+    if (c.recasados || c.fallos) {
+      console.log(`⛽ [Combustible] Repaso sin el buzón: ${c.recasados} con coche o sede nuevos, ${c.boltMirados} mirado(s) en BOLT` +
+        `${c.fallos ? `, ${c.fallos} con error` : ''} · ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+    }
+    return { ok: true, ...c, fallosDetalle: detalle.fallos };
+  } catch (e) {
+    if (faltaMigracion(e)) return { ok: false, error: FALTA_DB212, ...c };
+    console.error(`❌ [Combustible] El repaso sin el buzón: ${e.message}`);
+    return { ok: false, error: e.message, ...c };
+  }
+}
+
 // ── LO QUE VE LA PANTALLA ───────────────────────────────────────────────────
 
 // Un día con forma de día y que además existe: «2026-02-31» tiene la forma y
@@ -523,7 +681,8 @@ async function estadoLectura() {
   if (auto && ultima && ultima.error_tipo === 'contrasena' && ultima.pass_huella) {
     pausada = (await huellaDelBuzon().catch(() => null)) === ultima.pass_huella;
   }
-  return { ultima, ultimaBuena, cadaMin: 10, buzon: ultima ? ultima.buzon : BUZON, automatica: auto, pausada };
+  return { ultima, ultimaBuena, cadaMin: 10, buzon: ultima ? ultima.buzon : BUZON, automatica: auto, pausada,
+    auditoriaAutomatica: auditoriaAutomatica() };
 }
 
 /**
@@ -532,17 +691,33 @@ async function estadoLectura() {
  */
 function conColores(f) {
   const gps = semaforo.colorGps(f.gps_distancia_m);
-  // El aforador topó y no se pudo corregir: los litros y el error son un
-  // mínimo, y un mínimo no da verde (combustible.semaforo). La pantalla lo
-  // escribe con «≥».
+  // LA BOYA SOLO CUENTA LO QUE FALTA (23/10/2026): `boya_error_pct` es el
+  // déficit desde db/215, que rehízo los de antes desde lo medido. Se compara
+  // con lo pagado, o con la suma si hubo otro repostaje del mismo coche en la
+  // misma parada (`boya_pagados`, combustible.auditoria). Sin déficit guardado
+  // es que no se compara (falta la boya, o un mínimo que no llega a lo pagado).
+  const deficit = f.boya_error_pct == null ? null : Number(f.boya_error_pct);
+  const dif = deficit == null ? null : boya.diferencia(f.boya_litros, f.boya_pagados != null ? f.boya_pagados : f.litros);
+  // El aforador topó y no se pudo corregir: lo que subió es un mínimo. Si ya
+  // llega a lo pagado es verde; si no, ni se compara (combustible.semaforo).
   const minimo = boya.esMinimo(f);
-  const colorBoya = semaforo.colorBoya(f.boya_error_pct, { minimo });
-  return { ...f, boya_minimo: minimo, gps_color: gps, boya_color: colorBoya, color: semaforo.peor(gps, colorBoya) };
+  const colorBoya = semaforo.colorBoya(deficit, { minimo });
+  const quien = casar.boltYBot(f);
+  return { ...f, boya_error_pct: deficit, boya_faltan: dif ? dif.faltan : null, boya_de_mas: dif ? dif.deMas : null,
+    boya_minimo: minimo, gps_color: gps, boya_color: colorBoya, color: semaforo.peor(gps, colorBoya),
+    quien_caso: quien.caso, quien_nombre: quien.nombre };
 }
 
-// Sin db/213 la lista pide columnas y tablas que aún no existen.
+/** Una fila sin las claves que valen null (para la lista: pesa la mitad). */
+const sinVacios = f => Object.fromEntries(Object.entries(f).filter(([, v]) => v !== null && v !== undefined));
+
+// Sin db/213 (o sin db/215) la lista pide columnas y tablas que aún no existen.
+const DE_215 = /origen|excel_|metodo_pago|vehiculo_tipo|bot_|importacion|tipo/;
+const faltaDb215 = e => !!e && (e.code === '42703' || e.code === '42P01') && DE_215.test(e.message || '');
 const faltaDb213 = e => !!e && (e.code === '42703' || (e.code === '42P01' && /gasolinera/.test(e.message || '')));
 const FALTA_DB213 = 'Falta aplicar la migración db/213 (auditoría de repostajes con Mapon) desde /migraciones';
+const FALTA_DB215 = 'Falta aplicar la migración db/215 (el Excel de Petroprix, el bot y la boya por debajo) desde /migraciones';
+const queFalta = e => (faltaDb215(e) ? FALTA_DB215 : faltaDb213(e) ? FALTA_DB213 : null);
 
 /**
  * Los repostajes entre dos días (por defecto, los últimos 30), con la última
@@ -558,13 +733,20 @@ async function lista({ desde, hasta } = {}) {
   let d = diaValido(desde) ? desde : restarDias(h, 30);
   if (d > h) d = h;
   try {
-    const [todas, lectura] = await Promise.all([repo.lista({ desde: d, hasta: h }), estadoLectura()]);
-    const filas = todas.filter(f => f.estado === 'leido').map(conColores);
+    const [todas, lectura, importacion] = await Promise.all([repo.lista({ desde: d, hasta: h }), estadoLectura(),
+      repo.ultimaImportacion()]);
+    // Sin las columnas vacías: con Petroprix son miles de filas al mes (85 al
+    // día) y casi la mitad de sus columnas son de la tarjeta y del correo, que no
+    // tiene. 1.886 filas pesaban 3,4 MB, y así 2,0 MB (el servidor no comprime);
+    // la pantalla lee igual un null que lo que no viene.
+    const filas = todas.filter(f => f.estado === 'leido').map(conColores).map(sinVacios);
     const noLeidos = todas.filter(f => f.estado === 'no_leido')
       .map(f => ({ id: f.id, cuando: f.cuando, proveedor: f.proveedor, motivo: f.motivo, matricula: f.matricula }));
-    return { filas, noLeidos, lectura, umbrales: semaforo.UMBRALES, desde: d, hasta: h };
+    return { filas, noLeidos, lectura, importacion, umbrales: semaforo.UMBRALES, desde: d, hasta: h,
+      ritmo: { porPasada: auditoria.POR_PASADA, cadaMin: 10 } };
   } catch (e) {
-    if (faltaDb213(e)) throw new Error(FALTA_DB213);
+    const falta = queFalta(e);
+    if (falta) throw new Error(falta);
     if (faltaMigracion(e)) throw new Error(FALTA_DB212);
     throw e;
   }
@@ -576,7 +758,8 @@ async function ficha(id) {
   try {
     f = await repo.ficha(id);
   } catch (e) {
-    if (faltaDb213(e)) throw new Error(FALTA_DB213);
+    const falta = queFalta(e);
+    if (falta) throw new Error(falta);
     throw e;
   }
   if (!f) throw new Error('Ese repostaje no existe');
@@ -584,6 +767,259 @@ async function ficha(id) {
 }
 
 const lecturas = limite => repo.lecturas(limite);
+const importaciones = limite => repo.importaciones(limite);
+
+// ── EL EXCEL DE PETROPRIX (db/215) ──────────────────────────────────────────
+
+// LO QUE CABE EN UN EXCEL (revisión del 23/10/2026). El de tres semanas son
+// 1.866 filas, 85 KB y 632 KB descomprimido. ExcelJS abre el fichero entero en
+// memoria y lo recorre sin soltar el hilo, en el mismo proceso que sirve todo el
+// ERP, el bot y los crons: sin tope, un fichero con formato hasta la fila
+// 1.048.576 (dar formato a columnas enteras y guardar) o un zip que descomprime
+// a cientos de MB lo dejaban colgado minutos o sin memoria. 20.000 filas son
+// unos siete meses de Petroprix; 25 MB descomprimido, unas 70.000 filas como esas.
+const MAX_FILAS_EXCEL = 20000;
+const MAX_DESCOMPRIMIDO = 25 * 1024 * 1024;
+
+/**
+ * Lo que ocupa descomprimido un .xlsx (que es un zip), por lo que dice su
+ * directorio central, SIN descomprimir nada. null si no parece un zip (lo dirá
+ * ExcelJS al abrirlo). Un tamaño en ZIP64 (0xFFFFFFFF) cuenta como infinito.
+ */
+function tamanoDescomprimido(bytes) {
+  const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || []);
+  let fin = -1;
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) {
+    if (b.readUInt32LE(i) === 0x06054b50) { fin = i; break; }
+  }
+  if (fin < 0) return null;
+  const n = b.readUInt16LE(fin + 10);
+  let p = b.readUInt32LE(fin + 16), total = 0;
+  for (let k = 0; k < n; k++) {
+    if (p + 46 > b.length || b.readUInt32LE(p) !== 0x02014b50) return null;
+    const tam = b.readUInt32LE(p + 24);
+    total += tam === 0xFFFFFFFF ? Infinity : tam;
+    p += 46 + b.readUInt16LE(p + 28) + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
+  }
+  return total;
+}
+
+const mb = v => `${(v / 1024 / 1024).toFixed(0)} MB`;
+
+/**
+ * Las hojas del fichero, con las celdas en texto (lector.petroprixExcel
+ * decide qué es cada cosa). Solo las 8 primeras columnas: son las del Excel de
+ * Petroprix, y una hoja con más no lo es (lo dice `reconocer`). Solo las filas
+ * con algo (`eachRow`): una con formato y sin datos ni se mira.
+ */
+async function hojasDe(bytes) {
+  const tam = tamanoDescomprimido(bytes);
+  if (tam != null && tam > MAX_DESCOMPRIMIDO) {
+    throw new Error(`Este Excel ocupa ${tam === Infinity ? 'demasiado' : mb(tam)} descomprimido, y como mucho se abren ${mb(MAX_DESCOMPRIMIDO)} ` +
+      `(el de tres semanas de Petroprix ocupa menos de 1 MB): bájalo por meses. No se ha importado nada`);
+  }
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  try { await wb.xlsx.load(bytes); }
+  catch (_) { throw new Error('No se pudo abrir el archivo: tiene que ser un Excel (.xlsx)'); }
+  return wb.worksheets.map(ws => {
+    if (ws.actualRowCount > MAX_FILAS_EXCEL + 1) {
+      throw new Error(`La hoja «${ws.name}» tiene ${num(ws.actualRowCount)} filas, y como mucho se importan ${num(MAX_FILAS_EXCEL)} de una vez: ` +
+        'bájalo de Petroprix por meses. No se ha importado nada');
+    }
+    const columnas = Math.max(excel.CABECERA.length, Math.min(ws.columnCount || 0, 20));
+    const filas = [];
+    ws.eachRow((row, n) => {
+      const celdas = [];
+      for (let c = 1; c <= columnas; c++) celdas.push(excel.textoCelda(row.getCell(c).value));
+      filas.push({ n, celdas });
+    });
+    return { nombre: ws.name, filas };
+  });
+}
+
+const num = v => Number(v).toLocaleString('es-ES');
+
+const AVISOS = {
+  diesel: 'Diésel en un coche de gasolina',
+  pago: 'Pagado sin la app de Petroprix (tarjeta o efectivo)',
+  vehiculo: 'Petroprix no dice qué vehículo es («-»)',
+  matricula: 'La matrícula no está en Vehículos',
+  baja: 'El coche está dado de baja en Vehículos',
+  gasolinera: 'La gasolinera no casa con la lista',
+  hora: 'La hora pasa dos veces (cambio de hora) o no existe',
+  corrida: 'Ya estaba, con la hora corrida (una hora o unos segundos): no se vuelve a meter',
+};
+
+/**
+ * IMPORTA EL EXCEL DE REPOSTAJES DE PETROPRIX. Lo reconoce por su cabecera
+ * exacta (si no es, lo dice y no importa nada); lee cada fila, aparta las que
+ * no se entienden con su porqué, y mete las demás que no estaban: la misma fila
+ * importada dos veces es la misma clave (lector.petroprixExcel) y no se
+ * duplica. A cada una, su coche y su sede, su gasolinera por el texto exacto
+ * (db/215) y sus avisos; y quién llevaba el coche en BOLT y en el bot. La
+ * auditoría con Mapon la hace sola el cron, al ritmo de auditoria.POR_PASADA.
+ *
+ * Una fila rara no para las demás: si la base rechaza un trozo, se prueba fila
+ * a fila y la que no entra se cuenta como error con lo que dijo la base.
+ *
+ * → el resumen: filas, nuevas, ya estaban, con error (y cuáles), avisos por
+ *   tipo (con las filas), y lo de BOLT y el bot.
+ */
+async function importarExcel({ base64, nombre } = {}, { usuarioId } = {}) {
+  const limpioB64 = String(base64 || '').replace(/^data:[^,]*,/, '');
+  if (!limpioB64) throw new Error('No ha llegado ningún archivo');
+  const bytes = Buffer.from(limpioB64, 'base64');
+  const fichero = String(nombre || '').trim().slice(0, 200) || null;
+  const huella = crypto.createHash('sha256').update(bytes).digest('hex');
+
+  const r = excel.reconocer(await hojasDe(bytes));
+  if (r.motivo) throw new Error(r.motivo);
+  // Lo que sea de después de ahora (un día y un mes cambiados) se aparta.
+  const leido = excel.leerFilas(r.filas, { ahora: Date.now() });
+  if (!leido.filas.length && !leido.errores.length) throw new Error('El Excel de Petroprix no trae ningún repostaje');
+
+  let antes = null;
+  try { antes = await repo.importacionConHuella(huella); }
+  catch (e) { const falta = queFalta(e); if (falta) throw new Error(falta); throw e; }
+  const impId = await repo.empezarImportacion({ proveedor: excel.PROVEEDOR, fichero, hoja: r.hoja, huella,
+    usuarioId, modoPruebas: pruebas.ACTIVO });
+  const t0 = Date.now();
+  const c = { filas: leido.filas.length + leido.errores.length, nuevas: 0, yaEstaban: 0,
+    conError: leido.errores.length, conAviso: 0, repetidasEnFichero: 0 };
+  const errores = leido.errores.map(x => ({ fila: x.fila, motivo: x.motivo }));
+  const avisos = {};
+  const avisar = (tipo, fila) => { (avisos[tipo] = avisos[tipo] || { texto: AVISOS[tipo], filas: [] }).filas.push(fila); };
+  const instantes = leido.filas.map(f => f.instante).filter(Number.isFinite);
+  const resumenQuien = { conBolt: 0, conBot: 0, mismo: 0, distinto: 0, botCerrado: 0, soloBot: 0, soloBolt: 0, nadie: 0, boltPendiente: 0 };
+  const corridas = [];
+  const conAvisoFilas = new Set();
+  try {
+    // La misma fila dos veces en el mismo fichero: una.
+    const unicas = new Map();
+    for (const f of leido.filas) { if (unicas.has(f.clave)) c.repetidasEnFichero++; else unicas.set(f.clave, f); }
+    c.yaEstaban += c.repetidasEnFichero;
+    const [coches, gas, ya] = await Promise.all([
+      repo.cochesDe([...unicas.values()].map(f => f.matricula)),
+      auditoria.cargarGasolineras(),
+      repo.clavesYaGuardadas(excel.PROVEEDOR, [...unicas.keys()]),
+    ]);
+    const nuevas = [];
+    for (const f of unicas.values()) {
+      const coche = coches.get(f.matricula) || {};
+      const e = G.elegir(f.gasolinera, { proveedor: excel.PROVEEDOR, sede: coche.sede, gasolineras: gas.lista,
+        alias: gas.alias, textos: gas.textos });
+      const fijos = excel.avisosFijos(f, coche.vehiculoId ? coche : null);
+      // Los avisos, de todas las filas del fichero (también las que ya estaban):
+      // es lo que dice este Excel. Se guardan con el repostaje los que no
+      // cambian; los demás los dice la pantalla mientras sigan así.
+      let conAviso = fijos.length > 0 || f.avisos.length > 0;
+      for (const a of fijos) avisar(a.tipo, f.fila);
+      if (f.avisos.length) avisar('hora', f.fila);
+      if (!coche.vehiculoId) { avisar('matricula', f.fila); conAviso = true; }
+      else if (coche.deBaja) { avisar('baja', f.fila); conAviso = true; }
+      if (!e.gasolineraId) { avisar('gasolinera', f.fila); conAviso = true; }
+      if (conAviso) conAvisoFilas.add(f.fila);
+      if (ya.has(f.clave)) { c.yaEstaban++; continue; }
+      nuevas.push({
+        proveedor: excel.PROVEEDOR, importacion_id: impId, excel_fila: f.fila, excel_clave: f.clave,
+        excel_crudo: { celdas: f.celdas, horaRepetida: f.horaRepetida },
+        avisos: [...f.avisos, ...fijos.map(a => a.texto)].length ? [...f.avisos, ...fijos.map(a => a.texto)] : null,
+        estacion: G.textoExacto(f.gasolinera).slice(0, 160), matricula: f.matricula,
+        repostaje_at: new Date(f.instante).toISOString(), importe: f.importe, litros: f.litros,
+        carburante: f.combustible, metodo_pago: f.pago, vehiculo_tipo: f.vehiculo,
+        vehiculo_id: coche.vehiculoId || null, sede: coche.sede || null,
+        gasolinera_id: e.gasolineraId || null, gasolinera_como: e.como,
+        gasolinera_candidatas: e.candidatas && e.candidatas.length ? e.candidatas : null,
+      });
+    }
+
+    // LA MISMA FILA CON LA HORA CORRIDA (una hora, o unos segundos): ya
+    // estaba, aunque su clave sea otra (repo.casiIgualesDelExcel). No se mete
+    // otra vez, y se dice: si pasa, es que Petroprix exporta las horas de otra
+    // forma, y conviene saberlo.
+    if (nuevas.length) {
+      const casi = await repo.casiIgualesDelExcel(excel.PROVEEDOR, nuevas.map(x => ({ clave: x.excel_clave, matricula: x.matricula,
+        litros: x.litros, importe: x.importe, instante: x.repostaje_at })));
+      for (let i = nuevas.length - 1; i >= 0; i--) {
+        const m = casi.get(nuevas[i].excel_clave);
+        if (!m) continue;
+        avisar('corrida', nuevas[i].excel_fila);
+        conAvisoFilas.add(nuevas[i].excel_fila);
+        corridas.push({ fila: nuevas[i].excel_fila, id: m.id, segundos: m.segundos, guardada: m.guardada });
+        c.yaEstaban++;
+        nuevas.splice(i, 1);
+      }
+    }
+
+    c.conAviso = conAvisoFilas.size;
+
+    // A la base, por trozos de 500. Si la base no acepta un trozo (un valor
+    // que no cabe), fila a fila: la que no entra es un error, las demás entran.
+    const entraron = [];
+    for (let i = 0; i < nuevas.length; i += 500) {
+      const trozo = nuevas.slice(i, i + 500);
+      try {
+        entraron.push(...await repo.guardarDelExcel(trozo));
+      } catch (e) {
+        if (!errorDeDatos(e)) throw e;
+        for (const x of trozo) {
+          try { entraron.push(...await repo.guardarDelExcel([x])); }
+          catch (e2) {
+            if (!errorDeDatos(e2)) throw e2;
+            errores.push({ fila: x.excel_fila, motivo: `La base no la acepta: ${e2.message}` });
+            c.conError++;
+          }
+        }
+      }
+    }
+    c.nuevas = entraron.length;
+    // Las que no entraron sin error: otra importación a la vez las metió antes.
+    c.yaEstaban += nuevas.length - entraron.length - (c.conError - leido.errores.length);
+
+    // Quién llevaba el coche, en BOLT y en el bot: de las nuevas.
+    const porClave = new Map(nuevas.map(x => [x.excel_clave, x]));
+    const quienes = entraron.map(x => ({ id: x.id, sede: (porClave.get(x.clave) || {}).sede || null }));
+    const frescura = await repo.frescuraBolt();
+    const q = await atribuir(quienes, frescura);
+    if (q.errorBot) resumenQuien.errorBot = q.errorBot;
+    for (const { id, sede } of quienes) {
+      const b = q.bolt.get(id), bo = q.bot.get(id);
+      if (b && b.estado === 'pendiente') resumenQuien.boltPendiente++;
+      const caso = casar.boltYBot({ sede,
+        bolt_estado: b && b.estado, bolt_conductor_id: b && b.conductorId, bolt_conductor_uuid: b && b.uuid, bolt_nombre: b && b.nombre,
+        bot_estado: bo && bo.estado, bot_conductor_id: bo && bo.conductorId, bot_nombre: bo && bo.nombre,
+      }).caso;
+      if (b && (b.estado === 'conectado' || b.estado === 'ultimo')) resumenQuien.conBolt++;
+      if (bo && (bo.estado === 'en_turno' || bo.estado === 'ultimo')) resumenQuien.conBot++;
+      const k = { mismo: 'mismo', distinto: 'distinto', sin_comparar: 'distinto', bot_cerrado: 'botCerrado', solo_bot: 'soloBot',
+        solo_bolt: 'soloBolt', nadie: 'nadie' }[caso];
+      if (k) resumenQuien[k]++;
+    }
+  } catch (e) {
+    await repo.cerrarImportacion(impId, { ...c, error: e.message, detalle: { errores: errores.slice(0, 300), avisos } }).catch(() => {});
+    const falta = queFalta(e);
+    throw new Error(falta || `La importación se quedó a medias: ${e.message}. Lo que entró, entró; vuelve a importar el mismo Excel y entrará el resto (lo que ya estaba no se duplica)`);
+  }
+  const detalle = { errores: errores.slice(0, 300), avisos, quien: resumenQuien, repetidasEnFichero: c.repetidasEnFichero,
+    corridas: corridas.slice(0, 300) };
+  // Con reduce y no con Math.min(...): con más de unas 120.000 filas, el
+  // «...» revienta la pila DESPUÉS de haber metido las filas, y la importación
+  // se quedaba sin cerrar (revisión del 23/10/2026).
+  const desde = instantes.length ? instantes.reduce((a, b) => (b < a ? b : a)) : null;
+  const hasta = instantes.length ? instantes.reduce((a, b) => (b > a ? b : a)) : null;
+  await repo.cerrarImportacion(impId, { ...c, desde, hasta, detalle });
+  const ms = Date.now() - t0;
+  console.log(`⛽ [Combustible] Excel de Petroprix «${fichero || r.hoja}»: ${c.filas} fila(s), ${c.nuevas} nueva(s), ` +
+    `${c.yaEstaban} ya estaban, ${c.conError} con error, ${c.conAviso} con aviso · ${(ms / 1000).toFixed(1)} s`);
+  const fmt = ms2 => (ms2 == null ? null : new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit',
+    year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(ms2)));
+  return {
+    importacionId: impId, fichero, hoja: r.hoja, ...c, errores, avisos, quien: resumenQuien, corridas,
+    desde: fmt(desde), hasta: fmt(hasta), yaImportado: antes ? { cuando: antes.empezada_local, usuario: antes.usuario } : null,
+    ritmo: { porPasada: auditoria.POR_PASADA, cadaMin: 10 }, ms,
+  };
+}
 
 const idValido = id => {
   if (!/^\d+$/.test(String(id || ''))) throw new Error('Repostaje no válido');
@@ -604,7 +1040,7 @@ async function corregirGasolinera(id, gasolineraId, usuarioId) {
 }
 
 module.exports = {
-  leerBuzon, lista, ficha, estadoLectura, lecturas,
+  leerBuzon, repasar, lista, ficha, estadoLectura, lecturas, importaciones, importarExcel,
   // La auditoría con Mapon (combustible.auditoria): el cron, el botón y la gasolinera a mano.
   auditarPendientes: auditoria.auditarPendientes, auditarUno, corregirGasolinera,
   gasolineras: auditoria.gasolinerasPara,

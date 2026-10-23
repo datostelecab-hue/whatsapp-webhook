@@ -1960,6 +1960,99 @@ repostaje perdía su color. **Remedio:** cuando una pregunta falla por un error 
 puede reintentar, esa parte se queda con lo de la vez anterior (`gpsDeAntes`,
 `restaurarBoya`); solo se pisa lo que este intento midió.
 
+### La hora del Excel de Petroprix es la del FINAL del repostaje
+
+`modules/Combustible/combustible.auditoria.js` → `paradaDe` con `delExcel` (23/10/2026)
+
+La del correo de Ballenoil da el minuto y cae dentro de la parada en el surtidor.
+La del Excel de Petroprix va con segundos y es la del final: una mediana de 152 s
+después de parar y 20 s antes de arrancar, y en 64 de 247 ya con el coche andando,
+hasta 192 s después (el 9528MMX, a 127 s y 241 m). Con la regla del correo, el
+minuto de margen hacia delante cogía la parada SIGUIENTE (el 1073MJY: una que
+empezaba 46 s después, a 306 m), y una parada que acabó antes solo valía si el
+coche seguía a menos de 100 m. **Remedio:** para las filas del Excel, la parada
+que acabó hasta 5 minutos antes es la del repostaje, y sin margen hacia delante.
+
+### Un turno del bot «auto-cerrado» no dice hasta cuándo tuvo nadie el coche
+
+`modules/Combustible/combustible.repo.js` → `botDe` (23/10/2026)
+
+El libro de turnos (`fichaje_turno`) cierra solo, a las 14 h, el turno que nadie
+cerró. Su `fin` es una cuenta, no un hecho: el coche lo pudo coger otro mucho
+antes, sin abrir turno. En el Excel de Petroprix, con un turno cerrado a mano solo
+6 de 227 repostajes dan en BOLT otra persona que en el bot; con uno «auto-cerrado»,
+67 de 217 (y 108 de 159 como «el último»). **Remedio:** se enseña igual, pero con
+«(sin cerrar)» al lado, para no leerlo como una prueba.
+
+### Dos repostajes en la misma parada caben, cada uno, en el mismo salto de la boya
+
+`modules/Combustible/combustible.auditoria.js` → `mirarBoya` (23/10/2026)
+
+El 8203LTR pagó 23,93 L con la app y 22,87 L con tarjeta en el mismo minuto, y el
+depósito subió 27 L: comparado con cada uno, «subió lo pagado», verde los dos.
+**Remedio:** la boya se compara con la suma de los repostajes leídos del mismo
+coche en la misma parada (`repo.vecinosDe`): faltan 19,8 L de 46,8, amarillo.
+
+### JSONB no guarda el orden de las claves
+
+`modules/Combustible/vistas/combustible.ejs` → «La fila del Excel» (23/10/2026)
+
+La fila del Excel se guarda en `excel_crudo` como un objeto con las celdas por su
+cabecera, y JSONB las devuelve ordenadas a su manera (por longitud de la clave): la
+ficha enseñaba «Fecha, Litros, Precio, Matricula…». **Remedio:** pintarlas en el
+orden de la cabecera, que se sabe, no en el del objeto.
+
+### Un parámetro por defecto con paréntesis parece una llamada a `comprobar-modulos`
+
+`scripts/comprobar-modulos.js` (23/10/2026)
+
+Una definición se reconoce porque detrás de sus paréntesis viene `{` sin otros
+paréntesis en medio. `async function f(a, { t0 = Date.now() } = {}) {` los tiene
+(`Date.now()`), así que `f` salía como «llamada y no declarada». **Remedio:** sacar
+los valores por defecto al cuerpo (`const { t0 = Date.now() } = opciones`). El
+comprobador se equivoca hacia gritar, pero solo con esa forma.
+
+### Una columna de la migración que aún no está para a un cron entero
+
+`modules/Combustible/combustible.repo.js` → `CAMPOS_AUDITAR` (revisión del 23/10/2026)
+
+Camilo aplica las migraciones desde `/migraciones` DESPUÉS de desplegar. La consulta
+de la auditoría pedía `r.origen`, de db/215: en ese hueco saltaba con 42703 y se
+paraba la auditoría de Ballenoil entera, y el aviso del log decía «Falta db/213»,
+que ya estaba (todo 42703 se leía como la 213). **Remedio:** leer la columna nueva
+con `to_jsonb(r) ->> 'origen'`, que vale con ella y sin ella (sin ella, NULL), y
+que el aviso diga cuál falta. Comprobado contra producción en solo lectura.
+
+### `Math.min(...lista)` revienta la pila con una lista grande
+
+`modules/Combustible/combustible.service.js` → `importarExcel` (revisión del 23/10/2026)
+
+Con más de unas 120.000 filas, `Math.min(...instantes)` lanza «Maximum call stack
+size exceeded»; y aquí lo hacía DESPUÉS de meter las filas, así que la importación
+se quedaba sin cerrar. **Remedio:** `reduce`. Y un tope de filas antes de leer.
+
+### Una parada de Mapon de horas puede ser un GPS clavado o un equipo sin señal
+
+`modules/Combustible/combustible.auditoria.js` → `andaDentro`, `subeEnElla` (revisión del 23/10/2026)
+
+`route/list` da como parada el rato en que el GPS no se mueve, y también el rato en
+que el equipo no manda nada: el último sitio visto. El 9521MMX salía «parado de
+00:00 a 00:00» en San Fernando con el aforador bajando de 31 a 17 L dentro; el
+0454MMZ, «parado» 5,8 h a 9,6 km de la gasolinera, y al arrancar con 13 L más. Medido
+desde esas paradas, rojo por el GPS y por la boya. **Remedio:** una parada de más
+de una hora no vale si el aforador se mueve dentro (solo lee encendido) o si,
+lejos de la gasolinera, al acabar el depósito tiene 5 L más (aparcado no se
+reposta). La que tiene el depósito quieto sí vale: es lo que hay que ver.
+
+### Redondear por separado el % y los litros los contradice
+
+`modules/Combustible/combustible.boya.js` → `diferencia` (revisión del 23/10/2026)
+
+El déficit se redondea a un decimal de % y lo que falta, a un decimal de litro: con
+la boya en 46 L y 46,04 L pagados salía «0,1 %» y «faltan 0,0 L», y la ficha decía
+«no falta nada». **Remedio:** que mande la cifra que se ve: si el % no es 0, lo
+que falta tampoco (con dos decimales si con uno saldría 0,0).
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

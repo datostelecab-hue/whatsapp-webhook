@@ -173,6 +173,10 @@ modules/Fichaje/fichaje.service.js  las reglas: qué se puede pedir y quién apr
 modules/Fichaje/fichaje.repo.js     pedir, listar, aprobar/rechazar y retirar, en transacción
 ```
 
+## Quién más lee el libro de turnos
+
+[[Combustible]] (db/215, 23/10/2026) lo lee, en SQL y sin tocarlo, para saber quién llevaba el coche en el bot a la hora de cada repostaje: el turno o viaje de esa matrícula abierto a esa hora, o el último que se cerró antes (hasta 12 h). Petroprix no dice quién reposta, así que el bot y BOLT son los que lo dicen. Ahí se ve el coste de los turnos que nadie cierra: de los repostajes en que BOLT y el bot dicen personas distintas, casi todos son de un turno «auto-cerrado» a las 14 h, cuyo final no es de verdad.
+
 ## Lo que falta
 
 - **Nadie avisa por WhatsApp de una corrección.** Quien aprueba la ve en el menú y en su pantalla; quien la pidió, en su semana. Un aviso a cada uno sería lo natural, y la plantilla de Meta habría que pedirla.

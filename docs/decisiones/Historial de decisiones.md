@@ -7,13 +7,47 @@ actualizado: 2026-10-23
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-23 · Combustible, revisión del Excel: las paradas que no son de verdad y «el último» del bot
+
+La revisión del importador de Petroprix, con Mapon de verdad (solo lectura) y el Excel real en el entorno de pruebas. Las decisiones:
+
+- **Una parada de Mapon de más de una hora no vale si el aforador se mueve dentro** (3 L), **ni si está lejos de la gasolinera y al acabar el depósito tiene 5 L más**: es un GPS clavado o un equipo sin señal, que Mapon pinta como una parada en el último sitio que vio. El GPS va sin color y la boya se mide sin parada. El 9521MMX («parado» 24 h en San Fernando el día que repostó en Torrejón) y el 0454MMZ («parado» 5,8 h a 9,6 km de Alcorcón, y al arrancar con 13 L más) salían rojos por los dos lados. Una parada larga con el depósito quieto sí vale: el 8512LDS y el 8997LDK siguen rojos. Se descartó no fiarse de cualquier parada de más de N horas: un coche aparcado lejos de verdad mientras se paga gasolina con su matrícula es justo lo que se audita.
+- **Un turno del bot ya cerrado a esa hora no contradice a BOLT**: solo se comparan si el bot lo tenía en turno; si no, «el bot, ya cerrado», en gris y fuera de «distintos» (de 236 a 93 en el primer Excel). Si en BOLT no había nadie, el último del bot sigue siendo «solo el bot»: es la única pista. En Barcelona, que casi no abre turno en el bot, «sin turno en el bot» no se dice.
+- **La misma fila del Excel con la hora corrida** (una hora, o unos segundos) **ya estaba**, aunque su clave sea otra: por si Petroprix pasa las horas de antes del 25/10 con el desfase de después. No se corrige una fila «sin saber» del cambio de hora con un Excel posterior: haría falta haber bajado el primero esa misma noche.
+- **Una fila del futuro no entra**, con su porqué. **Un Excel tiene tope**: 4 MB, 20.000 filas y 25 MB descomprimido, mirado antes de abrirlo.
+- **La auditoría no espera a db/215** (`origen` con `to_jsonb`), y **tiene su propia bandera**, aparte del buzón: los del Excel no dependen del correo.
+- **El % de la boya y sus litros no se contradicen**: manda el % que se ve.
+- **Las líneas pequeñas de BOLT y el bot, con el texto de la casa al 75 % y el triángulo de aviso**: en claro no llegaban a 4,5:1 sobre las filas teñidas.
+
+Medido: la muestra de 73 con Mapon, 64 verdes, 5 amarillos, 3 rojos y 1 sin color. → [[Combustible#Medido el 23/10/2026 (tarde), tras la revisión]]
+
+## 2026-10-23 · Petroprix por Excel, quién llevaba el coche en el bot, y la boya que solo mira lo que falta
+
+*«Hay malas noticias con Petroprix y es que ellos no mandan correos por cada repostaje, entonces toca crear en el módulo un importador de excel […] no viene nombre de quién hizo el repostaje […] pero sí vamos a ver quién fue el último en cogerlo en BOLT y en el bot de WhatsApp.»* Y: *«En la auditoría, si subió tanto % por encima no importa, la auditoría va por debajo.»* En `/combustible`, «Importar Excel» sube el de Petroprix; cada fila es un repostaje sin correo en la misma lista y la misma auditoría (db/215).
+
+Las decisiones:
+
+- **La boya solo cuenta lo que falta**: max(0, pagado − boya) / pagado, con los mismos umbrales. Subir de más es verde. Un mínimo (aforador en su techo) que ya llega a lo pagado es verde; uno que no llega, sin color. Para todo, también el histórico: db/215 rehízo `boya_error_pct` desde lo medido. Los dos amarillos del 7909LRJ pasan a verde; el rojo del 8997LDK sigue rojo.
+- **El Excel se reconoce por su cabecera exacta** y, si no es, no se importa nada. Una fila rara se aparta con su porqué y no para a las demás.
+- **Sin identificador, la clave es el contenido**: la hora con segundos tal cual, la matrícula, los litros y el importe. Ni la gasolinera ni el pago, para que una corrección de Petroprix no duplique. Importar dos veces = 0 nuevas.
+- **Una fila del Excel es un repostaje sin correo**: `origen = 'excel'`, sin buzón, con su clave como candado y su importación (`repostaje_importacion`).
+- **Petroprix se casa por el texto exacto de la celda**, con lo mínimo normalizado y la mala codificación tal cual (las 30, alias de tipo 'texto'); si no está, por su dirección; por palabras, solo el mismo nombre («Getafe 2» no es «Getafe»).
+- **Las coordenadas de Petroprix, las de su web** (29) y Parla 2 de la foto aérea (`validada`); el Ministerio falla en dos y no se usa. Guadalajara y Benalmádena, sin sede.
+- **La hora del Excel es la del final del repostaje**: la parada que acabó hasta 5 minutos antes es la del repostaje; la que empieza después, no.
+- **El cambio de hora, por el orden del fichero**: si dentro de la hora repetida la hora vuelve a subir, ahí empieza la primera pasada; si no se puede saber, la segunda y un aviso.
+- **Quién llevaba el coche: BOLT y el bot de WhatsApp** (el turno abierto con esa matrícula, o el último cerrado en 12 h), también para Ballenoil, y si dicen la misma persona; un turno que nadie cerró se dice «sin cerrar».
+- **Dos repostajes del mismo coche en la misma parada**: la boya contra la suma (el 8203LTR pagó dos veces en el mismo minuto tres días).
+- **El ritmo con Mapon**: de una en una, 150 ms entre preguntas, hasta 60 por pasada (lo de 48 h primero) y los de un coche en 4 días con una sola lectura del aforador y de las paradas. Un Excel de tres semanas, en unas 5 horas.
+
+Medido con el Excel de verdad en el entorno de pruebas: 1.866 nuevas y 0 la segunda vez, las 1.866 con su gasolinera por el texto; BOLT tiene a alguien en 1.842 y el bot en 741, la misma persona en 498 y distintas en 236 (casi todas por turnos del bot que nadie cerró), solo el bot en 7; de una muestra de 61 auditada con Mapon, 53 verdes, 3 amarillos y 4 rojos. → [[Combustible#Petroprix, por Excel (db/215)]]
+
 ## 2026-10-23 · Cada repostaje se audita con Mapon, y la fila se pinta por el peor
 
 *«Se van a pintar las filas de la siguiente manera: con el criterio del GPS con un margen de error de menos de 700 m de verde, menos de 1600 m de amarillo y más de 1600 m de rojo. Para lo de la boya […] de verde < 35 %, de amarillo < 65 % y rojo >= 65 %.»* Cada repostaje se mira en Mapon, **en solo lectura**: a cuántos metros de la gasolinera del correo estaba el coche (la parada que cubre la hora) y cuánto subió el aforador frente a los litros del correo (medianas de 5 lecturas, con el techo corregido). La fila va con el peor de los dos y, sin dato en ninguno, sin color; los colores se calculan al leer, no se guardan. Las gasolineras son las 143 del Excel de Ballenoil (db/213) y se casan **por el nombre, nunca por el GPS**: si duda, ninguna, y se pone a mano una vez para ese nombre. *«Quita lo del estado leído no sé qué»*: fuera la columna de estado, los repetidos no salen y los que no se pudieron leer van en un aviso con su enlace. Se audita sola tras leer el buzón, a los 45 minutos del repostaje, con reintentos dos días; y a mano desde la ficha.
 
 Las decisiones de esta tanda:
 
-- **Mientras el aforador está en su techo y no se ha podido corregir, lo que subió es un mínimo.** Si se queda corto frente al correo no se compara (un rojo ahí acusaría al conductor del límite del aforador). Si pasa, el error es «como poco ese» y **solo puede dar amarillo o rojo, nunca verde**: un verde no se puede afirmar con un mínimo. Se escribe con «≥».
+- **Mientras el aforador está en su techo y no se ha podido corregir, lo que subió es un mínimo.** Si se queda corto frente al correo no se compara (un rojo ahí acusaría al conductor del límite del aforador). Si pasa, el error es «como poco ese» y **solo puede dar amarillo o rojo, nunca verde**: un verde no se puede afirmar con un mínimo. Se escribe con «≥». *(Cambiado el mismo día, arriba: desde que la boya solo cuenta lo que falta, un mínimo que ya pasa de lo pagado es verde.)*
 - **El umbral se aplica a la cifra que se ve**: metros enteros y error con un decimal. 699,6 m son «700 m», amarillo; 34,96 % es «35,0 %», amarillo. Así la cifra y su color no se contradicen.
 - **Dónde estaba el coche es la parada que cubre la hora del correo**, no una de al lado: una a menos de 5 minutos solo vale si a esa hora el coche seguía a menos de 100 m (los relojes no son el mismo); si ya andaba, manda su posición. El n.º 16 decía «parado allí» de una parada que había acabado 5 minutos antes.
 - **Si al correo le sobra una palabra que es de otra gasolinera del mismo sitio, es ambiguo**: «ALCORCON - EL CANO» no es Alcorcón I. Siempre antes «ninguna» que la que no es.

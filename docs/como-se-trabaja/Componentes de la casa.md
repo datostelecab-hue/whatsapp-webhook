@@ -139,6 +139,8 @@ Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre l
 
 **En el móvil, los botones bajan de línea** (22/10/2026). La fila del buscador y las `acciones` de la cabecera no podían partirse: con el buscador y dos botones («Lecturas» y «Leer el buzón ahora», en [[Combustible]]) se salía por la derecha a 375 px y la página entera se desplazaba de lado. Ahora llevan `flex-wrap` y se alinean a la derecha; en pantalla ancha no cambia nada.
 
+**Un botón de la cabecera solo con su icono** (23/10/2026). Una `accion` sin `texto` se pinta del ancho del de exportar, y su **`ayuda`** es el `title` (y el `aria-label`) que dice qué hace. En [[Combustible]], el historial: a 1280×593, con «Importar Excel» al lado, el buscador y los botones bajaban a otra línea y la página ganaba barra. Y una **cifra** (`cifras`) acepta también `ayuda`, como las tarjetas de KPI.
+
 **Teñir una fila: `claseFila(f)`** (23/10/2026). Devuelve unas clases para la fila (en [[Combustible]], el color de su auditoría: `bg-telecab-red/10`…). Si devuelve algo, **sustituye a la cebra**: el fondo de las filas pares ganaría por especificidad y media lista saldría sin teñir. Sin `claseFila`, nada cambia.
 
 **La nota puede ser varias, y con enlaces** (23/10/2026). `nota` puede devolver una o un array (las vacías se saltan), una debajo de otra; cada una con `texto` (se escapa) o con `html`, que el módulo ya escribe escapado. Combustible pone la última lectura del buzón y, aparte, los correos que no se pudieron leer, cada uno con el enlace a su ficha (`#id`: la ficha se abre aunque esa fila no esté en la lista).

@@ -427,6 +427,15 @@ const REENVIADO = {
   const comoBD = l => (l ? { ...l, error_tipo: l.errorTipo || null, pass_huella: l.passHuella || null } : null);
   const COCHES = { '9107LWS': { vehiculoId: 83, sede: 'barcelona' }, '8997LDK': { vehiculoId: 80, sede: 'madrid' },
     '8477LTR': { vehiculoId: 109, sede: 'barcelona' } };
+  // BOLT de mentira, uno a uno; el servicio pregunta en lote (db/215), así que
+  // las versiones «De» los juntan.
+  const boltM = async () => ({ enBolt: true, repostajeAt: '2026-10-22T10:57:00Z', uuid: 'u-otro', conductorId: 99,
+    nombre: 'Otro Conductor Distinto', situacion: 'espera', conectado: true, segundos: 0 });
+  const boltO = async id => (BD.filas[id - 1].matricula === '9107LWS'
+    ? { enBolt: true, repostajeAt: '2026-10-22T04:49:00Z', uuid: 'b-prat', conductorId: null, nombre: 'Rubén Ortega', situacion: 'espera', conectado: false, segundos: 1800 }
+    : BD.filas[id - 1].matricula === '5369LHJ' ? { enBolt: false, repostajeAt: '2026-10-22T10:00:00Z' }
+      : { enBolt: true, repostajeAt: '2026-10-22T12:45:00Z', uuid: null, conductorId: null, nombre: null, situacion: null, conectado: false, segundos: 0 });
+  const enLote = f => async ids => new Map(await Promise.all(ids.map(async id => [Number(id), await f(id)])));
   sustituir('modules/Combustible/combustible.repo.js', {
     empezarLectura: async o => { BD.lecturas.push({ ...o, id: BD.lecturas.length + 1, empezada_at: new Date() }); return BD.lecturas.length; },
     cerrarLectura: async (id, c) => { Object.assign(BD.lecturas[id - 1], c, { cerrada: true }); },
@@ -463,17 +472,19 @@ const REENVIADO = {
     ],
     frescuraBolt: async () => ({ madrid: '2026-10-22T11:30:00Z', otras: '2026-10-22T12:40:00Z' }),
     // Madrid: el COSLADA (12:57 de Madrid = 10:57 UTC) lo llevaba otro, conectado.
-    boltMadrid: async () => ({ enBolt: true, repostajeAt: '2026-10-22T10:57:00Z', uuid: 'u-otro', conductorId: 99,
-      nombre: 'Otro Conductor Distinto', situacion: 'espera', conectado: true, segundos: 0 }),
+    boltMadrid: boltM, boltMadridDe: enLote(boltM),
     // Barcelona: el PRAT lo llevaba quien dice la tarjeta; el MONTMELÓ es posterior a lo que sabe BOLT; el 5369LHJ no está en BOLT.
-    boltOtraSede: async id => (BD.filas[id - 1].matricula === '9107LWS'
-      ? { enBolt: true, repostajeAt: '2026-10-22T04:49:00Z', uuid: 'b-prat', conductorId: null, nombre: 'Rubén Ortega', situacion: 'espera', conectado: false, segundos: 1800 }
-      : BD.filas[id - 1].matricula === '5369LHJ' ? { enBolt: false, repostajeAt: '2026-10-22T10:00:00Z' }
-        : { enBolt: true, repostajeAt: '2026-10-22T12:45:00Z', uuid: null, conductorId: null, nombre: null, situacion: null, conectado: false, segundos: 0 }),
+    boltOtraSede: boltO, boltOtraSedeDe: enLote(boltO),
     ponerBolt: async (id, b) => { BD.bolt[id] = b; BD.filas[id - 1].bolt_estado = b.estado; },
+    ponerBoltDe: async filas => { for (const { id, ...b } of filas) { BD.bolt[id] = b; BD.filas[id - 1].bolt_estado = b.estado; } },
+    // El bot de WhatsApp (db/215): aquí nadie abrió turno.
+    botDe: async ids => new Map(ids.map(id => [Number(id), { turnoId: null }])),
+    ponerBot: async filas => { for (const f of filas) BD.filas[f.id - 1].bot_estado = f.estado; },
+    paraMirarBot: async () => BD.filas.filter(f => f.estado === 'leido' && !f.bot_estado).map(f => f.id),
     paraMirarBolt: async () => [],
     cerrarSinBolt: async () => { BD.sinBolt++; return 0; },
     lista: async o => { BD.listas.push(o); return []; },
+    ultimaImportacion: async () => null,
   });
   const S = require('../modules/Combustible/combustible.service');
   process.env.CRED_KEY = process.env.CRED_KEY || 'clave-de-pruebas';
@@ -675,19 +686,23 @@ const REENVIADO = {
     { id: 4, estado: 'leido', cuando: '21/10/2026 12:53', gps_distancia_m: null, boya_error_pct: null },
     { id: 5, estado: 'repetido', cuando: '22/10/2026 12:57', gps_distancia_m: 19, boya_error_pct: 1.7 },
     { id: 6, estado: 'no_leido', cuando: '22/10/2026 13:13', proveedor: 'ballenoil', motivo: 'No encuentro: Litros', matricula: null },
-    // El aforador en su techo sin corregir: el error es un mínimo.
-    { id: 7, estado: 'leido', cuando: '23/10/2026 06:11', gps_distancia_m: 12, boya_error_pct: 13.6, boya_tipo: 'litros', boya_corregida: false, boya_techo: 45, boya_despues: 45 },
+    // El aforador en su techo sin corregir: lo que subió es un mínimo. Desde
+    // db/215 (solo cuenta lo que falta) la auditoría solo guarda el déficit de
+    // un mínimo si ya llega a lo pagado: 0 %, verde. Un mínimo con déficit (el
+    // id 8) solo podría venir de antes de la migración: sin color, nunca rojo.
+    { id: 7, estado: 'leido', cuando: '23/10/2026 06:11', gps_distancia_m: 12, boya_error_pct: 0, boya_litros: 29, litros: 25.539, boya_tipo: 'litros', boya_corregida: false, boya_techo: 45, boya_despues: 45 },
     { id: 8, estado: 'leido', cuando: '23/10/2026 06:12', gps_distancia_m: 12, boya_error_pct: 70, boya_tipo: 'litros', boya_corregida: false, boya_techo: 45, boya_despues: 44 },
-    { id: 9, estado: 'leido', cuando: '23/10/2026 06:13', gps_distancia_m: 12, boya_error_pct: 13.6, boya_tipo: 'litros', boya_corregida: true, boya_techo: 45, boya_despues: 45 },
+    { id: 9, estado: 'leido', cuando: '23/10/2026 06:13', gps_distancia_m: 12, boya_error_pct: 13.6, boya_litros: 22.1, litros: 25.6, boya_tipo: 'litros', boya_corregida: true, boya_techo: 45, boya_despues: 45 },
   ];
   const lst = await S.lista({ desde: '2026-10-21', hasta: '2026-10-22' });
   DOBLE.lista = listaAntes;
   igual('La lista: solo los leídos, cada uno con el color de su GPS, su boya y el peor de los dos (sin dato en los dos, sin color)',
     lst.filas.map(f => [f.id, f.gps_color, f.boya_color, f.color]),
     [[1, 'verde', 'verde', 'verde'], [2, 'verde', 'amarillo', 'amarillo'], [3, null, 'rojo', 'rojo'], [4, null, null, null],
-      [7, 'verde', null, 'verde'], [8, 'verde', 'rojo', 'rojo'], [9, 'verde', 'verde', 'verde']]);
-  igual('…un mínimo (topó y no se pudo corregir) no da verde: el 13,6 % «como poco» va sin color, el 70 % sí es rojo; corregido, verde normal',
-    lst.filas.filter(f => f.id >= 7).map(f => [f.id, f.boya_minimo, f.boya_color]), [[7, true, null], [8, true, 'rojo'], [9, false, 'verde']]);
+      [7, 'verde', 'verde', 'verde'], [8, 'verde', null, 'verde'], [9, 'verde', 'verde', 'verde']]);
+  igual('…un mínimo (topó y no se pudo corregir) solo dice verde o nada: el que ya llega a lo pagado es verde (+3,5 L de más), uno con déficit va sin color; corregido, verde normal (faltan 3,5 L)',
+    lst.filas.filter(f => f.id >= 7).map(f => [f.id, f.boya_minimo, f.boya_color, f.boya_faltan, f.boya_de_mas]),
+    [[7, true, 'verde', 0, 3.5], [8, true, null, null, null], [9, false, 'verde', 3.5, 0]]);
   igual('…los repetidos ni salen, y los no leídos van aparte con su enlace (id) y su motivo, con los umbrales para la pantalla',
     [lst.filas.some(f => f.id === 5), lst.noLeidos, lst.umbrales],
     [false, [{ id: 6, cuando: '22/10/2026 13:13', proveedor: 'ballenoil', motivo: 'No encuentro: Litros', matricula: null }],
@@ -790,10 +805,12 @@ const REENVIADO = {
   // El umbral se aplica a la cifra que se ve (decidido el 23/10/2026): 34,96 %
   // se guarda «35,0 %» y es amarillo; 699,6 m son «700 m», amarillo.
   const m6996 = G.metros({ lat: 40, lng: -3.7 }, { lat: 40 + 699.6 / 111195.08, lng: -3.7 });
-  igual('El borde, con la cifra redondeada que se ve: 34,96 % es «35,0 %», amarillo; 699,6 m son «700 m», amarillo',
-    [BOYA.errorPct(13.496, 10), SEM.colorBoya(BOYA.errorPct(13.496, 10)), m6996, SEM.colorGps(m6996)], [35, 'amarillo', 700, 'amarillo']);
-  igual('Un mínimo (el aforador topó y no se pudo corregir) no da verde: 13,6 % sin color, 40 % amarillo, 70 % rojo',
-    [13.6, 34.9, 40, 70].map(v => SEM.colorBoya(v, { minimo: true })), [null, null, 'amarillo', 'rojo']);
+  igual('El borde, con la cifra redondeada que se ve: faltar un 34,96 % es «35,0 %», amarillo; 699,6 m son «700 m», amarillo',
+    [BOYA.deficitPct(6.504, 10), SEM.colorBoya(BOYA.deficitPct(6.504, 10)), m6996, SEM.colorGps(m6996)], [35, 'amarillo', 700, 'amarillo']);
+  // Desde el 23/10/2026 la boya solo cuenta lo que falta: un mínimo que ya
+  // llega a lo pagado es 0 % (verde); uno que no llega ni se compara.
+  igual('Un mínimo (el aforador topó y no se pudo corregir) solo dice verde (0 %) o nada',
+    [0, 13.6, 40, 70].map(v => SEM.colorBoya(v, { minimo: true })), ['verde', null, null, null]);
   igual('Sin dato no hay color (null, vacío, texto); 0 es verde', [null, undefined, '', 'x', 0].map(SEM.colorGps), [null, null, null, null, 'verde']);
   igual('La fila, por el peor: rojo > amarillo > verde; sin dato en uno manda el otro; sin los dos, sin color',
     [SEM.peor('verde', 'rojo'), SEM.peor('rojo', 'amarillo'), SEM.peor('amarillo', null), SEM.peor(null, 'verde'), SEM.peor(null, null)],
@@ -860,9 +877,26 @@ const REENVIADO = {
   igual('…y sin ninguno de los dos, el salto sin corregir y por qué', (c => [c.corregido, c.litros, /no hay gastado ni km/.test(c.motivo)])(BOYA.corregirTecho(mT, baja, {})), [false, 25, true]);
   igual('Interpolar una serie acumulada entre dos lecturas (y fuera de ella, null)',
     [BOYA.enInstante(km, T + H), BOYA.enInstante(km, T - 1), BOYA.enInstante(km, T + 5 * H)], [1050, null, null]);
-  igual('Error de la boya: |boya − correo| / correo, con un decimal; con 0 litros en el correo, null',
-    [BOYA.errorPct(23, 24.405), BOYA.errorPct(25.3, 26.5), BOYA.errorPct(0, 30), BOYA.errorPct(10, 0), BOYA.errorPct(null, 10)],
-    [5.8, 4.5, 100, null, null]);
+  igual('Déficit de la boya: max(0, pagado − boya) / pagado, con un decimal; subir de más es 0; con 0 litros pagados o sin boya, null; si bajó, más del 100 %',
+    [BOYA.deficitPct(23, 24.405), BOYA.deficitPct(25.3, 26.5), BOYA.deficitPct(0, 30), BOYA.deficitPct(10, 0), BOYA.deficitPct(null, 10),
+      BOYA.deficitPct(24.405, 24.405), BOYA.deficitPct(30, 24.405), BOYA.deficitPct(-1, 24.86)],
+    [5.8, 4.5, 100, null, null, 0, 0, 104]);
+  igual('…y en litros: «faltan 1,4 L» o «+5,6 L de más»', [BOYA.diferencia(23, 24.405), BOYA.diferencia(30, 24.405), BOYA.diferencia(null, 3)],
+    [{ faltan: 1.4, deMas: 0 }, { faltan: 0, deMas: 5.6 }, null]);
+  // El % y los litros no se contradicen (revisión del 23/10/2026): 46 L de
+  // 46,04 es un 0,1 %, y «faltan 0,0 L» al lado no se entendería.
+  igual('…el % y los litros no se contradicen: un 0,1 % son 0,04 L que faltan (no «0,0»); un 0,0 % es que no falta nada (aunque falten 4 ml)',
+    [[46, 46.04], [46, 46.004], [46, 46], [46.04, 46]].map(([b, p]) => [BOYA.deficitPct(b, p), BOYA.diferencia(b, p)]),
+    [[0.1, { faltan: 0.04, deMas: 0 }], [0, { faltan: 0, deMas: 0 }], [0, { faltan: 0, deMas: 0 }], [0, { faltan: 0, deMas: 0 }]]);
+  igual('Los bordes del déficit: subir lo pagado, 0; subir de más, 0 suba lo que suba; faltar un 34,9 / 35 / 64,9 / 65 % da verde, amarillo, amarillo, rojo',
+    [BOYA.deficitPct(20, 20), BOYA.deficitPct(60, 20), ...[13.02, 13, 7.02, 7].map(b => SEM.colorBoya(BOYA.deficitPct(b, 20)))],
+    [0, 0, 'verde', 'amarillo', 'amarillo', 'rojo']);
+  // ¿Se movió el aforador dentro de una parada? Aparcado, no; andando, sí.
+  const quieto = tramo(T - 5 * H, T + 5 * H, 31, 5 * MIN);
+  const anda = tramo(T - 5 * H, T + 5 * H, t => Math.round(31 - 14 * (t - (T - 5 * H)) / (10 * H)), 5 * MIN);
+  igual('Dentro de una parada: el aforador quieto (31 L todo el rato) o moviéndose (de 31 a 17 L, el 9521MMX); sin lecturas, no se sabe',
+    [BOYA.cambioDentro(quieto, T - 4 * H, T + 4 * H), (x => [x.min, x.max])(BOYA.cambioDentro(anda, T - 4 * H, T + 4 * H)), BOYA.cambioDentro([], T - H, T)],
+    [{ lecturas: 95, min: 31, max: 31 }, [19, 29], null]);
   igual('La mediana, como en los análisis: la del medio o la de arriba de las dos del medio',
     [BOYA.mediana([3, 1, 2]), BOYA.mediana([1, 2, 3, 4]), BOYA.mediana([])], [2, 3, null]);
 
@@ -892,13 +926,18 @@ const REENVIADO = {
     },
     capacidadDeposito: async u => MAP.capacidad[u] || null,
   }, { get: (o, k) => { tocadoMapon.add(String(k)); return o[k]; } }));
-  const AUD = { filas: {}, alias: new Map(), cerrar: 0, aAuditar: [], guardarRevienta: null };
+  const AUD = { filas: {}, alias: new Map(), textos: new Map(), vecinos: {}, cerrar: 0, aAuditar: [], guardarRevienta: null };
   const UNIDAD = { '8997LDK': 'u-coslada', '7909LRJ': 'u-clot', '2350LHP': 'u-ford', '6584KZV': 'u-sin', '9001LWJ': 'u-techo', '3814KYG': 'u-espera' };
   const paraCasar = f => ({ id: f.id, proveedor: f.proveedor, estacion: f.estacion, sede: f.sede, gasolinera_id: f.gasolinera_id || null,
     gasolinera_como: f.gasolinera_como || null, gps_lat: f.gps_lat == null ? null : f.gps_lat, gps_lng: f.gps_lng == null ? null : f.gps_lng });
   sustituir('modules/Combustible/combustible.repo.js', {
     gasolineras: async () => LISTA,
     aliasGasolineras: async () => AUD.alias,
+    // Los textos exactos del Excel de Petroprix (db/215): aquí, ninguno.
+    textosGasolineras: async () => AUD.textos,
+    // Otros repostajes del mismo coche en la misma parada: los que diga la prueba
+    // (aquí casi todos comparten hora y coche, y no son de la misma parada).
+    vecinosDe: async id => AUD.vecinos[id] || [],
     ponerAlias: async ({ proveedor, clave, gasolineraId }) => { AUD.alias.set(`${proveedor}|${clave}`, gasolineraId); },
     quitarAlias: async ({ proveedor, clave }) => { AUD.alias.delete(`${proveedor}|${clave}`); },
     paraCasarGasolinera: async () => Object.values(AUD.filas).filter(f => f.estado === 'leido' && (!f.gasolinera_como || ['ninguna', 'ambiguo'].includes(f.gasolinera_como))).map(paraCasar),
@@ -953,6 +992,19 @@ const REENVIADO = {
   igual('…y guarda las lecturas de alrededor para dibujar el aforador en la ficha (como mucho 90)',
     [a1.detalle.boya.lecturas.length > 10, a1.detalle.boya.lecturas.length <= 90, a1.detalle.parada.direccion], [true, true, 'Av. del Jarama, Coslada']);
 
+  // DOS REPOSTAJES EN LA MISMA PARADA (db/215): el 8203LTR pagó 23,93 L con la
+  // app y 22,87 L con tarjeta en el mismo minuto. La boya ve UN salto (23 L):
+  // con cada uno por separado salía verde; con la suma, falta la mitad.
+  rep(40, { estacion: 'COSLADA', matricula: '8997LDK', litros: 23.93 });
+  const solo = await auditar(40);
+  AUD.vecinos[40] = [{ id: 41, litros: 22.87, hora: '12:57:40' }];
+  const pareja = await auditar(40);
+  delete AUD.vecinos[40];
+  igual('Dos repostajes en la misma parada: solo, 23 L de 23,93 es un 3,9 % (verde); con el otro (22,87 L), 23 de 46,8: falta un 50,9 %, amarillo, y se dice',
+    [solo.boyaErrorPct, pareja.boyaErrorPct, SEM.colorBoya(pareja.boyaErrorPct), pareja.detalle.boya.pagados, pareja.detalle.boya.juntos.length,
+      /En la misma parada hay otro repostaje de este coche \(12:57:40, 22,87 L\): la boya se compara con los 46,8 L de todos/.test(pareja.boyaMotivo)],
+    [3.9, 50.9, 'amarillo', 46.8, 1, true]);
+
   // CLOT: la gasolinera no tiene coordenadas: sin color por GPS, y se dice la más cercana.
   const enElClot = { lat: 41.4087, lng: 2.1872 };
   MAP.paradas['u-clot'] = [{ ...PARADA, ...enElClot, direccion: 'Carrer del Clot, 4, 08018 Barcelona' }];
@@ -994,7 +1046,7 @@ const REENVIADO = {
     [a5.boyaTipo, a5.boyaSalto, a5.boyaLitros, a5.boyaErrorPct, /va en % del depósito/.test(a5.boyaMotivo), a5.estado],
     ['porcentaje', 70, undefined, undefined, true, 'hecha']);
   MAP.capacidad['u-ford'] = 55;
-  igual('…con la capacidad en Mapon (55 L): 70 % son 38,5 L, un 1,3 % de error', (a => [a.boyaLitros, a.boyaErrorPct])(await auditar(5)), [38.5, 1.3]);
+  igual('…con la capacidad en Mapon (55 L): 70 % son 38,5 L, más que lo pagado: no falta nada (0 %; antes, «un 1,3 % de error»)', (a => [a.boyaLitros, a.boyaErrorPct])(await auditar(5)), [38.5, 0]);
 
   // EL TECHO: topó en 40 L y aún no ha bajado. 25 L de 30: puede ser solo el
   // techo, así que no se pinta; se vuelve a mirar.
@@ -1005,8 +1057,10 @@ const REENVIADO = {
   igual('Techo sin bajar aún, y el salto (25 L) por debajo del correo (30): un mínimo, sin error ni color; a medias',
     [a6.boyaTecho, a6.boyaLitros, a6.boyaErrorPct, /al menos 25 L/.test(a6.boyaMotivo), a6.estado], [40, 25, undefined, true, 'incompleta']);
   rep(7, { estacion: 'COSLADA', matricula: '9001LWJ', litros: 15 });
-  igual('…pero si el mínimo ya pasa del correo (25 L de 15), el error es de verdad (como poco un 66,7 %) y se pinta',
-    (a => [a.boyaErrorPct, SEM.colorBoya(a.boyaErrorPct), a.estado])(await auditar(7)), [66.7, 'rojo', 'incompleta']);
+  // Solo cuenta lo que falta (23/10/2026): hasta entonces esto era «como poco
+  // un 66,7 % de error», rojo, por subir de más.
+  igual('…pero si el mínimo ya pasa de lo pagado (25 L de 15), como poco entró lo pagado: 0 %, verde (y se sigue mirando para corregirlo)',
+    (a => [a.boyaErrorPct, SEM.colorBoya(a.boyaErrorPct, { minimo: true }), a.estado])(await auditar(7)), [0, 'verde', 'incompleta']);
   MAP.series['u-techo'] = llena;
   MAP.gk['u-techo'] = { gastado: [], km: tramo(T - 2 * H, T + 4 * H, t => 1000 + 50 * (t - T) / H, MIN) };
   igual('…cuando baja, se corrige con lo que gastó hasta entonces: 25,3 L de 30, un 15,7 %, y hecha',
@@ -1069,12 +1123,12 @@ const REENVIADO = {
   MAP.revienta = null;
   igual('N.º 20: primer intento con el GPS a 11 m y la boya en el techo (al menos 29 L, un mínimo); a medias',
     [n20a.distancia, n20a.boyaLitros, n20a.boyaErrorPct, BOYA.esMinimo(AUD.filas[17]), SEM.colorBoya(n20a.boyaErrorPct, { minimo: true }), n20a.estado],
-    [11, 29, 13.6, true, null, 'incompleta']);
+    [11, 29, 0, true, 'verde', 'incompleta']);
   igual('…segundo intento sin paradas de Mapon: la distancia sigue (11 m), la boya se mide con la parada guardada, y sigue a medias',
     [n20b.distancia, n20b.gpsFuente, (n20b.detalle.boya || {}).conParada, n20b.boyaLitros, AUD.filas[17].gps_distancia_m, n20b.estado],
     [11, 'parada', true, 29, 11, 'incompleta']);
-  igual('…y el mínimo lo dice: «como poco» y que no da verde',
-    /al menos 29 L, y el error es como poco del 13,6 %: con eso se puede decir amarillo o rojo, pero no verde/.test(n20a.boyaMotivo), true);
+  igual('…y el mínimo lo dice: al menos 29 L, más que lo pagado (verde desde el 23/10/2026; antes, «como poco un 13,6 %», sin color)',
+    /al menos 29 L, más que lo pagado: como poco entró lo pagado/.test(n20a.boyaMotivo), true);
 
   // SIN PARADA: la posición de Mapon en ese instante, si está a menos de 20 min.
   MAP.paradas['u-coslada'] = [];
@@ -1126,6 +1180,79 @@ const REENVIADO = {
   MAP.puntos['u-reloj'] = null;
   igual('…y si Mapon no da su posición a esa hora, la parada de al lado es lo que hay (sin metros a la parada)',
     (a => [a.gpsFuente, a.distancia, a.detalle.parada.noCubre])(await auditar(19)), ['parada', 0, { antes: true, minutos: 3, metros: null }]);
+
+  // UNA «PARADA» DE 24 H CON EL AFORADOR MOVIÉNDOSE (el 9521MMX, 12/10/2026):
+  // el GPS se quedó clavado en San Fernando y el coche andaba (el aforador solo
+  // lee encendido): bajó de 31 a 20 L, repostó 18 L en Coslada a la hora del
+  // correo y siguió bajando. El GPS no vale (sin color) y la boya, sin parada.
+  const sanFernando = { lat: 40.4434, lng: -3.4994 };
+  MAP.paradas['u-roto'] = [{ desde: T - 10 * H, hasta: T + 14 * H, ...sanFernando, direccion: 'San Fernando de Henares' }];
+  MAP.puntos['u-roto'] = { t: T, ...sanFernando };
+  MAP.series['u-roto'] = tramo(T - 10 * H, T - 10 * MIN, t => Math.round(31 - 11 * (t - (T - 10 * H)) / (10 * H)), MIN)
+    .concat(tramo(T + 10 * MIN, T + 14 * H, t => Math.round(38 - 10 * (t - T) / (14 * H)), MIN));
+  UNIDAD['9521MMX'] = 'u-roto';
+  rep(21, { estacion: 'COSLADA', matricula: '9521MMX', litros: 18 });
+  const roto = await auditar(21);
+  igual('Una «parada» de 24 h con el aforador moviéndose: el GPS no vale (sin metros, sin color, y se dice), y la boya se mide sin parada: +18 L de 18, verde',
+    [roto.distancia, /el coche andaba y su GPS no lo vio/.test(roto.gpsMotivo), (roto.detalle.paradaRota || {}).horas, (r => !!r && r.max - r.min >= 3)(roto.detalle.paradaRota),
+      (roto.detalle.boya || {}).conParada, roto.boyaSalto, roto.boyaErrorPct, roto.estado],
+    [null, true, 24, true, false, 18, 0, 'hecha']);
+  // La misma parada de 24 h con el aforador quieto: el coche estaba aparcado de
+  // verdad, lejos de la gasolinera, y eso es justo lo que hay que ver.
+  MAP.series['u-roto'] = tramo(T - 30 * H, T - 10 * H, 31, MIN).concat(tramo(T + 14 * H, T + 16 * H, 31, MIN));
+  const aparcado = await auditar(21);
+  igual('…pero si dentro el aforador no se mueve (aparcado de verdad), la parada vale: se mide desde ella, rojo por el GPS',
+    [aparcado.gpsFuente, aparcado.distancia > 1600, SEM.colorGps(aparcado.distancia), !!aparcado.detalle.paradaRota], ['parada', true, 'rojo', false]);
+  // EL EQUIPO SIN SEÑAL (el 0454MMZ, 04/10/2026): Mapon lo da «parado» 5,8 h
+  // en el Paseo de Extremadura, a 9,6 km, sin una lectura dentro, y al arrancar
+  // el depósito tiene 13 L más. Un coche aparcado no reposta: no vale (aquí,
+  // 12 L: con 38, el techo del aforador, sería un mínimo).
+  MAP.paradas['u-roto'] = [{ desde: T - 2 * MIN, hasta: T + 5.8 * H, ...sanFernando, direccion: 'Paseo de Extremadura, 148' }];
+  MAP.series['u-roto'] = tramo(T - 3 * H, T - 2 * MIN, 25, MIN).concat(tramo(T + 5.8 * H, T + 8 * H, 37, MIN));
+  rep(23, { estacion: 'COSLADA', matricula: '9521MMX', litros: 17.92 });
+  const sinSenal = await auditar(23);
+  igual('Una parada de 5,8 h lejos, sin lecturas dentro y con 12 L más al arrancar: el GPS no vale (sin color) y la boya, sin parada: 12 L de 17,92, verde',
+    [sinSenal.distancia, /al arrancar tenía 12 L más \(25 → 37\): repostó en ese rato y su GPS no lo vio/.test(sinSenal.gpsMotivo), (sinSenal.detalle.paradaRota || {}).como,
+      (sinSenal.detalle.boya || {}).conParada, sinSenal.boyaSalto, SEM.colorBoya(sinSenal.boyaErrorPct)],
+    [null, true, 'sube', false, 12, 'verde']);
+  // …la misma, pero en la gasolinera (repostó y se quedó hora y media): vale.
+  MAP.paradas['u-roto'] = [{ desde: T - 2 * MIN, hasta: T + 1.5 * H, ...surtidor, direccion: 'Coslada' }];
+  MAP.series['u-roto'] = tramo(T - 3 * H, T - 2 * MIN, 25, MIN).concat(tramo(T + 1.5 * H, T + 3 * H, 38, MIN));
+  igual('…en la gasolinera, repostar dentro de una parada larga es lo normal: la parada vale (0 m, verde)',
+    (a => [a.gpsFuente, a.distancia, !!a.detalle.paradaRota])(await auditar(23)), ['parada', 0, false]);
+  // …y una lejos tras la que el depósito BAJA (el 8512LDS en L'Hospitalet): vale, y es rojo.
+  MAP.paradas['u-roto'] = [{ desde: T - 80 * MIN, hasta: T + 40 * MIN, ...sanFernando, direccion: 'Granvia de l\'Hospitalet, 136' }];
+  MAP.series['u-roto'] = tramo(T - 3 * H, T - 80 * MIN, 30, MIN).concat(tramo(T + 40 * MIN, T + 3 * H, 29, MIN));
+  igual('…y una de 2 h lejos tras la que el depósito no sube (el 8512LDS): vale, rojo por los dos lados',
+    (a => [a.gpsFuente, SEM.colorGps(a.distancia), SEM.colorBoya(a.boyaErrorPct), !!a.detalle.paradaRota])(await auditar(23)), ['parada', 'rojo', 'rojo', false]);
+  // …y una de horas «de al lado» (aparcado en casa toda la noche, 3 min de
+  // camino y repostó sin apagar el coche): el depósito sube después, en la
+  // gasolinera, y eso no la hace falsa. A esa hora estaba en el surtidor.
+  MAP.paradas['u-roto'] = [{ desde: T - 8 * H, hasta: T - 3 * MIN, ...sanFernando, direccion: 'en casa' }];
+  MAP.puntos['u-roto'] = { t: T, ...surtidor };
+  MAP.series['u-roto'] = tramo(T - 9 * H, T - 8 * H, 20, MIN).concat(tramo(T - 3 * MIN, T + H, t => (t < T ? 20 : 35), MIN));
+  igual('…una parada larga «de al lado» no se toma por falsa porque el depósito suba después: manda dónde estaba (en el surtidor, 0 m)',
+    (a => [a.gpsFuente, a.distancia, !!a.detalle.paradaRota])(await auditar(23)), ['punto', 0, false]);
+  MAP.puntos['u-roto'] = null;
+
+  // LA PARADA DE ANTES, LEJOS (Excel): el coche paró a dejar a un pasajero a
+  // 1,5 km y repostó sin apagarse (Mapon no apuntó la parada del surtidor). A
+  // la hora del Excel estaba a unos metros de la gasolinera: vale lo más cerca.
+  const pasajero = { lat: surtidor.lat + 0.0135, lng: surtidor.lng };
+  MAP.paradas['u-pasajero'] = [{ desde: T - 12 * MIN, hasta: T - 4 * MIN, ...pasajero, direccion: 'dejando a un pasajero' }];
+  MAP.puntos['u-pasajero'] = { t: T - 20e3, lat: surtidor.lat + 0.00009, lng: surtidor.lng };
+  MAP.series['u-pasajero'] = tramo(T - H, T - 10 * MIN, 12).concat(tramo(T + 10 * MIN, T + H, 35));
+  UNIDAD['8930KVC'] = 'u-pasajero';
+  rep(22, { estacion: 'COSLADA', matricula: '8930KVC', litros: 24.4, origen: 'excel' });
+  const pas = await auditar(22);
+  igual('Excel con la parada de antes a 1,5 km: se mira dónde estaba a esa hora (a 10 m) y vale eso; la boya, sin parada',
+    [pas.gpsFuente, pas.distancia, (pas.detalle.paradaCerca || {}).direccion, (pas.detalle.paradaCerca || {}).aLaGasolinera > 1400, (pas.detalle.boya || {}).conParada, pas.boyaSalto],
+    ['punto', 10, 'dejando a un pasajero', true, false, 23]);
+  MAP.puntos['u-pasajero'] = { t: T - 20e3, lat: surtidor.lat + 0.02, lng: surtidor.lng };
+  igual('…y si a esa hora estaba aún más lejos, se queda la parada (nunca acusa más que ella)',
+    (a => [a.gpsFuente, a.distancia === G.metros(pasajero, surtidor)])(await auditar(22)), ['parada', true]);
+  MAP.paradas['u-pasajero'] = [{ desde: T - 6 * MIN, hasta: T - 2 * MIN, lat: surtidor.lat + 0.0004, lng: surtidor.lng }];
+  igual('…y con la parada de antes junto a la gasolinera (44 m), se mide desde ella sin más', (a => [a.gpsFuente, a.distancia])(await auditar(22)), ['parada', 44]);
 
   // EL CAMBIO DE HORA (domingo 25/10/2026): «02:30» pasa dos veces y la base se
   // queda con la segunda (01:30 UTC). Si el correo llegó antes, fue la primera.
@@ -1198,6 +1325,14 @@ const REENVIADO = {
   MAP.caido = false; MAP.sinClave = true;
   igual('Sin MAPON_API_KEY, igual: no se audita y se dice', (await A.auditarPendientes({ origen: 'cron' })).motivo, 'Falta MAPON_API_KEY en el servidor: no se audita con Mapon');
   MAP.sinClave = false;
+  // La auditoría tiene que valer ANTES de db/215 (Camilo aplica la migración
+  // después de desplegar): con `r.origen` a secas se paraba entera con 42703
+  // (revisión del 23/10/2026). Se mira el texto de la consulta, que aquí no hay base.
+  const repoTexto = require('fs').readFileSync(require('path').join(__dirname, '..', 'modules', 'Combustible', 'combustible.repo.js'), 'utf8');
+  const camposAuditar = (/const CAMPOS_AUDITAR = `([\s\S]*?)`;/.exec(repoTexto) || [])[1] || '';
+  igual('La consulta de la auditoría no pide a secas columnas de db/215 (origen va con to_jsonb): vale antes de aplicarla',
+    [!!camposAuditar, /\br\.(origen|excel_\w+|bot_\w+|metodo_pago|vehiculo_tipo|importacion_id)\b/.test(camposAuditar), /to_jsonb\(r\) ->> 'origen' AS origen/.test(camposAuditar)],
+    [true, false, true]);
   igual('A Mapon solo se le pregunta: la auditoría no toca nada que no sea una lectura (ni órdenes ni relés)',
     [...tocadoMapon].filter(k => !LECTURAS_MAPON.includes(k)), []);
   igual('Los tiempos: a los 45 min del repostaje; reintentos a 30 min, 1, 2, 4, 8 y 12 h; «sin datos» a las 48 h (con 3 intentos) o a los 8',

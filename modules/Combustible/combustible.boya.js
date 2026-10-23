@@ -27,6 +27,10 @@
 //   · Los Ford Mondeo dan el nivel en PORCENTAJE (otra serie). Sin la capacidad
 //     del depósito no se pasa a litros: el salto se guarda en %, sin error.
 //
+// LA PARADA TIENE QUE SER DE VERDAD. Si dentro de una parada larga el aforador
+// se mueve (`cambioDentro`), el coche estaba encendido y andando: es el GPS el
+// que se quedó clavado, y esa parada no vale ni para el GPS ni para la boya.
+//
 // EL SALTO, ALREDEDOR DE LA HORA DEL CORREO. No hace falta encontrar el
 // repostaje entre todos los de la semana (eso hacía 3-repostajes.js con su
 // umbral de 10 L, que dejaría fuera los de 9 L de verdad): se sabe cuándo fue.
@@ -49,8 +53,11 @@
 // lecturas de cuando arrancó; buscando la subida mayor salía «0 L», un rojo
 // de mentira. Sin lecturas de después, se espera y se vuelve a mirar.
 //
-// Si no hubo repostaje en ese coche, la subida sale de 0-2 L y el error, cerca
+// Si no hubo repostaje en ese coche, la subida sale de 0-2 L y el déficit, cerca
 // del 100 %: es justo lo que se quiere ver.
+//
+// SOLO CUENTA LO QUE FALTA (23/10/2026, `deficitPct`). Si subió lo pagado o
+// más, no hay nada que auditar: el aforador de muchos coches marca de más.
 
 const L100_FLOTA = 4.77;        // L/100 km de los Corolla del 14 al 21/10/2026 (Mapon.md)
 const TECHO_MINIMO = 38;        // por debajo, el máximo de la serie no es un techo: es que nunca llenó
@@ -164,9 +171,11 @@ const topa = (m, techoL) => !!(m && m.ok && techoL != null && m.despues >= techo
 /**
  * ¿Lo guardado de un repostaje es un MÍNIMO? Lo es cuando el aforador topó en
  * su techo y no se pudo corregir: lo que entró por encima no se vio, así que
- * los litros de la boya son «como poco esos» y su error, «como poco ese». Se
- * deduce de las columnas (la misma cuenta que `topa`), sin guardar nada más:
- * `fila` es la del repostaje (boya_tipo, boya_corregida, boya_techo, boya_despues).
+ * los litros de la boya son «como poco esos». Si ya llegan a lo pagado, el
+ * déficit es 0 (verde: como poco entró lo pagado); si se quedan cortos, no se
+ * puede saber cuánto falta y no se compara. Se deduce de las columnas (la misma
+ * cuenta que `topa`), sin guardar nada más: `fila` es la del repostaje
+ * (boya_tipo, boya_corregida, boya_techo, boya_despues).
  */
 const esMinimo = fila => !!fila && fila.boya_tipo === 'litros' && fila.boya_corregida === false
   && fila.boya_techo != null && fila.boya_despues != null && Number(fila.boya_despues) >= Number(fila.boya_techo) - 1;
@@ -211,18 +220,77 @@ function corregirTecho(m, { t2, v2 }, { gastado, km } = {}) {
 }
 
 /**
- * Error de la boya frente a los litros del correo, en %, con un decimal. null
- * si no se puede. El color se decide con esta cifra ya redondeada, la que se ve
+ * LO QUE FALTA: el déficit de la boya frente a los litros pagados, en %, con un
+ * decimal. null si no se puede.
+ *
+ *   déficit % = max(0, litros pagados − litros de la boya) / litros pagados × 100
+ *
+ * Camilo, 23/10/2026: «En la auditoría, si subió tanto % por encima no importa,
+ * la auditoría va por debajo». Hasta entonces era |boya − pagado| / pagado, y un
+ * aforador que marca de más (el 7909LRJ, 3-4 L de más en tres de cuatro
+ * repostajes) salía amarillo en los repostajes pequeños sin que faltara nada.
+ * Lo que se audita es que NO falte gasolina: si el depósito subió lo pagado o
+ * más, es 0 %, suba lo que suba por encima.
+ *
+ * Si el depósito bajó (−1 L), el déficit pasa del 100 %: faltan los litros
+ * pagados y uno más. Es la fórmula tal cual, y es rojo de todas formas.
+ *
+ * El color se decide con esta cifra ya redondeada, la que se ve
  * (combustible.semaforo.js): un 34,96 % se guarda y se lee «35,0 %», amarillo.
  */
-function errorPct(litrosBoya, litrosCorreo) {
-  // Sin boya no hay error: Number(null) es 0, y saldría un 100 % (un rojo) de nada.
-  if (litrosBoya == null || litrosBoya === '' || litrosCorreo == null || litrosCorreo === '') return null;
-  const b = Number(litrosBoya), c = Number(litrosCorreo);
+function deficitPct(litrosBoya, litrosPagados) {
+  // Sin boya no hay déficit: Number(null) es 0, y saldría un 100 % (un rojo) de nada.
+  if (litrosBoya == null || litrosBoya === '' || litrosPagados == null || litrosPagados === '') return null;
+  const b = Number(litrosBoya), c = Number(litrosPagados);
   if (!Number.isFinite(b) || !Number.isFinite(c) || c <= 0) return null;
-  return Math.round(Math.abs(b - c) / c * 1000) / 10;
+  return Math.min(Math.round(Math.max(0, c - b) / c * 1000) / 10, 99999);
+}
+
+/**
+ * Lo que dice la boya frente a lo pagado, en litros, para escribirlo:
+ * → { faltan, deMas } (uno de los dos es 0), con un decimal; null sin boya.
+ * «faltan 3,1 L (12,4 %)» o «subió 3,5 L más de lo pagado» (sin penalizar).
+ *
+ * LOS LITROS Y EL % NO SE CONTRADICEN NUNCA (revisión del 23/10/2026). Se
+ * redondeaban por separado: con la boya en 46 L y 46,04 L pagados, el déficit
+ * es un 0,1 % y «faltan» salía 0,0 L, y la ficha escribía «no falta nada» al
+ * lado de un 0,1 %. Ahora manda el % que se ve: si es más de 0, lo que falta
+ * nunca es 0 (con dos decimales si con uno saldría 0,0: «faltan 0,04 L»); si
+ * es 0, no falta nada aunque falten unas milésimas.
+ */
+function diferencia(litrosBoya, litrosPagados) {
+  const pct = deficitPct(litrosBoya, litrosPagados);
+  if (pct == null) return null;
+  const d = Number(litrosBoya) - Number(litrosPagados);
+  const uno = v => Math.round(v * 10) / 10, dos = v => Math.round(v * 100) / 100;
+  if (pct > 0) return { faltan: uno(-d) > 0 ? uno(-d) : Math.max(0.01, dos(-d)), deMas: 0 };
+  return { faltan: 0, deMas: d > 0 ? uno(d) : 0 };
+}
+
+/**
+ * ¿SE MOVIÓ EL AFORADOR DENTRO DE UNA PARADA? Lo que va de la mediana de 5 más
+ * baja a la más alta entre `desde` y `hasta` (ms), dejando 2 minutos en cada
+ * borde (las de cuando paraba y arrancaba). → { lecturas, min, max } o null si
+ * no hay 5 lecturas dentro.
+ *
+ * Para la parada «de 24 horas» de un coche con el GPS roto (el 9521MMX, el
+ * 12/10/2026): el aforador solo lee con el coche encendido, y dentro de esa
+ * «parada» bajó de 31 a 17 L y subió en un repostaje. Un coche aparcado no
+ * gasta ni reposta: si el nivel se mueve, el coche andaba y Mapon no lo vio
+ * (combustible.auditoria).
+ */
+function cambioDentro(lecturasCrudas, desde, hasta) {
+  const s = limpiar(lecturasCrudas).filter(p => p.t > desde + 2 * 60e3 && p.t < hasta - 2 * 60e3);
+  if (s.length < N) return null;
+  let min = Infinity, max = -Infinity;
+  for (let k = 0; k + N <= s.length; k++) {
+    const v = mediana(s.slice(k, k + N).map(p => p.v));
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return { lecturas: s.length, min, max };
 }
 
 module.exports = {
-  mediana, salto, techo, topa, esMinimo, bajaDelTecho, corregirTecho, enInstante, errorPct,
+  mediana, salto, techo, topa, esMinimo, bajaDelTecho, corregirTecho, enInstante, deficitPct, diferencia, cambioDentro,
 };

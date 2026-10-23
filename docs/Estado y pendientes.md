@@ -15,15 +15,20 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
-## Combustible: los repostajes por correo y su auditoría con Mapon (22-23/10/2026)
+## Combustible: Ballenoil por correo, Petroprix por Excel y su auditoría con Mapon (22-23/10/2026)
 
-- **Al desplegar, aplicar `db/213` y `db/214`** desde `/migraciones` (la 212 ya está). Hasta entonces `/combustible` dice que falta y el cron no audita; el buzón se sigue leyendo. Ver [[Combustible#La auditoría con Mapon (db/213)]].
-- **Dar la llave** `/combustible` (y `/combustible/leer`: «Leer el buzón ahora», «Auditar ahora» y corregir la gasolinera) a quien la necesite en `/usuarios`: a los usuarios que ya existen no les llega sola (a propósito: quién ve los repostajes, con nombres, lo decide Camilo).
-- **Un rojo para Camilo**: el 8997LDK el 23/10 a las 00:05 en Alcalá de Henares; el coche iba andando por Madrid, a 24,2 km, y el depósito no subió. Ver [[Combustible#Medido el 23/10/2026: la auditoría de los 20 primeros]].
-- **El cambio de hora en BOLT**: la auditoría ya desempata la hora que pasa dos veces (02:00-02:59 del último domingo de octubre) con la llegada del correo; quién llevaba el coche en BOLT, todavía no. Una hora, una noche al año; la próxima, el 25/10/2026.
-- **7 gasolineras sin coordenadas** (Clot ya las tiene desde db/214, de Camilo): sus repostajes van sin color por el GPS.
+- **Al desplegar, aplicar `db/215`** desde `/migraciones` (212, 213 y 214 ya están, desde el 23/10 a las 11:49). Hasta entonces `/combustible` dice que falta, «Importar Excel» no importa y no se mira el bot. Al aplicarla, la boya de los de Ballenoil pasa a la regla de lo que falta. Ver [[Combustible#Petroprix, por Excel (db/215)]].
+- **Importar el Excel de Petroprix en producción** («Importar Excel», con la llave `/combustible/leer`) y dejar que el cron lo audite: unas 5 horas para el de tres semanas.
+- **La primera exportación de Petroprix de después del 25/10** que se solape con otra: mirar que «ya estaban» cuadra y si sale el aviso de «la hora corrida». Ver [[Combustible#Sin duplicados: la clave de cada fila]].
+- **Dar la llave** `/combustible` (y `/combustible/leer`: «Leer el buzón ahora», «Auditar ahora», corregir la gasolinera e «Importar Excel») a quien la necesite en `/usuarios`: a los usuarios que ya existen no les llega sola (a propósito: quién ve los repostajes, con nombres, lo decide Camilo).
+- **Rojos y casos para Camilo**: el 8997LDK el 23/10 a las 00:05 en Alcalá de Henares (el coche iba por Madrid a 24,2 km, el depósito no subió; la tarjeta era de una persona y BOLT y el bot dicen otra) y el 05/10 a las 00:03, también en Alcalá; sus 26 repostajes de Petroprix con «Vehículo» «-», casi todos de 50 €; el 8512LDS en Benalmádena con el coche en L'Hospitalet; el 6287LBG, de baja desde el 09/09, con cuatro repostajes en octubre; y el 8203LTR, que pagó dos veces en el mismo minuto tres días. Ver [[Combustible#Medido el 23/10/2026: el Excel de Petroprix]].
+- **Un rojo de mentira de la boya, de antes de esta tanda**: la aguja lenta del Ioniq (se mide «después» a los 5 minutos y a veces sigue subiendo a los 15). Cambia la boya de todos: lo decide Camilo. La «parada» de 24 h de un coche con el GPS roto ya no da rojos (revisión del 23/10/2026). Ver [[Combustible#Lo que queda]].
+- **Dos equipos de Mapon rotos o sin señal**: el 9521MMX y el 0454MMZ (paradas de horas que no son de verdad). Sus repostajes van sin color por el GPS mientras sigan así.
+- **Parla 2 `validada` o `aproximada`**, y **Guadalajara** con Madrid o sin sede: los decide Camilo (una migración nueva en los dos casos).
+- **Los turnos del bot que nadie cierra**: de los repostajes en que BOLT y el bot dicen personas distintas, casi todos son de un turno «auto-cerrado» (14 h). Es del [[Fichaje]], no de Combustible, pero aquí se nota.
+- **El cambio de hora en BOLT, para los del correo**: la auditoría ya desempata la hora que pasa dos veces (02:00-02:59 del último domingo de octubre) con la llegada del correo; quién llevaba el coche en BOLT, todavía no. Las filas del Excel ya se guardan con su instante decidido. Una hora, una noche al año; la próxima, el 25/10/2026.
+- **7 gasolineras de Ballenoil sin coordenadas** (Clot ya las tiene desde db/214, de Camilo): sus repostajes van sin color por el GPS.
 - **Lo que la auditoría aún no mira**: los km tecleados contra el odómetro, y `remitente_verificado` (un correo sin la firma de Ballenoil lleva su aviso junto a la fecha, pero no cambia el color).
-- **Petroprix**: escribir su lector cuando llegue el primer correo, y su asunto (se guarda como «no se pudo leer» hasta entonces y se relee solo).
 - **`5369LHJ`, `6450LSR` y `7043LJN`** repostan con la tarjeta y no están dados de alta en Vehículos. `5369LHJ` ya sale de Barcelona por la persona de la tarjeta; los otros dos (provisional y taller), sin sede hasta que se den de alta.
 
 ## Sanciones: el desempate de `fv_tramo` (22/10/2026)

@@ -311,14 +311,18 @@
         this.el.acciones.appendChild(b);
       }
 
-      // Botones de la cabecera (alta, exportar, sincronizar…).
+      // Botones de la cabecera (alta, exportar, sincronizar…). Sin `texto`, solo
+      // el icono, del ancho del de exportar, y entonces `ayuda` (su `title`) es
+      // lo que dice qué hace: a 1280 px un botón con nombre de más bajaba el
+      // buscador a otra línea (Combustible, 23/10/2026).
       (c.acciones || []).forEach(a => {
-        const b = nodo(`<button class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${
+        const b = nodo(`<button class="flex items-center gap-2 ${a.texto ? 'px-4' : 'px-3'} py-2 rounded-xl text-sm font-semibold transition ${
           a.principal === false
             ? 'bg-telecab-card border border-telecab-border hover:bg-telecab-card2'
             : 'bg-telecab-gold text-telecab-dark hover:bg-telecab-gold-soft shadow-gold'
-        }"${a.id ? ` data-accion="${esc(a.id)}"` : ''}>${
-          a.icono ? `<i class="fa-solid ${esc(a.icono)}"></i>` : ''}<span>${esc(a.texto || '')}</span></button>`);
+        }"${a.id ? ` data-accion="${esc(a.id)}"` : ''}${a.ayuda ? ` title="${esc(a.ayuda)}"` : ''}${
+          !a.texto && a.ayuda ? ` aria-label="${esc(a.ayuda)}"` : ''}>${
+          a.icono ? `<i class="fa-solid ${esc(a.icono)}"${a.texto ? '' : ' aria-hidden="true"'}></i>` : ''}${a.texto ? `<span>${esc(a.texto)}</span>` : ''}</button>`);
         // Una accion puede nacer apagada (`activa: false`) y encenderla quien
         // sepa cuando toca — por ejemplo, al marcar la primera casilla.
         if (a.activa === false) b.disabled = true;
@@ -462,7 +466,7 @@
         const t = nodo(`
           <span class="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-lg transition ${
             c.filtro ? 'cursor-pointer hover:bg-telecab-border/30' : ''} ${
-            puesto ? 'bg-telecab-gold/15' : ''}">
+            puesto ? 'bg-telecab-gold/15' : ''}"${c.ayuda ? ` title="${esc(c.ayuda)}"` : ''}>
             <b class="font-semibold tabular-nums text-telecab-${esc(c.tono || 'text')}">${esc(c.valor)}</b>
             <span class="text-telecab-muted">${esc(c.etiqueta || '')}</span>
           </span>`);

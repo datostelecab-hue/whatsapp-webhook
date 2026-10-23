@@ -83,9 +83,11 @@ const PERMITIDOS = {
                                  'Auditoría de cada repostaje (db/213): el aforador, las paradas y la posición de UN ' +
                                  'coche en las horas de su repostaje, solo GET, y el resultado se guarda en repostaje: ' +
                                  'la pantalla lee la base. Traer el aforador de toda la flota cada 5 min serían miles ' +
-                                 'de lecturas por coche y semana para mirar veinte repostajes al día; y en el latido, ' +
+                                 'de lecturas por coche y semana para mirar un centenar de repostajes al día (Ballenoil ' +
+                                 'por correo y Petroprix por Excel, db/215); y en el latido, ' +
                                  'una pasada lenta de Mapon (tope 4 min) retrasaría los apuntes de BOLT. Va en el cron ' +
-                                 'del buzón, detrás de él, y en el botón «Auditar ahora» de la ficha',
+                                 'del buzón, detrás de él, de una en una y agrupando las lecturas de cada coche ' +
+                                 '(combustible.memoria), y en el botón «Auditar ahora» de la ficha',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
   // (`fv_*`). Entra por la puerta grande el dia que su padron se funda con el
   // nucleo; hasta entonces la excepcion queda apuntada, no escondida.

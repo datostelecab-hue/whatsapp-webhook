@@ -440,6 +440,18 @@ No son de los seis, pero forman parte de la misma red:
   sobre una rejilla inventada: la J aprobada suma y la pendiente no, libranzas y
   vacaciones fuera, la ausencia a 0, días sin plaza y suspensiones fuera, antes del alta
   solo si trabajó, hoy no cuenta, y los periodos con «desde» y «hasta». 11 casos.
+- **`comprobar-combustible-excel.js`** (23/10/2026) — el Excel de Petroprix de [[Combustible]] (db/215), sin base, sin
+  Mapon y sin el Excel de verdad: la cabecera exacta (y que otro Excel no se importa), la fecha con segundos, la
+  coma decimal, las filas raras con su porqué, la clave contra duplicados (importar dos veces = 0 nuevas; uno que
+  se solapa solo trae lo nuevo), el cambio de hora (con salto en el fichero y sin él), los avisos; los 30 textos
+  exactos de la celda «Gasolinera» —con «CantueÃ±a», «Leganes 2 » y «C Plasencia»— contra las claves que
+  trae db/215, **leídas del propio fichero de la migración** (si alguien cambia `textoExacto`, sale); que «Getafe
+  2» no es «Getafe»; BOLT y el bot (la misma, distinta, solo el bot, solo BOLT, nadie); la parada de una fila del
+  Excel (la que acabó 127 s antes sí, la que empieza 46 s después no); y la memoria y los grupos con que la
+  auditoría pregunta a Mapon (lo recortado es igual que lo pedido). Desde la revisión del 23/10/2026, también:
+  un turno del bot ya cerrado no es «distinto» de BOLT, Barcelona sin turno en el bot no se compara, una fila
+  del futuro no entra, la misma fila con la hora corrida (una hora o un segundo) ya estaba, y un Excel de más
+  de 20.000 filas o un zip que dice descomprimir a 4 GB no se abren. 48 casos.
 - **`comprobar-combustible.js`** (22/10/2026) — los repostajes que llegan por correo
   ([[Combustible]]) sin base, sin buzón y sin BOLT, con nombres inventados: el lector de
   Ballenoil con los tres correos de ejemplo (PRAT con el «devuelto» de punto decimal,
@@ -486,6 +498,23 @@ No son de los seis, pero forman parte de la misma red:
   repostaje que revienta y se apunta el intento. El doble de la base guarda ya todas
   las columnas, como el repo de verdad. Se saboteó cada una de las diez reglas nuevas:
   saltan las diez.
+
+  Con la boya que solo cuenta lo que falta y la revisión del Excel (23/10/2026), **200
+  casos**: el déficit en sus bordes (subir lo pagado o más es 0; 34,9/35/64,9/65 %),
+  el % y los litros que no se contradicen (46 L de 46,04 son un 0,1 % y «faltan
+  0,04 L»), el par en la misma parada contra la suma, y las paradas que no son de
+  verdad: la de 24 h con el aforador moviéndose (el 9521MMX: GPS sin color y la boya
+  sin parada), la de 5,8 h lejos sin lecturas y con 12 L más al arrancar (el
+  0454MMZ), y las que sí valen (aparcado de verdad con el depósito quieto, una larga
+  en la misma gasolinera, la de 2 h tras la que el depósito no sube, la larga «de al
+  lado» de un coche que luego fue a repostar); y en el Excel, la parada de antes a
+  1,5 km con el coche a 10 m de la gasolinera a esa hora (vale lo más cerca, nunca
+  acusa más que la parada); y que la consulta de la auditoría no pide a secas columnas
+  de db/215 (vale antes de aplicarla). Se saboteó cada regla nueva de los dos
+  comprobadores (el aforador dentro de la parada, el depósito que sube en ella, la
+  parada de antes lejos, los litros que nunca dicen 0, `to_jsonb`, el bot ya cerrado,
+  Barcelona, la fecha del futuro, la hora corrida y los dos topes del Excel): saltan
+  las once.
 - **`comprobar-cumpleanos.js`** (15/10/2026) — los [[Cumpleanos]] sin base: los del 29 de
   febrero el 28 en un año no bisiesto, quien cumple ve la felicitación y no «cumple hoy»,
   y los ids que Control pinta en azul. 6 casos.
