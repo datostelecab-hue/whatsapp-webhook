@@ -1,11 +1,32 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-21
+actualizado: 2026-10-23
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-23 · Cada repostaje se audita con Mapon, y la fila se pinta por el peor
+
+*«Se van a pintar las filas de la siguiente manera: con el criterio del GPS con un margen de error de menos de 700 m de verde, menos de 1600 m de amarillo y más de 1600 m de rojo. Para lo de la boya […] de verde < 35 %, de amarillo < 65 % y rojo >= 65 %.»* Cada repostaje se mira en Mapon, **en solo lectura**: a cuántos metros de la gasolinera del correo estaba el coche (la parada que cubre la hora) y cuánto subió el aforador frente a los litros del correo (medianas de 5 lecturas, con el techo corregido). La fila va con el peor de los dos y, sin dato en ninguno, sin color; los colores se calculan al leer, no se guardan. Las gasolineras son las 143 del Excel de Ballenoil (db/213) y se casan **por el nombre, nunca por el GPS**: si duda, ninguna, y se pone a mano una vez para ese nombre. *«Quita lo del estado leído no sé qué»*: fuera la columna de estado, los repetidos no salen y los que no se pudieron leer van en un aviso con su enlace. Se audita sola tras leer el buzón, a los 45 minutos del repostaje, con reintentos dos días; y a mano desde la ficha.
+
+Las decisiones de esta tanda:
+
+- **Mientras el aforador está en su techo y no se ha podido corregir, lo que subió es un mínimo.** Si se queda corto frente al correo no se compara (un rojo ahí acusaría al conductor del límite del aforador). Si pasa, el error es «como poco ese» y **solo puede dar amarillo o rojo, nunca verde**: un verde no se puede afirmar con un mínimo. Se escribe con «≥».
+- **El umbral se aplica a la cifra que se ve**: metros enteros y error con un decimal. 699,6 m son «700 m», amarillo; 34,96 % es «35,0 %», amarillo. Así la cifra y su color no se contradicen.
+- **Dónde estaba el coche es la parada que cubre la hora del correo**, no una de al lado: una a menos de 5 minutos solo vale si a esa hora el coche seguía a menos de 100 m (los relojes no son el mismo); si ya andaba, manda su posición. El n.º 16 decía «parado allí» de una parada que había acabado 5 minutos antes.
+- **Si al correo le sobra una palabra que es de otra gasolinera del mismo sitio, es ambiguo**: «ALCORCON - EL CANO» no es Alcorcón I. Siempre antes «ninguna» que la que no es.
+- **Un reintento no borra lo que ya se midió**: si Mapon no contesta a una pregunta, esa se queda como estaba.
+- **La auditoría llama a Mapon por su cuenta**, fuera de la ingesta, con el motivo apuntado en `comprobar-ingesta.js` (una lista que hasta hoy solo encogía).
+
+Medido con los 20 primeros: el GPS clava la gasolinera (2-465 m) y sale un rojo de verdad. → [[Combustible#La auditoría con Mapon (db/213)]]
+
+## 2026-10-22 · Sanciones desempata los tramos de BOLT como Combustible
+
+*«Sí, arréglalo también en Sanciones.»* Quién llevaba el coche en el momento de un exceso se elegía con `ORDER BY desde` a secas. Cuando dos tramos de `fv_tramo` empiezan en el mismo segundo, a veces salía la «espera» de 0 s. Un exceso de alguien que seguía conectado podía quedar `dudoso` y no avisarse. Ahora gana el tramo que llega más lejos, en Sanciones y en los «coches rodando sin nadie» de Control.
+
+Los dos tramos son siempre de la misma persona: 3.396 pares desde septiembre, ninguno de dos. Por eso el desempate no cambia a quién, solo cuánto hace. **Lo ya registrado no se reatribuye: lo decide Camilo.** Medido en producción: de 245 excesos atribuidos, ninguno cambia de conductor ni de estado por el empate. → [[Sanciones de velocidad#Dos tramos que empiezan en el mismo segundo (22/10/2026)]]
 
 ## 2026-10-22 · Los repostajes de Ballenoil se leen solos del correo
 

@@ -151,7 +151,12 @@ Camilo, 21/10/2026: *«si alguien reposta, ¿el fuel_total sube y así podemos d
 - Por debajo de 10 L hay de todo: 81 subidas de 7 a 10 L (pueden ser rellenos hasta arriba) y cientos de 3 a 5 L, que son el baile. El umbral de 10 L deja fuera algún relleno pequeño.
 - Mapon no vio **ninguno** de estos repostajes en `fuel/changes.json` (ver arriba).
 
-**En el ERP** solo lo usa la auditoría de flota: `mapon.leerCombustible` (changes + summary) desde `modules/Operaciones/auditoria.service.js`, una pantalla que casi no se usa (ver [[Auditoria de flota]]). Con lo de arriba, sus repostajes de Madrid salen vacíos. El consumo de verdad, el de `can.fuel_total`, no lo lee nadie todavía.
+**En el ERP** lo usan dos:
+
+- La auditoría de flota: `mapon.leerCombustible` (changes + summary) desde `modules/Operaciones/auditoria.service.js`, una pantalla que casi no se usa (ver [[Auditoria de flota]]). Con lo de arriba, sus repostajes de Madrid salen vacíos.
+- **La auditoría de cada repostaje de [[Combustible]]** (23/10/2026, db/213), con lo aprendido aquí y en el ensayo del 9001LWJ: el aforador (`nivelDeposito`, `fuel/data.json`), el % de los Ford (`nivelPorcentaje`, `can_period` con `fuel_level`), el gastado y los km para corregir el techo (`gastadoYKm`, `can_period` con `total_fuel` y `total_distance`), las paradas (`paradasUnidad`, `route/list`), la posición en un instante (`posicionEn`, `history_point` con `include[]=position`) y la capacidad del depósito (`capacidadDeposito`, `fuel_tank`). Todo GET, de una unidad y en ventanas de horas. Dos cosas que salieron ahí: **`route/list` parte una parada a medianoche** (y a veces con un «trayecto» de segundos y 0 km), y **`can_period` no trae lecturas con el coche aparcado**, así que una serie pedida desde el instante que se quiere interpolar puede empezar después. → [[Trampas conocidas]]
+
+  Y dos más de la revisión del 23/10/2026: **el reloj de Mapon y el del correo de Ballenoil no son el mismo** (el 7909LRJ arrancó un minuto antes de la hora del correo y a esa hora seguía a 14 m del surtidor), así que una parada que no cubre la hora se toma solo si a esa hora el coche seguía junto a ella; y **una parada de al lado no dice dónde estaba**: el 8997LDK acabó una parada a las 00:00:10 y a las 00:04:59 ya iba a 1.676 m. `history_point` en ese instante es lo que vale. El techo del aforador se toma como el valor más alto que se repite, no el máximo: una lectura rota del CAN (255, 65535) lo fijaría.
 
 ## Relés: el corte de motor
 

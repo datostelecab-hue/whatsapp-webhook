@@ -207,6 +207,22 @@ se atrasan los relojes — y eso **supera el límite de rango de la API de BOLT*
 **Remedio:** `fetchRangoCompleto` parte el rango y **fusiona antes de procesar**,
 para que un turno que cruce el corte se siga midiendo entero.
 
+### `AT TIME ZONE 'Europe/Madrid'` se queda con la SEGUNDA de la hora que se repite
+
+`modules/Combustible/lector.comun.js`, `combustible.repo.js`,
+`combustible.auditoria.js` → `instante` (23/10/2026)
+
+El último domingo de octubre, de 02:00 a 02:59, cada hora de Madrid pasa dos veces.
+Una hora escrita sin zona (la del correo de Ballenoil: «25/10/2026 02:30») vale para
+dos instantes, y `'2026-10-25 02:30'::timestamp AT TIME ZONE 'Europe/Madrid'` da
+siempre el segundo (01:30 UTC, horario de invierno). Un repostaje de la primera
+pasada (00:30 UTC) se auditaba **una hora tarde**: el coche ya en otro sitio, el
+depósito sin subir, y rojo por los dos lados sin nada raro. **Remedio:** desempatar
+con otra hora que sí tenga zona. En Combustible, la de llegada del correo
+(`recibido_at`, de la cabecera): si llegó antes del segundo instante, era el
+primero. Se hace al auditar; lo guardado no se toca. Quién llevaba el coche en BOLT
+aún usa la hora guardada (ver [[Estado y pendientes]]).
+
 ### `getHours()` en un servidor UTC desplaza la franja nocturna
 
 `modules/Nominas/nominas.repo.js`
@@ -1782,7 +1798,9 @@ varying[]»*. **Remedio:** poner la CTE en el FROM y escribir `= ANY (veh.uuids)
 
 ### En `fv_tramo`, `ORDER BY desde DESC LIMIT 1` no siempre coge el tramo bueno
 
-`modules/Combustible/combustible.repo.js` → `boltMadrid` (22/10/2026)
+`modules/Combustible/combustible.repo.js` → `boltMadrid`,
+`modules/Operaciones/velocidad.repo.js` → `quienConducia` y
+`services/flotaViva/rutas.js` → `kmSinDuenio` (22/10/2026)
 
 fv_tramo tiene muchos pares con el mismo `desde`: un tramo de 0 segundos y el
 siguiente, que empieza en el mismo instante (3.284 en 60 días en la copia local,
@@ -1795,9 +1813,29 @@ fallaba era el estado, la situación y la antigüedad.
 **Remedio:** desempatar por el que llega más lejos —`ORDER BY t.desde DESC,
 COALESCE(t.hasta, t.senal_at, t.desde) DESC, t.id DESC`—; con eso, 0 de 200. En
 `sede_bolt_state_log` (Barcelona) pasa lo mismo con los apuntes del mismo segundo:
-`, l.id DESC`. **`velocidad.repo.quienConducia` ([[Sanciones de velocidad]]), de
-donde se copió el patrón, tiene el mismo `ORDER BY` sin desempate** y no se ha
-tocado: es de otro módulo y cambia a quién se le atribuye un exceso.
+`, l.id DESC`.
+
+**También en Sanciones y en Control (22/10/2026).** `velocidad.repo.quienConducia`
+([[Sanciones de velocidad]]), de donde se copió el patrón, y `rutas.kmSinDuenio`
+(«Coches rodando sin nadie conectado» de [[Control En directo]]) llevan ya el mismo
+desempate. En producción hay **3.396 pares desde septiembre y en todos es la misma
+persona**: siempre una «espera» de 0 s seguida de descanso, viaje o desconectado.
+O sea que el desempate **nunca cambia a quién**, cambia **cuánto hace**: en
+Sanciones, si el exceso caía «dentro» y por tanto si se avisaba (más de media hora
+→ `dudoso`). Medido sobre los 245 excesos ya atribuidos: ninguno cambia de
+conductor ni de estado; uno cambia de nota. `scripts/comprobar-sanciones.js` lo
+comprueba con datos que empatan metidos en los dos órdenes: un desempate que sea
+solo por `id` (en un sentido o en el otro) falla en uno de ellos.
+
+**Los que se miraron y no tienen el fallo:** `zonasMapon.salidasEntre` (las salidas
+de zona) pide el tramo VIVO, con `hasta > instante`, y eso ya deja fuera el de 0 s; y
+nunca hay dos tramos largos con el mismo `desde`. El último conductor del [[Mapa de
+flota]] sale de `bolt_state_log` con `ORDER BY ocurrido_at DESC` sin desempate: hay
+empates en el mismo segundo (2.103 en 30 días), pero nunca de dos personas, así que
+el nombre y la hora salen iguales. El historial de un coche y el de un conductor
+(`panel.service`) listan TODOS los tramos ordenados por `desde`: en un empate solo
+puede variar el orden de dos filas del mismo segundo. Si alguna vez se elige «el
+tramo de un coche a una hora» en otro sitio, que lleve el desempate.
 
 ### Sin oyente de `'error'`, un corte de imapflow tira el proceso
 
@@ -1839,6 +1877,88 @@ contrario de «lo que no se entiende no se pierde». **Remedio:** el lector no m
 a la base lo que no puede ser (litros, importe, €/L y km con sus límites), y si aun
 así la base dice que no (SQLSTATE `22…`, `23502` o `23514`), el mismo correo se
 guarda como «no_leido» con el porqué y sin cifras.
+
+### Mapon parte una parada en dos a medianoche
+
+`modules/Combustible/combustible.auditoria.js` (23/10/2026)
+
+`route/list` corta las paradas a las 00:00: el 8997LDK estuvo aparcado de 23:27 a
+00:00:10 y Mapon lo dio como dos paradas, de 23:27 a 00:00 y de 00:00 a 00:00:10.
+Y a veces mete entre dos paradas en el mismo sitio un «trayecto» de 16 segundos y
+0 km. Quien busque la parada que cubre una hora se queda con un trozo: la ficha
+decía «parado de 00:00 a 00:00». **Remedio:** antes de elegir, juntar las paradas
+que se tocan (menos de un minuto entre una y otra) en el mismo sitio (menos de
+100 m): `unirParadas`.
+
+### Con el coche aparcado no llegan km ni gastado: la serie no cubre el instante
+
+`modules/Combustible/combustible.auditoria.js` (23/10/2026)
+
+`unit_data/can_period` (`total_distance`, `total_fuel`) solo trae lecturas con el
+coche encendido. Pedir la serie desde el instante que se quiere interpolar, o un
+poco antes, falla si el coche estaba aparcado: la primera lectura llega después y
+no hay con qué interpolar. Le pasó al 3784LFV: repostó, aparcó hora y media en la
+misma gasolinera, y el techo del aforador no se podía corregir «porque no había
+km». **Remedio:** pedirla desde antes de la última lectura buena (una hora antes
+del repostaje). Aparcado, el odómetro y el gastado no se mueven, así que
+interpolar a través del hueco es exacto.
+
+### `null × 1000` es 0, y `Number(null)` también
+
+`services/mapon.js`, `modules/Combustible/combustible.boya.js` (23/10/2026)
+
+`tsUTC` devuelve `null` con una hora que no entiende, y `tsUTC(x) * 1000` es **0**:
+una lectura «del 01/01/1970» que pasa cualquier `Number.isFinite`. Igual,
+`errorPct(null, 10)` daba un **100 %**: un rojo de nada. **Remedio:** mirar el
+`null` antes de la cuenta (`msUTC` devuelve `NaN`; `errorPct` devuelve `null` sin
+boya). Es la misma familia que la lectura vacía del aforador, que se quita antes
+de pasarla a número.
+
+### Un `sr-only` dentro de una rejilla que se desplaza le pone barra a la página entera
+
+`modules/Combustible/vistas/combustible.ejs` (23/10/2026)
+
+`sr-only` de Tailwind es `position: absolute`. Dentro de la rejilla del Listado (que
+se desplaza por su cuenta, sin `position`), su caja de referencia es la página, no
+la rejilla: los de las filas de abajo se quedaban donde estaría su fila, por debajo
+de la ventana, **sin recortar**, y la página ganaba 480 px de barra a 1529×729. Se
+vio al poner el nombre del color en cada celda del GPS y la boya para el lector de
+pantalla. **Remedio:** el nombre en el propio icono (`role="img"` y `aria-label`),
+sin elemento escondido; o, si hace falta uno, un antepasado con `position: relative`
+dentro de lo que se desplaza.
+
+### «Parecido» por palabras contenidas no mira las que sobran
+
+`modules/Combustible/combustible.gasolinera.js` → `laSenalaOtra` (23/10/2026)
+
+Casar un nombre porque «todas las palabras de uno están en el otro» acepta lo que le
+sobra al más largo sin mirarlo. «ALCORCON - EL CANO» tiene todo lo de «Alcorcón I» y
+casaba con ella, aunque «cano» es de «Alcorcón II (El Cano)»; igual «MATARO PARK»,
+«LEGANES - LA FORTUNA» y otros cuatro. Con la gasolinera que no es, el GPS mediría
+contra otra estación. **Remedio:** si sobran palabras, buscar otra candidata que
+tenga todo lo de la elegida y alguna de las que sobran: si la hay, ambiguo. Que
+tenga todo lo de la elegida: con la palabra sola, «BARCELONA - CLOT» dudaría entre
+Clot y las cuatro de Barcelona. Lo mismo vale para casar nombres de personas.
+
+### El máximo de una serie del CAN no es el techo del aforador
+
+`modules/Combustible/combustible.boya.js` → `techo` (23/10/2026)
+
+Una sola lectura rota (255, 65535: los «no válido» del CAN) fija el máximo, y un
+aforador que de verdad se quedó en 40 L ya no «topa» nunca: el salto sale corto y
+sin corregir. **Remedio:** quitar lo imposible (más de 80 L o menos de 0) y tomar el
+valor más alto **que se repite** (tres lecturas): un techo de verdad dura horas.
+
+### Un reintento que guarda todas las columnas borra lo que ya se midió
+
+`modules/Combustible/combustible.auditoria.js` (23/10/2026)
+
+La auditoría de un repostaje se vuelve a mirar mientras le falte algo, y cada
+intento empezaba de cero y escribía todas las columnas. Si en el segundo Mapon no
+contestaba a las paradas, el GPS bueno del primero (12 m) se guardaba a NULL y el
+repostaje perdía su color. **Remedio:** cuando una pregunta falla por un error que se
+puede reintentar, esa parte se queda con lo de la vez anterior (`gpsDeAntes`,
+`restaurarBoya`); solo se pisa lo que este intento midió.
 
 ---
 

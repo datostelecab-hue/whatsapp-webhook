@@ -329,7 +329,9 @@ No son de los seis, pero forman parte de la misma red:
   llamar** (`PURAS`, 01/10/2026): `const { elegirEquipo } = require('../mapon')` no
   habla con la API, y el motor del mapa y el repositorio de Vehículos salían como
   infracción solo por eso. Se saboteó con tres ficheros: solo la regla pura pasa; la
-  regla más una llamada, o el módulo entero, saltan.
+  regla más una llamada, o el módulo entero, saltan. El 23/10/2026 la lista creció por
+  primera vez, a conciencia: la auditoría de [[Combustible]] pide el aforador y las
+  paradas de un coche alrededor de su repostaje (el motivo, en la propia lista).
 - **`inventario-muerto.js`** — qué ficheros ya no alcanza nadie. Es la lista que se
   usa para borrar de verdad al final de la Fase 2, así que un falso positivo ahí no
   es ruido: **es un despliegue roto**.
@@ -457,10 +459,48 @@ No son de los seis, pero forman parte de la misma red:
   la base rechaza un correo, la contraseña que el cron no reintenta, la pasada colgada,
   volver a casar el coche y la sede, y el día que no existe en la lista. 88 casos. Se
   saboteó quitando el oyente, la red, el asunto obligatorio y el corte de la estación:
-  saltan los cuatro.
+  saltan los cuatro. **Y la auditoría con Mapon** (23/10/2026), con la lista de
+  gasolineras de verdad (las 143 de db/213, leídas del fichero) y un Mapon de mentira
+  que apunta lo que se toca: los nombres de los correos reales (COSLADA es el I, el
+  número manda, los dos apóstrofos, «BARCELONA» duda y no casa, la sede desempata, lo
+  puesto a mano), la distancia, los umbrales en el borde (699/700/1.599/1.600 y
+  34,9/35/64,9/65), el peor de los dos, el salto con lecturas de mentira (la aguja del
+  Ioniq, sin parada, sin lecturas de después, la lectura vacía que no es un 0), el
+  techo y su corrección (con km, con el gastado, el coche que aparca al poco), el
+  mínimo que no se pinta, los Ford en %, sin aforador, sin Mapon, Mapon que falla a
+  media auditoría o está caído (sin gastar intentos), las paradas partidas a
+  medianoche, corregir y quitar la gasolinera a mano, la lista sin repetidos y con los
+  no leídos aparte, y que a Mapon **solo se le pregunta**. 163 casos. Se saboteó el
+  `<` de los umbrales, la espera de la aguja, el número de la gasolinera, el mínimo del
+  techo, el punto de Mapon sin límite de tiempo, los repetidos en la lista y la
+  ventana de los km: saltan los siete.
+
+  Tras la revisión del 23/10/2026, **185 casos**: los subnombres que señalan a otra
+  gasolinera («ALCORCON - EL CANO», «MATARO PARK», «MOSTOLES - AIDATER II»…: ambiguo,
+  nunca la I) y los que tienen que seguir casando (Clot, El Prat, Cornellà II), la ida y
+  vuelta de los 143 nombres de la lista, el borde con la cifra redondeada (34,96 % y
+  699,6 m, amarillos), el mínimo que no da verde (13,6 % sin color, 70 % rojo), el techo
+  con lecturas rotas (255, 65535, −3), la parada que no cubre la hora (el n.º 16: ya iba
+  andando; relojes distintos: seguía a 30 m), el cambio de hora del 25/10/2026, el
+  reintento que no borra el GPS ni la boya (el n.º 20 con las paradas caídas) y el
+  repostaje que revienta y se apunta el intento. El doble de la base guarda ya todas
+  las columnas, como el repo de verdad. Se saboteó cada una de las diez reglas nuevas:
+  saltan las diez.
 - **`comprobar-cumpleanos.js`** (15/10/2026) — los [[Cumpleanos]] sin base: los del 29 de
   febrero el 28 en un año no bisiesto, quien cumple ve la felicitación y no «cumple hoy»,
   y los ids que Control pinta en azul. 6 casos.
+- **`comprobar-sanciones.js`** (22/10/2026) — quién llevaba el coche cuando dos tramos de
+  `fv_tramo` empiezan en el mismo segundo ([[Sanciones de velocidad]]). **El primero que
+  necesita base**: un `ORDER BY` no se comprueba con una base fingida. Va contra la del
+  [[Entorno de pruebas local]] (la dirección está escrita en el script y exige la marca
+  `entorno_local`), con un coche y una conductora inventados, y **todo dentro de una
+  transacción que se deshace**: la copia queda como estaba. Sin el entorno arrancado, lo
+  dice y sale con 1. Seis empates (espera de 0 s → descanso, metido en los dos órdenes;
+  → desconectado; una cadena de cuatro; el exceso después de los dos; el tramo abierto),
+  `quienConducia`, `procesar` de punta a punta con un aviso de Mapon de mentira por caso
+  (modo pruebas: si intenta mandar un WhatsApp, falla), y los «coches rodando sin nadie»
+  de Control (`rutas.kmSinDuenio`). 21 casos. Se saboteó quitando el desempate, y
+  dejándolo solo por `id DESC`: saltan 3 en los dos casos.
 
 ---
 

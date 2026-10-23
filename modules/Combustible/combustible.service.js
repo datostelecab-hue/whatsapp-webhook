@@ -19,15 +19,19 @@
 // y si no se puede entrar al buzón, la pasada queda escrita con el error —que
 // es lo que la pantalla enseña en rojo— y el log lo dice.
 //
-// AUDITAR CON MAPON NO ES DE AQUÍ TODAVÍA: cada repostaje nace con
-// `auditoria_estado = 'pendiente'` y todo lo que la auditoría necesitará (coche,
-// hora, km tecleados, quién lo llevaba, si el remitente está verificado) ya
-// queda guardado.
+// AUDITAR CON MAPON va aparte (combustible.auditoria.js, db/213), y se entra
+// por aquí: cada repostaje nace con `auditoria_estado = 'pendiente'`, el cron
+// lo audita después de leer el buzón (auditarPendientes) y la pantalla lo pinta
+// con el color del peor de sus dos criterios (combustible.semaforo.js). Un
+// fallo de Mapon no toca la lectura del correo: es otra llamada, después.
 
 const crypto = require('crypto');
 const repo = require('./combustible.repo');
 const lector = require('./combustible.lector');
 const casar = require('./combustible.casar');
+const auditoria = require('./combustible.auditoria');
+const semaforo = require('./combustible.semaforo');
+const boya = require('./combustible.boya');
 const correo = require('../../services/correo');
 const configApp = require('../../services/configApp');
 const pruebas = require('../../services/modoPruebas');
@@ -523,17 +527,44 @@ async function estadoLectura() {
 }
 
 /**
+ * Los colores de la auditoría, calculados al leer (no se guardan): el del GPS,
+ * el de la boya y el de la fila, que es el peor de los dos.
+ */
+function conColores(f) {
+  const gps = semaforo.colorGps(f.gps_distancia_m);
+  // El aforador topó y no se pudo corregir: los litros y el error son un
+  // mínimo, y un mínimo no da verde (combustible.semaforo). La pantalla lo
+  // escribe con «≥».
+  const minimo = boya.esMinimo(f);
+  const colorBoya = semaforo.colorBoya(f.boya_error_pct, { minimo });
+  return { ...f, boya_minimo: minimo, gps_color: gps, boya_color: colorBoya, color: semaforo.peor(gps, colorBoya) };
+}
+
+// Sin db/213 la lista pide columnas y tablas que aún no existen.
+const faltaDb213 = e => !!e && (e.code === '42703' || (e.code === '42P01' && /gasolinera/.test(e.message || '')));
+const FALTA_DB213 = 'Falta aplicar la migración db/213 (auditoría de repostajes con Mapon) desde /migraciones';
+
+/**
  * Los repostajes entre dos días (por defecto, los últimos 30), con la última
  * lectura del buzón: la pantalla la pinta encima de la lista.
+ *
+ * `filas` son SOLO los leídos, con sus colores. Los repetidos (el mismo
+ * repostaje otra vez en otro correo) no salen: se llega a ellos desde la ficha
+ * del bueno. Los que no se pudieron leer van aparte, en `noLeidos`, para un
+ * aviso encima de la lista con su enlace: no son repostajes que contar.
  */
 async function lista({ desde, hasta } = {}) {
   const h = diaValido(hasta) ? hasta : hoyMadrid();
   let d = diaValido(desde) ? desde : restarDias(h, 30);
   if (d > h) d = h;
   try {
-    const [filas, lectura] = await Promise.all([repo.lista({ desde: d, hasta: h }), estadoLectura()]);
-    return { filas, lectura, desde: d, hasta: h };
+    const [todas, lectura] = await Promise.all([repo.lista({ desde: d, hasta: h }), estadoLectura()]);
+    const filas = todas.filter(f => f.estado === 'leido').map(conColores);
+    const noLeidos = todas.filter(f => f.estado === 'no_leido')
+      .map(f => ({ id: f.id, cuando: f.cuando, proveedor: f.proveedor, motivo: f.motivo, matricula: f.matricula }));
+    return { filas, noLeidos, lectura, umbrales: semaforo.UMBRALES, desde: d, hasta: h };
   } catch (e) {
+    if (faltaDb213(e)) throw new Error(FALTA_DB213);
     if (faltaMigracion(e)) throw new Error(FALTA_DB212);
     throw e;
   }
@@ -541,11 +572,45 @@ async function lista({ desde, hasta } = {}) {
 
 async function ficha(id) {
   if (!/^\d+$/.test(String(id || ''))) throw new Error('Repostaje no válido');
-  const f = await repo.ficha(id);
+  let f;
+  try {
+    f = await repo.ficha(id);
+  } catch (e) {
+    if (faltaDb213(e)) throw new Error(FALTA_DB213);
+    throw e;
+  }
   if (!f) throw new Error('Ese repostaje no existe');
-  return f;
+  return { ...conColores(f), umbrales: semaforo.UMBRALES };
 }
 
 const lecturas = limite => repo.lecturas(limite);
 
-module.exports = { leerBuzon, lista, ficha, estadoLectura, lecturas };
+const idValido = id => {
+  if (!/^\d+$/.test(String(id || ''))) throw new Error('Repostaje no válido');
+  return Number(id);
+};
+
+/** Audita uno con Mapon ahora mismo (el botón de su ficha). */
+const auditarUno = id => auditoria.auditarUno(idValido(id));
+
+/**
+ * Casa a mano la estación de un repostaje con una gasolinera de la lista (vale
+ * para todos los correos con ese nombre); `gasolineraId` null lo quita.
+ */
+async function corregirGasolinera(id, gasolineraId, usuarioId) {
+  const g = gasolineraId == null || gasolineraId === '' ? null : Number(gasolineraId);
+  if (g != null && !Number.isInteger(g)) throw new Error('Gasolinera no válida');
+  return auditoria.corregirGasolinera(idValido(id), g, usuarioId);
+}
+
+module.exports = {
+  leerBuzon, lista, ficha, estadoLectura, lecturas,
+  // La auditoría con Mapon (combustible.auditoria): el cron, el botón y la gasolinera a mano.
+  auditarPendientes: auditoria.auditarPendientes, auditarUno, corregirGasolinera,
+  gasolineras: auditoria.gasolinerasPara,
+  // Tras «Leer el buzón ahora»: lo nuevo ya sale con su gasolinera (solo base, sin Mapon). Nunca lanza.
+  casarGasolineras: () => auditoria.casarGasolineras().catch(e => {
+    if (!faltaDb213(e)) console.error(`❌ [Combustible] Casar las gasolineras: ${e.message}`);
+    return 0;
+  }),
+};

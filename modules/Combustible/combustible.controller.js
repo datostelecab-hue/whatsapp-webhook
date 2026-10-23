@@ -3,13 +3,14 @@
 // ============================================================
 // Se monta en `/combustible`. Dos llaves, como Inspección de vehículos:
 //
-//   '/combustible'        mirar los repostajes y el estado de la lectura
-//   '/combustible/leer'   «Leer el buzón ahora»
+//   '/combustible'        mirar los repostajes, su auditoría y el estado de la lectura
+//   '/combustible/leer'   «Leer el buzón ahora», «Auditar ahora» y corregir la gasolinera
 //
 // La segunda está marcada `escribir` en el catálogo: cualquier petición que no
 // sea un GET a /combustible la exige sola (`controlAcceso`), así que un endpoint
 // nuevo nace cerrado. Aquí se vuelve a comprobar, porque el botón escondido en
-// la vista no es un candado.
+// la vista no es un candado. Desde el 22/10/2026 (db/213) esa misma llave abre
+// también «Auditar ahora» y corregir a mano la gasolinera de un repostaje.
 
 const express = require('express');
 const router = express.Router();
@@ -60,7 +61,29 @@ router.get('/api/lecturas', responde(async () => ({ lecturas: await combustible.
 // no es un 400: la pasada queda escrita con su error y se devuelve tal cual.
 router.post('/api/leer', responde(async req => {
   if (!await puedeLeer(req)) throw new Error('No tienes permiso para leer el buzón');
-  return { lectura: await combustible.leerBuzon({ origen: 'manual', usuarioId: await quienEs(req) }) };
+  const lectura = await combustible.leerBuzon({ origen: 'manual', usuarioId: await quienEs(req) });
+  // Lo nuevo sale ya con su gasolinera; la auditoría con Mapon la hace el cron
+  // (a los 45 min del repostaje) o el botón de la ficha.
+  if (lectura && lectura.ok) await combustible.casarGasolineras();
+  return { lectura };
+}));
+
+// La auditoría con Mapon de UN repostaje, ya. Solo lectura de Mapon, pero
+// tarda unos segundos (tres o cuatro preguntas): la pantalla tapa mientras.
+router.post('/api/repostaje/:id/auditar', responde(async req => {
+  if (!await puedeLeer(req)) throw new Error('No tienes permiso para auditar repostajes');
+  return { auditoria: await combustible.auditarUno(req.params.id) };
+}));
+
+// Las gasolineras de la lista del proveedor, para elegir a mano.
+router.get('/api/gasolineras', responde(async req => ({ gasolineras: await combustible.gasolineras(req.query.proveedor) })));
+
+// Casar a mano la estación de un repostaje con una gasolinera (vale para todos
+// los correos con ese nombre de estación); sin `gasolineraId`, quitarlo.
+router.post('/api/repostaje/:id/gasolinera', responde(async req => {
+  if (!await puedeLeer(req)) throw new Error('No tienes permiso para corregir la gasolinera');
+  const b = req.body || {};
+  return { resultado: await combustible.corregirGasolinera(req.params.id, b.gasolineraId, await quienEs(req)) };
 }));
 
 module.exports = router;

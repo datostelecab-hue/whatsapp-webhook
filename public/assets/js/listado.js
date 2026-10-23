@@ -338,6 +338,19 @@
         });
       }
 
+      // La rejilla que se ajusta a la ventana se vuelve a medir cuando cambia la
+      // ventana o lo que tiene encima: una nota que crece, la letra que termina
+      // de cargar (con la de reserva todo mide un poco menos), la barra de las
+      // fechas de la pantalla. Lo vigila un ResizeObserver sobre la página; al
+      // ponerle el tope a la rejilla no vuelve a cambiar nada, así que no hay bucle.
+      if (this.cfg.ajustarAlto) {
+        let espera;
+        const otraVez = () => { clearTimeout(espera); espera = setTimeout(() => this.ajustarAlto(), 50); };
+        global.addEventListener('resize', otraVez);
+        if (global.ResizeObserver) new global.ResizeObserver(otraVez).observe(document.body);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(otraVez);
+      }
+
       // Atrás del navegador y gesto de atrás del móvil.
       this._popstate = () => this.sincronizarConUrl();
       global.addEventListener('popstate', this._popstate);
@@ -472,10 +485,17 @@
      * se puede generar el Excel"—, que en una tarjeta de numeros no cabe y en un
      * dialogo llega tarde, cuando ya has pulsado el boton que no tocaba.
      */
+    //
+    // `nota` puede devolver UNA o VARIAS (un array; las vacías se saltan), una
+    // debajo de otra. Y cada una con `texto` (se escapa) o con `html`, que el
+    // módulo ya escribe escapado: así una nota puede llevar enlaces (22/10/2026,
+    // Combustible: los correos que no se pudieron leer, cada uno con el enlace
+    // a su ficha, encima de la lista y no como filas).
     pintarNota() {
       if (!this.cfg.nota) { this.el.nota.classList.add('hidden'); return; }
-      const n = this.cfg.nota(this.visibles(), this.extra, this.filtros);
-      if (!n || !n.texto) { this.el.nota.classList.add('hidden'); return; }
+      const dadas = this.cfg.nota(this.visibles(), this.extra, this.filtros);
+      const notas = (Array.isArray(dadas) ? dadas : [dadas]).filter(n => n && (n.texto || n.html));
+      if (!notas.length) { this.el.nota.classList.add('hidden'); return; }
 
       const TONOS = {
         aviso: 'bg-telecab-warn/10 border-telecab-warn/30 text-telecab-warn',
@@ -483,14 +503,14 @@
         mal:   'bg-telecab-red/10 border-telecab-red/30 text-telecab-red',
         info:  'bg-telecab-card border-telecab-border text-telecab-muted',
       };
-      this.el.nota.className = 'mb-4';
+      this.el.nota.className = 'mb-4 space-y-2';
       this.el.nota.classList.remove('hidden');
-      this.el.nota.innerHTML = `
+      this.el.nota.innerHTML = notas.map(n => `
         <div class="flex items-start gap-2 px-3 py-2 rounded-xl border text-sm ${
           TONOS[n.tono] || TONOS.info}">
           <i class="fa-solid ${esc(n.icono || 'fa-circle-info')} mt-0.5 text-xs"></i>
-          <span>${esc(n.texto)}</span>
-        </div>`;
+          <span class="min-w-0 break-words">${n.html ? n.html : esc(n.texto)}</span>
+        </div>`).join('');
     }
 
     pintarFiltros() {
@@ -599,8 +619,13 @@
                class="w-3.5 h-3.5 accent-telecab-gold cursor-pointer"
                ${this.sel.has(String(clave)) ? 'checked' : ''}></td>`
           : '';
+        // `claseFila(f)`: unas clases más para la fila (22/10/2026, Combustible
+        // la tiñe con el color de su auditoría). Si devuelve algo, sustituye a la
+        // cebra: el fondo de las filas pares ganaría al del color por
+        // especificidad, y media lista saldría sin teñir.
+        const propia = c.claseFila ? String(c.claseFila(f) || '').trim() : '';
         return `<tr data-clave="${esc(clave)}"
-                    class="border-b border-telecab-border/70 even:bg-telecab-card2/30
+                    class="border-b border-telecab-border/70 ${propia ? esc(propia) : 'even:bg-telecab-card2/30'}
                            hover:bg-telecab-gold/10 cursor-pointer transition-colors">${casilla}${celdas}<td class="px-2 text-telecab-muted"><i class="fa-solid fa-chevron-right text-xs"></i></td></tr>`;
       }).join('');
 
@@ -623,6 +648,40 @@
           });
         });
         this.pintarCasillaTodos();
+      }
+      this.ajustarAlto();
+    }
+
+    /**
+     * `ajustarAlto: true` (23/10/2026, Combustible): la rejilla llega justo al
+     * borde de abajo de la ventana, mida lo que mida lo que tiene encima. Con
+     * `alto` fijo (un calc de rem) el hueco se calcula para una cantidad de
+     * notas: en Combustible la nota de la lectura ocupa una línea o dos y el
+     * aviso de los correos sin leer sale o no, y a 1529×729 la rejilla se salía
+     * 30 px por abajo y había doble barra. Se mide con la rejilla sin tope (así
+     * lo de debajo —el paginador, el margen— es lo de verdad) y se le pone el
+     * que cabe. Si no caben ni `ajustarAlto.minimo` px (160) —un móvil, donde
+     * lo de encima ya pasa de la pantalla y la página se desplaza igual—, se
+     * deja el `alto` de siempre: una rejilla de tres filas dentro de una página
+     * que también se mueve sería peor. Sin la opción no cambia nada.
+     */
+    ajustarAlto() {
+      const o = this.cfg.ajustarAlto;
+      const r = this.el.rejilla;
+      if (!o || !r || this.el.lista.classList.contains('hidden') || r.classList.contains('hidden')) return;
+      const minimo = (o && o.minimo) || 160;
+      r.style.maxHeight = 'none';
+      r.style.minHeight = '0px';
+      const caja = r.getBoundingClientRect();
+      const arriba = caja.top + global.scrollY;
+      const debajo = Math.max(0, document.documentElement.scrollHeight - (caja.bottom + global.scrollY));
+      const cabe = Math.floor(global.innerHeight - arriba - debajo);
+      if (cabe >= minimo) {
+        r.style.maxHeight = cabe + 'px';
+        r.style.minHeight = minimo + 'px';
+      } else {
+        r.style.maxHeight = '';
+        r.style.minHeight = '';
       }
     }
 
@@ -787,6 +846,7 @@
       this.el.detalle.classList.add('hidden');
       this.el.detalle.innerHTML = '';
       this.el.lista.classList.remove('hidden');
+      this.ajustarAlto();
     }
 
     /**

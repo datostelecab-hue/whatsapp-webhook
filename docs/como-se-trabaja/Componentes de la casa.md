@@ -1,7 +1,7 @@
 ---
 tags: [como-se-trabaja, diseño, componentes, interfaz]
 aliases: [Componentes, Diseño de la casa, Componente Listado]
-actualizado: 2026-10-07
+actualizado: 2026-10-23
 ---
 
 # Componentes de la casa
@@ -16,7 +16,7 @@ actualizado: 2026-10-07
 | Lo que necesitas | La pieza | NO uses |
 |---|---|---|
 | Avisar de algo | `Dialogo.aviso({titulo, texto\|html, tono, ancho})` | `alert()` |
-| Preguntar sí/no | `Dialogo.confirmar({titulo, texto, textoBoton, tono})` | `confirm()` |
+| Preguntar sí/no | `Dialogo.confirmar({titulo, texto, si, no, tono})` (`si` y `no` son los textos de los botones; `textoBoton` es de `formulario` y aquí no hace nada: sale «Aceptar») | `confirm()` |
 | Elegir de una lista | `Dialogo.elegir({titulo, texto, opciones})` | `prompt()` con números |
 | Pedir varios datos | `Dialogo.formulario(titulo, campos, opciones)` | `prompt()` encadenados |
 | Confirmación breve | `Dialogo.hecho(texto, {tono, segundos})` | — |
@@ -29,6 +29,7 @@ actualizado: 2026-10-07
 | **Ver una foto en grande** | `VisorFoto.abrir({ src, titulo, pie, original })` (`visorFoto.js`) | abrirla en otra pestaña |
 | **La marca de Telecab** | `<%- include('partials/marca', { tam, anima }) %>` (SVG con los colores del tema) | el PNG del logo o un vídeo |
 | Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |
+| Que un icono diga algo al lector de pantalla (un color, un estado) | `role="img" aria-label="Rojo"` en el propio `<i>`; si ya va escrito al lado, `aria-hidden="true"` | un `<span class="sr-only">` dentro de la rejilla del Listado: es absoluto, se escapa de lo que se desplaza y le pone barra a la página entera ([[Trampas conocidas]], 23/10/2026) |
 | Un color | los tokens (`text-telecab-gold`, `bg-telecab-red/15`) | un hex a pelo |
 
 Todo se carga solo desde `views/layout-gestion.ejs`: no hay que importar nada.
@@ -137,6 +138,12 @@ Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre l
 **`buscar.campos` acepta funciones**, no solo nombres de campo: lo que devuelvan es lo que se busca. Combustible devuelve la matrícula en sus tres formas («8997LDK 8997 LDK 8997-LDK») para que se encuentre se escriba como se escriba (22/10/2026).
 
 **En el móvil, los botones bajan de línea** (22/10/2026). La fila del buscador y las `acciones` de la cabecera no podían partirse: con el buscador y dos botones («Lecturas» y «Leer el buzón ahora», en [[Combustible]]) se salía por la derecha a 375 px y la página entera se desplazaba de lado. Ahora llevan `flex-wrap` y se alinean a la derecha; en pantalla ancha no cambia nada.
+
+**Teñir una fila: `claseFila(f)`** (23/10/2026). Devuelve unas clases para la fila (en [[Combustible]], el color de su auditoría: `bg-telecab-red/10`…). Si devuelve algo, **sustituye a la cebra**: el fondo de las filas pares ganaría por especificidad y media lista saldría sin teñir. Sin `claseFila`, nada cambia.
+
+**La nota puede ser varias, y con enlaces** (23/10/2026). `nota` puede devolver una o un array (las vacías se saltan), una debajo de otra; cada una con `texto` (se escapa) o con `html`, que el módulo ya escribe escapado. Combustible pone la última lectura del buzón y, aparte, los correos que no se pudieron leer, cada uno con el enlace a su ficha (`#id`: la ficha se abre aunque esa fila no esté en la lista).
+
+**La rejilla que llega justo hasta abajo: `ajustarAlto: true`** (23/10/2026). Con `alto` fijo (un `calc` de rem) el hueco se calcula para lo que haya encima ese día; si encima hay notas que crecen o desaparecen, la rejilla se sale por abajo y hay doble barra (Combustible a 1529×729: 30 px). Con la opción, el Listado la mide —sin tope, para que lo de debajo sea lo de verdad— y le pone el alto que cabe, otra vez cuando cambia la ventana o lo de encima (un `ResizeObserver` sobre la página, y cuando acaba de cargar la letra). Si no caben ni 160 px (`ajustarAlto: { minimo }`), como en un móvil, deja el `alto` de siempre. Sin la opción no cambia nada.
 
 **Abrir una ficha desde otra pantalla**: `/plantilla#123` o `/plantilla?id=123`. El Listado abre la ficha con las dos, y con `?id=` deja la dirección con su hash, como si se hubiera pinchado allí (08/10/2026: los enlaces de Sanciones y de la Auditoría usaban `?id=` y abrían la lista, no la ficha).
 

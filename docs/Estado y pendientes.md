@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-10-08
+actualizado: 2026-10-23
 ---
 
 # Estado y pendientes
@@ -15,14 +15,27 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
-## Combustible: los repostajes por correo (22/10/2026)
+## Combustible: los repostajes por correo y su auditoría con Mapon (22-23/10/2026)
 
-- **Al desplegar, aplicar `db/212`** desde `/migraciones`. Hasta entonces `/combustible` dice que falta y el cron lo avisa una vez en el log. La primera pasada lee el buzón desde el 01/10/2026.
-- **Dar la llave** `/combustible` (y `/combustible/leer`, «Leer el buzón ahora») a quien la necesite en `/usuarios`: a los usuarios que ya existen no les llega sola (a propósito: quién ve los repostajes, con nombres, lo decide Camilo).
-- **La auditoría con Mapon** (¿estaba el coche en la estación?, ¿cuadran los km tecleados y los litros?): la tanda siguiente. Ver [[Combustible#Lo que queda]]. Que mire también `remitente_verificado`: un repostaje sin la firma de Ballenoil no se da por bueno sin mirarlo.
+- **Al desplegar, aplicar `db/213`** desde `/migraciones` (la 212 ya está). Hasta entonces `/combustible` dice que falta y el cron no audita; el buzón se sigue leyendo. Ver [[Combustible#La auditoría con Mapon (db/213)]].
+- **Dar la llave** `/combustible` (y `/combustible/leer`: «Leer el buzón ahora», «Auditar ahora» y corregir la gasolinera) a quien la necesite en `/usuarios`: a los usuarios que ya existen no les llega sola (a propósito: quién ve los repostajes, con nombres, lo decide Camilo).
+- **Un rojo para Camilo**: el 8997LDK el 23/10 a las 00:05 en Alcalá de Henares; el coche iba andando por Madrid, a 24,2 km, y el depósito no subió. Ver [[Combustible#Medido el 23/10/2026: la auditoría de los 20 primeros]].
+- **El cambio de hora en BOLT**: la auditoría ya desempata la hora que pasa dos veces (02:00-02:59 del último domingo de octubre) con la llegada del correo; quién llevaba el coche en BOLT, todavía no. Una hora, una noche al año; la próxima, el 25/10/2026.
+- **Clot sin coordenadas** (y otras 7 de la lista): sin color por el GPS. El coche paró las dos veces en el Carrer del Clot, 4.
+- **Lo que la auditoría aún no mira**: los km tecleados contra el odómetro, y `remitente_verificado` (un correo sin la firma de Ballenoil lleva su aviso junto a la fecha, pero no cambia el color).
 - **Petroprix**: escribir su lector cuando llegue el primer correo, y su asunto (se guarda como «no se pudo leer» hasta entonces y se relee solo).
 - **`5369LHJ`, `6450LSR` y `7043LJN`** repostan con la tarjeta y no están dados de alta en Vehículos. `5369LHJ` ya sale de Barcelona por la persona de la tarjeta; los otros dos (provisional y taller), sin sede hasta que se den de alta.
-- **`velocidad.repo.quienConducia`** ([[Sanciones de velocidad]]) tiene el empate de `fv_tramo` que se arregló en Combustible: un tramo de 0 s y el siguiente con el mismo `desde`. Sin tocar: cambia a quién se atribuye un exceso, y lo decide Camilo. → [[Trampas conocidas]]
+
+## Sanciones: el desempate de `fv_tramo` (22/10/2026)
+
+`velocidad.repo.quienConducia` y `rutas.kmSinDuenio` (Control) ya desempatan como Combustible. Ver [[Sanciones de velocidad#Dos tramos que empiezan en el mismo segundo (22/10/2026)]]. Lo que queda es de Camilo:
+
+- **Lo ya registrado no se ha tocado.** Medido en producción sobre los 245 excesos con conductor, el empate no cambia el conductor de ninguno, ni el estado. Solo cambia una nota: la de Alessio Pizzuto del 02/10, que sigue avisado. Listado en `Scripts de análisis/sanciones-desempate/excesos-que-cambian.csv`.
+- **Lo que sale de paso y no es el empate:**
+  - los dos avisados de Adrián Martínez Andía del 07/09 (5912LBZ, época de la API de BOLT) serían hoy `dudoso`. Sus letras de septiembre son A de todos modos;
+  - el dudoso de Jesus Barranco Garcia del 02/10 (8997LDK) se habría avisado con los tramos de hoy.
+
+  Decidir si se corrigen en el libro o se dejan como están.
 
 ## El portal de conductores (19/10/2026)
 

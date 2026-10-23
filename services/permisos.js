@@ -132,8 +132,11 @@ const CATALOGO = [
     // llave; LEER EL BUZÓN AHORA es otra, marcada `escribir`: cualquier petición
     // que no sea un GET a /combustible la exige sola. El buzón se lee también
     // solo cada 10 minutos, así que sin ella no se pierde nada: se espera.
+    // Desde db/213 la misma llave abre «Auditar ahora» con Mapon y corregir a
+    // mano la gasolinera de un repostaje: las dos escriben, y el cron ya audita
+    // solo, así que tampoco se pierde nada sin ella.
     { clave: '/combustible', etiqueta: 'Combustible (repostajes por correo)', hijos: [
-      { clave: '/combustible/leer', etiqueta: 'Combustible · leer el buzón ahora', escribir: true },
+      { clave: '/combustible/leer', etiqueta: 'Combustible · leer el buzón ahora, auditar con Mapon y corregir la gasolinera', escribir: true },
     ] },
   ] },
   { grupo: 'Operaciones', items: [

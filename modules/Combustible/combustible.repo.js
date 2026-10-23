@@ -463,6 +463,198 @@ async function paraMirarBolt() {
     cuentaBolt: x.conductor_cuenta_bolt, conductorTexto: x.conductor_texto, provisional: x.tarjeta_provisional }));
 }
 
+// ── LAS GASOLINERAS (db/213) ────────────────────────────────────────────────
+
+/** Las gasolineras de la lista, con las coordenadas como número (o null). */
+async function gasolineras() {
+  const r = await db.consulta(
+    `SELECT id, proveedor, nombre, direccion, provincia, sede, lat::float AS lat, lng::float AS lng, precision, observaciones
+       FROM gasolinera ORDER BY proveedor, nombre`);
+  return r.rows.map(x => ({ ...x, id: Number(x.id) }));
+}
+
+/** Los nombres de estación casados a mano: Map('proveedor|clave' → gasolinera_id). */
+async function aliasGasolineras() {
+  const r = await db.consulta(`SELECT proveedor, estacion_clave, gasolinera_id FROM gasolinera_alias`);
+  return new Map(r.rows.map(x => [`${x.proveedor}|${x.estacion_clave}`, Number(x.gasolinera_id)]));
+}
+
+/** Pone (o cambia) el alias de un nombre de estación. */
+async function ponerAlias({ proveedor, clave, estacion, gasolineraId, usuarioId }) {
+  await db.consulta(
+    `INSERT INTO gasolinera_alias (proveedor, estacion_clave, estacion, gasolinera_id, usuario_id)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (proveedor, estacion_clave) DO UPDATE
+       SET gasolinera_id = EXCLUDED.gasolinera_id, estacion = EXCLUDED.estacion,
+           usuario_id = EXCLUDED.usuario_id, creado_at = now()`,
+    [proveedor, clave, estacion ? String(estacion).slice(0, 160) : null, gasolineraId, usuarioId || null]);
+}
+
+/** Quita el alias: esos correos vuelven a casarse por el nombre. */
+async function quitarAlias({ proveedor, clave }) {
+  await db.consulta(`DELETE FROM gasolinera_alias WHERE proveedor = $1 AND estacion_clave = $2`, [proveedor, clave]);
+}
+
+const CAMPOS_CASAR = `id, proveedor, estacion, sede, gasolinera_id, gasolinera_como,
+  gps_lat::float AS gps_lat, gps_lng::float AS gps_lng, gps_motivo`;
+const filaCasar = x => ({ ...x, id: Number(x.id), gasolinera_id: x.gasolinera_id ? Number(x.gasolinera_id) : null });
+
+/**
+ * Los leídos a los que les falta la gasolinera, o que no casaron (ninguna o
+ * ambigua) en los últimos 60 días: la lista o los alias pueden haber cambiado.
+ *
+ * PRIMERO LOS QUE NUNCA SE CASARON, y de los más nuevos a los más viejos. Con
+ * el orden del más antiguo y el tope de 500, en cuanto hubiera 500 «ninguna»
+ * (los de Petroprix, que no tiene gasolineras cargadas, salen todos así) los
+ * recién llegados no entraban nunca: salían «aún sin casar» hasta auditarlos, y
+ * «Leer el buzón ahora» tampoco los casaba (revisión del 23/10/2026).
+ */
+async function paraCasarGasolinera() {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS_CASAR} FROM repostaje
+      WHERE estado = 'leido'
+        AND (gasolinera_como IS NULL
+             OR (gasolinera_como IN ('ninguna', 'ambiguo') AND repostaje_at > now() - interval '60 days'))
+      ORDER BY (gasolinera_como IS NULL) DESC, repostaje_at DESC
+      LIMIT 500`);
+  return r.rows.map(filaCasar);
+}
+
+/** Los leídos de un proveedor (para volver a casarlos cuando cambia un alias). */
+async function leidosDelProveedor(proveedor) {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS_CASAR} FROM repostaje WHERE estado = 'leido' AND proveedor = $1 ORDER BY repostaje_at`, [proveedor]);
+  return r.rows.map(filaCasar);
+}
+
+/** Apunta con qué gasolinera casó y, si ya se sabía dónde estaba el coche, la distancia nueva. */
+async function ponerGasolinera(id, g) {
+  await db.consulta(
+    `UPDATE repostaje
+        SET gasolinera_id = $2, gasolinera_como = $3, gasolinera_candidatas = $4,
+            gps_distancia_m = CASE WHEN $5::boolean THEN $6::int ELSE gps_distancia_m END,
+            gps_motivo = CASE WHEN $5::boolean THEN $7 ELSE gps_motivo END,
+            actualizado_at = now()
+      WHERE id = $1`,
+    [id, g.gasolineraId || null, g.como, g.candidatas && g.candidatas.length ? g.candidatas : null,
+     !!g.conDistancia, g.distancia == null ? null : g.distancia, g.motivo ? String(g.motivo).slice(0, 300) : null]);
+}
+
+// ── LA AUDITORÍA CON MAPON (db/213) ─────────────────────────────────────────
+
+// Con lo que ya tenía de una vez anterior (GPS, boya y detalle): si en un
+// reintento Mapon no contesta a una de las dos preguntas, esa se queda como
+// estaba (combustible.auditoria). Y la hora de llegada del correo, para la
+// hora que pasa dos veces el día del cambio de hora.
+const CAMPOS_AUDITAR = `
+  r.id, r.proveedor, r.estacion, r.sede, r.matricula, r.matricula_norm, r.vehiculo_id, r.litros::float AS litros,
+  r.repostaje_at, r.recibido_at, r.gasolinera_id, r.gasolinera_como, r.auditoria_estado, r.auditoria_intentos, r.auditoria_at,
+  r.gps_lat::float AS gps_lat, r.gps_lng::float AS gps_lng, r.gps_at, r.gps_hasta, r.gps_fuente, r.gps_direccion,
+  r.boya_tipo, r.boya_antes::float AS boya_antes, r.boya_despues::float AS boya_despues, r.boya_salto::float AS boya_salto,
+  r.boya_techo::float AS boya_techo, r.boya_corregida, r.boya_litros::float AS boya_litros,
+  r.boya_error_pct::float AS boya_error_pct, r.boya_motivo, r.auditoria_detalle`;
+const filaAuditar = x => ({ ...x, id: Number(x.id), vehiculo_id: x.vehiculo_id ? Number(x.vehiculo_id) : null,
+  gasolinera_id: x.gasolinera_id ? Number(x.gasolinera_id) : null, auditoria_intentos: Number(x.auditoria_intentos) || 0 });
+
+/**
+ * Los que toca auditar ahora, del más antiguo al más nuevo:
+ *   · los que nunca se miraron, pasado `margenMin` desde el repostaje (que
+ *     haya lecturas de después);
+ *   · los que se quedaron a medias, cuando ya ha pasado su espera, que crece
+ *     con cada intento (`esperasMin[intentos]`, la última se repite).
+ */
+async function paraAuditar({ margenMin, esperasMin, limite }) {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS_AUDITAR}
+       FROM repostaje r
+      WHERE r.estado = 'leido'
+        AND r.repostaje_at <= now() - make_interval(mins => $1::int)
+        AND (r.auditoria_estado = 'pendiente'
+             OR (r.auditoria_estado = 'incompleta'
+                 AND r.auditoria_at <= now() - make_interval(mins =>
+                       ($2::int[])[LEAST(GREATEST(r.auditoria_intentos, 1), array_length($2::int[], 1))])))
+      ORDER BY r.repostaje_at
+      LIMIT $3`, [margenMin, esperasMin, limite]);
+  return r.rows.map(filaAuditar);
+}
+
+/** Uno, para auditarlo a mano desde su ficha. */
+async function paraAuditarUno(id) {
+  const r = await db.consulta(`SELECT ${CAMPOS_AUDITAR}, r.estado FROM repostaje r WHERE r.id = $1`, [id]);
+  return r.rows[0] ? filaAuditar(r.rows[0]) : null;
+}
+
+/**
+ * La unidad de Mapon del coche, como la resuelve el resto del ERP: el enlace
+ * de Vehículos (vehiculo_alias) y, si el coche no está dado de alta, la de Flota
+ * viva por su matrícula. → { unitId, como } o null.
+ */
+async function unidadMapon(vehiculoId, matriculaNorm) {
+  const r = await db.consulta(
+    `SELECT (SELECT a.externo_id FROM vehiculo_alias a
+              WHERE a.vehiculo_id = $1 AND a.sistema = 'mapon' AND a.visto_hasta IS NULL
+              ORDER BY a.id DESC LIMIT 1) AS alias,
+            (SELECT fv.mapon_unit FROM fv_vehiculo fv
+              WHERE upper(regexp_replace(fv.matricula, '[^A-Za-z0-9]', '', 'g')) = $2 AND fv.mapon_unit IS NOT NULL
+              ORDER BY fv.visto_at DESC NULLS LAST LIMIT 1) AS flota`, [vehiculoId || null, matriculaNorm || '']);
+  const x = r.rows[0] || {};
+  if (x.alias) return { unitId: String(x.alias), como: 'vehiculos' };
+  if (x.flota) return { unitId: String(x.flota), como: 'flota_viva' };
+  return null;
+}
+
+/** Guarda lo que dio la auditoría de un repostaje (todo de una vez) y suma el intento. */
+async function guardarAuditoria(id, a) {
+  const n = v => (v === undefined ? null : v);
+  const txt = (v, max) => (v == null ? null : String(v).slice(0, max));
+  await db.consulta(
+    `UPDATE repostaje SET
+        gasolinera_id = $2, gasolinera_como = $3, gasolinera_candidatas = $4,
+        gps_lat = $5, gps_lng = $6, gps_at = $7, gps_hasta = $8, gps_fuente = $9, gps_direccion = $10,
+        gps_distancia_m = $11, gps_cercana_id = $12, gps_cercana_m = $13, gps_motivo = $14,
+        boya_tipo = $15, boya_antes = $16, boya_despues = $17, boya_salto = $18, boya_techo = $19,
+        boya_corregida = $20, boya_litros = $21, boya_error_pct = $22, boya_motivo = $23,
+        auditoria_estado = $24, auditoria_detalle = $25, auditoria_at = now(),
+        auditoria_intentos = auditoria_intentos + 1, actualizado_at = now()
+      WHERE id = $1`,
+    [id, n(a.gasolineraId), a.gasolineraComo || null, a.candidatas && a.candidatas.length ? a.candidatas : null,
+     n(a.gpsLat), n(a.gpsLng), a.gpsAt ? new Date(a.gpsAt) : null, a.gpsHasta ? new Date(a.gpsHasta) : null,
+     a.gpsFuente || null, txt(a.gpsDireccion, 300),
+     n(a.distancia), n(a.cercanaId), n(a.cercanaM), txt(a.gpsMotivo, 300),
+     a.boyaTipo || null, n(a.boyaAntes), n(a.boyaDespues), n(a.boyaSalto), n(a.boyaTecho),
+     a.boyaCorregida == null ? null : !!a.boyaCorregida, n(a.boyaLitros), n(a.boyaErrorPct), txt(a.boyaMotivo, 300),
+     a.estado, a.detalle ? JSON.stringify(a.detalle) : null]);
+}
+
+/**
+ * Un repostaje cuya auditoría reventó (la base rechazó lo guardado, un fallo
+ * fuera de lo de Mapon): se le suma el intento y queda «incompleta», SIN tocar
+ * lo medido, con el error en el detalle. Así entra en las esperas y, si sigue
+ * así, en el cierre a «sin datos», y no tapa a los demás para siempre.
+ */
+async function apuntarFallo(id, mensaje) {
+  await db.consulta(
+    `UPDATE repostaje SET
+        auditoria_intentos = auditoria_intentos + 1, auditoria_at = now(), auditoria_estado = 'incompleta',
+        auditoria_detalle = jsonb_set(COALESCE(auditoria_detalle, '{}'::jsonb), '{error}', to_jsonb($2::text)),
+        actualizado_at = now()
+      WHERE id = $1`, [id, String(mensaje || 'error').slice(0, 500)]);
+}
+
+/**
+ * Los que se quedaron a medias y ya no van a mejorar: pasados `horas` desde el
+ * repostaje y con `minIntentos`, o con `maxIntentos` en cualquier caso, se
+ * cierran como «sin_datos» con lo que tuvieran.
+ */
+async function cerrarAuditoriasSinDatos({ horas, minIntentos, maxIntentos }) {
+  const r = await db.consulta(
+    `UPDATE repostaje SET auditoria_estado = 'sin_datos', actualizado_at = now()
+      WHERE estado = 'leido' AND auditoria_estado = 'incompleta'
+        AND ((repostaje_at < now() - make_interval(hours => $1::int) AND auditoria_intentos >= $2)
+             OR auditoria_intentos >= $3)`, [horas, minIntentos, maxIntentos]);
+  return r.rowCount;
+}
+
 // ── LO QUE VE LA PANTALLA ───────────────────────────────────────────────────
 
 const CAMPOS_LISTA = `
@@ -477,14 +669,24 @@ const CAMPOS_LISTA = `
   r.sede, r.vehiculo_id, r.conductor_id, r.conductor_cuenta_bolt, r.conductor_como,
   ${NOMBRE_FICHA('c')} AS conductor_ficha,
   r.bolt_estado, r.bolt_nombre, r.bolt_conductor_id, r.bolt_situacion, r.bolt_antiguedad_min, r.coincide,
-  r.auditoria_estado`;
+  r.auditoria_estado, r.auditoria_intentos, ${LOCAL('r.auditoria_at')} AS auditoria_local,
+  r.gasolinera_id, r.gasolinera_como, g.nombre AS gasolinera_nombre, g.precision AS gasolinera_precision,
+  g.lat::float AS gasolinera_lat, g.lng::float AS gasolinera_lng,
+  r.gps_distancia_m, r.gps_fuente, r.gps_motivo, r.gps_cercana_m, gc.nombre AS gps_cercana_nombre,
+  r.boya_tipo, r.boya_antes::float AS boya_antes, r.boya_despues::float AS boya_despues, r.boya_salto::float AS boya_salto,
+  r.boya_litros::float AS boya_litros, r.boya_corregida, r.boya_techo::float AS boya_techo,
+  r.boya_error_pct::float AS boya_error_pct, r.boya_motivo`;
+// La gasolinera casada y la más cercana a donde estaba el coche (db/213).
+const JOIN_GASOLINERAS = `
+       LEFT JOIN gasolinera g  ON g.id = r.gasolinera_id
+       LEFT JOIN gasolinera gc ON gc.id = r.gps_cercana_id`;
 
 /** Los repostajes entre dos días (de Madrid), del más reciente al más antiguo. */
 async function lista({ desde, hasta }) {
   const r = await db.consulta(
     `SELECT ${CAMPOS_LISTA}
        FROM repostaje r
-       LEFT JOIN conductor c ON c.id = r.conductor_id
+       LEFT JOIN conductor c ON c.id = r.conductor_id${JOIN_GASOLINERAS}
       WHERE COALESCE(r.repostaje_at, r.recibido_at) >= ($1::date::timestamp AT TIME ZONE ${MADRID})
         AND COALESCE(r.repostaje_at, r.recibido_at) <  (($2::date + 1)::timestamp AT TIME ZONE ${MADRID})
       ORDER BY COALESCE(r.repostaje_at, r.recibido_at) DESC, r.id DESC`, [desde, hasta]);
@@ -504,11 +706,19 @@ async function ficha(id) {
             ${NOMBRE_FICHA('cb')} AS bolt_ficha,
             (SELECT json_agg(json_build_object('id', o.id, 'cuando', ${LOCAL('o.recibido_at')}, 'remitente', o.remitente,
                                                'reenviado_por', o.reenviado_por) ORDER BY o.id)
-               FROM repostaje o WHERE o.repetido_de = r.id) AS repetidos
+               FROM repostaje o WHERE o.repetido_de = r.id) AS repetidos,
+            -- La auditoría con Mapon entera (db/213).
+            g.direccion AS gasolinera_direccion, g.observaciones AS gasolinera_observaciones,
+            r.gps_lat::float AS gps_lat, r.gps_lng::float AS gps_lng, ${LOCAL('r.gps_at')} AS gps_local,
+            to_char(r.gps_hasta AT TIME ZONE ${MADRID}, 'HH24:MI') AS gps_hasta_local, r.gps_direccion,
+            gc.lat::float AS gps_cercana_lat, gc.lng::float AS gps_cercana_lng,
+            (extract(epoch FROM r.repostaje_at) * 1000)::float AS repostaje_ms,
+            (SELECT array_agg(o.nombre ORDER BY o.nombre) FROM gasolinera o
+              WHERE o.id = ANY (r.gasolinera_candidatas)) AS gasolinera_candidatas_nombres
        FROM repostaje r
        LEFT JOIN conductor c  ON c.id = r.conductor_id
        LEFT JOIN conductor cb ON cb.id = r.bolt_conductor_id
-       LEFT JOIN vehiculo v   ON v.id = r.vehiculo_id
+       LEFT JOIN vehiculo v   ON v.id = r.vehiculo_id${JOIN_GASOLINERAS}
       WHERE r.id = $1`, [id]);
   return r.rows[0] || null;
 }
@@ -518,6 +728,8 @@ module.exports = {
   yaGuardados, claveUid, guardar, releido, paraReleer,
   paraRecasar, recasado, cocheDe, candidatosNombre,
   frescuraBolt, boltMadrid, boltOtraSede, ponerBolt, paraMirarBolt, cerrarSinBolt,
+  gasolineras, aliasGasolineras, ponerAlias, quitarAlias, paraCasarGasolinera, leidosDelProveedor, ponerGasolinera,
+  paraAuditar, paraAuditarUno, unidadMapon, guardarAuditoria, apuntarFallo, cerrarAuditoriasSinDatos,
   lista, ficha,
   // Gancho de prueba (scripts/comprobar-combustible.js): las NOT NULL con valor por defecto.
   _valorDe: valorDe,

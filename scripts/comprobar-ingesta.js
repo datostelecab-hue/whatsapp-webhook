@@ -77,6 +77,15 @@ const PERMITIDOS = {
                                  'Ciclo de bloqueo de motor: el relé de cada coche tiene que ser el de AHORA, porque ' +
                                  'con él se decide si se suelta un motor, y la ingesta no guarda el estado del relé',
   'services/fichaje.js':         'Fichaje: ESCRIBE en Mapon (enlaza conductor y coche), no lee',
+  // 23/10/2026: entra en la lista, que solo debía encoger, a conciencia. Lo que
+  // pide no lo trae la ingesta, y meterlo en el latido sería peor (ver abajo).
+  'modules/Combustible/combustible.auditoria.js':
+                                 'Auditoría de cada repostaje (db/213): el aforador, las paradas y la posición de UN ' +
+                                 'coche en las horas de su repostaje, solo GET, y el resultado se guarda en repostaje: ' +
+                                 'la pantalla lee la base. Traer el aforador de toda la flota cada 5 min serían miles ' +
+                                 'de lecturas por coche y semana para mirar veinte repostajes al día; y en el latido, ' +
+                                 'una pasada lenta de Mapon (tope 4 min) retrasaría los apuntes de BOLT. Va en el cron ' +
+                                 'del buzón, detrás de él, y en el botón «Auditar ahora» de la ficha',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
   // (`fv_*`). Entra por la puerta grande el dia que su padron se funda con el
   // nucleo; hasta entonces la excepcion queda apuntada, no escondida.

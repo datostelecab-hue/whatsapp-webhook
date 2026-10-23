@@ -895,15 +895,30 @@ if (process.env.CITAS_TALLER_AVISOS !== 'off') {
 // `programar` no lo arranca con MODO_PRUEBAS=1, como a todo cron: en pruebas el
 // buzón se lee con el botón «Leer el buzón ahora», y el log dice que es el real.
 // Se apaga con COMBUSTIBLE_CORREO=off sin tocar código.
+//
+// DESPUÉS DEL BUZÓN, LA AUDITORÍA CON MAPON (db/213): los repostajes que ya
+// tienen 45 minutos se miran en Mapon, en solo lectura (dónde estaba el coche y
+// cuánto subió el aforador), y los que quedaron a medias se reintentan. Va
+// detrás y aparte: un Mapon caído no toca la lectura del correo, y un buzón que
+// no entra no impide auditar lo que ya está guardado. Se apaga sola con
+// COMBUSTIBLE_AUDITORIA=off.
 if (process.env.COMBUSTIBLE_CORREO !== 'off') {
   programar('4,14,24,34,44,54 * * * *', async () => {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const combustible = require('./modules/Combustible/combustible.service');
     try {
-      const bd = require('./services/db');
-      if (!bd.HAY_BD) return;
-      await require('./modules/Combustible/combustible.service').leerBuzon({ origen: 'cron' });
+      await combustible.leerBuzon({ origen: 'cron' });
     } catch (error) {
       // leerBuzon no lanza; esto es por si revienta antes de entrar.
       console.error(`❌ [CRON Combustible] ${error.stack || error.message}`);
+    }
+    if (process.env.COMBUSTIBLE_AUDITORIA === 'off') return;
+    try {
+      await combustible.auditarPendientes({ origen: 'cron' });
+    } catch (error) {
+      // auditarPendientes tampoco lanza.
+      console.error(`❌ [CRON Combustible · auditoría] ${error.stack || error.message}`);
     }
   }, { timezone: 'Europe/Madrid' });
 }

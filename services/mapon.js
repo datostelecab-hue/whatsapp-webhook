@@ -1112,6 +1112,96 @@ async function leerCombustible({ desde, hasta } = {}) {
   return { eventos, resumen, desde: aUTC(ini), hasta: aUTC(fin) };
 }
 
+// ============================================================
+// UN REPOSTAJE, VISTO DESDE MAPON (22/10/2026) — SOLO LECTURA
+// ============================================================
+// Lo que necesita la auditoría de Combustible (modules/Combustible/
+// combustible.auditoria.js) para un coche alrededor de una hora: el aforador,
+// el gastado y los km, dónde estaba parado y dónde estaba en un instante. Todo
+// son GET de lectura, de UNA unidad y en ventanas de pocos días (el tope de
+// Mapon es 31). Lo que se sabe de cada serie, en docs/integraciones/Mapon.md,
+// «Combustible». Las horas van y vienen en milisegundos UTC.
+
+const rangoMs = (desdeMs, hastaMs) =>
+  `from=${encodeURIComponent(aUTC(new Date(desdeMs)))}&till=${encodeURIComponent(aUTC(new Date(hastaMs)))}`;
+// Una hora de Mapon que no se entiende es NaN, no 0: tsUTC da null, y null × 1000
+// es 0, una lectura «de 1970» que pasaría todos los filtros de número.
+const msUTC = g => { const s = tsUTC(g); return s == null ? NaN : s * 1000; };
+const serieMs = arr => (arr || []).map(p => ({ t: msUTC(p.gmt), v: p.value })).filter(p => Number.isFinite(p.t));
+
+/**
+ * El nivel del depósito según el aforador (litros enteros): `fuel/data.json`,
+ * con `unit_id` SIN corchetes. Los Ford mandan aquí ceros: su nivel va en %
+ * por `nivelPorcentaje`.
+ */
+async function nivelDeposito(unitId, desdeMs, hastaMs) {
+  const j = await pedir('fuel/data.json', `unit_id=${encodeURIComponent(unitId)}&${rangoMs(desdeMs, hastaMs)}`);
+  return serieMs(j && j.data && j.data.can && j.data.can.values);
+}
+
+/** Lo que da `unit_data/can_period.json` de una unidad con esos `include`, por clave. */
+async function canPeriodo(unitId, desdeMs, hastaMs, claves) {
+  const j = await pedir('unit_data/can_period.json',
+    `unit_id=${encodeURIComponent(unitId)}&${rangoMs(desdeMs, hastaMs)}&${incluir(...claves)}`);
+  const u = ((j && j.data && j.data.units) || [])[0] || {};
+  return Object.fromEntries(claves.map(k => [k, serieMs(u[k])]));
+}
+
+/** El nivel en % del depósito (los Ford Mondeo): `can_period` con `fuel_level`. */
+async function nivelPorcentaje(unitId, desdeMs, hastaMs) {
+  return (await canPeriodo(unitId, desdeMs, hastaMs, ['fuel_level'])).fuel_level;
+}
+
+/**
+ * El gastado de la centralita (`total_fuel`, L acumulados: solo 38 Corolla) y el
+ * odómetro (`total_distance`, km) en la misma llamada.
+ */
+async function gastadoYKm(unitId, desdeMs, hastaMs) {
+  const r = await canPeriodo(unitId, desdeMs, hastaMs, ['total_fuel', 'total_distance']);
+  return { gastado: r.total_fuel, km: r.total_distance };
+}
+
+/**
+ * Las paradas de una unidad (`route/list.json`, lo que no es `route`): dónde y
+ * de cuándo a cuándo estuvo parado. Una parada sin fin sigue abierta.
+ */
+async function paradasUnidad(unitId, desdeMs, hastaMs) {
+  const j = await pedir('route/list.json', `unit_id=${encodeURIComponent(unitId)}&${rangoMs(desdeMs, hastaMs)}`);
+  const rutas = ((j && j.data && j.data.units && j.data.units[0]) || {}).routes || [];
+  return rutas.filter(r => r.type !== 'route' && r.start).map(r => ({
+    desde: msUTC(r.start.time),
+    hasta: r.end && r.end.time ? msUTC(r.end.time) : null,
+    lat: Number(r.start.lat), lng: Number(r.start.lng),
+    direccion: txt(r.start.address) || null,
+  })).filter(p => Number.isFinite(p.desde) && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+}
+
+/**
+ * Dónde estaba una unidad en un instante: `unit_data/history_point.json` con
+ * `include[]=position` y nada más (con otros `include` contesta «Invalid or
+ * missing include»). Ojo: devuelve el punto MÁS CERCANO, que puede ser de
+ * después; su hora viene en `t`. → { t, lat, lng } o null.
+ */
+async function posicionEn(unitId, ms) {
+  const j = await pedir('unit_data/history_point.json',
+    `unit_id=${encodeURIComponent(unitId)}&datetime=${encodeURIComponent(aUTC(new Date(ms)))}&include[]=position`);
+  const p = ((j && j.data && j.data.units && j.data.units[0]) || {}).position;
+  if (!p || !p.value) return null;
+  const lat = Number(p.value.lat), lng = Number(p.value.lng);
+  // La isla nula: un GPS sin cobertura no manda «no sé», manda 0,0.
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+  const t = msUTC(p.gmt);
+  return Number.isFinite(t) ? { t, lat, lng } : null;
+}
+
+/** La capacidad del depósito si está puesta en Mapon (`fuel_tank`; el 22/10/2026, solo el 3035LTX). */
+async function capacidadDeposito(unitId) {
+  const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&include[]=fuel_tank`);
+  const u = ((j && j.data && j.data.units) || [])[0] || {};
+  const v = u.fuel_tank && Number(u.fuel_tank.total_vol);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 /** Setups configurados en Mapon (diagnóstico: con qué límite está avisando). */
 async function listarSetups() {
   const r = await fetchMapon(`${API}/alert/list_setups.json?key=${KEY}`);
@@ -1129,10 +1219,13 @@ module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
   leerAlertas, leerAlertasCrudas, listarSetups,
   leerCombustible, leerRecorridoUnidad,
+  nivelDeposito, nivelPorcentaje, gastadoYKm, paradasUnidad, posicionEn, capacidadDeposito,
   unidadPorMatricula, elegirEquipo, tieneReleCorte, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
   comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
   relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar,
-  disponible, estadoCaida
+  disponible, estadoCaida,
+  // ¿Hay clave? Sin MAPON_API_KEY no se llama a Mapon (el resto del sistema sigue).
+  configurado: () => !!KEY,
 };
