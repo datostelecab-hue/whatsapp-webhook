@@ -596,11 +596,14 @@
     const W = Math.round(Math.max(300, Math.min(640, window.innerWidth - 72))), Hh = 164, M = { i: 36, d: 12, a: 24, b: 24 };
     const t0 = VENTANA ? VENTANA[0] : ls[0][0], t1 = VENTANA ? VENTANA[1] : ls[ls.length - 1][0];
     const vs = ls.map(p => p[1]).concat([d.boya_antes, d.boya_despues].filter(v => v != null));
-    // La escala, con 2 de margen arriba y abajo; el eje, con las cifras de
-    // verdad (la más baja y la más alta): con las del margen, el del 1212MJY
-    // decía «41» sin que ninguna lectura pasara de 39, y se leía «sube a 41».
-    const vMin = Math.min(...vs), vMax = Math.max(...vs);
-    const v0 = Math.floor(vMin - 2), v1 = Math.ceil(vMax + 2);
+    // EL EJE, FIJO (Camilo, 23/10/2026: «que la gráfica con la que representas
+    // la gasolina vaya de 0 a 90 L»): de 0 a 90 L, y de 0 a 100 % en los Ford.
+    // Así todas las fichas se leen con la misma vara —30 L de salto miden lo
+    // mismo en todas— y se ve cuánto se llenó el depósito, no solo cuánto subió.
+    // Una lectura disparatada por encima (un 255 del CAN) no se sale: estira el tope.
+    const enPct = d.boya_tipo === 'porcentaje';
+    const v0 = 0, v1 = Math.max(enPct ? 100 : 90, Math.ceil(Math.max(...vs)));
+    const MARCAS_EJE = (enPct ? [0, 50, 100] : [0, 30, 60, 90]).filter(v => v <= v1);
     const x = t => M.i + (W - M.i - M.d) * (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0));
     const y = v => M.a + (Hh - M.a - M.b) * (1 - (v - v0) / (v1 - v0 || 1));
     const p = det.parada;
@@ -631,9 +634,11 @@
     };
     const pisan = (a, c) => !!(a && c && a.x0 < c.x1 && c.x0 < a.x1 && a.y0 < c.y1 && c.y0 < a.y1);
     const dentro = c => c.x0 >= 0 && c.x1 <= W && c.y0 >= 0 && c.y1 <= Hh - M.b + 2;
-    // Las cifras del eje (arriba y abajo a la izquierda) también ocupan sitio:
-    // «−15 min» se ponía encima del máximo cuando la marca caía al borde.
-    const ejeVals = vMax === vMin ? [vMax] : [vMax, vMin];
+    // Las cifras del eje también ocupan sitio: «−15 min» se ponía encima del
+    // máximo cuando la marca caía al borde.
+    const ejeVals = MARCAS_EJE;
+    // Una línea muy suave en cada cifra del eje, para leer el nivel a ojo.
+    const rejilla = MARCAS_EJE.map(v => `<line x1="${M.i}" x2="${W - M.d}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="rgb(var(--tc-border) / .7)" stroke-width="1"/>`).join('');
     const ejeCajas = ejeVals.map(v => caja(M.i - 6, y(v) + 4, num(v, 0), 'end'));
     const puestos = [];
     const poner = (txt, sitios, color) => {
@@ -700,7 +705,7 @@
     }
     const frase = xs => (xs.length ? `${xs.join('; ').replace(/^./, c => c.toUpperCase())}. ` : '');
     return `<svg viewBox="0 0 ${W} ${Hh}" class="w-full h-auto max-h-52" role="img" aria-label="${esc(resumen)}">
-      ${franja}${raya(d.boya_antes)}${raya(d.boya_despues)}${lineaHora}${marcas}
+      ${rejilla}${franja}${raya(d.boya_antes)}${raya(d.boya_despues)}${lineaHora}${marcas}
       <path d="${linea}" fill="none" stroke="rgb(var(--tc-azul))" stroke-width="2" stroke-linejoin="round"/>
       ${puntos}${puestos.map(texto).join('')}${ejes}</svg>
       <p class="text-xs text-telecab-muted mt-1">Lecturas del aforador de Mapon (${unidad === '%' ? '% del depósito' : 'litros enteros'}). ` +
