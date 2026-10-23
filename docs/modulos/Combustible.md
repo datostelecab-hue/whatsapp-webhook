@@ -124,6 +124,8 @@ Camilo, 22/10/2026: *«Con el criterio del GPS con un margen de error de menos d
 
 `gasolinera` (db/213) son las **143 de Ballenoil del Excel** (112 de Madrid, 31 de Barcelona), cargadas en la propia migración con su nombre, dirección, provincia, sede, coordenadas y **de dónde salen** (`precision`): las publica Ballenoil (`web`, 105), geocodificadas de la dirección con OpenStreetMap (`geocodificada`, 16), una carretera o un número que no se encuentra (`aproximada`, 14) o **ninguna** (`sin`, 8: Clot, La Trinidad, Colmenar Viejo I y II, Las Mercedes, Las Rejas, Pelayos de la Presa y Torrejón IV; la web solo da el código postal). Comparadas fila a fila con el Excel: las 143, sin una diferencia. `proveedor` deja sitio a Petroprix. Las coordenadas que no son de la web llevan **«≈»** en la lista y su aviso en la ficha.
 
+**db/214** (23/10/2026) le pone a **Clot** las coordenadas que dio Camilo (41.406171, 2.187458), con una precisión nueva, `validada`: puestas a mano por quien conoce la gasolinera, sin «≈». Y devuelve a la cola sus repostajes ya auditados, porque la auditoría no vuelve sola a los acabados. Quedan **7 sin coordenadas**. Para otra, lo mismo: una migración nueva con `precision = 'validada'`, nunca editar la 213.
+
 **El correo y la lista no llaman igual a la misma gasolinera**, así que se casa **por sus palabras** (`combustible.gasolinera.js`), como el nombre de la tarjeta: sin «Ballenoil», sin tildes, mayúsculas ni signos, sin artículos ni preposiciones en castellano y catalán, y con el número romano aparte. **El número manda y sin número es el I**: «COSLADA» es Coslada I, no Coslada III; «CORNELLÀ DE LLOBREGAT II» es Cornellà II, no Cornellà. Exacto (las mismas palabras) o parecido (las de uno están todas en el otro: «PRAT DE LLOBREGAT (EL)» → El Prat; «ARGANDA III» → Arganda del Rey III). Una gasolinera con dos nombres («Cerdanyola del Vallès / Sardañola del Vallés») casa por los dos.
 
 - **Si duda, ninguna, y lo dice**: «BARCELONA» a secas vale para Asunción y La Trinidad. Casar mal es peor que no casar: la distancia se mediría contra la que no es y pintaría de rojo a quien repostó donde decía. La sede del coche desempata.
@@ -187,7 +189,7 @@ Con Mapon de verdad (solo lectura) desde el [[Entorno de pruebas local]], sobre 
 | 2 | 5369LHJ | 21/10 08:50 | Hospitalet de Llobregat | — no está en Mapon | — | — | sin color |
 | 1 | 7043LJN | 21/10 12:53 | Alcobendas II | — no está en Mapon | — | — | sin color |
 | 3 | 6450LSR | 21/10 14:57 | Hospitalet de Llobregat | — no está en Mapon | — | — | sin color |
-| 4 | 7909LRJ | 21/10 16:31 | Clot | — sin coordenadas (más cercana: Lope de Vega, 1.187 m) | 10,9 L (techo corregido) / 10,372 | 5,1 % | verde |
+| 4 | 7909LRJ | 21/10 16:31 | Clot | 57 m (con las coordenadas de db/214) | 10,9 L (techo corregido) / 10,372 | 5,1 % | verde |
 | 5 | 6584KZV | 22/10 01:55 | Barcelona - Asunción | 12 m | — sin aforador | — | verde |
 | 6 | 7909LRJ | 22/10 03:19 | Barcelona - Asunción | 12 m | 12 L / 8,870 | 35,3 % | **amarillo** |
 | 7 | 9107LWS | 22/10 06:49 | El Prat | 82 m | 30,9 L (techo corregido) / 27,432 | 12,6 % | verde |
@@ -196,7 +198,7 @@ Con Mapon de verdad (solo lectura) desde el [[Entorno de pruebas local]], sobre 
 | 10 | 3031LTV | 22/10 15:36 | Hospitalet de Llobregat | 15 m | — sin aforador | — | verde |
 | 11 | 6584KZV | 22/10 16:39 | Cornellà II | 465 m (≈) | — sin aforador | — | verde |
 | 12 | 3814KYG | 22/10 16:57 | Barcelona - Asunción | 2 m | 25 L (techo corregido) / 21,901 | 14,2 % | verde |
-| 13 | 7909LRJ | 22/10 17:09 | Clot | — sin coordenadas (sin parada; Lope de Vega a 1.169 m) | 13 L / 9,170 | 41,8 % | **amarillo** |
+| 13 | 7909LRJ | 22/10 17:09 | Clot | 40 m (sin parada: su posición a esa hora; db/214) | 13 L / 9,170 | 41,8 % | **amarillo** |
 | 14 | 0101LTF | 22/10 17:18 | Galapagar | — no está en Mapon | — | — | sin color |
 | 15 | 8997LDK | 22/10 18:44 | Arganda del Rey III | 272 m | 22,6 L (techo corregido) / 23,543 | 4,0 % | verde |
 | 16 | 8997LDK | 23/10 00:05 | Alcalá de Henares | **24,2 km** (ya iba andando; más cercana: Fuencarral, 3.144 m) | **−1 L** (40 → 39) / 24,860 | 104 % | **rojo** |
@@ -210,7 +212,7 @@ Lo que dice:
 - **El GPS clava la gasolinera** en todos los que se pueden medir: de 2 a 465 m (Cornellà II tiene coordenadas aproximadas).
 - **El rojo, el n.º 16**: la tarjeta pagó 24,86 L en Alcalá de Henares a las 00:05 con la matrícula 8997LDK, y ese coche estuvo parado en Madrid (Av. de Burgos) de 23:14 a 00:00; a las 00:04:59 iba andando por Madrid, a 1.676 m de esa parada y a 24,2 km de Alcalá. Su depósito no subió (40 → 39 L). En BOLT lo llevaba otra persona que la de la tarjeta, en viaje desde las 23:56. Era su tercer repostaje en 11 horas (Coslada 12:57 y Arganda 18:44, los dos verdes). Mirado en crudo en Mapon: es así. Con la parada de al lado, la auditoría de antes decía «parado allí» y 23,3 km; el rojo era el mismo. **Lo decide Camilo.**
 - **Los dos amarillos son del 7909LRJ**, con repostajes pequeños (8,9 y 9,2 L): en tres de sus cuatro repostajes su aforador marca 3-4 L de más, y en poco volumen eso es un 35-42 %. El del Clot de las 17:09 se midió sin parada (el coche no se apagó: el salto, 31 → 43 L, está a las 17:10).
-- **Los dos del Clot, sin color por el GPS**: la lista no tiene sus coordenadas. Las dos veces el coche estaba en el Carrer del Clot, 4 (08018), a 1,2 km de Lope de Vega, la más cercana con coordenadas.
+- **Los dos del Clot** se midieron primero sin color por el GPS: la lista no tenía sus coordenadas, y las dos veces el coche estaba en el Carrer del Clot, 4 (08018). Con las de Camilo (db/214) salen a 57 y 40 m, verdes por el GPS; el de las 17:09 sigue amarillo por la boya.
 - **5 coches no están en Mapon** (5369LHJ, 7043LJN, 6450LSR, 8477LTR, 0101LTF) y **3 no dan el aforador** (6584KZV dos veces, 3031LTV).
 - **El reloj del correo y el de Mapon no son el mismo**: el n.º 17 arrancó un minuto antes de la hora del correo y a esa hora seguía a 14 m del surtidor. Por eso una parada de al lado se toma si el coche seguía junto a ella.
 - **El n.º 20 queda verde por el GPS y la boya sin color**: al menos 29 L de 25,539 da «como poco un 13,6 %», que no basta para decir verde. Se reintenta solo hasta que su aforador baje del techo.
@@ -223,11 +225,11 @@ Tras la revisión (22/10/2026, tarde), de nuevo contra el buzón real: **11 corr
 
 ## Lo que queda
 
-- **Aplicar db/213 en producción** desde `/migraciones` (db/212 ya lo está). Hasta entonces la pantalla dice «Falta aplicar la migración db/213» y el cron no audita (lo dice una vez en el log); la lectura del buzón sigue igual. Al aplicarla, la primera pasada casa las gasolineras de todos y empieza a auditar los pendientes, veinte cada diez minutos, del más antiguo al más nuevo.
+- **Aplicar db/213 y db/214 en producción** desde `/migraciones` (db/212 ya lo está). Hasta entonces la pantalla dice «Falta aplicar la migración db/213» y el cron no audita (lo dice una vez en el log); la lectura del buzón sigue igual. Al aplicarla, la primera pasada casa las gasolineras de todos y empieza a auditar los pendientes, veinte cada diez minutos, del más antiguo al más nuevo.
 - **Dar la llave** `/combustible` (y `/combustible/leer` a quien deba leer el buzón, auditar a mano y corregir gasolineras) en `/usuarios`: el desarrollador y el superadmin la tienen por rol; los demás roles la reciben al crearse si llevan el grupo Taller, pero a los usuarios que ya existen hay que dársela.
 - **El rojo del 8997LDK** (23/10 00:05, Alcalá de Henares): el coche estaba en Madrid, andando, y el depósito no subió. Lo mira Camilo.
 - **El cambio de hora en BOLT.** La auditoría ya mira la hora buena el día del cambio de hora (la primera pasada de las 02:00-02:59 si el correo llegó antes de la segunda), pero quién llevaba el coche en BOLT se sigue mirando con la hora guardada, la segunda. Afecta solo a los repostajes de esa hora, una noche al año (el próximo, el domingo 25/10/2026). Se arreglaría con la misma cuenta en las dos consultas de BOLT de `combustible.repo`.
-- **Las 8 gasolineras sin coordenadas**, entre ellas **Clot**, donde reposta el 7909LRJ: sus repostajes no tienen color por el GPS. Las dos veces el coche paró en el Carrer del Clot, 4 (08018); si es ahí, ponerle esas coordenadas (una migración nueva, no editar la 213).
+- **Las 7 gasolineras sin coordenadas** (La Trinidad, Colmenar Viejo I y II, Las Mercedes, Las Rejas, Pelayos de la Presa y Torrejón IV): sus repostajes no tienen color por el GPS. Clot ya las tiene (db/214, de Camilo). Para otra, una migración nueva con `precision = 'validada'`.
 - **Los Ford** sin la capacidad del depósito en Mapon salen en % y sin color. Con un par de tickets de cada uno (litros ÷ % subido) o la ficha técnica se podría poner su `fuel_tank` en Mapon.
 - **Los km tecleados** contra el odómetro de Mapon: no se contrastan todavía (salen `20`, `30` y `400` en coches de más de cien mil).
 - **El lector de Petroprix**, cuando llegue el primer correo (y su asunto, para que sus promociones no se lean como repostajes). Su lista de gasolineras, cuando la haya (`proveedor` ya lo admite).

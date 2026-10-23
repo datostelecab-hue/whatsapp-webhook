@@ -46,6 +46,8 @@ Fuera de la carpeta:
   «Leer el buzón ahora», «Auditar ahora» y corregir la gasolinera.
 - `db/213`: las 143 gasolineras de Ballenoil del Excel de Camilo, los nombres
   puestos a mano (`gasolinera_alias`) y las columnas de la auditoría.
+- `db/214`: las coordenadas de Clot, que el Excel no traía (de Camilo, con la
+  precisión `validada`).
 - `scripts/comprobar-combustible.js`: las reglas, sin base, sin buzón y sin
   Mapon (con uno de mentira que grita si se le pide algo que no sea leer).
 - `scripts/comprobar-ingesta.js`: la auditoría llama a Mapon por su cuenta, a

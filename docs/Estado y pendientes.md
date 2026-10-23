@@ -17,11 +17,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## Combustible: los repostajes por correo y su auditoría con Mapon (22-23/10/2026)
 
-- **Al desplegar, aplicar `db/213`** desde `/migraciones` (la 212 ya está). Hasta entonces `/combustible` dice que falta y el cron no audita; el buzón se sigue leyendo. Ver [[Combustible#La auditoría con Mapon (db/213)]].
+- **Al desplegar, aplicar `db/213` y `db/214`** desde `/migraciones` (la 212 ya está). Hasta entonces `/combustible` dice que falta y el cron no audita; el buzón se sigue leyendo. Ver [[Combustible#La auditoría con Mapon (db/213)]].
 - **Dar la llave** `/combustible` (y `/combustible/leer`: «Leer el buzón ahora», «Auditar ahora» y corregir la gasolinera) a quien la necesite en `/usuarios`: a los usuarios que ya existen no les llega sola (a propósito: quién ve los repostajes, con nombres, lo decide Camilo).
 - **Un rojo para Camilo**: el 8997LDK el 23/10 a las 00:05 en Alcalá de Henares; el coche iba andando por Madrid, a 24,2 km, y el depósito no subió. Ver [[Combustible#Medido el 23/10/2026: la auditoría de los 20 primeros]].
 - **El cambio de hora en BOLT**: la auditoría ya desempata la hora que pasa dos veces (02:00-02:59 del último domingo de octubre) con la llegada del correo; quién llevaba el coche en BOLT, todavía no. Una hora, una noche al año; la próxima, el 25/10/2026.
-- **Clot sin coordenadas** (y otras 7 de la lista): sin color por el GPS. El coche paró las dos veces en el Carrer del Clot, 4.
+- **7 gasolineras sin coordenadas** (Clot ya las tiene desde db/214, de Camilo): sus repostajes van sin color por el GPS.
 - **Lo que la auditoría aún no mira**: los km tecleados contra el odómetro, y `remitente_verificado` (un correo sin la firma de Ballenoil lleva su aviso junto a la fecha, pero no cambia el color).
 - **Petroprix**: escribir su lector cuando llegue el primer correo, y su asunto (se guarda como «no se pudo leer» hasta entonces y se relee solo).
 - **`5369LHJ`, `6450LSR` y `7043LJN`** repostan con la tarjeta y no están dados de alta en Vehículos. `5369LHJ` ya sale de Barcelona por la persona de la tarjeta; los otros dos (provisional y taller), sin sede hasta que se den de alta.

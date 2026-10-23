@@ -20,7 +20,7 @@ Las decisiones de esta tanda:
 - **Un reintento no borra lo que ya se midió**: si Mapon no contesta a una pregunta, esa se queda como estaba.
 - **La auditoría llama a Mapon por su cuenta**, fuera de la ingesta, con el motivo apuntado en `comprobar-ingesta.js` (una lista que hasta hoy solo encogía).
 
-Medido con los 20 primeros: el GPS clava la gasolinera (2-465 m) y sale un rojo de verdad. → [[Combustible#La auditoría con Mapon (db/213)]]
+Medido con los 20 primeros: el GPS clava la gasolinera (2-465 m) y sale un rojo de verdad. Clot, que el Excel traía sin coordenadas, lleva las de Camilo (db/214, precisión nueva `validada`). → [[Combustible#La auditoría con Mapon (db/213)]]
 
 ## 2026-10-22 · Sanciones desempata los tramos de BOLT como Combustible
 
