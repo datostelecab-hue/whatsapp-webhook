@@ -188,6 +188,18 @@ async function dineroPorDia(sede, desde, hasta) {
   return new Map(r.rows.map(x => [x.dia, { neto: Number(x.neto) || 0, viajes: Number(x.viajes) || 0 }]));
 }
 
+/**
+ * El primer día (en Madrid) con apuntes de BOLT de la sede, o null. Es desde
+ * donde empieza su historia en los gráficos largos de la Visibilidad: pedir «un
+ * año» no tiene que cargar once meses vacíos.
+ */
+async function primerDiaApuntes(sede) {
+  const r = await db.consulta(
+    `SELECT to_char(min(ocurrido_at) AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS d
+       FROM sede_bolt_state_log WHERE sede = $1`, [sede]);
+  return (r.rows[0] && r.rows[0].d) || null;
+}
+
 /** La configuración de la Visibilidad de la sede (capacidad, meta, coches), o null. */
 async function leerConfigVisibilidad(sede) {
   const r = await db.consulta(`SELECT valor FROM visibilidad_config WHERE clave = $1`, ['parametros_' + sede]);
@@ -204,4 +216,5 @@ async function guardarConfigVisibilidad(sede, valor) {
 module.exports = {
   faltaMigracion, conductores, coches, asignacionesEn, asignacionesEntre, asignar,
   apuntesEntre, situaciones, dineroEntre, dineroPorDia, leerConfigVisibilidad, guardarConfigVisibilidad,
+  primerDiaApuntes,
 };

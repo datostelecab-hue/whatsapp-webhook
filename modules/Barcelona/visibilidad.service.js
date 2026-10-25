@@ -21,6 +21,7 @@ const repo = require('./barcelona.repo');
 const H = require('./barcelona.horas');
 const R = require('../../services/flotaViva/repartoTurnos');
 const V = require('../../services/visibilidad');
+const T = require('../../services/visibilidadTendencia');
 
 const SEDE = 'barcelona';
 const CON_DESCANSO = new Set(['viaje', 'espera', 'descanso']);
@@ -157,20 +158,57 @@ function resumen() {
   });
 }
 
-/** LOS ÚLTIMOS N DÍAS cerrados y hoy, para el gráfico de capacidad (día natural). */
-function ultimosDias(n = 15) {
-  return conTablas(async () => {
-    const hoy = hoyMadrid();
-    const desde = R.sumarDias(hoy, -n);
-    const ivs = await ratos(inicioDe(desde), Date.now());
-    const dias = [];
-    for (let i = n; i >= 0; i--) {
-      const d = R.sumarDias(hoy, -i);
-      const h = H.sumaVentana(ivs, inicioDe(d), inicioDe(R.sumarDias(d, 1)));
-      dias.push({ dia: d, esHoy: i === 0, total: r1((h.viajeSeg + h.esperaSeg) / 3600), waiting: r1(h.esperaSeg / 3600),
-        conductores: h.conductores, sinFoto: false });
+// ── LA TENDENCIA: los gráficos largos (25/10/2026) ─────────────────────────
+// Las mismas piezas que Madrid (services/visibilidadTendencia.js): el rango con
+// su agrupación y su media móvil, «cómo vamos» contra el mes anterior y el
+// crecimiento mes a mes. Lo único de aquí es de dónde salen los días: de sus
+// apuntes de BOLT, día natural por día natural, calculados al vuelo como el resto
+// de su Visibilidad (son una veintena de conductores; no hay fotos que leer).
+
+/**
+ * Los días con horas de [desde, hasta] → { dias: Map }, con hoy en vivo (hasta
+ * ahora). Empieza en su primer apunte aunque se pida antes: más atrás no hay nada.
+ */
+async function diasDeLaSede(desde, hasta, primerDia) {
+  const dias = new Map();
+  const ini = primerDia && primerDia > desde ? primerDia : desde;
+  if (ini > hasta) return { dias };
+  const ivs = await ratos(inicioDe(ini), Math.min(inicioDe(R.sumarDias(hasta, 1)), Date.now()));
+  for (let d = ini; d <= hasta; d = R.sumarDias(d, 1)) {
+    const h = H.sumaVentana(ivs, inicioDe(d), inicioDe(R.sumarDias(d, 1)));
+    if (h.viajeSeg + h.esperaSeg > 0) {
+      dias.set(d, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg, conductores: h.conductores || null, origen: 'sede', fuente: null });
     }
-    return { n, dias };
+  }
+  return { dias };
+}
+
+/** El rango que pide la pantalla (?ultimos=N, ?desde, ?hasta, ?agrupar). */
+function rango(q = {}) {
+  return conTablas(async () => {
+    const [primerDia, config] = await Promise.all([repo.primerDiaApuntes(SEDE), leerConfig()]);
+    return T.armarRango({ q, hoy: hoyMadrid(), primerDia, meta: Number(config.meta) || 0,
+      cargarDias: (a, b) => diasDeLaSede(a, b, primerDia) });
+  });
+}
+
+/** Mes a mes, desde su primer apunte. */
+function crecimiento() {
+  return conTablas(async () => {
+    const [primerDia, config] = await Promise.all([repo.primerDiaApuntes(SEDE), leerConfig()]);
+    return T.armarCrecimiento({ hoy: hoyMadrid(), primerDia, meta: Number(config.meta) || 0,
+      cargarDias: (a, b) => diasDeLaSede(a, b, primerDia) });
+  });
+}
+
+/** La serie del mes con el anterior y la comparación a la misma altura. */
+function comoVamos(mesTexto) {
+  return conTablas(async () => {
+    const pedido = T.mesPedido(mesTexto);
+    const ant = T.mesAnterior(pedido);
+    const [actual, anterior] = await Promise.all([serieMes(pedido.anio, pedido.mes), serieMes(ant.anio, ant.mes)]);
+    if (actual.faltaMigracion || anterior.faltaMigracion) return { faltaMigracion: true };
+    return T.armarComoVamos(actual, anterior);
   });
 }
 
@@ -214,4 +252,4 @@ function serie(mesTexto) {
   return serieMes(Y, M);
 }
 
-module.exports = { SEDE, resumen, ultimosDias, serieMes, serie, leerConfig, guardarConfig };
+module.exports = { SEDE, resumen, rango, crecimiento, comoVamos, serieMes, serie, leerConfig, guardarConfig };

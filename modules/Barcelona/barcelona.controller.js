@@ -24,8 +24,10 @@ const responde = (fn, codigo = 500) => async (req, res) => {
     const r = await fn(req, res);
     if (!res.headersSent) res.json({ status: 'ok', ...(r && typeof r === 'object' ? r : {}) });
   } catch (e) {
-    console.error(`❌ [Barcelona] ${req.method} ${req.path}: ${e.stack || e.message}`);
-    res.status(codigo).json({ status: 'error', msg: e.message });
+    // Un error que ya dice su código (`estado`, el 400 de un parámetro que no vale)
+    // lo lleva; los demás, el del envoltorio.
+    if (!e.estado) console.error(`❌ [Barcelona] ${req.method} ${req.path}: ${e.stack || e.message}`);
+    res.status(e.estado || codigo).json({ status: 'error', msg: e.message });
   }
 };
 
@@ -72,7 +74,10 @@ router.post('/api/asignar', responde(async req => barcelona.asignar(req.body || 
 
 router.get('/api/visibilidad/resumen', responde(() => visibilidad.resumen()));
 router.get('/api/visibilidad/serie', responde(req => visibilidad.serie(req.query.mes)));
-router.get('/api/visibilidad/ultimos', responde(req => visibilidad.ultimosDias(Math.max(5, Math.min(60, Number(req.query.n) || 15)))));
+// La tendencia (25/10/2026): las mismas tres que Madrid. Un parámetro que no vale es un 400.
+router.get('/api/visibilidad/rango', responde(req => visibilidad.rango(req.query)));
+router.get('/api/visibilidad/crecimiento', responde(() => visibilidad.crecimiento()));
+router.get('/api/visibilidad/como-vamos', responde(req => visibilidad.comoVamos(req.query.mes)));
 router.post('/api/visibilidad/config', responde(async req => ({ config: await visibilidad.guardarConfig(req.body || {}) }), 400));
 
 // ── El reporte de horas ────────────────────────────────────────────────────

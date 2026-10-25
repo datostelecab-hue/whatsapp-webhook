@@ -1,11 +1,34 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-23
+actualizado: 2026-10-25
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-25 · Visibilidad: los gráficos de la tendencia
+
+*«Que en el gráfico que muestras los últimos 15 días se pueda agrandar, tipo, última semana, últimos 15 días, hace 30 días, 2 meses, 1 año, etc. Pero quiero gráficos mucho más profesionales y que muestren cómo van las horas actualmente y cómo hemos crecido.»* Hechos con la skill de visualización (`dataviz`). Las decisiones:
+
+- **Rangos: semana, 15 días, 30 días, 2 meses, 6 meses, 1 año y todo.** Hasta 2 meses una barra por día; más largo, por semanas (de lunes a domingo), y cada barra es la **media diaria** de su periodo, no su total: el eje dice horas por día en todos los rangos, la línea de la meta vale para todos y la semana en curso no parece un hundimiento. Se descartó «3 meses» (90 barras no se leen en un móvil y por semanas son 13: lo cubren 2 y 6 meses).
+- **Hoy, marcado y aparte.** Por días, su barra es el parcial en vivo, más clara y con «en curso»; por semanas o meses **no entra en la media** del cubo y va en el globo. Ninguna media ni ninguna previsión lo usa: va a medias.
+- **La serie larga lee las fotos** (`visibilidad_dia` y el histórico de BOLT de db/217, con la regla del contrato) y solo hoy va en vivo: un año recalculando el núcleo serían 365 consultas por pintar un gráfico.
+- **El mes contra el anterior «a la misma altura» es el último día cerrado** (ayer), y la **previsión de cierre va al ritmo de los últimos 7 días cerrados**, crucen o no el mes: el día 2 la media del mes sería la de un día, y siete llevan un fin de semana entero dentro, que aquí pesa 100-150 h. En el globo, la otra cuenta (al ritmo del mes).
+- **El crecimiento en tres gráficos pequeños y no en uno con dos ejes** (horas, horas por día, conductores al día): con dos ejes, dónde se cruzan las líneas lo decide la escala. **Las horas por día** son la cifra que compara meses de 28 y de 31 días. **La previsión del mes en curso va aparte**, encima y más clara, nunca sumada como real.
+- **Tres comparaciones a la vez** del último mes —frente al anterior, frente a hace tres meses y desde el primer mes— en vez de una: con la historia desde enero, «desde el primer mes» da −5 % y «desde julio» +15 %; cualquiera de las dos sola cuenta media historia.
+- **Un % solo entre meses con 7 días o más con datos**, y el «frente al periodo anterior» de un rango, solo si ese periodo tiene datos en el 90 % de sus días: el primer día de Barcelona (30/09, desde las 15:00) daba «+300 %» a octubre y «+26,5 %» a sus 15 días.
+- **Se quitan los cuatro gráficos de antes**, que los nuevos cubren (ver [[Visibilidad#Lo que se quitó, y por qué]]), y con ellos `/api/ultimos`. **Las cifras de arriba no cambian**: son las del [[Inicio]].
+- **Las piezas de los gráficos son de la casa** (`public/assets/js/graficos.js`), no de la vista: la siguiente pantalla con un gráfico no tiene que escribirlas otra vez.
+
+Y en la revisión del mismo día:
+
+- **«Frente al periodo anterior» se mide con la longitud de los días cerrados**, sin hoy: con el rango entero un lado llevaba un día de más, y aquí el fin de semana va 100-150 h por encima del lunes. El de los 15 días pasa de «+7,9 % frente a los 16 anteriores» a **+8 % frente a los 15 anteriores**.
+- **Un mes cerrado se compara entero** con el anterior (total contra total, y la media de los días con datos de cada uno, como el crecimiento). «A la misma altura» queda para el mes en curso. Antes la misma pantalla daba −6,0 %, −9,5 % y −6,4 % para septiembre frente a agosto.
+- **Sin pedidos, «—», no «0,00 €»**: de enero a junio hay horas (db/217) y ningún pedido (`bolt_order` empieza el 01/07/2026).
+- **El 01/07/2026 se deja a medias** y apuntado como límite conocido: cambiarlo es mover el CHECK de db/217 y hacer una excepción de ese día, y eso lo decide Camilo.
+
+→ [[Visibilidad#Los gráficos (25/10/2026)]]
 
 ## 2026-10-23 · Combustible: la revisión de la ventana fija
 

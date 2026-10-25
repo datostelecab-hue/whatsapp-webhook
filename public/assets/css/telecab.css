@@ -609,3 +609,13 @@ body .tc-selector button[aria-pressed="true"] {
 @media (prefers-reduced-motion: reduce) {
   body .tc-selector button { transition: none; }
 }
+/* La variante COMPACTA (25/10/2026), para elegir el rango de un gráfico en la
+   cabecera de su tarjeta (Visibilidad: semana, 15 días… todo). Siete botones del
+   tamaño de los de un formulario no cabían al lado del título a 1280 px y bajaban
+   en tres filas en el móvil. Mismo dibujo, más apretado. */
+body .tc-selector.tc-selector-compacto { gap: .25rem; }
+body .tc-selector.tc-selector-compacto button {
+  padding: .3rem .6rem;
+  border-radius: .6rem;
+  font-size: .75rem;
+}

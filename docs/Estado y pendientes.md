@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-10-23
+actualizado: 2026-10-25
 ---
 
 # Estado y pendientes
@@ -14,6 +14,18 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+
+## Visibilidad: los gráficos nuevos (25/10/2026)
+
+- **Desplegar y aplicar `db/217`** desde `/migraciones`. Sin ella todo funciona y la pantalla lo dice, pero «1 año», «Todo» y «Cómo hemos crecido» empiezan en julio (con ella, en enero). Ver [[Visibilidad#Las fotos diarias]].
+- **Mirarlo en producción con los datos de hoy**: en la copia local (del 23/10, sin crons) los tramos abiertos de `fv_tramo` siguen creciendo hasta «ahora», así que hoy y el 24/10 salen inflados (unas 1.000-1.200 h) y la previsión de octubre sale algo distinta de la de producción.
+- **El ritmo de la meta usa la meta de hoy para todos los meses** (30.000 h ÷ los días de cada mes): no hay meta guardada por mes. Si se quiere comparar cada mes con la suya, haría falta guardarla por mes en la configuración (una decisión de Camilo).
+- **El 01/07/2026 se queda a medias para siempre** (498,8 h; `fv_tramo` empieza ese día a las 02:02, y el CHECK de db/217 no deja que el histórico lo cubra). Baja un poco la media de julio. Camilo decide si se deja como límite conocido (así está apuntado) o si se hace una excepción de ese día. Ver [[Visibilidad#Lo que hay que saber de la historia de antes de julio]].
+- **A julio de producción le faltan las horas del 3035LTX** (unas 560 h, un 2,3 % del mes): sus tramos empiezan el 01/08. Se arregla rehaciendo el backfill de julio y `backfillMes(2026, 7)` en producción; no se ha tocado.
+- **Traer el final de 2025, o no**: BOLT borra un día más cada día (lo más antiguo que guarda hoy es el 26/06/2025). Para que «1 año» esté entero, del 26/10 al 31/12/2025 (unas 350 peticiones); para todo, del 26/06 (unas 900).
+- **Confirmar qué pasó desde el 06/05**: la empresa 143626 cae en BOLT a una décima parte (en estados y en pedidos). En «Cómo hemos crecido» se ve como un bache real.
+- **No regenerar `db/217`**: cambiaría su huella y en local saldría como «modificada».
+- **Octubre va 35 h por encima del crítico** (a día 24, en producción): para llegar a las 30.000 h hacen falta 1.163 h/día los siete días que quedan, prácticamente la capacidad entera (16 h × 73 coches = 1.168). La previsión al ritmo de la última semana es de unas 28.800 h, el 96 % de la meta.
 
 ## Combustible: Ballenoil por correo, Petroprix por Excel y su auditoría con Mapon (22-23/10/2026)
 

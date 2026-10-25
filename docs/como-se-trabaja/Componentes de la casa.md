@@ -31,6 +31,8 @@ actualizado: 2026-10-23
 | Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |
 | Que un icono diga algo al lector de pantalla (un color, un estado) | `role="img" aria-label="Rojo"` en el propio `<i>`; si ya va escrito al lado, `aria-hidden="true"` | un `<span class="sr-only">` dentro de la rejilla del Listado: es absoluto, se escapa de lo que se desplaza y le pone barra a la página entera ([[Trampas conocidas]], 23/10/2026) |
 | Un color | los tokens (`text-telecab-gold`, `bg-telecab-red/15`) | un hex a pelo |
+| **Un gráfico** | Chart.js 4.4.1 (cdnjs) + **`graficos.js`** (`Graficos.paleta`, `cruceta`, `globo`, `ejeEscalado`, `leyenda`, `cifra`, `tablaVista`, `botonesTabla`) | colores de serie a mano, dos ejes Y, la leyenda de Chart.js |
+| Elegir el rango de un gráfico (semana, 15 días… todo) | `.tc-selector.tc-selector-compacto` + input oculto | botones sueltos con su propio estado |
 
 Todo se carga solo desde `views/layout-gestion.ejs`: no hay que importar nada.
 
@@ -112,6 +114,24 @@ VisorFoto.abrir({ src: '/whatsapp/api/foto/96?v=501', titulo: 'Andrés Garrido',
 
 Lo estrenó el [[WhatsApp chat]]: la foto de la ficha de la cabecera y las fotos que mandan los conductores. Abrirlas en otra pestaña sacaba de la conversación para mirar una foto. En un enlace, deja pasar Ctrl, Mayús y la rueda: quien quiera la pestaña nueva la sigue teniendo.
 
+## Los gráficos: `graficos.js`
+
+`public/assets/js/graficos.js` (25/10/2026), nacido con los gráficos nuevos de [[Visibilidad]] y hecho con la skill de visualización (`dataviz`). **No lo carga el layout**: cada vista que pinte gráficos carga Chart.js y el plugin de etiquetas, y después este fichero (`est('/assets/js/graficos.js')`). Lo que trae:
+
+- **`paleta()`**: los colores de los tokens en el momento de pintar —un **acento** (`--tc-gold`, que cambia con el tema de cada uno), el **gris** del contexto, la **tinta** para una media, la rejilla, la superficie y el rojo de un estado—. Pasados por el validador de la skill: en claro el gris del contexto va más claro que el del texto, porque con el del texto oro y gris quedaban a ΔE 14 y se confundían hasta sin daltonismo.
+- **`cruceta`** (plugin): la raya fina en el punto que se mira, con el globo en modo «índice».
+- **`etiquetasFinales`** (plugin): la etiqueta al final de cada línea («previsto 27.890», «sept 26.221»), sin montarse: si dos caen juntas se separan y una raya las une a su punto. En una pantalla estrecha se comen el gráfico: con `anchoMinimo`, por debajo de ese ancho solo se pintan las de dentro. **Se decide al dibujar**, con el ancho del gráfico, y el margen de la derecha igual (`layout.padding` como función de `chart.width`): medido una vez al crear el gráfico, con la tabla gemela a la vista medía 0 y al volver faltaban las etiquetas.
+- **`globo(pal, extra)`**: el globo con todas las series del punto, el valor delante y una raya de su color como clave.
+- **`ejeX`, `ejeY`, `ejeEscalado(pal, valores, extra, { tramos })`**: un solo eje Y desde cero con la rejilla lisa; el escalado busca un techo y un paso redondos, siete tramos como mucho (sin él, Chart.js subía de 31.200 a 40.000). Va **sin `grace`**: con el techo fijado, el margen de Chart.js se sumaba después, doblaba el paso y dejaba el techo como raya suelta.
+- **`leyenda(id, items)`**: en HTML, siempre, con la forma de la marca (`barra`, `linea`, `discontinua`).
+- **`cifra({...})`**: la tarjeta pequeña de un número (etiqueta, valor, unidad, debajo), con el valor de un cambio en verde o rojo **y su flecha**.
+- **`tablaVista(id, columnas, filas)`** y **`botonesTabla()`**: la tabla gemela de cada gráfico y el botón `[data-tabla="x"]` que cambia `#g-x-caja` por `#g-x-tabla` (y esconde `#g-x-leyenda`).
+- **`ANIMA`**: sin animación para quien pide al sistema reducir el movimiento.
+
+**Un gráfico que se recarga con cada clic lleva un turno por carga** (`const yo = ++turno; … if (yo !== turno) return;`, ver `cargarRango` en `views/visibilidad.ejs`): una respuesta lenta que llega después de la rápida pintaba encima de lo que se había pedido. → [[Trampas conocidas]]
+
+Las reglas que no son código: **nunca dos ejes Y** (dos medidas de escala distinta van en dos gráficos pequeños), la raya discontinua es «objetivo» o «previsión» y nunca rejilla, rojo y verde solo para estados, y etiquetas solo donde dicen algo. → [[Identidad visual#Los gráficos]]
+
 ## El selector suelto: `.tc-selector`
 
 `Dialogo.formulario` ya traía su selector, pero vivía **dentro** del diálogo y no había forma de usarlo en un formulario montado a mano —que es lo que tienen varias pantallas—. `selector.js` es esa misma idea, suelta.
@@ -128,6 +148,8 @@ Lo estrenó el [[WhatsApp chat]]: la foto de la ficha de la cabecera y las fotos
 > El formulario sigue leyendo y escribiendo `campo('sede').value` como si fuera un `<select>` de toda la vida. **Cambiar el aspecto no obligó a tocar la lógica de nadie**: en Vehículos, los dos `<select>` que había se cambiaron sin tocar ni el envío ni la validación.
 
 Al elegir dispara **`input` y `change`** sobre el input, como el calendario. Va delegado en el documento, así que vale para lo que se pinte después; si rellenas el input desde fuera, llama a `Selector.montar(raiz)` para que repinte. Y se mueve con las flechas del teclado.
+
+**`tc-selector-compacto`** (25/10/2026): el mismo dibujo, más apretado, para elegir el rango de un gráfico en la cabecera de su tarjeta. Siete botones del tamaño de los de un formulario no cabían al lado del título a 1280 px. Lo usa [[Visibilidad]].
 
 ## El Listado
 

@@ -354,6 +354,18 @@ No son de los seis, pero forman parte de la misma red:
   qué es cada mensaje que entra o sale, la ventana de 24 h, la pausa del bot (los botones
   pasan siempre) y que cada envío de `services/whatsapp.js` quede apuntado con su origen,
   también el rechazado por Meta.
+- **`comprobar-visibilidad-tendencia.js`** (25/10/2026) — las reglas de los gráficos
+  largos de [[Visibilidad]], sin base: qué vale cada día (la foto del núcleo si tiene
+  horas y, si no, el histórico de BOLT de db/217; sin ninguna, el día no está), el
+  rango que se pide (topes, fechas que no lo son, lo que pasa de hoy), los cubos por
+  semana (de lunes a domingo, la del cambio de hora con sus 7 días, la de fin de año
+  entera) y por mes, hoy fuera de las medias, la proyección de cierre, el mes contra el
+  anterior a la misma altura y el crecimiento mes a mes. Desde la revisión del mismo
+  día, también: el periodo anterior con la longitud de los días cerrados (con semanas
+  idénticas no cambia nada), el ritmo de la meta ponderado por días, el mes cerrado
+  comparado entero y el mes sin datos, `agrupar=constructor` y compañía como 400, «Todo»
+  recortado al tope y los días del núcleo sin foto que rellena el rango (7 como mucho).
+  No mira el SQL ni la pantalla.
 - **`comprobar-barcelona.js`** (07/10/2026) — Barcelona sin base: el tablero del
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día

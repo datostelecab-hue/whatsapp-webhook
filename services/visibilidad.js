@@ -14,6 +14,7 @@
 
 const db = require('./db');              // bolt_order, visibilidad_config, visibilidad_dia
 const fv = require('./flotaViva/db');    // fv_tramo (núcleo)
+const serieRepo = require('./repo/visibilidadSerie');   // el histórico de BOLT de antes del núcleo (db/217)
 
 // Config por defecto = la pestaña Config de la hoja. dias_del_mes null = días reales.
 // `meta` es la del MES en horas. Las de turno son diarias y van aparte: la meta
@@ -323,41 +324,6 @@ async function resumen({ gente = false } = {}) {
   };
 }
 
-// ── Los últimos N días + hoy, para el gráfico de capacidad ───────────────────
-// Como el "CAPACIDAD X DIA" de la hoja: la línea de los días cerrados y, aparte, el
-// punto de HOY en curso. Lee las fotos (día natural) y cruza meses sin despeinarse;
-// hoy va siempre en vivo.
-async function ultimosDias(n = 15) {
-  const hoy = hoyISO();
-  const desde = diaISOhace(n);
-  const r = await db.consulta(
-    `SELECT to_char(dia, 'YYYY-MM-DD') AS dia, viaje_seg, espera_seg, conductores
-       FROM visibilidad_dia
-      WHERE dia >= $1::date AND dia < $2::date
-      ORDER BY dia`, [desde, hoy]);
-  const porDia = new Map(r.rows.map(x => [x.dia, x]));
-  const r1 = (x) => Math.round(x * 10) / 10;
-  const dias = [];
-  for (let i = n; i >= 1; i--) {
-    const d = diaISOhace(i);
-    const f = porDia.get(d);
-    const viaje = f ? Number(f.viaje_seg) : 0, espera = f ? Number(f.espera_seg) : 0;
-    dias.push({
-      dia: d, esHoy: false,
-      total: r1((viaje + espera) / 3600), waiting: r1(espera / 3600),
-      conductores: f ? Number(f.conductores) : 0,
-      sinFoto: !f,
-    });
-  }
-  const h = await horasVentana(hoy, 0, 1, 0);
-  dias.push({
-    dia: hoy, esHoy: true,
-    total: r1((h.viajeSeg + h.esperaSeg) / 3600), waiting: r1(h.esperaSeg / 3600),
-    conductores: h.conductores || 0, sinFoto: false,
-  });
-  return { n, dias };
-}
-
 // ── Serie del MES para los gráficos (por día, acumulado, ideal, crítico, brecha) ─
 // Lee la foto diaria (visibilidad_dia). Si el mes pedido no tiene fotos aún, las
 // genera al vuelo (backfill perezoso), para que el gráfico nunca salga vacío. El
@@ -381,14 +347,39 @@ async function serieMes(anio, mes) {
   // el backfill perezoso escribía fotos vacías de días que no han pasado.
   const esFuturo = anio > Yh || (anio === Yh && mes > Mh);
   const ultimoConDatos = esFuturo ? 0 : (esMesActual ? Dh : dm);   // mes pasado: todos los días
-  for (let d = 1; d <= ultimoConDatos; d++) {
+  // EL HISTÓRICO DE BOLT (25/10/2026). Los días de antes de que el núcleo tuviera
+  // datos (antes del 01/07/2026) viven en visibilidad_dia_historico (db/217). La
+  // regla del contrato: un día vale su foto si tiene horas y, si no, el histórico
+  // (services/visibilidadTendencia.js → fundirDias). Se lee, nunca se escribe: ni el
+  // recálculo de abajo lo pisa ni él pisa una foto con horas. Sin db/217, nada.
+  // El último día REAL del mes, no `dm`: si Config fija los días del mes (un
+  // número para todos los meses), con 30 se pedía el '2026-02-30', PostgreSQL daba
+  // error, el .catch se lo tragaba y febrero salía sin histórico, a cero.
+  const diasReales = diasEnMes(anio, mes);
+  const ultimoISO = `${anio}-${String(mes).padStart(2, '0')}-${String(diasReales).padStart(2, '0')}`;
+  const [hist, primerTramo] = esFuturo ? [{ filas: [] }, null] : await Promise.all([
+    serieRepo.historico(primero, ultimoISO).catch(() => ({ filas: [] })),
+    serieRepo.primerDiaNucleo().catch(() => null),
+  ]);
+  hist.filas.forEach(h => {
+    const d = Number(h.dia.slice(8, 10));
+    const f = fotos.get(d);
+    if ((f && (f.viajeSeg + f.esperaSeg) > 0) || (h.viajeSeg + h.esperaSeg) <= 0) return;
+    fotos.set(d, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg, origen: 'historico' });
+  });
+  // Tampoco se recalcula un día que no existe (el 31 de septiembre con «días del
+  // mes» a 31 en Config): sería una consulta que falla seguro.
+  for (let d = 1; d <= Math.min(ultimoConDatos, diasReales); d++) {
     const f = fotos.get(d);
     // Recalcula el día si FALTA o si su foto está a 0: un 0 puede ser una foto vieja
     // de antes de meter el histórico de tramos (backfill). Una foto con horas ya es
     // buena y no se recalcula. Al reescribir con capturarDia se sana también en la BD.
     if (f && (f.viajeSeg + f.esperaSeg) > 0) continue;
+    const dISO = `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    // Antes del primer tramo del núcleo no hay nada que recalcular: abrir julio (que
+    // se compara con junio) rehacía cada vez los 30 días de junio para escribir ceros.
+    if (primerTramo && dISO < primerTramo) continue;
     try {
-      const dISO = `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const h = await capturarDia(dISO);
       if (h) fotos.set(d, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg });
     } catch (e) { /* un día que falle no corta el resto del mes */ }
@@ -440,6 +431,9 @@ function armarSerie({ fotos, dm, config, dinero }) {
     const r1 = (x) => Math.round(x * 10) / 10;
     dias.push({
       dia: d,
+      // De dónde sale el día, si no es del núcleo (el histórico de BOLT): la tabla
+      // lo marca. Barcelona no lo trae y su serie no cambia.
+      ...(f.origen ? { origen: f.origen } : {}),
       total: r1(efectivas),
       waiting: r1(waiting),
       utilizacion: efectivas > 0 ? Math.round((efectivas - waiting) / efectivas * 1000) / 10 : null,
@@ -536,7 +530,7 @@ async function backfillMesActual() {
 }
 
 module.exports = {
-  resumen, serieMes, ultimosDias, leerConfig, guardarConfig,
+  resumen, serieMes, leerConfig, guardarConfig,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
   slice, horasVentana, dineroVentana,

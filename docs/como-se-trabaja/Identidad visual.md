@@ -69,6 +69,8 @@ Lo que **no** es pantalla y se queda como estaba: los mensajes de WhatsApp del b
 
 El script del final de `layout-gestion.ejs` fija el estilo de Chart.js para todos: IBM Plex Sans, texto en `--tc-muted`, rejilla en `--tc-border`, barras lisas con la esquina apenas redondeada y el globo con los colores del tema. Sustituye al plugin `barrasDegradadas`. Los colores de serie los sigue poniendo cada gráfico.
 
+**Desde el 25/10/2026, las piezas de un gráfico son de la casa** (`public/assets/js/graficos.js`, ver [[Componentes de la casa#Los gráficos: `graficos.js`]]), hechas con la skill de visualización: **un acento** para lo que importa y **gris** para el contexto (el mes anterior), **tinta** para una media; la raya **discontinua** solo para un objetivo o una previsión; el rojo y el verde, solo cuando el dato **es** un estado (por delante o por detrás, la zona crítica), y siempre con su flecha o su etiqueta; **nunca dos ejes Y**; barras de 24 px como mucho con la punta redondeada y la base recta; leyenda siempre y una tabla gemela de cada gráfico; un dato que no se puede comparar (un mes con menos de 7 días con datos) va en el **gris** del contexto y lo dice en el eje («pocos días»), no con el acento como si pesara lo mismo. Lo estrenó [[Visibilidad]].
+
 ## La pantalla de acceso
 
 **Desde el 07/10/2026, una foto a toda la pantalla y el formulario encima.** Camilo trajo una referencia («login así»): la imagen de fondo, un saludo grande a la izquierda y el formulario a la derecha, sobre la foto, con los campos blancos y la etiqueta encima de cada uno. La imagen la hicimos nosotros. Esa misma mañana hubo una versión intermedia: la carretera del logo en perspectiva, con el pin como punto de fuga. Duró unas horas y la sustituyó esta.

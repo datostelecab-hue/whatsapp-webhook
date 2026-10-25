@@ -212,12 +212,21 @@ const S = require('../modules/Barcelona/barcelona.service');
   igual('Ayer (día natural): 8 h, 2 de viaje, 1 de descanso', [rv.ayer.horasEfectivas, rv.ayer.viajeH, rv.ayer.descansoH, rv.ayer.conductores], [8, 2, 1, 1]);
   igual('Las métricas de Madrid: utilización y €·hora', [rv.ayer.utilizacion, rv.ayer.eurosHora, rv.ayer.viajesHora], [25, 12.5, 0.6]);
   igual('Sin meta guardada y los coches, los que se pueden planificar', [rv.config.meta, rv.config.vehiculos], [null, 3]);
-  const ul = await VS.ultimosDias(5);
-  igual('Últimos días: ayer 8 h (6 de espera), y hoy al final', [ul.dias.length, ul.dias[4].total, ul.dias[4].waiting, ul.dias[5].esHoy], [6, 8, 6, true]);
+  // El rango de los días (25/10/2026: sustituye a «los últimos 15 días»).
+  repo.primerDiaApuntes = async () => R.sumarDias(hoyV, -10);
+  const ul = await VS.rango({ ultimos: 5 });
+  igual('El rango de 5 días: ayer 8 h (6 de espera), y hoy al final, en curso', [ul.puntos.length, ul.puntos[4].valor, ul.puntos[4].esperaH, ul.puntos[5].enCurso], [6, 8, 6, true]);
+  let malo = null;
+  try { await VS.rango({ ultimos: 'x' }); } catch (e) { malo = e.estado; }
+  igual('Un rango que no vale es un 400, no un 500', malo, 400);
   const [ya, ym, yd] = ayerV.split('-').map(Number);
   const sv = await VS.serieMes(ya, ym);
   igual('La serie del mes: el día de ayer con sus 8 h', sv.dias[yd - 1].total, 8);
   igual('Sin meta, el ideal es cero (la pantalla no lo pinta)', sv.idealDiario, 0);
+  const cv = await VS.comoVamos(`${ya}-${String(ym).padStart(2, '0')}`);
+  igual('Cómo vamos: el acumulado al último día cerrado lleva las 8 h de ayer', cv.comoVamos && cv.comoVamos.acumulado, 8);
+  const cr = await VS.crecimiento();
+  igual('Cómo hemos crecido: un mes con sus 8 h, sin base para un %', cr.meses.map(m => [m.horas, m.cambioHorasDiaPct]).filter(x => x[0] > 0), [[8, null]]);
 
   // Sin db/181.
   repo.conductores = async () => { const e = new Error('no existe'); e.code = '42P01'; throw e; };

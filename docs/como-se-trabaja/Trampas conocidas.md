@@ -687,6 +687,19 @@ siempre, a propósito.
 Sin la marca en `bitacora_sello`, se recalculaba para siempre: **junio entero, en
 cada carga de la pantalla**.
 
+### Una foto a cero de antes del núcleo se recalculaba en cada carga
+
+`services/visibilidad.js` → `serieMes` (25/10/2026)
+
+La misma trampa, en Visibilidad. `serieMes` recalcula del núcleo todo día del mes
+que falte o esté a 0, y `visibilidad_dia` tiene mayo y junio a 0 (de antes de
+encender la ingesta, el 01/07/2026). Con «Cómo vamos», abrir julio pide también
+junio: **30 consultas a `fv_tramo` en cada carga, para escribir otra vez 30 ceros**.
+**Remedio:** antes del primer tramo del núcleo no se recalcula nada (se lee una vez
+cada diez minutos), y esos días toman lo del histórico de BOLT (db/217) si lo hay.
+Y el histórico va en su tabla, no en `visibilidad_dia`: el recálculo le escribiría
+un 0 encima. → [[Visibilidad#Las fotos diarias]]
+
 ---
 
 ## Concurrencia: el `if` no basta
@@ -729,6 +742,20 @@ llevaban el mismo bono y el segundo se lo encontraba gastado en el surtidor**.
 `modules/Planificacion/cobertura.service.js`
 
 Dos a la vez se pisarían el contador y, peor, **duplicarían mensajes**.
+
+### Una respuesta lenta pinta encima de la que se pidió después
+
+`views/visibilidad.ejs` → `cargarRango`, `cargarComoVamos` (revisión del 25/10/2026)
+
+Cada clic del selector de rango (y cada flecha del teclado, y el refresco de cada
+5 minutos) lanzaba su `fetch`, y la de «Todo» tarda más que la de «Semana». Si
+llegaba después, pintaba encima: el botón decía Semana y el gráfico, las cifras y
+el subtítulo eran de toda la historia. Y el `finally` de la primera que acababa
+quitaba la media luz con la otra aún en marcha. Con las flechas de mes, igual: el
+rótulo decía «Octubre 2026» con los datos de septiembre. **Remedio:** un turno
+por cargador (`const yo = ++turno; … if (yo !== turno) return;`): solo pinta, y
+solo quita la media luz, la última que se pidió. Toda pantalla que recargue un
+gráfico con cada clic lo necesita. → [[Componentes de la casa#Los gráficos: `graficos.js`]]
 
 ---
 
@@ -1164,6 +1191,29 @@ posteriores. No una: todas.**
 Devolvía `true` a todo: **apuntar a alguien a las pruebas del fichaje le quitaba las
 puertas sin que nadie lo hubiera decidido**.
 
+### Un objeto normal como lista de lo que vale deja pasar `constructor`
+
+`services/visibilidadTendencia.js` → `validarRango` (revisión del 25/10/2026)
+
+`if (!VENTANA_MEDIA[agrupar]) throw 400` parecía cerrar el parámetro, pero en un
+objeto normal `constructor`, `__proto__`, `toString` o `hasOwnProperty` también
+«existen» (son de `Object.prototype`). `?agrupar=constructor` pasaba, la ventana
+era una función, la fecha salía `'NaN-NaN-NaN'` y PostgreSQL devolvía un 500 en vez
+del 400 con motivo. **Remedio:** lo que viene de la URL se compara contra una
+lista (`['dia', 'semana', 'mes'].includes(x)`) o con
+`Object.prototype.hasOwnProperty.call`.
+
+### Con el techo del eje fijado, el `grace` de Chart.js dobla el paso
+
+`public/assets/js/graficos.js` → `ejeEscalado` (revisión del 25/10/2026)
+
+El eje fijaba el techo (35.000) y el paso (5.000), pero heredaba de `ejeY` un
+`grace: '6%'`, que Chart.js suma **después**: veía 36.050, siete tramos ya no le
+cabían, doblaba el paso a 10.000 y añadía el techo como raya suelta (0 · 10.000 ·
+20.000 · 30.000 · 35.000). Se veía en los tres gráficos con escala, en claro y en
+oscuro. No era el alto del gráfico, como parecía. **Remedio:** con el techo
+fijado, `grace: 0`; el margen de arriba ya lo pone `escala()`.
+
 ---
 
 ## Números de negocio que engañan
@@ -1550,6 +1600,39 @@ aplicación. Lo mismo con `prompt`, `alert`, `confirm` y `<select>`.
 
 **La regla:** si el navegador trae una versión de algo, la casa tiene la suya.
 → [[Componentes de la casa]]
+
+### «Frente al periodo anterior» con un día de más en un lado
+
+`services/visibilidadTendencia.js` → `resumenRango` (revisión del 25/10/2026)
+
+«15 días» son 15 días cerrados **y hoy**, que no entra en la media; el periodo
+anterior se medía con los 16 del rango (y por semanas, con el lunes adelantado,
+con más). Aquí el fin de semana va 100-150 h por encima del lunes, así que el día
+de más movía la cifra sin que cambiara nada: con semanas idénticas daba −1,8 % en
+«Semana» y +1,8 % en «15 días». **Remedio:** el anterior tiene la longitud de los
+días cerrados del actual. Lo prueba el comprobador con semanas idénticas.
+
+### El mismo «frente a agosto» con tres cifras distintas
+
+`services/visibilidadTendencia.js` → `compararMes` (revisión del 25/10/2026)
+
+«A la misma altura» cortaba el mes anterior en el día 30 aunque el elegido ya
+hubiera cerrado: septiembre salía −6,0 % frente a agosto (a día 30), −9,5 % en
+la tarjeta de su cierre y −6,4 % en «Cómo hemos crecido». **Remedio:** un mes
+cerrado se compara entero (total contra total; por día, la media de los días con
+datos de cada uno, como el crecimiento); «a la misma altura» queda para el mes en
+curso. Y un mes sin un dato (diciembre de 2025) no «cerró con 0 h y −30.000 h
+sobre el ideal»: es un mes sin datos.
+
+### Un cero que es un «no hay dato»: 0,00 € por hora
+
+`views/visibilidad.ejs` → `pintarKpis` (revisión del 25/10/2026)
+
+Con el histórico de BOLT (db/217), de enero a junio hay horas, pero `bolt_order`
+empieza el 01/07/2026: las cifras de arriba decían «0,00 €» por hora, «0 v/h» y
+«0 viajes terminados», como si se hubiera trabajado gratis. **Remedio:** con horas
+y sin un pedido, «—» y «sin pedidos de BOLT ese mes». Un hueco no es un cero
+(es la misma regla del contrato de los días).
 
 ## MapLibre: tres formas de que el mapa no salga
 

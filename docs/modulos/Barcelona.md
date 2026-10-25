@@ -99,6 +99,9 @@ Lo que cambia es de dónde salen los datos (`modules/Barcelona/visibilidad.servi
 | Turnos | el cuadrante (`f_cobertura`) | su planificador; quien no tiene plaza, por su hora de inicio |
 | Configuración | `visibilidad_config` · `parametros` | `visibilidad_config` · `parametros_barcelona` |
 | La serie del mes | fotos diarias (`visibilidad_dia`) | al vuelo: son una veintena de conductores |
+| Los gráficos largos (25/10/2026) | fotos + histórico de BOLT (db/217) | sus días al vuelo, desde su primer apunte (30/09/2026) |
+
+**Los gráficos de la tendencia** (25/10/2026: el rango de los días, «cómo vamos» y «cómo hemos crecido», ver [[Visibilidad#Los gráficos (25/10/2026)]]) son las mismas piezas de `services/visibilidadTendencia.js`; Barcelona solo pone sus días (`diasDeLaSede`) en `/barcelona/api/visibilidad/rango`, `/crecimiento` y `/como-vamos`. Su primer día es de media tarde y su septiembre, un día: por eso un % solo se da entre meses con 7 días con datos o más, y el «frente al periodo anterior» de un rango, con el 90 % de sus días.
 
 **Sin meta de partida.** No hay una meta de Barcelona que copiar, y una inventada pintaría un ideal y una brecha que no miden nada. Hasta que se ponga en *Config*, la pantalla enseña las horas sin el ideal, el crítico ni la brecha (en la tabla, «·»). Los coches, si no se dicen, son los activos en BOLT.
 
