@@ -79,6 +79,7 @@
       superficie: cv('--tc-card'),
       rojo: cv('--tc-red'),
       rojoLavado: cv('--tc-red', 0.07),
+      verde: cv('--tc-green'),          // solo para un estado (por delante del ideal)
     };
   }
 

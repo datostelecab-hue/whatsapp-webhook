@@ -53,7 +53,7 @@ Hechos con la skill de visualización (`dataviz`): **un acento** (el oro, o el c
 
 **Líneas, no barras** (el mismo 25/10/2026). La primera versión de «Horas por día» y de «Cómo hemos crecido» iba en barras, y Camilo: *«Me gustaba más sin barras, quítale las barras, la línea de subida y bajada estaba mejor»*. Las cuatro van ahora en **línea** oro con el área que se apaga hacia abajo (`Graficos.area`), curva `monotone` (no se pasa por encima del mejor día ni baja de cero entre dos puntos) y un punto por día o mes mientras quepa. **Lo que aún corre va en un punto hueco** (anillo), fuera de la línea si va a medias. La **cifra de cada punto, encima si sube y debajo si baja**, para que la raya que llega no la pise.
 
-Arriba, **las cifras de siempre** (horas del mes contra la meta, utilización, €/h, neto, viajes/h) y las tarjetas en vivo **no cambian**: son las del Inicio. Debajo, tres tarjetas:
+Arriba, **las cifras de siempre** (horas del mes contra la meta, utilización, €/h, neto, viajes/h) y las tarjetas en vivo **no cambian**: son las del Inicio. Debajo, cuatro tarjetas:
 
 ### 1. Horas por día, con su rango
 
@@ -62,7 +62,7 @@ El viejo «Capacidad por día · últimos 15 días», con un selector: **Semana 
 - **Hasta 2 meses, un punto por día**; 6 meses y 1 año, **por semanas** (de lunes a domingo); más de 400 días, por meses. Por semanas o meses **cada punto es la media diaria del periodo** (h/día): el eje dice lo mismo en todos los rangos, la línea de la meta vale para todos, y la semana en curso no parece un hundimiento. El total del periodo va en el globo.
 - **Hoy, en un punto hueco y fuera de la línea** («en curso»). Por días es el parcial en vivo (en la línea la hundiría al final: un día de mil horas lleva cuatrocientas a mediodía); por semanas o meses **no entra en la media** del cubo (a las diez de la mañana la bajaría entera) y va aparte en el globo.
 - **Las cifras de cada punto**, mientras quepan (unos 38 px por punto): con 15 días se leen todas; con 2 meses o un año por semanas, la línea sola (sin puntos), y las cifras en el globo y la tabla.
-- **La media móvil**: 7 días por días (quita el vaivén del fin de semana, que aquí es de 100-150 h), 4 semanas por semanas. No mete hoy, y no se pinta con menos del 60 % de la ventana con datos (al principio de la historia sería la media de dos días).
+- **Sin media móvil** (quitada el mismo 25/10/2026). Era una raya gris por encima de la del día (7 días por días, 4 semanas por semanas) y Camilo no sabía qué era: *«quita la línea de la mediana, no sé de qué es, una gris»*. La tendencia la dice la línea oro y la media del periodo, la cifra de arriba. **El servidor la sigue calculando** (`media` y `ventanaMedia` en `/api/rango`): no la pinta nadie, pero está por si vuelve.
 - **El ritmo que pide la meta**: la meta ÷ los días de **cada** mes (968 h/día en octubre, 1.000 en septiembre, 1.071 en febrero), en escalones. Ojo: es la meta de **hoy** aplicada a todos los meses; no hay meta guardada por mes.
 - **Las cifras**: la media del periodo (días cerrados), **frente al periodo anterior** de la misma longitud (solo si ese periodo tiene datos en el 90 % de sus días: Barcelona comparaba sus 15 días con un periodo que empezaba antes de su primer apunte y le daba «+26,5 %»), **contra el ritmo de la meta**, y el mejor día (semana, mes).
   - **«La misma longitud» son los días cerrados del periodo**, sin hoy: «15 días» se compara con los 15 de antes, «Semana» con los 7 de antes. Con el rango entero (16 días, y por semanas el lunes adelantado) un lado llevaba un día de más, y con semanas idénticas salía −1,8 % o +1,8 % sin que cambiara nada (ver [[Trampas conocidas]]).
@@ -85,6 +85,17 @@ Sigue al selector de mes de arriba, como la tabla. El acumulado del mes contra e
 
 `GET /visibilidad/api/como-vamos?mes=AAAA-MM`: la serie de `/api/serie` de siempre, más el mes anterior y la comparación. La pantalla ya no pide `/api/serie` (se queda para quien la use).
 
+### 2 bis. Brecha sobre el ideal (solo del mes)
+
+La de antes de la tendencia, **en barras**: se quitó con ella (la cifra quedó en Cómo vamos y la serie en la tabla) y volvió el mismo día. Camilo: *«Conserva el gráfico de antes en donde teníamos la visibilidad de las horas que debíamos por medio de barras, esa era muy buena, solo del mes»*.
+
+- **Una barra por día cerrado** del mes elegido (sigue al selector de mes, como Cómo vamos y la tabla): el acumulado menos el ideal de la meta a su cierre. **Verde** si vamos por delante, **rojo** con las horas que debemos; aquí rojo y verde porque el dato **es** un estado. El cero, más marcado.
+- **Hoy no entra** (va a medias: su barra siempre saldría hundida). Los días por venir dejan su hueco: se ve cuánto mes queda.
+- **La cifra grande** de arriba a la derecha es la de la tarjeta «Sobre el ideal de la meta» de Cómo vamos (`comoVamos.brecha`, al cierre del día `corte`): el mismo día, la misma cuenta.
+- **En el globo**, el acumulado y el ideal de ese día, y **cuánto movió la brecha** ese día (sus horas menos lo que pedía la meta).
+- **Sin meta** (una sede que aún no la tiene en Config) no hay ideal: la tarjeta lo dice y no pinta barras.
+- Lee la misma respuesta que Cómo vamos (`/api/como-vamos`): no hay petición nueva.
+
 ### 3. Cómo hemos crecido
 
 Mes a mes desde el primero con datos, en **tres gráficos pequeños en vez de uno con dos ejes** (horas, horas por día y conductores tienen escalas distintas; con dos ejes, dónde se cruzan las líneas lo decide la escala, no los datos): **Horas al mes** a todo el ancho, y debajo **Horas por día** y **Conductores al día**.
@@ -103,14 +114,14 @@ Los tres gráficos usan la escala de la casa (`ejeEscalado`): un techo y un paso
 
 ### Lo que se quitó, y por qué
 
-Los cuatro gráficos de antes los cubren los nuevos:
+Tres de los cuatro gráficos de antes los cubren los nuevos (el cuarto, la brecha, volvió tal cual: ver arriba):
 
 | Antes | Ahora |
 |---|---|
 | Capacidad por día · últimos 15 días | Horas por día, rango «15 días» (y el resto de rangos) |
 | Acumulado vs Ideal vs Crítico | entero en Cómo vamos, con el mes anterior encima. El crítico pasó de rojo al 40 % (lo que más se veía sin ser un dato) a un lavado suave |
 | Horas efectivas por día (y su espera) | Horas por día por días; la espera y la utilización, en el globo y en su tabla |
-| Brecha sobre el ideal | la cifra, en Cómo vamos; la serie, en la columna «Brecha» de la tabla del mes |
+| Brecha sobre el ideal | **volvió el mismo día, en barras** (ver «2 bis»): se quitó y Camilo la echó de menos |
 
 `/api/ultimos` y `ultimosDias` (Madrid y Barcelona) se quitaron: no los llamaba nadie más.
 

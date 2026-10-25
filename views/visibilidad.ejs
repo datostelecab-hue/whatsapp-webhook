@@ -133,15 +133,17 @@
   <%
     /* LA TENDENCIA (25/10/2026). Camilo: «que el gráfico de los últimos 15 días
        se pueda agrandar… gráficos mucho más profesionales, que muestren cómo van
-       las horas actualmente y cómo hemos crecido». Tres tarjetas:
+       las horas actualmente y cómo hemos crecido». Cuatro tarjetas:
          · Horas por día, con su rango (de una semana a todo).
          · Cómo vamos: el mes elegido contra el anterior, a la misma altura.
+         · Brecha sobre el ideal: las horas que debemos a la meta, día a día, en
+           barras y solo del mes (la de antes, que volvió el mismo día: Camilo,
+           «esa era muy buena, solo del mes»).
          · Cómo hemos crecido: mes a mes.
-       Sustituyen a los cuatro gráficos de antes: «Capacidad por día · últimos 15
-       días» (ahora es el rango de 15 días), «Acumulado vs Ideal vs Crítico» (está
-       entero en Cómo vamos, con el mes anterior encima), «Horas efectivas por
-       día» (el rango por días; la espera, en el globo y en la tabla) y «Brecha
-       sobre el ideal» (la cifra, en Cómo vamos; la serie, en la tabla del mes).
+       Sustituyen a los gráficos de antes: «Capacidad por día · últimos 15 días»
+       (ahora es el rango de 15 días), «Acumulado vs Ideal vs Crítico» (está entero
+       en Cómo vamos, con el mes anterior encima) y «Horas efectivas por día» (el
+       rango por días; la espera, en el globo y en la tabla).
        El estilo sigue la skill de visualización: un acento (el del tema), el gris
        para el contexto, rayas finas, el globo con todas las series, una leyenda
        siempre y la tabla al lado de cada gráfico para quien no lo pueda ver. */
@@ -195,6 +197,26 @@
       </div>
       <div id="g-vamos-cifras" class="grid grid-cols-2 xl:grid-cols-1 gap-2 content-start"></div>
     </div>
+  </section>
+
+  <!-- ── 2 bis. Brecha sobre el ideal: lo que debemos, solo del mes ─────────── -->
+  <section class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mb-4" aria-labelledby="g-brecha-titulo">
+    <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+      <div class="min-w-0">
+        <h2 id="g-brecha-titulo" class="text-sm font-semibold text-telecab-text">Brecha sobre el ideal</h2>
+        <p id="g-brecha-sub" class="text-xs text-telecab-muted">El acumulado menos el ideal de la meta, al cierre de cada día del mes.</p>
+      </div>
+      <div class="flex items-start gap-3">
+        <div class="text-right">
+          <p id="g-brecha-num" class="text-2xl font-semibold tabular-nums leading-none text-telecab-muted">—</p>
+          <p id="g-brecha-num-sub" class="text-[11px] text-telecab-muted mt-1">al último día cerrado</p>
+        </div>
+        <%- botonTabla('brecha') %>
+      </div>
+    </div>
+    <div id="g-brecha-caja" class="relative h-[240px] transition-opacity"><canvas id="g-brecha" role="img" aria-label="Brecha sobre el ideal, día a día"></canvas></div>
+    <div id="g-brecha-tabla" class="hidden max-h-[300px] overflow-auto rounded-lg border border-telecab-border"></div>
+    <div id="g-brecha-leyenda" class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-telecab-muted"></div>
   </section>
 
   <!-- ── 3. Cómo hemos crecido: mes a mes ──────────────────────────────────── -->
@@ -360,7 +382,7 @@
   let charts = {};
   // Las piezas de los gráficos (paleta, cruceta, globo, ejes, leyenda, cifras y
   // la tabla gemela) son de la casa: public/assets/js/graficos.js.
-  const { ANIMA, paleta, cruceta, etiquetasFinales, globo, area, ejeX, ejeEscalado,
+  const { ANIMA, paleta, cruceta, etiquetasFinales, globo, area, ejeX, ejeY, ejeEscalado,
           leyenda, cifra, flechaDe, tonoDe, tablaVista, atenuar, errorEn } = window.Graficos;
   Graficos.botonesTabla();
 
@@ -500,7 +522,6 @@
     const res = r.resumen || {};
     const porDia = agr === 'dia';
     const nombreSerie = porDia ? 'horas del día' : agr === 'semana' ? 'media diaria de la semana' : 'media diaria del mes';
-    const nombreMedia = r.ventanaMedia === 7 ? 'media de 7 días' : r.ventanaMedia === 28 ? 'media de 4 semanas' : 'media de 12 semanas';
     const ritmos = puntos.map(p => p.ritmoMeta);
     const hayMeta = ritmos.some(x => x > 0);
     // El de la leyenda es el del último punto (la raya va en escalones, mes a mes).
@@ -544,7 +565,10 @@
     const valores = puntos.map(p => p.valor);
     const cerrados = puntos.map(p => (p.enCurso ? null : p.valor));
     const enCurso = puntos.map(p => (p.enCurso ? p.valor : null));
-    const medias = puntos.map(p => p.media);
+    // Sin la media móvil (25/10/2026). Era una raya gris por encima de la del día y
+    // Camilo no sabía qué era («quita la línea de la mediana, no sé de qué es»): la
+    // tendencia ya la dice la línea oro, y la media del periodo, la cifra de arriba.
+    // El servidor la sigue mandando (`media` de cada punto) por si vuelve.
     // Los puntos y sus cifras, mientras quepan: con 15 días se leen todas; con un
     // año por semanas, la línea sola (las cifras las dicen el globo y la tabla).
     const radio = n <= 16 ? 4 : n <= 35 ? 3 : 0;
@@ -572,9 +596,6 @@
           pointRadius: 5, pointHoverRadius: 6, pointBackgroundColor: pal.superficie, pointBorderColor: pal.acento, pointBorderWidth: 2.5,
           pointHoverBackgroundColor: pal.superficie, pointHoverBorderColor: pal.acento, pointHoverBorderWidth: 2.5,
           datalabels: { display: ctx => enCurso[ctx.dataIndex] != null && caben(ctx), ...cifraPunto(pal.acento, '700') } },
-        { label: nombreMedia, data: medias, order: 2, borderColor: pal.tinta, borderWidth: 1.5,
-          borderCapStyle: 'round', borderJoinStyle: 'round', cubicInterpolationMode: 'monotone', spanGaps: true, fill: false,
-          pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: pal.tinta, pointHoverBorderColor: pal.superficie, pointHoverBorderWidth: 2 },
         { label: 'ritmo que pide la meta', data: hayMeta ? ritmos : [], order: 3, borderColor: pal.apagado, fill: false,
           borderDash: [6, 4], borderWidth: 1.5, stepped: 'middle', pointRadius: 0, pointHoverRadius: 0, hidden: !hayMeta },
       ] },
@@ -596,7 +617,7 @@
         },
         // La escala de la casa, como los otros dos: con la de Chart.js el techo
         // saltaba a 1.500 para días de 1.070 y la tercera parte de arriba iba vacía.
-        scales: { x: ejeX(pal), y: ejeEscalado(pal, [...valores, ...medias, ...(hayMeta ? ritmos : [])]) },
+        scales: { x: ejeX(pal), y: ejeEscalado(pal, [...valores, ...(hayMeta ? ritmos : [])]) },
       },
       plugins: [cruceta],
     });
@@ -607,7 +628,6 @@
     leyenda('g-rango-leyenda', [
       { tipo: 'linea', color: pal.acento, texto: porDia ? 'Horas del día' : 'Media diaria del periodo' },
       enCurso.some(x => x != null) ? { tipo: 'punto', hueco: true, color: pal.acento, texto: porDia ? 'Hoy, en curso' : 'En curso (sin hoy)' } : null,
-      { tipo: 'linea', color: pal.tinta, texto: nombreMedia[0].toUpperCase() + nombreMedia.slice(1) },
       hayMeta ? { tipo: 'discontinua', color: pal.apagado, texto: 'Ritmo que pide la meta' + (ritmoActual ? ' (' + nf0.format(ritmoActual) + ' h/día)' : '') } : null,
     ]);
 
@@ -621,8 +641,8 @@
     nota.classList.toggle('hidden', !notas.length);
 
     tablaVista('g-rango-tabla',
-      [porDia ? 'Día' : agr === 'semana' ? 'Semana' : 'Mes', porDia ? 'Horas' : 'h/día', nombreMedia, 'Ritmo meta', 'Total h', 'Viaje h', 'Espera h', '% util.', 'Conductores', 'Fuente'],
-      puntos.map(p => [tituloPunto(p, agr), p.valor == null ? '' : nf1.format(p.valor), p.media == null ? '' : nf0.format(p.media),
+      [porDia ? 'Día' : agr === 'semana' ? 'Semana' : 'Mes', porDia ? 'Horas' : 'h/día', 'Ritmo meta', 'Total h', 'Viaje h', 'Espera h', '% util.', 'Conductores', 'Fuente'],
+      puntos.map(p => [tituloPunto(p, agr), p.valor == null ? '' : nf1.format(p.valor),
         p.ritmoMeta ? nf0.format(p.ritmoMeta) : '', nf1.format(p.total), nf1.format(p.viajeH), nf1.format(p.esperaH),
         p.utilizacion == null ? '' : nf1.format(p.utilizacion), p.conductores || '', p.origen === 'historico' ? 'histórico BOLT' : p.origen === 'mixto' ? 'mixto' : p.origen ? 'núcleo' : '']));
   }
@@ -637,6 +657,7 @@
     setTxt('v-mes-lbl', MESES[mes - 1] + ' ' + anio);
     const mm = String(mes).padStart(2, '0');
     atenuar('g-vamos-caja', true);
+    atenuar('g-brecha-caja', true);
     let r;
     try {
       r = await pedir(API + '/como-vamos?mes=' + anio + '-' + mm);
@@ -644,16 +665,19 @@
       if (yo !== turnoMes) return;
       errorEn('g-vamos-cifras', 'No se pudo cargar el mes: ' + e.message);
       atenuar('g-vamos-caja', false);
+      atenuar('g-brecha-caja', false);
       return;
     }
     if (yo !== turnoMes) return;
     atenuar('g-vamos-caja', false);
+    atenuar('g-brecha-caja', false);
     if (avisarFalta(r)) return;
     pintarKpis(r.totales || {}, r.config || {});
     setTxt('k-sub-mes', MESES[r.mes - 1] + ' ' + r.anio);
     rellenarTabla(r.dias, r.ultimoConDatos, sinMeta(r));
     rellenarConfig(r.config);
     pintarVamos(r);
+    pintarBrecha(r);
   }
 
   // KPIs grandes del MES elegido (siguen al selector de mes, no a "hoy").
@@ -875,6 +899,95 @@
         actual[i] != null && anterior[i] != null ? sig(actual[i] - anterior[i]) : '',
         ideal[i] == null ? '' : nf0.format(ideal[i]), critico[i] == null ? '' : nf0.format(critico[i]),
         prevision[i] == null || i < corte ? '' : nf0.format(prevision[i])]));
+  }
+
+  /**
+   * BRECHA SOBRE EL IDEAL, en barras y solo del mes elegido. Es la de antes de la
+   * tendencia: se quitó con ella (la cifra quedó en Cómo vamos) y volvió el mismo
+   * 25/10/2026, Camilo: «esa era muy buena, solo del mes». Cada día cerrado, su
+   * acumulado menos el ideal de la meta: en verde lo que vamos por delante, en
+   * rojo las horas que debemos. Rojo y verde porque aquí el dato ES un estado.
+   * Hoy no entra (va a medias: su barra siempre saldría hundida); los días por
+   * venir dejan su hueco, para que se vea cuánto mes queda.
+   */
+  function pintarBrecha(r) {
+    const pal = paleta();
+    const ca = r.comoVamos || {};
+    const noMeta = sinMeta(r);
+    const corte = ca.corte || 0;            // el último día cerrado (en un mes pasado, el último con datos)
+    const dias = r.dias || [];
+    const nombreMes = MESES[r.mes - 1].toLowerCase();
+    const labels = dias.map((d, i) => String(i + 1));
+    const brechas = dias.map((d, i) => (noMeta || i >= corte || d.brecha == null ? null : d.brecha));
+    // Lo que cada día movió la brecha: sus horas menos lo que pedía la meta ese día.
+    const cambio = brechas.map((b, i) => (b == null ? null : i === 0 ? b : brechas[i - 1] == null ? null : b - brechas[i - 1]));
+    const colorDe = v => (v >= 0 ? pal.verde : pal.rojo);
+
+    setTxt('g-brecha-sub', noMeta
+      ? 'Sin meta no hay ideal: ponla en Config para ver la brecha.'
+      : 'El acumulado de ' + nombreMes + ' menos el ideal de la meta, al cierre de cada día.' + (r.esMesActual ? ' Hoy no entra: aún corre.' : ''));
+    // La cifra grande, la de la tarjeta de Cómo vamos: el mismo día, la misma cuenta.
+    const b = noMeta || !corte ? null : (ca.brecha != null ? ca.brecha : brechas[corte - 1]);
+    const num = document.getElementById('g-brecha-num');
+    if (num) {
+      num.textContent = b == null ? '—' : sig(b) + ' h';
+      num.className = 'text-2xl font-semibold tabular-nums leading-none ' + (b == null ? 'text-telecab-muted' : b >= 0 ? 'text-telecab-green' : 'text-telecab-red');
+    }
+    setTxt('g-brecha-num-sub', noMeta ? 'sin meta en Config' : corte ? 'al cierre del día ' + corte : r.esMesActual ? 'aún no hay días cerrados' : 'sin días con datos');
+
+    if (charts.brecha) charts.brecha.destroy();
+    const canvas = document.getElementById('g-brecha');
+    charts.brecha = new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets: [{
+        label: 'sobre el ideal', data: brechas,
+        backgroundColor: brechas.map(v => (v == null ? 'transparent' : colorDe(v))),
+        hoverBackgroundColor: brechas.map(v => (v == null ? 'transparent' : colorDe(v))),
+        // La punta redondeada y la base recta, en el cero (arriba o abajo según el signo).
+        borderRadius: 3, borderSkipped: 'start', maxBarThickness: 24, barPercentage: 0.8, categoryPercentage: 0.9,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: ANIMA,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 8, right: 8 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: globo(pal, { callbacks: {
+            // Sobre un día sin barra (hoy, los que faltan, todo el mes sin meta) Chart.js
+            // llama al globo con la lista vacía: sin título ni pie, no lo dibuja.
+            // Antes reventaba en it[0] y el globo del último día se quedaba congelado.
+            title: it => { if (!it.length) return ''; const dia = it[0].dataIndex + 1; return DIAS_LARGOS[new Date(r.anio, r.mes - 1, dia).getDay()].replace(/^./, c => c.toUpperCase()) + ' ' + dia + ' de ' + nombreMes; },
+            label: c => sig(c.parsed.y) + ' h sobre el ideal',
+            labelPointStyle: () => ({ pointStyle: 'rect', rotation: 0 }),
+            labelColor: c => ({ borderColor: colorDe(c.parsed.y), backgroundColor: colorDe(c.parsed.y), borderWidth: 2 }),
+            footer: it => {
+              if (!it.length) return [];
+              const i = it[0].dataIndex, d = dias[i];
+              const l = ['Acumulado ' + nf0.format(d.acumulado) + ' h · ideal ' + nf0.format(d.ideal) + ' h'];
+              if (cambio[i] != null) l.push('Ese día: ' + nf0.format(d.total || 0) + ' h (' + sig(cambio[i]) + ' h a la brecha)');
+              return l;
+            },
+          } }),
+        },
+        // El eje no es el de horas desde cero hacia arriba: la brecha va casi siempre
+        // por debajo. El cero, más marcado: es la raya que separa deber de ir por delante.
+        scales: { x: ejeX(pal, { ticks: { color: pal.apagado, maxRotation: 0, autoSkip: true, autoSkipPadding: 6 } }),
+          y: ejeY(pal, { grace: '8%',
+            grid: { color: c => (c.tick && c.tick.value === 0 ? pal.apagado : pal.rejilla), lineWidth: c => (c.tick && c.tick.value === 0 ? 1.5 : 1), drawTicks: false },
+            // precision 0: sin una barra el eje va de 0 a 1 y salían «0, +1, +1, +2».
+            ticks: { color: pal.apagado, padding: 6, maxTicksLimit: 6, precision: 0, callback: v => sig(v) } }) },
+      },
+    });
+    canvas.setAttribute('aria-label', 'Brecha sobre el ideal de ' + nombreMes + (b != null ? ': ' + sig(b) + ' horas al cierre del día ' + corte : '') + '. Los datos están en la tabla.');
+
+    leyenda('g-brecha-leyenda', noMeta ? [] : [
+      { tipo: 'barra', color: pal.verde, texto: 'Por delante del ideal' },
+      { tipo: 'barra', color: pal.rojo, texto: 'Por detrás: las horas que debemos' },
+    ]);
+
+    tablaVista('g-brecha-tabla', ['Día', 'Horas del día', 'Acumulado', 'Ideal', 'Brecha', 'Cambio del día'],
+      dias.slice(0, corte).map((d, i) => [String(i + 1), nf1.format(d.total || 0), nf0.format(d.acumulado),
+        noMeta ? '' : nf0.format(d.ideal), brechas[i] == null ? '' : sig(brechas[i]), cambio[i] == null ? '' : sig(cambio[i])]));
   }
 
   // ══ 3. CÓMO HEMOS CRECIDO ═════════════════════════════════════════════════
