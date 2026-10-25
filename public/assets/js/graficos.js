@@ -24,7 +24,8 @@
 //   new Chart(lienzo, { …, options: { animation: G.ANIMA,
 //     plugins: { cruceta: { color: pal.rejilla }, tooltip: G.globo(pal, { callbacks }) },
 //     scales: { x: G.ejeX(pal), y: G.ejeEscalado(pal, valores) } }, plugins: [G.cruceta] });
-//   G.leyenda('id', [{ tipo: 'barra'|'linea'|'discontinua', color, texto }]);
+//   G.leyenda('id', [{ tipo: 'barra'|'linea'|'discontinua'|'punto', color, texto, hueco }]);
+//   backgroundColor: G.area('--tc-gold')   (el área que se apaga debajo de una línea)
 //   caja.innerHTML = G.cifra({ etq, valor, unidad, sub, tono, flecha, ayuda });
 //   G.tablaVista('id', columnas, filas);  G.botonesTabla();
 // Apuntado en docs/como-se-trabaja/Componentes de la casa.md.
@@ -179,6 +180,22 @@
     }, extra || {});
   }
 
+  /**
+   * EL ÁREA DEBAJO DE UNA LÍNEA: el color de la serie, que se apaga hacia el
+   * suelo. Va como color «scriptable» de Chart.js porque el degradado necesita
+   * el alto del gráfico, y ese solo se sabe al dibujar (y cambia con la ventana).
+   */
+  function area(token, arriba = 0.18, abajo = 0) {
+    return c => {
+      const a = c.chart.chartArea;
+      if (!a) return cv(token, arriba / 2);
+      const g = c.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+      g.addColorStop(0, cv(token, arriba));
+      g.addColorStop(1, cv(token, abajo));
+      return g;
+    };
+  }
+
   /** Un eje Y de horas: desde cero, rejilla fina y lisa, sin raya de eje. */
   function ejeY(pal, extra) {
     return Object.assign({
@@ -218,7 +235,10 @@
     ticks: { color: pal.apagado, maxRotation: 0, autoSkip: true, autoSkipPadding: 8 },
   }, extra || {});
 
-  /** La leyenda en HTML: siempre está, con la misma forma que la marca (barra o raya). */
+  /**
+   * La leyenda en HTML: siempre está, con la misma forma que la marca (barra,
+   * raya o punto). `hueco: true` en un punto es el anillo de lo que aún corre.
+   */
   function leyenda(id, items) {
     const caja = document.getElementById(id);
     if (!caja) return;
@@ -229,6 +249,7 @@
       const m = document.createElement('span');
       m.setAttribute('aria-hidden', 'true');
       if (it.tipo === 'barra') { m.className = 'inline-block w-2.5 h-2.5 rounded-sm'; m.style.background = it.color; }
+      else if (it.tipo === 'punto') { m.className = 'inline-block w-2.5 h-2.5 rounded-full'; m.style.border = `2px solid ${it.color}`; m.style.background = it.hueco ? 'transparent' : it.color; }
       else { m.className = 'inline-block w-4'; m.style.borderTop = `2px ${it.tipo === 'discontinua' ? 'dashed' : 'solid'} ${it.color}`; }
       const t = document.createElement('span');
       t.textContent = it.texto;
@@ -293,7 +314,7 @@
   };
 
   global.Graficos = {
-    cv, esc, QUIETO, ANIMA, paleta, cruceta, etiquetasFinales, globo, ejeX, ejeY, escala, ejeEscalado,
+    cv, esc, QUIETO, ANIMA, paleta, cruceta, etiquetasFinales, globo, area, ejeX, ejeY, escala, ejeEscalado,
     leyenda, cifra, flechaDe, tonoDe, tablaVista, botonesTabla, atenuar, errorEn,
   };
 })(window);

@@ -164,8 +164,8 @@
           <button type="button" data-v="15" title="Los 15 días cerrados y hoy">15 días</button>
           <button type="button" data-v="30" title="Los 30 días cerrados y hoy">30 días</button>
           <button type="button" data-v="60" title="Los 60 días cerrados y hoy, día a día">2 meses</button>
-          <button type="button" data-v="182" title="Medio año, por semanas: cada barra es la media diaria de su semana">6 meses</button>
-          <button type="button" data-v="365" title="Un año, por semanas: cada barra es la media diaria de su semana">1 año</button>
+          <button type="button" data-v="182" title="Medio año, por semanas: cada punto es la media diaria de su semana">6 meses</button>
+          <button type="button" data-v="365" title="Un año, por semanas: cada punto es la media diaria de su semana">1 año</button>
           <button type="button" data-v="todo" title="Desde el primer día con datos">Todo</button>
         </div>
         <%- botonTabla('rango') %>
@@ -202,7 +202,7 @@
     <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
       <div class="min-w-0">
         <h2 id="g-crec-titulo" class="text-sm font-semibold text-telecab-text">Cómo hemos crecido</h2>
-        <p id="g-crec-sub" class="text-xs text-telecab-muted">Mes a mes. El mes en curso lleva lo hecho y, más claro, lo que falta al ritmo de ahora.</p>
+        <p id="g-crec-sub" class="text-xs text-telecab-muted">Mes a mes. El mes en curso va en un punto hueco y, en las horas, una raya discontinua hasta donde cerraría al ritmo de ahora.</p>
       </div>
       <%- botonTabla('crec') %>
     </div>
@@ -360,7 +360,7 @@
   let charts = {};
   // Las piezas de los gráficos (paleta, cruceta, globo, ejes, leyenda, cifras y
   // la tabla gemela) son de la casa: public/assets/js/graficos.js.
-  const { ANIMA, paleta, cruceta, etiquetasFinales, globo, ejeX, ejeEscalado,
+  const { ANIMA, paleta, cruceta, etiquetasFinales, globo, area, ejeX, ejeEscalado,
           leyenda, cifra, flechaDe, tonoDe, tablaVista, atenuar, errorEn } = window.Graficos;
   Graficos.botonesTabla();
 
@@ -499,23 +499,23 @@
     const agr = r.agrupacion, puntos = r.puntos || [], n = puntos.length;
     const res = r.resumen || {};
     const porDia = agr === 'dia';
-    const nombreBarra = porDia ? 'horas del día' : agr === 'semana' ? 'media diaria de la semana' : 'media diaria del mes';
+    const nombreSerie = porDia ? 'horas del día' : agr === 'semana' ? 'media diaria de la semana' : 'media diaria del mes';
     const nombreMedia = r.ventanaMedia === 7 ? 'media de 7 días' : r.ventanaMedia === 28 ? 'media de 4 semanas' : 'media de 12 semanas';
     const ritmos = puntos.map(p => p.ritmoMeta);
     const hayMeta = ritmos.some(x => x > 0);
-    // El de la leyenda es el de la última barra (la raya va en escalones, mes a mes).
+    // El de la leyenda es el del último punto (la raya va en escalones, mes a mes).
     const ritmoActual = hayMeta ? ritmos[ritmos.length - 1] : null;
 
     setTxt('g-rango-titulo', porDia ? 'Horas por día' : 'Horas por día · ' + (agr === 'semana' ? 'por semanas' : 'por meses'));
     setTxt('g-rango-sub', 'Horas efectivas (viaje + espera) ' + (RANGOS[v] || 'del rango') + '. ' +
-      (porDia ? 'Hoy va aparte, más claro, porque aún corre.' : 'Cada barra es la media diaria de su ' + (agr === 'semana' ? 'semana' : 'mes') + ': el eje dice lo mismo en todos los rangos.'));
+      (porDia ? 'Hoy va aparte, en un punto hueco, porque aún corre.' : 'Cada punto es la media diaria de su ' + (agr === 'semana' ? 'semana' : 'mes') + ': el eje dice lo mismo en todos los rangos.'));
 
     // ── Las cifras: cómo van las horas AHORA ──
     const ant = res.anterior;
     const etqMejor = porDia ? 'Mejor día' : agr === 'semana' ? 'Mejor semana' : 'Mejor mes';
     const mejorTxt = res.mejor ? tituloPunto({ ...res.mejor, enCurso: false }, agr).replace(/ de \d{4}$/, '') : '';
     // Contra el ritmo de los MISMOS días que la media (lo pondera el servidor):
-    // con la media de los ritmos de cada barra, el % no salía con el ritmo que se
+    // con la media de los ritmos de cada punto, el % no salía con el ritmo que se
     // leía debajo («la meta pide 968» y −12,9 %, cuando 860 / 968 es −11,1 %).
     const vsMeta = res.vsMetaPct;
     document.getElementById('g-rango-cifras').innerHTML = [
@@ -536,41 +536,61 @@
         ayuda: 'El mejor ' + (porDia ? 'día cerrado' : agr === 'semana' ? 'semana (por su media diaria)' : 'mes (por su media diaria)') + ' del rango.' + (res.hoy != null ? '\nHoy, en curso: ' + nf0.format(res.hoy) + ' h.' : '') }),
     ].join('');
 
-    // ── El gráfico ──
+    // ── El gráfico: una línea que sube y baja ──
+    // Línea y no barras (25/10/2026, Camilo: «la línea de subida y bajada estaba
+    // mejor»). Hoy NO va en la línea: va a medias y la hundiría al final (un día de
+    // mil horas lleva cuatrocientas a mediodía). Va aparte, en un punto hueco.
     const labels = puntos.map(p => etiquetaEje(p, agr, n));
     const valores = puntos.map(p => p.valor);
+    const cerrados = puntos.map(p => (p.enCurso ? null : p.valor));
+    const enCurso = puntos.map(p => (p.enCurso ? p.valor : null));
     const medias = puntos.map(p => p.media);
-    const iHoy = puntos.findIndex(p => p.enCurso);
+    // Los puntos y sus cifras, mientras quepan: con 15 días se leen todas; con un
+    // año por semanas, la línea sola (las cifras las dicen el globo y la tabla).
+    const radio = n <= 16 ? 4 : n <= 35 ? 3 : 0;
+    const caben = ctx => radio > 0 && ctx.chart.chartArea && ctx.chart.chartArea.width / n >= 38;
+    // La cifra, encima si el día sube y debajo si baja: la raya que llega no la pisa.
+    const baja = i => { let k = i - 1; while (k >= 0 && cerrados[k] == null) k--; return k >= 0 && cerrados[i] < cerrados[k]; };
+    const cifraPunto = (color, peso, conRumbo) => ({ anchor: 'center', offset: 6, clamp: true,
+      align: ctx => (conRumbo && baja(ctx.dataIndex) ? 'bottom' : 'top'),
+      color, font: { size: 10.5, weight: peso }, formatter: v => (v == null ? '' : nf0.format(v)) });
     if (charts.rango) charts.rango.destroy();
     const canvas = document.getElementById('g-rango');
     charts.rango = new Chart(canvas, {
+      type: 'line',
       data: { labels, datasets: [
-        { type: 'bar', label: nombreBarra, data: valores, order: 3,
-          backgroundColor: puntos.map(p => (p.enCurso ? pal.acentoSuave : pal.acento)),
-          hoverBackgroundColor: puntos.map(p => (p.enCurso ? pal.acentoSuave : pal.acentoHover)),
-          borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24, barPercentage: 0.84, categoryPercentage: 0.92,
-          // Solo una etiqueta: la de hoy, que dice que aún corre.
-          // Con más de un mes de barras no cabe encima de la suya: lo dice la leyenda.
-          datalabels: { display: ctx => ctx.dataIndex === iHoy && valores[iHoy] != null && porDia && n <= 31 && ctx.chart.width >= 520, anchor: 'end', align: 'end', offset: 2,
-            color: pal.apagado, font: { size: 10, weight: '600' }, formatter: () => 'en curso' } },
-        { type: 'line', label: nombreMedia, data: medias, order: 1, borderColor: pal.tinta, borderWidth: 2,
-          borderCapStyle: 'round', borderJoinStyle: 'round', tension: 0.35, spanGaps: true,
+        { label: nombreSerie, data: cerrados, order: 1,
+          borderColor: pal.acento, borderWidth: 2.5, borderCapStyle: 'round', borderJoinStyle: 'round',
+          // «monotone» y no una tensión a ojo: la curva no se pasa por encima del
+          // mejor día ni por debajo de cero entre dos puntos.
+          cubicInterpolationMode: 'monotone', fill: 'origin', backgroundColor: area('--tc-gold', pal.claro ? 0.16 : 0.2),
+          pointRadius: radio, pointHoverRadius: Math.max(radio, 3) + 2,
+          pointBackgroundColor: pal.acento, pointBorderColor: pal.superficie, pointBorderWidth: 2,
+          pointHoverBackgroundColor: pal.acento, pointHoverBorderColor: pal.superficie, pointHoverBorderWidth: 2,
+          datalabels: { display: ctx => cerrados[ctx.dataIndex] != null && caben(ctx), ...cifraPunto(pal.tinta, '600', true) } },
+        { label: porDia ? 'hoy, en curso' : 'en curso (sin hoy)', data: enCurso, order: 0, showLine: false,
+          pointRadius: 5, pointHoverRadius: 6, pointBackgroundColor: pal.superficie, pointBorderColor: pal.acento, pointBorderWidth: 2.5,
+          pointHoverBackgroundColor: pal.superficie, pointHoverBorderColor: pal.acento, pointHoverBorderWidth: 2.5,
+          datalabels: { display: ctx => enCurso[ctx.dataIndex] != null && caben(ctx), ...cifraPunto(pal.acento, '700') } },
+        { label: nombreMedia, data: medias, order: 2, borderColor: pal.tinta, borderWidth: 1.5,
+          borderCapStyle: 'round', borderJoinStyle: 'round', cubicInterpolationMode: 'monotone', spanGaps: true, fill: false,
           pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: pal.tinta, pointHoverBorderColor: pal.superficie, pointHoverBorderWidth: 2 },
-        { type: 'line', label: 'ritmo que pide la meta', data: hayMeta ? ritmos : [], order: 2, borderColor: pal.apagado,
+        { label: 'ritmo que pide la meta', data: hayMeta ? ritmos : [], order: 3, borderColor: pal.apagado, fill: false,
           borderDash: [6, 4], borderWidth: 1.5, stepped: 'middle', pointRadius: 0, pointHoverRadius: 0, hidden: !hayMeta },
       ] },
       options: {
         responsive: true, maintainAspectRatio: false, animation: ANIMA,
         interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: 14, right: 12 } },
+        layout: { padding: { top: 18, right: 14 } },
         plugins: {
           legend: { display: false },
           cruceta: { color: pal.rejilla },
           tooltip: globo(pal, { callbacks: {
             title: it => tituloPunto(puntos[it[0].dataIndex], agr),
-            label: c => nf0.format(c.parsed.y) + (c.datasetIndex === 0 && porDia ? ' h' : ' h/día') + ' · ' + c.dataset.label,
-            labelPointStyle: c => ({ pointStyle: c.datasetIndex === 0 ? 'rect' : 'line', rotation: 0 }),
-            labelColor: c => ({ borderColor: c.datasetIndex === 0 ? pal.acento : c.dataset.borderColor, backgroundColor: c.datasetIndex === 0 ? pal.acento : c.dataset.borderColor, borderWidth: 2 }),
+            label: c => nf0.format(c.parsed.y) + (c.datasetIndex <= 1 && porDia ? ' h' : ' h/día') + ' · ' + c.dataset.label,
+            labelPointStyle: c => ({ pointStyle: c.datasetIndex === 1 ? 'circle' : 'line', rotation: 0 }),
+            labelColor: c => ({ borderColor: c.datasetIndex <= 1 ? pal.acento : c.dataset.borderColor,
+              backgroundColor: c.datasetIndex === 1 ? pal.superficie : c.datasetIndex === 0 ? pal.acento : c.dataset.borderColor, borderWidth: 2 }),
             footer: it => pieDe(puntos[it[0].dataIndex], agr),
           } }),
         },
@@ -585,8 +605,8 @@
       (res.cambioPct != null ? ', ' + sigPct(res.cambioPct) + ' frente al periodo anterior' : '') + '. Los datos están en la tabla.');
 
     leyenda('g-rango-leyenda', [
-      { tipo: 'barra', color: pal.acento, texto: porDia ? 'Horas del día' : 'Media diaria del periodo' },
-      iHoy >= 0 ? { tipo: 'barra', color: pal.acentoSuave, texto: porDia ? 'Hoy, en curso' : 'En curso (sin hoy)' } : null,
+      { tipo: 'linea', color: pal.acento, texto: porDia ? 'Horas del día' : 'Media diaria del periodo' },
+      enCurso.some(x => x != null) ? { tipo: 'punto', hueco: true, color: pal.acento, texto: porDia ? 'Hoy, en curso' : 'En curso (sin hoy)' } : null,
       { tipo: 'linea', color: pal.tinta, texto: nombreMedia[0].toUpperCase() + nombreMedia.slice(1) },
       hayMeta ? { tipo: 'discontinua', color: pal.apagado, texto: 'Ritmo que pide la meta' + (ritmoActual ? ' (' + nf0.format(ritmoActual) + ' h/día)' : '') } : null,
     ]);
@@ -876,7 +896,7 @@
    * TRES GRÁFICOS PEQUEÑOS EN VEZ DE UNO CON DOS EJES. Horas, horas por día y
    * conductores tienen escalas distintas: en un solo gráfico con dos ejes, dónde
    * se cruzan las líneas lo decide cómo se alinean las escalas, no los datos.
-   * Encima de cada barra, el % frente al mes anterior.
+   * Encima de cada punto, el % frente al mes anterior.
    */
   function pintarCrecimiento(r) {
     const pal = paleta();
@@ -919,12 +939,14 @@
       ].join('');
 
     const etiquetaPct = (valor, prefijo) => (valor == null ? '' : (prefijo || '') + sigPct(valor));
-    // El % va encima de cada barra si cabe (unos 40 px por mes); si no (el móvil con
-    // muchos meses), lo dicen el globo y la tabla: montados no los lee nadie.
-    const datalabelsArriba = (formato, mostrar) => ({
-      display: ctx => mostrar(ctx.dataIndex) && formato(ctx.dataIndex) !== '' && ctx.chart.chartArea && ctx.chart.chartArea.width / meses.length >= 40,
-      anchor: 'end', align: 'end', offset: 1, clamp: true,
-      color: pal.apagado, font: { size: 10, weight: '600' }, formatter: (v, ctx) => formato(ctx.dataIndex),
+    // El % de cada punto, si cabe (unos 36 px por mes); si no (el móvil con muchos
+    // meses), lo dicen el globo y la tabla: montados no los lee nadie. Encima si
+    // sube y debajo si baja: así la raya que llega al punto no pisa su cifra.
+    // `izquierda`: arriba y a la izquierda (la previsión, que va pegada al borde).
+    const datalabelsPct = (pctDe, mostrar, { prefijo, izquierda } = {}) => ({
+      display: ctx => mostrar(ctx.dataIndex) && pctDe(ctx.dataIndex) != null && ctx.chart.chartArea && ctx.chart.chartArea.width / meses.length >= 36,
+      anchor: 'center', align: ctx => (izquierda ? 235 : pctDe(ctx.dataIndex) < 0 ? 'bottom' : 'top'), offset: 6, clamp: true,
+      color: pal.apagado, font: { size: 10, weight: '600' }, formatter: (v, ctx) => etiquetaPct(pctDe(ctx.dataIndex), prefijo),
     });
     const pieMes = m => {
       const l = [];
@@ -937,41 +959,66 @@
     const opciones = (extra) => ({
       responsive: true, maintainAspectRatio: false, animation: ANIMA,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 16, right: 18 } },
+      layout: { padding: { top: 18, right: 18 } },
       plugins: Object.assign({ legend: { display: false } }, extra.plugins),
       scales: { x: ejeX(pal, extra.x), y: ejeEscalado(pal, extra.valores, extra.y) },
     });
-    const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24, barPercentage: 0.7, categoryPercentage: 0.8 };
+    // LÍNEAS, NO BARRAS (25/10/2026, Camilo: «la línea de subida y bajada estaba
+    // mejor»). Cada mes es un punto. El que lleva pocos días va gris, y el tramo que
+    // lo toca, gris y discontinuo: se ve, pero no se lee como subida ni bajada. El
+    // mes en curso va en un anillo (hueco), como todo lo que aún corre.
+    const radio = meses.length <= 18 ? 4 : 3;
+    const tocaPocos = s => pocos[s.p0DataIndex] || pocos[s.p1DataIndex];
+    const linea = (datos, extra) => Object.assign({
+      data: datos, borderColor: pal.acento, borderWidth: 2.5, borderCapStyle: 'round', borderJoinStyle: 'round',
+      cubicInterpolationMode: 'monotone', fill: 'origin', backgroundColor: area('--tc-gold', pal.claro ? 0.14 : 0.18),
+      segment: { borderColor: s => (tocaPocos(s) ? pal.contexto : undefined), borderDash: s => (tocaPocos(s) ? [4, 4] : undefined) },
+      pointRadius: radio, pointHoverRadius: radio + 2,
+      pointBackgroundColor: meses.map((m, i) => (m.enCurso ? pal.superficie : colorDe(i, pal.acento, pal.contexto))),
+      pointBorderColor: meses.map((m, i) => (m.enCurso ? colorDe(i, pal.acento, pal.contexto) : pal.superficie)),
+      pointBorderWidth: meses.map(m => (m.enCurso ? 2.5 : 2)),
+      pointHoverBackgroundColor: meses.map((m, i) => (m.enCurso ? pal.superficie : colorDe(i, pal.acento, pal.contexto))),
+      pointHoverBorderColor: meses.map((m, i) => (m.enCurso ? colorDe(i, pal.acento, pal.contexto) : pal.superficie)),
+      pointHoverBorderWidth: meses.map(m => (m.enCurso ? 2.5 : 2)),
+    }, extra || {});
     ['crecHoras', 'crecDia', 'crecCond'].forEach(k => { if (charts[k]) charts[k].destroy(); });
 
-    // Horas al mes: lo hecho y, encima y aparte, la previsión del mes en curso.
-    const prevision = meses.map(m => (m.enCurso && m.proyeccion ? Math.max(0, m.proyeccion.cierre - m.horas) : null));
+    // Horas al mes. El mes en curso NO va en la línea: a día 10 lleva un tercio y
+    // parecería que se hunde. Va su anillo con lo que lleva y, discontinua, la raya
+    // desde el último mes cerrado hasta donde cerraría al ritmo de ahora.
+    // Si el mes anterior lleva pocos días (el septiembre de Barcelona es una tarde),
+    // la raya no sale de él: subiría de 9 h a 4.000 y parecería un crecimiento.
+    // Entonces la previsión es su punto solo.
+    const proy = actual && actual.proyeccion ? actual.proyeccion : null;
+    const iAncla = proy && iCurso > 0 && !pocos[iCurso - 1] ? iCurso - 1 : -1;
+    const cierre = meses.map((m, i) => (!proy ? null : i === iCurso ? proy.cierre : i === iAncla ? m.horas : null));
     charts.crecHoras = new Chart(document.getElementById('g-crec-horas'), {
-      type: 'bar',
+      type: 'line',
       data: { labels, datasets: [
-        // El mes en curso no va en gris aunque lleve pocos días: ya va «en curso», con su previsión encima.
-        { label: 'hechas', data: meses.map(m => m.horas), ...barra,
-          backgroundColor: meses.map((m, i) => (m.enCurso ? pal.acento : colorDe(i, pal.acento, pal.contexto))),
-          hoverBackgroundColor: meses.map((m, i) => (m.enCurso ? pal.acentoHover : colorDe(i, pal.acentoHover, pal.contexto))),
-          // La del mes en curso no es el final de la barra (encima va la previsión): sin redondear.
-          borderRadius: ctx => (prevision[ctx.dataIndex] ? 0 : 4),
-          datalabels: datalabelsArriba(i => etiquetaPct(meses[i].cambioHorasPct), i => !prevision[i]) },
-        { label: 'previsión al ritmo de ahora', data: prevision, backgroundColor: pal.acentoSuave, hoverBackgroundColor: pal.acentoSuave, ...barra,
-          // La separación de 2 px entre lo hecho y lo previsto, del color de la tarjeta.
-          borderColor: pal.superficie, borderWidth: { bottom: 2, top: 0, left: 0, right: 0 }, borderSkipped: false,
-          borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
-          datalabels: datalabelsArriba(i => etiquetaPct(meses[i].cambioHorasPct, 'prev. '), i => !!prevision[i]) },
+        linea(meses.map(m => (m.enCurso ? null : m.horas)), { label: 'hechas', order: 1,
+          datalabels: datalabelsPct(i => meses[i].cambioHorasPct, i => !meses[i].enCurso) }),
+        { label: 'previsión de cierre al ritmo de ahora', data: cierre, order: 2, fill: false,
+          borderColor: pal.acento, borderWidth: 2, borderDash: [6, 4], borderCapStyle: 'round',
+          pointRadius: c => (c.dataIndex === iCurso ? 4 : 0), pointHoverRadius: c => (c.dataIndex === iCurso ? 5 : 0),
+          pointBackgroundColor: pal.acentoSuave, pointBorderColor: pal.acento, pointBorderWidth: 1.5,
+          pointHoverBackgroundColor: pal.acentoSuave, pointHoverBorderColor: pal.acento, pointHoverBorderWidth: 1.5,
+          datalabels: datalabelsPct(i => meses[i].cambioHorasPct, i => i === iCurso, { prefijo: 'prev. ', izquierda: true }) },
+        linea(meses.map(m => (m.enCurso ? m.horas : null)), { label: 'llevamos', order: 0, showLine: false, fill: false }),
       ] },
       options: opciones({
-        x: { stacked: true }, y: { stacked: true }, valores: meses.map((m, i) => m.horas + (prevision[i] || 0)),
-        plugins: { tooltip: globo(pal, { callbacks: {
+        valores: meses.map(m => Math.max(m.horas || 0, m.enCurso && m.proyeccion ? m.proyeccion.cierre : 0)),
+        plugins: { tooltip: globo(pal, {
+          // La raya de la previsión arranca en el último mes cerrado: ahí no es previsión.
+          filter: it => it.parsed && it.parsed.y != null && !(it.datasetIndex === 1 && it.dataIndex !== iCurso),
+          callbacks: {
           title: titulo,
           label: c => {
             const m = meses[c.dataIndex];
-            if (c.datasetIndex === 0) return nf0.format(m.horas) + ' h · ' + (m.enCurso ? 'hechas (' + m.diasCerrados + ' días cerrados y hoy)' : 'hechas');
-            return '+' + nf0.format(c.parsed.y) + ' h · previsión → cierre ' + nf0.format(m.proyeccion.cierre) + ' h';
+            if (c.datasetIndex === 1) return nf0.format(c.parsed.y) + ' h · previsión de cierre';
+            return nf0.format(m.horas) + ' h · ' + (m.enCurso ? 'hechas (' + m.diasCerrados + ' días cerrados y hoy)' : 'hechas');
           },
-          labelPointStyle: () => ({ pointStyle: 'rect', rotation: 0 }),
+          labelPointStyle: c => ({ pointStyle: c.datasetIndex === 2 ? 'circle' : 'line', rotation: 0 }),
+          labelColor: c => ({ borderColor: pal.acento, backgroundColor: c.datasetIndex === 2 ? pal.superficie : pal.acento, borderWidth: 2 }),
           footer: it => {
             const m = meses[it[0].dataIndex], l = [];
             if (m.cambioHorasPct != null) l.push(sigPct(m.cambioHorasPct) + ' frente a ' + mesLargo(meses[it[0].dataIndex - 1].mes) + (m.cambioHorasEsProyeccion ? ' (con la previsión)' : ''));
@@ -984,33 +1031,29 @@
 
     // Horas por día: el mes en curso, por sus días cerrados (es real, no previsión).
     charts.crecDia = new Chart(document.getElementById('g-crec-dia'), {
-      type: 'bar',
+      type: 'line',
       data: { labels, datasets: [
-        { label: 'horas por día', data: meses.map(m => m.horasDia), ...barra,
-          backgroundColor: meses.map((m, i) => colorDe(i, pal.acento, pal.contexto)),
-          hoverBackgroundColor: meses.map((m, i) => colorDe(i, pal.acentoHover, pal.contexto)),
-          datalabels: datalabelsArriba(i => etiquetaPct(meses[i].cambioHorasDiaPct), () => true) },
+        linea(meses.map(m => m.horasDia), { label: 'horas por día',
+          datalabels: datalabelsPct(i => meses[i].cambioHorasDiaPct, () => true) }),
       ] },
       options: opciones({ valores: meses.map(m => m.horasDia), plugins: { tooltip: globo(pal, { callbacks: {
         title: titulo,
         label: c => nf0.format(c.parsed.y) + ' h/día · media de ' + meses[c.dataIndex].diasConDatos + ' días',
-        labelPointStyle: () => ({ pointStyle: 'rect', rotation: 0 }),
+        labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 }),
         footer: it => { const m = meses[it[0].dataIndex]; return (m.cambioHorasDiaPct != null ? [sigPct(m.cambioHorasDiaPct) + ' frente al mes anterior'] : []).concat(pieMes(m)); },
       } }) } }),
     });
 
     charts.crecCond = new Chart(document.getElementById('g-crec-cond'), {
-      type: 'bar',
+      type: 'line',
       data: { labels, datasets: [
-        { label: 'conductores al día', data: meses.map(m => m.conductoresDia), ...barra,
-          backgroundColor: meses.map((m, i) => colorDe(i, pal.acento, pal.contexto)),
-          hoverBackgroundColor: meses.map((m, i) => colorDe(i, pal.acentoHover, pal.contexto)),
-          datalabels: datalabelsArriba(i => etiquetaPct(meses[i].cambioConductoresPct), () => true) },
+        linea(meses.map(m => m.conductoresDia), { label: 'conductores al día',
+          datalabels: datalabelsPct(i => meses[i].cambioConductoresPct, () => true) }),
       ] },
       options: opciones({ valores: meses.map(m => m.conductoresDia), plugins: { tooltip: globo(pal, { callbacks: {
         title: titulo,
         label: c => nf0.format(c.parsed.y) + ' conductores al día, de media',
-        labelPointStyle: () => ({ pointStyle: 'rect', rotation: 0 }),
+        labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 }),
         footer: it => {
           const m = meses[it[0].dataIndex], l = [];
           if (m.horasPorConductor != null) l.push(nf1.format(m.horasPorConductor) + ' h por conductor y día' + (m.cambioHorasPorConductorPct != null ? ' (' + sigPct(m.cambioHorasPorConductorPct) + ')' : ''));
@@ -1021,15 +1064,16 @@
     });
 
     leyenda('g-crec-leyenda', [
-      { tipo: 'barra', color: pal.acento, texto: 'Real' },
-      actual && actual.proyeccion ? { tipo: 'barra', color: pal.acentoSuave, texto: 'Previsión de ' + mesLargo(actual.mes) + ' al ritmo de los últimos 7 días' } : null,
-      pocos.some(Boolean) ? { tipo: 'barra', color: pal.contexto, texto: 'Menos de 7 días con datos: no se compara' } : null,
+      { tipo: 'linea', color: pal.acento, texto: 'Real' },
+      actual ? { tipo: 'punto', hueco: true, color: pal.acento, texto: mesLargo(actual.mes)[0].toUpperCase() + mesLargo(actual.mes).slice(1) + ', en curso' } : null,
+      proy ? { tipo: 'discontinua', color: pal.acento, texto: 'Previsión de cierre de ' + mesLargo(actual.mes) + ' al ritmo de los últimos 7 días' } : null,
+      pocos.some(Boolean) ? { tipo: 'punto', color: pal.contexto, texto: 'Menos de 7 días con datos: no se compara' } : null,
     ]);
-    // Y qué es el número de encima de cada barra, que no tiene marca de color.
+    // Y qué es el número de encima de cada punto, que no tiene marca de color.
     const leyendaCaja = document.getElementById('g-crec-leyenda');
     if (leyendaCaja && meses.length > 1) {
       const t = document.createElement('span');
-      t.textContent = 'Encima de cada barra (si cabe) y en el globo, el % frente al mes anterior';
+      t.textContent = 'Encima de cada punto (si cabe) y en el globo, el % frente al mes anterior';
       leyendaCaja.appendChild(t);
     }
 
@@ -1110,7 +1154,7 @@
   cargarRango();
   cargarComoVamos();
   cargarCrecimiento();
-  // Refresco suave cada 5 min de las tarjetas y del rango (la barra de hoy corre).
+  // Refresco suave cada 5 min de las tarjetas y del rango (el punto de hoy corre).
   setInterval(() => { cargarResumen(); cargarRango(); }, 5 * 60 * 1000);
 })();
 </script>
