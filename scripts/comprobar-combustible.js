@@ -1008,7 +1008,7 @@ const REENVIADO = {
     },
     capacidadDeposito: async u => MAP.capacidad[u] || null,
   }, { get: (o, k) => { tocadoMapon.add(String(k)); return o[k]; } }));
-  const AUD = { filas: {}, alias: new Map(), textos: new Map(), vecinos: {}, vecinosEntre: {}, cerrar: 0, aAuditar: [], guardarRevienta: null };
+  const AUD = { filas: {}, alias: new Map(), textos: new Map(), vecinos: {}, vecinosEntre: {}, cerrar: 0, aAuditar: [], guardarRevienta: null, movidas: [] };
   const UNIDAD = { '8997LDK': 'u-coslada', '7909LRJ': 'u-clot', '2350LHP': 'u-ford', '6584KZV': 'u-sin', '9001LWJ': 'u-techo', '3814KYG': 'u-espera' };
   const paraCasar = f => ({ id: f.id, proveedor: f.proveedor, estacion: f.estacion, sede: f.sede, gasolinera_id: f.gasolinera_id || null,
     gasolinera_como: f.gasolinera_como || null, gps_lat: f.gps_lat == null ? null : f.gps_lat, gps_lng: f.gps_lng == null ? null : f.gps_lng });
@@ -1047,6 +1047,8 @@ const REENVIADO = {
         boya_error_pct: n(a.boyaErrorPct), boya_motivo: a.boyaMotivo || null,
         auditoria_detalle: a.detalle ? JSON.parse(JSON.stringify(a.detalle)) : null });
     },
+    // La hora buena de una fila del Excel con la hora repetida (probarPasadas).
+    moverHoraRepetida: async (id, ms) => { AUD.movidas.push([id, ms]); AUD.filas[id].repostaje_at = new Date(ms); },
     apuntarFallo: async (id, msg) => {
       const f = AUD.filas[id];
       Object.assign(f, { auditoria_intentos: f.auditoria_intentos + 1, auditoria_estado: 'incompleta',
@@ -1441,6 +1443,67 @@ const REENVIADO = {
     (a => [a.gpsFuente, a.distancia, !!a.detalle.paradaRota])(await auditar(23)), ['punto', 0, false]);
   MAP.puntos['u-roto'] = null;
 
+  // LA PARADA ABIERTA (el 0626MMZ, 26/10/2026): Mapon lo daba «parado desde las
+  // 00:00» a 8 km, con la parada aún sin cerrar, y esa noche hizo 14 viajes de
+  // BOLT. Dentro, hasta la hora del repostaje, el aforador baja de 37 a 29 L: andaba.
+  const odonnell = { lat: 40.4150, lng: -3.64542 };
+  UNIDAD['0626MMZ'] = 'u-abierta';
+  MAP.paradas['u-abierta'] = [{ desde: T - 6 * H, hasta: null, ...odonnell, direccion: 'Ctra. Eje O\'Donnell' }];
+  MAP.series['u-abierta'] = tramo(T - 6 * H, T - 10 * MIN, t => Math.round(37 - 9 * (t - (T - 6 * H)) / (6 * H)), 4 * MIN)
+    .concat(tramo(T + 5 * MIN, T + H, 44, MIN));
+  rep(24, { estacion: 'COSLADA', matricula: '0626MMZ', litros: 16.45 });
+  const abierta = await auditar(24);
+  igual('Una parada ABIERTA lejos con el aforador moviéndose dentro hasta la hora (de 37 a 29 L, el 0626MMZ): el GPS no vale (sin color) y lo dice sin inventarse un final',
+    [abierta.distancia, /^Mapon da el coche parado desde las \d\d:\d\d en Ctra\. Eje O'Donnell sin cerrar la parada \(6 h hasta la hora del repostaje\), pero dentro el aforador fue de 29 a 37 L: el coche andaba/.test(abierta.gpsMotivo),
+      /01:00/.test(abierta.gpsMotivo), (abierta.detalle.paradaRota || {}).abierta, (abierta.detalle.paradaRota || {}).hasta, (abierta.detalle.paradaRota || {}).medidoHasta],
+    [null, true, false, true, null, new Date(T).toISOString()]);
+  // …la misma, sin una lectura dentro: el motor apagado, aparcado de verdad.
+  MAP.series['u-abierta'] = tramo(T - 9 * H, T - 6 * H, 30, MIN).concat(tramo(T + 5 * H, T + 6 * H, 30, MIN));
+  igual('…pero abierta y sin una lectura dentro (aparcado de verdad, con el motor apagado): vale, y es rojo',
+    (a => [a.gpsFuente, SEM.colorGps(a.distancia), !!a.detalle.paradaRota])(await auditar(24)), ['parada', 'rojo', false]);
+  // …y abierta en la gasolinera: no se mira por dentro (estar allí es lo que se busca).
+  MAP.paradas['u-abierta'] = [{ desde: T - 2 * H, hasta: null, ...surtidor, direccion: 'Coslada' }];
+  MAP.series['u-abierta'] = tramo(T - 2 * H, T - 10 * MIN, t => Math.round(37 - 9 * (t - (T - 2 * H)) / (2 * H)), 4 * MIN);
+  igual('…y abierta EN la gasolinera, aunque el aforador se mueva, no se mira por dentro: se mide desde ella (0 m)',
+    (a => [a.gpsFuente, a.distancia, !!a.detalle.paradaRota])(await auditar(24)), ['parada', 0, false]);
+  // …ni cerrada: el 9107LWS esperó 3,9 h encendido en el surtidor (de 39 a 42 L dentro).
+  MAP.paradas['u-abierta'] = [{ desde: T - 2 * MIN, hasta: T + 3.9 * H, ...surtidor, direccion: 'Coslada' }];
+  MAP.series['u-abierta'] = tramo(T - 2 * MIN, T + 3.9 * H, t => (t < T + 2 * H ? 39 : 42), 4 * MIN);
+  igual('…ni cerrada: horas encendido en el surtidor (de 39 a 42 L dentro) no es un GPS clavado, es estar en la gasolinera (0 m)',
+    (a => [a.gpsFuente, a.distancia, !!a.detalle.paradaRota])(await auditar(24)), ['parada', 0, false]);
+
+  // LA PARADA DESMENTIDA (el 9523MMX, 18/10/2026): Mapon lo daba parado 47
+  // minutos a 1,7 km, pero la ruta que cerró la parada arrancó en el surtidor y
+  // su punto a esa hora está a 10 m: el equipo dejó la parada clavada.
+  const tenerife = { lat: surtidor.lat + 0.0155, lng: surtidor.lng };
+  const enElSurtidor = { t: T + 10e3, lat: surtidor.lat + 0.00009, lng: surtidor.lng };
+  UNIDAD['9523MMX'] = 'u-clavada';
+  const clavada = extra => [{ desde: T - 40 * MIN, hasta: T + 7 * MIN, ...tenerife, direccion: 'Av. de Tenerife', ...extra }];
+  MAP.paradas['u-clavada'] = clavada({ hasta: T + 5e3, siguiente: { t: T + 5e3, lat: surtidor.lat + 0.0002, lng: surtidor.lng } });
+  MAP.puntos['u-clavada'] = enElSurtidor;
+  MAP.series['u-clavada'] = tramo(T - H, T - 10 * MIN, 12).concat(tramo(T + 10 * MIN, T + H, 35));
+  rep(25, { estacion: 'COSLADA', matricula: '9523MMX', litros: 23 });
+  const desm = await auditar(25);
+  igual('Una parada a 1,7 km que no acaba donde empezó (la ruta que la cierra arranca a 1,7 km de ella): manda su punto a esa hora (10 m), y se dice',
+    [desm.gpsFuente, desm.distancia, (desm.detalle.paradaFalsa || {}).como, (desm.detalle.paradaFalsa || {}).salto > 1600, (desm.detalle.paradaFalsa || {}).direccion],
+    ['punto', 10, 'salto', true, 'Av. de Tenerife']);
+  MAP.paradas['u-clavada'] = clavada({});
+  igual('…sin la ruta, pero con un punto suyo DENTRO de la parada y a 1,7 km de ella (el 1208MJY): también',
+    (a => [a.gpsFuente, a.distancia, (a.detalle.paradaFalsa || {}).como])(await auditar(25)), ['punto', 10, 'punto']);
+  MAP.paradas['u-clavada'] = clavada({ siguiente: { t: T + 7 * MIN, lat: tenerife.lat + 0.00005, lng: tenerife.lng } });
+  MAP.puntos['u-clavada'] = { t: T - 163e3, lat: tenerife.lat + 0.00004, lng: tenerife.lng };
+  igual('…pero aparcado de verdad (arranca a 6 m de donde paró y su punto está a 4 m, el 8997LDK en Campo Real): se queda la parada, y es rojo',
+    (a => [a.gpsFuente, SEM.colorGps(a.distancia), !!a.detalle.paradaFalsa])(await auditar(25)), ['parada', 'rojo', false]);
+  MAP.paradas['u-clavada'] = clavada({ siguiente: { t: T + 7 * MIN, lat: surtidor.lat + 0.0002, lng: surtidor.lng } });
+  MAP.puntos['u-clavada'] = { ...enElSurtidor, t: T + 6 * MIN };
+  igual('…y si su único punto es de más de 5 min, se queda la parada: con un hueco del GPS y nada más, no se sabe dónde estaba',
+    (a => [a.gpsFuente, !!a.detalle.paradaFalsa])(await auditar(25)), ['parada', false]);
+  MAP.paradas['u-clavada'] = clavada({});
+  MAP.puntos['u-clavada'] = { t: T + 10e3, lat: tenerife.lat + 0.01, lng: tenerife.lng };
+  igual('…ni si el punto de dentro queda aún más lejos de la gasolinera: nunca acusa más que la parada',
+    (a => [a.gpsFuente, a.distancia === G.metros(tenerife, surtidor)])(await auditar(25)), ['parada', true]);
+  MAP.puntos['u-clavada'] = null;
+
   // LA PARADA DE ANTES, LEJOS (Excel): el coche paró a dejar a un pasajero a
   // 1,5 km y repostó sin apagarse (Mapon no apuntó la parada del surtidor). A
   // la hora del Excel estaba a unos metros de la gasolinera: vale lo más cerca.
@@ -1480,6 +1543,36 @@ const REENVIADO = {
   igual('…y la auditoría mira la primera: parado en Coslada (0 m) y +23 L, no «en casa» una hora después',
     [cambio.gpsDireccion, cambio.distancia, cambio.boyaSalto, cambio.detalle.horaRepetida], ['Coslada', 0, 23, { pasada: 'primera', t: new Date(T1).toISOString() }]);
 
+  // EL EXCEL QUE NO DICE CUÁL (el 2903LZH, 25/10/2026, «02:42:09»): se guardó
+  // la segunda, y el coche estaba en el surtidor en la primera, con el depósito
+  // de 24 a 43 L; en la segunda, en casa, sin subir. Se prueban las dos.
+  const seg2 = Date.UTC(2026, 9, 25, 1, 42, 9), prim2 = seg2 - H;
+  UNIDAD['2903LZH'] = 'u-dos';
+  MAP.paradas['u-dos'] = [{ desde: prim2 - 4 * MIN, hasta: prim2 + MIN, ...surtidor, direccion: 'Coslada' },
+    { desde: seg2 - 25 * MIN, hasta: seg2 + 10 * MIN, lat: 40.40, lng: -3.70, direccion: 'Calle Agustín de Foxá, 14' }];
+  MAP.series['u-dos'] = tramo(prim2 - H, prim2 - 4 * MIN, 24, MIN).concat(tramo(prim2 + MIN, seg2 - 25 * MIN, 43, MIN), tramo(seg2 + 10 * MIN, seg2 + H, 42, MIN));
+  rep(26, { estacion: 'COSLADA', matricula: '2903LZH', litros: 19, origen: 'excel', hora_repetida: 'sin_saber', repostaje_at: new Date(seg2) });
+  AUD.movidas = [];
+  const dos = await auditar(26);
+  igual('Hora repetida que el Excel no decide: se prueban las dos, cuadra la primera (en el surtidor y +19 L), se audita con ella y se corrige la hora guardada',
+    [dos.distancia, dos.gpsDireccion, dos.boyaSalto, dos.detalle.horaRepetida.pasada, dos.detalle.horaRepetida.como, ((dos.detalle.horaRepetida.pruebas || {}).segunda || {}).metros > 1600,
+      AUD.movidas, AUD.filas[26].repostaje_at.getTime()],
+    [0, 'Coslada', 19, 'primera', 'auditoria', true, [[26, prim2]], prim2]);
+  MAP.pedido = [];
+  const otraVez = await auditar(26);
+  igual('…y otra auditoría no lo vuelve a probar (una sola lectura de paradas): la hora guardada ya es la buena, y la decisión se queda',
+    [otraVez.distancia, otraVez.detalle.horaRepetida.pasada, otraVez.detalle.horaRepetida.como, AUD.movidas.length, MAP.pedido.filter(x => x === 'paradas').length],
+    [0, 'primera', 'auditoria', 1, 1]);
+  // …lejos en las dos horas (el 8997LDK, o alguien que llena otro coche): sigue rojo.
+  MAP.paradas['u-dos'] = [{ desde: prim2 - 30 * MIN, hasta: seg2 + 30 * MIN, lat: 40.40, lng: -3.70, direccion: 'en casa' }];
+  MAP.series['u-dos'] = tramo(prim2 - 2 * H, prim2 - 30 * MIN, 30, MIN).concat(tramo(seg2 + 30 * MIN, seg2 + 2 * H, 30, MIN));
+  rep(27, { estacion: 'COSLADA', matricula: '2903LZH', litros: 19, origen: 'excel', hora_repetida: 'sin_saber', repostaje_at: new Date(seg2) });
+  AUD.movidas = [];
+  const lejosDos = await auditar(27);
+  igual('…lejos en las dos y sin subir el depósito: se queda la segunda, roja, y se dice que se probaron las dos',
+    [SEM.colorGps(lejosDos.distancia), lejosDos.detalle.horaRepetida.pasada, lejosDos.detalle.horaRepetida.como, lejosDos.detalle.horaRepetida.cuadran, AUD.movidas],
+    ['rojo', 'segunda', 'probadas', 0, []]);
+
   // Mapon parte una parada a medianoche, o con un «trayecto» de 16 s y 0 km.
   const aqui = { lat: 40.4612, lng: -3.6160 };
   const partidas = [{ desde: T - 51 * MIN, hasta: T - 38 * MIN, ...aqui }, { desde: T - 37.7 * MIN, hasta: T - 5 * MIN, ...aqui },
@@ -1489,6 +1582,9 @@ const REENVIADO = {
   igual('…y la que no se toca, o está a más de 100 m, no se junta',
     A._unirParadas([{ desde: T - 20 * MIN, hasta: T - 10 * MIN, ...aqui }, { desde: T - 8 * MIN, hasta: T, ...aqui },
       { desde: T, hasta: T + MIN, lat: aqui.lat + 0.002, lng: aqui.lng }]).length, 3);
+  igual('…y al juntar los trozos se queda la ruta que sigue al último (detrás del de medianoche no hay ruta, hay otro trozo)',
+    A._unirParadas([{ desde: T - 20 * MIN, hasta: T - 10 * MIN, ...aqui, siguiente: null }, { desde: T - 10 * MIN, hasta: T, ...aqui, siguiente: { t: T, ...aqui } }])
+      .map(q => q.siguiente && q.siguiente.t), [T]);
 
   // A MANO: un repetido no se audita; y la gasolinera se corrige para todos los de ese nombre.
   rep(9, { estacion: 'COSLADA', matricula: '8997LDK', estado: 'repetido', litros: 24.405 });

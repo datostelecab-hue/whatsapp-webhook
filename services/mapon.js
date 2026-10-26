@@ -1164,16 +1164,30 @@ async function gastadoYKm(unitId, desdeMs, hastaMs) {
 /**
  * Las paradas de una unidad (`route/list.json`, lo que no es `route`): dónde y
  * de cuándo a cuándo estuvo parado. Una parada sin fin sigue abierta.
+ *
+ * `siguiente`: dónde y cuándo empezó la ruta que la sigue ({ t, lat, lng }), o
+ * null si lo que viene detrás no es una ruta (la misma parada, partida a
+ * medianoche) o no entra en lo pedido. Un coche aparcado arranca donde paró: si
+ * la ruta empieza lejos, el coche se movió dentro de la «parada» y su GPS no lo
+ * vio (combustible.auditoria, revisión del 26/10/2026).
  */
 async function paradasUnidad(unitId, desdeMs, hastaMs) {
   const j = await pedir('route/list.json', `unit_id=${encodeURIComponent(unitId)}&${rangoMs(desdeMs, hastaMs)}`);
   const rutas = ((j && j.data && j.data.units && j.data.units[0]) || {}).routes || [];
-  return rutas.filter(r => r.type !== 'route' && r.start).map(r => ({
-    desde: msUTC(r.start.time),
-    hasta: r.end && r.end.time ? msUTC(r.end.time) : null,
-    lat: Number(r.start.lat), lng: Number(r.start.lng),
-    direccion: txt(r.start.address) || null,
-  })).filter(p => Number.isFinite(p.desde) && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  const orden = rutas.filter(r => r.start && Number.isFinite(msUTC(r.start.time)))
+    .sort((a, b) => msUTC(a.start.time) - msUTC(b.start.time));
+  return orden.map((r, i) => {
+    if (r.type === 'route') return null;
+    const sig = orden[i + 1];
+    const siguiente = sig && sig.type === 'route' ? { t: msUTC(sig.start.time), lat: Number(sig.start.lat), lng: Number(sig.start.lng) } : null;
+    return {
+      desde: msUTC(r.start.time),
+      hasta: r.end && r.end.time ? msUTC(r.end.time) : null,
+      lat: Number(r.start.lat), lng: Number(r.start.lng),
+      direccion: txt(r.start.address) || null,
+      siguiente: siguiente && Number.isFinite(siguiente.lat) && Number.isFinite(siguiente.lng) ? siguiente : null,
+    };
+  }).filter(p => p && Number.isFinite(p.desde) && Number.isFinite(p.lat) && Number.isFinite(p.lng));
 }
 
 /**

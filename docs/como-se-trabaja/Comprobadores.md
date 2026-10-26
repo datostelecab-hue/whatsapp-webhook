@@ -549,6 +549,19 @@ No son de los seis, pero forman parte de la misma red:
   tope de 12 h, sin la aguja, la aguja siempre, la centralita mandando, el antes que
   se reintenta, restaurar la boya vieja, db/216 con la marca, sin el aviso, el aviso
   sin su mínimo y el dibujo con todo el tramo): salta su caso en las diez.
+  **Y las malas lecturas de Mapon** (26/10/2026, db/218): la parada abierta lejos con
+  el aforador moviéndose hasta la hora (el 0626MMZ: sin color, sin inventarse un
+  final), abierta y sin lecturas (aparcado: rojo) y abierta o cerrada en el surtidor
+  (no se mira por dentro); la parada desmentida por la ruta que arranca lejos y por
+  un punto de dentro (los dos, al punto), el aparcado de verdad (rojo), el punto de
+  más de 5 minutos y el que acusa más (se queda la parada); la hora repetida probada
+  en las dos (cuadra la primera: se audita con ella, se corrige la hora, y la segunda
+  auditoría no lo vuelve a probar) y lejos en las dos (roja, la segunda); que al
+  juntar trozos se quede la ruta del último, y que la memoria no dé una ruta que
+  empieza fuera de lo pedido. Se saboteó cada regla (la abierta sin mirar, por dentro
+  también en el surtidor, sin desmentir, el punto que acusa más o de cualquier hora,
+  solo el salto, sin probar las dos, probar siempre, la ruta del primer trozo y la
+  memoria sin recortar): saltan las diez.
 - **`comprobar-cumpleanos.js`** (15/10/2026) — los [[Cumpleanos]] sin base: los del 29 de
   febrero el 28 en un año no bisiesto, quien cumple ve la felicitación y no «cumple hoy»,
   y los ids que Control pinta en azul. 6 casos.

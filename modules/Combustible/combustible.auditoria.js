@@ -86,6 +86,31 @@
 // no depende de la parada. Una parada larga con el depósito quieto sí vale: un
 // coche aparcado de verdad a esa hora es justo lo que hay que ver.
 //
+// LAS MALAS LECTURAS DE MAPON (revisión del 26/10/2026, Camilo con el 0626MMZ
+// delante: «es mala lectura»). De los 31 GPS rojos y amarillos de Petroprix, 24
+// no eran del coche sino del equipo de Mapon o de la hora:
+//
+//   · LA PARADA ABIERTA. El 0626MMZ (26/10, 05:55) salía «parado desde las
+//     00:00» en el Eje de O'Donnell, a 19 km, con la parada aún sin cerrar, y
+//     esa noche hizo 14 viajes de BOLT. Una parada abierta no se miraba por
+//     dentro (hacía falta su final); ahora, si queda lejos, se mira hasta la
+//     hora del repostaje, y dentro el aforador fue de 30 a 35 L: andaba. Sin
+//     color, y se vuelve a mirar mientras siga abierta.
+//   · LA PARADA DESMENTIDA. Los equipos del 1208MJY y del 1090MJY dejan la
+//     parada clavada en un sitio mientras el coche anda: la ruta que la cierra
+//     arranca a kilómetros, o Mapon tiene, DENTRO de la parada, un punto del
+//     coche a más de 300 m de ella. Si la parada que cubre la hora no sale
+//     verde, se pregunta dónde estaba el coche a esa hora y, si ese punto es de
+//     5 minutos o menos y queda más cerca de la gasolinera, manda el punto:
+//     nunca acusa más que la parada sola. Un coche aparcado de verdad lejos (el
+//     8997LDK en Campo Real, el 8512LDS en L'Hospitalet) arranca donde paró y
+//     da sus puntos en el mismo sitio: sigue rojo.
+//   · LA HORA QUE PASA DOS VECES SIN SABER CUÁL. El Excel no siempre deja saber
+//     si las 02:42 del 25/10 fueron las de verano o las de invierno, y se
+//     guardaba la segunda: 7 rojos de esa noche eran la primera (el coche
+//     estaba en el surtidor una hora antes y el depósito subió entonces). Ahora
+//     se prueban las dos (`probarPasadas`).
+//
 // PETROPRIX, POR EXCEL (db/215). Lo mismo que Ballenoil, con dos diferencias:
 //
 //   · LA HORA DEL EXCEL ES LA DEL FINAL DEL REPOSTAJE, con segundos. En 247
@@ -138,6 +163,9 @@ const PARADA_LARGA_MS = 60 * 60e3;              // una parada de más de esto se
 const ANDA_L = 3;                               // si dentro el aforador se mueve esto, el coche andaba
 const SUBE_L = 5;                               // si al acabar la parada tiene esto más, repostó en ella
 const VERDE_M = UMBRALES.gpsM[0];               // desde la parada de antes, ¿saldría verde?
+const NO_ES_UN_SITIO_M = 300;                   // un coche aparcado no da puntos ni arranca a esto de donde paró
+const DESMIENTE_MS = 5 * 60e3;                  // el punto que desmiente una parada, como mucho a esto de la hora
+const SUBE_PASADA = { litros: 3, porcentaje: 10 };  // con la hora repetida, la pasada en la que el depósito subió
 
 const FALTA_DB213 = 'Falta aplicar la migración db/213 (auditoría de repostajes) desde /migraciones';
 const FALTA_DB215 = 'Falta aplicar la migración db/215 (el Excel de Petroprix, el bot y la boya por debajo) desde /migraciones';
@@ -175,15 +203,17 @@ async function casarGasolineras({ filas } = {}) {
  * 23:27 a 00:00 y de 00:00 a 00:00:10, y la ficha decía «parado de 00:00 a
  * 00:00»), y a veces la corta con un «trayecto» de segundos y 0 km. Las que se
  * tocan (menos de un minuto entre una y otra) en el mismo sitio (a menos de
- * 100 m) son una sola: la de verdad, con su principio y su fin.
+ * 100 m) son una sola: la de verdad, con su principio y su fin (y la ruta que
+ * sigue al último trozo).
  */
 function unirParadas(paradas) {
   const juntas = [];
   for (const p of [...(paradas || [])].sort((a, b) => a.desde - b.desde)) {
     const u = juntas[juntas.length - 1];
     const m = u ? G.metros(u, p) : null;
-    if (u && u.hasta != null && p.desde - u.hasta <= 60e3 && m != null && m <= 100) juntas[juntas.length - 1] = { ...u, hasta: p.hasta };
-    else juntas.push({ ...p });
+    if (u && u.hasta != null && p.desde - u.hasta <= 60e3 && m != null && m <= 100) {
+      juntas[juntas.length - 1] = { ...u, hasta: p.hasta, siguiente: p.siguiente || null };
+    } else juntas.push({ ...p });
   }
   return juntas;
 }
@@ -225,6 +255,8 @@ const relojMadrid = new Intl.DateTimeFormat('es-ES', {
  *
  * Una fila del Excel ya se guardó con su instante decidido (lector.petroprixExcel,
  * por el orden del fichero): aquí no se mueve, solo se dice en qué pasada cae.
+ * Si el orden no lo decidió (`sin_saber`), lo decide la auditoría una vez
+ * (probarPasadas) y corrige la hora guardada.
  */
 function instante(rep) {
   const t = new Date(rep.repostaje_at).getTime();
@@ -269,7 +301,7 @@ function gpsAnterior(rep) {
   if (rep.gps_lat == null || rep.gps_lng == null) return null;
   const d = rep.auditoria_detalle || {};
   const detalle = {};
-  for (const k of ['parada', 'punto', 'paradaCerca']) if (d[k]) detalle[k] = d[k];
+  for (const k of ['parada', 'punto', 'paradaCerca', 'paradaFalsa']) if (d[k]) detalle[k] = d[k];
   return {
     posicion: { lat: Number(rep.gps_lat), lng: Number(rep.gps_lng) },
     campos: { gpsFuente: rep.gps_fuente || null, gpsAt: ms(rep.gps_at), gpsHasta: ms(rep.gps_hasta), gpsDireccion: rep.gps_direccion || null },
@@ -346,10 +378,12 @@ const horaCorta = ms => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Mad
  * ¿LA PARADA ES DE VERDAD? (andaDentro y subeEnElla.) Una de más
  * de una hora no lo es si:
  *
- *   · DENTRO, el aforador se mueve 3 L o más (`como: 'dentro'`): solo lee con el
- *     coche encendido, así que el coche andaba y el GPS se había quedado
- *     clavado (el 9521MMX, «parado» 24 h en San Fernando con el aforador de 31 a
- *     17 L);
+ *   · lejos de la gasolinera, DENTRO el aforador se mueve 3 L o más (`como:
+ *     'dentro'`): solo lee con el coche encendido, así que el coche andaba y el
+ *     GPS se había quedado clavado (el 9521MMX, «parado» 24 h en San Fernando con
+ *     el aforador de 31 a 17 L). En la gasolinera no se mira (revisión del
+ *     26/10/2026): el 9107LWS esperó 3,9 h encendido en el surtidor de
+ *     L'Hospitalet, a 26 m, y salía sin color por «andaba»;
  *   · o, lejos de la gasolinera, AL ACABAR el depósito tiene 5 L o más que al
  *     empezar (`como: 'sube'`): un coche aparcado no reposta. Es el equipo de
  *     Mapon que no dio señal en ese rato, y Mapon lo pinta como una parada en el
@@ -365,36 +399,89 @@ const horaCorta = ms => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Mad
  * repostaje (la que cubre la hora, o la de antes del Excel si no hay nada más
  * cerca): una parada «de al lado» larga es la de un coche que estuvo aparcado
  * horas y luego fue a repostar, y ahí el depósito sube después, en la gasolinera.
- * → null si vale (o no se puede saber); si no, { como, horas, min, max } o
- *   { como, horas, antes, despues, metros }.
+ *
+ * UNA PARADA ABIERTA (Mapon aún no la ha cerrado) se mira por dentro hasta la
+ * hora del repostaje, también solo si queda lejos de la gasolinera: el 0626MMZ salía
+ * «parado desde las 00:00» a 19 km, y dentro el aforador fue de 30 a 35 L
+ * (revisión del 26/10/2026). Hasta la hora y no más: lo de después es el propio
+ * repostaje. Un coche aparcado de verdad, con el motor apagado, no tiene
+ * lecturas dentro y sigue valiendo. `subeEnElla` necesita el final: solo con
+ * las cerradas.
+ * → null si vale (o no se puede saber); si no, { como, horas, min, max } (con
+ *   `abierta` y `medidoHasta` si no tiene final) o { como, horas, antes, despues, metros }.
  */
-const larga = (p, ctx) => !!p && p.hasta != null && p.hasta - p.desde >= PARADA_LARGA_MS && !!ctx.aforador;
-const horasDe = p => Math.round((p.hasta - p.desde) / H * 10) / 10;
+const larga = (p, fin, ctx) => !!p && fin != null && fin - p.desde >= PARADA_LARGA_MS && !!ctx.aforador;
+const horasDe = (p, fin) => Math.round((fin - p.desde) / H * 10) / 10;
 async function aforadorDe(ctx) {
   try { return await ctx.aforador(); } catch (_) { return null; }   // sin aforador no se sabe: la parada vale
 }
-async function andaDentro(p, ctx) {
-  if (!larga(p, ctx)) return null;
-  const x = B.cambioDentro(await aforadorDe(ctx), p.desde, p.hasta);
-  return x && x.max - x.min >= ANDA_L ? { como: 'dentro', horas: horasDe(p), min: x.min, max: x.max } : null;
+async function andaDentro(p, ctx, t, gasolinera) {
+  if (!p) return null;
+  const metros = G.metros(p, gasolinera);
+  if (metros == null || metros < VERDE_M) return null;
+  const fin = p.hasta != null ? p.hasta : Math.min(t, ctx.ahora);
+  if (!larga(p, fin, ctx)) return null;
+  const x = B.cambioDentro(await aforadorDe(ctx), p.desde, fin);
+  if (!x || x.max - x.min < ANDA_L) return null;
+  return { como: 'dentro', horas: horasDe(p, fin), min: x.min, max: x.max, ...(p.hasta == null ? { abierta: true, medidoHasta: iso(fin) } : {}) };
 }
 async function subeEnElla(p, ctx, gasolinera) {
-  if (!larga(p, ctx)) return null;
+  if (!p || !larga(p, p.hasta, ctx)) return null;
   const metros = G.metros(p, gasolinera);
   if (metros == null || metros < VERDE_M) return null;
   const serie = await aforadorDe(ctx);
   if (!serie) return null;
   const m = B.subidaEnParada(serie, p);
-  return m.ok && m.salto >= SUBE_L ? { como: 'sube', horas: horasDe(p), antes: m.antes, despues: m.despues, metros } : null;
+  return m.ok && m.salto >= SUBE_L ? { como: 'sube', horas: horasDe(p, p.hasta), antes: m.antes, despues: m.despues, metros } : null;
 }
 
 /** Lo que se dice de una parada que no es de verdad (cabe en los 300 de gps_motivo). */
 function motivoParadaRota(p, anda) {
-  const h = `${String(anda.horas).replace('.', ',')} h (de ${horaCorta(p.desde)} a ${horaCorta(p.hasta)})${p.direccion ? ` en ${p.direccion}` : ''}`;
+  const horas = String(anda.horas).replace('.', ',');
+  const donde = p.direccion ? ` en ${p.direccion}` : '';
+  if (anda.abierta) {
+    return `Mapon da el coche parado desde las ${horaCorta(p.desde)}${donde} sin cerrar la parada (${horas} h hasta la hora del repostaje), ` +
+      `pero dentro el aforador fue de ${anda.min} a ${anda.max} L: el coche andaba y su GPS no lo vio`;
+  }
+  const h = `${horas} h (de ${horaCorta(p.desde)} a ${horaCorta(p.hasta)})${donde}`;
   return anda.como === 'dentro'
     ? `Mapon da el coche parado ${h}, pero dentro el aforador fue de ${anda.min} a ${anda.max} L: el coche andaba y su GPS no lo vio`
     : `Mapon da el coche parado ${h}, a ${Number(anda.metros).toLocaleString('es-ES')} m, pero al arrancar tenía ${anda.despues - anda.antes} L más ` +
       `(${anda.antes} → ${anda.despues}): repostó en ese rato y su GPS no lo vio`;
+}
+
+/**
+ * ¿A LA PARADA QUE CUBRE LA HORA LA DESMIENTE EL PROPIO MAPON? (revisión del
+ * 26/10/2026.) Solo se mira si desde ella no saldría verde. No es un sitio si:
+ *
+ *   · la ruta que la cierra arranca a más de 300 m de ella (`salto`): el coche
+ *     se movió dentro y su GPS no lo vio (el 9523MMX, el 18/10: arrancó a
+ *     1,7 km de donde Mapon lo daba parado 47 minutos);
+ *   · o Mapon tiene un punto del coche DENTRO de la parada, a 5 minutos o menos
+ *     de la hora, a más de 300 m de ella (`aparte`): el 1208MJY daba puntos
+ *     andando, uno a 25 m del surtidor, dentro de una «parada» de 13:47 a 14:35.
+ *
+ * Entonces manda ese punto, si es de 5 minutos o menos y queda más cerca de la
+ * gasolinera: nunca acusa más que la parada sola. Sin un punto así se queda la
+ * parada, como siempre. Un coche aparcado de verdad lejos arranca donde paró y
+ * da sus puntos en el mismo sitio (el 8997LDK en Campo Real: la ruta a 6 m, un
+ * punto a 5 m): no salta.
+ * → null, o { punto, detalle } (lo que se guarda en la ficha).
+ */
+async function desmentida(parada, unidad, t, gasolinera, ctx) {
+  const lejos = G.metros(parada, gasolinera);
+  if (lejos == null || lejos < VERDE_M) return null;
+  const p = await ctx.mapon.posicionEn(unidad.unitId, t);
+  if (!p || Math.abs(p.t - t) > DESMIENTE_MS) return null;
+  const mPunto = G.metros(p, gasolinera);
+  if (mPunto == null || mPunto >= lejos) return null;
+  const salto = parada.siguiente ? G.metros(parada, parada.siguiente) : null;
+  const dentro = p.t > parada.desde && p.t < (parada.hasta != null ? parada.hasta : ctx.ahora);
+  const aparte = dentro ? G.metros(p, parada) : null;
+  const porPunto = aparte != null && aparte > NO_ES_UN_SITIO_M;
+  if (!porPunto && !(salto != null && salto > NO_ES_UN_SITIO_M)) return null;
+  return { punto: p, detalle: { desde: iso(parada.desde), hasta: iso(parada.hasta), direccion: parada.direccion || null, aLaGasolinera: lejos,
+    como: porPunto ? 'punto' : 'salto', salto, aparte, arranque: parada.siguiente ? iso(parada.siguiente.t) : null } };
 }
 
 /**
@@ -415,9 +502,11 @@ async function mirarGps(a, rep, unidad, t, gas, ctx) {
     const rota = (p, anda) => {
       a.detalle.paradaRota = { desde: iso(p.desde), hasta: iso(p.hasta), direccion: p.direccion || null, ...anda };
       medirDesde(a, rep, null, gas, motivoParadaRota(p, anda));
+      // Abierta: cuando Mapon la cierre, o le lleguen los puntos que guardaba el equipo, se mide de verdad.
+      if (anda.abierta && t + 48 * H > ctx.ahora) a.reintentar = true;
     };
     const candidata = cubre || antes || cerca;
-    const dentro = await andaDentro(candidata, ctx);
+    const dentro = await andaDentro(candidata, ctx, t, gas.elegida.gasolinera);
     if (dentro) { rota(candidata, dentro); return; }
     const sube = cubre ? await subeEnElla(cubre, ctx, gas.elegida.gasolinera) : null;
     if (sube) { rota(cubre, sube); return; }
@@ -463,6 +552,16 @@ async function mirarGps(a, rep, unidad, t, gas, ctx) {
         sinPosicion = p
           ? `Mapon no tiene al coche parado a esa hora, y su posición más cercana es de ${minutos(p.t - t)} min ${p.t < t ? 'antes' : 'después'}: no vale para decir dónde repostó`
           : 'Mapon no tiene la posición del coche a esa hora';
+      }
+    } else {
+      // La parada que cubre la hora, si no sale verde: ¿la desmiente Mapon?
+      const falsa = await desmentida(cubre, unidad, t, gas.elegida.gasolinera, ctx);
+      if (falsa) {
+        Object.assign(a, { gpsFuente: 'punto', gpsAt: falsa.punto.t });
+        a.detalle.punto = { t: iso(falsa.punto.t) };
+        a.detalle.paradaFalsa = falsa.detalle;
+        medirDesde(a, rep, { lat: falsa.punto.lat, lng: falsa.punto.lng }, gas, null);
+        return;
       }
     }
   } catch (e) {
@@ -689,6 +788,91 @@ async function mirarBoya(a, rep, unidad, t, ctx) {
 const soloBoya = rep => !!(rep && rep.auditoria_detalle && rep.auditoria_detalle.soloBoya);
 
 /**
+ * LA HORA QUE PASA DOS VECES Y EL EXCEL NO DICE CUÁL (revisión del 26/10/2026).
+ * lector.petroprixExcel guarda la segunda cuando el orden del fichero no lo
+ * decide (`sin_saber`), y 7 rojos de la noche del 25/10 eran la primera: a la
+ * hora de verano el coche estaba en el surtidor y el depósito subió entonces (el
+ * 2903LZH, a 16 m de Parla 2 y de 24 a 43 L; con la segunda, a 26 km).
+ *
+ * Se mira el GPS en las dos (mirarGps) y cuánto subió el aforador en cada una,
+ * con la misma ventana de la boya. Una CUADRA si queda a menos de 700 m y, si el
+ * coche da el nivel, el depósito sube 3 L o más (10 puntos en los Ford). Si
+ * cuadra una sola, se audita con esa y se corrige la hora guardada (y se vuelve
+ * a mirar quién llevaba el coche); la decisión se guarda y no se repite. Si
+ * cuadran las dos o ninguna, se queda la segunda, y se dice. Un coche lejos en
+ * las dos horas (el 8997LDK, o alguien que llena otro coche) sigue rojo. Si
+ * Mapon no contesta, no se decide nada y se vuelve a mirar.
+ *
+ * Los viajes de BOLT no descartan una hora: 92 de 1.690 repostajes buenos del
+ * Excel caen dentro de un pedido terminado (aceptar el siguiente y parar a
+ * repostar de camino).
+ * → la hora (ms) con la que se mide la boya; rellena el GPS de `a`.
+ */
+const porProbar = rep => rep.origen === 'excel' && rep.hora_repetida === 'sin_saber' &&
+  !(rep.auditoria_detalle && rep.auditoria_detalle.horaRepetida && rep.auditoria_detalle.horaRepetida.como === 'auditoria');
+
+async function probarPasadas(a, rep, unidad, t, primera, gas, ctx) {
+  const tSeg = primera ? t + H : t;
+  const tPrim = tSeg - H;
+  const guardada = primera ? 'primera' : 'segunda';
+  const pruebas = {};
+  for (const [pasada, tx] of [['primera', tPrim], ['segunda', tSeg]]) {
+    const ax = { detalle: { fallos: {} }, reintentar: false };
+    await mirarGps(ax, rep, unidad, tx, gas, ctx);
+    pruebas[pasada] = { t: tx, gps: ax, metros: ax.distancia == null ? null : ax.distancia, sube: await subioEn(unidad, tx, tPrim, tSeg, ctx) };
+  }
+  const fallo = Object.values(pruebas).some(x => x.gps.detalle.fallos.gps || (x.sube && x.sube.fallo));
+  const cuadra = x => x.metros != null && x.metros < VERDE_M && (!x.sube || x.sube.salto >= SUBE_PASADA[x.sube.tipo]);
+  const buenas = fallo ? [] : ['primera', 'segunda'].filter(k => cuadra(pruebas[k]));
+  let elegida = buenas.length === 1 ? buenas[0] : guardada;
+  if (elegida !== guardada) {
+    try {
+      await repo.moverHoraRepetida(rep.id, pruebas[elegida].t);
+    } catch (e) {
+      // Otra fila del coche con el mismo importe a esa hora (ux_rep_repostaje): se queda la guardada.
+      if (!e || e.code !== '23505') throw e;
+      elegida = guardada;
+    }
+  }
+
+  const { detalle, reintentar, ...gps } = pruebas[elegida].gps;
+  const { fallos, ...resto } = detalle;
+  Object.assign(a, gps);
+  Object.assign(a.detalle, resto);
+  Object.assign(a.detalle.fallos, fallos);
+  if (reintentar || fallo) a.reintentar = true;
+  const resumen = x => ({ t: iso(x.t), metros: x.metros, ...(x.sube && x.sube.salto != null ? { sube: x.sube.salto, tipo: x.sube.tipo } : {}) });
+  a.detalle.horaRepetida = { pasada: elegida, t: iso(pruebas[elegida].t), excel: true };
+  if (!fallo) {
+    Object.assign(a.detalle.horaRepetida, { como: buenas.length === 1 && elegida === buenas[0] ? 'auditoria' : 'probadas', cuadran: buenas.length,
+      pruebas: { primera: resumen(pruebas.primera), segunda: resumen(pruebas.segunda) } });
+  }
+  return pruebas[elegida].t;
+}
+
+/**
+ * Cuánto subió el aforador alrededor de `tx`, con la ventana de la boya. El de
+ * litros es el que ya se pidió (ctx.aforador, de 72 h antes a 48 h después,
+ * cubre las dos pasadas); el % de los Ford, de 24 h antes de la primera a 48 h
+ * después de la segunda: así la boya lo saca de la memoria con la hora elegida.
+ * → { tipo, salto } o null si no se sabe; { fallo: true } si Mapon no contestó.
+ */
+async function subioEn(unidad, tx, tPrim, tSeg, ctx) {
+  try {
+    let serie = await ctx.aforador(), tipo = 'litros';
+    if (!serie.some(p => Number(p.v) > 0)) {
+      serie = await ctx.mapon.nivelPorcentaje(unidad.unitId, tPrim - 24 * H, Math.min(ctx.ahora, tSeg + 48 * H));
+      tipo = 'porcentaje';
+      if (!serie.some(p => Number(p.v) > 0)) return null;
+    }
+    const m = B.ventana(serie, tx, { ahora: ctx.ahora });
+    return m.ok ? { tipo, salto: m.salto } : null;
+  } catch (_) {
+    return { fallo: true };
+  }
+}
+
+/**
  * Audita UN repostaje y guarda lo que salga. `gas`: { lista, alias }, cargados
  * una vez por pasada. `rep` trae también lo de la vez anterior (gps_*, boya_*,
  * auditoria_detalle): si Mapon no contesta a algo, eso se queda.
@@ -707,6 +891,9 @@ async function auditar(rep, gas, ctx = {}) {
   if (repite) {
     a.detalle.horaRepetida = { pasada: primera ? 'primera' : 'segunda', t: iso(t) };
     if (rep.origen === 'excel') a.detalle.horaRepetida.excel = true;
+    // Lo que ya decidió la auditoría (probarPasadas) se queda: la hora guardada es la buena.
+    const ya = rep.auditoria_detalle && rep.auditoria_detalle.horaRepetida;
+    if (ya && ya.como === 'auditoria') Object.assign(a.detalle.horaRepetida, { como: ya.como, cuadran: ya.cuadran, pruebas: ya.pruebas });
   }
   const conGas = { lista: gas.lista, elegida };
   let unidad = null;
@@ -726,9 +913,11 @@ async function auditar(rep, gas, ctx = {}) {
     // mira el GPS si la parada es larga (¿andaba?) y lo usa siempre la boya.
     let aforador = null;
     c.aforador = () => (aforador = aforador || c.mapon.nivelDeposito(unidad.unitId, t - 72 * H, Math.min(c.ahora, t + 48 * H)));
+    let tBoya = t;
     if (soloBoya(rep)) gpsDeAntes(a, rep, conGas, rep.gps_motivo || null);
+    else if (repite && porProbar(rep)) tBoya = await probarPasadas(a, rep, unidad, t, primera, conGas, c);
     else await mirarGps(a, rep, unidad, t, conGas, c);
-    await mirarBoya(a, rep, unidad, t, c);
+    await mirarBoya(a, rep, unidad, tBoya, c);
   } else if (!a.reintentar) {
     a.gpsMotivo = a.boyaMotivo = `El ${rep.matricula || 'coche'} no está en Mapon: no hay GPS ni aforador que mirar`;
     // Sin posición no hay distancia, pero la gasolinera sí se enseña. Y si solo

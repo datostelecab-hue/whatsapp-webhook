@@ -270,6 +270,17 @@ const TEXTOS_MAP = new Map(ALIAS.map(a => [`petroprix|${a.clave}`, porNombre(a.n
   igual('La memoria: con la ventana del grupo pedida, la de cada repostaje sale de ella, igual que pedida, sin volver a preguntar',
     [JSON.stringify(deMem) === JSON.stringify(directo), MAPON_LLAMADAS.length - antesLl, mem.cuenta()], [true, 2, { pedidas: 2, deMemoria: 2 }]);
   igual('…y lo que no cabe en lo pedido se pregunta', (await mem.nivelDeposito('u1', T + 47 * H, T + 60 * H), mem.cuenta().pedidas), 3);
+  // La ruta que sigue a una parada (26/10/2026): pedida a su tamaño, Mapon no
+  // da la que empieza después de lo pedido; recortada de la ventana del grupo, tampoco.
+  const CON_RUTA = [{ desde: T - 30 * MIN, hasta: T + 50 * MIN, lat: 40.4, lng: -3.6, siguiente: { t: T + 50 * MIN, lat: 40.41, lng: -3.6 } }];
+  const comoMapon = async (u, d, h) => CON_RUTA.filter(p => p.desde <= h && (p.hasta == null || p.hasta >= d))
+    .map(p => (p.siguiente && p.siguiente.t > h ? { ...p, siguiente: null } : p));
+  const memRuta = conMemoria({ ...MAPON, paradasUnidad: comoMapon });
+  await memRuta.precargar('u1', { paradas: [T - 3 * H, T + 2 * H] });
+  const rutaMem = await memRuta.paradasUnidad('u1', T - 3 * H, T + 10 * MIN);
+  igual('…y la ruta que sigue a una parada, solo si empieza dentro de lo pedido: igual que pedida a su tamaño',
+    [JSON.stringify(rutaMem) === JSON.stringify(await comoMapon('u1', T - 3 * H, T + 10 * MIN)), rutaMem[0].siguiente, memRuta.cuenta().deMemoria,
+      (await memRuta.paradasUnidad('u1', T - 3 * H, T + H))[0].siguiente.t], [true, null, 1, T + 50 * MIN]);
   // Los km (desde la boya de la ventana fija: lo que gastó entre sus dos
   // lecturas) también van con el grupo, y cada repostaje recorta los suyos.
   const KM = [{ t: T - 2 * H, v: 100 }, { t: T, v: 120 }, { t: T + H, v: 150 }, { t: T + 3 * H, v: 170 }];

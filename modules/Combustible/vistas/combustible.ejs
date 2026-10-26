@@ -758,6 +758,16 @@
           : 'Mapon no da su posición a esa hora: se toma esta parada, la más cercana.'));
     }
     const base = `Su posición de Mapon a las ${esc((d.gps_local || '').slice(11))}`;
+    // La parada que cubría la hora la desmentía el propio Mapon (revisión del
+    // 26/10/2026): el equipo la dejó clavada mientras el coche andaba.
+    const f = det.paradaFalsa;
+    if (f) {
+      const porque = f.como === 'punto'
+        ? `dentro de ella Mapon tiene al coche a ${esc(metros(f.aparte))} de allí`
+        : `al acabar, el coche arrancó a ${esc(metros(f.salto))} de allí`;
+      return base + nota(`Mapon lo daba parado de ${hm(f.desde)} a ${f.hasta ? hm(f.hasta) : '…'}${f.direccion ? ` en ${esc(f.direccion)}` : ''}, ` +
+        `a ${esc(metros(f.aLaGasolinera))} de la gasolinera, pero esa parada no es de fiar: ${porque}. Se mide desde donde estaba a esa hora.`);
+    }
     const c = det.paradaCerca;
     if (!c) return base + ' (no hubo parada a esa hora)';
     const tCorreo = (det.horaRepetida && Date.parse(det.horaRepetida.t)) || d.repostaje_ms || 0;
@@ -774,6 +784,21 @@
       nota(`${luego ? 'Paró' : 'Había estado parado'} de ${hm(c.desde)} a ${c.hasta ? hm(c.hasta) : '…'}${c.direccion ? ` en ${esc(c.direccion)}` : ''}` +
         `${c.metros != null ? `, a ${esc(metros(c.metros))} de donde estaba a ${laHora}` : ''}. ` +
         `Esa parada no cuenta: el coche ${luego ? 'aún no había llegado' : 'ya se había ido'}.`);
+  }
+
+  /**
+   * La hora que pasó dos veces y el Excel no dice cuál: lo que probó la
+   * auditoría en cada pasada y con cuál se quedó (revisión del 26/10/2026).
+   */
+  function pasadasProbadas(hr) {
+    const p = hr.pruebas;
+    if (!p) return 'El Excel no deja saber cuál: se ha tomado la segunda (ya en horario de invierno) mientras la auditoría no pueda probar las dos.';
+    const una = (nombre, x) => `con la ${nombre}, ${x.metros == null ? 'sin saber dónde estaba el coche' : `a ${esc(metros(x.metros))} de la gasolinera`}` +
+      (x.sube == null ? '' : `, y el depósito ${x.sube >= 0 ? 'subió' : 'bajó'} ${esc(x.tipo === 'porcentaje' ? `${num(Math.abs(x.sube), 0)} puntos` : lit(Math.abs(x.sube), 0))}`);
+    const pruebas = `${una('primera (aún en horario de verano)', p.primera)}; ${una('segunda (ya en invierno)', p.segunda)}`;
+    if (hr.como === 'auditoria') return `El Excel no deja saber cuál, y la auditoría ha probado las dos: ${pruebas}. Cuadra la ${esc(hr.pasada)}, y es la que vale.`;
+    return `El Excel no deja saber cuál, y la auditoría ha probado las dos: ${pruebas}. ` +
+      `${hr.cuadran ? 'Cuadran las dos' : 'No cuadra ninguna'}: se queda la segunda.`;
   }
 
   const ESTADO_AUDITORIA = {
@@ -1069,7 +1094,7 @@
               avisos.push(`El ${esc((d.repostaje_local || '').slice(0, 10))} a las ${esc((d.repostaje_local || '').slice(11))} pasó dos veces (cambio de hora). ` +
                 (det.horaRepetida.excel
                   ? (enExcel === 'sin_saber'
-                    ? 'El Excel no deja saber cuál: se ha tomado la segunda (ya en horario de invierno). Si sale rojo, puede ser la primera, una hora antes.'
+                    ? pasadasProbadas(det.horaRepetida)
                     : `Por el orden del Excel es la ${det.horaRepetida.pasada} (${det.horaRepetida.pasada === 'primera' ? 'aún en horario de verano' : 'ya en horario de invierno'}).`)
                   : det.horaRepetida.pasada === 'primera'
                     ? 'El correo llegó antes de la segunda, así que se ha auditado la primera (aún en horario de verano).'

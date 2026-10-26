@@ -7,6 +7,20 @@ actualizado: 2026-10-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-26 · Combustible: las malas lecturas de Mapon (db/218)
+
+*«En estos momentos hay muchos rojos por culpa de la zona, con esto creo que se pueden ocultar muchos falsos positivos»* (Camilo, con un Excel de coordenadas de Petroprix) y *«Te muestro el ejemplo del por qué digo que es mala lectura»* (el 0626MMZ, rojo a 19 km).
+
+Las decisiones:
+
+- **Las coordenadas del Excel no se cargan**: geocodificadas, quedan más lejos de las paradas reales de Mapon que las de la web de Petroprix (db/215), y habrían pasado 37 verdes a rojo y 550 a amarillo sin arreglar ningún rojo.
+- **La parada que cubre la hora, si no sale verde, se contrasta con Mapon**: si la ruta que la cierra arranca a más de 300 m o hay dentro un punto del coche a más de 300 m, manda el punto de esa hora (5 minutos o menos, y solo si queda más cerca: nunca acusa más).
+- **Una parada abierta se mira por dentro hasta la hora**, y solo lejos de la gasolinera; **y una cerrada, también solo lejos**: en el surtidor, el motor encendido no es un GPS clavado.
+- **La hora repetida que el Excel no decide la decide la auditoría**, probando las dos con el GPS y el aforador, y corrige la hora guardada. **Los viajes de BOLT no deciden**: 92 de 1.690 repostajes buenos caen dentro de un pedido terminado.
+- **No se ponen** la regla del «alcance» tras un hueco del GPS (un coche quieto a 750 m tampoco manda puntos) ni la del estado `nogps` de Mapon (un coche en un garaje también lo da, y con el motor apagado no hay aforador que lo desmienta).
+
+Medido con un ensayo en seco sobre los datos de producción (169 filas, sin guardar nada): de 34 GPS rojos y amarillos, 24 cambian (20 a verde, 2 a amarillo y 2 sin color) y los 10 que quedan son los del 8997LDK y el 8512LDS; los 47 verdes de control, igual. → [[Combustible#Las malas lecturas de Mapon (26/10/2026, db/218)]]
+
 ## 2026-10-25 · Visibilidad: los gráficos de la tendencia
 
 *«Que en el gráfico que muestras los últimos 15 días se pueda agrandar, tipo, última semana, últimos 15 días, hace 30 días, 2 meses, 1 año, etc. Pero quiero gráficos mucho más profesionales y que muestren cómo van las horas actualmente y cómo hemos crecido.»* Hechos con la skill de visualización (`dataviz`). Las decisiones:

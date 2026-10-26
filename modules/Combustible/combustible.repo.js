@@ -816,6 +816,7 @@ async function ponerGasolinera(id, g) {
 // columna sale NULL, que es «del correo»: lo único que había.
 const CAMPOS_AUDITAR = `
   r.id, r.proveedor, to_jsonb(r) ->> 'origen' AS origen, r.estacion, r.sede, r.matricula, r.matricula_norm, r.vehiculo_id, r.litros::float AS litros,
+  to_jsonb(r) -> 'excel_crudo' ->> 'horaRepetida' AS hora_repetida,
   r.repostaje_at, r.recibido_at, r.gasolinera_id, r.gasolinera_como, r.auditoria_estado, r.auditoria_intentos, r.auditoria_at,
   r.gps_lat::float AS gps_lat, r.gps_lng::float AS gps_lng, r.gps_at, r.gps_hasta, r.gps_fuente, r.gps_direccion,
   r.boya_tipo, r.boya_antes::float AS boya_antes, r.boya_despues::float AS boya_despues, r.boya_salto::float AS boya_salto,
@@ -927,6 +928,23 @@ async function guardarAuditoria(id, a) {
      a.boyaTipo || null, n(a.boyaAntes), n(a.boyaDespues), n(a.boyaSalto), n(a.boyaTecho),
      a.boyaCorregida == null ? null : !!a.boyaCorregida, n(a.boyaLitros), n(a.boyaErrorPct), txt(a.boyaMotivo, 300),
      a.estado, a.detalle ? JSON.stringify(a.detalle) : null]);
+}
+
+/**
+ * LA HORA BUENA DE UNA FILA DEL EXCEL CON LA HORA REPETIDA (la decide
+ * combustible.auditoria, probarPasadas): se corrige el instante y se vuelve a
+ * mirar quién llevaba el coche con esa hora: en el bot siempre (paraMirarBot
+ * coge los NULL) y en BOLT si aún está en sus tres días (paraMirarBolt); pasados,
+ * cerrarSinBolt lo cerraría «sin datos» y se perdería lo que había, así que lo
+ * de BOLT se queda. La clave del Excel sale de la hora tal cual la escribe el
+ * fichero, la misma en las dos pasadas: otra importación no la duplica ni la
+ * devuelve a la de antes.
+ */
+async function moverHoraRepetida(id, ms) {
+  await db.consulta(
+    `UPDATE repostaje SET repostaje_at = to_timestamp($2::float / 1000), bot_estado = NULL, actualizado_at = now(),
+            bolt_estado = CASE WHEN GREATEST(to_timestamp($2::float / 1000), creado_at) > now() - interval '3 days' THEN NULL ELSE bolt_estado END
+      WHERE id = $1`, [id, ms]);
 }
 
 /**
@@ -1060,7 +1078,7 @@ module.exports = {
   cochesDe, empezarImportacion, cerrarImportacion, importaciones, importacionConHuella, ultimaImportacion,
   guardarDelExcel, clavesYaGuardadas, casiIgualesDelExcel,
   gasolineras, aliasGasolineras, textosGasolineras, ponerAlias, quitarAlias, paraCasarGasolinera, leidosDelProveedor, ponerGasolinera,
-  paraAuditar, paraAuditarUno, vecinosDe, unidadMapon, guardarAuditoria, apuntarFallo, cerrarAuditoriasSinDatos,
+  paraAuditar, paraAuditarUno, vecinosDe, unidadMapon, guardarAuditoria, moverHoraRepetida, apuntarFallo, cerrarAuditoriasSinDatos,
   lista, ficha,
   // Gancho de prueba (scripts/comprobar-combustible.js): las NOT NULL con valor por defecto.
   _valorDe: valorDe,

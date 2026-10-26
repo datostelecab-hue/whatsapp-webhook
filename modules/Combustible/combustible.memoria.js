@@ -54,8 +54,10 @@ function conMemoria(mapon, { pausaMs = 0 } = {}) {
   const RECORTAR = {
     nivelDeposito: enVentana,
     nivelPorcentaje: enVentana,
-    // Las paradas que tocan la ventana, enteras.
-    paradasUnidad: (ps, desde, hasta) => ps.filter(p => p.desde <= hasta && (p.hasta == null || p.hasta >= desde)),
+    // Las paradas que tocan la ventana, enteras. La ruta que sigue a una solo
+    // si empieza dentro: pedida a su tamaño, Mapon no la habría dado.
+    paradasUnidad: (ps, desde, hasta) => ps.filter(p => p.desde <= hasta && (p.hasta == null || p.hasta >= desde))
+      .map(p => (p.siguiente && p.siguiente.t > hasta ? { ...p, siguiente: null } : p)),
     gastadoYKm: (x, desde, hasta) => ({ gastado: enVentana(x.gastado || [], desde, hasta), km: enVentana(x.km || [], desde, hasta) }),
   };
 

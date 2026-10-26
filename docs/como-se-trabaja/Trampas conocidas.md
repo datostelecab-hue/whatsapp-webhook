@@ -2128,6 +2128,27 @@ de una hora no vale si el aforador se mueve dentro (solo lee encendido) o si,
 lejos de la gasolinera, al acabar el depósito tiene 5 L más (aparcado no se
 reposta). La que tiene el depósito quieto sí vale: es lo que hay que ver.
 
+### Una parada abierta, o una corta que «no acaba donde empezó», tampoco es un sitio
+
+`modules/Combustible/combustible.auditoria.js` → `andaDentro`, `desmentida` · `services/mapon.js` → `paradasUnidad` (26/10/2026)
+
+Lo de arriba solo miraba paradas cerradas y de más de una hora. El 0626MMZ salía
+rojo a 19 km, «parado desde las 00:00» con la parada aún abierta, y esa noche hizo
+14 viajes de BOLT: sin final, `andaDentro` no la miraba. Y los equipos del 1208MJY y
+el 1090MJY dejan la parada clavada mientras el coche anda: «rutas» de 7 segundos que
+saltan kilómetros y puntos del coche andando DENTRO de la «parada». Ni una cosa ni la
+otra se ve en la parada sola: hay que mirar dónde arranca la ruta que la sigue (que
+`route/list` ya trae y se tiraba) y el punto del coche a esa hora. **Remedio:** la
+abierta, por dentro hasta la hora; la corta, contra la ruta siguiente y su punto, y
+manda el punto solo si queda más cerca (nunca acusa más). Y al revés también engaña:
+mirar por dentro una parada EN la gasolinera da por «andaba» a un coche que esperó
+horas encendido en el surtidor (el 9107LWS). Solo lejos.
+
+Ojo con la memoria de la pasada (`combustible.memoria`): con la ventana del grupo
+llega una ruta que la ventana de un repostaje no traería, y la auditoría dejaría de
+dar lo mismo con memoria que sin ella. La ruta que empieza después de lo pedido se
+quita al recortar.
+
 ### Redondear por separado el % y los litros los contradice
 
 `modules/Combustible/combustible.boya.js` → `diferencia` (revisión del 23/10/2026)
