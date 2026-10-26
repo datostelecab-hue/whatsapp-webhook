@@ -7,6 +7,14 @@ actualizado: 2026-10-26
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-26 · Bitácora: la J se manda a Tráfico, RRHH o Taller
+
+*«En la bitácora, cuando alguien va a justificar horas (que quedan pendientes de aprobar), que tenga la opción de mandarlo a RRHH, taller o tráfico»* (Camilo).
+
+- **No hizo falta nada nuevo en la base**: el justificante ya tenía su área (`tipo`, db/73) y /justificantes ya filtraba por ella. La bitácora la mandaba siempre a Tráfico.
+- **Solo tres opciones aquí.** BOLT y «Por compañero» son cosa de Control, que es quien llama.
+- **Editar respeta el área que tenga**, también la de BOLT. Ver [[Bitacora]].
+
 ## 2026-10-26 · La dirección de Render manda a erptelecab.es
 
 *«Que si alguien entra a https://whatsapp-webhook-g7wa.onrender.com lo redirija a erptelecab.es y ya, que para el portal de conductores entren exactamente con conductorestelecab.es»* (Camilo).

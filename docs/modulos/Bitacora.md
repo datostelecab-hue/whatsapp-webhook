@@ -153,6 +153,7 @@ Pero **al escribir se tira**: al poner una J, anularla o marcar una libranza, la
 ## Justificar y librar
 
 - **Justificar** es con **horas exactas**, no con las 8 fijas. Va por `conductor_id`, que es lo que trae la vista: **el nombre no identifica**.
+- **Se elige a quién se manda: Tráfico, RRHH o Taller** (26/10/2026, Camilo: *«que tenga la opción de mandarlo a RRHH, taller o tráfico»*). Es el tipo del justificante (db/73), y decide qué área la aprueba en [[Justificantes|/justificantes]]. Por defecto va a Tráfico, como hasta ahora. Va en los dos formularios: «Justificar un día» y el del día sin salir. La ficha del día dice «Área: RRHH». BOLT y «Por compañero» se siguen poniendo desde Control. **Editar ya no cambia el área a escondidas**: antes toda J editada aquí se guardaba como Tráfico, y una de RRHH o de BOLT acababa en la cola equivocada. Un área que no existe se rechaza (`DESTINOS` en `bitacora.service.js`; comprobador: `scripts/comprobar-cache-justificantes.js`).
 - **Anular** una J no la borra: el registro queda **anulado**, no desaparecido.
 - **La libranza manual** ("ese día le tocaba librar") vive en `bitacora_dia` con marca `L` y `marca_manual`. **El planificador no se toca:** el cuadrante dice lo que estaba *planificado* y la bitácora lo que de verdad *pasó*.
 

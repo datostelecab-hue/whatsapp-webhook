@@ -16,7 +16,9 @@ const sustituir = (rel, exp) => {
   require.cache[f] = { id: f, filename: f, loaded: true, exports: exp };
 };
 
-// La base de mentira: contesta lo justo a cada escritura de una J.
+// La base de mentira: contesta lo justo a cada escritura de una J. De la
+// última J escrita se guardan los parámetros, para ver a qué área fue.
+let ultimaJ = null;
 let aprobarEncuentra = true;
 const responde = sql => {
   if (/SET aprobado_at = now\(\)/.test(sql)) return { rows: aprobarEncuentra ? [{ id: 5 }] : [] };
@@ -28,7 +30,7 @@ const responde = sql => {
 sustituir('services/db.js', {
   HAY_BD: true,
   consulta: async sql => responde(sql),
-  transaccion: async fn => fn({ query: async sql => responde(sql) }),
+  transaccion: async fn => fn({ query: async (sql, params) => { if (/INSERT INTO justificante/.test(sql)) ultimaJ = params; return responde(sql); } }),
 });
 // La rejilla de la bitácora: se cuenta cuántas veces se lee de verdad.
 let lecturas = 0;
@@ -76,6 +78,24 @@ function igual(nombre, real, esperado) {
   J.avisarCambios(() => { throw new Error('se rompió quien escuchaba'); });
   const r = await J.aprobar(5, {});
   igual('Un aviso que falla no tumba la aprobación', r.ok, true);
+
+  // ── A QUIÉN VA LA J DESDE LA BITÁCORA (26/10/2026) ──────────────────────────
+  // El área es el tipo del justificante (db/73): decide quién la aprueba.
+  const areaDe = async tipo => {
+    ultimaJ = null;
+    await B.justificar({ conductorId: 1, dia: '2026-10-20', horas: 2, observacion: 'ITV', tipo }, 7);
+    return ultimaJ && ultimaJ[4];
+  };
+  igual('Desde la bitácora se ofrecen Tráfico, RRHH y Taller', B.DESTINOS, ['trafico', 'rrhh', 'taller']);
+  igual('Mandada a RRHH, la J queda de RRHH', await areaDe('rrhh'), 'rrhh');
+  igual('Mandada a Taller, de Taller', await areaDe('taller'), 'taller');
+  igual('Mandada a Tráfico, de Tráfico', await areaDe('trafico'), 'trafico');
+  igual('Sin elegir (una pantalla vieja en caché), a Tráfico como siempre', await areaDe(undefined), 'trafico');
+  igual('Al editar una J de BOLT que vino de Control, sigue siendo de BOLT', await areaDe('bolt'), 'bolt');
+  let error = null;
+  try { await areaDe('contabilidad'); } catch (e) { error = e.message; }
+  igual('Un área que no existe se rechaza, no se manda a Tráfico a escondidas', /Tráfico, RRHH o Taller/.test(error || ''), true);
+  igual('…y no se escribe nada', ultimaJ, null);
 
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);

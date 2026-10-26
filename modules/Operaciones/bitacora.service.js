@@ -70,16 +70,29 @@ function llamadasDelDia(conductorId, dia) {
   return llamadas.delDia(cid, String(dia));
 }
 
+// A QUIÉN SE MANDA LA J (26/10/2026, Camilo: «cuando alguien va a justificar
+// horas que tenga la opción de mandarlo a RRHH, taller o tráfico»). Es el tipo
+// del justificante (db/73), que decide quién la aprueba en /justificantes.
+// Desde aquí se ofrecen esas tres; BOLT y «por compañero» se ponen desde Control.
+// Si no llega ninguno, Tráfico, como siempre. Al editar una J que vino de
+// Control se respeta la suya (la vista la ofrece): por eso vale cualquiera de
+// las cinco, y lo que no es ninguna se rechaza en vez de mandarlo a Tráfico a
+// escondidas.
+const DESTINOS = ['trafico', 'rrhh', 'taller'];
+const ES_TIPO = new Set(justificantes.TIPOS_J.map(t => t.codigo));
+
 /** Justificar un día con HORAS EXACTAS. Escribe el justificante y la 'J'. */
-async function justificar({ conductorId, dia, horas, observacion }, usuarioId) {
+async function justificar({ conductorId, dia, horas, observacion, tipo }, usuarioId) {
+  tipo = String(tipo == null ? '' : tipo).trim();
+  if (tipo && !ES_TIPO.has(tipo)) throw new Error('Elige a quién se manda: Tráfico, RRHH o Taller.');
   const r = await justificantes.guardarPorId({
     conductorId, diaIso: dia,
     horas: (horas == null || horas === '') ? '' : Number(horas),
-    observacion, usuarioId,
+    observacion, tipo: tipo || 'trafico', usuarioId,
   });
   olvidar();
   console.log(`📝 [Bitácora] Justificante PG ${dia} · conductor ${r.conductorId}` +
-    `${horas ? ` (${horas} h)` : ''}`);
+    `${horas ? ` (${horas} h)` : ''} → ${tipo || 'trafico'}`);
   return r;
 }
 
@@ -281,7 +294,7 @@ async function sellarPuntuacionSemanal() {
 module.exports = {
   mediaDelMes, promedioHoras, recalcularPromedios, sellarPuntuacionSemanal,
   datos, vacaciones, llamadasDelDia,
-  justificar, anularJustificante, libranza, resellar,
+  justificar, anularJustificante, libranza, resellar, DESTINOS,
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el
   // repositorio, que es lo que deja cambiar esto por dentro.
   // Y la rejilla en caché se tira: lo sellado cambia lo que enseña.

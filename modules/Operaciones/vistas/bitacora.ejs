@@ -145,6 +145,16 @@
   // a todo el que lleve ese rol. El servidor lo comprueba igual en cada API;
   // esto solo evita enseñar botones que darían 403.
   const puedeJustificar = <%= puedeJustificar ? 'true' : 'false' %>;
+  // A QUIÉN SE MANDA LA J (26/10/2026): Tráfico, RRHH o Taller. La aprueba esa
+  // área en /justificantes. Ver DESTINOS en bitacora.service.js.
+  const DESTINOS_J = <%- JSON.stringify(destinosJ || []) %>;
+  const NOMBRE_J = Object.fromEntries((<%- JSON.stringify(tiposJ || []) %>).map(t => [t.codigo, t.etiqueta]));
+  /** El selector de la casa con las tres de aquí, y la que ya tenga si vino de Control (BOLT, compañero). */
+  const selectorDestino = (id, actual) => {
+    const ops = DESTINOS_J.concat(actual && !DESTINOS_J.includes(actual) && NOMBRE_J[actual] ? [actual] : []);
+    return `<div class="tc-selector" data-para="${id}" role="group" aria-label="A quién se manda la justificación">` +
+      ops.map(v => `<button type="button" data-v="${v}">${esc(NOMBRE_J[v] || v)}</button>`).join('') + '</div>';
+  };
   const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
   const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
   // Quién puso o quitó a mano una libranza, y cuándo: « por Ana el 24/09/2026».
@@ -630,11 +640,12 @@
        </div>
        ${puedeJustificar ? `
        <div id="b-justif-form" class="hidden mb-4 p-3 rounded-xl bg-telecab-dark/50 border border-telecab-border">
-         <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. Las horas que pongas son las que SE JUSTIFICAN, y se suman a las que hiciera en BOLT ese día: 2 h de taller + 8 h conectado = día de 10 h. Eso es lo que cuenta para la nómina.</p>
+         <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. Las horas que pongas son las que SE JUSTIFICAN, y se suman a las que hiciera en BOLT ese día: 2 h de taller + 8 h conectado = día de 10 h. Eso es lo que cuenta para la nómina, cuando la apruebe el área a la que la mandes.</p>
          <div class="flex flex-wrap items-end gap-3">
            <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${isoDe(0)}" max="${isoDe(DATA.hoyIdx)}" value="${isoDe(DATA.hoyIdx)}" class="mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
            <label class="text-xs text-telecab-muted">Horas que se justifican<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="p. ej. 2" class="mt-1 w-28 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
            <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Motivo (obligatorio)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. 2 horas ITV"></label>
+           <div class="text-xs text-telecab-muted">Se manda a<input type="hidden" id="j-tipo" value="trafico"><div id="j-tipo-hueco" class="mt-1">${selectorDestino('j-tipo')}</div></div>
            <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold">Guardar J</button>
          </div>
          <p id="j-msg" class="text-xs mt-2"></p>
@@ -672,18 +683,27 @@
     const jbtn = d.querySelector('#b-justif-btn');
     if (jbtn) {
       const form = d.querySelector('#b-justif-form');
-      jbtn.addEventListener('click', () => form.classList.toggle('hidden'));
+      // Al abrirlo para un día nuevo, de vuelta a las tres de siempre y a Tráfico
+      // (si antes se editó una J de BOLT, su opción ya no pinta nada aquí).
+      const destinoNuevo = () => {
+        d.querySelector('#j-tipo').value = 'trafico';
+        d.querySelector('#j-tipo-hueco').innerHTML = selectorDestino('j-tipo');
+        if (window.Selector) Selector.montar(form);
+      };
+      jbtn.addEventListener('click', () => { if (form.classList.toggle('hidden') === false) destinoNuevo(); });
+      if (window.Selector) Selector.montar(form);
       d.querySelector('#j-guardar').addEventListener('click', async () => {
         const msg = d.querySelector('#j-msg');
         const diaV = d.querySelector('#j-dia').value, horasV = d.querySelector('#j-horas').value, obsV = d.querySelector('#j-obs').value.trim();
+        const tipoV = d.querySelector('#j-tipo').value || 'trafico';
         if (!diaV) { msg.textContent = 'Elige un día.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
         if (!obsV) { msg.textContent = 'El motivo es obligatorio.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
         msg.textContent = 'Guardando…'; msg.className = 'text-xs mt-2 text-telecab-muted';
         try {
           const resp = await (await fetch('/bitacora/api/justificar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV }) })).json();
+            body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV, tipo: tipoV }) })).json();
           if (resp.status !== 'ok') throw new Error(resp.msg || 'Error');
-          msg.textContent = '✓ Justificado. Actualizando…'; msg.className = 'text-xs mt-2 text-telecab-green';
+          msg.textContent = '✓ Justificado y mandado a ' + (NOMBRE_J[tipoV] || 'Tráfico') + '. Actualizando…'; msg.className = 'text-xs mt-2 text-telecab-green';
           await recargarYAbrir(c.conductorId);
         } catch (e) { msg.textContent = 'Error: ' + e.message; msg.className = 'text-xs mt-2 text-telecab-red'; }
       });
@@ -856,6 +876,7 @@
           ${cab}
           <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${pend ? 'rgb(var(--tc-azul)/.15)' : tint('J')};color:${pend ? 'rgb(var(--tc-azul))' : clr('J')}">
             Justificante${j.horas != null ? ` · ${nf1.format(j.horas)} h` : ' · sin horas'} · ${pend ? 'PENDIENTE de aprobar' : 'aprobado'}${!pend && j.porQuien ? ' por ' + esc(j.porQuien) : ''}</span>
+          ${NOMBRE_J[j.tipo] ? `<span class="text-xs text-telecab-muted" title="El área que la aprueba en Justificantes">Área: <b class="text-telecab-text">${esc(NOMBRE_J[j.tipo])}</b></span>` : ''}
           <span class="text-xs text-telecab-muted">${boltTxt}</span>
           ${pend
             ? `<span class="text-xs font-semibold" style="color:rgb(var(--tc-azul))" title="Mientras no se apruebe, esas horas son PRESUNTAS y no cuentan para la nómina">→ día de ${nf1.format(firme + (j.horas || 0))} h presuntas <span class="text-telecab-muted font-normal">(firmes: ${nf1.format(firme)} h)</span></span>`
@@ -879,6 +900,7 @@
         <div class="flex flex-wrap items-end gap-2 mt-2">
           <label class="text-[11px] text-telecab-muted">Horas que se justifican<br><input data-di="horas" type="number" step="0.1" min="0" max="24" placeholder="p. ej. 8" class="mt-1 w-24 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
           <label class="flex-1 min-w-[160px] text-[11px] text-telecab-muted">Motivo de la ausencia<br><input data-di="obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. coche en taller"></label>
+          <div class="text-[11px] text-telecab-muted">Se manda a<input type="hidden" id="di-tipo" value="trafico"><div class="mt-1">${selectorDestino('di-tipo')}</div></div>
           <button data-di="justificar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar</button>
           <button data-di="libranza" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-text transition whitespace-nowrap" title="Ese día le tocaba librar: se marca a mano, sin tocar el planificador"><i class="fa-solid fa-bed mr-1"></i>Era libranza</button>
         </div>
@@ -901,6 +923,7 @@
       return;
     }
     pintarExtraDia(box, c, iso);
+    if (window.Selector) Selector.montar(box);
 
     const msg = box.querySelector('[data-di-msg]');
     const aviso = (t, mal) => { msg.classList.remove('hidden'); msg.textContent = t; msg.className = 'text-xs mt-1.5 ' + (mal ? 'text-telecab-red' : 'text-telecab-muted'); };
@@ -918,7 +941,9 @@
       const horas = box.querySelector('[data-di="horas"]').value;
       const obs = box.querySelector('[data-di="obs"]').value.trim();
       if (!obs) return aviso('El motivo es obligatorio.', true);
-      post('/bitacora/api/justificar', { conductorId: c.conductorId, dia: iso, horas, observacion: obs }, '✓ Justificado.');
+      const tipo = (box.querySelector('#di-tipo') || {}).value || 'trafico';
+      post('/bitacora/api/justificar', { conductorId: c.conductorId, dia: iso, horas, observacion: obs, tipo },
+        '✓ Justificado y mandado a ' + (NOMBRE_J[tipo] || 'Tráfico') + '.');
     });
     on('libranza', () => post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso }, '✓ Marcado como libranza.'));
     on('quitarl', async () => {
@@ -938,6 +963,11 @@
       $('#j-dia').value = iso;
       $('#j-horas').value = j.horas != null ? j.horas : '';
       $('#j-obs').value = j.obs || '';
+      // Editar NO la cambia de área a escondidas: antes se guardaba siempre como
+      // Tráfico y una J de RRHH o de BOLT acababa en la cola equivocada.
+      $('#j-tipo').value = NOMBRE_J[j.tipo] ? j.tipo : 'trafico';
+      $('#j-tipo-hueco').innerHTML = selectorDestino('j-tipo', j.tipo);
+      if (window.Selector) Selector.montar(form);
       form.scrollIntoView({ behavior: 'smooth', block: 'center' });
       $('#j-obs').focus();
     });

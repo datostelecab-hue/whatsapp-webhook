@@ -34,6 +34,10 @@ router.get('/', (req, res) => {
     titulo: 'Bitácora', seccion: 'bitacora', layout: 'layout-gestion',
     rol: (req.usuario && req.usuario.rol) || '',
     puedeJustificar: !mias || mias.includes('/bitacora/justificar'),
+    // A quién se puede mandar una J desde aquí, y el nombre de todas (para
+    // decir a quién fue una que vino de Control).
+    destinosJ: bitacora.DESTINOS,
+    tiposJ: require('../../services/repo/justificantes').TIPOS_J,
   });
 });
 
@@ -56,7 +60,7 @@ router.get('/api/dia', responde(req =>
 router.post('/api/justificar', responde(async req => {
   const b = req.body || {};
   return bitacora.justificar(
-    { conductorId: b.conductorId, dia: b.dia, horas: b.horas, observacion: b.observacion },
+    { conductorId: b.conductorId, dia: b.dia, horas: b.horas, observacion: b.observacion, tipo: b.tipo },
     await quien(req));
 }));
 
