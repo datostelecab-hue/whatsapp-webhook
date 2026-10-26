@@ -64,6 +64,10 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            ${NOMBRE}                       AS nombre_legal,
            c.nombre, c.apellidos, c.nombre_ss,
            c.dni_tipo, c.dni_nie, c.nacionalidad, c.email,
+           -- Para el Excel de la plantilla (26/10/2026, Camilo): la dirección
+           -- (la columna generada con sus piezas) y la zona que Tráfico le pone
+           -- en el planificador («poner zona»: el barrio, no la localidad).
+           c.direccion, c.barrio,
            -- Número de afiliación a la Seguridad Social. Quien va por ETT no lo
            -- tiene con nosotros: lo cotiza la ETT.
            c.naf,

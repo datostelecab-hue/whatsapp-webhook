@@ -1342,6 +1342,13 @@
             `<span class="font-semibold">${esc(v)}</span>` +
             (f.zona ? ` <span class="text-telecab-muted text-xs">${esc(f.zona)}</span>` : '') },
       { titulo: 'Teléfono', campo: 'telefono', clase: 'whitespace-nowrap tabular-nums' },
+      // LA DIRECCIÓN Y LA ZONA, SOLO EN EL EXCEL (26/10/2026, Camilo): «que me
+      // salga también la dirección de los conductores y la zona que tienen
+      // puesta en el planificador». La zona es la de la casita del planificador
+      // (el barrio: Aluche, San Blas…), no la base del coche, que va junto a la
+      // matrícula.
+      { titulo: 'Dirección', soloExcel: true, valor: f => (f.direccion || '').trim() || 'Sin dirección en plantilla' },
+      { titulo: 'Zona (planificador)', soloExcel: true, valor: f => (f.barrio || '').trim() },
       { titulo: 'Desde', campo: 'alta', clase: 'tabular-nums whitespace-nowrap',
         pinta: (v, f) => {
           // Si ya no está, lo que importa es CUÁNDO se fue, no cuándo entró.

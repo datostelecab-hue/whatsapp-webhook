@@ -40,6 +40,14 @@ La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion
 
 El botón de Excel junto al buscador descarga lo que se está viendo. Desde el 01/10/2026 lleva, detrás del nombre, la columna **«Contrato»: Propia o ETT**. En la tabla no hay columna nueva —ya lo dice la etiqueta ETT junto al nombre—, porque es una columna `soloExcel` del Listado ([[Componentes de la casa]]). A quien ya no está no se le atribuye contrato: sale en blanco, igual que «SS / ETT» en pantalla.
 
+### Y la dirección y la zona del planificador (26/10/2026)
+
+Camilo: *«Cuando bajemos el Excel de Plantilla me salga también la dirección de los conductores y la zona que tienen puesta en el planificador. Si no tiene dirección solo ponle "Sin dirección en plantilla"»*. Dos columnas más, solo en el Excel, detrás del teléfono:
+- **«Dirección»**: la columna `direccion` de la ficha, que se arma sola con sus piezas (vía, número, escalera, piso, puerta, código postal y localidad). Sin ninguna pieza, **«Sin dirección en plantilla»**.
+- **«Zona (planificador)»**: la de la casita del planificador («poner zona»), es decir, `conductor.barrio` (Aluche, San Blas…), la zona de casa que pone Tráfico. No es la localidad de la gestoría ni la base del coche (que en la tabla va junto a la matrícula). Sin zona, en blanco.
+
+En la copia local del 23/10, de las 219 personas de alta, 165 tienen dirección, 54 salen «Sin dirección en plantilla» y 190 tienen zona. La dirección ya viajaba en la ficha a cualquiera que vea Plantilla, igual que el DNI y el NAF en la lista: el ámbito «sensible» decide quién la edita, no quién la ve.
+
 ### Y el promedio de horas: BOLT + justificadas, ausencias a 0 (14/10/2026)
 
 Se llegó en tres pasos, todos de Camilo el mismo día:
