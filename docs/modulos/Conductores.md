@@ -405,6 +405,8 @@ Para eso la lógica se movió a **Documentos** (`fotoDe`, `foto`, `subirFoto` en
 
 El botón de la cámara va **siempre visible** en la esquina, no al pasar el ratón: en un móvil no hay ratón. El hueco en la cabecera es una opción nueva del [[Componentes de la casa|Listado]], `detalle.avatar(d, hueco)`, que funciona como `pinta` en los bloques.
 
+**Pegar una imagen** (26/10/2026). Camilo: *«habilita el pegado de imágenes en la foto de los conductores, que sea solo poner encima el cursor y pegar la imagen que traigo»*. Con el cursor encima de la foto, **Ctrl+V** guarda la imagen copiada (de una web, de una captura o de otro programa), reducida y por el mismo camino que la cámara. Al pasar el ratón sale «Pega con Ctrl+V». Solo cuenta si lo pegado es una imagen y el cursor está encima de la foto: pegar texto en una casilla sigue igual. Vale en Plantilla, Selección y la ETT, porque es el mismo componente.
+
 ## Quien ya se fue: su último contrato, no «Plantilla propia» (20/10/2026)
 
 La ficha cogía el tipo de contrato del periodo **vivo**, y quien ya está de baja no tiene ninguno. Sin él, la cabecera ponía **«Plantilla propia» por defecto**. Camilo lo vio con María del Pilar Torres Galán, de GiGroup, el día después de su baja: *«Cambia a María del Pilar de plantilla propia a ETT»*. Su contrato ya era de ETT; lo que mentía era la pantalla. El 20/10/2026 eran **94 de las 275 personas de baja**.

@@ -15,6 +15,11 @@
 //     móvil no hay ratón para descubrirlo al pasar por encima.
 //   · La foto se reduce en el navegador antes de subirla: de los 4-5 MB de un
 //     móvil a ~100 KB, con el lado largo a 640 px.
+//   · PEGAR UNA IMAGEN (26/10/2026, Camilo: «que sea solo poner encima el cursor
+//     y pegar la imagen que traigo»): con el cursor encima de la foto, Ctrl+V
+//     guarda la imagen que haya en el portapapeles, igual que la cámara. Solo si
+//     lo pegado es una imagen: pegar texto en una casilla no se toca. Al pasar
+//     el ratón se dice («Pega con Ctrl+V»).
 //
 // La foto es OPCIONAL en todas partes: no entra en lo que se exige para
 // contratar y una ficha sin ella funciona igual.
@@ -74,18 +79,56 @@
     return j;
   }
 
+  // Las fotos pintadas con permiso, para saber a cuál va un Ctrl+V: a la que
+  // tenga el cursor encima. Una sola escucha del pegado para toda la página.
+  const conPermiso = new Map();   // hueco → { opc, guardar }
+  let escuchandoPegar = false;
+
+  /** La primera imagen del portapapeles de un evento de pegar, o null. */
+  function imagenPegada(e) {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.kind === 'file' && /^image\//.test(it.type)) return it.getAsFile();
+    }
+    return null;
+  }
+
+  function escucharPegar() {
+    if (escuchandoPegar) return;
+    escuchandoPegar = true;
+    document.addEventListener('paste', e => {
+      let destino = null;
+      for (const [hueco, x] of conPermiso) {
+        if (!hueco.isConnected) { conPermiso.delete(hueco); continue; }
+        const cuadro = hueco.querySelector('[data-cuadro-foto]');
+        if (cuadro && cuadro.matches(':hover')) destino = x;
+      }
+      if (!destino) return;
+      const archivo = imagenPegada(e);
+      // Si no es una imagen (texto, por ejemplo), el pegado sigue su camino.
+      if (!archivo) return;
+      e.preventDefault();
+      destino.guardar(archivo);
+    });
+  }
+
   function pintar(hueco, o) {
     const opc = o || {};
     const titulo = opc.fotoId ? 'Cambiar la foto' : 'Subir una foto';
     hueco.innerHTML = `
-      <div class="relative w-24 h-24">
+      <div class="relative w-24 h-24 group" data-cuadro-foto
+           ${opc.puede ? `title="${titulo}: pulsa la cámara, o pega una imagen (Ctrl+V) con el cursor encima"` : ''}>
         <div class="w-24 h-24 rounded-3xl overflow-hidden border border-telecab-border bg-telecab-card2 text-telecab-muted/50">
           ${opc.fotoId
             ? `<img src="${esc(opc.url)}?v=${esc(opc.fotoId)}" alt="Foto de ${esc(opc.nombre || '')}"
                     class="w-full h-full object-cover" data-foto>`
             : hueco_silueta('Sin foto')}
         </div>
-        ${opc.puede ? `<button type="button" data-cambiar-foto
+        ${opc.puede ? `<div data-pista-pegar aria-hidden="true"
+                   class="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-3xl bg-black/60 text-white
+                          text-[10px] leading-tight text-center py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                 Pega con Ctrl+V</div>
+               <button type="button" data-cambiar-foto
                    class="absolute -bottom-2 -right-2 w-9 h-9 rounded-full bg-telecab-gold text-telecab-dark
                           border-2 border-telecab-card shadow-soft flex items-center justify-center text-sm
                           hover:scale-105 transition"
@@ -98,15 +141,18 @@
       img.parentElement.innerHTML = hueco_silueta('No se pudo cargar la foto');
     }, { once: true });
 
-    if (!opc.puede) return;
+    if (!opc.puede) { conPermiso.delete(hueco); return; }
     const boton = hueco.querySelector('[data-cambiar-foto]');
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
     boton.addEventListener('click', () => input.click());
-    input.addEventListener('change', async () => {
-      const archivo = input.files && input.files[0];
-      if (!archivo) return;
+
+    // La cámara y el Ctrl+V guardan igual: reducida y por la misma URL.
+    let guardando = false;
+    async function guardar(archivo) {
+      if (!archivo || guardando) return;
+      guardando = true;
       boton.disabled = true;
       boton.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
       try {
@@ -119,8 +165,11 @@
         if (global.Dialogo) await global.Dialogo.aviso({ titulo: 'No se pudo guardar la foto', texto: e.message, tono: 'error' });
         pintar(hueco, opc);
       }
-    });
+    }
+    input.addEventListener('change', () => guardar(input.files && input.files[0]));
+    conPermiso.set(hueco, { opc, guardar });
+    escucharPegar();
   }
 
-  global.FotoPersona = { pintar, reducir };
+  global.FotoPersona = { pintar, reducir, _imagenPegada: imagenPegada };
 })(window);

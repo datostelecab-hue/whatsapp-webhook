@@ -104,6 +104,8 @@ FotoPersona.pintar(hueco, { url, fotoId, nombre, puede, alGuardar });
 
 `url` es la misma para las dos cosas: `GET` sirve la foto y `POST` la guarda. Lo usan Plantilla, Selección y la ETT. Encaja en el hueco `avatar` del Listado.
 
+Con `puede: true` también se **pega** (26/10/2026): con el cursor encima del cuadro, Ctrl+V guarda la imagen del portapapeles igual que la cámara, y al pasar el ratón sale «Pega con Ctrl+V». Hay una sola escucha del pegado para toda la página, que mira qué foto tiene el cursor encima (`:hover`). Si lo pegado no es una imagen, o el cursor no está encima, el pegado sigue su camino.
+
 ## Ver una foto en grande: `VisorFoto`
 
 `public/assets/js/visorFoto.js` (07/10/2026), cargado en todas las pantallas. Una capa encima de todo con la foto a lo grande, su título y una línea debajo; se cierra con la X, con Escape o pinchando fuera, y devuelve el foco a donde estaba. Con `original: true` añade «Abrir el original» en otra pestaña.
