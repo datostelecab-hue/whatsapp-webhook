@@ -1,11 +1,19 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-25
+actualizado: 2026-10-26
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-26 · La dirección de Render manda a erptelecab.es
+
+*«Que si alguien entra a https://whatsapp-webhook-g7wa.onrender.com lo redirija a erptelecab.es y ya, que para el portal de conductores entren exactamente con conductorestelecab.es»* (Camilo).
+
+- **Los dos dominios van al servicio de producción `whatsapp-webhook`**, no al de pruebas (suspendido).
+- **Solo se redirige a personas**: un GET o HEAD que pide una página. El webhook de Meta (POST / y la verificación) y los vídeos de /assets se siguen contestando en la dirección de Render. Meta no sigue redirecciones, así que si se le redirigiera, el bot se quedaría mudo.
+- **Apagado hasta `DOMINIO_ERP`**, que se pone cuando erptelecab.es ya tiene candado. Es temporal (302) para poder deshacerlo quitando la variable. Ver [[Portal de conductores]].
 
 ## 2026-10-26 · Bloqueo de motor: todos los coches dentro y el cierre de las 14 h (db/219)
 

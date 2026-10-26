@@ -195,6 +195,12 @@ const authRoutes = require('./modules/Usuarios/auth.controller');
 const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
 const sesion = require('./services/sesion');
 
+// LA DIRECCIÓN DE RENDER (whatsapp-webhook-g7wa.onrender.com) manda a las
+// personas a erptelecab.es (26/10/2026), y deja pasar al webhook de Meta y a
+// cualquier otra máquina. Apagado hasta que exista DOMINIO_ERP en Render. Ver
+// services/dominioErp.js.
+app.use(require('./services/dominioErp').aLaDireccionBuena);
+
 // EL PORTAL DE CONDUCTORES (conductorestelecab.es, 19/10/2026) va ANTES que todo
 // lo del ERP: las peticiones de su dominio se quedan en él (con su página, su
 // 404 o su error) y no llegan a ninguna pantalla del ERP, ni a su sesión. Ver

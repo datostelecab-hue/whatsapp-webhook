@@ -188,10 +188,78 @@ const codigoDe = m => m.subject.match(/(\d{6})$/)[1];
   // ── 6. La frontera entre dominios ────────────────────────────────────────
   const req = host => ({ hostname: host });
   igual('El dominio de los conductores es del portal', ['conductorestelecab.es', 'www.conductorestelecab.es', 'conductorestelecab.localhost'].map(h => ctl.esDelPortal(req(h))), [true, true, true]);
-  igual('El del ERP y el de Render no', ['erptelecab.es', 'serverdeprueba-q2wq.onrender.com', 'localhost'].map(h => ctl.esDelPortal(req(h))), [false, false, false]);
+  igual('El del ERP y el de Render no', ['erptelecab.es', 'whatsapp-webhook-g7wa.onrender.com', 'localhost'].map(h => ctl.esDelPortal(req(h))), [false, false, false]);
   let siguio = false;
   ctl.porDominio(req('erptelecab.es'), {}, () => { siguio = true; });
   igual('Por el dominio del ERP, el portal deja pasar al ERP', siguio, true);
+
+  // ── 7. La dirección de Render manda a erptelecab.es (26/10/2026) ─────────
+  // A las personas sí; a Meta (el webhook del bot) y a las máquinas, no.
+  const dom = require('../services/dominioErp');
+  const RENDER = 'whatsapp-webhook-g7wa.onrender.com';
+  const HTML = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+  const pide = (o) => ({ method: 'GET', path: '/', originalUrl: '/', query: {}, hostname: RENDER, headers: { accept: HTML }, ...o });
+  function pasa(req) {
+    let a = null;
+    const res = { redirect: (codigo, url) => { a = { codigo, url }; } };
+    dom.aLaDireccionBuena(req, res, () => { a = 'sigue'; });
+    return a;
+  }
+  const antes = process.env.DOMINIO_ERP;
+  delete process.env.DOMINIO_ERP;
+  igual('Sin DOMINIO_ERP no se manda a nadie a ningún sitio', pasa(pide({})), 'sigue');
+  process.env.DOMINIO_ERP = 'https://ErpTelecab.es/';
+  igual('La variable se limpia: sin https://, sin barra y en minúsculas', dom.dominio(), 'erptelecab.es');
+  igual('Una persona que abre la dirección de Render va a erptelecab.es, con su ruta y temporal',
+    pasa(pide({ path: '/plantilla', originalUrl: '/plantilla?id=7' })), { codigo: 302, url: 'https://erptelecab.es/plantilla?id=7' });
+  igual('…y la raíz, a la raíz', pasa(pide({})), { codigo: 302, url: 'https://erptelecab.es/' });
+  igual('HEAD también (lo que hace un navegador al comprobar)', pasa(pide({ method: 'HEAD' })).url, 'https://erptelecab.es/');
+  igual('Los MENSAJES del bot (POST / de Meta) se quedan', pasa(pide({ method: 'POST', headers: { accept: '*/*' } })), 'sigue');
+  igual('…aunque Meta mandara un Accept con html', pasa(pide({ method: 'POST' })), 'sigue');
+  igual('La VERIFICACIÓN del webhook (GET /?hub.mode=subscribe) se queda',
+    pasa(pide({ query: { 'hub.mode': 'subscribe', 'hub.verify_token': 'x', 'hub.challenge': '1' } })), 'sigue');
+  igual('Una máquina que pide datos (sin text/html) se queda', pasa(pide({ path: '/api/algo', originalUrl: '/api/algo', headers: { accept: 'application/json' } })), 'sigue');
+  igual('…y la que no dice qué quiere, también', pasa(pide({ headers: {} })), 'sigue');
+  igual('erptelecab.es no se manda a sí mismo', pasa(pide({ hostname: 'erptelecab.es' })), 'sigue');
+  igual('El portal de conductores no se toca', pasa(pide({ hostname: 'conductorestelecab.es' })), 'sigue');
+  igual('Ni el entorno local', pasa(pide({ hostname: 'erp.localhost' })), 'sigue');
+  process.env.DOMINIO_ERP = RENDER;
+  igual('Si alguien pone la propia dirección de Render en la variable, no hay bucle', pasa(pide({})), 'sigue');
+  process.env.DOMINIO_ERP = 'erptelecab.es/../evil';
+  igual('Una variable que no es un dominio se ignora', [dom.dominio(), pasa(pide({}))], [null, 'sigue']);
+  if (antes === undefined) delete process.env.DOMINIO_ERP; else process.env.DOMINIO_ERP = antes;
+
+  // El ORDEN en app.js es lo que deja fuera los vídeos que Meta baja de /assets:
+  // /assets se sirve antes de la redirección, y la redirección va antes del
+  // portal, de la sesión y del webhook.
+  const fuente = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const en = t => fuente.indexOf(t);
+  const pos = ["app.use('/assets'", "dominioErp').aLaDireccionBuena", "porDominio);", 'app.use(sesion.cargarSesion)', "app.post('/', botPuertas)"].map(en);
+  igual('En app.js: /assets, luego la redirección, luego portal, sesión y webhook', pos.every((p, i) => p > -1 && (i === 0 || p > pos[i - 1])), true);
+
+  // Y de verdad, por HTTP: un Express con el mismo orden que app.js.
+  const express = require('express');
+  const http = require('http');
+  const mini = express();
+  mini.set('trust proxy', 2);
+  mini.use('/assets', express.static(require('path').join(__dirname, '..', 'public', 'assets')));
+  mini.use(dom.aLaDireccionBuena);
+  mini.get('/', (req, res) => res.send(req.query['hub.challenge'] || 'portada'));
+  mini.post('/', (req, res) => res.sendStatus(200));
+  const srv = await new Promise(ok => { const s = mini.listen(0, () => ok(s)); });
+  const pedir = (metodo, ruta, cab) => new Promise((ok, mal) => {
+    const r = http.request({ port: srv.address().port, method: metodo, path: ruta, headers: { host: RENDER, ...cab } }, rr => {
+      rr.resume(); rr.on('end', () => ok({ codigo: rr.statusCode, a: rr.headers.location || null }));
+    });
+    r.on('error', mal); r.end(metodo === 'POST' ? '{}' : undefined);
+  });
+  process.env.DOMINIO_ERP = 'erptelecab.es';
+  igual('HTTP: el navegador en la dirección de Render, a erptelecab.es', await pedir('GET', '/inicio', { accept: HTML }), { codigo: 302, a: 'https://erptelecab.es/inicio' });
+  igual('HTTP: el mensaje de Meta se contesta aquí', await pedir('POST', '/', { 'content-type': 'application/json' }), { codigo: 200, a: null });
+  igual('HTTP: la verificación de Meta se contesta aquí', await pedir('GET', '/?hub.mode=subscribe&hub.verify_token=x&hub.challenge=42', { accept: '*/*' }), { codigo: 200, a: null });
+  igual('HTTP: el vídeo que baja Meta se sirve aquí, aunque lo pidiera con html', (await pedir('GET', '/assets/videos/bot-coche.jpg', { accept: HTML })).codigo, 200);
+  if (antes === undefined) delete process.env.DOMINIO_ERP; else process.env.DOMINIO_ERP = antes;
+  srv.close();
 
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);
