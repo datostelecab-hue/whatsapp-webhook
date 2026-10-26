@@ -17,6 +17,7 @@
   <div class="acceso-cab">
     <h1 id="titulo">Escribe el código</h1>
     <p class="suave">Te lo hemos mandado a <b><%= email %></b>. Caduca en 10 minutos.</p>
+    <p class="suave peq">Si no reconoces este correo, comunícate con RRHH para confirmarlo.</p>
   </div>
   <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
   <form class="acceso" style="margin:0" method="post" action="/entrar/codigo">

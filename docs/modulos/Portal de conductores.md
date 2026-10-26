@@ -23,7 +23,7 @@ El portal **no es una sección del ERP**: tiene su propio dominio, sus cookies, 
 *«El login es con su DNI y el sistema le enviará un código de verificación al email que fue dado de alta.»*
 
 1. **El DNI o NIE.** Se limpia (sin puntos, guiones ni espacios, en mayúsculas) y se busca entre quien tiene un contrato abierto o que empieza más adelante: el que entra el lunes ya quiere ver sus turnos.
-2. **El código.** Seis cifras al email de su ficha, que caducan a los **10 minutos**, admiten **5 intentos** y sirven **una vez**. Pedir otro anula el anterior. En la base solo se guarda su huella (HMAC), nunca el código.
+2. **El código.** Seis cifras al email de su ficha, que caducan a los **10 minutos**, admiten **5 intentos** y sirven **una vez**. Pedir otro anula el anterior. En la base solo se guarda su huella (HMAC), nunca el código. La pantalla dice a qué correo fue, tapado (`da•••@telecab.es`, `ocultarEmail`), y debajo, desde el 26/10/2026 (Camilo): *«Si no reconoces este correo, comunícate con RRHH para confirmarlo»*. Así, quien tiene un email viejo o equivocado en su ficha se da cuenta de por qué no le llega.
 3. **La sesión.** **30 días desde la última vez que entra.** En la cookie va un testigo aleatorio y en la base su huella (`portal_sesion`). Por eso se puede cerrar desde el servidor: al pulsar «Salir» y, sobre todo, al darle de baja, porque una sesión solo vale mientras la persona puede entrar.
 
 Lo que **no** se dice: si un DNI está o no en la casa. A quien no se encuentra, a quien no tiene email y a quien no tiene contrato se le contesta lo mismo: *«No podemos mandarte el código con ese DNI. Habla con RRHH para que revisen tu DNI y tu email»*. Así el formulario no sirve para averiguar quién trabaja aquí.
