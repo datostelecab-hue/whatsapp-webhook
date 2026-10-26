@@ -587,7 +587,37 @@
          nota: `Ya tiene ${previos} periodo(s) de empleo en su historial. Este se añade, no los sustituye.` });
     if (!v) return;
     if (!v.alta) return alert('Falta la fecha de alta.');
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/alta`, 'POST', v));
+    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/alta`, 'POST', v));
+    if (r && r.induccion) await avisoInduccion({ id: d.id, nombre: d.nombre_completo }, r.induccion);
+  }
+
+  /**
+   * LA INDUCCIÓN DEL BLOQUEO DE MOTOR (26/10/2026). Quien entra ya llega con el
+   * bloqueo encendido: se le dice a RRHH en el momento, con el botón para
+   * mandarle el vídeo ahí mismo. Si su ventana de WhatsApp está cerrada (lo
+   * normal en alguien nuevo), se dice cómo abrirla; el botón sigue en su ficha.
+   */
+  async function avisoInduccion(p, texto) {
+    const mandar = await Dialogo.elegir({
+      titulo: `${p.nombre || 'Esta persona'} entra con el bloqueo de motor`,
+      tono: 'aviso',
+      html: `<p>${esc(texto)}</p>`,
+      opciones: [
+        { texto: 'Más tarde', valor: false },
+        { texto: 'Mandar el vídeo ahora', valor: true, principal: true },
+      ],
+    });
+    if (mandar) await videoBloqueo(p);
+  }
+
+  /** Le manda «El WhatsApp del coche» por WhatsApp (solo con su ventana de 24 h abierta). */
+  async function videoBloqueo(p) {
+    try {
+      await enviar(`/plantilla/api/conductor/${p.id}/video-bloqueo`, 'POST', {});
+      Dialogo.hecho(`Vídeo del bloqueo mandado a ${p.nombre || 'su WhatsApp'}`);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo mandar el vídeo', tono: 'aviso', texto: e.message });
+    }
   }
 
   /**
@@ -635,6 +665,7 @@
       // Se abre su ficha recién creada: lo siguiente que se hace siempre es
       // completarla o subirle un documento.
       if (r.id) await plantilla.abrir(r.id);
+      if (r.id && r.induccion) await avisoInduccion({ id: r.id, nombre: [v.nombre, v.apellidos].filter(Boolean).join(' ') }, r.induccion);
     } catch (e) {
       // Si el choque es con una persona que YA existe, no se deja a nadie
       // delante de un mensaje sin salida: se le lleva a su ficha, que es donde
@@ -1408,6 +1439,10 @@
         // fue dentro de «Editar datos»: uno o varios meses, día a día.
         { texto: 'Extras', icono: 'fa-file-invoice-dollar',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionExtras },
+        // LA INDUCCIÓN DEL BLOQUEO DE MOTOR (26/10/2026): «El WhatsApp del coche».
+        { texto: 'Vídeo del bloqueo', icono: 'fa-film',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.telefono,
+          onClick: d => videoBloqueo({ id: d.id, nombre: d.nombre_completo }) },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
         // Con la baja programada para una fecha futura (db/191). Deja expediente (db/193).

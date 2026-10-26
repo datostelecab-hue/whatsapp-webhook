@@ -2,7 +2,10 @@
   CICLO DE BLOQUEO DE MOTOR (30/09/2026)
   Los coches que bloqueamos: los bloquea el conductor al terminar su turno, los
   suelta el siguiente al empezar, y Tráfico los saca del ciclo desde aquí (el
-  coche que se queda en el taller). El sistema no bloquea nada por su cuenta.
+  coche que se queda en el taller). El sistema solo bloquea en el cierre de las
+  14 h, con el coche detenido (26/10/2026, db/219). Todos los coches del
+  planificador tienen que estar dentro: el que no, sale «Pendiente de entrar»
+  con el porqué.
   Servicio: modules/BloqueoMotor/bloqueoMotor.service.js
 %>
 <div id="modulo"></div>
@@ -29,10 +32,17 @@
       ayuda: 'Lo lleva alguien con el bloqueo encendido (o un viaje). Al terminar se bloqueará.' },
     'fuera':         { texto: 'Fuera del ciclo',         tono: 'muted',
       ayuda: 'Lo soltó Tráfico (por ejemplo, se queda en el taller). No se vuelve a bloquear hasta que alguien empiece y termine un turno en él.' },
+    'pendiente':     { texto: 'Pendiente de entrar',     tono: 'warn',
+      ayuda: 'Un coche del planificador que no está en el ciclo. «Qué pasa» dice por qué y qué hacer; si no hace falta nada, entra solo al terminar el próximo turno.' },
     'sin-ciclo':     { texto: 'No está en el ciclo',     tono: 'muted', ayuda: '' },
   };
   const est = e => ESTADO[e] || { texto: e, tono: 'muted', ayuda: '' };
   const AVISOS = ['no-corta', 'no-bloqueado', 'cortado-fuera', 'suelto-fuera'];
+  // Pendiente de entrar en el ciclo: un coche del planificador que está fuera, o
+  // que se va a quedar libre al terminar. Los que hay que arreglar (sin relé,
+  // alguien sin el bloqueo) y los que entran solos se cuentan aparte.
+  const pendiente = f => !!f.pendiente;
+  const hayQueArreglar = f => !!f.pendiente && !f.seArreglaSolo;
   const RELE = { cortado: ['Cortado', 'text'], libre: ['Libre', 'muted'], 'sin relé': ['Sin relé', 'muted'], 'sin datos': ['Sin datos', 'warn'] };
   const pintaRele = r => (RELE[r] ? etiqueta(RELE[r][0], RELE[r][1]) : '<span class="text-telecab-muted">—</span>');
   const cuando = v => (v ? `${fechaHora(v)} · ${hace(v)}` : '');
@@ -78,11 +88,16 @@
     vacio: 'Ningún coche en el ciclo. Entra el primero cuando alguien con el bloqueo encendido termine un turno.',
     buscar: { texto: 'Buscar por matrícula o persona…', campos: ['matricula', 'quien'] },
     subtitulo: (v, t) => (v.length === t.length ? `${t.length} coches` : `${v.length} de ${t.length} coches`)
-      + ' · los bloquea el conductor al terminar; el sistema solo suelta',
+      + ' · los bloquea el conductor al terminar, o el cierre de las 14 h con el coche detenido',
 
     kpis: filas => {
       const avisos = filas.filter(f => AVISOS.includes(f.estado)).length;
+      const pendientes = filas.filter(pendiente).length, arreglar = filas.filter(hayQueArreglar).length;
       return [
+        { etiqueta: 'Pendientes de entrar', valor: pendientes, tono: arreglar ? 'warn' : 'muted',
+          pie: arreglar ? `${arreglar} por arreglar · ${pendientes - arreglar} entran solos` : 'entran solos al terminar un turno',
+          filtro: { id: 'estado', valor: 'pendientes' },
+          ayuda: 'Coches del planificador que no están en el ciclo, o que se quedarán libres al terminar: sin relé de corte, alguien que los lleva sin el bloqueo, o que todavía no los ha terminado nadie con él.' },
         { etiqueta: 'Bloqueados', valor: cuenta(filas, 'bloqueado'), tono: 'text', pie: 'esperan a que alguien empiece',
           filtro: { id: 'estado', valor: 'bloqueado' }, ayuda: est('bloqueado').ayuda },
         { etiqueta: 'En turno', valor: cuenta(filas, 'en-turno'), tono: 'green', pie: 'se bloquearán al terminar',
@@ -97,8 +112,11 @@
 
     filtros: [{
       id: 'estado', textoTodos: 'Todos los estados',
-      pasa: (f, v) => (v === 'avisos' ? AVISOS.includes(f.estado) : f.estado === v),
+      pasa: (f, v) => (v === 'avisos' ? AVISOS.includes(f.estado)
+        : v === 'pendientes' ? pendiente(f) : v === 'arreglar' ? hayQueArreglar(f) : f.estado === v),
       opciones: filas => [
+        { valor: 'pendientes', texto: 'Pendientes de entrar (con los de otro estado)', cuenta: filas.filter(pendiente).length },
+        { valor: 'arreglar', texto: 'Pendientes, por arreglar', cuenta: filas.filter(hayQueArreglar).length },
         { valor: 'avisos', texto: 'Para mirar', cuenta: filas.filter(f => AVISOS.includes(f.estado)).length },
         ...Object.keys(ESTADO).filter(e => filas.some(f => f.estado === e))
           .map(e => ({ valor: e, texto: est(e).texto, cuenta: cuenta(filas, e) })),
@@ -106,22 +124,27 @@
     }],
 
     // Lo que hay que saber antes de fiarse de la lista.
+    // Todo lo que pase a la vez, junto: con una sola nota, la del planificador
+    // quedaba tapada por la de Mapon y la lista parecía sin pendientes.
     nota: (v, extra) => {
-      if (extra && extra.bloqueoActivo === false) {
-        return { tono: 'aviso', icono: 'fa-power-off',
-          texto: 'El corte de motor está apagado en el servidor (FICHAJE_BLOQUEO_MOTOR): al terminar un turno no se bloquea nada. Lo de aquí es lo que ya estaba.' };
-      }
-      if (extra && extra.errorMapon) {
-        return { tono: 'aviso', icono: 'fa-satellite-dish',
-          texto: `Mapon no contesta (${extra.errorMapon}): el relé sale «sin datos» y los cortados por fuera no se ven.` };
-      }
-      return null;
+      const x = extra || {}, avisos = [];
+      if (x.bloqueoActivo === false) avisos.push({ icono: 'fa-power-off',
+        texto: 'El corte de motor está apagado en el servidor (FICHAJE_BLOQUEO_MOTOR): al terminar un turno no se bloquea nada. Lo de aquí es lo que ya estaba.' });
+      if (x.errorMapon) avisos.push({ icono: 'fa-satellite-dish',
+        texto: `Mapon no contesta (${x.errorMapon}): el relé sale «sin datos» y los cortados por fuera no se ven.` });
+      if (x.errorPlan) avisos.push({ icono: 'fa-calendar-xmark',
+        texto: `No se pudo leer el planificador (${x.errorPlan}): los coches pendientes de entrar en el ciclo no salen.` });
+      if (!avisos.length) return null;
+      return { tono: 'aviso', icono: avisos[0].icono, texto: avisos.map(a => a.texto).join(' ') };
     },
 
     columnas: [
       { titulo: 'Matrícula', campo: 'matricula', clase: 'font-mono font-semibold whitespace-nowrap' },
       { titulo: 'Estado', campo: 'estado', clase: 'whitespace-nowrap',
-        pinta: v => `<span title="${esc(est(v).ayuda)}">${etiqueta(est(v).texto, est(v).tono)}</span>`,
+        // Un coche fuera del ciclo que es del planificador lleva además la
+        // marca de pendiente (salvo el que ya ES «Pendiente de entrar»).
+        pinta: (v, f) => `<span title="${esc(est(v).ayuda)}">${etiqueta(est(v).texto, est(v).tono)}</span>` +
+          (f.pendiente && v !== 'pendiente' ? ` <span title="${esc(f.pendiente)}">${etiqueta('Pendiente de entrar', f.seArreglaSolo ? 'muted' : 'warn')}</span>` : ''),
         ayuda: 'En qué punto del ciclo está el coche. Pasa el cursor por encima de cada estado para ver qué quiere decir.' },
       { titulo: 'Desde', campo: 'desde', clase: 'whitespace-nowrap tabular-nums text-telecab-muted',
         pinta: v => (v ? esc(cuando(v)) : '<span class="text-telecab-muted">—</span>') },

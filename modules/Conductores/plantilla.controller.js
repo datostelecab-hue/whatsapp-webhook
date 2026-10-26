@@ -182,6 +182,11 @@ router.delete('/api/fantasma/:enlaceId', responde(async req =>
 router.post('/api/conductor/:id/alta', responde(async req =>
   plantilla.darDeAlta(req.params.id, req.body || {}, await quien(req))));
 
+// El vídeo del bloqueo de motor por WhatsApp (ventana de 24 h abierta). La
+// dirección pública sale de la petición: es la que Meta usa para bajar el vídeo.
+router.post('/api/conductor/:id/video-bloqueo', responde(async req =>
+  plantilla.videoBloqueo(req.params.id, await quien(req), `${req.protocol}://${req.get('host')}`)));
+
 router.post('/api/conductor/:id/baja', responde(async req =>
   plantilla.darDeBaja(req.params.id, req.body || {}, await quien(req))));
 

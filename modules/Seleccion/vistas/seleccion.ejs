@@ -304,8 +304,10 @@
         + (r.faltaBolt
           ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
             + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
-          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>'),
-      tono: r.faltaBolt ? 'aviso' : 'ok',
+          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>')
+        // Entra con el bloqueo de motor encendido (26/10/2026).
+        + (r.induccion ? '<p class="text-sm mt-2 text-telecab-warn"><b>Inducción del bloqueo de motor.</b> ' + esc(r.induccion) + '</p>' : ''),
+      tono: (r.faltaBolt || r.induccion) ? 'aviso' : 'ok',
     });
   }
 

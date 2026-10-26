@@ -764,6 +764,28 @@ if (process.env.FLOTA_VIVA_DB_URL || process.env.DATABASE_URL) {
 // quiero ningun repaso; los unicos que bloquearan son los conductores cuando
 // inicien turnos y terminen». El ciclo se ve y se suelta en /bloqueo-motor.
 
+// EL CIERRE DE LAS 14 H, CON EL COCHE DELANTE (26/10/2026, db/219). La unica
+// excepcion a lo de arriba, y solo con turnos que nadie ha cerrado en 14 h:
+// coche detenido (quieto 20 min, apagado y con señal) → se cierra el turno y se
+// bloquea el motor con las reglas de «Terminar turno»; coche en marcha o
+// encendido → sigue abierto y se le pregunta por WhatsApp si sigue en el coche.
+// No es el repaso de antes: no mira ningun coche sin un turno abierto de mas de
+// 14 h. Sin db/219 cierra como siempre, sin tocar el motor; y con
+// FICHAJE_CIERRE_14H=off no corre (el cierre vuelve a ser el de siempre, al
+// escribir al bot). Una pasada cada vez.
+let repasando14h = false;
+programar('2-59/5 * * * *', async () => {
+  if (process.env.FICHAJE_CIERRE_14H === 'off' || repasando14h) return;
+  repasando14h = true;
+  try {
+    await require('./services/fichajeBot').repasarTurnosLargos();
+  } catch (error) {
+    console.error(`❌ [FICHAJE] El repaso de los turnos de más de 14 h falló: ${error.message}`);
+  } finally {
+    repasando14h = false;
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // ── LA DEUDA DE EFECTIVO, AL DÍA ────────────────────────────────────────────
 // Cada media hora se vuelve a medir lo que BOLT dice que cobró en mano cada
 // conductor, desde el corte hasta hoy.

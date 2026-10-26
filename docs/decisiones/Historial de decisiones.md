@@ -7,6 +7,18 @@ actualizado: 2026-10-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-26 · Bloqueo de motor: todos los coches dentro y el cierre de las 14 h (db/219)
+
+*«Mantén todos los coches disponibles del planificador dentro del ciclo; si alguno se va fuera del ciclo, que aparezca en el módulo como pendiente de entrar en el ciclo y el porqué»*, *«que los nuevos que entren en la plantilla ya lleguen con el bloqueo de motor activo»* y *«si alguien no cerró turno, que lo cierre 14 horas después, pero si el coche está en movimiento lo mantengas así … si no hay nadie logueado en el bot y el coche está parado, se cierra automáticamente el turno y se bloquea el motor, solo si está detenido»* (Camilo).
+
+Las decisiones:
+
+- **El sistema vuelve a bloquear, pero solo en el cierre de las 14 h y solo con el coche detenido**: 20 min quieto, 20 min con el contacto quitado (sabiéndolo: Mapon cuenta el ralentí como «parado» y un contacto sin dato no es «apagado») y con señal, la regla estricta de `puedeInmovilizar`, y con las mismas reglas que «Terminar turno» (todos los que lo llevan con el bloqueo, `motor` mirando antes y después). Cambia la regla del 30/09 («el sistema no bloquea nada») solo para esto.
+- **En marcha, encendido o parado de hace poco, no se cierra**: se le pregunta por WhatsApp. «Sigo en el coche» vale 2 h; pasadas, se vuelve a mirar. Sin saber cómo está el coche, se cierra como antes, sin tocar el motor.
+- **No vuelve el repaso del 30/09**: un coche parado sin turno no se bloquea por estar fuera del ciclo. Los que están fuera salen en el módulo como «Pendiente de entrar» con su porqué.
+- **Todos con el bloqueo**: db/219 se lo enciende a los que llevan un coche del planificador, y toda alta entra con él. A RRHH se le pide la inducción o el vídeo, con el botón para mandarlo.
+- **El cierre perezoso (al escribir al bot) se apaga con db/219**: si siguiera, el «Sigo en el coche» llegaría con el turno ya cerrado.
+
 ## 2026-10-26 · Combustible: las malas lecturas de Mapon (db/218)
 
 *«En estos momentos hay muchos rojos por culpa de la zona, con esto creo que se pueden ocultar muchos falsos positivos»* (Camilo, con un Excel de coordenadas de Petroprix) y *«Te muestro el ejemplo del por qué digo que es mala lectura»* (el 0626MMZ, rojo a 19 km).

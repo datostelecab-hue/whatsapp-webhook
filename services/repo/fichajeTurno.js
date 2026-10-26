@@ -461,7 +461,99 @@ async function historiaDelCoche(matricula, limite = 40) {
   return { ordenes: o.rows.map(aOrden), turnos: t.rows.map(aTurno) };
 }
 
+/**
+ * LOS COCHES DEL PLANIFICADOR, hoy y mañana, con quién los lleva y si tiene el
+ * bloqueo (la misma f_cobertura que `quienesLlevan`, para toda la flota de una
+ * vez). Es lo que el ciclo tiene que tener dentro (Camilo, 26/10/2026: «mantén
+ * todos los coches disponibles del planificador dentro del ciclo»).
+ * → [{ matricula, llevan: [{ conductorId, nombre, fichaCoche }] }]
+ */
+async function cochesDelCuadrante() {
+  const r = await db.consulta(
+    `SELECT v.matricula_norm AS matricula,
+            json_agg(DISTINCT jsonb_build_object('id', c.id, 'ficha', c.ficha_coche,
+              'nombre', COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                                 btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))))) AS llevan
+       FROM f_cobertura(${diaOperativo(1)}, ${diaOperativo(1)} + 1, TRUE) f
+       JOIN vehiculo v  ON v.id = f.vehiculo_id
+       JOIN conductor c ON c.id = f.conductor_id
+      GROUP BY v.matricula_norm
+      ORDER BY v.matricula_norm`, [HORA_DIA]);
+  return r.rows.map(x => ({
+    matricula: x.matricula,
+    llevan: (x.llevan || []).map(p => ({ conductorId: String(p.id), nombre: String(p.nombre || '').trim(), fichaCoche: !!p.ficha }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+  }));
+}
+
+// ── EL CIERRE DE LAS 14 H, CON EL COCHE DELANTE (db/219) ─────────────────────
+// Cuándo se le preguntó a quien lleva más de 14 h con el turno abierto si sigue
+// en el coche, y hasta cuándo vale su «sí» (services/fichaje.revisarTurnosLargos).
+// Sin db/219 la tabla no existe y el turno se cierra como antes: por eso se
+// pregunta si está, y se recuerda unos minutos (se mira en cada mensaje al bot).
+
+// Solo se recuerda lo que salió bien: si la consulta falla, se lanza y quien
+// pregunta no hace nada esa vez. Recordar un fallo como «no está» era volver
+// diez minutos al cierre a ciegas, también de quien acababa de decir que sigue.
+// Un «sí» no cambia: la migración no se deshace.
+let haySigue = null, haySigueAt = 0;
+async function haySeguimiento() {
+  if (haySigue === true) return true;
+  if (haySigue === false && Date.now() - haySigueAt < 10 * 60 * 1000) return false;
+  const r = await db.consulta(`SELECT to_regclass('public.fichaje_turno_sigue') IS NOT NULL AS hay`);
+  haySigue = !!(r.rows[0] && r.rows[0].hay);
+  haySigueAt = Date.now();
+  return haySigue;
+}
+
+/**
+ * Guarda el cierre de un turno SOLO si sigue abierto (el cierre de las 14 h,
+ * db/219): si en medio lo cerró «Terminar turno» o un relevo, no se pisa.
+ * → el turno guardado, o null si ya no estaba abierto.
+ */
+async function cerrarSiAbierto(t) {
+  const r = await db.consulta(
+    `UPDATE fichaje_turno
+        SET fin = CASE WHEN $2::bigint > 0 THEN to_timestamp($2::bigint) END,
+            km = $3, trayectos = $4, trayectos_atribuidos = $5,
+            estado = $6, notas = $7
+      WHERE referencia = $1 AND estado = 'abierto'
+      RETURNING ${CAMPOS}`,
+    [t.id, t.fin || 0, t.km == null ? null : t.km, t.trayectos || 0, t.atribuidos || 0, t.estado, t.notas || '']);
+  return r.rows.length ? aTurno(r.rows[0]) : null;
+}
+
+/** Map(filaId del turno → { preguntadoAt, preguntas, confirmadoAt, sigueHasta }), en segundos. */
+async function seguimientos(filaIds) {
+  const ids = [...new Set((filaIds || []).map(Number).filter(Number.isFinite))];
+  if (!ids.length) return new Map();
+  const r = await db.consulta(
+    `SELECT turno_id, preguntado_at, preguntas, confirmado_at, sigue_hasta
+       FROM fichaje_turno_sigue WHERE turno_id = ANY ($1::bigint[])`, [ids]);
+  return new Map(r.rows.map(x => [Number(x.turno_id), {
+    preguntadoAt: seg(x.preguntado_at), preguntas: Number(x.preguntas) || 0,
+    confirmadoAt: seg(x.confirmado_at), sigueHasta: seg(x.sigue_hasta),
+  }]));
+}
+
+/** Apunta que se le acaba de preguntar si sigue en el coche. */
+async function apuntarPregunta(filaId) {
+  await db.consulta(
+    `INSERT INTO fichaje_turno_sigue (turno_id, preguntado_at, preguntas) VALUES ($1, now(), 1)
+     ON CONFLICT (turno_id) DO UPDATE SET preguntado_at = now(), preguntas = fichaje_turno_sigue.preguntas + 1`,
+    [Number(filaId)]);
+}
+
+/** Ha dicho que sigue en el coche: hasta `hastaSeg` no se le cierra ni se le bloquea. */
+async function confirmarSigue(filaId, hastaSeg) {
+  await db.consulta(
+    `INSERT INTO fichaje_turno_sigue (turno_id, confirmado_at, sigue_hasta) VALUES ($1, now(), to_timestamp($2::bigint))
+     ON CONFLICT (turno_id) DO UPDATE SET confirmado_at = now(), sigue_hasta = to_timestamp($2::bigint)`,
+    [Number(filaId), Math.floor(hastaSeg)]);
+}
+
 module.exports = {
+  cochesDelCuadrante, haySeguimiento, seguimientos, apuntarPregunta, confirmarSigue, cerrarSiAbierto,
   ultimaOrdenPorCoche, ultimoTurnoPorCoche, historiaDelCoche,
   abiertoDe, abiertoDeCoche, abiertos, unitsConocidos, unitsConControl, controlMotorDe,
   crear, actualizar, quienLlevaba,

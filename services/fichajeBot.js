@@ -37,7 +37,7 @@ const { enviarTexto, enviarBotones } = require('./whatsapp');
 const puertas = require('./puertasBot');
 const lavado = require('./lavadoBallenoil');
 const otraSede = require('./otraSede');
-const { SEDE_FLOTA } = require('./nucleo');
+const { SEDE_FLOTA, nombreDePila } = require('./nucleo');
 
 // LOS CONDUCTORES DE BARCELONA (02/10/2026) hacen lo mismo que los de Madrid
 // —matrícula, turno, puertas, entregar, terminar—. Lo que cambia: no se les
@@ -75,6 +75,8 @@ const BTN_ENTREGAR = 'turno_relevo';
 const BTN_ENTREGAR_NO = 'turno_relevo_no';
 // Abre el panel sin salir de la conversación.
 const BTN_PANEL = 'turno_panel';
+// «Sigo en el coche»: la respuesta a la pregunta de las 14 h (db/219).
+const BTN_SIGO = 'turno_sigo';
 
 // Espera de matrícula (en memoria: si Render reinicia, basta con volver a pulsar).
 // CADUCA: sin eso, quien dejó la pregunta a medias y escribe «hola» tres horas
@@ -610,12 +612,106 @@ async function manejarBoton(telefono, buttonId) {
     return true;
   }
   if (id === BTN_PANEL) { await panel(telefono); return true; }
+  if (id === BTN_SIGO) { await sigo(telefono); return true; }
   if (id === BTN_TERMINAR) { await cerrar(telefono); return true; }
   if (id === BTN_KM) { await verKm(telefono); return true; }
   if (id === BTN_MOTOR) { await desbloquear(telefono); return true; }
   if (id === BTN_ENTREGAR) { await entregar(telefono, true); return true; }
   if (id === BTN_ENTREGAR_NO) { await entregar(telefono, false); return true; }
   return false;
+}
+
+// ── EL CIERRE DE LAS 14 H (26/10/2026, db/219) ──────────────────────────────
+// La lógica está en fichaje.revisarTurnosLargos; aquí, lo que se le dice.
+
+const pilaDe = t => nombreDePila({ nombre: t && t.nombre }) || '';
+const PREGUNTA_PORQUE = {
+  'en-marcha': ' y el coche está en marcha',
+  encendido: ' y el coche está encendido',
+  'parado-poco': '',
+};
+
+/** La pregunta de las 14 h. `a`: { turno, porque, sinMotor }. */
+function textoPregunta(a) {
+  const t = a.turno;
+  const pila = pilaDe(t);
+  const cosa = W(t.tipo).cosa;
+  return `👋 ${pila ? pila + ', l' : 'L'}levas más de ${fichaje.MAX_HORAS_TURNO} h con el ${cosa} abierto en *${t.matricula}*` +
+    `${PREGUNTA_PORQUE[a.porque] || ''}. ¿Sigues en el coche?\n\n` +
+    'Si sigues, pulsa *Sigo en el coche* y lo dejo como está. ' +
+    `Si ya has acabado, aparca, apaga el coche y pulsa *Terminar ${cosa}*.\n\n` +
+    `Si no contestas y el coche se queda parado y apagado, cerraré tu ${cosa}${a.sinMotor ? '' : ' y bloquearé el motor'}.`;
+}
+
+/** Lo que se le dice cuando el repaso le ha cerrado el turno. `a`: { turno, motor, sinSaber, tope }. */
+function textoCerrado(a) {
+  const t = a.turno;
+  const pila = pilaDe(t);
+  const cosa = W(t.tipo).cosa;
+  const m = a.motor;
+  const motor = !m || m.sinControl || m.seQuedaLibre || m.otraSede || m.motivo === 'desactivado' ? ''
+    : m.hecho ? ' El motor ha quedado bloqueado.'
+      : ' No he podido bloquear el motor: avisa a Tráfico si lo dejas aquí.';
+  const porque = a.tope ? 'llevaba más de 24 h abierto'
+    : a.sinSaber ? `llevaba más de ${fichaje.MAX_HORAS_TURNO} h abierto`
+      : `llevaba más de ${fichaje.MAX_HORAS_TURNO} h abierto y el coche estaba parado y apagado`;
+  return `🔴 ${pila ? pila + ', he' : 'He'} cerrado tu ${cosa} en *${t.matricula}*: ${porque}.${motor}\n\n` +
+    `Si sigues con él, escríbeme la matrícula y empiezas otro ${cosa}.`;
+}
+
+/**
+ * El repaso de cada 5 minutos (app.js): cierra o pregunta (fichaje) y se lo
+ * dice a cada uno. Que un mensaje no salga (la ventana de 24 h cerrada, Meta
+ * caído) no para a los demás ni deshace nada.
+ */
+async function repasarTurnosLargos() {
+  const acciones = await fichaje.revisarTurnosLargos();
+  const c = { preguntados: 0, cerrados: 0, bloqueados: 0, sinMensaje: 0 };
+  for (const a of acciones) {
+    let r = null;
+    try {
+      if (a.tipo === 'preguntar') {
+        c.preguntados++;
+        r = await enviarBotones(a.turno.telefono, textoPregunta(a),
+          [{ id: BTN_SIGO, titulo: '✅ Sigo en el coche' }, { id: BTN_TERMINAR, titulo: W(a.turno.tipo).terminar }]);
+      } else {
+        c.cerrados++;
+        if (a.motor && a.motor.hecho) c.bloqueados++;
+        r = await enviarTexto(a.turno.telefono, textoCerrado(a));
+      }
+    } catch (e) { r = { ok: false, error: e.message }; }
+    if (r && r.ok === false) {
+      c.sinMensaje++;
+      console.error(`⚠️ [FICHAJE] No le llegó el aviso de las ${fichaje.MAX_HORAS_TURNO} h a ${a.turno.nombre}: ${r.error}`);
+    }
+  }
+  if (acciones.length) {
+    console.log(`⏱️ [FICHAJE] Turnos de más de ${fichaje.MAX_HORAS_TURNO} h: ${c.preguntados} pregunta(s), ` +
+      `${c.cerrados} cerrado(s) (${c.bloqueados} con el motor bloqueado)${c.sinMensaje ? `, ${c.sinMensaje} sin mensaje` : ''}`);
+  }
+  return c;
+}
+
+/** Ha pulsado «Sigo en el coche». */
+async function sigo(telefono) {
+  let r;
+  try { r = await fichaje.confirmarSigue(telefono); }
+  catch (e) {
+    console.error('❌ [FICHAJE] sigo en el coche:', e.message);
+    await enviarTexto(telefono, '❌ Ahora mismo no he podido apuntarlo. Inténtalo de nuevo en un momento.');
+    return;
+  }
+  if (!r.ok && r.motivo === 'cerrando') {
+    return enviarTexto(telefono, `🔴 Justo acabo de cerrar tu ${W(r.turno.tipo).cosa} en *${r.turno.matricula}*: ` +
+      'el coche estaba parado y apagado. Si sigues con él, escríbeme la matrícula y empiezas otro.');
+  }
+  if (!r.ok) return panel(telefono, 'No tienes ningún turno abierto. Si vas a coger el coche, escríbeme la matrícula.');
+  // Lo que pasa al acabar la prórroga, tal cual: en marcha se le vuelve a
+  // preguntar, pero parado y apagado se cierra sin preguntar más.
+  const w = W(r.turno.tipo);
+  return panel(telefono, `👍 Perfecto, sigue tu ${w.cosa} en *${r.turno.matricula}*. ` +
+    `Dentro de ${r.horas} h, si sigue abierto: con el coche en marcha te lo volveré a preguntar, ` +
+    `y con el coche parado y apagado lo cerraré. Cuando acabes, pulsa *Terminar ${w.cosa}*.`);
 }
 
 /**
@@ -744,4 +840,4 @@ async function cerrar(telefono) {
   await enviarBotones(telefono, `${resumen}\n\nGracias. Queda registrado.`, [{ id: BTN_PANEL, titulo: w.iniciar }]);
 }
 
-module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno };
+module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado };

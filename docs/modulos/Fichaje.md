@@ -293,7 +293,7 @@ Cuatro cuidados que tiene esa parte:
 - **El enlace no puede impedir fichar.** Si Mapon falla, el turno se abre igual y se anota el error: la prueba de quién llevaba el coche es **nuestro libro**, no Mapon.
 - **`driver/update` con `unit` MUEVE al conductor de coche.** Si ya tenía uno puesto —el caso normal si es un conductor real que ya existía en Mapon— se apunta cuál era (`unitPrevia`) y **se le devuelve al terminar**. Un fichaje nunca deja peor la ficha de un conductor real de lo que estaba.
 - **Se casa primero por teléfono y después por nombre exacto.** Buscar solo por nombre creaba un conductor nuevo cada vez que alguien tenía un acento de más o el apellido en otro orden, y en Mapon se acumulaban "Camilo Bedoya" y "Camilo Bedoya Corrales" como si fueran dos personas. Y el teléfono se busca en **todos** los campos del conductor, porque Mapon no documenta cómo se llama ese campo. Si no existe, se crea sobre la marcha con el nombre que decidimos nosotros.
-- **Si alguien olvida cerrar**, el turno se cierra solo pasadas `FICHAJE_MAX_HORAS` horas (14 por defecto): así no queda un coche asignado indefinidamente en Mapon ni un turno abierto eterno.
+- **Si alguien olvida cerrar**, el turno se cierra solo pasadas `FICHAJE_MAX_HORAS` horas (14 por defecto): así no queda un coche asignado indefinidamente en Mapon ni un turno abierto eterno. **Desde el 26/10/2026 (db/219) mirando el coche**: detenido, se cierra y se bloquea; en marcha o encendido, sigue abierto y se le pregunta por WhatsApp si sigue en el coche. Ver [[Ciclo de bloqueo de motor#El cierre de las 14 h, con el coche delante (26/10/2026, db/219)]].
 
 La referencia del turno lleva **milésimas y no segundos**, y no es un detalle: terminar un turno y abrir otro dentro del mismo segundo daba dos veces la misma referencia, la base la rechazaba por repetida y el conductor recibía un "ya tienes un turno abierto" cuando acababa de cerrarlo. Un doble toque en el botón bastaba.
 
@@ -308,7 +308,7 @@ Esa comprobación **para a todo el mundo, también a quien lo pide**. Antes no f
 `puedeInmovilizar` es la función delicada del módulo, y su regla es al revés de lo normal: **ante la duda, NO**.
 
 - **"Velocidad 0" no vale como prueba** de que nadie lo usa: un taxi parado recogiendo a alguien, en un semáforo o esperando en el aeropuerto va a 0 km/h.
-- Sin que nadie lo pida hacía falta además que llevara un buen rato quieto (`FICHAJE_MIN_PARADO`, 20 min) y datos **frescos** (`FICHAJE_MAX_SIN_SENAL`, 15 min). Era la regla del repaso y del cierre automático; desde el 30/09/2026 **ya no corta nadie sin que lo pida el conductor**, así que esa rama no se usa.
+- Sin que nadie lo pida hacía falta además que llevara un buen rato quieto (`FICHAJE_MIN_PARADO`, 20 min) y datos **frescos** (`FICHAJE_MAX_SIN_SENAL`, 15 min). Era la regla del repaso y del cierre automático; del 30/09 al 26/10/2026 no la usó nadie, y **desde el 26/10/2026 (db/219) es la del cierre de las 14 h**: con el coche detenido así, se cierra el turno olvidado y se bloquea.
 - **Por orden** del conductor —pulsó "Terminar turno"— basta con que no esté rodando y sin contacto: acaba de decir que ha terminado, y eso es mejor información que cualquier sensor.
 
 Y las asimetrías, que son deliberadas:
@@ -369,7 +369,7 @@ Hasta el 30/09/2026 había un **repaso**: cada diez minutos `app.js` llamaba a `
 Camilo: *«No quiero ningún repaso. Los únicos que bloquearán son los conductores cuando inicien turnos y terminen; el sistema no bloquea nada sino que suelta.»* Así que:
 
 - **Se quitó el repaso** (el cron, la función y la opción `?repaso=` del diagnóstico).
-- **El cierre automático de las 14 h ya no corta**: cierra el turno y anota «el motor no se toca».
+- **El cierre automático de las 14 h ya no corta** (30/09/2026): cierra el turno y anota «el motor no se toca». **Desde el 26/10/2026 (db/219) vuelve a cortar, pero solo con el coche detenido** (20 min quieto, 20 min con el contacto quitado —sabiéndolo— y con señal) y sin un «Sigo en el coche» en las últimas 2 h; si anda, pregunta y no cierra. Sin db/219 o con `FICHAJE_CIERRE_14H=off`, como el 30/09.
 - **Lo único que corta es *Terminar turno*** (y el final de un viaje de la empresa). Lo que no se pudo bloquear ya no lo reintenta nadie: lo ve Tráfico.
 - **Cada bloqueo y cada suelta del conductor queda apuntado** en `fichaje_orden_motor` sin usuario, junto a lo que suelta Tráfico. Con eso se pinta el ciclo de cada coche en [[Ciclo de bloqueo de motor]], que es donde se ve qué coche está bloqueado y se suelta el que se queda en el taller.
 
@@ -455,7 +455,7 @@ Cuando Mapon vuelve, el siguiente turno se abre como siempre. Los que se abriero
 
 ## Las variables de entorno
 
-Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS`, `FICHAJE_ESPERA_FILA_MS` y `FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS` (la fila de órdenes de cada coche y la segunda lectura tras cortar, desde el 11/10/2026) y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado). `FICHAJE_TELEFONOS` **ya no se lee** desde el 24/09/2026: quién participa se decide en el ERP.
+Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS`, `FICHAJE_ESPERA_FILA_MS` y `FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS` (la fila de órdenes de cada coche y la segunda lectura tras cortar, desde el 11/10/2026) y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado). Desde el 26/10/2026 (db/219), el cierre de las 14 h: `FICHAJE_CIERRE_14H=off` lo apaga (vuelve el cierre sin mirar el coche), `FICHAJE_PRORROGA_HORAS` (2) es lo que vale un «Sigo en el coche» y `FICHAJE_REPREGUNTA_HORAS` (2) cada cuánto se le vuelve a preguntar y `FICHAJE_TOPE_HORAS` (24) cuándo se cierra sin más, sin tocar el motor. `FICHAJE_TELEFONOS` **ya no se lee** desde el 24/09/2026: quién participa se decide en el ERP.
 
 > [!warning] Sin `FICHAJE_BLOQUEO_MOTOR=1` en Render no se bloquea nada
 > Se ficha, se apuntan los turnos y los relevos, pero ningún motor se corta. El panel del planificador lo dice arriba a la derecha («Corte de motor apagado en el servidor»).

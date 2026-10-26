@@ -2127,6 +2127,21 @@ Con más de unas 120.000 filas, `Math.min(...instantes)` lanza «Maximum call st
 size exceeded»; y aquí lo hacía DESPUÉS de meter las filas, así que la importación
 se quedaba sin cerrar. **Remedio:** `reduce`. Y un tope de filas antes de leer.
 
+### Para Mapon, un coche al ralentí está «parado»
+
+`services/fichaje.js` → `puedeInmovilizar` (sin orden), el cierre de las 14 h (revisión del 26/10/2026)
+
+Mapon no tiene un estado de ralentí: sus estados son *driving, standing, nodata,
+nogps y service*, así que «parado 40 min» (`segParado`) es igual con el motor
+encendido que apagado. Y el contacto puede llegar sin dato (`null`). La regla de
+cortar sin que nadie lo pida solo miraba que no constara encendido y que llevara
+20 min parado: un coche al ralentí en la cola de T4, o uno del que Mapon no dice
+el contacto, pasaba por «detenido y apagado». Cortarle con el contacto puesto es
+la regla de oro rota: después ya no se deja apagar. **Remedio:** sin orden, hay
+que SABER que está apagado (`ignicion === false`) y desde hace 20 min o más
+(`ignicionDesdeSeg`: la hora del último cambio de contacto). Con «Terminar
+turno» no hace falta, porque lo pide la persona que está dentro.
+
 ### Una parada de Mapon de horas puede ser un GPS clavado o un equipo sin señal
 
 `modules/Combustible/combustible.auditoria.js` → `andaDentro`, `subeEnElla` (revisión del 23/10/2026)

@@ -38,6 +38,11 @@
  * bloquea al terminar, se suelta al empezar— se ve y se suelta a mano en el
  * módulo «Ciclo de bloqueo de motor» (modules/BloqueoMotor).
  *
+ * LA EXCEPCIÓN DE LAS 14 H (26/10/2026, db/219). Un turno que nadie ha cerrado
+ * en 14 h se cierra solo y SE BLOQUEA EL MOTOR, pero solo con el coche
+ * detenido (quieto, apagado y con señal); si anda, se le pregunta por WhatsApp
+ * si sigue en el coche y el turno sigue abierto. Ver `revisarTurnosLargos`.
+ *
  * OJO CON LAS PALABRAS (28/09/2026): al conductor NO se le habla de «fichar» ni de
  * «fichaje». Esto no es el registro de jornada —ese es /fichaje— sino quién tiene
  * qué coche y cuántos km hace; llamarlo igual invitaría a tomarlo por lo otro.
@@ -108,13 +113,25 @@ function puedeInmovilizar(info, { porOrden = false } = {}) {
   if (info.ignicion === true) return 'el coche está encendido';
   if (porOrden) return null;
 
-  if (info.segSinSenal != null && info.segSinSenal > MAX_SIN_SENAL * 60) {
+  // SIN QUE NADIE LO PIDA (desde el 26/10/2026, solo el cierre de las 14 h) hay
+  // que SABER que está apagado, y desde hace rato. La revisión del 26/10 lo
+  // pilló: un contacto que Mapon no dice (null) pasaba por apagado, y el rato
+  // «parado» de Mapon cuenta también el ralentí (no tiene un estado para eso):
+  // quien esperaba 40 min con el aire puesto y quitaba el contacto ya daba
+  // «parado 40 min y apagado» en el repaso siguiente.
+  if (info.ignicion !== false) return 'no se sabe si el coche está apagado';
+  if (info.segSinSenal == null) return 'no se sabe cuándo dio señal el coche por última vez';
+  if (info.segSinSenal > MAX_SIN_SENAL * 60) {
     return `sin señal desde hace ${Math.round(info.segSinSenal / 60)} min`;
   }
   // null = Mapon no lo dice. No es una autorización.
   if (info.segParado == null) return 'no se sabe cuánto lleva parado';
   if (info.segParado < MIN_PARADO * 60) {
     return `solo lleva ${Math.round(info.segParado / 60)} min parado (hacen falta ${MIN_PARADO})`;
+  }
+  if (info.ignicionDesdeSeg == null) return 'no se sabe cuánto lleva apagado';
+  if (info.ignicionDesdeSeg < MIN_PARADO * 60) {
+    return `solo lleva ${Math.round(info.ignicionDesdeSeg / 60)} min apagado (hacen falta ${MIN_PARADO})`;
   }
   return null;
 }
@@ -657,22 +674,253 @@ async function soltarEnMapon(t) {
   else await mapon.desasignarConductor(t.driverId);
 }
 
-/** Cierra los turnos que llevan demasiado tiempo abiertos (olvidos). */
+/**
+ * Cierra los turnos que llevan demasiado tiempo abiertos (olvidos), sin mirar
+ * el coche ni tocar el motor. Es lo de antes de db/219: se llama al empezar,
+ * terminar o mirar un turno, y desde db/219 ya no hace nada, porque lo lleva el
+ * repaso con el coche delante (`revisarTurnosLargos`). Si lo siguiera haciendo,
+ * quien pulsa «Sigo en el coche» a las 14 h vería su turno cerrado antes de que
+ * su «sí» llegara a apuntarse. Si no se puede saber si está db/219 (un fallo de
+ * la base), tampoco: no se cierra a ciegas a quien quizá dijo que sigue.
+ */
 async function cerrarOlvidados() {
+  if ((await haySeguimiento()) !== false) return;
   const limite = ahoraSeg() - MAX_HORAS_TURNO * 3600;
   for (const t of (await repo.abiertos()).filter(x => x.inicio && x.inicio < limite)) {
-    try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
-    // EL MOTOR NO SE TOCA (30/09/2026). Antes se intentaba bloquear aquí con la
-    // regla estricta, y lo que no se podía lo recogía el repaso. Camilo: «el
-    // sistema no bloquea nada sino que suelta; los únicos que bloquean son los
-    // conductores cuando terminan». Un turno olvidado lo cierra el reloj, y el
-    // reloj no ha terminado ningún turno: el coche se queda como esté.
-    t.fin = t.inicio + MAX_HORAS_TURNO * 3600;
-    t.estado = 'auto-cerrado';
-    t.notas = `${t.notas ? t.notas + ' · ' : ''}Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar (el motor no se toca)`;
-    await repo.actualizar(t);
-    console.log(`⏱️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) auto-cerrado`);
+    // Uno que no se deja cerrar no puede tumbar a los demás: esto va delante de
+    // empezar, terminar y mirar un turno, de todo el mundo.
+    try { await cerrarSinMotor(t, `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar (el motor no se toca)`); }
+    catch (e) { console.error(`❌ [FICHAJE] No se pudo cerrar el turno olvidado de ${t.nombre} (${t.matricula}):`, e.message); }
   }
+}
+
+/**
+ * EL FIN DE UN TURNO QUE SE CIERRA SOLO: el que toque, pero nunca antes de su
+ * «Entregar coche» (la base lo exige: ck_ft_relevo, db/148) ni de su último
+ * «Sigo en el coche» (`s`, el seguimiento de db/219). Con db/219 un turno puede
+ * seguir abierto pasadas las 14 h, y ahí se le puede pulsar cualquiera de los dos.
+ */
+const finSeguro = (t, fin, s) => Math.max(fin, t.inicio + 1, t.relevo || 0, (s && s.confirmadoAt) || 0);
+
+/**
+ * Guarda el cierre SOLO si el turno sigue abierto: si en medio lo ha cerrado
+ * otro camino («Terminar turno», un relevo), no se pisa. → el turno, o null.
+ * (Un repositorio sin `cerrarSiAbierto` —las pruebas de antes— guarda sin más.)
+ */
+const guardarCierre = t => (typeof repo.cerrarSiAbierto === 'function' ? repo.cerrarSiAbierto(t) : repo.actualizar(t));
+
+/** Cierra un turno olvidado sin tocar el motor: lo de antes de db/219, y lo que no se sabe. → el turno, o null. */
+async function cerrarSinMotor(t, nota, { s } = {}) {
+  const cerrado = { ...t, fin: finSeguro(t, t.inicio + MAX_HORAS_TURNO * 3600, s), estado: 'auto-cerrado',
+    notas: `${t.notas ? t.notas + ' · ' : ''}${nota}` };
+  if (!(await guardarCierre(cerrado))) return null;
+  try { await soltarEnMapon(t); } catch (e) { /* cerrado igual */ }
+  olvidar(t.telefono);
+  console.log(`⏱️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) auto-cerrado (el motor no se toca)`);
+  return cerrado;
+}
+
+// ── EL CIERRE DE LAS 14 H, CON EL COCHE DELANTE (26/10/2026, db/219) ─────────
+//
+// Camilo: «si alguien no cerró turno, que lo cierre 14 horas después, pero si el
+// coche está en movimiento lo mantengas así, y le envíes un mensaje por WhatsApp
+// diciéndole que confirme que sigue en el coche y así no bloquearle el coche, ya
+// que si no hay nadie logueado en el bot y el coche está parado, se cierra
+// automáticamente el turno y se bloquea el motor; solo si está detenido, claro».
+//
+// Cambia la regla del 30/09/2026 («el sistema no bloquea nada»): ahora el
+// sistema SÍ bloquea, pero solo esto y solo así. Lo lleva un repaso cada 5
+// minutos (app.js → fichajeBot.repasarTurnosLargos), y con cada turno de más de
+// MAX_HORAS_TURNO h:
+//
+//   · Si dijo que sigue en el coche, no se toca hasta que pase su prórroga
+//     (PRORROGA_HORAS).
+//   · DETENIDO —quieto y con el contacto quitado MIN_PARADO minutos o más, y con
+//     señal: la regla estricta de `puedeInmovilizar`, la de cortar sin que nadie
+//     lo pida— se cierra el turno y se bloquea el motor con las mismas reglas que
+//     «Terminar turno» (`decidirBloqueo`: solo si todos los que lo llevan tienen
+//     el bloqueo; y `motor` vuelve a mirarlo todo antes y después de cortar).
+//   · EN MARCHA, ENCENDIDO O PARADO DE HACE POCO: el turno sigue abierto y se le
+//     pregunta por WhatsApp si sigue en el coche (como mucho cada
+//     REPREGUNTA_HORAS). Si no contesta y el coche se queda detenido, se cierra
+//     y se bloquea en el repaso siguiente.
+//   · SIN SABER CÓMO ESTÁ EL COCHE (Mapon caído, sin equipo, sin señal desde hace
+//     más de MAX_SIN_SENAL minutos, o sin decir si tiene el contacto puesto):
+//     como antes, se cierra sin tocar el motor. No saberlo no inmoviliza nada.
+//   · EL TOPE: pasadas TOPE_HORAS sin cerrarse (un coche que no para nunca, o
+//     del que Mapon no dice cuánto lleva parado), se cierra sin tocar el motor.
+//     Para entonces ya no se le puede escribir: WhatsApp solo deja dentro de las
+//     24 h de su último mensaje.
+const PRORROGA_HORAS = Number(process.env.FICHAJE_PRORROGA_HORAS || 2);
+const REPREGUNTA_HORAS = Number(process.env.FICHAJE_REPREGUNTA_HORAS || 2);
+const TOPE_HORAS = Number(process.env.FICHAJE_TOPE_HORAS || 24);
+
+// Los turnos que el repaso está cerrando AHORA (un solo proceso, como la fila
+// del motor): un «Sigo en el coche» que llega en esos segundos no se apunta
+// como si nada, se le dice que se acaba de cerrar.
+const cerrandoAhora = new Set();
+
+/**
+ * ¿Lo lleva el repaso de las 14 h? true: sí (db/219, y no apagado con
+ * FICHAJE_CIERRE_14H=off). false: no, lo de antes. null: no se sabe (un fallo
+ * de la base al mirarlo): esa vez no se cierra nada, ni de una forma ni de otra.
+ */
+async function haySeguimiento() {
+  if (process.env.FICHAJE_CIERRE_14H === 'off') return false;
+  if (typeof repo.haySeguimiento !== 'function') return false;
+  try { return !!(await repo.haySeguimiento()); }
+  catch (e) {
+    console.error('⚠️ [FICHAJE] ¿Está db/219? No se ha podido mirar:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Cómo está el coche de un turno para el cierre de las 14 h.
+ * → { sabemos: false, motivo } | { sabemos: true, detenido: true, info }
+ *   | { sabemos: true, detenido: false, porque: 'en-marcha'|'encendido'|'parado-poco', motivo, info }
+ */
+async function comoEstaElCoche(t) {
+  if (!t.unitId) return { sabemos: false, motivo: 'el turno no tiene equipo de Mapon' };
+  if (!maponDisponible()) return { sabemos: false, motivo: 'Mapon no está disponible' };
+  let info = null;
+  try { info = await mapon.relesDeUnidad(t.unitId); }
+  catch (e) { return { sabemos: false, motivo: `Mapon no contestó: ${e.message}` }; }
+  if (!info) return { sabemos: false, motivo: 'Mapon no da el estado del coche' };
+  if (info.segSinSenal == null) return { sabemos: false, motivo: 'Mapon no dice cuándo dio señal el coche por última vez' };
+  if (info.segSinSenal > MAX_SIN_SENAL * 60) {
+    return { sabemos: false, motivo: `el coche no da señal desde hace ${Math.round(info.segSinSenal / 60)} min` };
+  }
+  const anda = info.enMarcha || info.velocidad > 0;
+  if (!anda && info.ignicion !== true && info.ignicion !== false) {
+    return { sabemos: false, motivo: 'Mapon no dice si el coche tiene el contacto puesto' };
+  }
+  const no = puedeInmovilizar(info);
+  if (!no) return { sabemos: true, detenido: true, info };
+  const porque = anda ? 'en-marcha' : info.ignicion === true ? 'encendido' : 'parado-poco';
+  return { sabemos: true, detenido: false, porque, motivo: no, info };
+}
+
+/** ¿Sigue abierto este turno, y sin un «Sigo en el coche» recién llegado? Justo antes de cerrarlo. */
+async function sigueSinConfirmar(t) {
+  const a = await repo.abiertoDe(t.telefono);
+  if (!a || a.id !== t.id) return false;
+  const s = (await repo.seguimientos([t.filaId])).get(t.filaId) || {};
+  return !(s.sigueHasta && s.sigueHasta > ahoraSeg());
+}
+
+/**
+ * Cierra un turno de más de 14 h con el coche detenido y bloquea el motor, como
+ * «Terminar turno» pero sin que nadie lo pida: por eso con la regla estricta
+ * (`porOrden: false`), que `motor` vuelve a comprobar antes de cortar. El fin
+ * del turno es cuando el coche se paró, no ahora. → el resultado, o null si al
+ * ir a cerrarlo ya no tocaba (lo cerró otro, o acaba de decir que sigue).
+ */
+async function cerrarSoloYBloquear(t, info, s) {
+  const dec = await decidirBloqueo(t);
+  const fin = finSeguro(t, info && info.segParado > 0 ? ahoraSeg() - Math.round(info.segParado) : ahoraSeg(), s);
+  const km = await kmDelTurno(t, fin);
+  if (!(await sigueSinConfirmar(t))) return null;
+  cerrandoAhora.add(t.filaId);
+  try {
+    const mot = dec.bloquear
+      ? await bloquearMotor(t.unitId, { porOrden: false, excepto: t.telefono, matricula: t.matricula })
+      : { hecho: false, seQuedaLibre: true, sinControl: !!dec.sinControl,
+          motivo: dec.sinControl ? 'sin bloqueo de motor' : 'lo lleva alguien sin el bloqueo encendido' };
+    // UN CORTE QUE SALIÓ Y EL COCHE NO CONFIRMÓ podría entrar más tarde, cuando
+    // ya lo lleve otro y sin ninguna de las comprobaciones: se manda soltar.
+    if (dec.bloquear && !mot.hecho && /no la confirmó/.test(mot.motivo || '')) {
+      const suelto = await liberarMotor(t.unitId).catch(() => null);
+      mot.motivo += suelto && suelto.hecho ? ' (se ha mandado soltar)' : ' (se mandó soltar y tampoco lo confirmó: avisa a Tráfico)';
+    }
+    if (BLOQUEO_ACTIVO && dec.bloquear) {
+      await apuntarCiclo(t, 'bloquear', mot, `Cierre automático tras ${MAX_HORAS_TURNO} h con el coche detenido: ${t.nombre}`);
+    }
+    const parado = info && info.segParado > 0 ? `parado ${Math.round(info.segParado / 60)} min y apagado` : 'parado y apagado';
+    const cerrado = {
+      ...t, fin, estado: 'auto-cerrado',
+      km: km ? km.km : null, trayectos: km ? km.trayectos : 0, atribuidos: km ? km.conConductor : 0,
+      notas: `${t.notas ? t.notas + ' · ' : ''}Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar, con el coche ${parado}` +
+        (BLOQUEO_ACTIVO && !mot.sinControl ? ` · motor ${mot.hecho ? 'bloqueado' : 'NO bloqueado: ' + mot.motivo}` : ''),
+    };
+    let guardado;
+    try { guardado = await guardarCierre(cerrado); }
+    catch (e) {
+      // Bloqueado y sin poder cerrar el turno, el coche se quedaría cortado con
+      // un turno abierto: se suelta y se reintenta en el repaso siguiente.
+      if (mot.hecho) await liberarMotor(t.unitId).catch(() => null);
+      throw e;
+    }
+    if (!guardado) return null;
+    try { await soltarEnMapon(t); } catch (e) { /* cerrado igual */ }
+    olvidar(t.telefono);
+    console.log(`⏱️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) cerrado solo tras ${MAX_HORAS_TURNO} h con el coche detenido` +
+      (BLOQUEO_ACTIVO && !mot.sinControl ? ` · motor ${mot.hecho ? 'BLOQUEADO' : 'NO bloqueado: ' + mot.motivo}` : ''));
+    return { turno: cerrado, motor: mot, faltan: dec.faltan, bloqueoActivo: BLOQUEO_ACTIVO };
+  } finally {
+    cerrandoAhora.delete(t.filaId);
+  }
+}
+
+/**
+ * EL REPASO DE LOS TURNOS DE MÁS DE 14 H (cada 5 minutos). No manda mensajes:
+ * devuelve lo que ha hecho con cada uno para que la capa del bot
+ * (fichajeBot.repasarTurnosLargos) se lo diga a quien toque.
+ * → [{ tipo: 'preguntar', turno, porque, sinMotor } | { tipo: 'cerrado', turno, motor, faltan, sinSaber?, tope? }]
+ */
+async function revisarTurnosLargos() {
+  const hay = await haySeguimiento();
+  if (hay === null) return [];                               // no se sabe si está db/219: esta vez, nada
+  if (!hay) { await cerrarOlvidados(); return []; }          // sin db/219, lo de antes
+  const ahora = ahoraSeg();
+  const limite = ahora - MAX_HORAS_TURNO * 3600;
+  const largos = (await repo.abiertos()).filter(t => t.inicio && t.inicio < limite);
+  if (!largos.length) return [];
+  const seguimiento = await repo.seguimientos(largos.map(t => t.filaId));
+  const acciones = [];
+  for (const t of largos) {
+    const s = seguimiento.get(t.filaId) || {};
+    if (s.sigueHasta && s.sigueHasta > ahora) continue;   // dijo que sigue en el coche
+    try {
+      if (ahora - t.inicio > TOPE_HORAS * 3600) {
+        const c = (await sigueSinConfirmar(t)) && await cerrarSinMotor(t, `Cerrado solo: llevaba más de ${TOPE_HORAS} h abierto (el motor no se toca)`, { s });
+        if (c) acciones.push({ tipo: 'cerrado', turno: c, motor: null, faltan: [], sinSaber: 'tope', tope: true });
+        continue;
+      }
+      const coche = await comoEstaElCoche(t);
+      if (!coche.sabemos) {
+        const c = (await sigueSinConfirmar(t)) && await cerrarSinMotor(t,
+          `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar; no se sabía cómo estaba el coche (${coche.motivo}): el motor no se toca`, { s });
+        if (c) acciones.push({ tipo: 'cerrado', turno: c, motor: null, faltan: [], sinSaber: coche.motivo });
+      } else if (coche.detenido) {
+        const r = await cerrarSoloYBloquear(t, coche.info, s);
+        if (r) acciones.push({ tipo: 'cerrado', ...r });
+      } else if (!s.preguntadoAt || ahora - s.preguntadoAt >= REPREGUNTA_HORAS * 3600) {
+        const dec = await decidirBloqueo(t);
+        await repo.apuntarPregunta(t.filaId);
+        acciones.push({ tipo: 'preguntar', turno: t, porque: coche.porque, sinMotor: !(BLOQUEO_ACTIVO && dec.bloquear) });
+      }
+    } catch (e) {
+      console.error(`❌ [FICHAJE] Cierre de las ${MAX_HORAS_TURNO} h de ${t.nombre} (${t.matricula}):`, e.message);
+    }
+  }
+  return acciones;
+}
+
+/**
+ * «SIGO EN EL COCHE»: quien lleva más de 14 h con el turno abierto contesta que
+ * sí. Hasta dentro de PRORROGA_HORAS no se le cierra ni se le bloquea, aunque
+ * pare. Sin db/219 no hay dónde apuntarlo, y su turno tampoco se cerraría así.
+ * Si llega justo mientras el repaso le está cerrando el turno, se le dice.
+ */
+async function confirmarSigue(telefono) {
+  const t = await abiertoDe(telefono);
+  if (!t) return { ok: false, motivo: 'sin-turno' };
+  if (cerrandoAhora.has(t.filaId)) return { ok: false, motivo: 'cerrando', turno: t };
+  const hasta = ahoraSeg() + PRORROGA_HORAS * 3600;
+  if (await haySeguimiento()) await repo.confirmarSigue(t.filaId, hasta);
+  console.log(`✅ [FICHAJE] ${t.nombre} sigue en ${t.matricula}: no se mira hasta dentro de ${PRORROGA_HORAS} h`);
+  return { ok: true, turno: t, hasta, horas: PRORROGA_HORAS };
 }
 
 /**
@@ -1157,6 +1405,7 @@ module.exports = {
   participa, olvidar, decidirBloqueo, marcarRelevo, cochesDelPlan,
   activarConductor, estadoParaPanel, soltarCoche,
   quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
+  revisarTurnosLargos, confirmarSigue, PRORROGA_HORAS,
   conductorMapon,
   liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, hayQueApagar, liberarConocidos, maponDisponible,
   enFilaDelCoche,

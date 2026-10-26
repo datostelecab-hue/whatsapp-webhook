@@ -129,6 +129,14 @@ Un solo periodo por persona: el abierto manda; si no, el de alta más reciente d
 
 El detalle de altas, bajas, ausencias y cambios de jornada está en [[RRHH]].
 
+### Toda alta entra con el bloqueo de motor encendido (26/10/2026)
+
+Camilo: *«Vamos a hacer que los nuevos que entren en la plantilla ya lleguen con el bloqueo de motor activo; cuando se dé de alta alguien, advierte a RRHH que le dé la inducción del bloqueo del coche o que por lo menos envíe el vídeo de inducción que tenemos listo»*.
+
+- **El bloqueo se enciende en el alta**: `conductores.repo.crear` (alta nueva) y `darDeAlta` (la vuelta) ponen `ficha_coche` en la misma transacción que abren el contrato, con quién lo encendió. Por ahí pasan todas las puertas: Plantilla («Dar de alta» y «Volver a dar de alta»), la ETT (alta rápida y «Pasa a RRHH») y Selección. Un coche solo entra en el [[Ciclo de bloqueo de motor]] si todos los que lo llevan tienen el bloqueo; con uno sin él, se queda fuera.
+- **El aviso a RRHH** (`conductores.service.AVISO_INDUCCION`): al terminar el alta sale qué significa (al terminar cada turno se le bloqueará el coche, y para arrancarlo tendrá que escribir la matrícula al WhatsApp) y qué hacer: darle la inducción o, por lo menos, mandarle el vídeo **«El WhatsApp del coche»** (1:12). En Plantilla, con el botón **«Mandar el vídeo ahora»**; en la ETT y Selección, en el mismo aviso del alta.
+- **El botón «Vídeo del bloqueo»** de la ficha (a quien está de alta y tiene teléfono) se lo manda cuando se quiera. Es el mismo vídeo y la misma puerta que Próximas incorporaciones (`incorporaciones.enviarVideo`): **solo con su ventana de WhatsApp abierta**, es decir, si ha escrito al WhatsApp de Telecab en las últimas 24 h. A un nuevo casi nunca se le abre sola: se abre al pulsar «Ver mis turnos» en la plantilla de turnos o al escribir al bot. Si está cerrada, el botón lo dice.
+
 ### Dar de baja borra lo que empieza DESPUÉS
 
 Un tramo que arranca el 21 no se puede cerrar el 14 — la base lo prohíbe, y con razón: eso **nunca existió**. Así que al dar de baja, lo posterior a la fecha **se borra** (asignaciones y sus días de cuadrante, situaciones, turnos y libranzas) y lo que ya estaba en marcha se **recorta** a ese día.

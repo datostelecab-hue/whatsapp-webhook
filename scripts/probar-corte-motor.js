@@ -222,7 +222,30 @@ const falsoRepo = {
     ordenes: libroMotor.filter(o => o.matricula === norm(mat)).slice().reverse(),
     turnos: turnos.filter(t => norm(t.matricula) === norm(mat)).slice().reverse(),
   }),
+  // Los coches del cuadrante con quién los lleva (sección 20).
+  cochesDelCuadrante: async () => Object.entries(plan).map(([matricula, ids]) => ({ matricula,
+    llevan: ids.map(id => ({ conductorId: id, nombre: conductor(id).nombre, fichaCoche: conductor(id).activo })) })),
+  // El cierre de las 14 h (db/219, sección 19). Sin la migración, la tabla no
+  // está y todo es como antes (secciones 0-18).
+  haySeguimiento: async () => hayDb219,
+  // Como el de verdad: solo cierra si sigue abierto.
+  cerrarSiAbierto: async t => {
+    const i = turnos.findIndex(x => x.id === t.id && abierto(x));
+    if (i < 0) return null;
+    turnos[i] = { ...turnos[i], ...t };
+    return turnos[i];
+  },
+  seguimientos: async ids => new Map(ids.filter(id => sigue.has(id)).map(id => [id, { ...sigue.get(id) }])),
+  apuntarPregunta: async id => {
+    const s = sigue.get(id) || { preguntas: 0 };
+    sigue.set(id, { ...s, preguntadoAt: Math.floor(Date.now() / 1000), preguntas: s.preguntas + 1 });
+  },
+  confirmarSigue: async (id, hasta) => {
+    sigue.set(id, { ...(sigue.get(id) || { preguntas: 0 }), confirmadoAt: Math.floor(Date.now() / 1000), sigueHasta: hasta });
+  },
 };
+let hayDb219 = false;
+const sigue = new Map();   // filaId → { preguntadoAt, preguntas, confirmadoAt, sigueHasta }
 
 require.cache[require.resolve(path.join(RAIZ, 'services/mapon.js'))] = { exports: falsoMapon, loaded: true, id: 'falso-mapon' };
 require.cache[require.resolve(path.join(RAIZ, 'services/repo/fichajeTurno.js'))] = { exports: falsoRepo, loaded: true, id: 'falso-repo' };
@@ -413,7 +436,10 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('3333CCC BLOQUEADO por Beto (8c)', fila('3333CCC') && fila('3333CCC').estado === 'bloqueado' && fila('3333CCC').quien === 'Beto Noche');
   comprobar('4444DDD: al terminar no se pudo bloquear, no tiene relé',
     fila('4444DDD') && fila('4444DDD').estado === 'no-bloqueado' && /sin relé/.test(fila('4444DDD').detalle));
-  comprobar('2222BBB no está: Beto terminó sin el bloqueo', !fila('2222BBB'));
+  // Hasta el 26/10/2026 no salía; ahora es del planificador y tiene que estar
+  // dentro: sale pendiente de entrar, por Beto (sección 20).
+  comprobar('2222BBB: Beto terminó sin el bloqueo → pendiente de entrar, por él',
+    fila('2222BBB') && fila('2222BBB').estado === 'pendiente' && /Beto Noche/.test(fila('2222BBB').pendiente));
   comprobar('0000AAA no está: nadie lo ha usado', !fila('0000AAA'));
   comprobar('ordenados: los bloqueados antes que los avisos de menos peso',
     l.filas.findIndex(x => x.estado === 'bloqueado') < l.filas.findIndex(x => x.estado === 'no-bloqueado'));
@@ -685,6 +711,217 @@ const limpio = () => { ordenes.length = 0; };
   r = await f.terminar(ANA);
   comprobar('apagado: termina y bloquea', r.ok && r.motor.hecho && ordenes.join() === '1111AAA:BLOQUEAR', ordenes.join());
   delete coche('1111AAA').ignicionDesdeSeg; delete coche('1111AAA').segSinSenal;
+
+  console.log('\n== 19. El cierre de las 14 h, con el coche delante (26/10/2026, db/219) ==');
+  // Camilo: «si alguien no cerró turno, que lo cierre 14 horas después, pero si
+  // el coche está en movimiento lo mantengas así, y le envíes un mensaje por
+  // WhatsApp … si el coche está parado, se cierra el turno y se bloquea el
+  // motor, solo si está detenido».
+  const turnoDe = tel => turnos.filter(t => tel9(t.telefono) === tel).pop();
+  const envejecer = (tel, horas) => { turnoDe(tel).inicio -= horas * 3600; };
+  const quieto = (m, extra = {}) => Object.assign(coche(m), { enMarcha: false, ignicion: false, segParado: 3600, segSinSenal: 60, ...extra });
+  coche('1111AAA').rele = LIBRE; coche('3333CCC').rele = LIBRE; coche('2222BBB').rele = LIBRE;
+
+  // 19a. Sin db/219, lo de antes: el repaso cierra a las 14 h y no toca el motor.
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15); limpio();
+  let acc = await f.revisarTurnosLargos();
+  comprobar('sin db/219: cierra como siempre, sin mirar el coche ni tocar el motor',
+    acc.length === 0 && turnoDe(ANA).estado === 'auto-cerrado' && /el motor no se toca/.test(turnoDe(ANA).notas) && ordenes.length === 0);
+
+  // 19b. Con db/219, escribir al bot ya no cierra un turno de 15 h: lo lleva el repaso.
+  hayDb219 = true;
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15);
+  coche('3333CCC').enMarcha = true;
+  comprobar('con db/219, escribir al bot ya no lo cierra', (await f.estado(ANA)).abierto === true);
+
+  // 19c. En marcha: sigue abierto y se le pregunta; el motor ni se mira.
+  limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('en marcha a las 15 h: se le pregunta y el turno sigue abierto',
+    acc.length === 1 && acc[0].tipo === 'preguntar' && acc[0].porque === 'en-marcha' && turnoDe(ANA).estado === 'abierto' && ordenes.length === 0,
+    JSON.stringify(acc.map(a => [a.tipo, a.porque])));
+  comprobar('… y la pregunta dice que se bloqueará el motor (Ana lo tiene y nadie más lleva el coche)', acc[0] && acc[0].sinMotor === false);
+  comprobar('… y se apunta que se le preguntó', (sigue.get(turnoDe(ANA).filaId) || {}).preguntas === 1);
+  acc = await f.revisarTurnosLargos();
+  comprobar('cinco minutos después no se le vuelve a preguntar', acc.length === 0);
+
+  // 19d. Dice que sigue: aunque pare, no se toca en la prórroga.
+  r = await f.confirmarSigue(ANA);
+  comprobar('«Sigo en el coche» se apunta, con su prórroga de 2 h', r.ok && r.horas === 2 && sigue.get(turnoDe(ANA).filaId).sigueHasta > Date.now() / 1000);
+  coche('3333CCC').enMarcha = true;
+  sigue.get(turnoDe(ANA).filaId).preguntadoAt -= 3 * 3600;   // (sin la prórroga, ya tocaría preguntar otra vez)
+  const preguntasAntes = sigue.get(turnoDe(ANA).filaId).preguntas;
+  acc = await f.revisarTurnosLargos();
+  comprobar('en la prórroga, en marcha: tampoco se le vuelve a preguntar',
+    acc.length === 0 && sigue.get(turnoDe(ANA).filaId).preguntas === preguntasAntes);
+  quieto('3333CCC'); limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('en la prórroga, parado y apagado: no se cierra ni se bloquea', acc.length === 0 && turnoDe(ANA).estado === 'abierto' && ordenes.length === 0);
+
+  // 19e. Pasa la prórroga y sigue detenido: se cierra y se bloquea, con la regla estricta.
+  // (Su «sí» fue hace 3 h y la prórroga acaba de pasar: el coche lleva 1 h parado.)
+  Object.assign(sigue.get(turnoDe(ANA).filaId), { sigueHasta: Math.floor(Date.now() / 1000) - 60, confirmadoAt: Math.floor(Date.now() / 1000) - 3 * 3600 });
+  const antes19 = libroMotor.length;
+  acc = await f.revisarTurnosLargos();
+  const cerrado19 = turnoDe(ANA);
+  comprobar('pasada la prórroga y detenido: se cierra y se BLOQUEA',
+    acc.length === 1 && acc[0].tipo === 'cerrado' && acc[0].motor.hecho && ordenes.join() === '3333CCC:BLOQUEAR' && coche('3333CCC').rele === BLOQ,
+    JSON.stringify({ acc: acc.map(a => [a.tipo, a.motor && a.motor.motivo]), ordenes }));
+  comprobar('… queda auto-cerrado, y su fin es cuando se paró (hace 1 h), no ahora',
+    cerrado19.estado === 'auto-cerrado' && Math.abs(cerrado19.fin - (Math.floor(Date.now() / 1000) - 3600)) < 5 && /coche parado 60 min y apagado/.test(cerrado19.notas),
+    cerrado19.notas);
+  comprobar('… y en el libro del ciclo, sin usuario, con su motivo',
+    libroMotor.length === antes19 + 1 && libroMotor[antes19].accion === 'bloquear' && libroMotor[antes19].usuarioId === null
+      && /Cierre automático tras 14 h/.test(libroMotor[antes19].motivo));
+
+  // 19f. Parado de hace poco, o encendido: se pregunta, no se corta.
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  comprobar('al volver a empezar, se le suelta el motor', r.ok && coche('3333CCC').rele === LIBRE);
+  envejecer(ANA, 15); quieto('3333CCC', { segParado: 5 * 60 }); limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('parado solo 5 min: se pregunta, no se corta', acc.length === 1 && acc[0].porque === 'parado-poco' && ordenes.length === 0);
+  sigue.get(turnoDe(ANA).filaId).preguntadoAt -= 3 * 3600;
+  quieto('3333CCC', { ignicion: true, segParado: 3600 });
+  acc = await f.revisarTurnosLargos();
+  comprobar('parado una hora pero ENCENDIDO: se pregunta otra vez, no se corta',
+    acc.length === 1 && acc[0].porque === 'encendido' && ordenes.length === 0 && turnoDe(ANA).estado === 'abierto');
+
+  // 19g. Sin saber cómo está el coche: como antes, se cierra sin tocar el motor.
+  quieto('3333CCC', { segSinSenal: 20 * 60 });
+  acc = await f.revisarTurnosLargos();
+  comprobar('sin señal desde hace 20 min: se cierra, pero el motor no se toca',
+    acc.length === 1 && acc[0].tipo === 'cerrado' && acc[0].sinSaber && acc[0].motor === null && ordenes.length === 0
+      && turnoDe(ANA).estado === 'auto-cerrado', JSON.stringify(acc.map(a => [a.tipo, a.sinSaber])));
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15); quieto('3333CCC'); maponVivo = false; limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('con Mapon caído: se cierra, sin tocar el motor', acc.length === 1 && acc[0].sinSaber && ordenes.length === 0);
+  maponVivo = true;
+
+  // 19h. Un coche que también lleva alguien SIN el bloqueo: se cierra, pero se queda libre.
+  r = await f.iniciar({ telefono: ANA, matricula: '2222BBB' });
+  envejecer(ANA, 15); quieto('2222BBB'); limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('detenido pero lo lleva también Beto, sin el bloqueo: se cierra y se queda LIBRE',
+    acc.length === 1 && acc[0].tipo === 'cerrado' && acc[0].motor.seQuedaLibre && ordenes.length === 0 && (acc[0].faltan || []).join() === 'Beto Noche');
+
+  // La regla estricta, sola (la que vuelve a mirar `motor` justo antes de cortar):
+  // sin que nadie lo pida hay que SABER que está apagado, y desde hace 20 min.
+  const base19 = { enMarcha: false, velocidad: 0, ignicion: false, segSinSenal: 60, segParado: 3600, ignicionDesdeSeg: 3600 };
+  comprobar('regla estricta: apagado hace 1 h, parado 1 h y con señal → se puede', f.puedeInmovilizar(base19) === null);
+  comprobar('regla estricta: el contacto sin saber (null) → NO', /no se sabe si el coche está apagado/.test(f.puedeInmovilizar({ ...base19, ignicion: null }) || ''));
+  comprobar('regla estricta: apagado hace 30 s → NO', /solo lleva 1 min apagado|solo lleva 0 min apagado/.test(f.puedeInmovilizar({ ...base19, ignicionDesdeSeg: 30 }) || ''));
+  comprobar('regla estricta: sin saber cuánto lleva apagado → NO', /no se sabe cuánto lleva apagado/.test(f.puedeInmovilizar({ ...base19, ignicionDesdeSeg: null }) || ''));
+  comprobar('regla estricta: sin saber cuándo dio señal → NO', /no se sabe cuándo dio señal/.test(f.puedeInmovilizar({ ...base19, segSinSenal: null }) || ''));
+  comprobar('… y «Terminar turno» (por orden) sigue como estaba: apagado basta', f.puedeInmovilizar({ ...base19, ignicionDesdeSeg: 30 }, { porOrden: true }) === null);
+
+  // 19j. LA REVISIÓN DEL 26/10. Un contacto que Mapon no dice (null) no es «apagado»:
+  // se cierra sin tocar el motor, nunca se corta.
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15); quieto('3333CCC', { ignicion: null }); limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('contacto desconocido (null): se cierra SIN tocar el motor',
+    acc.length === 1 && acc[0].tipo === 'cerrado' && /contacto puesto/.test(acc[0].sinSaber || '') && ordenes.length === 0,
+    JSON.stringify({ acc: acc.map(a => [a.tipo, a.sinSaber]), ordenes }));
+  // 19k. Parado 40 min al ralentí y apagado hace 30 s: «parado 40 min» cuenta el
+  // ralentí; hace falta llevar 20 min APAGADO. Se pregunta, no se corta.
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15); quieto('3333CCC', { segParado: 40 * 60, ignicionDesdeSeg: 30 }); limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('40 min parado pero apagado hace 30 s: se pregunta, no se corta',
+    acc.length === 1 && acc[0].tipo === 'preguntar' && acc[0].porque === 'parado-poco' && ordenes.length === 0);
+  delete coche('3333CCC').ignicionDesdeSeg;
+  // 19l. «Entregar coche» pulsado a las 15 h: el cierre no puede acabar antes (la
+  // base lo prohíbe, ck_ft_relevo, y tumbaba el bot de todos).
+  turnoDe(ANA).relevo = Math.floor(Date.now() / 1000) - 120;
+  quieto('3333CCC', { segSinSenal: 20 * 60 });
+  acc = await f.revisarTurnosLargos();
+  const conRelevo = turnoDe(ANA);
+  comprobar('con «Entregar coche» después de las 14 h, el fin no queda antes de él',
+    conRelevo.estado === 'auto-cerrado' && conRelevo.fin >= conRelevo.relevo, JSON.stringify({ fin: conRelevo.fin, relevo: conRelevo.relevo }));
+  // 19m. Un «Sigo en el coche» que llega mientras el repaso va por los turnos: se
+  // vuelve a mirar justo antes de cerrar, y se respeta.
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15); quieto('3333CCC'); limpio();
+  const seguimientosDeVerdad = falsoRepo.seguimientos;
+  let primeraLectura = true;
+  falsoRepo.seguimientos = async ids => {
+    if (primeraLectura) { primeraLectura = false; await f.confirmarSigue(ANA); return new Map(); }
+    return seguimientosDeVerdad(ids);
+  };
+  acc = await f.revisarTurnosLargos();
+  falsoRepo.seguimientos = seguimientosDeVerdad;
+  comprobar('un «sí» que llega durante el repaso se respeta: ni se cierra ni se corta',
+    acc.length === 0 && turnoDe(ANA).estado === 'abierto' && ordenes.length === 0);
+  // 19n. El tope: pasadas 24 h se cierra sin tocar el motor, aunque siga en marcha.
+  sigue.get(turnoDe(ANA).filaId).sigueHasta = Math.floor(Date.now() / 1000) - 60;
+  envejecer(ANA, 10); coche('3333CCC').enMarcha = true; limpio();
+  acc = await f.revisarTurnosLargos();
+  comprobar('a las 25 h, aunque ande: se cierra SIN tocar el motor (el tope)',
+    acc.length === 1 && acc[0].tope === true && turnoDe(ANA).estado === 'auto-cerrado' && ordenes.length === 0);
+  coche('3333CCC').enMarcha = false;
+  // 19o. Un fallo de la base al mirar si está db/219: esa vez no se hace nada, ni a ciegas.
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  envejecer(ANA, 15); quieto('3333CCC'); limpio();
+  const hayDeVerdad = falsoRepo.haySeguimiento;
+  falsoRepo.haySeguimiento = async () => { throw new Error('la base no contesta'); };
+  acc = await f.revisarTurnosLargos();
+  await f.estado(ANA);
+  comprobar('si no se sabe si está db/219: ni el repaso ni el bot cierran nada',
+    acc.length === 0 && turnoDe(ANA).estado === 'abierto' && ordenes.length === 0);
+  falsoRepo.haySeguimiento = hayDeVerdad;
+  await f.revisarTurnosLargos();
+  comprobar('… y en cuanto se sabe, sigue como siempre (aquí, detenido: cierra y bloquea)',
+    turnoDe(ANA).estado === 'auto-cerrado' && ordenes.join() === '3333CCC:BLOQUEAR');
+  coche('3333CCC').rele = LIBRE;
+
+  // 19i. Lo que se le dice, sin la palabra «fichar».
+  require.cache[require.resolve(path.join(RAIZ, 'services/whatsapp.js'))] = { loaded: true, id: 'falso-whatsapp', exports: {
+    enviarTexto: async () => ({ ok: true }), enviarBotones: async () => ({ ok: true }),
+    enviarBotonesCrudos: async () => ({ ok: true }), enviarLista: async () => ({ ok: true }),
+  } };
+  const bot = require(path.join(RAIZ, 'services/fichajeBot.js'));
+  const tAna = { nombre: 'Ana Día', matricula: '3333CCC', tipo: 'turno', telefono: ANA };
+  const preg = bot.textoPregunta({ turno: tAna, porque: 'en-marcha', sinMotor: false });
+  comprobar('la pregunta: su nombre, su coche, en marcha, los dos botones y que se bloqueará',
+    /^👋 Ana, llevas más de 14 h con el turno abierto en \*3333CCC\* y el coche está en marcha/.test(preg)
+      && /Sigo en el coche/.test(preg) && /Terminar turno/.test(preg) && /bloquearé el motor/.test(preg) && !/fich/i.test(preg), preg);
+  comprobar('… sin el bloqueo, no promete bloquear', !/bloquearé/.test(bot.textoPregunta({ turno: tAna, porque: 'encendido', sinMotor: true })));
+  const cer = bot.textoCerrado({ turno: tAna, motor: { hecho: true } });
+  comprobar('el cierre: que se cerró, por qué, el motor bloqueado y cómo seguir',
+    /^🔴 Ana, he cerrado tu turno en \*3333CCC\*: llevaba más de 14 h abierto y el coche estaba parado y apagado\. El motor ha quedado bloqueado\./.test(cer)
+      && /escríbeme la matrícula/.test(cer) && !/fich/i.test(cer), cer);
+  comprobar('… y si se quedó libre (un compañero sin el bloqueo), no habla del motor',
+    !/motor/.test(bot.textoCerrado({ turno: tAna, motor: { hecho: false, seQuedaLibre: true } })));
+  hayDb219 = false;
+
+  console.log('\n== 20. Todos los coches del planificador, dentro: los que no, pendientes con su porqué ==');
+  // Camilo: «mantén todos los coches disponibles del planificador dentro del
+  // ciclo; si alguno se va fuera, que aparezca como pendiente de entrar y el porqué».
+  Object.assign(plan, { '4444DDD': ['101'], '0000AAA': ['101'], '5555BCN': ['101'] });
+  let l20 = await ciclo.lista();
+  const fila20 = m => l20.filas.find(x => x.matricula === m) || {};
+  comprobar('el 2222BBB, que también lleva Beto sin el bloqueo: pendiente, con su nombre y qué hacer',
+    /Beto Noche lo lleva sin el bloqueo de motor: enciéndeselo en el planificador/.test(fila20('2222BBB').pendiente || '') && !fila20('2222BBB').seArreglaSolo,
+    JSON.stringify(fila20('2222BBB')));
+  comprobar('el 4444DDD, sin relé de corte (no se pudo bloquear al terminar): pendiente, que lo mire el taller',
+    fila20('4444DDD').estado === 'no-bloqueado' && /No tiene relé de corte/.test(fila20('4444DDD').pendiente)
+      && /Pendiente de entrar en el ciclo: No tiene relé/.test(fila20('4444DDD').detalle), JSON.stringify(fila20('4444DDD')));
+  comprobar('el 0000AAA, todos con el bloqueo y sin terminar nunca: pendiente, pero entra solo',
+    fila20('0000AAA').estado === 'pendiente' && fila20('0000AAA').seArreglaSolo === true && /entra en el ciclo en cuanto alguien termine/.test(fila20('0000AAA').detalle));
+  comprobar('… con quién lo coge', (fila20('0000AAA').cogen || []).map(p => p.nombre).join() === 'Ana Día');
+  comprobar('el de Barcelona no sale aunque esté en el cuadrante', !l20.filas.some(x => x.matricula === '5555BCN'));
+  comprobar('los pendientes que hay que arreglar van antes que los que entran solos',
+    l20.filas.findIndex(x => x.matricula === '4444DDD') < l20.filas.findIndex(x => x.matricula === '0000AAA'));
+  // Con Beto ya con el bloqueo, el 2222BBB deja de estar pendiente por él.
+  conductor('102').activo = true;
+  l20 = await ciclo.lista();
+  comprobar('al encenderle el bloqueo a Beto, el 2222BBB deja de estar pendiente por él',
+    !/Beto/.test(fila20('2222BBB').pendiente || ''), JSON.stringify(fila20('2222BBB')));
+  conductor('102').activo = false;
+  delete plan['4444DDD']; delete plan['0000AAA']; delete plan['5555BCN'];
 
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;

@@ -94,6 +94,9 @@ async function realizarAlta(datos, quien = {}) {
     catch (e) { console.error(`❌ [ALTA] no se pudo enlazar la cuenta de BOLT: ${e.message}`); }
   }
 
+  // Entra con el bloqueo de motor encendido (conductores.repo): que RRHH le dé la inducción.
+  avisos.push(AVISO_INDUCCION);
+
   return {
     id, restaurado, caso: s.caso, boltEnlazada,
     // Sin cuenta de BOLT no puede conducir. Se devuelve para que la pantalla lo
@@ -103,9 +106,25 @@ async function realizarAlta(datos, quien = {}) {
   };
 }
 
+/**
+ * LO QUE SE LE DICE A RRHH EN CADA ALTA (26/10/2026). Camilo: «cuando se dé de
+ * alta alguien, advierte a RRHH que le dé la inducción del bloqueo del coche o
+ * que por lo menos envíe el vídeo de inducción que tenemos listo». Quien entra
+ * ya llega con el bloqueo encendido (conductores.repo.encenderBloqueoAlEntrar):
+ * al terminar cada turno se le bloquea el coche, y si no sabe usar el bot se
+ * queda sin poder arrancarlo. El vídeo es «El WhatsApp del coche»
+ * (services/videosWhatsapp.js, `bot_coche`).
+ */
+const AVISO_INDUCCION = 'Entra con el bloqueo de motor encendido: al terminar cada turno se le bloqueará el coche, '
+  + 'y para volver a arrancarlo tendrá que escribir la matrícula al WhatsApp de Telecab. '
+  + 'Dale la inducción del bloqueo del coche o, por lo menos, mándale el vídeo «El WhatsApp del coche» (1:12): '
+  + 'desde su ficha de Plantilla («Vídeo del bloqueo») o desde Control → Próximas incorporaciones. '
+  + 'El vídeo solo sale si ha escrito al WhatsApp de Telecab en las últimas 24 horas.';
+
 module.exports = {
   // Qué es un campo de la ficha (y de qué tipo). Es un catálogo, no una función.
   CAMPOS: repo.CAMPOS,
+  AVISO_INDUCCION,
   crearPersona: (...a) => repo.crearPersona(...a),
   actualizar: (...a) => repo.actualizar(...a),
   guardarTelefono: (...a) => repo.guardarTelefono(...a),

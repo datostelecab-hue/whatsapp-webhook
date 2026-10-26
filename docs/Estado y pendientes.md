@@ -27,6 +27,13 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **No regenerar `db/217`**: cambiaría su huella y en local saldría como «modificada».
 - **Octubre va 35 h por encima del crítico** (a día 24, en producción): para llegar a las 30.000 h hacen falta 1.163 h/día los siete días que quedan, prácticamente la capacidad entera (16 h × 73 coches = 1.168). La previsión al ritmo de la última semana es de unas 28.800 h, el 96 % de la meta.
 
+## Bloqueo de motor: todos dentro y el cierre de las 14 h (26/10/2026)
+
+- **Desplegar y aplicar `db/219`** desde `/migraciones`. Enciende el bloqueo a los 12 que llevan un coche del planificador sin él (los 68 coches quedan dentro) y activa el cierre de las 14 h con el coche delante: detenido, cierra y bloquea; en marcha, pregunta por WhatsApp si sigue en el coche. Sin ella, el cierre es el de siempre. Ver [[Ciclo de bloqueo de motor]].
+- **Comprobar `FICHAJE_BLOQUEO_MOTOR=1` en Render**: sin ella no se bloquea nada, ni al terminar ni a las 14 h, y el módulo lo dice arriba.
+- **Los 2 coches sin relé de corte** (3414JXB y 9985LBC, el 26/10): que los mire el taller. Salen en el ciclo como pendientes.
+- **Mirar en el ciclo, los primeros días, la cifra «Pendientes de entrar»** y los turnos auto-cerrados en el libro: el primer cierre de las 14 h con el coche detenido es la prueba de verdad.
+
 ## Combustible: Ballenoil por correo, Petroprix por Excel y su auditoría con Mapon (22-23/10/2026)
 
 - **Desplegar y aplicar `db/218`** desde `/migraciones` (26/10/2026, las malas lecturas de Mapon): devuelve a la cola unas 100 filas para auditarlas con las reglas nuevas (la parada desmentida, la abierta y la hora repetida probada en las dos). Mejor antes del **29/10 a las 09:35**, para que las 7 de la hora repetida vuelvan a mirar BOLT con la hora buena. Ver [[Combustible#Las malas lecturas de Mapon (26/10/2026, db/218)]].

@@ -157,13 +157,19 @@ const del = tipo => (hechos.find(h => h[0] === tipo) || [])[1];
   let a = await conductores.realizarAlta(ALTA, quien);
   igual('Vuelve alguien que ya estuvo: se le pone el turno desde el día del alta',
     hechos, [['darDeAlta'], ['turno', 77, 2, '2026-10-20']]);
-  igual('…sin avisos', a.avisos, []);
+  // Desde el 26/10/2026 toda alta lleva el aviso de la inducción del bloqueo de
+  // motor: entra con el bloqueo encendido (conductores.repo).
+  igual('…sin más aviso que el de la inducción del bloqueo de motor', a.avisos, [conductores.AVISO_INDUCCION]);
+  igual('…y ese aviso dice qué hacer: la inducción o, por lo menos, el vídeo',
+    /bloqueo de motor encendido/.test(conductores.AVISO_INDUCCION) && /inducción/.test(conductores.AVISO_INDUCCION)
+      && /El WhatsApp del coche/.test(conductores.AVISO_INDUCCION), true);
 
   turnoFalla = true;
   hechos.length = 0;
   a = await conductores.realizarAlta(ALTA, quien);
-  igual('Si el turno no se puede poner, el alta queda hecha y se avisa',
-    [a.id, a.avisos.length, /no se le pudo poner el turno/.test(a.avisos[0] || '')], [77, 1, true]);
+  igual('Si el turno no se puede poner, el alta queda hecha y se avisa (y la inducción, después)',
+    [a.id, a.avisos.length, /no se le pudo poner el turno/.test(a.avisos[0] || ''), a.avisos[1] === conductores.AVISO_INDUCCION],
+    [77, 2, true, true]);
   turnoFalla = false;
 
   hechos.length = 0;

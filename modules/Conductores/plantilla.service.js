@@ -262,7 +262,24 @@ const buscarPersona = pistas => con.buscarPersona(pistas || {});
 // que es quien sabe cerrar una vigencia y abrir la siguiente en una sola
 // transacción. Lo que NO se hace aquí es escribir fechas "hasta" a mano.
 
-const crear = (datos, quien) => con.crear(datos, quien);
+// Quien entra llega con el bloqueo de motor encendido (conductores.repo): la
+// pantalla le dice a RRHH que le dé la inducción o le mande el vídeo (26/10/2026).
+const induccion = () => require('./conductores.service').AVISO_INDUCCION;
+const crear = async (datos, quien) => ({ ...(await con.crear(datos, quien)), induccion: induccion() });
+
+/**
+ * EL VÍDEO DEL BLOQUEO, desde su ficha (26/10/2026): «El WhatsApp del coche»,
+ * el mismo que manda Próximas incorporaciones y por la misma puerta (solo con
+ * su ventana de WhatsApp abierta, y queda en su chat). `base`: la dirección
+ * pública, de la que Meta baja el vídeo.
+ */
+async function videoBloqueo(id, quien, base) {
+  // Solo a quien está de alta: el botón ya solo sale ahí, pero el servidor no se fía de la pantalla.
+  const f = await con.ficha(Number(id), {});
+  if (!f) throw new Error('No existe ese conductor');
+  if (f.empleo_vigente === false) throw new Error('Solo se manda a quien está de alta');
+  return require('../Control/incorporaciones.service').enviarVideo(Number(id), quien || {}, base);
+}
 /**
  * Guarda los datos de la ficha. Las fechas del carné y el IBAN se apartan: no
  * son columnas de la persona (ver `campos`). Se COMPRUEBA TODO ANTES DE
@@ -406,7 +423,7 @@ const darDeAlta = async (id, datos, quien) => {
   } catch (e) {
     console.error('⚠️  [PLANTILLA] candidatura no actualizada al dar de alta:', e.message);
   }
-  return { periodoId, candidatura };
+  return { periodoId, candidatura, induccion: induccion() };
 };
 // Con fecha futura se PROGRAMA (db/191): sigue de alta y en su plaza hasta ese
 // día. Devuelve { dado } o { programada: 'AAAA-MM-DD' }.
@@ -512,6 +529,7 @@ module.exports = {
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
+  videoBloqueo,
   excelGestoria,
   tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,
   retirarDocumento, descargarDocumento, documentosQueVencen,

@@ -32,6 +32,17 @@
 //                  terminar, o se quedará libre si un compañero no lo tiene.
 //   fuera          lo soltó Tráfico (el taller): fuera del ciclo hasta que alguien
 //                  vuelva a empezar y terminar un turno en él.
+//   pendiente      un coche del PLANIFICADOR que no está en el ciclo (26/10/2026).
+//
+// TODOS LOS COCHES DEL PLANIFICADOR, DENTRO (Camilo, 26/10/2026): «mantén todos
+// los coches disponibles del planificador dentro del ciclo; si alguno se va
+// fuera, que aparezca como pendiente de entrar en el ciclo y el porqué». Los del
+// cuadrante de hoy y mañana que no tienen nada en el libro salen como
+// `pendiente`, y a todos los de fuera (o que se van a quedar fuera al terminar)
+// se les pone `pendiente` con el porqué: sin relé de corte, alguien que lo lleva
+// sin el bloqueo, o que todavía no lo ha terminado nadie con él (ese se arregla
+// solo). El sistema no los bloquea por eso: entran al terminar un turno o en el
+// cierre de las 14 h (services/fichaje.revisarTurnosLargos).
 //
 // Los coches de otra sede ni aparecen (services/otraSede.js).
 
@@ -46,7 +57,25 @@ const iso = seg => (seg ? new Date(seg * 1000).toISOString() : null);
 // vuelto a coger, deja de ser noticia.
 const FUERA_DIAS = 30;
 
-const ESTADOS = ['no-corta', 'bloqueado', 'no-bloqueado', 'cortado-fuera', 'suelto-fuera', 'en-turno', 'fuera'];
+const ESTADOS = ['no-corta', 'bloqueado', 'no-bloqueado', 'cortado-fuera', 'suelto-fuera', 'pendiente', 'en-turno', 'fuera'];
+// Los estados en los que el coche está FUERA del ciclo: si es del planificador,
+// pendiente de entrar.
+const FUERA = new Set(['no-bloqueado', 'cortado-fuera', 'suelto-fuera', 'fuera', 'pendiente']);
+
+/**
+ * Por qué un coche del planificador no está, o no va a estar, en el ciclo; o
+ * null si nada lo impide. `llevan`: quién lo lleva hoy o mañana; `rel`: el relé
+ * según Mapon (null si Mapon no contestó: entonces no se acusa al relé).
+ */
+function porQueFuera(llevan, rel, maponContesta) {
+  if (maponContesta && (!rel || rel.cortado === null)) return 'No tiene relé de corte en Mapon: que lo mire el taller.';
+  const sin = (llevan || []).filter(p => !p.fichaCoche).map(p => p.nombre);
+  if (sin.length) {
+    return `${sin.join(', ')} ${sin.length === 1 ? 'lo lleva' : 'lo llevan'} sin el bloqueo de motor: ` +
+      'enciéndeselo en el planificador (Bloqueo de motor). Mientras, al terminar se queda libre.';
+  }
+  return null;
+}
 
 /** Cómo está el relé según Mapon, en palabras. */
 function estadoRele(rel) {
@@ -155,12 +184,49 @@ async function lista() {
   const cogen = await Promise.all(esperan.map(f => repo.quienesLlevan(f.matricula).catch(() => null)));
   esperan.forEach((f, i) => { f.cogen = cogen[i]; });
 
+  // 5 · LOS COCHES DEL PLANIFICADOR (26/10/2026): todos tienen que estar dentro.
+  // El que no tiene nada en el libro sale como pendiente; al que está fuera, o
+  // se va a quedar libre al terminar, se le dice por qué.
+  let delPlan = [], errorPlan = null;
+  try { delPlan = await repo.cochesDelCuadrante(); }
+  catch (e) { errorPlan = e.message; }
+  const maponContesta = !flota.error;
+  for (const c of delPlan) {
+    if (ajena(c)) continue;
+    const m = normMat(c.matricula);
+    const rel = releDe(c);
+    const porque = porQueFuera(c.llevan, rel, maponContesta);
+    const f = filas.get(m);
+    if (!f) {
+      poner({
+        matricula: c.matricula, unitId: rel ? rel.unitId : '', estado: 'pendiente', desde: null, quien: '',
+        cogen: c.llevan, puedeSoltar: false, delPlanificador: true,
+        pendiente: porque || 'Todavía no lo ha terminado nadie con el bloqueo: entra en el ciclo en cuanto alguien termine su turno en él.',
+        seArreglaSolo: !porque,
+        detalle: porque || 'Todavía no lo ha terminado nadie con el bloqueo: entra en el ciclo en cuanto alguien termine su turno en él (o en el cierre de las 14 h, con el coche detenido).',
+      });
+      continue;
+    }
+    f.delPlanificador = true;
+    if (!f.cogen) f.cogen = c.llevan;
+    // Dentro y sin nada que lo vaya a sacar: no hay nada que decir.
+    if (!porque && !FUERA.has(f.estado)) continue;
+    f.pendiente = porque || 'Está fuera del ciclo: vuelve a entrar en cuanto alguien termine su turno en él.';
+    f.seArreglaSolo = !porque;
+    // En turno ya lo dice («al terminar se quedará libre: X no tiene el bloqueo»).
+    if (porque && f.estado !== 'en-turno' && !String(f.detalle || '').includes(porque)) {
+      f.detalle = `${f.detalle ? f.detalle + ' ' : ''}Pendiente de entrar en el ciclo: ${porque}`;
+    }
+  }
+
   const orden = e => { const i = ESTADOS.indexOf(e); return i < 0 ? 99 : i; };
   return {
     filas: [...filas.values()].sort((a, b) => orden(a.estado) - orden(b.estado)
+      || (!!a.seArreglaSolo === !!b.seArreglaSolo ? 0 : a.seArreglaSolo ? 1 : -1)
       || String(a.matricula).localeCompare(String(b.matricula))),
     bloqueoActivo: fichaje.BLOQUEO_ACTIVO,
     errorMapon: flota.error || null,
+    errorPlan,
   };
 }
 
@@ -176,12 +242,15 @@ function lineaDeTiempo({ ordenes, turnos }) {
     ev.push({ cuando: iso(t.inicio), que: t.tipo === 'viaje' ? 'Empieza un viaje' : 'Empieza el turno', quien: t.nombre, nota: '' });
     if (t.fin) ev.push({ cuando: iso(t.fin), que: alCerrar(t), quien: t.nombre, nota: t.notas || '' });
   });
+  // El cierre de las 14 h (db/219) también va sin usuario, pero no lo hizo el
+  // conductor: lo hizo el sistema, y se dice (si no, la ficha le culparía a él).
+  const delCierre = o => !o.deTrafico && /^Cierre automático/.test(o.motivo || '');
   ordenes.forEach(o => ev.push({
     cuando: o.cuando,
     que: o.accion === 'bloquear' ? (o.hecho ? 'Motor bloqueado' : 'No se pudo bloquear')
       : (o.hecho ? 'Motor suelto' : 'No se pudo soltar'),
-    quien: o.deTrafico ? (o.usuario || 'Tráfico') : 'el conductor',
-    nota: o.deTrafico ? o.motivo : (o.hecho ? '' : o.respuesta),
+    quien: o.deTrafico ? (o.usuario || 'Tráfico') : delCierre(o) ? 'el cierre de las 14 h' : 'el conductor',
+    nota: o.deTrafico || delCierre(o) ? [o.motivo, o.hecho ? '' : o.respuesta].filter(Boolean).join(' · ') : (o.hecho ? '' : o.respuesta),
     motor: true,
   }));
   return ev.filter(e => e.cuando).sort((a, b) => b.cuando.localeCompare(a.cuando)).slice(0, 40);
@@ -207,4 +276,4 @@ async function soltar({ matricula, motivo } = {}, quien = {}) {
   return fichaje.soltarCoche({ matricula: normMat(matricula), motivo }, quien);
 }
 
-module.exports = { lista, ficha, soltar, ESTADOS, lineaDeTiempo };
+module.exports = { lista, ficha, soltar, ESTADOS, lineaDeTiempo, porQueFuera };

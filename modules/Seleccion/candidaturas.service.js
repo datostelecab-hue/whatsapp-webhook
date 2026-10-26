@@ -496,6 +496,8 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
 
   return {
     id: Number(id), conductorId: c.conductor_id, quien: c.quien,
+    // Entra con el bloqueo de motor encendido: que RRHH le dé la inducción (26/10/2026).
+    induccion: conductores.AVISO_INDUCCION,
     bolt: sb || null,
     // Dónde y cuándo cae en el planificador. Es lo que Selección tiene que poder
     // contestar sin llamar a Tráfico.

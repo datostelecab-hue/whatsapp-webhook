@@ -1325,6 +1325,21 @@ async function crearPersona(datos, { usuarioId, rol, cli } = {}) {
 }
 
 /**
+ * EL BLOQUEO DE MOTOR, ENCENDIDO DESDE EL PRIMER DÍA (26/10/2026). Camilo: «que
+ * los nuevos que entren en la plantilla ya lleguen con el bloqueo de motor
+ * activo». Un coche solo entra en el ciclo si TODOS los que lo llevan lo tienen
+ * (services/fichaje.decidirBloqueo): con uno solo sin él, se queda libre. Va en
+ * el alta nueva (`crear`) y en la vuelta (`darDeAlta`), dentro de su misma
+ * transacción, y queda escrito quién lo encendió. A RRHH se le pide que le dé la
+ * inducción o le mande el vídeo del bot (conductores.service.AVISO_INDUCCION).
+ */
+async function encenderBloqueoAlEntrar(cli, id, usuarioId) {
+  await cli.query(
+    `UPDATE conductor SET ficha_coche = TRUE, ficha_coche_at = now(), ficha_coche_por = $2
+      WHERE id = $1 AND NOT ficha_coche`, [id, usuarioId || null]);
+}
+
+/**
  * Crea a alguien Y le abre su periodo de empleo. Es el alta de toda la vida:
  * la persona y el contrato en el mismo acto.
  */
@@ -1348,6 +1363,7 @@ async function crear(datos, { usuarioId, rol } = {}) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [id, tipo, tipo === 'ett' ? String(d.ettNombre).trim() : null, d.alta,
        d.antiguedad || null, d.jornadaHoras || null, d.finPrueba || null, usuarioId || null]);
+    await encenderBloqueoAlEntrar(cli, id, usuarioId);
 
     if (d.turnoId) {
       await vig.reemplazar('turnoConductor', id,
@@ -1386,6 +1402,7 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
       [id, tipo, tipo === 'ett' ? ettNombre : null, alta, antiguedad || null,
        jornadaHoras || null, finPrueba || null, usuarioId || null]);
+    await encenderBloqueoAlEntrar(cli, id, usuarioId);
     return r.rows[0].id;
   });
 }

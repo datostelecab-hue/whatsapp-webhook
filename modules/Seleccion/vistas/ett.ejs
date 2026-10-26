@@ -544,10 +544,13 @@
       ? '<ul class="text-sm mt-2 text-telecab-warn" style="list-style:disc;padding-left:1.25rem;">'
         + r.boltAvisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>'
       : '';
+    // Entra con el bloqueo de motor encendido (26/10/2026).
+    const induccionHtml = r.induccion
+      ? '<p class="text-sm mt-2 text-telecab-warn"><b>Inducción del bloqueo de motor.</b> ' + esc(r.induccion) + '</p>' : '';
     await Dialogo.aviso({
       titulo: 'Pasa a RRHH',
-      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>' + boltHtml + avisosHtml,
-      tono: (r.faltaBolt || r.boltReactivar || (r.boltAvisos && r.boltAvisos.length)) ? 'aviso' : 'ok',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>' + boltHtml + avisosHtml + induccionHtml,
+      tono: (r.faltaBolt || r.boltReactivar || (r.boltAvisos && r.boltAvisos.length) || r.induccion) ? 'aviso' : 'ok',
     });
   }
 
