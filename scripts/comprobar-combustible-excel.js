@@ -365,7 +365,11 @@ const TEXTOS_MAP = new Map(ALIAS.map(a => [`petroprix|${a.clave}`, porNombre(a.n
     ['22-10-2026 14:19:12', '1234ABC', 'Turismo', 'Gasolina', '11,70', '20,00', 'Pago Petroprix', 'Getafe 2\nCalle Nueva 3 28900'],
     ['31-02-2026 10:00:00', '7222LVG', 'Turismo', 'Gasolina', '10,00', '17,00', 'Pago Petroprix', TEXTOS['Petroprix Getafe']],
   ];
-  const r1 = await S.importarExcel({ base64: await xlsx(FILAS), nombre: 'repostajes (14).xlsx' }, { usuarioId: 7 });
+  // El MISMO fichero (los mismos bytes) para «el mismo Excel otra vez»: exceljs
+  // escribe la hora con segundos en docProps/core.xml y en el zip, así que
+  // hacerlo otra vez da otra huella si cae en otro segundo (fallaba 1 de cada 12).
+  const FICHERO14 = await xlsx(FILAS);
+  const r1 = await S.importarExcel({ base64: FICHERO14, nombre: 'repostajes (14).xlsx' }, { usuarioId: 7 });
   igual('Importar: 6 filas, 5 nuevas, 1 con error (y cuál y por qué)',
     [r1.filas, r1.nuevas, r1.yaEstaban, r1.conError, r1.errores], [6, 5, 0, 1,
       [{ fila: 7, motivo: 'la fecha «31-02-2026 10:00:00» no se entiende (tiene que ser DD-MM-AAAA HH:MM:SS)' }]]);
@@ -383,7 +387,7 @@ const TEXTOS_MAP = new Map(ALIAS.map(a => [`petroprix|${a.clave}`, porNombre(a.n
     [1, 3, 4].map(id => [BD.bot[id].estado, BD.bot[id].antiguedadMin == null ? null : BD.bot[id].antiguedadMin]),
     [['en_turno', 0], ['ultimo', 120], ['nadie', null]]);
 
-  const r2 = await S.importarExcel({ base64: await xlsx(FILAS), nombre: 'repostajes (14).xlsx' }, { usuarioId: 7 });
+  const r2 = await S.importarExcel({ base64: FICHERO14, nombre: 'repostajes (14).xlsx' }, { usuarioId: 7 });
   igual('El mismo Excel otra vez: 0 nuevas, las 5 ya estaban, y dice que ese fichero ya se importó', [r2.nuevas, r2.yaEstaban, r2.conError, !!r2.yaImportado, BD.filas.length],
     [0, 5, 1, true, 5]);
   const r3 = await S.importarExcel({ base64: await xlsx([['23-10-2026 08:00:00', '7222LVG', 'Turismo', 'Gasolina', '20,00', '33,00', 'Pago Petroprix', TEXTOS['Petroprix Getafe']],

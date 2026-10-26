@@ -1078,6 +1078,18 @@ Al arreglarlo: dos ficheros llamando a BOLT/Mapon sin permiso, tres ficheros viv
 dados por huérfanos, y una cuenta que había bajado **de 259 llamadas comprobadas a
 117**.
 
+### «El mismo Excel» hecho dos veces no es el mismo fichero
+
+`scripts/comprobar-combustible-excel.js` (26/10/2026)
+
+La importación reconoce un Excel ya subido por la huella de sus **bytes**
+(`importacionConHuella`). La prueba «El mismo Excel otra vez» lo fabricaba dos
+veces con exceljs, que escribe la hora con segundos en `docProps/core.xml` y en cada
+parte del zip: si las dos caían en segundos distintos, la huella era otra y salía
+«no se importó antes». Fallaba 1 de cada 12, y no era el código. **Remedio:** subir
+los mismos bytes dos veces, que es lo que pasa de verdad. Fijar `wb.created` no basta:
+el zip guarda su propia hora.
+
 ### Una coma dentro de un comentario se comía el nombre siguiente
 
 `scripts/comprobar-modulos.js`
