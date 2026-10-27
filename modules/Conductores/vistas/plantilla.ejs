@@ -1049,6 +1049,31 @@
     }
   }
 
+  /**
+   * EL TIPO DE CONTRATO MAL PUESTO AL DARLE DE ALTA (27/10/2026): ETT ↔ propia,
+   * el mismo contrato y con la misma alta. Solo en sus primeros 30 días (lo
+   * vuelve a mirar el servidor). No es «Pasar a propia»: eso es otro contrato.
+   */
+  const contratoReciente = d => d.empleo_vigente && d.alta &&
+    (Date.now() - new Date(d.alta).getTime()) / 86400000 <= 31;
+  async function accionCorregirContrato(d) {
+    const nuevo = d.empleo_tipo === 'ett' ? 'propia' : 'ett';
+    const antes = d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'plantilla propia';
+    const despues = nuevo === 'ett' ? 'ETT' : 'plantilla propia';
+    const ok = await Dialogo.confirmar({
+      titulo: `Corregir el contrato de ${d.nombre_completo}`, tono: 'aviso',
+      si: `Es de ${despues}`, no: 'Cancelar',
+      html: `<p>Su contrato dice <b>${esc(antes)}</b> desde el <b>${esc(fecha(d.alta))}</b>.</p>
+             <p class="mt-2">¿Se le dio de alta con el tipo equivocado? Se cambia a <b>${esc(despues)}</b>
+             el mismo contrato, con la misma fecha de alta, y queda en su historial.</p>`
+           + (nuevo === 'propia' ? `<p class="mt-2 text-telecab-muted text-sm">Si lo que pasa es que <b>ahora</b> pasa de la ETT a
+             plantilla propia, cancela: eso es otro contrato y se hace con «Pasar a propia».</p>` : ''),
+    });
+    if (!ok) return;
+    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/corregir-contrato`, 'POST', { tipo: nuevo }));
+    if (r && r.cambiado && window.Dialogo && Dialogo.hecho) Dialogo.hecho(`Contrato corregido: ${despues}`);
+  }
+
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
       { id: 'fecha', etiqueta: 'Fecha de baja (su último día)', tipo: 'fecha',
@@ -1435,6 +1460,9 @@
         { texto: 'Pasar a propia', icono: 'fa-building-user',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente && d.empleo_tipo === 'ett',
           onClick: accionAPropia },
+        // El tipo mal puesto al darle de alta, en su primer mes (27/10/2026).
+        { texto: 'Corregir contrato', icono: 'fa-file-pen',
+          visible: d => !SOLO_OPERATIVO && contratoReciente(d), onClick: accionCorregirContrato },
         // LAS EXTRAS (06/10/2026). Ocupa el sitio del botón «Jornada», que se
         // fue dentro de «Editar datos»: uno o varios meses, día a día.
         { texto: 'Extras', icono: 'fa-file-invoice-dollar',

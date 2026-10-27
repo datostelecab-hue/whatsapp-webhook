@@ -356,6 +356,18 @@ Hay otras seis personas con el turno empezando de uno a tres días antes de su a
 
 **La jornada, que la ficha no recibía.** A todo el mundo le salían «40 HORAS» y el salario de 40, también a quien tiene 32: ahora va la de su contrato, o la de su candidatura si aún no lo tiene.
 
+### «Corregir contrato»: el tipo mal puesto al darle de alta (27/10/2026)
+
+Camilo: *«a Maria Del Pilar Torres Galan le dieron de alta en ETT el 24/10 por equivocación, es plantilla propia»*. Ella no tenía candidatura, y hasta hoy el tipo solo se podía corregir desde Selección, cambiando la candidatura (el caso de Aaron Borja, 13/10). Sin candidatura no había forma.
+
+Ahora está **«Corregir contrato»** en las acciones de la ficha (`plantilla.corregirContrato` → `conductores.repo.corregirTipoContrato`):
+
+- Cambia ETT ↔ propia **el mismo contrato, con la misma fecha de alta**. Queda en el historial: «ETT · GiGroup → Plantilla propia (corregido desde su alta)».
+- **Solo en sus primeros 30 días**, como en Selección: uno más viejo no es un error de alta. Si de verdad pasa de la ETT a propia, eso es otro contrato y va por «Pasar a propia».
+- **Tráfico no lo toca**: es de RRHH.
+
+Comprobador: `scripts/comprobar-corregir-contrato.js`.
+
 ### Lo que pide la ficha, también en «Datos»
 
 Para que la ficha se pueda completar desde Plantilla, el formulario de **Datos** trae lo que pide y no era una columna de la persona (`plantilla.service.campos`):

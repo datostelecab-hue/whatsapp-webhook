@@ -476,6 +476,38 @@ const cambiarAlta = (id, datos, quien = {}) => {
   return con.cambiarAlta(Number(id), { alta: (datos || {}).alta }, quien);
 };
 
+/**
+ * EL TIPO DE CONTRATO, MAL PUESTO AL DARLE DE ALTA (27/10/2026). Camilo: «a
+ * Maria Del Pilar Torres Galan le dieron de alta en ETT el 24/10 por
+ * equivocación, es plantilla propia».
+ *
+ * Es el MISMO contrato con la MISMA alta (`con.corregirTipoContrato`, la de
+ * Aaron Borja del 13/10), y queda en el registro de cambios de la ficha. Hasta
+ * hoy solo se podía desde Selección, cambiando la candidatura; quien no tiene
+ * candidatura (como ella) se quedaba sin forma de arreglarlo.
+ *
+ * NO es pasar de la ETT a propia: eso es otro contrato y va por «Pasar a
+ * propia». Por eso, como en Selección, solo con contratos de hasta 30 días: uno
+ * más viejo no es un error de alta. Es cosa de RRHH: Tráfico no la toca.
+ */
+const DIAS_PARA_CORREGIR = 30;
+async function corregirContrato(id, datos = {}, quien = {}) {
+  if (quien.rol === 'trafico') throw new Error('El tipo de contrato es cosa de RRHH');
+  const tipo = (datos || {}).tipo;
+  if (!['propia', 'ett'].includes(tipo)) throw new Error('El tipo de contrato es «propia» o «ett»');
+  const c = await con.contratoAbierto(Number(id));
+  if (!c) throw new Error('Esta persona no tiene ningún contrato abierto');
+  if (c.tipo === tipo) return { cambiado: false, tipo, alta: c.alta };
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const dias = Math.round((Date.parse(hoy) - Date.parse(c.alta)) / 86400000);
+  if (dias > DIAS_PARA_CORREGIR) {
+    throw new Error(`Su contrato empezó hace ${dias} días: eso ya no es un error de alta. ` +
+      (c.tipo === 'ett' ? 'Si ahora pasa a plantilla propia, hazlo con «Pasar a propia».' : ''));
+  }
+  await con.corregirTipoContrato(Number(id), { tipo, ettNombre: (datos || {}).ettNombre }, quien);
+  return { cambiado: true, tipo, alta: c.alta };
+}
+
 /** Quién tocó qué y cuándo en una ficha. */
 const cambios = async id => ({ cambios: await audit.historial('conductor', Number(id)) });
 
@@ -528,7 +560,7 @@ module.exports = {
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
-  darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
+  darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
   videoBloqueo,
   excelGestoria,
   tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,

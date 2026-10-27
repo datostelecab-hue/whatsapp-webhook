@@ -276,6 +276,11 @@ router.post('/api/conductor/:id/foto', responde(async req =>
 router.post('/api/conductor/:id/fecha-alta', responde(async req =>
   plantilla.cambiarAlta(req.params.id, req.body || {}, await quien(req))));
 
+// El tipo de contrato mal puesto al darle de alta (ETT ↔ propia): el mismo
+// contrato y la misma alta, solo en sus primeros 30 días (27/10/2026).
+router.post('/api/conductor/:id/corregir-contrato', responde(async req =>
+  plantilla.corregirContrato(req.params.id, req.body || {}, await quien(req))));
+
 router.post('/api/conductor/:id/ficha-alta', responde(async req =>
   plantilla.fichaDeAlta(req.params.id, await quien(req), { fechaInicio: (req.body || {}).fechaInicio })));
 
