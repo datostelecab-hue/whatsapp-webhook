@@ -233,7 +233,10 @@ async function lista() {
 /** Lo que ha pasado con un coche, en una sola línea de tiempo: turnos y motor. */
 function lineaDeTiempo({ ordenes, turnos }) {
   const ev = [];
-  const alCerrar = t => ({
+  // El cerrado desde el ERP (27/10/2026, `fichaje.cerrarDesdeOficina`) también es
+  // `auto-cerrado` —no lo cerró él—, pero no fue solo: lo dice su nota.
+  const desdeElErp = t => /Cerrado desde el ERP por /.test(t.notas || '');
+  const alCerrar = t => (t.estado === 'auto-cerrado' && desdeElErp(t) ? 'Se lo cierra la oficina' : {
     cerrado: t.tipo === 'viaje' ? 'Termina el viaje' : 'Termina el turno',
     relevado: 'Se lo queda otro (relevo)',
     'auto-cerrado': 'Se cierra solo (14 h)',
