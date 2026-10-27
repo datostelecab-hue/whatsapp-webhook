@@ -374,11 +374,21 @@ async function cuadro() {
  *
  * Las cuentas de BOLT sin ficha no entran: no son una persona a la que llamar
  * (el 23/10/2026 eran 83 con el efectivo activado, y taparían lo demás).
+ *
+ * NI LAS CUENTAS DESACTIVADAS EN BOLT (27/10/2026, Camilo: «a los perfiles
+ * desactivados también desestímalos»): con la cuenta desactivada no se cobra
+ * nada, aunque el efectivo siga marcado. El efectivo solo cuenta en una cuenta
+ * que no esté 'deactivated' (la suspendida sí: puede volver). Las ENTREGAS, en
+ * cambio, cuentan en todas sus cuentas, también en las ya desactivadas. Ese día
+ * dejó la tarjeta en 1 persona de 9: las otras 8 ya no trabajaban aquí y tenían
+ * la cuenta desactivada.
  */
 async function conEfectivoSinEntregar() {
   const r = await db.consulta(
     `WITH ef AS (
-       SELECT conductor_id, bool_or(efectivo_activo) AS activo, array_agg(externo_id) AS cuentas
+       SELECT conductor_id,
+              bool_or(efectivo_activo AND estado_externo IS DISTINCT FROM 'deactivated') AS activo,
+              array_agg(externo_id) AS cuentas
          FROM conductor_externo
         WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
         GROUP BY 1)
