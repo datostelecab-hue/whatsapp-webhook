@@ -162,6 +162,20 @@ Camilo: *«el efectivo a recaudar, con todo su histórico, pero desde junio, con
 
 Los nombres que ve: *Entregado en mano*, *Descontado de tu nómina*, *Transferencia* (con su ID), *Te devolvimos* y *Cambio que te dimos*.
 
+## El aviso del efectivo sin entregar (27/10/2026, db/220)
+
+Camilo: *«un PopUp como el de los cumpleaños pero solo para Víctor y Dahian, en el cual salgan las personas con efectivo activo, desestima a los que ya entregaron efectivo así sea una vez en recaudación»*.
+
+Una tarjeta abajo a la derecha, con el aspecto de las de cumpleaños (`public/assets/js/avisoEfectivo.js`). Si hay tarjetas de cumpleaños, se coloca encima. Se cierra con la X y no vuelve hasta el día siguiente en ese navegador.
+
+- **Quién sale** (`recaudacion.repo.conEfectivoSinEntregar`): personas con ficha que son o fueron de la casa, con el efectivo activado en alguna cuenta de BOLT y **ni una sola entrega en ventanilla** (`presencial` sin anular), esté apuntada a la ficha o a una de sus cuentas. Pagar por nómina o por transferencia no cuenta como «entregar efectivo en recaudación».
+- **En dos grupos**: los que siguen en plantilla (a esos se les llama: va su teléfono) y los que ya no trabajan aquí (a esos hay que quitarles el efectivo en BOLT). Lo que debe cada uno sale del mismo cuadro que la pantalla.
+- **Las cuentas de BOLT sin ficha no entran**: no son una persona a la que llamar. El 23/10/2026 eran 83 con el efectivo activado, y taparían todo lo demás.
+- **Solo con la llave `/avisos/efectivo`** (grupo Caja, `manual`): Víctor (usuario 3) y Daiane Alves (usuario 9), por db/220. Ni el superadmin ni el desarrollador la ven por su rol; para dársela a alguien más, en [[Usuarios y permisos]]. El botón «Abrir Recaudación» solo sale a quien puede entrar en ella.
+- Con los datos del 23/10/2026 salían **8**, todos de los que ya no están (7 de la ETT). Los 9 de plantilla con el efectivo activado ya habían entregado alguna vez.
+
+Comprobador: `scripts/comprobar-aviso-efectivo.js`.
+
 ## El cron
 
 Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia.

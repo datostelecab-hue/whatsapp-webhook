@@ -251,6 +251,9 @@ app.use(require('./modules/Ticketera/ticketera.controller').enLaBarra);
 app.use('/inicio', require('./routes/inicio'));
 app.use('/justificantes', require('./modules/Control/justificantes.controller'));
 app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller'));
+// La tarjeta del efectivo activo sin entregar nunca (27/10/2026): solo para quien
+// tenga la llave '/avisos/efectivo' (Víctor y Daiane, db/220).
+app.use('/avisos/efectivo', require('./modules/Administracion/avisoEfectivo.controller'));
 app.use('/usuarios', usuariosRoutes);
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));

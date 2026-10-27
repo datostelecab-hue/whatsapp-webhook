@@ -194,6 +194,11 @@ const CATALOGO = [
     // caja: quién puede tocarla no se decide por descarte.
     { clave: '/recaudacion',        etiqueta: 'Recaudación del efectivo', manual: true },
     { clave: '/recaudacion/nomina', etiqueta: 'Recaudación · descuentos de nómina (RRHH)', manual: true },
+    // EL AVISO (27/10/2026): una tarjeta, como las de cumpleaños, con quien tiene
+    // el efectivo activado en BOLT y nunca ha entregado en ventanilla. Solo para
+    // Víctor y Daiane (db/220); ni el superadmin ni el desarrollador por su rol.
+    // Ver modules/Administracion/avisoEfectivo.service.js.
+    { clave: '/avisos/efectivo', etiqueta: 'Aviso · efectivo activo sin entregar nunca', manual: true },
   ] },
   { grupo: 'Puertas', items: [
     // ESTO NO ES UNA PANTALLA: es abrir la puerta de un coche por WhatsApp.

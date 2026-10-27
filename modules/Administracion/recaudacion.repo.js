@@ -360,6 +360,56 @@ async function cuadro() {
 }
 
 /**
+ * EFECTIVO ACTIVO Y NUNCA UNA ENTREGA (27/10/2026), para el aviso de Víctor y
+ * Daiane (modules/Administracion/avisoEfectivo.service.js). Camilo: «salgan
+ * las personas con efectivo activo, desestima a los que ya entregaron efectivo
+ * así sea una vez en recaudación».
+ *
+ * Las personas con ficha que son o fueron de la casa (como el cuadro de arriba)
+ * y que tienen el efectivo activado en alguna cuenta de BOLT, sin UNA SOLA
+ * entrega en ventanilla ('presencial', sin anular). La entrega cuenta esté
+ * apuntada a la ficha o a cualquiera de sus cuentas de BOLT: lo que se apuntó a
+ * la cuenta antes de tener ficha también es suyo. Pagar por nómina o por
+ * transferencia no es «entregar efectivo en recaudación».
+ *
+ * Las cuentas de BOLT sin ficha no entran: no son una persona a la que llamar
+ * (el 23/10/2026 eran 83 con el efectivo activado, y taparían lo demás).
+ */
+async function conEfectivoSinEntregar() {
+  const r = await db.consulta(
+    `WITH ef AS (
+       SELECT conductor_id, bool_or(efectivo_activo) AS activo, array_agg(externo_id) AS cuentas
+         FROM conductor_externo
+        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
+        GROUP BY 1)
+     SELECT c.id::text AS id,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+            c.empleo_vigente AS en_plantilla,
+            (SELECT t.e164 FROM conductor_telefono t
+              WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
+              ORDER BY t.principal DESC, t.vigente_desde DESC LIMIT 1) AS telefono,
+            (SELECT pe.tipo FROM conductor_periodo_empleo pe
+              WHERE pe.conductor_id = c.id ORDER BY pe.alta DESC LIMIT 1) AS tipo,
+            (SELECT to_char(max(pe.baja), 'YYYY-MM-DD') FROM conductor_periodo_empleo pe
+              WHERE pe.conductor_id = c.id) AS baja
+       FROM conductor c
+       JOIN ef ON ef.conductor_id = c.id
+      WHERE ef.activo AND NOT c.es_centinela
+        AND EXISTS (SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)
+        AND NOT EXISTS (
+              SELECT 1 FROM recaudacion_movimiento m
+               WHERE m.anulado_at IS NULL AND m.tipo = 'presencial'
+                 AND (m.conductor_id = c.id OR m.bolt_uuid = ANY (ef.cuentas)))`);
+  return r.rows.map(x => ({
+    id: x.id, nombre: x.nombre, enPlantilla: !!x.en_plantilla, telefono: x.telefono || null,
+    ett: x.tipo === 'ett',
+    // La baja solo dice algo de quien ya no está: el que sigue tiene su
+    // contrato abierto y la de antes sería de otro periodo.
+    baja: x.en_plantilla ? null : (x.baja || null),
+  }));
+}
+
+/**
  * EL CUADRE DE CAJA, de todo lo habido hasta hoy. Son las dos cifras que se
  * miran al abrir:
  *
@@ -1217,6 +1267,6 @@ module.exports = {
   CORTE, cuadre, salidas,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
   etiquetaQuincena, cortaQuincena, quincenasDesdeCorte, antesDelCorte,
-  cuadro, ficha, candidatos, comprobar, anotar, anular, guardarCierre, importarCierre,
+  cuadro, conEfectivoSinEntregar, ficha, candidatos, comprobar, anotar, anular, guardarCierre, importarCierre,
   efectivoBolt, calcularDesdeBolt, recalcularTodo, ajustarCierre,
 };

@@ -52,6 +52,12 @@
   <%# Los cumpleaños de hoy: tarjetas en las pantallas de TODOS (modules/Cumpleanos). %>
   <% if (typeof usuario !== 'undefined' && usuario && usuario.id) { %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/cumpleanos.js') : '/assets/js/cumpleanos.js' %>" defer data-usuario="<%= usuario.id %>"></script>
+  <%# El efectivo activo sin entregar nunca: solo para quien tenga la llave '/avisos/efectivo'
+      (Víctor y Daiane, db/220). Con acceso total (permisos null) se carga y el servidor
+      contesta que no, salvo que esa persona también tenga la llave. %>
+  <% if (typeof permisos !== 'undefined' && (permisos === null || (Array.isArray(permisos) && permisos.includes('/avisos/efectivo')))) { %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/avisoEfectivo.js') : '/assets/js/avisoEfectivo.js' %>" defer data-usuario="<%= usuario.id %>"></script>
+  <% } %>
   <% } %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/listado.js') : '/assets/js/listado.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/fichaConductor.js') : '/assets/js/fichaConductor.js' %>"></script>
