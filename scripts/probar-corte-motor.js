@@ -923,6 +923,36 @@ const limpio = () => { ordenes.length = 0; };
   conductor('102').activo = false;
   delete plan['4444DDD']; delete plan['0000AAA']; delete plan['5555BCN'];
 
+  // ── 21. CERRAR EL TURNO DE OTRO DESDE LA OFICINA (27/10/2026) ────────────
+  // Marcos se olvidó de cerrar al entregar el 5886LBZ: se le cierra a la hora
+  // de la entrega, sin tocar el motor, y deja de ser el conductor en Mapon.
+  console.log('\n21. Cerrar desde la oficina el turno de quien se olvidó al entregar');
+  const ahora21 = Math.floor(Date.now() / 1000);
+  const t21 = { id: 'olvido-21', filaId: 2101, tipo: 'turno', telefono: '600000001', conductorId: '101', nombre: 'Ana Día',
+    matricula: '3333CCC', unitId: 80, driverId: 'd-ana', unitPrevia: '', inicio: ahora21 - 20 * 3600, fin: 0, relevo: 0,
+    km: null, kmRelevo: null, trayectos: 0, atribuidos: 0, estado: 'abierto', notas: '' };
+  turnos = turnos.filter(x => !(abierto(x) && norm(x.matricula) === '3333CCC')).concat([t21]);
+  const ordenesAntes21 = ordenes.length;
+  const yo21 = { usuarioId: 7, nombre: 'Camilo Bedoya' };
+  const intento21 = async datos => { try { return { ok: await ciclo.cerrarTurno(datos, yo21) }; } catch (e) { return { error: e.message }; } };
+  const hora21 = s => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(s * 1000));
+  const dia21 = s => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(s * 1000));
+  const entrega21 = ahora21 - 6 * 3600;
+  comprobar('sin motivo no se cierra', /por qué/.test((await intento21({ matricula: '3333CCC', dia: dia21(entrega21), hora: hora21(entrega21) })).error || ''));
+  comprobar('una hora del futuro, no', /futuro/.test((await intento21({ matricula: '3333CCC', dia: dia21(ahora21 + 7200), hora: hora21(ahora21 + 7200), motivo: 'x' })).error || ''));
+  comprobar('una hora antes de que empezara, no', /empezó/.test((await intento21({ matricula: '3333CCC', dia: dia21(t21.inicio - 3600), hora: hora21(t21.inicio - 3600), motivo: 'x' })).error || ''));
+  comprobar('una hora mal escrita, no', /día y la hora/.test((await intento21({ matricula: '3333CCC', dia: dia21(entrega21), hora: '25:99', motivo: 'x' })).error || ''));
+  const r21 = await intento21({ matricula: '3333 ccc', dia: dia21(entrega21), hora: hora21(entrega21), motivo: 'se le olvidó al entregarlo' });
+  const guardado21 = turnos.find(x => x.id === 'olvido-21');
+  comprobar('con la hora de la entrega, se cierra', !!r21.ok && guardado21.estado === 'auto-cerrado');
+  comprobar('…a ESA hora (al minuto), no a la de ahora', Math.abs(guardado21.fin - entrega21) < 60);
+  comprobar('…con quién y por qué en la nota', /Cerrado desde el ERP por Camilo Bedoya: se le olvidó al entregarlo/.test(guardado21.notas));
+  comprobar('…y SIN mandar ninguna orden al motor', ordenes.length === ordenesAntes21);
+  comprobar('ya cerrado, no hay turno que cerrar', /Nadie tiene un turno abierto/.test((await intento21({ matricula: '3333CCC', dia: dia21(entrega21), hora: hora21(entrega21), motivo: 'x' })).error || ''));
+  // El paso de hora de Madrid se respeta: el 26/10/2026 era UTC+1, el 20/10 UTC+2.
+  comprobar('la hora de Madrid en invierno (UTC+1)', ciclo.instanteMadrid('2026-10-27', '05:24') === Date.UTC(2026, 9, 27, 4, 24) / 1000);
+  comprobar('…y en verano (UTC+2)', ciclo.instanteMadrid('2026-10-20', '05:24') === Date.UTC(2026, 9, 20, 3, 24) / 1000);
+
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;
 })().catch(e => { console.error(e); process.exitCode = 1; });

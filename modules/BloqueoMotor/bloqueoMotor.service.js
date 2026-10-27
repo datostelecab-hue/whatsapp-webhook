@@ -276,4 +276,33 @@ async function soltar({ matricula, motivo } = {}, quien = {}) {
   return fichaje.soltarCoche({ matricula: normMat(matricula), motivo }, quien);
 }
 
-module.exports = { lista, ficha, soltar, ESTADOS, lineaDeTiempo, porQueFuera };
+/**
+ * El instante de un día y una hora DE MADRID ('2026-10-27', '05:24'), en
+ * segundos. La hora de Madrid cambia de distancia con UTC dos veces al año: se
+ * pregunta cuánta hay ese día en vez de suponerla.
+ */
+function instanteMadrid(dia, hora) {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dia || ''));
+  const h = /^(\d{1,2}):(\d{2})$/.exec(String(hora || '').trim());
+  if (!d || !h || Number(h[1]) > 23 || Number(h[2]) > 59) return null;
+  const comoUTC = Date.UTC(+d[1], +d[2] - 1, +d[3], +h[1], +h[2]);
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Madrid', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date(comoUTC)).map(x => [x.type, x.value]));
+  const desfase = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - comoUTC;
+  return Math.floor((comoUTC - desfase) / 1000);
+}
+
+/**
+ * Cerrar el turno de quien se olvidó de cerrarlo al entregar el coche
+ * (27/10/2026): a la hora de la entrega y sin tocar el motor. Ver
+ * `fichaje.cerrarDesdeOficina`.
+ */
+async function cerrarTurno({ matricula, dia, hora, motivo } = {}, quien = {}) {
+  if (!normMat(matricula)) throw new Error('Falta la matrícula');
+  const fin = instanteMadrid(dia, hora);
+  if (fin == null) throw new Error('Pon el día y la hora de la entrega (por ejemplo 05:24)');
+  return fichaje.cerrarDesdeOficina({ matricula: normMat(matricula), fin, motivo }, quien);
+}
+
+module.exports = { lista, ficha, soltar, cerrarTurno, instanteMadrid, ESTADOS, lineaDeTiempo, porQueFuera };

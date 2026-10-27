@@ -61,6 +61,19 @@ Camilo: *«Si alguien no cerró turno, que lo cierre 14 horas después, pero si 
 - **En el entorno de pruebas** (`MODO_PRUEBAS=1`) los cron no corren: con db/219 aplicada allí, los turnos olvidados no se cierran solos. Se prueba con `scripts/probar-corte-motor.js` (sección 19).
 - **Lo que no hace**: encender el bloqueo a quien se pone en una plaza del planificador sin tenerlo (lo tienen todos desde db/219 y las altas; si Tráfico se lo apaga a alguien, su coche sale pendiente con su nombre).
 
+## Cerrar el turno de quien se olvidó al entregar (27/10/2026)
+
+Camilo: *«Marcos López García tiene el turno abierto, se le olvidó cerrarlo al entregárselo al compañero. Ciérrale el turno, quítalo de base de datos a él como responsable»*. El ERP no tenía cierre a mano: el de María del Mar (05/10) se hizo con una migración (db/177).
+
+Ahora, en la ficha de un coche **en turno**, el botón **«Cerrar el turno»** (`fichaje.cerrarDesdeOficina`):
+
+- Pide el **día y la hora de la entrega**. Lo que pase en el coche después ya no es suyo. No vale antes de que empezara, antes de su «Entregar coche» ni en el futuro. La hora es la de Madrid, con su cambio de horario (`instanteMadrid`).
+- **No toca el motor**: el coche puede estar rodando con el compañero. Si hay que bloquearlo, es aparte.
+- Queda `auto-cerrado`, porque no lo cerró él, con la nota «Cerrado desde el ERP por …: motivo». Deja de ser el conductor del coche en Mapon.
+- Lo puede usar quien puede soltar el motor (`/bloqueo-motor/soltar`).
+
+Para saber la hora de la entrega, BOLT es lo más fiable: cuándo terminó él su último tramo en ese coche. Marcos dejó el 5886LBZ el 27/10 a las 05:24. Comprobador: `scripts/probar-corte-motor.js` (sección 21).
+
 ## Los estados
 
 Salen en este orden, lo que pide acción primero:

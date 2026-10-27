@@ -54,4 +54,14 @@ router.post('/api/soltar', responde(async req => {
   return await ciclo.soltar({ matricula: b.matricula, motivo: b.motivo }, { usuarioId: await quienEs(req) });
 }));
 
+// Cerrar el turno de quien se olvidó al entregar el coche (27/10/2026): a la
+// hora de la entrega, sin tocar el motor. El mismo poder que soltar.
+router.post('/api/cerrar-turno', responde(async req => {
+  if (!await puedeSoltar(req)) throw new Error('No tienes permiso para cerrar el turno de otro');
+  const b = req.body || {};
+  const u = req.usuario || {};
+  return await ciclo.cerrarTurno({ matricula: b.matricula, dia: b.dia, hora: b.hora, motivo: b.motivo },
+    { usuarioId: await quienEs(req), nombre: [u.nombre, u.apellidos].filter(Boolean).join(' ') });
+}));
+
 module.exports = router;

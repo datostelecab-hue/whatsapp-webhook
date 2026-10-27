@@ -77,6 +77,33 @@
     await lst.recargar();
   }
 
+  /**
+   * CERRAR EL TURNO DE QUIEN SE OLVIDÓ AL ENTREGAR EL COCHE (27/10/2026): a la
+   * hora de la entrega, para que lo de después no se le apunte, y sin tocar el
+   * motor. En Mapon deja de ser el conductor del coche.
+   */
+  async function cerrarTurno(d, lst) {
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const v = await Dialogo.formulario(`Cerrar el turno de ${d.quien || 'quien lo lleva'} en ${d.matricula}`, [
+      { id: 'dia', etiqueta: 'Día de la entrega', tipo: 'fecha', obligatorio: true, valor: hoy.split('-').reverse().join('/') },
+      { id: 'hora', etiqueta: 'Hora de la entrega', tipo: 'texto', obligatorio: true, marcador: 'Ej.: 05:24',
+        ayuda: 'Lo que pase en el coche después de esa hora ya no es suyo.' },
+      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true,
+        marcador: 'Ej.: se le olvidó cerrarlo al entregárselo al compañero',
+        ayuda: 'Queda escrito con tu nombre. El motor no se toca: si hay que bloquearlo, es aparte.' },
+    ], { textoBoton: 'Cerrar el turno' });
+    if (!v) return;
+    try {
+      const r = await post('/bloqueo-motor/api/cerrar-turno', { matricula: d.matricula, dia: v.dia, hora: v.hora, motivo: v.motivo });
+      Dialogo.hecho(`Turno de ${r.nombre} cerrado`);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo cerrar el turno', texto: e.message, tono: 'error' });
+      return;
+    }
+    lst.volver();
+    await lst.recargar();
+  }
+
   const cuenta = (filas, e) => filas.filter(f => f.estado === e).length;
 
   Listado.montar({
@@ -164,6 +191,10 @@
       acciones: PUEDE ? [{
         texto: 'Soltar el motor', icono: 'fa-lock-open', principal: true,
         visible: d => !!d.puedeSoltar, onClick: (d, lst) => soltar(d, lst),
+      }, {
+        // Quien se olvidó de cerrar al entregar el coche (27/10/2026).
+        texto: 'Cerrar el turno', icono: 'fa-user-clock',
+        visible: d => d.estado === 'en-turno', onClick: (d, lst) => cerrarTurno(d, lst),
       }] : [],
       bloques: [
         {

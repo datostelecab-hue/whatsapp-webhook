@@ -720,6 +720,55 @@ async function cerrarSinMotor(t, nota, { s } = {}) {
   return cerrado;
 }
 
+/**
+ * CERRAR EL TURNO DE OTRO DESDE LA OFICINA (27/10/2026). Camilo: «Marcos López
+ * García tiene el turno abierto, se le olvidó cerrarlo al entregárselo al
+ * compañero. Ciérrale el turno, quítalo de base de datos a él como responsable,
+ * yo bloquearé el coche manualmente y le diré al compañero que debe iniciar el
+ * turno él».
+ *
+ * Hasta hoy no había forma: db/177 (María del Mar, 05/10) lo hizo con una
+ * migración. Ahora va desde la ficha del coche en Bloqueo de motor.
+ *
+ *   · SIN TOCAR EL MOTOR: el coche puede estar rodando con el compañero.
+ *   · `fin` es la HORA DE LA ENTREGA: lo que pase después ya no es suyo. Ni
+ *     antes de que empezara, ni antes de su «Entregar coche» (ck_ft_relevo), ni
+ *     en el futuro.
+ *   · `auto-cerrado`: no lo cerró él, y la nota dice quién y por qué.
+ *   · En Mapon deja de ser el conductor del coche (`soltarEnMapon`).
+ *
+ * → { nombre, matricula, inicio, fin, km }
+ */
+async function cerrarDesdeOficina({ matricula, fin, motivo } = {}, quien = {}) {
+  if (!String(motivo || '').trim()) throw new Error('Di por qué se cierra: queda escrito');
+  if (!quien.usuarioId) throw new Error('No sé quién eres: vuelve a entrar en el ERP y repite');
+  const mat = String(matricula || '').toUpperCase().replace(/[\s-]/g, '');
+  const abiertos = (await repo.abiertos()).filter(x => String(x.matricula || '').toUpperCase().replace(/[\s-]/g, '') === mat);
+  if (!abiertos.length) throw new Error(`Nadie tiene un turno abierto en el ${mat}`);
+  if (abiertos.length > 1) throw new Error(`Hay ${abiertos.length} turnos abiertos en el ${mat} (${abiertos.map(x => x.nombre).join(', ')}): avisa a desarrollo`);
+  const t = abiertos[0];
+  const ahora = ahoraSeg();
+  const hasta = fin == null || fin === '' ? ahora : Math.floor(Number(fin));
+  if (!Number.isFinite(hasta)) throw new Error('La hora de la entrega no vale');
+  if (hasta > ahora + 60) throw new Error('La hora de la entrega no puede ser en el futuro');
+  if (hasta <= t.inicio) throw new Error(`Su turno empezó el ${horaES(t.inicio)}: la entrega tiene que ser después`);
+  if (t.relevo && hasta < t.relevo) throw new Error(`Pulsó «Entregar coche» el ${horaES(t.relevo)}: la entrega no puede ser antes`);
+
+  const km = await kmDelTurno(t, hasta);
+  const quienCierra = String(quien.nombre || '').trim() || 'la oficina';
+  const cerrado = {
+    ...t, fin: hasta, estado: 'auto-cerrado',
+    km: km ? km.km : t.km, trayectos: km ? km.trayectos : t.trayectos, atribuidos: km ? km.conConductor : t.atribuidos,
+    notas: `${t.notas ? t.notas + ' · ' : ''}Cerrado desde el ERP por ${quienCierra}: ${String(motivo).trim()} (el motor no se toca)`,
+  };
+  if (!(await guardarCierre(cerrado))) throw new Error('Ese turno ya no estaba abierto: lo ha cerrado otro camino');
+  try { await soltarEnMapon(t); } catch (e) { /* cerrado igual */ }
+  olvidar(t.telefono);
+  console.log(`🗂️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) cerrado desde el ERP por el usuario ${quien.usuarioId} ` +
+    `a las ${horaES(hasta)} (el motor no se toca)`);
+  return { nombre: t.nombre, matricula: t.matricula, inicio: t.inicio, fin: hasta, km: km ? km.km : null };
+}
+
 // ── EL CIERRE DE LAS 14 H, CON EL COCHE DELANTE (26/10/2026, db/219) ─────────
 //
 // Camilo: «si alguien no cerró turno, que lo cierre 14 horas después, pero si el
@@ -1403,7 +1452,7 @@ async function soltarCoche({ matricula, motivo }, quien = {}) {
 
 module.exports = {
   participa, olvidar, decidirBloqueo, marcarRelevo, cochesDelPlan,
-  activarConductor, estadoParaPanel, soltarCoche,
+  activarConductor, estadoParaPanel, soltarCoche, cerrarDesdeOficina,
   quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
   revisarTurnosLargos, confirmarSigue, PRORROGA_HORAS,
   conductorMapon,
