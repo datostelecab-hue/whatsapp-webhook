@@ -170,6 +170,13 @@ con `getFullYear/getMonth/getDate`. Nunca `toISOString`.
 cuela sin romper nada y después los rangos se comparan como texto y dejan de tener
 sentido.
 
+Pasó de verdad el 27/10/2026 en «Pasar a plantilla propia» (`services/repo/alta.js`,
+`convertirAPropia`): `dia <= String(ett.alta).slice(0, 10)` comparaba «2026-10-14»
+con «Tue Jul 14», y como el «2» va antes que la «T», **nadie** podía pasar de la ETT
+a propia, fuera cual fuera la fecha. Lo vio Camilo con Sara Zamora. Se lee con
+`to_char` y lo vigila `scripts/comprobar-pasar-a-propia.js`, cuya base de mentira
+devuelve el `Date` como lo hace `pg`.
+
 ### `new Date('2026-07-09')` es medianoche UTC, o sea el 8 en Madrid
 
 `modules/Nominas/nominas.excel.js`, `modules/Administracion/recaudacion.repo.js`

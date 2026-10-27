@@ -226,12 +226,23 @@ async function porTelefono(telefono) {
 async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, motivo } = {}, { usuarioId } = {}, { faltaPara } = {}) {
   if (typeof faltaPara !== 'function') throw new Error('Falta quién compruebe el expediente (faltaPara, de Selección)');
   const id = Number(conductorId);
-  const dia = desde || new Date().toISOString().slice(0, 10);
+  // Sin fecha, hoy EN MADRID: toISOString da el día de UTC, que entre las 00:00
+  // y las 02:00 todavía es ayer.
+  const dia = desde || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dia))) throw new Error('Falta el primer día de contrato propio (AAAA-MM-DD)');
   const audit = require('./auditoria');
 
   return db.transaccion(async cli => {
+    // LAS FECHAS, COMO TEXTO DESDE LA BASE (27/10/2026). Un DATE llega a Node
+    // como objeto Date, y `String(alta).slice(0, 10)` daba «Tue Jul 14»: el
+    // «2026-10-14» de la pantalla siempre quedaba «antes» que eso (el «2» va
+    // antes que la «T») y NADIE podía pasar a plantilla propia, fuera cual fuera
+    // la fecha (Sara Zamora, alta en la ETT el 14/07). Con to_char las dos son
+    // 'AAAA-MM-DD' y se comparan bien; la auditoría y la antigüedad que se
+    // devuelve dicen la fecha y no el «GMT+0200» de un Date.
     const ett = (await cli.query(
-      `SELECT id, tipo, alta, fecha_antiguedad, ett_nombre
+      `SELECT id, tipo, to_char(alta, 'YYYY-MM-DD') AS alta,
+              to_char(fecha_antiguedad, 'YYYY-MM-DD') AS fecha_antiguedad, ett_nombre
          FROM conductor_periodo_empleo
         WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
 
@@ -248,8 +259,9 @@ async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, m
       e.faltan = faltan;
       throw e;
     }
-    if (dia <= String(ett.alta).slice(0, 10)) {
-      throw new Error('El paso a plantilla propia no puede ser anterior al alta en la ETT');
+    if (dia <= ett.alta) {
+      throw new Error('El paso a plantilla propia tiene que ser después del alta en la ETT (' +
+        ett.alta.split('-').reverse().join('/') + ')');
     }
 
     // El periodo de ETT se cierra el día ANTES: los dos no pueden solaparse, y
