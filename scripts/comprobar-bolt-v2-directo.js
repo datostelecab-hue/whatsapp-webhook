@@ -200,15 +200,28 @@ const ahora = require('../services/flotaViva/ahora');
   });
   credenciales = true;
   respuestas = {
-    143626: ['d1', 'd1b', 'd2', 'd3', 'd4', 'd9'].map((u, i) => conductor(u, 'waiting', '2026-10-28T10:00:00+01:00', 'v' + u, i + '000ZZZ')),
+    // c4 (sin turno hoy) está conectado, pero en descanso.
+    143626: ['d1', 'd1b', 'd2', 'd3', 'd4', 'd9'].map((u, i) => conductor(u, u === 'd4' ? 'on_break' : 'waiting', '2026-10-28T10:00:00+01:00', 'v' + u, i + '000ZZZ')),
     63530: [],
   };
   await enLinea.refrescar();
   ahora.invalidar('prueba');
   const inicio = require('../services/inicio');
+  // El turno en curso, con el reloj de la casa (día de 05:00 a 17:00).
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date())) % 24;
+  const turnoYa = h >= 5 && h < 17 ? 'dia' : 'noche';
+  // Lo que habría dejado el panel: en el plan del turno c1, c2 y c3; con horas
+  // ya solo c1; y 2 NN con horas.
+  inicio._fijarPanel({ turno: turnoYa, plan: new Set(['c1', 'c2', 'c3']), salidos: new Set(['c1']), fuera: 2, at: Date.now() });
   const v = await inicio.conectadosPorTurno();
   igual('Inicio cuenta personas, no cuentas, y las separa por su turno del plan',
     [v.total, v.dia, v.noche, v.todoturno, v.sinTurno, v.fuente], [5, 1, 1, 1, 2, 'v2']);
+  igual('Los que están conectados en descanso van aparte', v.descanso, { dia: 0, noche: 0, todoturno: 0, sinTurno: 1 });
+  igual('«Han salido» suma a los del plan que están trabajando ahora (c2 y c3) a los que ya tenían horas',
+    v.salido, { turno: turnoYa, plan: 3, fuera: 2, total: 5, soloAhora: 2 });
+  inicio._fijarPanel({ turno: turnoYa === 'dia' ? 'noche' : 'dia', plan: new Set(['c1']), salidos: new Set(), fuera: 0, at: Date.now() });
+  ahora.invalidar('prueba');
+  igual('Con el panel de otro turno (justo al cambiar), no se toca su «han salido»', (await inicio.conectadosPorTurno()).salido, null);
 
   // ── 6. Con todo fallando no se insiste cada 5 s ───────────────────────────
   enLinea._reiniciar();

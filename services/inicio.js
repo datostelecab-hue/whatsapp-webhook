@@ -28,6 +28,9 @@ const visibilidad = require('./visibilidad');
 // tener dos sitios donde tocar los mismos números; 8 h si nadie la ha puesto.
 const JORNADA_DEFECTO = 8;
 
+// Trabajar en BOLT, ahora: en viaje o en espera. El descanso no.
+const TRABAJA = new Set(['viaje', 'espera']);
+
 /** El día operativo (jornada 05→05) al que pertenece una hora de un día. */
 function jornadaDe(iso, hora) {
   const H0 = require('./nucleo').HORA_DIA;
@@ -174,6 +177,22 @@ async function kilometros(dia, turno) {
  * (persona, segundos, cuentas) pasa a ser la lista para pintar, y se añade
  * `prevision`.
  */
+// Lo que dejó el último cálculo del panel sobre el turno en curso: quién está en
+// su plan y quién ya tiene horas. Lo lee conectadosPorTurno cada 10 s.
+let delPanel = null;      // { turno, plan: Set, salidos: Set, fuera, at }
+
+/** El turno en curso con el reloj de siempre: día de 05:00 a 17:00, noche de 17:00 a 05:00. */
+function turnoEnCurso(ahora = new Date()) {
+  // Las mismas horas que rutas.TURNOS (salen de nucleo), sin cargar Flota viva
+  // entera para una cuenta que se hace cada 10 s.
+  const { HORA_DIA, HORA_NOCHE } = require('./nucleo');
+  const T = { dia: [HORA_DIA, 0, HORA_NOCHE], noche: [HORA_NOCHE, 1, HORA_DIA] };
+  const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
+    .format(ahora).split(':').map(Number);
+  const horaDec = (h % 24) + m / 60;
+  return { turno: horaDec >= T.dia[0] && horaDec < T.noche[0] ? 'dia' : 'noche', horaDec, T };
+}
+
 async function conLaGente(visib, jornadaH, turnoActual) {
   const tarjetas = [visib.turnoDia, visib.turnoNoche, visib.ayerJornada].filter(t => t && Array.isArray(t.gente));
   const actual = turnoActual === 'dia' ? visib.turnoDia : visib.turnoNoche;
@@ -243,6 +262,16 @@ async function conLaGente(visib, jornadaH, turnoActual) {
         conectados: lista.filter(p => p.ahora).length,
         planSinSalir: lista.filter(p => p.plan && !(p.seg > 0)).length,
       };
+      // Para el «Han salido» en vivo (conectadosPorTurno): quién está en el plan
+      // de este turno y quién ya tiene horas. Por persona, que es como cuenta el
+      // directo; aquí, antes de que la lista pierda las claves.
+      delPanel = {
+        turno: turnoActual,
+        plan: new Set((t.planificados || []).map(p => p.persona)),
+        salidos: new Set(t.gente.filter(g => g.plan && g.seg > 0).map(g => g.persona)),
+        fuera: t.gente.filter(g => !g.plan && g.seg > 0).length,
+        at: Date.now(),
+      };
     }
     t.gente = lista.map(p => ({ nombre: p.nombre, h: r1(p.seg / 3600), salio: p.seg > 0, nn: p.nn, plan: p.plan, ahora: p.ahora }));
     // Lo crudo ya no hace falta: la lista para pintar lo lleva todo.
@@ -288,11 +317,7 @@ async function panel() {
   // noche de 17:00 a 05:00. Es la hora a la que Visibilidad cambia de tarjeta, así
   // que el «turno en curso» de aquí es una de sus dos tarjetas de turno y el
   // anterior, la otra (de madrugada, la noche que corre es la de ayer).
-  const T = require('./flotaViva/rutas').TURNOS;
-  const ahoraMad = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
-    .format(ahora).split(':').map(Number);
-  const horaDec = (ahoraMad[0] % 24) + ahoraMad[1] / 60;
-  const turnoActual = horaDec >= T.dia[0] && horaDec < T.noche[0] ? 'dia' : 'noche';
+  const { turno: turnoActual, horaDec, T } = turnoEnCurso(ahora);
   // El mes por el DÍA NATURAL, como las horas del mes de Visibilidad: el día 1 a
   // las 02:00 la jornada en curso aún es la del mes anterior, pero el mes ya no.
   const [Y, M] = hoy.split('-').map(Number);
@@ -380,9 +405,14 @@ async function contarPorTurno(foto) {
       WHERE ce.sistema = 'bolt' AND ce.externo_id = ANY($1::text[])`, [uuids, hoy]) : { rows: [] };
   const deCuenta = new Map(rp.rows.filter(x => x.conductor_id != null).map(x => [String(x.uuid), Number(x.conductor_id)]));
   const personas = new Map();     // persona → id de conductor (o null sin ficha)
+  // Trabajando = alguna de sus cuentas en viaje o en espera. Conectado solo en
+  // descanso no es trabajar: va aparte (Camilo, 28/10/2026).
+  const trabajando = new Set();
   uuids.forEach(u => {
     const id = deCuenta.get(u);
-    personas.set(id != null ? 'c' + id : 'u' + u, id != null ? id : null);
+    const persona = id != null ? 'c' + id : 'u' + u;
+    personas.set(persona, id != null ? id : null);
+    if (TRABAJA.has((foto.porConductor.get(u) || {}).situacion)) trabajando.add(persona);
   });
   const ids = [...new Set([...personas.values()].filter(id => id != null))];
 
@@ -404,19 +434,42 @@ async function contarPorTurno(foto) {
   const VACIO = new Set();
 
   const cuenta = { dia: 0, noche: 0, todoturno: 0, sinTurno: 0 };
-  personas.forEach(id => {
+  const descanso = { dia: 0, noche: 0, todoturno: 0, sinTurno: 0 };
+  personas.forEach((id, persona) => {
     const plan = id != null ? planes.get(id) : null;
     const planDe = fecha => (plan && plan.get(fecha)) || VACIO;
     const e = plan ? reparto.etiquetaPlan(ahoraMs, planDe) : null;
-    if (e) cuenta[e.turno]++;
-    else if (planDe(hoy).has('todoturno')) cuenta.todoturno++;
-    else cuenta.sinTurno++;
+    const k = e ? e.turno : planDe(hoy).has('todoturno') ? 'todoturno' : 'sinTurno';
+    cuenta[k]++;
+    if (!trabajando.has(persona)) descanso[k]++;
   });
 
   return {
     at: foto.at, fuente: foto.fuente || 'bd', v2At: foto.v2At || null,
-    total: personas.size, ...cuenta,
+    total: personas.size, ...cuenta, descanso,
+    salido: hanSalidoEnVivo(trabajando),
   };
+}
+
+/**
+ * «HAN SALIDO», AL DÍA (Camilo, 28/10/2026: «han salido 25, pero conectados de
+ * noche 31: ¿por qué se contradicen?»). El del panel cuenta a quien ya tiene
+ * HORAS en el turno, y las horas llegan con retraso (el motor va cada 5 min y
+ * el panel se guarda otros tantos): al empezar el turno, quien acaba de
+ * conectarse aún no ha «salido». Aquí se le suma a quien del plan del turno
+ * está AHORA trabajando en BOLT (en viaje o en espera). Los de fuera del plan
+ * (los NN), por sus horas, como en el panel.
+ *
+ * null si el panel guardado es de otro turno (justo al cambiar) o muy viejo:
+ * entonces la pantalla deja el número del panel.
+ */
+function hanSalidoEnVivo(trabajando) {
+  const { turno } = turnoEnCurso();
+  if (!delPanel || delPanel.turno !== turno || Date.now() - delPanel.at > 40 * 60 * 1000) return null;
+  const plan = new Set(delPanel.salidos);
+  let ahora = 0;
+  trabajando.forEach(p => { if (delPanel.plan.has(p) && !plan.has(p)) { plan.add(p); ahora++; } });
+  return { turno, plan: plan.size, fuera: delPanel.fuera, total: plan.size + delPanel.fuera, soloAhora: ahora };
 }
 
 // ── Caché: se sirve lo que hay y se refresca por detrás ─────────────────────
@@ -468,4 +521,6 @@ module.exports = {
   panel: panelCacheado,
   conectadosPorTurno,
   noEfectivas, kilometros, jornadaDe, diaMenos, JORNADA_DEFECTO,
+  // Solo para las pruebas: lo que habría dejado el panel del turno en curso.
+  _fijarPanel: x => { delPanel = x; },
 };

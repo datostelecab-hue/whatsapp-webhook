@@ -159,7 +159,7 @@
           <p class="text-2xl font-bold text-telecab-text tabular-nums leading-tight" id="t-vivo-deben">—</p>
           <p class="text-[11px] text-telecab-muted leading-tight">del planificador</p>
         </div>
-        <div class="rounded-xl bg-telecab-card2/50 px-3 py-2 min-w-0" title="Quien ya ha hecho horas en este turno: los del planificador y los NN (sin plan, por su hora de inicio).">
+        <div class="rounded-xl bg-telecab-card2/50 px-3 py-2 min-w-0" title="Los del planificador que ya han hecho horas en este turno o que están ahora mismo trabajando en BOLT (en viaje o en espera), y los NN (sin plan) que han hecho horas. Se pone al día cada 10 segundos.">
           <p class="text-[11px] text-telecab-muted leading-tight">Han salido</p>
           <p class="text-2xl font-bold text-telecab-text tabular-nums leading-tight" id="t-vivo-salido">—</p>
           <p class="text-[11px] text-telecab-muted leading-tight" id="t-vivo-salido-det">planificador + NN</p>
@@ -494,12 +494,12 @@
     if (vivo) {
       pon('t-vivo-deben', vivo.debenSalir);
       pon('t-vivo-salido', vivo.hanSalido);
-      // Los conectados llegan aparte y más a menudo (cargarVivo); mientras no
-      // lleguen, la cifra del panel.
-      turnoEnCurso = enCurso;
-      if (vivoTurnos) pintarConectados(); else pon('t-vivo-con', vivo.conectados);
       const nn = Number(actual.conductoresNN) || 0;
       txt('t-vivo-salido-det', `${num(Math.max(0, vivo.hanSalido - nn))} del plan + ${num(nn)} NN`);
+      // Los conectados y el «han salido» al día llegan aparte y más a menudo
+      // (cargarVivo); mientras no lleguen, las cifras del panel.
+      turnoEnCurso = enCurso;
+      if (vivoTurnos) pintarConectados(); else pon('t-vivo-con', vivo.conectados);
     }
     pintarPrevision('t', actual, {
       titulo: (enCurso === 'dia' ? 'Turno de día' : 'Turno de noche') + ' en curso · quién lleva ya su jornada',
@@ -740,16 +740,28 @@
     const v = vivoTurnos;
     if (!v) return;
     pon('t-vivo-con', v.total);
-    const de = t => `<span class="whitespace-nowrap"><i class="fa-solid ${t === 'dia' ? 'fa-sun text-telecab-gold' : 'fa-moon text-telecab-azul'} text-[9px]"></i> ${num(v[t])} ${t === 'dia' ? 'día' : 'noche'}</span>`;
+    // Los que están conectados pero en descanso, aparte: conectados, no trabajando.
+    const desc = v.descanso || {};
+    const enDesc = k => (desc[k] ? ` <span class="text-telecab-muted">(${num(desc[k])} en descanso)</span>` : '');
+    const de = t => `<span class="whitespace-nowrap"><i class="fa-solid ${t === 'dia' ? 'fa-sun text-telecab-gold' : 'fa-moon text-telecab-azul'} text-[9px]"></i> ${num(v[t])} ${t === 'dia' ? 'día' : 'noche'}${enDesc(t)}</span>`;
     const partes = (turnoEnCurso === 'noche' ? ['noche', 'dia'] : ['dia', 'noche']).map(de);
-    if (v.todoturno) partes.push(`<span class="whitespace-nowrap">${num(v.todoturno)} todo turno</span>`);
-    if (v.sinTurno) partes.push(`<span class="whitespace-nowrap">${num(v.sinTurno)} sin turno</span>`);
+    if (v.todoturno) partes.push(`<span class="whitespace-nowrap">${num(v.todoturno)} todo turno${enDesc('todoturno')}</span>`);
+    if (v.sinTurno) partes.push(`<span class="whitespace-nowrap">${num(v.sinTurno)} sin turno${enDesc('sinTurno')}</span>`);
     $('#t-vivo-con-det').innerHTML = partes.join(' · ');
-    $('#t-vivo-con-caja').title = `${num(v.total)} conectados ahora mismo a BOLT en Madrid (en viaje, en espera o en descanso): ` +
+    const totalDesc = ['dia', 'noche', 'todoturno', 'sinTurno'].reduce((s, k) => s + (Number(desc[k]) || 0), 0);
+    $('#t-vivo-con-caja').title = `${num(v.total)} conectados ahora mismo a BOLT en Madrid: ` +
       `${num(v.dia)} con turno de día y ${num(v.noche)} con turno de noche en el planificador` +
       (v.todoturno ? `, ${num(v.todoturno)} de todo turno` : '') +
       (v.sinTurno ? ` y ${num(v.sinTurno)} sin turno hoy (NN)` : '') +
-      `. ${v.fuente === 'v2' ? 'Lista de conectados de BOLT (API v2).' : 'Según los últimos estados guardados de BOLT.'}`;
+      `. De ellos, ${num(totalDesc)} en descanso: conectados, pero sin trabajar.` +
+      ` ${v.fuente === 'v2' ? 'Lista de conectados de BOLT (API v2).' : 'Según los últimos estados guardados de BOLT.'}`;
+    // «HAN SALIDO», AL DÍA: los del plan con horas más los del plan que están
+    // ahora trabajando, y los NN por sus horas. Solo si es de este turno.
+    const s = v.salido;
+    if (s && s.turno === turnoEnCurso) {
+      pon('t-vivo-salido', s.total);
+      txt('t-vivo-salido-det', `${num(s.plan)} del plan + ${num(s.fuera)} NN`);
+    }
   }
   async function cargarVivo() {
     if (document.hidden) return;

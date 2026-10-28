@@ -36,6 +36,16 @@ En el turno en curso, el anterior y la jornada pasada:
 
 **En el turno en curso, todos los planificados** (Camilo, 23/10/2026 por la tarde: *«pon a todos los planificados, así tengan 0 horas, y la previsión de cuántas horas se pueden hacer si todos hacen sus 8 horas»*; a las 18:05 la tarjeta decía «si los 21 completan, 168 h» y confundía). La lista del turno en curso es quien lo tiene en el plan —el de Control: `f_cobertura` con los eventos, sin vacaciones ni bajas— más los NN que ya han salido; los planificados sin horas van en su grupo, «Aún no han salido». La previsión es la de todos haciendo su jornada: cada uno con sus horas o con sus 8 h si aún no llega. Y **en vivo**: **deben salir** (el plan), **han salido** (plan + NN, los «X conductores» de la tarjeta) y **conectados ahora** (en viaje, en espera o en descanso, según la foto del ahora). El turno anterior y la jornada siguen con quien hizo horas.
 
+### «Han salido» y «Conectados ahora», al día (28/10/2026)
+
+Camilo, con una captura: *«han salido 25, planificador 23 + 2 NN, pero conectados ahora 35, 31 de noche y 4 de día: ¿por qué se contradicen?»*. Medían cosas distintas en momentos distintos:
+- **«Han salido»** contaba a quien ya tenía **horas** en el turno. Las horas llegan con retraso: el motor va cada 5 min y el panel se guarda otros tantos.
+- **«Conectados ahora»** viene de la lista en vivo de BOLT (API v2) cada 10 s, **también en descanso**.
+
+Al empezar el turno, quien acaba de conectarse o está en descanso salía conectado pero no «salido». Ahora:
+- **«Han salido» se pone al día cada 10 s** (`inicio.conectadosPorTurno` → `salido`). Son los del plan del turno con horas **o que están ahora mismo trabajando** (en viaje o en espera), más los NN por sus horas, como antes. El plan y quién tenía horas los deja apuntados el último cálculo del panel (`delPanel`). Si ese cálculo es de otro turno (justo al cambiar) o tiene más de 40 min, se queda el número del panel.
+- **«Conectados ahora» separa a los que están en descanso**: «31 noche (3 en descanso)». La ayuda dice cuántos hay en total.
+
 La gente y sus horas salen de **la misma carga** que el total y los «X conductores»: `repartoTurnos.porTurno(fechas, { gente: true })`, que pasa por `visibilidad.resumen({ gente: true })`. Visibilidad no la pide y no cambia. El nombre es el de BOLT de la ficha, como en todo el ERP; sin ficha, el de su cuenta (`fv_conductor`).
 
 Después, **los kilómetros por turno** sin tocar (*«la de los KM está perfecta»*) y, abajo y en pequeño, **el resto**: hoy por día natural, la semana, el neto y la utilización del mes y las horas **no efectivas** (lo que faltó para la jornada de quien debía salir, por persona y sin compensar, solo de jornadas cerradas, de `bitacora_horas`).
