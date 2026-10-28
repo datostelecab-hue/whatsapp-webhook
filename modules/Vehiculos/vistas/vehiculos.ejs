@@ -457,6 +457,14 @@
         lineas.push('', 'Matrículas con VARIAS unidades en Mapon (se usa la primera; conviene dar de baja la otra allí):');
         e.dobles.forEach(d => lineas.push(`  ${d.matricula}: ${d.elegida} · sobra ${d.dejadas.join(', ')}`));
       }
+      if ((e.traspasos || []).length) {
+        lineas.push('', 'GPS que han cambiado de coche (el que lo pierde enlaza su equipo nuevo en la siguiente pasada; sin CAN, hay que volver a tomar el ancla):');
+        e.traspasos.forEach(t => lineas.push(`  unidad ${t.unitId}: ${t.de} → ${t.a}`));
+      }
+      if ((e.rechazados || []).length) {
+        lineas.push('', 'Enlaces que no se han podido hacer:');
+        e.rechazados.forEach(x => lineas.push('  ' + x));
+      }
       if ((e.sinUnidad || []).length) {
         lineas.push('', `Sin GPS: ${e.sinUnidad.join(', ')}`);
       }

@@ -40,6 +40,11 @@ async function enlazar({ soloVer = false } = {}) {
     console.log(`🛰️  [MAPON] Enlaces corregidos: ` +
       r.cambios.map(c => `${c.matricula} ${c.de} → ${c.unitId}`).join(', '));
   }
+  if (r.traspasos && r.traspasos.length) {
+    console.log('🛰️  [MAPON] GPS que han cambiado de coche: ' +
+      r.traspasos.map(t => `unidad ${t.unitId} de ${t.de} a ${t.a}`).join(', ') +
+      '. Al que lo pierde le toca enlazar su equipo nuevo (en la siguiente pasada) y, si no tiene CAN, volver a tomar el ancla en el taller.');
+  }
   if (r.rechazados && r.rechazados.length) {
     console.error('❌ [MAPON] Enlaces rechazados: ' + r.rechazados.join(' | '));
   }

@@ -409,16 +409,28 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
 
   let creados = 0, cambiados = 0;
   const rechazados = [];
-  // UNA UNIDAD, UN COCHE (db/222). Si la unidad sigue enlazada a un coche DE
-  // BAJA, se le quita: el aparato ya va en este. Si está en otro coche VIVO, el
-  // índice lo rechaza y aquí se dice por qué, no con el mensaje de PostgreSQL.
-  const soltarDeBajas = (cli, unitId) => cli.query(
-    `UPDATE vehiculo_alias a SET visto_hasta = GREATEST(v.baja_at, a.visto_desde)
-       FROM vehiculo v
-      WHERE v.id = a.vehiculo_id AND a.sistema = 'mapon' AND a.externo_id = $1
-        AND a.visto_hasta IS NULL AND v.baja_at IS NOT NULL`, [String(unitId)]);
+  // UNA UNIDAD, UN COCHE (db/222). La unidad que Mapon da con la matrícula de
+  // ESTE coche es de este coche: si sigue enlazada a otro, se le quita. A un
+  // coche de baja, con la fecha de su baja. A uno VIVO —se pasó el GPS de un
+  // coche a otro—, ahora, vaciando su contador del GPS (era del aparato que se
+  // lleva) y apuntándolo en `traspasos` para que se vea. Rechazarlo, como se
+  // hizo al principio, dejaba al coche viejo con los km del nuevo (revisión del
+  // 28/10/2026).
+  const traspasos = [];
+  const soltarDeOtros = async (cli, unitId, vehiculoId) => {
+    const r = await cli.query(
+      `UPDATE vehiculo_alias a
+          SET visto_hasta = GREATEST(COALESCE(v.baja_at, now()), a.visto_desde)
+         FROM vehiculo v
+        WHERE v.id = a.vehiculo_id AND a.sistema = 'mapon' AND a.externo_id = $1
+          AND a.visto_hasta IS NULL AND a.vehiculo_id <> $2
+        RETURNING v.id, v.matricula, (v.baja_at IS NULL) AS vivo`, [String(unitId), vehiculoId]);
+    const vivos = r.rows.filter(x => x.vivo);
+    if (vivos.length) await cli.query('UPDATE vehiculo SET km_gps_m = NULL WHERE id = ANY($1::bigint[])', [vivos.map(x => x.id)]);
+    return vivos.map(x => x.matricula);
+  };
   const porQue = err => (err.code === '23505' && err.constraint === 'uq_valias_mapon_vigente'
-    ? 'la unidad ya está enlazada a otro coche vivo (dos fichas con el mismo aparato): cerrar en Vehículos el enlace que sobra'
+    ? 'la unidad sigue enlazada a otro coche (dos fichas con el mismo aparato)'
     : String(err.message).split(String.fromCharCode(10))[0]);
   await db.transaccion(async cli => {
     for (const c of cambios) {
@@ -427,7 +439,7 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
         await cli.query(
           `UPDATE vehiculo_alias SET visto_hasta = now()
             WHERE vehiculo_id = $1 AND sistema = 'mapon' AND visto_hasta IS NULL`, [c.vehiculoId]);
-        await soltarDeBajas(cli, c.unitId);
+        const de = await soltarDeOtros(cli, c.unitId, c.vehiculoId);
         await cli.query(
           `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
            VALUES ($1, 'mapon', $2, $3)`, [c.vehiculoId, c.unitId, c.enMapon]);
@@ -438,6 +450,7 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
         await cli.query('UPDATE vehiculo SET km_gps_m = NULL WHERE id = $1', [c.vehiculoId]);
         await cli.query('RELEASE SAVEPOINT sp');
         cambiados++;
+        de.forEach(m => traspasos.push({ unitId: c.unitId, de: m, a: c.matricula }));
       } catch (err) {
         await cli.query('ROLLBACK TO SAVEPOINT sp');
         rechazados.push(`${c.matricula} (unidad ${c.de} → ${c.unitId}): ${porQue(err)}`);
@@ -447,20 +460,21 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
       // Punto de guardado: un choque no puede tumbar los 86 enlaces restantes.
       await cli.query('SAVEPOINT sp');
       try {
-        await soltarDeBajas(cli, n.unitId);
+        const de = await soltarDeOtros(cli, n.unitId, n.vehiculoId);
         const r = await cli.query(
           `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
            VALUES ($1, 'mapon', $2, $3) RETURNING id`,
           [n.vehiculoId, n.unitId, n.enMapon]);
         await cli.query('RELEASE SAVEPOINT sp');
         if (r.rowCount) creados++;
+        de.forEach(m => traspasos.push({ unitId: n.unitId, de: m, a: n.matricula }));
       } catch (err) {
         await cli.query('ROLLBACK TO SAVEPOINT sp');
         rechazados.push(`${n.matricula} (unidad ${n.unitId}): ${porQue(err)}`);
       }
     }
   });
-  return { nuevos: creados, cambiados, cambios, sinCoche, dobles, sinUnidad, yaEnlazados: yaEnlazados.length, rechazados, aplicado: true };
+  return { nuevos: creados, cambiados, cambios, traspasos, sinCoche, dobles, sinUnidad, yaEnlazados: yaEnlazados.length, rechazados, aplicado: true };
 }
 
 module.exports = {

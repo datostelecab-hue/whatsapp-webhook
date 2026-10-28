@@ -11,7 +11,8 @@
 //   · los odómetros se guardan aunque una unidad tenga dos enlaces (el JOIN);
 //   · dar de baja un coche suelta su unidad de Mapon;
 //   · enlazar una unidad que sigue en un coche de baja se la quita a ese;
-//   · enlazarla estando en otro coche VIVO se rechaza con un motivo claro.
+//   · un GPS que pasa de un coche vivo a otro se traspasa y queda apuntado;
+//   · el índice de la 222 impide una unidad en dos coches.
 //
 // HACE FALTA EL ENTORNO LOCAL (Docker telecab-pg en 127.0.0.1:5433), con la
 // marca `entorno_local` y las migraciones 221 y 222 aplicadas. La dirección va
@@ -111,12 +112,33 @@ function igual(nombre, real, esperado) {
     igual('La unidad de un coche de baja pasa al coche que la lleva ahora', [e1.nuevos, e1.rechazados.length, await vigentes(a.externo_id)], [1, 0, [sinUnidad[0].id]]);
     await cli.query('ROLLBACK TO SAVEPOINT traspaso');
 
-    // ── 4. Enlazar una unidad que está en otro coche VIVO ──────────────────
-    await cli.query('SAVEPOINT choque');
+    // ── 4. El GPS pasa de un coche VIVO a otro ─────────────────────────────
+    // Mapon da la unidad de B con la matrícula de otro coche: el aparato va en
+    // ese. Se traspasa, y B se queda sin el contador del GPS, que era del
+    // aparato (rechazarlo dejaba a B con los km del otro: revisión del 28/10).
+    await cli.query('SAVEPOINT traspasoVivo');
+    await cli.query('UPDATE vehiculo SET km_gps_m = 4242000 WHERE id = $1', [b.id]);
+    const [mb] = await q('SELECT matricula FROM vehiculo WHERE id = $1', [b.id]);
     const e2 = await repo.enlazarMapon(new Map([[b.externo_id, { matricula: sinUnidad[1].matricula }]]));
-    igual('Si está en otro coche vivo se rechaza, con el motivo y sin tocar el otro',
-      [e2.nuevos, e2.rechazados.length, /ya está enlazada a otro coche vivo/.test(e2.rechazados[0] || ''), await vigentes(b.externo_id)],
-      [0, 1, true, [b.id]]);
+    const [gpsB] = await q('SELECT km_gps_m FROM vehiculo WHERE id = $1', [b.id]);
+    igual('Un GPS que pasa de un coche vivo a otro se traspasa y queda apuntado',
+      [e2.nuevos, e2.rechazados.length, await vigentes(b.externo_id), e2.traspasos],
+      [1, 0, [sinUnidad[1].id], [{ unitId: String(b.externo_id), de: mb.matricula, a: sinUnidad[1].matricula }]]);
+    igual('…y el coche que lo pierde se queda sin el contador de ese aparato', gpsB.km_gps_m, null);
+    await cli.query('ROLLBACK TO SAVEPOINT traspasoVivo');
+
+    // ── 5. Si aun así chocara, el motivo se entiende ───────────────────────
+    // (dos fichas que se piden la misma unidad en la misma pasada no puede
+    // pasar: la matrícula de una unidad es una sola; se fuerza a mano.)
+    await cli.query('SAVEPOINT choque');
+    let motivo = null;
+    await cli.query('SAVEPOINT dentro');
+    try {
+      await cli.query(`INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula) VALUES ($1, 'mapon', $2, 'X')`,
+        [sinUnidad[1].id, b.externo_id]);
+    } catch (e) { motivo = e.constraint; }
+    await cli.query('ROLLBACK TO SAVEPOINT dentro');
+    igual('El índice de la 222 impide una unidad en dos coches', motivo, 'uq_valias_mapon_vigente');
     await cli.query('ROLLBACK TO SAVEPOINT choque');
   } finally {
     await cli.query('ROLLBACK').catch(() => {});
