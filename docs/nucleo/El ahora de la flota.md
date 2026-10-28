@@ -33,7 +33,17 @@ Camilo: *«usemos la de DriversOnline de una vez para inicio, control y el mapa 
 - **Control** (`rutas.js`): con la v2, la foto manda sin compararla con el tramo.
 - **Mapa**: el freno de los rojos (`boltFiable`) mira la edad de la lista v2.
 
-Pruebas: `node scripts/comprobar-bolt-v2-directo.js` (con dobles, sin BOLT ni base). Diagnóstico: `ahora.estado().v2`.
+- **Blindaje (ea95cf0, revisado):**
+  - Una respuesta rara (un 200 que no es JSON, o sin la lista) es un fallo, nunca «nadie conectado».
+  - El plazo de 4 s cubre también leer el cuerpo.
+  - Una lista vacía tras tener 5 o más conectados solo se cree a la tercera seguida.
+- **El log habla también cuando va bien.** Salen estas líneas:
+  - `⏸️ [BOLT v2] Sin CLIENT_ID_BOLT…`, al arrancar sin credenciales.
+  - `✅ [BOLT v2] Lista de conectados al día: N`, cuando la lista empieza a valer.
+  - `⏸️ … ya no vale (motivo)`, cuando deja de valer.
+  - `❌ [BOLT v2] …`, al empezar un fallo, con un recordatorio cada 15 min mientras siga.
+
+Pruebas: `node scripts/comprobar-bolt-v2-directo.js` (con dobles, sin BOLT ni base). Diagnóstico en el navegador, solo para desarrollo: `GET /flota-viva/api/ahora`, que dice de dónde sale el ahora (`ultima.fuente`) y cómo va la v2, sin nombres ni teléfonos.
 
 ## Por qué existe
 
