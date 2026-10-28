@@ -115,13 +115,42 @@ const CONFIG_BOLT_V2 = {
 
 const v2Configurada = () => !!(process.env.CLIENT_ID_BOLT && process.env.CLIENT_SECRET_BOLT);
 
+/**
+ * Como conTiempoLimite, pero el plazo cubre TAMBIÉN leer el cuerpo. Con el
+ * plazo solo hasta las cabeceras, un BOLT que las manda y se calla dejaba el
+ * sondeo colgado cinco minutos (lo que tarda Node en rendirse), sin sondeos ni
+ * una línea en el log. Devuelve { status, texto }.
+ */
+async function pedirConCuerpo(url, opciones, ms) {
+  const ac = new AbortController();
+  const reloj = setTimeout(() => ac.abort(), ms);
+  const donde = String(url).split('?')[0];
+  try {
+    const r = await fetch(url, { ...(opciones || {}), signal: ac.signal });
+    try {
+      return { status: r.status, texto: await r.text() };
+    } catch (e) {
+      throw new Error(e.name === 'AbortError'
+        ? `Bolt no terminó de mandar la respuesta en ${ms / 1000}s (${donde})`
+        : `se cortó la respuesta de Bolt (HTTP ${r.status}, ${donde})`);
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`Bolt no respondió en ${ms / 1000}s (${donde})`);
+    throw e;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
+const leerJSON = texto => { try { return JSON.parse(texto); } catch (_) { return null; } };
+
 let tokenV2 = null;
 let tokenV2Hasta = 0;
 
 async function tokenBoltV2() {
   if (tokenV2 && Date.now() < tokenV2Hasta) return tokenV2;
   if (!v2Configurada()) throw new Error('BOLT v2 sin credenciales (CLIENT_ID_BOLT / CLIENT_SECRET_BOLT)');
-  const r = await conTiempoLimite(CONFIG_BOLT.tokenUrl, {
+  const r = await pedirConCuerpo(CONFIG_BOLT.tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -131,7 +160,7 @@ async function tokenBoltV2() {
       scope: 'fleet-integration:api',
     }),
   }, CONFIG_BOLT_V2.timeoutMs);
-  const j = await r.json().catch(() => ({}));
+  const j = leerJSON(r.texto) || {};
   // De la respuesta solo se escribe el código de OAuth, nunca el cuerpo.
   if (!j.access_token) throw new Error(`BOLT v2 token: HTTP ${r.status}${j.error ? ' · ' + j.error : ''}`);
   tokenV2 = j.access_token;
@@ -144,9 +173,13 @@ async function tokenBoltV2() {
  * Una llamada a la v2. BOLT contesta HTTP 200 con el error dentro (`code`
  * distinto de 0), así que se mira el código aunque el HTTP diga que bien. Con
  * el token caducado (401 o 498811) se pide otro UNA vez; lo demás se lanza.
+ *
+ * Un 200 que no es JSON (una página de error de un proxy, un cuerpo vacío) es
+ * un FALLO, no una respuesta vacía. Si se tomara por buena, la lista de
+ * conectados saldría a cero y toda la flota se pintaría desconectada.
  */
 async function apiV2(ruta, cuerpo, reintento = true) {
-  const r = await conTiempoLimite(`${CONFIG_BOLT_V2.apiBaseUrl}/${ruta}`, {
+  const r = await pedirConCuerpo(`${CONFIG_BOLT_V2.apiBaseUrl}/${ruta}`, {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + await tokenBoltV2(),
@@ -155,11 +188,12 @@ async function apiV2(ruta, cuerpo, reintento = true) {
     },
     body: JSON.stringify(cuerpo || {}),
   }, CONFIG_BOLT_V2.timeoutMs);
-  const j = await r.json().catch(() => ({}));
-  if (reintento && (r.status === 401 || j.code === 498811)) {
+  const j = leerJSON(r.texto);
+  if (reintento && (r.status === 401 || (j && j.code === 498811))) {
     tokenV2 = null;
     return apiV2(ruta, cuerpo, false);
   }
+  if (!j || typeof j !== 'object') throw new Error(`BOLT v2 ${ruta}: HTTP ${r.status} · la respuesta no es JSON`);
   if (r.status !== 200 || (j.code != null && j.code !== 0)) {
     throw new Error(`BOLT v2 ${ruta}: HTTP ${r.status}${j.code != null ? ' · code ' + j.code : ''}` +
       (j.message ? ' · ' + String(j.message).slice(0, 120) : ''));
@@ -167,10 +201,14 @@ async function apiV2(ruta, cuerpo, reintento = true) {
   return j.data || {};
 }
 
-/** Quién está conectado AHORA en una empresa: estado y desde cuándo, coche y conductor. */
+/**
+ * Quién está conectado AHORA en una empresa: estado y desde cuándo, coche y
+ * conductor. Sin la lista en la respuesta es un fallo (ver apiV2), nunca «nadie».
+ */
 async function onlineDriversV2(companyId) {
   const d = await apiV2('getOnlineDrivers', { company_id: Number(companyId) });
-  return Array.isArray(d.drivers) ? d.drivers : [];
+  if (!Array.isArray(d.drivers)) throw new Error('BOLT v2 getOnlineDrivers: la respuesta no trae la lista de conductores');
+  return d.drivers;
 }
 
 // Tope de páginas. Antes eran 100 (100.000 registros): un mes movido de dos

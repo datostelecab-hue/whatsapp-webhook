@@ -54,6 +54,10 @@ const historialConductor = (conductorId, dias) =>
 /** Fuerza una vuelta sin esperar al cron: "acabo de desconectarme y no salgo". */
 const refrescar = async () => ({ ...(await motor.pasada()), ...(await panel.estado()) });
 
+// De dónde sale el ahora (la API v2 de BOLT o la base) y cómo va la v2, sin
+// nombres ni teléfonos. Para comprobarlo desde el navegador tras un despliegue.
+const diagnosticoAhora = () => require('../../services/flotaViva/ahora').estado();
+
 /**
  * Lo que hay que llamar ahora. Se pide aparte del estado porque se mira mucho
  * más a menudo y pesa mucho menos.
@@ -228,7 +232,7 @@ async function kmDeHoy(dia) {
 }
 
 module.exports = {
-  estado, historial, historialConductor, refrescar,
+  estado, historial, historialConductor, refrescar, diagnosticoAhora,
   incidencias, clasificacionDe, franjas, gestiones,
   justificar, heLlamado, seguimientos, cierre, partes,
   maponDe, maponRutas,

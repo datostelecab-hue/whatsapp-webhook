@@ -11,6 +11,7 @@
 //
 // No llama a BOLT ni toca ninguna base: BOLT y las consultas se sustituyen.
 process.env.BOLT_V2_FRESCA_MS = '300';
+process.env.BOLT_V2_TIMEOUT_MS = '200';
 // En producción solo se pregunta por la 143626; aquí dos, para probar qué pasa
 // cuando una de ellas falla.
 process.env.BOLT_V2_EMPRESAS = '63530,143626';
@@ -27,6 +28,11 @@ const sustituir = (rel, exp) => {
   const f = require.resolve(path.join(__dirname, '..', rel));
   require.cache[f] = { id: f, filename: f, loaded: true, exports: exp };
 };
+
+// El cliente de verdad, para probar cómo lee las respuestas de BOLT (sección 7).
+// Se carga ANTES de sustituirlo por el doble que usa todo lo demás.
+const boltReal = require('../services/bolt');
+delete require.cache[require.resolve('../services/bolt')];
 
 // ── Los dobles ──────────────────────────────────────────────────────────────
 let credenciales = false;
@@ -222,6 +228,105 @@ const ahora = require('../services/flotaViva/ahora');
   await enLinea.refrescar();
   igual('…hasta pasados 30 s', llamadas - antes, 4);
   Date.now = reloj;
+
+  // ── 7. El cliente: una respuesta rara es un fallo, nunca «nadie conectado» ──
+  process.env.CLIENT_ID_BOLT = 'id-de-prueba';
+  process.env.CLIENT_SECRET_BOLT = 'secreto-de-prueba';
+  const fetchReal = global.fetch;
+  let api = [];            // respuestas de la API, en orden
+  let tokens = 0;
+  global.fetch = async (url, opciones) => {
+    if (/oidc\.bolt\.eu/.test(url)) { tokens++; return { status: 200, text: async () => JSON.stringify({ access_token: 'tok' + tokens, expires_in: 600 }) }; }
+    const [status, cuerpo] = api.shift();
+    // 'CALLA': manda las cabeceras y se calla; solo lo corta el plazo.
+    if (cuerpo === 'CALLA') {
+      return { status, text: () => new Promise((_, rechaza) => opciones.signal.addEventListener('abort', () => {
+        const e = new Error('This operation was aborted'); e.name = 'AbortError'; rechaza(e);
+      })) };
+    }
+    return { status, text: async () => cuerpo };
+  };
+  const falla = async (lista, patron) => {
+    api = lista.slice();
+    try { await boltReal.onlineDriversV2(143626); return 'no falló'; } catch (e) { return patron.test(e.message) ? 'falla bien' : e.message; }
+  };
+  igual('Un 200 que no es JSON es un fallo', await falla([[200, '<html>proxy</html>']], /no es JSON/), 'falla bien');
+  igual('Un 200 sin la lista de conductores es un fallo', await falla([[200, '{"code":0,"data":{}}']], /lista de conductores/), 'falla bien');
+  igual('Un code distinto de 0 es un fallo', await falla([[200, '{"code":1005,"message":"TOO_MANY_REQUESTS"}']], /code 1005/), 'falla bien');
+  api = [[200, '{"code":0,"data":{"drivers":[{"uuid":"a"}]}}']];
+  igual('Una respuesta buena trae su lista', (await boltReal.onlineDriversV2(143626)).length, 1);
+  api = [[200, '{"code":0,"data":{"drivers":[]}}']];
+  igual('Una lista vacía de verdad es una lista vacía', (await boltReal.onlineDriversV2(143626)).length, 0);
+  const t1 = tokens;
+  api = [[200, '{"code":498811,"message":"unauthorized"}'], [200, '{"code":0,"data":{"drivers":[]}}']];
+  await boltReal.onlineDriversV2(143626);
+  igual('Con el token caducado pide otro una vez y sigue', tokens - t1, 1);
+  const tCalla = Date.now();
+  igual('Un BOLT que manda las cabeceras y se calla no cuelga el sondeo: lo corta el plazo',
+    await falla([[200, 'CALLA']], /no terminó de mandar la respuesta/), 'falla bien');
+  igual('…en su plazo, no en los cinco minutos de Node', Date.now() - tCalla < 1500, true);
+  global.fetch = fetchReal;
+
+  // ── 8. Una lista vacía no se cree a la primera, y el log habla ────────────
+  enLinea._reiniciar();
+  const lineas = [];
+  const [log, warn] = [console.log, console.warn];
+  console.log = (...a) => lineas.push(a.join(' '));
+  console.warn = (...a) => lineas.push(a.join(' '));
+  credenciales = true;
+  const seis = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'].map(u => conductor(u, 'waiting', '2026-10-28T10:00:00+01:00', 'v' + u, u + 'XXX'));
+  respuestas = { 63530: [], 143626: seis };
+  await enLinea.refrescar();
+  const cuantas = re => lineas.filter(l => re.test(l)).length;
+  const conLaV2 = () => (enLinea.vigente() || { porUuid: new Map() }).porUuid.size;
+  await enLinea.refrescar();
+  respuestas[143626] = [];
+  await enLinea.refrescar();
+  const tras1 = conLaV2();
+  await enLinea.refrescar();
+  const tras2 = conLaV2();
+  await enLinea.refrescar();
+  const tras3 = conLaV2();
+  respuestas[63530] = new Error('caída');
+  await enLinea.refrescar();
+  await espera(350);
+  await enLinea.refrescar();
+  console.log = log; console.warn = warn;
+  igual('Al empezar a valer lo dice en el log, una sola vez', cuantas(/Lista de conectados al día: 6/), 1);
+  igual('BOLT dice «nadie» de golpe: se sigue con los 6, también la segunda vez', [tras1, tras2], [6, 6]);
+  igual('…y a la tercera seguida se lo cree', tras3, 0);
+  igual('…avisando en el log', cuantas(/se espera a que lo repita|se da por buena/), 2);
+  igual('Al dejar de valer también lo dice, con el porqué', cuantas(/ya no vale \(sin respuesta buena desde las/), 1);
+
+  // ── 9. Lo que encontró la revisión ────────────────────────────────────────
+  enLinea._reiniciar();
+  lineas.length = 0;
+  console.log = (...a) => lineas.push(a.join(' '));
+  console.warn = (...a) => lineas.push(a.join(' '));
+  console.error = (...a) => lineas.push(a.join(' '));
+  const err = console.error;
+  respuestas = { 63530: [], 143626: [null, ...seis] };
+  await enLinea.refrescar();
+  const conNull = conLaV2();
+  // Deja de valer por edad: el salto es un cambio aunque la lista sea la misma.
+  respuestas[143626] = new Error('caída');
+  await espera(350);
+  const rSalto = await enLinea.refrescar();
+  // Vuelve diciendo «nadie»: ya ha contestado, aunque no se le crea todavía.
+  respuestas[143626] = [];
+  await enLinea.refrescar();
+  const falloTrasVacia = enLinea.estado().empresas.find(e => e.id === 143626).fallo;
+  // BOLT alterna vacía y llena: un solo aviso, no uno por vacía.
+  respuestas[143626] = seis; await enLinea.refrescar();
+  for (let k = 0; k < 4; k++) {
+    respuestas[143626] = []; await enLinea.refrescar();
+    respuestas[143626] = seis; await enLinea.refrescar();
+  }
+  console.log = log; console.warn = warn; console.error = err;
+  igual('Un null en la lista de BOLT no tumba el sondeo: se descarta', conNull, 6);
+  igual('Que la lista deje de valer es un cambio (se rehace la foto en el momento)', rSalto.cambio, true);
+  igual('Una vacía sin confirmar ya cuenta como que BOLT contesta', falloTrasVacia, null);
+  igual('Si BOLT alterna vacía y llena, un aviso y no uno por vacía', cuantas(/dice que no hay nadie conectado/), 1);
 
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);

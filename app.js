@@ -475,6 +475,13 @@ if (process.env.BOLT_DIRECTO !== 'off') {
 // Cada 5 s y no cada 10 para que las pantallas que se refrescan cada 10 (mapa,
 // En directo, Inicio) nunca enseñen algo de hace más de quince. Es UNA pregunta
 // por vuelta (solo la 143626) y getOnlineDrivers admite 20 por segundo.
+// Que se sepa al arrancar si la v2 está fuera de juego: sin esta línea, un log
+// callado no distinguía «va bien» de «no tiene credenciales».
+if (process.env.BOLT_V2_DIRECTO === 'off') {
+  console.log('⏸️ [BOLT v2] BOLT_V2_DIRECTO=off: el ahora sigue con la base y la ingesta de la v1 cada 10 s');
+} else if (!require('./services/bolt').v2Configurada()) {
+  console.log('⏸️ [BOLT v2] Sin CLIENT_ID_BOLT / CLIENT_SECRET_BOLT: el ahora sigue con la base y la ingesta de la v1 cada 10 s');
+}
 if (process.env.BOLT_V2_DIRECTO !== 'off') {
   programar('*/5 * * * * *', async () => {
     try {

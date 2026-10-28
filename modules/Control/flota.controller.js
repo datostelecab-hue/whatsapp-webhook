@@ -55,6 +55,10 @@ router.get('/api/historial-conductor/:conductorId', responde(async req =>
 // "acabo de desconectarme y no salgo".
 router.post('/api/refrescar', responde(() => flota.refrescar()));
 
+// ¿El ahora sale de la API v2 de BOLT o de la base? Tras un despliegue se abre
+// en el navegador: `ultima.fuente` y `v2` (vigente, edad, fallos por empresa).
+router.get('/api/ahora', soloDev(() => flota.diagnosticoAhora()));
+
 // ── Las franjas críticas ───────────────────────────────────────────────────
 
 router.get('/api/incidencias', responde(async req =>
