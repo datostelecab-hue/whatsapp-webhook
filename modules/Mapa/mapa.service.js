@@ -116,7 +116,7 @@ const BOLT_FIABLE_S = 1500;
  */
 function situacionDe(b) {
   if (!b || !b.situacion) {
-    return { situacion: null, etiqueta: null, desde: null, conductor: null, uuid: null, telefono: null, fuente: null, km: null, segundos: null };
+    return { situacion: null, etiqueta: null, desde: null, conductor: null, uuid: null, telefono: null, fuente: null, km: null, segundos: null, viaje: null };
   }
   return {
     situacion: b.situacion,
@@ -128,6 +128,8 @@ function situacionDe(b) {
     fuente: b.fuente_ahora || null,
     km: b.km == null ? null : Number(b.km),
     segundos: b.segundos == null ? null : Number(b.segundos),
+    // De dónde a dónde va, si está de viaje (solo con la API v2 de BOLT).
+    viaje: b.viaje_actual || null,
   };
 }
 
@@ -287,6 +289,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
       dentroM30: dentro,
       // Dónde dejó al último pasajero y si vuelve hacia la M-30. Ver ultimoDestino.
       ultimoDestino: ud,
+      // EL VIAJE EN CURSO (28/10/2026): la recogida y el destino del pedido que
+      // lleva ahora, de la API v2 de BOLT. Con la v2 caída no hay (null).
+      viaje: v.viaje,
       // Dejó al pasajero fuera de la M-30 hace 15 min o más y no vuelve. Ver sinVolver.
       noVuelve: sinVolver(ud, v.situacion, t),
       // De cuál de las dos tuberías salió esto. No se pinta, pero contesta

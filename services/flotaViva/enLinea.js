@@ -76,6 +76,38 @@ let estabaVigente = false;
 const hora = ms => new Intl.DateTimeFormat('es-ES',
   { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(ms);
 
+// EL VIAJE EN CURSO (current_order), para que el mapa enseñe de dónde a dónde
+// va quien está de viaje (Camilo, 28/10/2026). Solo las fases en que hay un
+// cliente de por medio: una oferta sin aceptar o un viaje ya acabado no son un
+// viaje en curso. Forma de la especificación de BOLT (open-api.json,
+// IntegrationOrderStop): { type: pickup|dropoff|waypoint|change_point, address,
+// location: {lat, lng}, arrived_at_datetime, departed_at_datetime }.
+//
+// Las direcciones son del cliente: se quedan en memoria, como todo lo de aquí,
+// y no se guardan en ninguna tabla.
+const VIAJE_EN_CURSO = new Set(['driver_accepted', 'driver_arrived_to_client', 'driving_with_client', 'arrived_to_destination']);
+const CON_CLIENTE = new Set(['driving_with_client', 'arrived_to_destination']);
+
+function viajeDe(o) {
+  if (!o || typeof o !== 'object' || !VIAJE_EN_CURSO.has(o.state)) return null;
+  const paradas = (Array.isArray(o.stops) ? o.stops : []).filter(s => s && s.location
+    && Number.isFinite(Number(s.location.lat)) && Number.isFinite(Number(s.location.lng)));
+  const punto = s => s && { lat: Number(s.location.lat), lng: Number(s.location.lng), direccion: s.address || null };
+  // Por su tipo y no por su sitio en la lista: BOLT no garantiza el orden.
+  const recogida = paradas.find(s => s.type === 'pickup');
+  const destino = paradas.slice().reverse().find(s => s.type === 'dropoff');
+  return {
+    estado: o.state,
+    categoria: o.category_name || null,
+    programado: o.type === 'scheduled',
+    recogida: punto(recogida) || null,
+    destino: punto(destino) || null,
+    paradas: paradas.filter(s => s.type === 'waypoint').length,
+    // Con el cliente dentro: por la fase o porque ya salió de la recogida.
+    conCliente: CON_CLIENTE.has(o.state) || !!(recogida && recogida.departed_at_datetime),
+  };
+}
+
 function traducir(d) {
   const code = (d.current_state && d.current_state.code) || null;
   let situacion = SITUACION[code];
@@ -97,6 +129,7 @@ function traducir(d) {
     matricula: v.normalised_registration_number || v.registration_number || null,
     nombre: [d.first_name, d.last_name].filter(Boolean).join(' ').trim() || d.display_name || null,
     telefono: d.phone || null,
+    viaje: viajeDe(d.current_order),
   };
 }
 
@@ -120,7 +153,10 @@ function combinar(ids) {
   // La hora de la lista es la de su parte MÁS VIEJA: es lo que se puede afirmar.
   const at = buenas.length ? Math.min(...buenas.map(p => p.at)) : 0;
   const huella = completa + '|' + [...porUuid.values()]
-    .map(c => `${c.uuid}:${c.situacion}:${c.desde ? c.desde.getTime() : ''}:${c.vehiculoUuid || ''}`)
+    // La fase del viaje y su destino también: pasar de «va a recoger» a «con
+    // el cliente» cambia lo que pinta el mapa aunque el estado sea el mismo.
+    .map(c => `${c.uuid}:${c.situacion}:${c.desde ? c.desde.getTime() : ''}:${c.vehiculoUuid || ''}`
+      + (c.viaje ? `:${c.viaje.estado}:${c.viaje.conCliente}:${c.viaje.destino ? c.viaje.destino.lat + ',' + c.viaje.destino.lng : ''}` : ''))
     .sort().join(',');
   return { at, completa, porUuid, porVehiculo, porMatricula, huella };
 }
@@ -273,4 +309,4 @@ function _reiniciar() {
   combinada = null; enCurso = null; ultimoIntento = 0; sondeos = 0; fallos = 0; estabaVigente = false;
 }
 
-module.exports = { refrescar, vigente, estado, traducir, SITUACION, FRESCA_MS, _reiniciar };
+module.exports = { refrescar, vigente, estado, traducir, viajeDe, SITUACION, FRESCA_MS, _reiniciar };

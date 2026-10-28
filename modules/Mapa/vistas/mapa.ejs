@@ -25,6 +25,15 @@
     </label>
     <div id="m-chips" class="flex items-center gap-1.5 flex-wrap"></div>
     <div class="flex-1"></div>
+    <!-- EL ESTILO DEL MAPA, aparte del tema (Camilo, 28/10/2026: «un desplegable
+         de temas de mapa, sin importar el tema del sistema»). Se guarda en este
+         navegador. -->
+    <label class="relative shrink-0" title="El estilo del mapa. «Automático» sigue al tema de la casa (claro u oscuro); los demás se quedan aunque cambies el tema. Se guarda en este navegador.">
+      <i class="fa-solid fa-layer-group absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-telecab-muted pointer-events-none"></i>
+      <select id="m-estilo" aria-label="Estilo del mapa"
+              class="pl-7 pr-2 py-1.5 rounded-lg bg-telecab-dark/60 border border-telecab-border text-xs text-telecab-text
+                     focus:outline-none focus:border-telecab-gold transition cursor-pointer"></select>
+    </label>
     <p id="m-frescura" class="text-[11px] text-telecab-muted tabular-nums"
        title="Cuándo se pidió la última posición a Mapon.&#10;La vuelta va cada 30 segundos, pero el equipo del coche solo habla cada minuto aproximadamente: pedir más a menudo no daría un dato más nuevo."></p>
     <button id="m-recargar" title="Pedir la posición ahora, sin esperar al refresco"
@@ -60,6 +69,11 @@
          De `flex-1` la altura la decide el padre y no hay bucle posible. -->
     <div class="flex-1 flex flex-col min-h-0 relative">
       <div id="m-mapa" class="flex-1 min-h-0"></div>
+      <!-- LA FICHA DEL COCHE, ANCLADA EN UNA ESQUINA (28/10/2026). Era un globo
+           encima del punto y tapaba justo lo que se quería ver: el trazo al
+           último destino. Ahora va arriba a la izquierda (abajo, en el móvil) y
+           el mapa se encuadra en el hueco que queda libre. -->
+      <aside id="m-ficha" class="m-ficha hidden" role="dialog" aria-labelledby="m-ficha-titulo"></aside>
       <div id="m-error"
            class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-xl
                   border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red"></div>
@@ -131,6 +145,64 @@
   /* Un rojo levantado sobre datos de BOLT viejos no puede pintarse igual que
      uno de verdad: se vacía por dentro. Es un "no se sabe", no una acusación. */
   .m-coche.m-dudoso { opacity: .55; border-style: dashed; }
+
+  /* EL ELEGIDO: el coche de la ficha abierta, con un anillo del acento. */
+  .m-coche.m-elegido { box-shadow: 0 0 0 4px rgb(var(--tc-gold) / .6); z-index: 2; }
+
+  /* EL MINICOCHE (28/10/2026, Camilo: «cuando me acerque mucho a un punto de
+     los coches que se convierta en un minicoche»). Desde el zoom de calle el
+     punto se cambia por el coche visto desde arriba, girado hacia donde va
+     (el rumbo de Mapon) y con el color de lo que hace en BOLT. Es el MISMO
+     elemento del marcador: el clic, la ficha y los estados (latido, a medias)
+     no cambian. */
+  .m-auto { display: none; }
+  #m-mapa.m-cerca .m-coche {
+    width: 22px; height: 40px; border: 0; border-radius: 0;
+    background: transparent !important; box-shadow: none;
+  }
+  #m-mapa.m-cerca .m-coche > i { display: none; }
+  #m-mapa.m-cerca .m-auto {
+    display: block; width: 22px; height: 40px; overflow: visible;
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / .55));
+    transition: transform .6s ease-out;
+  }
+  #m-mapa.m-cerca .m-coche.m-suelto { animation: none; }
+  #m-mapa.m-cerca .m-coche.m-suelto .m-auto { animation: m-latido-auto 1.6s ease-in-out infinite; }
+  @keyframes m-latido-auto {
+    0%, 100% { filter: drop-shadow(0 0 0 rgb(var(--tc-red) / .9)); }
+    50%      { filter: drop-shadow(0 0 7px rgb(var(--tc-red) / .9)); }
+  }
+  #m-mapa.m-cerca .m-coche.m-elegido { box-shadow: none; }
+  #m-mapa.m-cerca .m-coche.m-elegido .m-auto { filter: drop-shadow(0 0 3px rgb(var(--tc-gold))) drop-shadow(0 0 3px rgb(var(--tc-gold))); }
+  #m-mapa.m-cerca .m-sinvolver { left: 18px; top: -4px; }
+  @media (prefers-reduced-motion: reduce) {
+    #m-mapa.m-cerca .m-coche.m-suelto .m-auto { animation: none; }
+    #m-mapa.m-cerca .m-auto { transition: none; }
+  }
+
+  /* LA FICHA. Arriba a la izquierda del mapa; en el móvil, abajo y a lo ancho. */
+  .m-ficha {
+    position: absolute; z-index: 20; left: 12px; top: 12px; width: 300px;
+    max-height: calc(100% - 24px); overflow-y: auto;
+    background: rgb(var(--tc-card)); color: rgb(var(--tc-text));
+    border: 1px solid rgb(var(--tc-border)); border-radius: 16px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / .35); font-size: 12px;
+  }
+  @media (max-width: 767px) {
+    .m-ficha { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 46%; }
+  }
+  .m-ficha-fila { display: grid; grid-template-columns: 66px 1fr; gap: 8px; padding: 5px 0; align-items: baseline; }
+  .m-ficha-fila + .m-ficha-fila { border-top: 1px solid rgb(var(--tc-border) / .55); }
+  .m-ficha-etq { font-size: 10px; color: rgb(var(--tc-muted)); text-transform: uppercase; letter-spacing: .04em; }
+  .m-parada { display: flex; gap: 6px; align-items: flex-start; }
+  .m-parada + .m-parada { margin-top: 4px; }
+  .m-parada-punto { width: 16px; height: 16px; border-radius: 999px; flex: none; display: inline-flex; align-items: center;
+                    justify-content: center; font-size: 8px; color: rgb(var(--tc-dark)); margin-top: 1px; }
+
+  /* La recogida y el destino del viaje en curso, en el mapa. */
+  .m-pin { width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+           border: 2px solid rgb(var(--tc-dark)); box-shadow: 0 1px 4px rgb(0 0 0 / .45); pointer-events: none;
+           font-size: 10px; color: rgb(var(--tc-dark)); }
 
   .maplibregl-popup-content {
     background: rgb(var(--tc-card)); color: rgb(var(--tc-text));
@@ -272,10 +344,62 @@
   // No hay una lista de "temas claros" que mantener: se mira la LUMINANCIA del
   // color de fondo de la casa. Sirve para los quince de hoy y para el que se
   // añada mañana sin tocar esto.
-  function estiloDelTema() {
+  //
+  // En los claros, «bright» (OSM Bright) y no «positron» (Camilo, 28/10/2026):
+  // positron es casi todo gris y no se distinguían ni los parques ni las vías
+  // grandes. El oscuro se queda como estaba.
+  //
+  // Y SE PUEDE ELEGIR APARTE DEL TEMA (el mismo día): «Automático» hace lo de
+  // arriba; cualquier otro se queda aunque cambie el tema de la casa. Son los
+  // estilos de OpenFreeMap, que no piden clave (los de OpenMapTiles en MapTiler
+  // sí). La elección es de cada navegador.
+  const ESTILOS = [
+    { k: 'auto', texto: 'Mapa automático' },
+    { k: 'bright', texto: 'Bright', oscuro: false },
+    { k: 'liberty', texto: 'Liberty', oscuro: false },
+    { k: 'positron', texto: 'Positron', oscuro: false },
+    { k: 'fiord', texto: 'Fiord', oscuro: true },
+    { k: 'dark', texto: 'Oscuro', oscuro: true },
+  ];
+  const PREF_ESTILO = 'telecab.mapa.estilo';
+  let preferido = (() => { try { return localStorage.getItem(PREF_ESTILO) || 'auto'; } catch (_) { return 'auto'; } })();
+  function claveEstilo() {
+    if (preferido !== 'auto' && ESTILOS.some(e => e.k === preferido)) return preferido;
     const v = getComputedStyle(raiz).getPropertyValue('--tc-dark').trim().split(/\s+/).map(Number);
     const luz = v.length === 3 ? (0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]) : 0;
-    return 'https://tiles.openfreemap.org/styles/' + (luz > 128 ? 'positron' : 'dark');
+    return luz > 128 ? 'bright' : 'dark';
+  }
+  function estiloDelTema() { return 'https://tiles.openfreemap.org/styles/' + claveEstilo(); }
+  // LA TINTA DE LO QUE PINTAMOS ENCIMA (trazos, bandera) va con el MAPA, no
+  // con la casa: con el tema claro y el mapa oscuro, el texto de la casa
+  // (oscuro) sobre el mapa (oscuro) no se vería.
+  const mapaOscuro = () => !!(ESTILOS.find(e => e.k === claveEstilo()) || {}).oscuro;
+  const tinta = a => (mapaOscuro() ? 'rgba(241, 245, 249, ' : 'rgba(15, 23, 42, ') + (a == null ? 1 : a) + ')';
+
+  // EL MINICOCHE: desde este zoom (calle), el punto pasa a ser el coche visto
+  // desde arriba, girado hacia donde va. Antes, con cien puntos, un coche de
+  // dibujo no se leería; de cerca, el sentido de la marcha es justo lo que falta.
+  const ZOOM_COCHE = 15;
+  // El coche, mirando al norte; se gira con su rumbo. Lleva el color de lo que
+  // hace en BOLT (currentColor) y el borde del fondo de la casa para despegarse
+  // del mapa en cualquier tema.
+  const AUTO_SVG = '<svg class="m-auto" viewBox="0 0 22 40" aria-hidden="true">'
+    + '<rect x="2" y="1.5" width="18" height="37" rx="6.5" fill="currentColor" style="stroke: rgb(var(--tc-dark)); stroke-width: 1.5"/>'
+    + '<path d="M5.2 12.5 Q11 9.6 16.8 12.5 L15.6 17.2 Q11 15.9 6.4 17.2 Z" fill="#0f172a" fill-opacity=".8"/>'
+    + '<rect x="6.4" y="18.2" width="9.2" height="10" rx="2" fill="#000" fill-opacity=".14"/>'
+    + '<path d="M6.3 29.6 Q11 31 15.7 29.6 L16.6 33.6 Q11 35.4 5.4 33.6 Z" fill="#0f172a" fill-opacity=".7"/>'
+    + '<rect x="4.2" y="2.7" width="3.6" height="1.8" rx=".9" fill="#fff6c8"/>'
+    + '<rect x="14.2" y="2.7" width="3.6" height="1.8" rx=".9" fill="#fff6c8"/>'
+    + '</svg>';
+
+  /** Gira el minicoche por el camino corto (de 350° a 10° son 20°, no 340°). */
+  function girar(m) {
+    const auto = m.el.querySelector('.m-auto');
+    if (!auto) return;
+    const objetivo = (m.datos.rumbo == null ? 0 : m.datos.rumbo) - (mapa ? mapa.getBearing() : 0);
+    const antes = m.giro == null ? objetivo : m.giro;
+    m.giro = antes + ((((objetivo - antes) % 360) + 540) % 360 - 180);
+    auto.style.transform = 'rotate(' + m.giro + 'deg)';
   }
 
   let mapa = null, listo = false;
@@ -296,11 +420,20 @@
     });
     mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
-    mapa.on('load', () => { listo = true; pintar(); });
+    mapa.on('load', () => { listo = true; ajustarZoom(); pintar(); });
     // `style.load` salta al arrancar y cada vez que el tema cambia el estilo:
     // setStyle se lleva las capas propias por delante, y el anillo hay que
     // volver a ponerlo.
-    mapa.on('style.load', () => { pintarM30(); pintarDestino(); });
+    mapa.on('style.load', () => { pintarM30(); pintarRutas(); });
+    // El minicoche entra y sale con el zoom, y se gira con el mapa.
+    mapa.on('zoom', ajustarZoom);
+    mapa.on('rotate', () => marcas.forEach(girar));
+    // Pinchar en el mapa, fuera de un coche, cierra la ficha.
+    mapa.on('click', e => {
+      const t = e.originalEvent && e.originalEvent.target;
+      if (t && t.closest && t.closest('.m-coche')) return;
+      cerrarFicha();
+    });
 
     // SI EL MAPA NO ARRANCA, QUE LO DIGA.
     //
@@ -354,106 +487,241 @@
       paint: { 'line-color': cvComa('--tc-mapa-espera'), 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [2, 2] } });
   }
 
-  // ── El trazo al último destino ───────────────────────────────────────────
-  // Solo con la ficha de un coche abierta: una línea discontinua del coche a
-  // donde dejó al último pasajero y una bandera allí. Con cien coches, cien
-  // líneas a la vez no se leerían.
-  let abierto = null, bandera = null;
-  function pintarDestino() {
-    if (!mapa || !listo) return;
-    const m = abierto && marcas.get(abierto);
-    const ud = m && m.datos.ultimoDestino;
-    const hay = !!(ud && ud.lat != null && ud.lng != null && m.datos.situacion !== 'viaje');
-    const datos = { type: 'FeatureCollection', features: hay ? [{ type: 'Feature', properties: {},
-      geometry: { type: 'LineString', coordinates: [[m.datos.lng, m.datos.lat], [ud.lng, ud.lat]] } }] : [] };
-    if (!mapa.getSource('destino')) {
-      if (!hay) return;
-      mapa.addSource('destino', { type: 'geojson', data: datos });
-      mapa.addLayer({ id: 'destino', type: 'line', source: 'destino',
-        paint: { 'line-color': cvComa('--tc-text'), 'line-width': 2, 'line-opacity': 0.7, 'line-dasharray': [1, 2] } });
-    } else {
-      mapa.getSource('destino').setData(datos);
+  // ── Los trazos de la ficha abierta ───────────────────────────────────────
+  // Solo con la ficha de un coche abierta: con cien coches, cien líneas a la
+  // vez no se leerían.
+  //   · De viaje (API v2 de BOLT, 28/10/2026): la recogida y el destino del
+  //     pedido en curso. Del coche a la recogida mientras va a por el cliente;
+  //     con el cliente dentro, del coche al destino. Y de la recogida al destino
+  //     el trayecto, en línea recta: no es la ruta, es hacia dónde va.
+  //   · Si no: del coche a donde dejó al último pasajero, con la bandera.
+  let abierto = null;
+  const pines = {};                  // recogida / destino / bandera → Marker
+  const FASE = {
+    driver_accepted: 'Va a recoger',
+    driver_arrived_to_client: 'Esperando al cliente',
+    driving_with_client: 'Con el cliente',
+    arrived_to_destination: 'Llegando al destino',
+  };
+  const enViaje = c => !!(c.viaje || c.situacion === 'viaje');
+  const punto = p => !!(p && p.lat != null && p.lng != null);
+
+  /** Lo que se dibuja para un coche: líneas, pines y los puntos para encuadrar. */
+  function rutaDe(c) {
+    const yo = [c.lng, c.lat];
+    const lineas = [], pin = {}, puntos = [];
+    const v = c.viaje;
+    if (v) {
+      if (punto(v.recogida)) { pin.recogida = v.recogida; puntos.push([v.recogida.lng, v.recogida.lat]); }
+      if (punto(v.destino)) { pin.destino = v.destino; puntos.push([v.destino.lng, v.destino.lat]); }
+      if (!v.conCliente && punto(v.recogida)) lineas.push({ tipo: 'tramo', c: [yo, [v.recogida.lng, v.recogida.lat]] });
+      if (v.conCliente && punto(v.destino)) lineas.push({ tipo: 'tramo', c: [yo, [v.destino.lng, v.destino.lat]] });
+      if (!v.conCliente && punto(v.recogida) && punto(v.destino)) {
+        lineas.push({ tipo: 'plan', c: [[v.recogida.lng, v.recogida.lat], [v.destino.lng, v.destino.lat]] });
+      }
+    } else if (!enViaje(c) && c.ultimoDestino && punto(c.ultimoDestino)) {
+      const ud = c.ultimoDestino;
+      pin.bandera = ud;
+      puntos.push([ud.lng, ud.lat]);
+      lineas.push({ tipo: 'plan', c: [yo, [ud.lng, ud.lat]] });
     }
-    if (!hay) { if (bandera) { bandera.remove(); bandera = null; } return; }
-    if (!bandera) {
-      const el = document.createElement('div');
-      el.innerHTML = '<i class="fa-solid fa-flag-checkered"></i>';
-      el.title = 'Donde dejó al último pasajero';
-      el.style.cssText = 'font-size:18px;color:' + cv('--tc-text') + ';text-shadow:0 1px 3px rgb(0 0 0 / .5);pointer-events:none';
-      bandera = new maplibregl.Marker({ element: el, anchor: 'bottom-left' }).setLngLat([ud.lng, ud.lat]).addTo(mapa);
-    } else {
-      bandera.setLngLat([ud.lng, ud.lat]);
-    }
+    return { lineas, pin, puntos };
   }
 
-  /** El globito que sale al pinchar un coche. */
+  function quitarPines() { Object.keys(pines).forEach(k => { pines[k].remove(); delete pines[k]; }); }
+
+  function pintarRutas() {
+    if (!mapa || !listo) return;
+    const m = abierto && marcas.get(abierto);
+    const r = m && m.datos.lat != null ? rutaDe(m.datos) : { lineas: [], pin: {} };
+    const datos = { type: 'FeatureCollection', features: r.lineas.map(l => ({
+      type: 'Feature', properties: { tipo: l.tipo }, geometry: { type: 'LineString', coordinates: l.c } })) };
+    if (!mapa.getSource('rutas')) {
+      if (r.lineas.length) {
+        mapa.addSource('rutas', { type: 'geojson', data: datos });
+        // Lo que hace ahora (ir a recoger, llevar al cliente): en el verde del
+        // viaje. Lo planeado o lo pasado: punteado, en la tinta del mapa.
+        mapa.addLayer({ id: 'rutas-tramo', type: 'line', source: 'rutas', filter: ['==', ['get', 'tipo'], 'tramo'],
+          layout: { 'line-cap': 'round' },
+          paint: { 'line-color': cvComa('--tc-green'), 'line-width': 3.5, 'line-opacity': 0.9, 'line-dasharray': [2, 1.2] } });
+        mapa.addLayer({ id: 'rutas-plan', type: 'line', source: 'rutas', filter: ['==', ['get', 'tipo'], 'plan'],
+          layout: { 'line-cap': 'round' },
+          paint: { 'line-color': tinta(0.75), 'line-width': 2.5, 'line-dasharray': [0.6, 1.8] } });
+      }
+    } else {
+      mapa.getSource('rutas').setData(datos);
+    }
+    // Los pines: se ponen, se mueven o se quitan.
+    const DIBUJO = {
+      recogida: { tk: '--tc-green', icono: 'fa-person', titulo: 'Recogida' },
+      destino: { tinta: true, icono: 'fa-flag-checkered', titulo: 'Destino' },
+      bandera: { tinta: true, icono: 'fa-flag-checkered', titulo: 'Donde dejó al último pasajero' },
+    };
+    Object.keys(DIBUJO).forEach(k => {
+      const p = r.pin[k];
+      if (!p) { if (pines[k]) { pines[k].remove(); delete pines[k]; } return; }
+      if (!pines[k]) {
+        const d = DIBUJO[k];
+        const el = document.createElement('div');
+        el.className = 'm-pin';
+        el.style.background = d.tinta ? tinta() : cv(d.tk);
+        el.style.color = d.tinta ? (mapaOscuro() ? '#0f172a' : '#f8fafc') : cv('--tc-dark');
+        el.innerHTML = '<i class="fa-solid ' + d.icono + '"></i>';
+        el.title = d.titulo + (p.direccion ? ': ' + p.direccion : '');
+        pines[k] = new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(mapa);
+      } else {
+        pines[k].setLngLat([p.lng, p.lat]);
+      }
+    });
+  }
+
+  // ── La ficha ─────────────────────────────────────────────────────────────
+  function marcaElegida(clave, si) {
+    const m = marcas.get(clave);
+    if (m) m.el.classList.toggle('m-elegido', !!si);
+  }
+
+  function abrirFicha(clave, { encuadrar = true } = {}) {
+    if (!marcas.has(clave)) return;
+    if (abierto && abierto !== clave) marcaElegida(abierto, false);
+    abierto = clave;
+    marcaElegida(clave, true);
+    pintarFicha();
+    pintarRutas();
+    if (encuadrar) encuadrarFicha();
+  }
+
+  function cerrarFicha() {
+    if (!abierto) return;
+    marcaElegida(abierto, false);
+    abierto = null;
+    $('#m-ficha').classList.add('hidden');
+    pintarRutas();
+  }
+
+  function pintarFicha() {
+    const m = abierto && marcas.get(abierto);
+    const caja = $('#m-ficha');
+    if (!m) { caja.classList.add('hidden'); return; }
+    // Se rehace entera cada 10 s; el desplazamiento de dentro se conserva.
+    const arriba = caja.scrollTop;
+    caja.innerHTML = ficha(m.datos);
+    caja.classList.remove('hidden');
+    caja.scrollTop = arriba;
+  }
+
+  /**
+   * EL MAPA SE ENCUADRA EN EL HUECO QUE DEJA LA FICHA: el coche y lo que se
+   * dibuja de él (recogida y destino, o el último destino), sin que la tarjeta
+   * tape nada. Solo al abrirla: luego se deja el mapa donde lo ponga cada uno.
+   */
+  function encuadrarFicha() {
+    const m = abierto && marcas.get(abierto);
+    if (!m || m.datos.lat == null) return;
+    const pts = [[m.datos.lng, m.datos.lat]].concat(rutaDe(m.datos).puntos);
+    const caja = $('#m-ficha').getBoundingClientRect();
+    const zona = $('#m-mapa').getBoundingClientRect();
+    const movil = window.innerWidth < 768;
+    const pad = movil
+      ? { top: 40, right: 30, left: 30, bottom: Math.min(zona.height * 0.55, caja.height + 24) }
+      : { top: 50, right: 60, bottom: 50, left: Math.min(zona.width * 0.55, caja.width + 40) };
+    const b = new maplibregl.LngLatBounds();
+    pts.forEach(p => b.extend(p));
+    // Uno solo: de cerca, que se vea el minicoche. Varios: lo que quepa.
+    mapa.fitBounds(b, { padding: pad, maxZoom: pts.length > 1 ? 16 : Math.max(mapa.getZoom(), 16), duration: 700 });
+  }
+
+  /** La ficha del coche: quién, qué hace en BOLT, su viaje o su último destino, y el coche. */
   function ficha(c) {
     const t = TONOS[c.tono] || TONOS.parado;
-    const lineas = [];
-    // El de ahora, o el último que lo llevó en BOLT, dicho como tal.
+    const mut = s => '<span class="text-telecab-muted">' + s + '</span>';
+    const fila = (etq, html) => '<div class="m-ficha-fila"><span class="m-ficha-etq">' + etq + '</span><div class="min-w-0">' + html + '</div></div>';
+    const filas = [];
+
+    // Quién: el de ahora, o el último que lo llevó en BOLT, dicho como tal.
     const quien = nombreDe(c);
-    if (quien && esAhora(c)) lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> ' + esc(quien));
-    else if (quien) {
-      lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> <span class="text-telecab-muted">último:</span> '
-        + esc(quien) + (c.ultimoHace != null ? ' <span class="text-telecab-muted">· hace ' + haceLargo(c.ultimoHace) + '</span>' : ''));
+    if (quien) {
+      filas.push(fila(esAhora(c) ? 'Conductor' : 'Último',
+        '<b class="break-words">' + esc(quien) + '</b>'
+        + (!esAhora(c) && c.ultimoHace != null ? ' ' + mut('· hace ' + haceLargo(c.ultimoHace)) : '')
+        + (c.telefono ? '<a href="tel:' + esc(c.telefono) + '" class="block text-telecab-gold mt-0.5 tabular-nums">'
+            + '<i class="fa-solid fa-phone mr-1 text-[10px]"></i>' + esc(c.telefono) + '</a>' : '')));
     }
-    if (c.situacionEtiqueta) {
-      // "En espera · hace 5 s", y el numero CORRE solo: lo pone al dia el reloj
-      // de abajo cada segundo, sin volver a preguntar al servidor.
-      lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> <b>' + esc(c.situacionEtiqueta) + '</b>'
+
+    // Qué hace en BOLT, y desde cuándo: el número corre solo cada segundo.
+    filas.push(fila('BOLT', c.situacionEtiqueta
+      ? '<b>' + esc(c.situacionEtiqueta) + '</b>'
         + (c.situacionDesde
-            ? ' <span class="text-telecab-muted">· hace <span data-desde="' + esc(c.situacionDesde) + '">'
-              + desdeHaceTxt(c.situacionDesde) + '</span></span>'
-            : (c.desdeHace != null ? ' <span class="text-telecab-muted">· ' + hhmm(c.desdeHace) + '</span>' : '')));
-    } else {
-      lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> <span class="text-telecab-muted">no está en BOLT</span>');
+            ? ' ' + mut('· hace <span data-desde="' + esc(c.situacionDesde) + '">' + desdeHaceTxt(c.situacionDesde) + '</span>')
+            : (c.desdeHace != null ? ' ' + mut('· ' + hhmm(c.desdeHace)) : ''))
+      : mut('no está en BOLT')));
+
+    // EL VIAJE EN CURSO: de dónde a dónde. Sale de la API v2 de BOLT.
+    const v = c.viaje;
+    if (v) {
+      const parada = (estilo, icono, etq, p) => '<div class="m-parada"><span class="m-parada-punto" style="' + estilo + '">'
+        + '<i class="fa-solid ' + icono + '"></i></span><span class="min-w-0">' + mut(etq) + ' '
+        + (p.direccion ? esc(p.direccion) : mut(p.lat.toFixed(5) + ', ' + p.lng.toFixed(5))) + '</span></div>';
+      filas.push(fila('Viaje', '<b>' + esc(FASE[v.estado] || 'En viaje') + '</b>'
+        + (v.categoria ? ' ' + mut('· ' + esc(v.categoria)) : '')
+        + (v.programado ? ' ' + mut('· reservado') : '')
+        + '<div class="mt-1.5">'
+        + (punto(v.recogida) ? parada('background:' + cv('--tc-green') + ';color:' + cv('--tc-dark'), 'fa-person', 'Recogida', v.recogida) : '')
+        + (punto(v.destino) ? parada('background:' + tinta() + ';color:' + (mapaOscuro() ? '#0f172a' : '#f8fafc'), 'fa-flag-checkered', 'Destino', v.destino)
+          : '<p class="text-telecab-muted mt-1">Sin destino en el pedido</p>')
+        + (v.paradas ? '<p class="text-telecab-muted mt-1">' + v.paradas + ' parada' + (v.paradas === 1 ? '' : 's') + ' por el camino</p>' : '')
+        + '</div>'));
     }
-    lineas.push('<i class="fa-solid fa-gauge-high w-4 text-telecab-muted"></i> '
-      + (c.velocidad == null ? '—' : c.velocidad + ' km/h')
-      + (c.rueda && c.llevaAsi != null
-          ? ' <span class="text-telecab-muted">· rodando desde hace ' + hhmm(c.llevaAsi) + '</span>' : '')
-      + (c.km != null ? ' <span class="text-telecab-muted">· ' + c.km + ' km en el tramo</span>' : ''));
-    lineas.push('<i class="fa-solid fa-satellite-dish w-4 text-telecab-muted"></i> <span class="text-telecab-muted">'
-      + 'el equipo habló hace ' + hace(c.antiguedad) + '</span>');
-    // NO VUELVE A LA M-30: lo primero de lo del destino, con el reloj corriendo.
+
+    // NO VUELVE A LA M-30 y DÓNDE DEJÓ AL ÚLTIMO PASAJERO. De viaje no se
+    // enseña: ese «último» es el de antes y el que importa es el de ahora.
     if (c.noVuelve) {
-      lineas.push('<i class="fa-solid ' + NO_VUELVE.icono + ' w-4" style="color:' + cv(NO_VUELVE.tk) + '"></i> <b style="color:'
-        + cv(NO_VUELVE.tk) + '">Lleva <span data-min-desde="' + esc(c.noVuelve.desde) + '">' + minTxt(c.noVuelve.desde)
-        + '</span> sin volver a la M-30</b>');
+      filas.push(fila('M-30', '<b style="color:' + cv(NO_VUELVE.tk) + '"><i class="fa-solid ' + NO_VUELVE.icono + ' mr-1"></i>Lleva <span data-min-desde="'
+        + esc(c.noVuelve.desde) + '">' + minTxt(c.noVuelve.desde) + '</span> sin volver</b>'));
     }
-    // DÓNDE DEJÓ AL ÚLTIMO PASAJERO. De viaje no se enseña: ese «último» es el
-    // de antes y el que importa es el que lleva ahora.
     const ud = c.ultimoDestino;
-    if (ud && ud.pendiente && c.situacion !== 'viaje') {
-      lineas.push('<i class="fa-solid fa-flag-checkered w-4 text-telecab-muted"></i> <span class="text-telecab-muted">' + esc(ud.texto) + '</span>');
-    } else if (ud && c.situacion !== 'viaje') {
-      lineas.push('<i class="fa-solid fa-flag-checkered w-4 text-telecab-muted"></i> <span class="text-telecab-muted">último destino:</span> '
-        + esc(ud.direccion || 'sin dirección')
-        + (ud.dejadoAt ? ' <span class="text-telecab-muted">· hace <span data-desde="' + esc(ud.dejadoAt) + '">' + desdeHaceTxt(ud.dejadoAt) + '</span></span>' : '')
-        + (ud.kmAlDestino != null ? ' <span class="text-telecab-muted">· a ' + String(ud.kmAlDestino).replace('.', ',') + ' km de aquí</span>' : ''));
-      if (ud.texto) {
-        const tk = ud.tendencia === 'vuelve' ? '--tc-green' : ud.tendencia === 'quieto' ? '--tc-mapa-espera' : '--tc-mapa-descanso';
-        lineas.push('<i class="fa-solid ' + (ud.tendencia === 'vuelve' ? 'fa-arrow-trend-down' : ud.tendencia === 'aleja' ? 'fa-arrow-trend-up' : ud.tendencia === 'vueltas' ? 'fa-rotate' : 'fa-location-dot')
-          + ' w-4" style="color:' + cv(tk) + '"></i> <b style="color:' + cv(tk) + '">' + esc(ud.texto) + '</b>');
+    if (ud && !enViaje(c)) {
+      let h;
+      if (ud.pendiente) h = mut(esc(ud.texto));
+      else {
+        h = esc(ud.direccion || 'sin dirección')
+          + (ud.dejadoAt ? ' ' + mut('· hace <span data-desde="' + esc(ud.dejadoAt) + '">' + desdeHaceTxt(ud.dejadoAt) + '</span>') : '')
+          + (ud.kmAlDestino != null ? ' ' + mut('· a ' + String(ud.kmAlDestino).replace('.', ',') + ' km') : '');
+        if (ud.texto) {
+          const tk = ud.tendencia === 'vuelve' ? '--tc-green' : ud.tendencia === 'quieto' ? '--tc-mapa-espera' : '--tc-mapa-descanso';
+          h += '<p class="mt-0.5 font-semibold" style="color:' + cv(tk) + '"><i class="fa-solid '
+            + (ud.tendencia === 'vuelve' ? 'fa-arrow-trend-down' : ud.tendencia === 'aleja' ? 'fa-arrow-trend-up' : ud.tendencia === 'vueltas' ? 'fa-rotate' : 'fa-location-dot')
+            + ' mr-1"></i>' + esc(ud.texto) + '</p>';
+        }
       }
+      filas.push(fila('Dejó al último', h));
     }
+
+    // El coche: cómo va, y lo fresco que es el punto.
+    filas.push(fila('Coche', (c.velocidad == null ? '—' : '<b class="tabular-nums">' + c.velocidad + ' km/h</b>')
+      + (c.rueda && c.llevaAsi != null ? ' ' + mut('· rodando ' + hhmm(c.llevaAsi)) : '')
+      + (c.km != null ? ' ' + mut('· ' + String(c.km).replace('.', ',') + ' km en el tramo') : '')
+      + '<span class="block text-telecab-muted">el GPS habló hace ' + hace(c.antiguedad) + '</span>'));
+
     // EN QUÉ ESTADO ESTÁ EL COCHE PARA LA CASA. Es lo que deja leer un gris: uno
     // «En taller» lleva semanas callado y es normal; uno «Operativo» callado
     // tres meses es un equipo que hay que ir a mirar.
     if (c.estadoVehiculo && (c.tono === 'perdido' || !c.operativo)) {
-      lineas.push('<i class="fa-solid fa-screwdriver-wrench w-4 ' + (c.operativo ? 'text-telecab-warn' : 'text-telecab-muted')
-        + '"></i> <span class="' + (c.operativo ? 'text-telecab-warn' : 'text-telecab-muted') + '">'
-        + esc(c.estadoVehiculo) + (c.operativo ? ' — y su GPS no habla' : '') + '</span>');
+      filas.push(fila('Estado', '<span class="' + (c.operativo ? 'text-telecab-warn' : 'text-telecab-muted') + '">'
+        + esc(c.estadoVehiculo) + (c.operativo ? ' — y su GPS no habla' : '') + '</span>'));
     }
-    if (c.telefono) {
-      lineas.push('<a href="tel:' + esc(c.telefono) + '" class="text-telecab-gold">'
-        + '<i class="fa-solid fa-phone w-4"></i> ' + esc(c.telefono) + '</a>');
-    }
-    return '<p class="font-bold text-sm mb-1">' + esc(c.matricula || '#' + c.unidad)
-      + ' <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded" style="background:' + cv(t.tk, .18)
-      + ';color:' + cv(t.tk) + '">' + esc(t.texto) + '</span></p>'
-      + (c.motivo ? '<p class="text-[11px] mb-1.5" style="color:' + cv(t.tk) + '">' + esc(c.motivo) + '</p>' : '')
-      + '<div class="space-y-0.5">' + lineas.map(l => '<p>' + l + '</p>').join('') + '</div>';
+
+    return '<div class="flex items-start gap-2 px-3.5 pt-3 pb-2">'
+      + '<div class="min-w-0 flex-1">'
+      + '<p id="m-ficha-titulo" class="font-bold text-sm tabular-nums">' + esc(c.matricula || '#' + c.unidad) + '</p>'
+      + '<span class="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:'
+      + cv(t.tk, .18) + ';color:' + cv(t.tk) + '"><i class="fa-solid ' + t.icono + '"></i>' + esc(t.texto) + '</span>'
+      + '</div>'
+      + '<button type="button" data-cerrar class="w-7 h-7 shrink-0 rounded-lg text-telecab-muted hover:text-telecab-text hover:bg-telecab-card2 transition"'
+      + ' aria-label="Cerrar la ficha" title="Cerrar (Esc)"><i class="fa-solid fa-xmark"></i></button>'
+      + '</div>'
+      + (c.motivo ? '<p class="mx-3.5 mb-2 px-2 py-1.5 rounded-lg text-[11px]" style="background:' + cv(t.tk, .1) + ';color:' + cv(t.tk) + '">' + esc(c.motivo) + '</p>' : '')
+      + '<div class="px-3.5 pb-3">' + filas.join('') + '</div>';
   }
 
   /** Vuelve a dar color a los puntos ya pintados (al cambiar de tema). */
@@ -461,10 +729,22 @@
     marcas.forEach(m => {
       const t = TONOS[m.datos.tono] || TONOS.parado;
       m.el.style.background = cv(t.tk);
+      m.el.style.color = cv(t.tk);
     });
     // El anillo, si el estilo no cambió: un tema claro y otro claro comparten
     // mapa, pero no el azul de la espera.
     if (mapa && mapa.getLayer && mapa.getLayer('m30')) mapa.setPaintProperty('m30', 'line-color', cvComa('--tc-mapa-espera'));
+    // Los trazos y los pines van con la tinta del MAPA: se rehacen.
+    if (mapa && mapa.getLayer && mapa.getLayer('rutas-plan')) mapa.setPaintProperty('rutas-plan', 'line-color', tinta(0.75));
+    if (mapa && mapa.getLayer && mapa.getLayer('rutas-tramo')) mapa.setPaintProperty('rutas-tramo', 'line-color', cvComa('--tc-green'));
+    quitarPines();
+    pintarRutas();
+    if (abierto) pintarFicha();
+  }
+
+  /** El minicoche, desde el zoom de calle. */
+  function ajustarZoom() {
+    if (mapa) $('#m-mapa').classList.toggle('m-cerca', mapa.getZoom() >= ZOOM_COCHE);
   }
 
   // ── Pintar: mover lo que ya está, no rehacerlo ───────────────────────────
@@ -487,15 +767,14 @@
       if (!m) {
         const el = document.createElement('div');
         el.className = 'm-coche';
-        el.innerHTML = '<i class="fa-solid"></i>';
-        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '280px' });
+        // El punto (icono) y el minicoche: el CSS enseña uno u otro según el zoom.
+        el.innerHTML = '<i class="fa-solid"></i>' + AUTO_SVG;
+        el.setAttribute('role', 'button');
         const clave = c.clave;
-        // Al abrir la ficha, el trazo hasta donde dejó al último pasajero.
-        popup.on('open', () => { abierto = clave; pintarDestino(); });
-        popup.on('close', () => { if (abierto === clave) { abierto = null; pintarDestino(); } });
+        // Al pincharlo, su ficha en la esquina (ya no es un globo encima).
+        el.addEventListener('click', ev => { ev.stopPropagation(); abrirFicha(clave); });
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([c.lng, c.lat])
-          .setPopup(popup)
           .addTo(mapa);
         m = { marker, el, datos: c };
         marcas.set(c.clave, m);
@@ -505,6 +784,8 @@
 
       m.datos = c;
       m.el.style.background = cv(t.tk);
+      m.el.style.color = cv(t.tk);
+      girar(m);
       // CON `classList`, NUNCA CON `className`.
       //
       // MapLibre le añade al elemento su propia clase `maplibregl-marker`, que
@@ -516,6 +797,7 @@
       m.el.classList.remove.apply(m.el.classList, CLASES_TONO);
       m.el.classList.remove('m-dudoso');
       m.el.classList.add('m-coche', 'm-' + c.tono);
+      m.el.classList.toggle('m-elegido', abierto === c.clave);
       // El rojo levantado sobre datos de BOLT viejos se pinta hueco: sigue
       // estando ahi, pero no acusa a nadie.
       if (c.dudoso) m.el.classList.add('m-dudoso');
@@ -531,14 +813,15 @@
       } else if (et) {
         et.remove();
       }
-      // El contenido se rehace siempre: los segundos de "hace" corren.
-      m.marker.getPopup().setHTML(ficha(c));
     });
 
     // Lo que ya no sale (por el filtro, o porque Mapon dejó de verlo) se quita.
     marcas.forEach((m, k) => { if (!vistos.has(k)) { m.marker.remove(); marcas.delete(k); } });
-    // El coche se mueve: el trazo al último destino se mueve con él.
-    pintarDestino();
+    // La ficha abierta, al día; si su coche ya no está en el mapa, se cierra.
+    if (abierto && !marcas.has(abierto)) { abierto = null; $('#m-ficha').classList.add('hidden'); }
+    else if (abierto) pintarFicha();
+    // El coche se mueve: sus trazos se mueven con él.
+    pintarRutas();
 
     // Solo la PRIMERA vez se encuadra la flota. Después no: alguien puede estar
     // mirando una calle concreta y que el mapa salte cada treinta segundos
@@ -730,11 +1013,28 @@
       }
       return;
     }
-    mapa.flyTo({ center: m.marker.getLngLat(), zoom: Math.max(mapa.getZoom(), 14), duration: 700 });
-    m.marker.togglePopup();
+    abrirFicha(b.dataset.clave);
   });
 
   $('#m-recargar').addEventListener('click', () => cargar(true));
+
+  // La ficha se cierra con su aspa o con Esc.
+  $('#m-ficha').addEventListener('click', e => { if (e.target.closest('[data-cerrar]')) cerrarFicha(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && abierto && !document.querySelector('[role="dialog"][aria-modal="true"]')) cerrarFicha();
+  });
+
+  // El desplegable del estilo del mapa.
+  const selEstilo = $('#m-estilo');
+  selEstilo.innerHTML = ESTILOS.map(e => '<option value="' + e.k + '">' + esc(e.texto) + '</option>').join('');
+  selEstilo.value = ESTILOS.some(e => e.k === preferido) ? preferido : 'auto';
+  selEstilo.addEventListener('change', () => {
+    preferido = selEstilo.value;
+    try { localStorage.setItem(PREF_ESTILO, preferido); } catch (_) { /* sin almacenamiento: vale para esta visita */ }
+    const nuevo = estiloDelTema();
+    if (mapa && mapa.__estilo !== nuevo) { mapa.__estilo = nuevo; mapa.setStyle(nuevo); }
+    repintarColores();
+  });
 
   // El buscador filtra al escribir, y Intro vuela al primero que tenga punto.
   $('#m-buscar').addEventListener('input', e => {
@@ -749,9 +1049,7 @@
       .sort((a, b) => ORDEN.indexOf(a.tono) - ORDEN.indexOf(b.tono))
       .find(x => marcas.has(x.clave));
     if (!c) return;
-    const m = marcas.get(c.clave);
-    mapa.flyTo({ center: m.marker.getLngLat(), zoom: Math.max(mapa.getZoom(), 14), duration: 700 });
-    if (!m.marker.getPopup().isOpen()) m.marker.togglePopup();
+    abrirFicha(c.clave);
   });
 
   arrancar();

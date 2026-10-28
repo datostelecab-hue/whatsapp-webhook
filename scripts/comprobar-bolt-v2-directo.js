@@ -328,6 +328,23 @@ const ahora = require('../services/flotaViva/ahora');
   igual('Una vacía sin confirmar ya cuenta como que BOLT contesta', falloTrasVacia, null);
   igual('Si BOLT alterna vacía y llena, un aviso y no uno por vacía', cuantas(/dice que no hay nadie conectado/), 1);
 
+  // ── 10. El viaje en curso: recogida y destino ─────────────────────────────
+  const parada = (type, lat, lng, address, departed) => ({ type, address, location: { lat, lng }, arrived_at_datetime: null, departed_at_datetime: departed || null });
+  const con = enLinea.viajeDe({ state: 'driving_with_client', type: 'regular', category_name: 'Bolt',
+    stops: [parada('dropoff', 40.45, -3.69, 'Calle Destino 1'), parada('pickup', 40.41, -3.70, 'Calle Recogida 2', '2026-10-28T10:00:00+01:00')] });
+  igual('La recogida y el destino van por su tipo, no por su sitio en la lista',
+    [con.recogida.direccion, con.destino.direccion, con.conCliente], ['Calle Recogida 2', 'Calle Destino 1', true]);
+  const yendo = enLinea.viajeDe({ state: 'driver_accepted', stops: [parada('pickup', 40.41, -3.70, null), parada('waypoint', 40.42, -3.70, 'X'),
+    parada('dropoff', 40.45, -3.69, 'Calle Destino 1'), { type: 'dropoff', address: 'sin sitio' }] });
+  igual('Yendo a recoger: sin cliente, con las paradas de por medio y sin la que no trae sitio',
+    [yendo.conCliente, yendo.paradas, yendo.recogida.direccion, yendo.destino.direccion], [false, 1, null, 'Calle Destino 1']);
+  igual('Una oferta sin aceptar no es un viaje en curso', enLinea.viajeDe({ state: 'waiting_driver_confirmation', stops: [] }), null);
+  igual('Un viaje acabado tampoco', enLinea.viajeDe({ state: 'finished', stops: [] }), null);
+  igual('Sin pedido, nada', enLinea.viajeDe(null), null);
+  const tv = enLinea.traducir(conductor('d7', 'on_ride', '2026-10-28T10:00:00+01:00', 'vA', '1111AAA',
+    { current_order: { state: 'driver_arrived_to_client', stops: [parada('pickup', 40.41, -3.70, 'Calle Recogida 2')] } }));
+  igual('El conductor traducido lleva su viaje', [tv.viaje.estado, tv.viaje.recogida.direccion, tv.viaje.destino], ['driver_arrived_to_client', 'Calle Recogida 2', null]);
+
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

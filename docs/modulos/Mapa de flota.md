@@ -336,6 +336,25 @@ El fondo se elige por la **luminancia** de `--tc-dark`, no por una lista de tema
 claros: vale para los quince de hoy y para el que se añada mañana. →
 [[Componentes de la casa]]
 
+### Estilo, minicoche, ficha y viaje (28/10/2026)
+
+Camilo pidió cuatro cosas: el mapa en OSM Bright, un minicoche al acercarse, una ficha que no tape el último viaje y la recogida y el destino de los que están de viaje. Después añadió que el estilo del mapa se pudiera elegir aparte del tema.
+
+- **El estilo del mapa.** El desplegable de la cinta lo elige aparte del tema de la casa, y se guarda en cada navegador (`localStorage`).
+  - **«Automático»** pone *bright* (OSM Bright) en los temas claros; antes era *positron*. En los oscuros sigue *dark*.
+  - **Los demás estilos** se quedan aunque cambie el tema: *Bright*, *Liberty*, *Positron*, *Fiord* y *Oscuro*. Son todos los de OpenFreeMap. Los de OpenMapTiles alojados en MapTiler piden clave.
+  - **Lo que pintamos encima** (trazos, bandera) va en la tinta del **mapa**, no de la casa: con tema claro y mapa oscuro, el texto de la casa no se vería.
+- **El minicoche.** Desde el zoom 15, el punto pasa a ser un coche visto desde arriba, girado por el `rumbo` de Mapon y del color de lo que hace en BOLT. Es el mismo elemento del marcador, así que el clic y los estados (latido, a medias) no cambian. Gira por el camino corto y compensa si el mapa está girado.
+- **La ficha va anclada en una esquina** del mapa: arriba a la izquierda, o abajo y a lo ancho en el móvil. Antes era un globo encima del punto y tapaba el trazo al último destino.
+  - Al abrirla, el mapa se encuadra **en el hueco libre**, con el coche y lo que se dibuja de él.
+  - Se cierra con su aspa, con Esc o pinchando en el mapa fuera de un coche.
+  - Se rehace cada 10 s sin moverse de su sitio.
+- **El viaje en curso** sale de `current_order` de la [[El ahora de la flota|API v2]] (`enLinea.viajeDe`) y llega en `coches[].viaje`. Solo en las fases con cliente: va a recoger, esperando al cliente, con el cliente y llegando al destino.
+  - La recogida y el destino se buscan por su `type` (*pickup* / *dropoff*), no por su orden en la lista.
+  - En la ficha salen las dos direcciones. En el mapa: del coche a la recogida en verde y de la recogida al destino punteado, o del coche al destino si ya lleva al cliente. Son líneas rectas: dicen hacia dónde va, no la ruta.
+  - Con la v2 caída, no hay viaje y todo sigue como antes.
+  - Las direcciones son del cliente: viven en memoria y no se guardan.
+
 ## Dos decisiones que no son las obvias
 
 **La lista lateral no es un `Listado`.** No es una pantalla que liste, es el

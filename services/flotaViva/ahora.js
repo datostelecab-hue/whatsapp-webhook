@@ -236,6 +236,8 @@ function conLaV2(x, d, cat, ahoraMs) {
     telefono: (mismo && x.telefono) || d.telefono || x.telefono,
     desde: d.desde,
     segundos: segundosDesde(d.desde, ahoraMs),
+    // El viaje en curso (recogida y destino), solo de la v2: la base no lo sabe.
+    viaje_actual: d.viaje || null,
     // Los km y el GPS siguen siendo los del tramo: eso no lo sabe la v2.
     fuente_ahora: 'v2',
   };
