@@ -57,6 +57,18 @@ Las dos tablas que hacen el trabajo sucio:
 
 **No están en `db/`.** Las crea `services/flotaViva/esquema.sql`, que aplica el propio módulo con `db.preparar()` la primera vez que alguien lee o escribe. Nacieron en otra rama y por eso viven aparte; el prefijo `fv_` garantiza que no pisen nada.
 
+> [!note] Solo se aplica si ha cambiado (28/10/2026)
+> Hasta entonces se reaplicaba **entero en cada arranque**. Aunque todo fuera «IF NOT EXISTS», bloqueaba tablas hasta el COMMIT. Al desplegar, con la instancia vieja de Render viva y las pantallas reconectando, salía «deadlock detected» en el CRON Mapa y en la media de la bitácora.
+>
+> Ahora funciona así:
+> - **Huella.** `fv_esquema` guarda la huella del fichero. Si coincide, no se ejecuta nada.
+> - **Bloqueos.** Cuando cambia, el esquema coge **todas** las `fv_*` de golpe con `LOCK … NOWAIT`. Si alguna está ocupada, cede al momento (55P03) y reintenta durante un minuto, así que nunca se queda esperando con una tabla cogida.
+> - **Misma transacción.** La huella se escribe junto con el esquema: o entran las dos cosas o ninguna.
+>
+> Pruebas en la copia local: `scripts/comprobar-esquema-flota-viva.js`.
+>
+> Si algún día se hace «Rollback» en Render a un commit anterior a este, hay que borrar la fila de `fv_esquema` (con una migración) para que se vuelva a aplicar.
+
 `fv_matricula`, `fv_vehiculo`, `fv_conductor`, `fv_cat_situacion`, `fv_estado_bolt`, `fv_tramo`, `fv_vuelta`, `fv_franja`, `fv_corte`, `fv_cat_incidencia`, `fv_incidencia`, `fv_cat_gestion`, `fv_seguimiento`, `fv_ruta`, `fv_odometro`, y la vista **`fv_ahora`**, que es lo que pinta el panel *En directo* de [[Control]]. Ver [[Flota viva]].
 
 ### Auditoría

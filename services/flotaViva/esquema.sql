@@ -737,4 +737,15 @@ COMMENT ON COLUMN fv_posicion.visto_at IS
 COMMENT ON COLUMN fv_posicion.estado_mapon IS
   'driving / standing / nodata / nogps / service, tal cual lo dice Mapon';
 
+-- ── QUÉ VERSIÓN DE ESTE FICHERO ESTÁ APLICADA (28/10/2026) ──────────────────
+-- Una fila: la huella de esquema.sql la última vez que se aplicó. Al arrancar,
+-- services/flotaViva/db.js la compara con la del fichero y, si coincide, no
+-- ejecuta nada de lo de arriba: reaplicarlo en cada despliegue bloqueaba tablas
+-- y daba «deadlock detected» con las pantallas que reconectaban.
+CREATE TABLE IF NOT EXISTS fv_esquema (
+  id           SMALLINT    PRIMARY KEY CHECK (id = 1),
+  huella       TEXT        NOT NULL,
+  aplicado_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;

@@ -303,10 +303,18 @@ async function pasada() {
   corriendo = true;
 
   const t0 = Date.now();
-  await db.preparar();
-
-  const vuelta = (await db.consulta(
-    'INSERT INTO fv_vuelta (arrancada_at) VALUES (now()) RETURNING id')).rows[0].id;
+  // Si esto falla, la marca se quita: quedaba puesta para siempre y el motor no
+  // volvía a dar una vuelta hasta el siguiente despliegue (lo vio la revisión
+  // del arranque del esquema, 28/10/2026). El resto lo cubre el finally de abajo.
+  let vuelta;
+  try {
+    await db.preparar();
+    vuelta = (await db.consulta(
+      'INSERT INTO fv_vuelta (arrancada_at) VALUES (now()) RETURNING id')).rows[0].id;
+  } catch (e) {
+    corriendo = false;
+    throw e;
+  }
 
   // El reloj de guardia. No corta nada; solo deja escrito que esto se colgó,
   // para que la próxima vez no haya que deducirlo de una tabla con huecos.
