@@ -12,3 +12,5 @@ scripts/datos/
 
 # El correo del entorno local lleva una contraseña (scripts/entorno-local/correo.env.ejemplo)
 scripts/entorno-local/correo.env
+# El usuario de pruebas del ERP local (scripts/entorno-local/usuario-de-prueba.js)
+scripts/entorno-local/usuario.env

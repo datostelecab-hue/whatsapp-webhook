@@ -31,7 +31,13 @@ node scripts/entorno-local/arrancar.js
 
 **Arrancar** levanta los contenedores si no lo están y arranca el ERP. Desde el panel del navegador de Claude es la configuración `entorno-local` del `launch.json`.
 
-Para entrar al ERP local valen los usuarios y contraseñas de producción, porque la copia los trae.
+Para entrar al ERP local valen los usuarios y contraseñas de producción, porque la copia los trae. Para no usar la cuenta de nadie (lo que hace Claude para probar pantallas), hay un usuario de pruebas:
+
+```
+node scripts/entorno-local/usuario-de-prueba.js
+```
+
+Crea o deja al día `pruebas@telecab.localhost`, con rol desarrollador, y le pone una contraseña al azar cada vez. La contraseña va a `scripts/entorno-local/usuario.env`, que git ignora, y no sale por pantalla. La próxima copia de producción lo borra; basta con volver a lanzarlo.
 
 Para entrar al [[Portal de conductores]] sin escribir el DNI de nadie de verdad:
 
