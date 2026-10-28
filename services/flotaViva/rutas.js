@@ -1392,11 +1392,28 @@ ${SOLAPE_KM}
   //
   // Solo se toca el AHORA, y solo si la ventana sigue viva: en un dia pasado no
   // hay ningun "ahora" que corregir.
+  //
+  // Con la API v2 (desde el 28/10/2026) la foto ES el ahora de BOLT: quien sale
+  // en ella esta en lo que dice, y quien no sale no esta conectado aunque su
+  // tramo abierto diga otra cosa (el motor va cada 5 min). No hay nada que
+  // comparar.
   const vivos = [...porUuid.values()].filter(a => a._ventanaViva);
   if (vivos.length) {
     const foto = await require('./ahora').foto();
     vivos.forEach(a => {
       const x = foto.porConductor.get(a.uuid);
+      if (foto.fuente === 'v2') {
+        if (x && x.situacion) {
+          a.situacionAhora = x.situacion;
+          a.conectadoAhora = x.conectado;
+          a.fuenteAhora = x.fuente;
+        } else if (a.conectadoAhora) {
+          a.situacionAhora = 'desconectado';
+          a.conectadoAhora = false;
+          a.fuenteAhora = 'v2';
+        }
+        return;
+      }
       if (!x || !x.situacion) return;
       // Si el motor sabe algo MAS nuevo de sus tramos, manda el motor.
       if (a._abiertoDesde && new Date(a._abiertoDesde) > new Date(x.desde)) return;

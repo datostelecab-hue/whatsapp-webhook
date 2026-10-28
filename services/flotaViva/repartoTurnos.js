@@ -440,6 +440,6 @@ const cierreDe = fecha => instante(sumarDias(fecha, 1), INICIO.noche);
 const DESDE = '2026-10-06';
 
 module.exports = {
-  repartir, etiquetaNN, porTurno, porPersonaYDia, intervalosEfectivos,
-  instante, sumarDias, clave, cierreDe, INICIO, ENTRA, DESDE,
+  repartir, etiquetaPlan, etiquetaNN, porTurno, porPersonaYDia, intervalosEfectivos,
+  enMadrid, instante, sumarDias, clave, cierreDe, INICIO, ENTRA, DESDE,
 };

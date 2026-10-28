@@ -335,6 +335,90 @@ async function panel() {
   };
 }
 
+/**
+ * QUIÉN ESTÁ CONECTADO AHORA, POR SU TURNO (Camilo, 28/10/2026: «cuántos
+ * conectados hay en el turno actual, separa los que tengan turno día con turno
+ * noche»).
+ *
+ * Todos los conectados de Madrid según la foto del ahora —con la API v2 de
+ * BOLT, su lista tal cual— y de cada PERSONA (sus cuentas y las prestadas
+ * cuentan una vez) el turno que tiene en el plan a esta hora, con la misma
+ * regla que reparte las horas (repartoTurnos.etiquetaPlan): a las 18:00, quien
+ * es de día y aún no ha cerrado cuenta como de día. Quien no tiene turno en el
+ * plan va aparte.
+ *
+ * Es ligero (la foto ya está hecha y el plan son dos días), así que va fuera de
+ * la caché del panel: la pantalla lo pide cada 10 s. Con varias pantallas
+ * abiertas, mientras la foto sea la misma se responde lo ya contado.
+ */
+let vivoCache = null;     // { foto, t, datos }
+async function conectadosPorTurno() {
+  const foto = await require('./flotaViva/ahora').foto();
+  if (vivoCache && vivoCache.foto === foto && Date.now() - vivoCache.t < 10000) return vivoCache.datos;
+  const datos = await contarPorTurno(foto);
+  vivoCache = { foto, t: Date.now(), datos };
+  return datos;
+}
+
+async function contarPorTurno(foto) {
+  const reparto = require('./flotaViva/repartoTurnos');
+  const uuids = [...foto.porConductor.values()].filter(x => x.conectado).map(x => String(x.uuid));
+  const ahoraMs = Date.now();
+  const hoy = reparto.enMadrid(ahoraMs).fecha;
+  const ayer = reparto.sumarDias(hoy, -1);
+
+  // De cada cuenta, su persona: la de su ficha o, si hoy está prestada, quien
+  // la lleva (como en Control). Sin ficha, la cuenta es la persona.
+  const rp = uuids.length ? await db.consulta(
+    `SELECT ce.externo_id AS uuid, COALESCE(f.conductor_id, ce.conductor_id) AS conductor_id
+       FROM conductor_externo ce
+       LEFT JOIN LATERAL (
+         SELECT f.conductor_id FROM cuenta_fantasma f
+          WHERE f.cuenta_id = ce.id AND f.anulado_at IS NULL
+            AND f.desde <= $2::date AND (f.hasta IS NULL OR f.hasta >= $2::date)
+          ORDER BY f.desde DESC LIMIT 1) f ON TRUE
+      WHERE ce.sistema = 'bolt' AND ce.externo_id = ANY($1::text[])`, [uuids, hoy]) : { rows: [] };
+  const deCuenta = new Map(rp.rows.filter(x => x.conductor_id != null).map(x => [String(x.uuid), Number(x.conductor_id)]));
+  const personas = new Map();     // persona → id de conductor (o null sin ficha)
+  uuids.forEach(u => {
+    const id = deCuenta.get(u);
+    personas.set(id != null ? 'c' + id : 'u' + u, id != null ? id : null);
+  });
+  const ids = [...new Set([...personas.values()].filter(id => id != null))];
+
+  // EL PLAN de ayer y hoy, el mismo que pinta el planificador y lee Control.
+  const rplan = ids.length ? await db.consulta(
+    `SELECT DISTINCT to_char(c.dia, 'YYYY-MM-DD') AS dia, c.conductor_id, t.codigo AS turno
+       FROM f_cobertura($1::date, $2::date, TRUE) c
+       JOIN turno t ON t.id = c.turno_id
+      WHERE t.codigo IN ('dia', 'noche', 'todoturno') AND c.conductor_id = ANY($3::bigint[])`,
+    [ayer, hoy, ids]) : { rows: [] };
+  const planes = new Map();
+  rplan.rows.forEach(x => {
+    const id = Number(x.conductor_id);
+    if (!planes.has(id)) planes.set(id, new Map());
+    const m = planes.get(id);
+    if (!m.has(x.dia)) m.set(x.dia, new Set());
+    m.get(x.dia).add(x.turno);
+  });
+  const VACIO = new Set();
+
+  const cuenta = { dia: 0, noche: 0, todoturno: 0, sinTurno: 0 };
+  personas.forEach(id => {
+    const plan = id != null ? planes.get(id) : null;
+    const planDe = fecha => (plan && plan.get(fecha)) || VACIO;
+    const e = plan ? reparto.etiquetaPlan(ahoraMs, planDe) : null;
+    if (e) cuenta[e.turno]++;
+    else if (planDe(hoy).has('todoturno')) cuenta.todoturno++;
+    else cuenta.sinTurno++;
+  });
+
+  return {
+    at: foto.at, fuente: foto.fuente || 'bd', v2At: foto.v2At || null,
+    total: personas.size, ...cuenta,
+  };
+}
+
 // ── Caché: se sirve lo que hay y se refresca por detrás ─────────────────────
 // Este panel lo abre TODO EL MUNDO al entrar y son unas veinte consultas
 // pesadas: tarda unos nueve segundos en frío. Una pantalla de entrada no puede
@@ -382,5 +466,6 @@ async function panelCacheado({ forzar = false } = {}) {
 
 module.exports = {
   panel: panelCacheado,
+  conectadosPorTurno,
   noEfectivas, kilometros, jornadaDe, diaMenos, JORNADA_DEFECTO,
 };

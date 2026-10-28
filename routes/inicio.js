@@ -50,6 +50,19 @@ router.get('/api/panel', async (req, res) => {
   }
 });
 
+// Los conectados de ahora, por turno. Aparte del panel y sin su caché: es lo
+// único de Inicio que cambia cada pocos segundos, y la pantalla lo pide sola
+// cada 10 s.
+router.get('/api/vivo', async (req, res) => {
+  if (!veCifras(res)) return res.status(403).json({ status: 'error', msg: 'Sin permiso para las cifras' });
+  try {
+    res.json({ status: 'ok', ...(await inicio.conectadosPorTurno()) });
+  } catch (error) {
+    console.error('❌ [INICIO] vivo:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
 /** Los módulos del catálogo que esta persona puede abrir, con su etiqueta. */
 function modulosDe(res) {
   const u = res.locals.usuario;

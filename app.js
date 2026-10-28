@@ -436,9 +436,21 @@ if (pruebas.ACTIVO) {
 //
 // Se apaga con BOLT_DIRECTO=off sin tocar codigo. Y `programar` lo apaga solo
 // con MODO_PRUEBAS=1, como a todo lo que sale fuera.
+//
+// CON LA v2 AL DÍA, UNA VEZ POR MINUTO (28/10/2026). El ahora de las pantallas
+// ya sale de la v2 (más abajo); esto solo hace falta para que el motor tenga
+// los apuntes pronto y para el destino del viaje recién terminado. Y cada
+// pasada reescribe cinco minutos de apuntes: cada 10 s era la base trabajando
+// para nada (Camilo: «la base de datos es la que más está trabajando ahora
+// mismo»). Si la v2 cae, vuelve sola a cada 10 s. Lo histórico no cambia: la
+// tarea de cinco minutos sigue guardando todos los apuntes.
 if (process.env.BOLT_DIRECTO !== 'off') {
+  const DIRECTO_CON_V2_MS = (Number(process.env.BOLT_DIRECTO_CON_V2_S) || 60) * 1000;
+  let ultimoDirecto = 0;
   programar('*/10 * * * * *', async () => {
     try {
+      if (require('./services/flotaViva/enLinea').vigente() && Date.now() - ultimoDirecto < DIRECTO_CON_V2_MS) return;
+      ultimoDirecto = Date.now();
       const r = await require('./services/ingesta').estadosAlDia();
       // Si ha entrado algo, la foto del AHORA ya no vale (services/flotaViva/
       // ahora.js): la siguiente pantalla que pregunte —el mapa, En directo— la
@@ -446,6 +458,30 @@ if (process.env.BOLT_DIRECTO !== 'off') {
       if (r && r.nuevos) require('./services/flotaViva/ahora').invalidar('directo');
     } catch (error) {
       console.error(`❌ [BOLT DIRECTO] ${error.message}`);
+    }
+  }, { timezone: 'Europe/Madrid' });
+}
+
+// ── QUIÉN ESTÁ CONECTADO, POR LA API v2: cada 5 segundos (28/10/2026) ───────
+// `getOnlineDrivers` dice de una vez quién está conectado, en qué y con qué
+// coche, y se queda en memoria (services/flotaViva/enLinea.js). La foto del
+// AHORA se hace con eso mientras esté fresco; el mapa, En directo e Inicio lo
+// leen de ahí, sin llamar a BOLT. Solo el directo: las horas y los tramos
+// siguen saliendo de la ingesta de la v1.
+//
+// Sin CLIENT_ID_BOLT y CLIENT_SECRET_BOLT en el entorno no hace nada y todo
+// sigue con la base. Se apaga con BOLT_V2_DIRECTO=off.
+//
+// Cada 5 s y no cada 10 para que las pantallas que se refrescan cada 10 (mapa,
+// En directo, Inicio) nunca enseñen algo de hace más de quince. Es UNA pregunta
+// por vuelta (solo la 143626) y getOnlineDrivers admite 20 por segundo.
+if (process.env.BOLT_V2_DIRECTO !== 'off') {
+  programar('*/5 * * * * *', async () => {
+    try {
+      const r = await require('./services/flotaViva/enLinea').refrescar();
+      if (r && r.cambio) require('./services/flotaViva/ahora').invalidar('v2');
+    } catch (error) {
+      console.error(`❌ [BOLT v2] ${error.message}`);
     }
   }, { timezone: 'Europe/Madrid' });
 }

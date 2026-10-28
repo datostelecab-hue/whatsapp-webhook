@@ -8,6 +8,33 @@ estado: en producción
 
 Qué está haciendo en BOLT **cada coche y cada conductor en este momento**, calculado **una sola vez** para todas las pantallas que lo enseñan. Vive en `services/flotaViva/ahora.js`.
 
+## Desde el 28/10/2026: primero la API v2 de BOLT
+
+Camilo: *«usemos la de DriversOnline de una vez para inicio, control y el mapa ... que sea solo para datos en directo, los históricos déjalos quietos»*.
+
+`getOnlineDrivers` (v2) contesta de una vez quién está conectado, en qué y desde cuándo (`changed_at`), y con qué coche. Los uuid de conductor y de coche son **los mismos que en la v1** (53 de 53 el 28/10), así que se cruza con lo que ya hay sin ingesta nueva.
+
+```
+  BOLT v2 getOnlineDrivers ──(cada 5 s, app.js)──► enLinea.js (en memoria, nunca en la base)
+                                                        │ vigente()
+                                                        ▼
+                                                  FOTO DEL AHORA ──► mapa · En directo · Inicio
+                                                        ▲
+                     sin lista válida: la base (lo de abajo, el plan B)
+```
+
+- **Solo la empresa 143626.** La 63530 (antigua) y Barcelona fuera, para ir más rápido (Camilo, el mismo día). Se cambia con `BOLT_V2_EMPRESAS`.
+- **Con la lista, «no aparece» = desconectado.** Por eso solo vale si está **completa y fresca** (`BOLT_V2_FRESCA_MS`, 45 s). Si no, sin credenciales, con BOLT caído o recién arrancado, la foto se hace con la base como siempre. `foto.fuente` dice `'v2'` o `'bd'`.
+- **Del tramo se queda lo que la v2 no sabe:** los km, el GPS y el último conductor. El coche que la v2 no da conectado y cuyo tramo dice que rueda queda **desconectado desde la última vez que la v2 lo vio**. Si no lo vio desde que arrancó, queda sin hora.
+- **Con la v2 la foto no lanza la consulta cara** (el último apunte de cada coche y de cada conductor en 12 h): solo `fv_vehiculo` + `fv_ahora` y el catálogo.
+- **La ingesta de 10 s de la v1 pasa a una vez por minuto** mientras la v2 esté al día (`BOLT_DIRECTO_CON_V2_S`). Reescribía cinco minutos de apuntes cada 10 s, y la base es la que más trabaja. Si la v2 cae, vuelve sola a cada 10 s. Lo histórico no cambia: la tarea de 5 minutos sigue guardando todos los apuntes.
+- **Credenciales:** `CLIENT_ID_BOLT` y `CLIENT_SECRET_BOLT` en Render (las de la v1 dan 498811). Se apaga con `BOLT_V2_DIRECTO=off`.
+- **Inicio** («Conectados ahora»): todos los conectados por **persona**, separados por el turno que tienen en el planificador a esta hora, con `repartoTurnos.etiquetaPlan`. Las categorías son día, noche, todo turno y sin turno. Va por `GET /inicio/api/vivo` y se refresca cada 10 s.
+- **Control** (`rutas.js`): con la v2, la foto manda sin compararla con el tramo.
+- **Mapa**: el freno de los rojos (`boltFiable`) mira la edad de la lista v2.
+
+Pruebas: `node scripts/comprobar-bolt-v2-directo.js` (con dobles, sin BOLT ni base). Diagnóstico: `ahora.estado().v2`.
+
 ## Por qué existe
 
 Camilo, 25/09/2026, con una captura de En directo: *«este está en espera hace como 3 minutos en Control, pero en el mapa ya dice que está parado desconectado, y es verdad»*. Y después: *«¿podemos aplicar un patrón de diseño? Quiero que ambos módulos reutilicen los mismos datos sin repetir procesos ni consultas diferentes»*.
@@ -58,6 +85,7 @@ La usan la foto (en SQL, `sqlRango`) y **el motor de tramos** (en JavaScript, `o
 | [[Control En directo]] · fila de la persona | `rutas.actividadDeVariosTurnos`: el ahora de cada conductor sale de `porConductor` (si el motor no sabe algo más nuevo de sus tramos) |
 | [[Control En directo]] · **cada 10 s** | `GET /control/api/directo/ahora`: la foto por conductor, compacta (`[situación, desde]`, ~9 kB). La pantalla lo pone encima de lo cargado sin recalcular el turno entero |
 | [[Control Alertas]] | `mapa.sueltos()`, a través del mapa |
+| Inicio · «Conectados ahora» | `inicio.conectadosPorTurno()`: los conectados de `porConductor`, por persona y por su turno del plan (28/10/2026) |
 
 Comprobado contra la base real (`Scripts de análisis/probar-foto-ahora.js`, solo lee): cada coche del mapa dice lo mismo que la foto (0 distintos de 83) y en los **52 conectados el cockpit y la foto coinciden todos**.
 

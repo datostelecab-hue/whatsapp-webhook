@@ -229,7 +229,11 @@ async function frente({ forzar = false, sedes = null } = {}) {
   // hace una vez para todas las pantallas.
   const [filas, frescura, foto] = await Promise.all([repo.coches(sedes), repo.frescura(sedes), ahora.foto()]);
 
-  const boltHace = frescura.bolt_hace == null ? null : Number(frescura.bolt_hace);
+  // Con la API v2 lo de BOLT es de hace segundos: lo que diga su lista. Si la
+  // foto salió de la base, lo de siempre: la más fresca de las dos tuberías.
+  const boltHace = foto.fuente === 'v2' && foto.v2At
+    ? Math.max(0, Math.round((Date.now() - new Date(foto.v2At).getTime()) / 1000))
+    : (frescura.bolt_hace == null ? null : Number(frescura.bolt_hace));
   const boltFiable = boltHace != null && boltHace <= BOLT_FIABLE_S;
 
   const coches = filas.map(c => {

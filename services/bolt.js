@@ -59,14 +59,14 @@ async function getAccessToken() {
 // seguro de que algo termina.
 const TIMEOUT_BOLT = Number(process.env.BOLT_TIMEOUT_MS) || 120000;
 
-async function conTiempoLimite(url, opciones) {
+async function conTiempoLimite(url, opciones, ms = TIMEOUT_BOLT) {
   const ac = new AbortController();
-  const reloj = setTimeout(() => ac.abort(), TIMEOUT_BOLT);
+  const reloj = setTimeout(() => ac.abort(), ms);
   try {
     return await fetch(url, { ...(opciones || {}), signal: ac.signal });
   } catch (e) {
     if (e.name === 'AbortError') {
-      throw new Error(`Bolt no respondió en ${TIMEOUT_BOLT / 1000}s (${String(url).split('?')[0]})`);
+      throw new Error(`Bolt no respondió en ${ms / 1000}s (${String(url).split('?')[0]})`);
     }
     throw e;
   } finally {
@@ -94,6 +94,83 @@ async function apiRequest(endpoint, method = 'POST', body = null) {
     return apiRequest(endpoint, method, body);
   }
   return { httpCode: response.status, data: await response.json() };
+}
+
+// ── LA API v2 (28/10/2026) ──────────────────────────────────────────────────
+// BOLT apaga la v1 el 31/01/2027. De la v2, de momento, solo se usa
+// `getOnlineDrivers`: quién está conectado AHORA, en qué y con qué coche. Lo
+// pintan el mapa, En directo de Control e Inicio (services/flotaViva/
+// enLinea.js). Lo histórico —horas, tramos, viajes— sigue por la v1.
+//
+// Mismo token (oidc.bolt.eu, scope fleet-integration:api) pero OTRA CLAVE: la
+// de la v1 da 498811. Va en el entorno de Render, CLIENT_ID_BOLT y
+// CLIENT_SECRET_BOLT; sin ellas la v2 está apagada y todo sigue como antes.
+//
+// Mucha menos paciencia que la v1: se pregunta cada 5 s, y una respuesta que
+// tarda más de cuatro ya llega vieja. Si falla, se salta esa vuelta.
+const CONFIG_BOLT_V2 = {
+  apiBaseUrl: 'https://node.bolt.eu/fleet-integration-gateway-v2/fleetIntegration/v2',
+  timeoutMs: Number(process.env.BOLT_V2_TIMEOUT_MS) || 4000,
+};
+
+const v2Configurada = () => !!(process.env.CLIENT_ID_BOLT && process.env.CLIENT_SECRET_BOLT);
+
+let tokenV2 = null;
+let tokenV2Hasta = 0;
+
+async function tokenBoltV2() {
+  if (tokenV2 && Date.now() < tokenV2Hasta) return tokenV2;
+  if (!v2Configurada()) throw new Error('BOLT v2 sin credenciales (CLIENT_ID_BOLT / CLIENT_SECRET_BOLT)');
+  const r = await conTiempoLimite(CONFIG_BOLT.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: process.env.CLIENT_ID_BOLT,
+      client_secret: process.env.CLIENT_SECRET_BOLT,
+      scope: 'fleet-integration:api',
+    }),
+  }, CONFIG_BOLT_V2.timeoutMs);
+  const j = await r.json().catch(() => ({}));
+  // De la respuesta solo se escribe el código de OAuth, nunca el cuerpo.
+  if (!j.access_token) throw new Error(`BOLT v2 token: HTTP ${r.status}${j.error ? ' · ' + j.error : ''}`);
+  tokenV2 = j.access_token;
+  // Se renueva un minuto antes de que caduque (dura diez, como el de la v1).
+  tokenV2Hasta = Date.now() + Math.max(60, (Number(j.expires_in) || 600) - 60) * 1000;
+  return tokenV2;
+}
+
+/**
+ * Una llamada a la v2. BOLT contesta HTTP 200 con el error dentro (`code`
+ * distinto de 0), así que se mira el código aunque el HTTP diga que bien. Con
+ * el token caducado (401 o 498811) se pide otro UNA vez; lo demás se lanza.
+ */
+async function apiV2(ruta, cuerpo, reintento = true) {
+  const r = await conTiempoLimite(`${CONFIG_BOLT_V2.apiBaseUrl}/${ruta}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + await tokenBoltV2(),
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(cuerpo || {}),
+  }, CONFIG_BOLT_V2.timeoutMs);
+  const j = await r.json().catch(() => ({}));
+  if (reintento && (r.status === 401 || j.code === 498811)) {
+    tokenV2 = null;
+    return apiV2(ruta, cuerpo, false);
+  }
+  if (r.status !== 200 || (j.code != null && j.code !== 0)) {
+    throw new Error(`BOLT v2 ${ruta}: HTTP ${r.status}${j.code != null ? ' · code ' + j.code : ''}` +
+      (j.message ? ' · ' + String(j.message).slice(0, 120) : ''));
+  }
+  return j.data || {};
+}
+
+/** Quién está conectado AHORA en una empresa: estado y desde cuándo, coche y conductor. */
+async function onlineDriversV2(companyId) {
+  const d = await apiV2('getOnlineDrivers', { company_id: Number(companyId) });
+  return Array.isArray(d.drivers) ? d.drivers : [];
 }
 
 // Tope de páginas. Antes eran 100 (100.000 registros): un mes movido de dos
@@ -411,5 +488,7 @@ module.exports = {
   apiRequest,
   fetchAllPaginated,
   fetchRangoCompleto,
-  sleep
+  sleep,
+  v2Configurada,
+  onlineDriversV2
 };
