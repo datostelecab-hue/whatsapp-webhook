@@ -2514,24 +2514,24 @@
     btn.disabled = false; btn.innerHTML = previo;
   }
 
+  // LOS DOS DÍAS PUEDEN SER DE SEMANAS DISTINTAS (Camilo, 28/10/2026; db/223).
+  // Antes tenían que caer en la semana que se estaba mirando.
   async function libranzaExcepcional(persona) {
-    const lunes = T.fechas[0], domingo = T.fechas[6];
     const datos = await Dialogo.formulario(
       `Libranza excepcional · ${persona.nombre}`,
       [
-        { id: 'trabaja', etiqueta: 'Trabaja el día (que normalmente libra)', tipo: 'fecha', obligatorio: true, ayuda: `Entre ${isoAes(lunes)} y ${isoAes(domingo)}` },
-        { id: 'libra', etiqueta: 'Libra el día (que normalmente trabaja)', tipo: 'fecha', obligatorio: true },
+        { id: 'trabaja', etiqueta: 'Trabaja el día (que normalmente libra)', tipo: 'fecha', obligatorio: true },
+        { id: 'libra', etiqueta: 'Libra el día (que normalmente trabaja)', tipo: 'fecha', obligatorio: true,
+          ayuda: 'Puede ser de otra semana' },
         { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto' },
       ],
-      { nota: 'Cambia, solo esta semana, un día de libranza por uno de trabajo. La semana siguiente vuelve a la normalidad.' }
+      { nota: 'Cambia un día de libranza por uno de trabajo, de la misma semana o de otra. Solo esos dos días: el resto sigue con su patrón.' }
     );
     if (!datos) return;
     // `formulario` ya devuelve las fechas en ISO (aaaa-mm-dd).
     const diaTrabaja = datos.trabaja, diaLibra = datos.libra;
     if (!diaTrabaja || !diaLibra) { alert('Faltan las fechas'); return; }
-    if (diaTrabaja < lunes || diaTrabaja > domingo || diaLibra < lunes || diaLibra > domingo) {
-      alert('Los dos días tienen que ser de la semana que estás mirando'); return;
-    }
+    if (diaTrabaja === diaLibra) { alert('El día que trabaja y el que libra no pueden ser el mismo'); return; }
     try {
       const r = await fetch('/planificador-v2/api/libranza-excepcional', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

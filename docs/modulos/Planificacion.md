@@ -66,6 +66,7 @@ Un **cuadrante** va en el escalón de sus coches —completo si lo están todos,
 **Dos vistas**, con un conmutador en la barra que se recuerda en el navegador:
 
 - **Horizontal**: la tabla de siempre, una fila por coche y las plazas en columnas, con todo el detalle (teléfono, zona de casa, libranza excepcional). Bajo la matrícula, sus horas y lo que le falta.
+- **La libranza excepcional** (trabaja un día que libra y libra uno que trabaja) puede tener **los dos días en semanas distintas** desde el 28/10/2026 (db/223, Camilo: «que sea de diferentes semanas»). Antes, el CHECK `ck_lexc_semana` y la propia pantalla obligaban a que cayeran en la misma. Siguen sin poder ser el mismo día. `f_cobertura` lee cada día por su cuenta, así que cada mitad del cambio sale en su semana. Prueba en la copia local: `scripts/comprobar-libranza-excepcional.js`.
 - **Vertical**: cada coche es una tarjeta con sus plazas apiladas, **el día a la izquierda y la noche a la derecha**, para ver más coches de un golpe. El nombre se queda con toda la línea y el chip de horas va debajo (al lado, en una tarjeta estrecha el nombre se quedaba en «Carl…»). El teléfono y la zona de casa van en la ayuda del nombre; la libranza excepcional y la zona de casa se editan en la horizontal.
 
 **La base abierta viaja en la dirección** (`/planificador#base=getafe`): recargar o pasar el enlace abre la misma base, y «atrás» vuelve a las bases en vez de salir del planificador. Crear un cuadrante con una base abierta lo crea en ella y lleva la vista hasta él (un cuadrante vacío va al fondo del iceberg).

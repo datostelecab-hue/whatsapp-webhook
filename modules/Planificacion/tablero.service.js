@@ -158,7 +158,7 @@ async function cubrirAusencia(b, quien) {
   return conTablero(r, b.dia);
 }
 
-/** La libranza excepcional: el swap de una semana (trabaja un día, libra otro). */
+/** La libranza excepcional: trabaja un día que libra y libra otro, de la misma semana o de otra (db/223). */
 async function libranzaExcepcional(b, quien) {
   const r = await plan.crearLibranzaExcepcional({
     conductorId: b.conductorId, diaTrabaja: b.diaTrabaja, diaLibra: b.diaLibra, motivo: b.motivo,

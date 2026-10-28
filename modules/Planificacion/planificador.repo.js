@@ -2449,10 +2449,13 @@ async function cambiarCoche({ deVehiculoId, aVehiculoId, dia, soloTurno, forzar 
 // ============================================================
 // LIBRANZA EXCEPCIONAL
 // ============================================================
-// El swap de una semana: un fijo trabaja un dia que libra por patron y libra uno
-// que trabaja. No toca el patron; f_cobertura lo lee por encima (db/54). El
+// El swap: un fijo trabaja un dia que libra por patron y libra uno que trabaja.
+// No toca el patron; f_cobertura lo lee por encima (db/54), dia a dia. El
 // desplazamiento del CT y el coche de emergencia es una colocacion normal que
 // hace Trafico despues; aqui solo se apunta el swap.
+//
+// Los dos dias pueden ser de SEMANAS DISTINTAS desde el 28/10/2026 (db/223):
+// antes tenian que caer en la misma.
 
 async function crearLibranzaExcepcional({ conductorId, diaTrabaja, diaLibra, motivo }, { usuarioId } = {}) {
   if (!conductorId) throw new Error('Falta el conductor');
@@ -2466,9 +2469,10 @@ async function crearLibranzaExcepcional({ conductorId, diaTrabaja, diaLibra, mot
       [Number(conductorId), diaTrabaja, diaLibra, (motivo || '').trim() || null, usuarioId || null]);
     return { id: String(r.rows[0].id) };
   } catch (e) {
-    // El CHECK de "misma semana" (<= 6 dias) o los UNIQUE de dia dan un mensaje
-    // feo de Postgres; se traduce a algo que Trafico entienda.
-    if (/ck_lexc_semana/.test(e.message)) throw new Error('Los dos días deben ser de la misma semana');
+    // Los UNIQUE de dia dan un mensaje feo de Postgres; se traduce a algo que
+    // Trafico entienda. El CHECK de "misma semana" solo puede saltar en una base
+    // sin la db/223 aplicada.
+    if (/ck_lexc_semana/.test(e.message)) throw new Error('Para días de semanas distintas falta aplicar la migración 223');
     if (/uq_lexc/.test(e.message)) throw new Error('Ese conductor ya tiene un cambio en uno de esos días');
     throw e;
   }
