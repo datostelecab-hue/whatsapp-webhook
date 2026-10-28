@@ -259,6 +259,12 @@ async function darDeBaja(id, usuarioId) {
         WHERE hasta IS NULL AND plaza_id IN (SELECT id FROM plaza WHERE vehiculo_id = $1)`, [id]);
     await vig.cerrar('estadoVehiculo', id, null, { cli });
     await vig.cerrar('baseVehiculo', id, null, { cli });
+    // Su unidad de Mapon queda libre: el aparato puede ir a otro coche. Antes no
+    // se cerraba, y el 27/10/2026 el 1685KTC dado de alta otra vez (ficha nueva)
+    // dejó la unidad con dos coches y sin odómetros a toda la flota (db/221).
+    await cli.query(
+      `UPDATE vehiculo_alias SET visto_hasta = GREATEST(now(), visto_desde)
+        WHERE vehiculo_id = $1 AND sistema = 'mapon' AND visto_hasta IS NULL`, [id]);
     return true;
   });
 }
@@ -289,18 +295,23 @@ async function sincronizarOdometros(lecturas) {
       // El enlace pasa SIEMPRE por vehiculo_alias: la matrícula de Mapon no se
       // usa para casar, solo para diagnosticar descuadres.
       //
+      // Con un JOIN y solo coches vivos, no con una subconsulta: con la unidad
+      // enlazada a dos coches, la subconsulta fallaba y se deshacía el lote
+      // entero, sin un solo odómetro (27-28/10/2026, db/221 y db/222).
+      //
       // El odómetro solo se toca si hay CAN — COALESCE deja el anterior si esta
       // vez no vino. El contador del GPS se guarda siempre: es lo que mantiene
       // vivas las anclas de los coches sin CAN.
       const r = await cli.query(
-        `UPDATE vehiculo
-            SET km_odometro_m  = COALESCE($2, km_odometro_m),
-                km_odometro_at = CASE WHEN $2 IS NULL THEN km_odometro_at ELSE now() END,
-                km_gps_m       = COALESCE($3, km_gps_m)
-          WHERE id = (SELECT vehiculo_id FROM vehiculo_alias
-                       WHERE sistema = 'mapon' AND externo_id = $1 AND visto_hasta IS NULL)
-            AND baja_at IS NULL
-          RETURNING id`,
+        `UPDATE vehiculo v
+            SET km_odometro_m  = COALESCE($2, v.km_odometro_m),
+                km_odometro_at = CASE WHEN $2 IS NULL THEN v.km_odometro_at ELSE now() END,
+                km_gps_m       = COALESCE($3, v.km_gps_m)
+           FROM vehiculo_alias a
+          WHERE a.vehiculo_id = v.id
+            AND a.sistema = 'mapon' AND a.externo_id = $1 AND a.visto_hasta IS NULL
+            AND v.baja_at IS NULL
+          RETURNING v.id`,
         [String(unitId), can, gps]);
       if (r.rowCount) { if (can != null) actualizados++; } else sinEnlace++;
     }
@@ -398,6 +409,17 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
 
   let creados = 0, cambiados = 0;
   const rechazados = [];
+  // UNA UNIDAD, UN COCHE (db/222). Si la unidad sigue enlazada a un coche DE
+  // BAJA, se le quita: el aparato ya va en este. Si está en otro coche VIVO, el
+  // índice lo rechaza y aquí se dice por qué, no con el mensaje de PostgreSQL.
+  const soltarDeBajas = (cli, unitId) => cli.query(
+    `UPDATE vehiculo_alias a SET visto_hasta = GREATEST(v.baja_at, a.visto_desde)
+       FROM vehiculo v
+      WHERE v.id = a.vehiculo_id AND a.sistema = 'mapon' AND a.externo_id = $1
+        AND a.visto_hasta IS NULL AND v.baja_at IS NOT NULL`, [String(unitId)]);
+  const porQue = err => (err.code === '23505' && err.constraint === 'uq_valias_mapon_vigente'
+    ? 'la unidad ya está enlazada a otro coche vivo (dos fichas con el mismo aparato): cerrar en Vehículos el enlace que sobra'
+    : String(err.message).split(String.fromCharCode(10))[0]);
   await db.transaccion(async cli => {
     for (const c of cambios) {
       await cli.query('SAVEPOINT sp');
@@ -405,6 +427,7 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
         await cli.query(
           `UPDATE vehiculo_alias SET visto_hasta = now()
             WHERE vehiculo_id = $1 AND sistema = 'mapon' AND visto_hasta IS NULL`, [c.vehiculoId]);
+        await soltarDeBajas(cli, c.unitId);
         await cli.query(
           `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
            VALUES ($1, 'mapon', $2, $3)`, [c.vehiculoId, c.unitId, c.enMapon]);
@@ -417,13 +440,14 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
         cambiados++;
       } catch (err) {
         await cli.query('ROLLBACK TO SAVEPOINT sp');
-        rechazados.push(`${c.matricula} (unidad ${c.de} → ${c.unitId}): ${String(err.message).split(String.fromCharCode(10))[0]}`);
+        rechazados.push(`${c.matricula} (unidad ${c.de} → ${c.unitId}): ${porQue(err)}`);
       }
     }
     for (const n of nuevos) {
       // Punto de guardado: un choque no puede tumbar los 86 enlaces restantes.
       await cli.query('SAVEPOINT sp');
       try {
+        await soltarDeBajas(cli, n.unitId);
         const r = await cli.query(
           `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
            VALUES ($1, 'mapon', $2, $3) RETURNING id`,
@@ -432,7 +456,7 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
         if (r.rowCount) creados++;
       } catch (err) {
         await cli.query('ROLLBACK TO SAVEPOINT sp');
-        rechazados.push(`${n.matricula} (unidad ${n.unitId}): ${String(err.message).split(String.fromCharCode(10))[0]}`);
+        rechazados.push(`${n.matricula} (unidad ${n.unitId}): ${porQue(err)}`);
       }
     }
   });
