@@ -82,6 +82,8 @@ La cabecera sigue enseñando el alta del contrato de ahora y, si la casa empieza
 
 Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencias» no miran el futuro.
 
+**«Horas del mes», la tarjeta de arriba, son las de BOLT de todos los que trabajaron** (29/10/2026). Camilo: *«¿por qué la tarjeta de horas del mes de la bitácora sale con horas diferentes a Visibilidad? ¿cuál es la real?»*. Daba 24.437 h y Visibilidad 26.589 h. La tarjeta sumaba **solo a los vigentes de hoy y con sus J**: quien se daba de baja a mitad de mes se llevaba sus horas (41 personas y unas 1.800 h del 1 al 26 de octubre, propias y de ETT), y las J (unas 450 h) no son de BOLT aunque el rótulo dijera «viaje + espera». Ahora suma **las horas de BOLT de toda la lista, también de los que ya se fueron, y las de los días con marca en los que rodó; nada de J** (tienen su tarjeta al lado). Rótulo: «efectivas, viaje + espera · sin hoy». Con Visibilidad solo la separan **hoy** (aquí no cuenta) y el corte de la noche: aquí por jornada, allí a las 00:00 (del 1 al 26/10, unas 100 h). La medición está fuera del repo, en `Scripts de análisis/horas-bitacora-vs-visibilidad/`.
+
 > [!info] Tres promedios, tres preguntas (Lucía Peralta, 15/10/2026). Ese mismo día se unificaron: ver [[Promedio de horas]]
 > Con los mismos días de octubre salían **5,8 h** en su ficha, **9,23 h · A** en el planificador y **10 h** (7,5 h «contando la ausencia») en la bitácora. Ninguna estaba rota; cada una mide otra cosa:
 > - **Bitácora: 10 h.** BOLT + J por **jornada** 05→05, y solo los días que salió: 10,3 + 10,5 + (8,4 + 1 h de J) = 30,1 h en 3 días. El 7,5 h metía hoy como «Ausencia», con su turno de noche aún sin empezar, y ya no pasa.

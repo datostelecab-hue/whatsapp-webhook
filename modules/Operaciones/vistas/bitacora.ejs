@@ -2,7 +2,7 @@
 
   <!-- ── KPIs de flota: hoy y este mes ─────────────────────────────────────── -->
   <div id="kpis-flota" class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-    <% [['Plantilla vigente','personas hoy'],['Ausentes hoy','baja, vacaciones, permiso'],['Sin salir esta semana','vigentes sin una hora'],['Horas del mes','efectivas, viaje + espera'],['Justificantes del mes','días con J']].forEach(function(k){ %>
+    <% [['Plantilla vigente','personas hoy'],['Ausentes hoy','baja, vacaciones, permiso'],['Sin salir esta semana','vigentes sin una hora'],['Horas del mes','efectivas, viaje + espera · sin hoy'],['Justificantes del mes','días con J']].forEach(function(k){ %>
       <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
         <p class="text-[11px] uppercase tracking-wide text-telecab-muted"><%= k[0] %></p>
         <p class="kpi-val text-2xl font-bold text-telecab-text tabular-nums leading-none mt-1">–</p>
@@ -389,13 +389,25 @@
   function pintarKpisFlota() {
     const mes = MESES[mesDeHoy()], wa = iniSemana(semDeHoy()), wb = Math.min(wa + 6, DATA.hoyIdx);
     let vig = 0, aus = 0, sinSalir = 0, horas = 0, jotas = 0;
+    // LAS HORAS DEL MES: las de BOLT de TODOS los que trabajaron, sin hoy (29/10/2026).
+    // Solo sumaba a los vigentes, y con sus J: quien se daba de baja a mitad de mes
+    // se llevaba sus horas (unas 1.800 h el 26/10) y la tarjeta no cuadraba con
+    // Visibilidad. Ahora entran también los de baja, los días con marca en los que
+    // rodó y nada de J, que tienen su tarjeta. La diferencia que queda con
+    // Visibilidad es hoy (aquí no cuenta) y el corte de la noche: aquí por
+    // jornada, allí a las 00:00.
+    const finMes = Math.min(mes.start + mes.len - 1, DATA.hoyIdx - 1);
     DATA.conductores.forEach(c => {
+      for (let d = mes.start; d <= finMes; d++) {
+        const v = val(c, d);
+        horas += typeof v === 'number' ? v : ((c.horasBolt || {})[isoDe(d)] || 0);
+      }
       if (!c.vigente) return;
       vig++;
       if (esAus(val(c, DATA.hoyIdx))) aus++;
       let algo = false; for (let d = Math.max(wa, c.altaIdx || 0); d <= wb; d++) { const k = soloClase(clase(c, d)); if (trabajo(k) || k === 'J' || k === 'L' || esAus(k)) { algo = true; break; } }
       if (!algo && (c.altaIdx || 0) <= wb) sinSalir++;
-      const r = resumen(c, mes.start, mes.start + mes.len - 1); horas += r.horas; jotas += r.J;
+      jotas += resumen(c, mes.start, mes.start + mes.len - 1).J;
     });
     [vig, aus, sinSalir, nf0.format(Math.round(horas)), jotas].forEach((v, i) => { document.querySelectorAll('#kpis-flota .kpi-val')[i].textContent = v; });
   }
