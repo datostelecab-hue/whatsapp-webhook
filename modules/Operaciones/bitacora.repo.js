@@ -574,7 +574,8 @@ async function leerBitacora() {
     const i = idxDe(r.dia);
     const horas = r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 360) / 10 : null;
     const ficha = {
-      horas, obs: r.observacion || '', tipo: r.tipo || 'personal', estado: r.estado,
+      // `min`: los minutos exactos, para rellenar las casillas al editarla.
+      horas, min: r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 60) : null, obs: r.observacion || '', tipo: r.tipo || 'personal', estado: r.estado,
       motivo: r.anulado_motivo || '', porQuien: r.estado === 'rechazada' ? (r.rechazada_por || '') : (r.aprobada_por || ''),
     };
 

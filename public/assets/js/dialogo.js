@@ -160,8 +160,12 @@
   // pantalla necesito lo mismo quedaba claro que no era suyo: pedir unos datos
   // y devolverlos es de aqui.
   //
-  // `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'opciones'|'semana'|'texto-largo',
+  // `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'opciones'|'semana'|'texto-largo'|'horas',
   //               opciones, valor, ayuda, grupo, obligatorio, marcador }]
+  //
+  // 'horas' son dos casillas, horas y minutos (horasMin.js): `minutos` es lo que
+  // trae puesto (o `valor` en horas decimales) y devuelve las horas en decimal
+  // como cadena, '' si se deja en blanco.
   //
   // 'lista' es el <select> del navegador y 'opciones' es el selector de la casa.
   // Con muchas opciones, 'opciones' admite ademas
@@ -204,7 +208,7 @@
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
-          <form class="p-5 max-h-[70vh] overflow-y-auto grid gap-x-4 gap-y-3 ${
+          <form novalidate class="p-5 max-h-[70vh] overflow-y-auto grid gap-x-4 gap-y-3 ${
             columnas === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}">
             ${campos.map((c, i) => {
               // Cabecera de grupo cuando cambia: con treinta campos seguidos no
@@ -295,6 +299,12 @@
                        ${puestos.includes(n)
                          ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
                          : 'bg-telecab-card2 text-telecab-muted border-telecab-border'}">${DIAS[n]}</button>`).join('')}</div>`;
+              } else if (c.tipo === 'horas') {
+                // HORAS Y MINUTOS, no un decimal (29/10/2026): quien justifica
+                // pone «0 h 30 min» y no tiene que calcular que eso es 0,5.
+                const min = c.minutos != null ? c.minutos : global.HorasMin.deHoras(c.valor);
+                campo = global.HorasMin.html({ id: 'pd-' + c.id, minutos: min,
+                  clase: 'px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40' });
               } else if (c.tipo === 'texto-largo') {
                 // El `marcador` también aquí (21/10/2026): se pasaba en varios
                 // formularios («Obligatoria si se anula…») y no se pintaba.
@@ -536,6 +546,10 @@
                 comentario: f.querySelector('[data-comentario]').value.trim(),
               }));
             salida[c.id] = marcados;
+          } else if (c.tipo === 'horas') {
+            const r = global.HorasMin.leer(el);
+            salida[c.id] = r.horas;
+            if (r.error) fallos.push(r.error);
           } else {
             salida[c.id] = c.tipo === 'fecha' ? aISO(el.value.trim()) : el.value.trim();
           }

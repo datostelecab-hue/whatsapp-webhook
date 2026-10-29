@@ -254,6 +254,8 @@ async function listar({ estado = 'pendiente', tipo, desde, hasta, limite = 300 }
       id: String(x.id), conductorId: String(x.conductor_id), conductor: x.conductor,
       dia: x.dia, tipo: x.tipo,
       horas: x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 360) / 10 : null,
+      // Los minutos exactos, para las casillas de horas y minutos al rehacerla.
+      minutos: x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 60) : null,
       observacion: x.observacion || '',
       puestaPor: x.puesta_por, creadoAt: x.creado_at,
       aprobadaPor: x.aprobada_por, aprobadoAt: x.aprobado_at,

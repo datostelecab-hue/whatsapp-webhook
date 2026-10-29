@@ -293,7 +293,7 @@
     const v = await Dialogo.formulario('Justificar a ' + p.conductor, [
       { id: 'tipo', etiqueta: 'Tipo', tipo: 'lista', obligatorio: true,
         valor: TIPOS_J[0].codigo, opciones: TIPOS_J.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
-      { id: 'horas', etiqueta: 'Horas que se justifican (opcional)', ayuda: 'Se SUMAN a las de BOLT. "7,5" vale.' },
+      { id: 'horas', etiqueta: 'Horas que se justifican (opcional)', tipo: 'horas', ayuda: 'Se SUMAN a las de BOLT.' },
       { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', obligatorio: true },
     ], { nota: 'La J lo saca de las campañas y lo apunta en la bitácora con tu nombre.' });
     if (!v || !v.observacion) return;

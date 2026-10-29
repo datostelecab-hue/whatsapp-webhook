@@ -205,8 +205,8 @@
       queda con su motivo y su firma, que es lo que hay que poder consultar. */
   async function rehacer(j) {
     const v = await Dialogo.formulario('Rehacer la J de ' + j.conductor + ' · ' + fecha(j.dia), [
-      { id: 'horas', etiqueta: 'Horas que se justifican', tipo: 'texto',
-        valor: j.horas != null ? String(j.horas).replace('.', ',') : '' },
+      { id: 'horas', etiqueta: 'Horas que se justifican', tipo: 'horas',
+        minutos: j.minutos != null ? j.minutos : HorasMin.deHoras(j.horas) },
       { id: 'tipo', etiqueta: 'De quién es', tipo: 'opciones', valor: j.tipo,
         opciones: TIPOS.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
       { id: 'observacion', etiqueta: 'Motivo (corregido)', tipo: 'texto-largo',

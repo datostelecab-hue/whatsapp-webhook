@@ -21,6 +21,7 @@ actualizado: 2026-10-23
 | Pedir varios datos | `Dialogo.formulario(titulo, campos, opciones)` | `prompt()` encadenados |
 | Confirmación breve | `Dialogo.hecho(texto, {tono, segundos})` | — |
 | **Una fecha** | `<input class="js-fecha">` | **`<input type="date">`** |
+| **Unas horas (las de una J)** | horas y minutos: `HorasMin.html/leer/poner` (`horasMin.js`), o `tipo: 'horas'` en `Dialogo.formulario` | una casilla de horas en decimal («7,5») |
 | **Elegir una opción en un formulario propio** | `.tc-selector` + input oculto (`selector.js`) | **`<select>`** |
 | Listar cosas | el componente **Listado** (`listado.js`) | una tabla nueva |
 | **Copiar un dato** (nombre, teléfono, matrícula) | `Copiar.boton(texto, titulo)` (`copiar.js`): el cuadrito al lado del dato; el clic se escucha una vez para toda la página | seleccionar texto en una fila que se abre al pulsarla |
@@ -58,7 +59,9 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 { id, etiqueta, tipo, valor, ayuda, grupo, obligatorio, marcador, opciones, max }
 ```
 
-`tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista` u `opciones`.
+`tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista`, `opciones` u `horas`.
+
+- **`horas`** (29/10/2026) son dos casillas, horas y minutos, con lo que da en decimal al lado («= 1,33 h»). Lo que trae puesto va en `minutos` (o en `valor`, en horas decimales) y devuelve las horas en decimal **como cadena** y sin redondear —`'0.5'` para 0 h 30 min, `''` si se deja en blanco—, así que `v.horas || ''` sigue distinguiendo «sin horas» de «0 h». Valida él (minutos de 0 a 59, hasta 24 h) y lo dice en la ventana. Para un formulario propio, el mismo campo es `HorasMin` (`horasMin.js`, cargado en `layout-gestion`). Por él el formulario va con `novalidate`: los errores los dice la ventana, no el globo del navegador.
 
 - **Los botones se quedan abajo, siempre visibles** (21/10/2026). Iban dentro de lo que se desplaza: con un formulario alto, «Guardar» quedaba por debajo del borde y había que bajar para encontrarlo. Le pasó a «Nueva cita del taller», con su lista de coches, en una pantalla de 729 px. Ahora la fila va pegada al fondo (`sticky -bottom-5`, porque el relleno del formulario cuenta) y los campos pasan por detrás.
 - **`marcador` vale también en `texto-largo`** (21/10/2026). Se pasaba en varios formularios («Obligatoria si se anula o no se presentó») y el `textarea` no lo pintaba.

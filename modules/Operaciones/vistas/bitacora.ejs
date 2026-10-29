@@ -155,6 +155,8 @@
     return `<div class="tc-selector" data-para="${id}" role="group" aria-label="A quién se manda la justificación">` +
       ops.map(v => `<button type="button" data-v="${v}">${esc(NOMBRE_J[v] || v)}</button>`).join('') + '</div>';
   };
+  // Las casillas de horas y minutos de una J (horasMin.js), con la cara de las de aquí.
+  const CASILLA_HM = 'bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text';
   const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
   const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
   // Quién puso o quitó a mano una libranza, y cuándo: « por Ana el 24/09/2026».
@@ -643,7 +645,7 @@
          <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. Las horas que pongas son las que SE JUSTIFICAN, y se suman a las que hiciera en BOLT ese día: 2 h de taller + 8 h conectado = día de 10 h. Eso es lo que cuenta para la nómina, cuando la apruebe el área a la que la mandes.</p>
          <div class="flex flex-wrap items-end gap-3">
            <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${isoDe(0)}" max="${isoDe(DATA.hoyIdx)}" value="${isoDe(DATA.hoyIdx)}" class="mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
-           <label class="text-xs text-telecab-muted">Horas que se justifican<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="p. ej. 2" class="mt-1 w-28 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <div class="text-xs text-telecab-muted">Horas que se justifican<div class="mt-1">${HorasMin.html({ id: 'j-horas', clase: CASILLA_HM })}</div></div>
            <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Motivo (obligatorio)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. 2 horas ITV"></label>
            <div class="text-xs text-telecab-muted">Se manda a<input type="hidden" id="j-tipo" value="trafico"><div id="j-tipo-hueco" class="mt-1">${selectorDestino('j-tipo')}</div></div>
            <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold">Guardar J</button>
@@ -694,9 +696,11 @@
       if (window.Selector) Selector.montar(form);
       d.querySelector('#j-guardar').addEventListener('click', async () => {
         const msg = d.querySelector('#j-msg');
-        const diaV = d.querySelector('#j-dia').value, horasV = d.querySelector('#j-horas').value, obsV = d.querySelector('#j-obs').value.trim();
+        const diaV = d.querySelector('#j-dia').value, hm = HorasMin.leer(d.querySelector('#j-horas')), obsV = d.querySelector('#j-obs').value.trim();
+        const horasV = hm.horas;
         const tipoV = d.querySelector('#j-tipo').value || 'trafico';
         if (!diaV) { msg.textContent = 'Elige un día.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
+        if (hm.error) { msg.textContent = hm.error; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
         if (!obsV) { msg.textContent = 'El motivo es obligatorio.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
         msg.textContent = 'Guardando…'; msg.className = 'text-xs mt-2 text-telecab-muted';
         try {
@@ -898,7 +902,7 @@
           <span class="text-xs text-telecab-muted">${boltTxt}</span></div>
         ${q ? `<p class="text-xs text-telecab-muted mt-1"><i class="fa-solid fa-bed mr-1 text-telecab-muted/60"></i>El planificador lo tenía de libranza y se quitó a mano${firma(q)}. Si de verdad libraba, «Era libranza» la vuelve a poner.</p>` : ''}
         <div class="flex flex-wrap items-end gap-2 mt-2">
-          <label class="text-[11px] text-telecab-muted">Horas que se justifican<br><input data-di="horas" type="number" step="0.1" min="0" max="24" placeholder="p. ej. 8" class="mt-1 w-24 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+          <div class="text-[11px] text-telecab-muted">Horas que se justifican<div data-di="horas" class="mt-1">${HorasMin.html({ clase: CASILLA_HM })}</div></div>
           <label class="flex-1 min-w-[160px] text-[11px] text-telecab-muted">Motivo de la ausencia<br><input data-di="obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. coche en taller"></label>
           <div class="text-[11px] text-telecab-muted">Se manda a<input type="hidden" id="di-tipo" value="trafico"><div class="mt-1">${selectorDestino('di-tipo')}</div></div>
           <button data-di="justificar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar</button>
@@ -938,8 +942,10 @@
     };
     const on = (q, fn) => { const b = box.querySelector(`[data-di="${q}"]`); if (b) b.addEventListener('click', fn); };
     on('justificar', () => {
-      const horas = box.querySelector('[data-di="horas"]').value;
+      const hm = HorasMin.leer(box.querySelector('[data-di="horas"]'));
+      const horas = hm.horas;
       const obs = box.querySelector('[data-di="obs"]').value.trim();
+      if (hm.error) return aviso(hm.error, true);
       if (!obs) return aviso('El motivo es obligatorio.', true);
       const tipo = (box.querySelector('#di-tipo') || {}).value || 'trafico';
       post('/bitacora/api/justificar', { conductorId: c.conductorId, dia: iso, horas, observacion: obs, tipo },
@@ -961,7 +967,8 @@
       const form = $('#b-justif-form'); if (!form) return;
       form.classList.remove('hidden');
       $('#j-dia').value = iso;
-      $('#j-horas').value = j.horas != null ? j.horas : '';
+      // En minutos exactos: con el decimal redondeado (1,3) 1 h 20 min volvía como 1 h 18 min.
+      HorasMin.poner($('#j-horas'), j.min != null ? j.min : HorasMin.deHoras(j.horas));
       $('#j-obs').value = j.obs || '';
       // Editar NO la cambia de área a escondidas: antes se guardaba siempre como
       // Tráfico y una J de RRHH o de BOLT acababa en la cola equivocada.
@@ -1030,7 +1037,7 @@
       const d = Number(el.dataset.d), k = clase(c, d);
       if (k === 'futuro' || k === 'fuera') return;
       diaSel = diaSel === d ? null : d;
-      const inp = $('#j-dia'); if (inp && diaSel != null) { inp.value = isoDe(d); const v = val(c, d); const h = $('#j-horas'); if (h && typeof v === 'number') h.value = v; }
+      const inp = $('#j-dia'); if (inp && diaSel != null) { inp.value = isoDe(d); const v = val(c, d); const h = $('#j-horas'); if (h && typeof v === 'number') HorasMin.poner(h, HorasMin.deHoras(v)); }
       render();
     }));
   }

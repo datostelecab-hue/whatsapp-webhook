@@ -47,6 +47,8 @@
   <!-- Componentes compartidos. Se cargan aqui, ANTES del cuerpo, porque cada
        modulo los invoca desde su propio bloque de codigo en linea. -->
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
+  <%# Horas y minutos de una J, en vez de un decimal (HorasMin; también `tipo: 'horas'` de Dialogo.formulario). %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/horasMin.js') : '/assets/js/horasMin.js' %>"></script>
   <%# El cuadrito de copiar un dato (Copiar.boton): para las filas que se abren al pulsarlas. %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/copiar.js') : '/assets/js/copiar.js' %>"></script>
   <%# Los cumpleaños de hoy: tarjetas en las pantallas de TODOS (modules/Cumpleanos). %>
