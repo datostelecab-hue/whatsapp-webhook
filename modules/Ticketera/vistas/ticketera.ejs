@@ -355,14 +355,14 @@
       nota: `${t.subtipo}${t.fechaIni ? ' · pidió ' + t.fechaIni + (t.fechaFin ? ' → ' + t.fechaFin : '') : ''}` });
     if (!v) return;
 
-    // QUÉ PERMISO ES (14/10/2026): solo los de asuntos propios restan de las
-    // vacaciones, así que al abrir un permiso se dice cuál, con los del convenio.
+    // QUÉ PERMISO ES (14/10/2026), con los del convenio. Los asuntos propios ya
+    // no son un permiso (29/10/2026): se eligen arriba, como su propia situación.
     if (v.estado === 'permiso') {
       const p = await Dialogo.formulario('¿Qué permiso es?', [
         { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
           opciones: TIPOS_PERMISO.map(x => ({ valor: x.codigo, texto: x.etiqueta }))
             .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]), buscador: { tope: 20 } },
-      ], { textoBoton: 'Aplicar', nota: 'Los de asuntos propios restan de las vacaciones: cada día, uno. Los demás, no.' });
+      ], { textoBoton: 'Aplicar', nota: 'Los permisos no tocan las vacaciones. Si son asuntos propios, cancela y elige la situación «Asuntos propios».' });
       if (!p) return;
       v.tipoPermiso = p.tipoPermiso;
     }

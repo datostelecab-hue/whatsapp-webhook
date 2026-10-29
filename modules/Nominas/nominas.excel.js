@@ -504,7 +504,7 @@ const horasQueCuentan = f => Math.round(((Number(f.horas) || 0) - (Number(f.hora
   + (Number(f.horasJustificadas) || 0) + (Number(f.horasVacaciones) || 0) + (Number(f.horasPermiso) || 0)) * 100) / 100;
 const ganaDe = f => (f.mboHsExt > f.mboFAS ? 'Horas extra' : f.mboFAS > 0 ? 'FAS' : '');
 
-const ESTADO_TXT = { vacaciones: 'de vacaciones', permiso: 'de permiso', baja_medica: 'de baja' };
+const ESTADO_TXT = { vacaciones: 'de vacaciones', permiso: 'de permiso', asuntos_propios: 'de asuntos propios', baja_medica: 'de baja' };
 
 /** La cuenta de una persona, en palabras. */
 function comoSale(f, cfg) {

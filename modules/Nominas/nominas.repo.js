@@ -488,7 +488,8 @@ async function sinSellarEnBitacora(desdeIso, hastaIso, ids) {
  * Por día NATURAL a propósito: las vacaciones cogen también los días de
  * libranza, y por eso valen el 73 % de un día (ver el servicio). Lo que NO
  * entra: `suspendido` y `suspension_permiso` (no se pagan) ni la baja médica
- * (la paga la mutua).
+ * (la paga la mutua). Los ASUNTOS PROPIOS (db/225, 29/10/2026) cuentan como un
+ * día de permiso retribuido, que es lo que eran hasta tener su situación.
  */
 async function ausenciasDelPeriodo(desdeIso, hastaIso, { conductorId = null } = {}) {
   const r = await db.consulta(
@@ -497,16 +498,17 @@ async function ausenciasDelPeriodo(desdeIso, hastaIso, { conductorId = null } = 
        CROSS JOIN LATERAL generate_series(GREATEST(h.desde, $1::date),
                                           LEAST(COALESCE(h.hasta, $2::date), $2::date),
                                           interval '1 day') AS d (dia)
-      WHERE h.estado IN ('vacaciones', 'permiso')
+      WHERE h.estado IN ('vacaciones', 'permiso', 'asuntos_propios')
         AND h.desde <= $2::date AND (h.hasta IS NULL OR h.hasta >= $1::date)
         AND ($3::bigint IS NULL OR h.conductor_id = $3::bigint)
-      ORDER BY h.conductor_id, d.dia, (h.estado = 'permiso') DESC`,
+      ORDER BY h.conductor_id, d.dia, (h.estado <> 'vacaciones') DESC`,
     [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId)]);
   const out = new Map();
   for (const x of r.rows) {
     const cid = Number(x.conductor_id);
     if (!out.has(cid)) out.set(cid, { vacaciones: [], permiso: [] });
-    out.get(cid)[x.estado === 'permiso' ? 'permiso' : 'vacaciones'].push(x.dia);
+    // Asuntos propios (db/225): un día de permiso retribuido, como cuando lo era.
+    out.get(cid)[x.estado === 'vacaciones' ? 'vacaciones' : 'permiso'].push(x.dia);
   }
   return out;
 }

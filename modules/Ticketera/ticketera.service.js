@@ -278,8 +278,8 @@ async function datos(areaCodigo, { cerrados, recientes = false, codigo = null } 
   const [tickets, cat, tiposPermiso] = await Promise.all([
     repo.bandeja(areaCodigo, { cerrados: !!cerrados, desde, codigo: codigo ? String(codigo).trim().slice(0, 40) : null }),
     repo.catalogos(),
-    // Al aplicar un permiso se dice cuál es: solo los de asuntos propios restan
-    // de las vacaciones (14/10/2026).
+    // Al aplicar un permiso se dice cuál es (14/10/2026). Los asuntos propios
+    // son su propia situación desde el 29/10/2026 (db/225).
     plantilla.tiposPermiso().catch(() => []),
   ]);
   return { tickets, ...cat, tiposPermiso, desde: desde ? diaLegible(desde) : null };

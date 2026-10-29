@@ -21,8 +21,11 @@ vistas/vacaciones.ejs      el Listado: el saldo debajo de cada nombre y, en la f
 Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,0821 días por día
 natural desde el alta (o desde el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—;
 lo de antes no cuenta para nada), sin los días de suspensión; + 1 día
-por festivo trabajado más de 6 h; − vacaciones disfrutadas; − cada día de permiso
-retribuido.
+por festivo trabajado más de 6 h; − vacaciones disfrutadas. Ningún permiso resta.
+
+Los ASUNTOS PROPIOS van en un banco aparte (29/10/2026, db/225): 2 días por año
+natural, enteros y acumulables, menos cada día en la situación «Asuntos propios»
+de Plantilla. No tocan el saldo de vacaciones (`saldoDe` → `asuntosPropios`).
 
 Las horas de un festivo son las de la nómina (`nominas.service.horasDelDia`) y se
 guardan en `festivo_horas`: desde el 01/07/2026 las pone el cron horario de

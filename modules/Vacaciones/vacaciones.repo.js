@@ -7,7 +7,8 @@
 
 const db = require('../../services/db');
 
-const ESTADOS = ['vacaciones', 'permiso', 'suspendido', 'suspension_permiso'];
+// 'asuntos_propios' (db/225): su banco va aparte del saldo de vacaciones.
+const ESTADOS = ['vacaciones', 'permiso', 'asuntos_propios', 'suspendido', 'suspension_permiso'];
 
 /**
  * Quien tiene el contrato abierto (o una persona, con `id`). Solo plantilla

@@ -2647,7 +2647,7 @@ const ORDEN_GRUPO = new Map(GRUPOS.map((g, i) => [g.codigo, i]));
 
 // De qué estado del catálogo sale cada grupo. Lo que no esté aquí y sea ausencia
 // cae en 'ausente', que es la red: un estado nuevo no se pierde, sale agrupado.
-const GRUPO_DE_ESTADO = { baja_medica: 'baja_medica', permiso: 'permiso', vacaciones: 'vacaciones' };
+const GRUPO_DE_ESTADO = { baja_medica: 'baja_medica', permiso: 'permiso', asuntos_propios: 'permiso', vacaciones: 'vacaciones' };
 
 /**
  * Los coches del cuadrante un día, turno a turno, con quien sale o el motivo.

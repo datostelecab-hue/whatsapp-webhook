@@ -5,8 +5,11 @@
 //     19/10/2026 era el 01/01/2025), sin las
 //     suspensiones; la baja médica y la libranza sí generan
 //   + 1 día por festivo trabajado MÁS de 6 horas
-//   − vacaciones disfrutadas  − cada día de permiso de ASUNTOS PROPIOS (los demás
-//     permisos no restan: «Solo restan los de asuntos propios», 14/10/2026)
+//   − vacaciones disfrutadas (ningún permiso resta)
+//
+// Y LOS ASUNTOS PROPIOS, UN BANCO APARTE (29/10/2026): + 2 días por año natural
+// desde que se le calcula, − cada día en la situación «Asuntos propios»
+// (db/225; o un permiso de los de antes con ese tipo). No tocan las vacaciones.
 //
 //   node scripts/comprobar-vacaciones-saldo.js
 //
@@ -31,6 +34,7 @@ const H = obj => new Map(Object.entries(obj));
 const vac = (desde, hasta) => ({ estado: 'vacaciones', desde, hasta, fila: '1' });
 const perm = (desde, hasta, tipo = 'PR_ASUNTOS_PROPIOS') => ({ estado: 'permiso', desde, hasta, fila: '2', leave_type_code: tipo });
 const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, fila: '3' });
+const ap = (desde, hasta) => ({ estado: 'asuntos_propios', desde, hasta, fila: '4', leave_type_code: 'PR_ASUNTOS_PROPIOS' });
 
 (async () => {
   // ── 1. Lo que se genera ──────────────────────────────────────────────────
@@ -68,14 +72,29 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
   igual('Vacaciones de antes de su alta (otro contrato): no cuentan', [s.disfrutadas, s.detalle.vacaciones.length], [0, 0]);
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-07-10', '2026-07-15')], [], new Map(), HOY);
   igual('Unas que empiezan antes del alta: solo cuentan los días desde el alta (3)', s.disfrutadas, 3);
-  s = saldoDe({ alta: '2026-07-13' }, [perm('2026-09-01', '2026-09-01'), perm('2026-10-20', '2026-10-21')], [], new Map(), HOY);
-  igual('Un día de permiso pasado resta 1 entero; los de mañana van aparte', [s.permisos, s.permisosProgramados, s.saldo, s.saldoTras], [1, 2, 6.72, 4.72]);
-  igual('…y el permiso sí genera su día natural', s.generadas, 7.72);
   s = saldoDe({ alta: '2026-07-13' }, [perm('2026-08-23', '2026-08-31', null), perm('2026-10-08', '2026-11-08', 'PR_MATRIMONIO')], [], new Map(), HOY);
-  igual('Un permiso sin tipo y uno de matrimonio: no restan nada, ni hoy ni después',
-    [s.permisos, s.permisosProgramados, s.saldo, s.saldoTras], [0, 0, 7.72, 7.72]);
-  igual('…pero se ven en la ficha, marcados como que no restan',
-    s.detalle.permisos.map(p => [p.resta, p.dentro]), [[false, 9], [false, 7]]);
+  igual('Un permiso sin tipo y uno de matrimonio: no restan nada, ni hoy ni después', [s.saldo, s.saldoTras], [7.72, 7.72]);
+  igual('…pero se ven en la ficha, con sus días', s.detalle.permisos.map(p => [p.dentro, p.programados]), [[9, 0], [7, 25]]);
+
+  // ── 2b. Los asuntos propios: su banco, aparte (29/10/2026) ─────────────────
+  // Camilo: «que no reste a las vacaciones, él se restará solo».
+  s = saldoDe({ alta: '2026-07-13' }, [ap('2026-09-01', '2026-09-01'), ap('2026-10-20', '2026-10-20')], [], new Map(), HOY);
+  igual('Asuntos propios: no tocan el saldo de vacaciones', [s.saldo, s.saldoTras, s.generadas], [7.72, 7.72, 7.72]);
+  igual('…su banco: 2 este año, 1 cogido, 1 programado',
+    [s.asuntosPropios.generados, s.asuntosPropios.usados, s.asuntosPropios.programados, s.asuntosPropios.saldo, s.asuntosPropios.saldoTras], [2, 1, 1, 1, 0]);
+  igual('…y se ven aparte en la ficha, no entre los permisos', [s.detalle.asuntos.length, s.detalle.permisos.length], [2, 0]);
+  s = saldoDe({ alta: '2026-07-13' }, [perm('2026-09-01', '2026-09-01')], [], new Map(), HOY);
+  igual('Un permiso de los de antes con el tipo de asuntos propios cuenta igual (si db/225 aún no lo ha pasado)',
+    [s.saldo, s.asuntosPropios.usados, s.detalle.asuntos.length], [7.72, 1, 1]);
+  s = saldoDe({ alta: '2023-11-13' }, [], [], new Map(), HOY);
+  igual('Quien entró antes: 2 días en 2026, enteros', [s.asuntosPropios.anios, s.asuntosPropios.generados, s.asuntosPropios.desde], [1, 2, '2026']);
+  s = saldoDe({ alta: '2026-10-01' }, [], [], new Map(), HOY);
+  igual('Quien entró en octubre: también 2 (sin prorratear)', s.asuntosPropios.generados, 2);
+  s = saldoDe({ alta: '2026-07-13' }, [ap('2026-09-01', '2026-09-01')], [], new Map(), '2027-03-01');
+  igual('En 2027 suma otros 2 encima de lo que no cogió: 4 − 1 = 3',
+    [s.asuntosPropios.anios, s.asuntosPropios.generados, s.asuntosPropios.saldo], [2, 4, 3]);
+  s = saldoDe({ alta: '2026-07-13' }, [ap('2026-08-01', '2026-08-03')], [], new Map(), HOY);
+  igual('Más días de los que tiene: el banco queda en negativo', s.asuntosPropios.saldo, -1);
 
   // ── 3. Los festivos ──────────────────────────────────────────────────────
   const cal = [F('2025-05-01', null), F('2025-12-25'), F('2026-08-15'), F('2026-10-12', null), F('2026-10-14', null), F('2026-07-01')];
@@ -96,11 +115,12 @@ const susp = (desde, hasta, estado = 'suspendido') => ({ estado, desde, hasta, f
 
   // ── 4. Todo junto ────────────────────────────────────────────────────────
   s = saldoDe({ alta: '2026-07-13' },
-    [vac('2026-08-01', '2026-08-05'), perm('2026-09-01', '2026-09-01'), susp('2026-09-10', '2026-09-11'), vac('2026-10-20', '2026-10-22')],
+    [vac('2026-08-01', '2026-08-05'), ap('2026-09-01', '2026-09-01'), susp('2026-09-10', '2026-09-11'), vac('2026-10-20', '2026-10-22')],
     cal, H({ '2026-08-15': 9 * 3600 }), HOY);
-  igual('92 días que generan (7,55) + 1 festivo − 5 disfrutadas − 1 permiso = 2,55',
-    [s.diasQueGeneran, s.generadas, s.festivosSuman, s.disfrutadas, s.permisos, s.saldo], [92, 7.55, 1, 5, 1, 2.55]);
-  igual('…y tras las vacaciones del 20 al 22, −0,45', s.saldoTras, -0.45);
+  igual('92 días que generan (7,55) + 1 festivo − 5 disfrutadas = 3,55 (el día de asuntos propios no resta)',
+    [s.diasQueGeneran, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [92, 7.55, 1, 5, 3.55]);
+  igual('…y tras las vacaciones del 20 al 22, 0,55', s.saldoTras, 0.55);
+  igual('…y le queda 1 día de asuntos propios', s.asuntosPropios.saldo, 1);
 
   // ── 5. Las horas de los festivos ─────────────────────────────────────────
   const guardado = [];

@@ -804,24 +804,31 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
 }
 
 /**
- * LOS TIPOS DE PERMISO del convenio (art. 22, `leave_type`), con asuntos propios
- * el primero. Hacen falta desde el 14/10/2026: de los permisos retribuidos, solo
- * los de ASUNTOS PROPIOS restan del saldo de vacaciones (Vacaciones).
+ * LOS TIPOS DE PERMISO del convenio (art. 22, `leave_type`). Sin los de ASUNTOS
+ * PROPIOS desde el 29/10/2026: tienen su propia situación (db/225) y su banco
+ * aparte en Vacaciones, así que ya no son un permiso que se elige aquí. Ningún
+ * permiso toca las vacaciones.
  */
 async function tiposPermiso() {
   const r = await db.consulta(
     `SELECT leave_type_code AS codigo, name AS etiqueta FROM leave_type
-      ORDER BY (leave_type_code = 'PR_ASUNTOS_PROPIOS') DESC, name`);
+      WHERE leave_type_code <> 'PR_ASUNTOS_PROPIOS'
+      ORDER BY name`);
   return r.rows;
 }
 
 /**
  * El tipo de un permiso, comprobado contra el catálogo. Solo vale en un
- * permiso; vacío u 'OTRO' = ninguno de los del convenio (NULL).
+ * permiso; vacío u 'OTRO' = ninguno de los del convenio (NULL). Los asuntos
+ * propios (db/225) llevan el suyo sin preguntarlo: es lo que son.
  */
 async function tipoDePermiso(estado, tipo) {
+  if (estado === 'asuntos_propios') return 'PR_ASUNTOS_PROPIOS';
   const t = String(tipo == null ? '' : (typeof tipo === 'object' ? tipo.valor : tipo)).trim();
   if (estado !== 'permiso' || !t || t === 'OTRO') return null;
+  if (t === 'PR_ASUNTOS_PROPIOS') {
+    throw new Error('Los asuntos propios tienen su propia situación desde el 29/10/2026: elige «Asuntos propios» en vez de un permiso.');
+  }
   const r = await db.consulta('SELECT 1 FROM leave_type WHERE leave_type_code = $1', [t]);
   if (!r.rows.length) throw new Error(`Ese tipo de permiso no existe: «${t}»`);
   return t;
@@ -1037,8 +1044,8 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso },
   const cambios = {};
   if (desde !== undefined) cambios.desde = desde || fila.desde;
   if (motivo !== undefined) cambios.motivo = motivo || null;
-  // El tipo de un permiso se puede corregir: es lo que decide si resta de las
-  // vacaciones (solo los de asuntos propios).
+  // El tipo de un permiso se puede corregir (los de asuntos propios ya no son
+  // un permiso: tienen su situación, db/225).
   if (tipoPermiso !== undefined && fila.estado === 'permiso') {
     const tipo = await tipoDePermiso('permiso', tipoPermiso);
     if ((tipo || null) !== (fila.leave_type_code || null)) cambios.leave_type_code = tipo;

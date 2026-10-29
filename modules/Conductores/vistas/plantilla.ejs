@@ -127,7 +127,7 @@
   // Color de cada situación. El código va en la base; esto es solo cómo se ve.
   const tonoSituacion = c => ({
     activo: 'green', vacaciones: 'gold', baja_medica: 'warn',
-    permiso: 'violet', excedencia: 'muted', baja_empresa: 'red',
+    permiso: 'violet', asuntos_propios: 'azul', excedencia: 'muted', baja_empresa: 'red',
   }[c] || 'muted');
 
   // Lo que le falta a una ficha, en corto y con su aviso.
@@ -143,12 +143,12 @@
 
   // ---------- acciones de la ficha ----------
 
-  // QUÉ PERMISO ES (14/10/2026). De los permisos retribuidos, solo los de asuntos
-  // propios restan de las vacaciones; así que al poner uno se dice cuál, con los
-  // tipos del convenio. Devuelve el código, 'OTRO', o null si se cancela.
+  // QUÉ PERMISO ES (14/10/2026), con los tipos del convenio. Los de asuntos
+  // propios ya no salen aquí: desde el 29/10/2026 son su propia situación, con
+  // su banco aparte en Vacaciones. Devuelve el código, 'OTRO', o null si se cancela.
   const opcionesPermiso = () => (CAT.tiposPermiso || []).map(x => ({ valor: x.codigo, texto: x.etiqueta }))
     .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]);
-  const NOTA_PERMISO = 'Los de asuntos propios restan de las vacaciones: cada día, uno. Los demás, no.';
+  const NOTA_PERMISO = 'Los permisos no tocan las vacaciones. Si son asuntos propios, cancela y elige la situación «Asuntos propios»: restan de su banco de asuntos propios.';
   const tipoPermisoTxt = c => ((CAT.tiposPermiso || []).find(x => x.codigo === c) || {}).etiqueta || '';
   async function pedirTipoPermiso(valor) {
     const v = await pedirDatos('¿Qué permiso es?', [

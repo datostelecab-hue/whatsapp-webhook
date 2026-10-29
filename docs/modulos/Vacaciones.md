@@ -16,19 +16,36 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 | **+** | Generadas | **0,0821 días por cada día natural** desde el alta que dice el sistema (la del contrato abierto). Cuentan la libranza, la **baja médica**, las vacaciones y los permisos. **No** cuentan los días de **suspensión** (de empleo y sueldo, o por retirada del permiso de conducir). |
 | **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no). |
 | **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron. |
-| **−** | Asuntos propios | **Cada día de permiso por ASUNTOS PROPIOS resta un día entero** del saldo. Los demás permisos retribuidos no restan. |
+
+**Los asuntos propios ya no restan de aquí** (desde el 29/10/2026): tienen su banco aparte, abajo. Ningún permiso toca el saldo de vacaciones.
 
 - **Quien entró antes de 2026 empieza el 01/01/2026** (desde el 19/10/2026; hasta entonces, el 01/01/2025): lo anterior no cuenta para nada. Quien entró después, desde su alta. Las vacaciones de un contrato anterior no cuentan. Ver [[#Todo empieza el 01/01/2026 (19/10/2026)]].
-- **Lo programado** (vacaciones y permisos de mañana en adelante, ya puestos en la ficha) no toca el saldo de hoy. Se enseña aparte, con lo que quedará después.
+- **Lo programado** (vacaciones de mañana en adelante, ya puestas en la ficha) no toca el saldo de hoy. Se enseña aparte, con lo que quedará después.
 - El saldo puede ser **negativo**: ha disfrutado más de lo generado.
 
 Las decisiones de Camilo, el 14/10/2026: los permisos se descuentan del saldo, y luego, *«Solo restan los de asuntos propios»*; para los antiguos, desde el 01/01/2025; las suspensiones no generan; y el festivo suma solo si se trabajó más de 6 h.
+
+## Asuntos propios: un banco aparte (29/10/2026, db/225)
+
+Camilo: *«siempre, por conductor, debe de sumarse dos días al año de asuntos propios; si no lo ha usado, en vacaciones debe de quedarse el banco de asuntos propios aparte. En la suma que haces me sale que resta a las vacaciones: que no reste, él se restará solo»* y *«habrá una nueva situación en la plantilla, aparte de suspendido, vacaciones, etc.: asuntos propios, que resta él mismo en el módulo de vacaciones, pero ambos serán separados»*.
+
+| | Qué | Cómo |
+|---|---|---|
+| **+** | Sumados | **2 días por cada año natural** desde el que se le calcula (2026, o el año de su alta). Enteros, **sin prorratear**: quien entra en octubre tiene sus 2. **Lo que no coge se queda en el banco**: en 2027 suma otros 2 encima. |
+| **−** | Cogidos | Cada día en la situación **«Asuntos propios»** resta uno entero. Un permiso de los de antes con el tipo de asuntos propios cuenta igual. |
+
+- **No toca el saldo de vacaciones**, ni lo programado. Los días de asuntos propios **sí generan** vacaciones, como un permiso.
+- **Es una situación de la plantilla**, al lado de «Permiso retribuido» (`cat_estado_conductor.asuntos_propios`, db/225): ausencia de un día con vuelta, no libera la plaza, en la bitácora es una «P», en el planificador sale «con PERMISO», y **en la nómina cuenta como un día de permiso retribuido** (las 8 h de siempre, `nominas.repo.ausenciasDelPeriodo`). Lleva el tipo del convenio `PR_ASUNTOS_PROPIOS` sin preguntarlo. No necesita la llave de vacaciones.
+- **«Asuntos propios» ya no es un tipo de permiso**: no sale en «¿Qué permiso es?» de Plantilla ni de la Ticketera, y el servidor lo rechaza en un permiso con el aviso de que se elija la situación. En la Ticketera, «Aplicar» ofrece «Asuntos propios» en la lista de ausencias.
+- **El de Víctor Rafael Requena Obispo** (01/09/2026, el único del año según Camilo) pasa con db/225 de permiso a la situación nueva: con los datos del 27/10 le quedaban 19,79 días de vacaciones (antes 18,79) y le queda **1 día de asuntos propios** (2 − 1).
+- **En la pantalla**: debajo de cada nombre, al lado del saldo, «Asuntos propios N días»; una columna con «lo que queda de lo sumado»; un KPI con los días por coger entre todos; y en la ficha un **extracto aparte** (sumados, cogidos, le quedan, lo programado). En el Excel, sumados, cogidos y programados.
+- Lo cuenta la misma función pura (`saldoDe` → `asuntosPropios`); el comprobador lo prueba (2 al año, sin prorratear, acumulado en 2027, en negativo, el permiso viejo).
 
 ### El tipo de un permiso se dice al ponerlo
 
 Si un permiso es de asuntos propios lo dice su **tipo**: los del convenio (art. 22, `leave_type`), guardado en `conductor_estado_hist.leave_type_code`. Hasta el 14/10/2026 no lo pedía nadie (solo lo tenía el de Víctor Requena, de db/196). Ahora:
 
-- **Plantilla** (cambiar la situación o añadir un tramo): al elegir «Permiso retribuido», un segundo paso pregunta «¿Qué permiso es?», con asuntos propios el primero y «Otro (ninguno de estos)» al final. **Corregir** un tramo de permiso deja cambiar el tipo, y el historial de situaciones lo enseña debajo de la etiqueta («Sin tipo» si no lo tiene).
+- **Plantilla** (cambiar la situación o añadir un tramo): al elegir «Permiso retribuido», un segundo paso pregunta «¿Qué permiso es?», con «Otro (ninguno de estos)» al final (asuntos propios ya no está: es su propia situación desde el 29/10/2026). **Corregir** un tramo de permiso deja cambiar el tipo, y el historial de situaciones lo enseña debajo de la etiqueta («Sin tipo» si no lo tiene).
 - **Ticketera**: «Aplicar» un permiso pregunta lo mismo antes de ponerlo.
 - El servidor comprueba el tipo contra el catálogo (`conductores.repo.tipoDePermiso`). Solo vale en un permiso: en otra situación se ignora. «Otro» o vacío guardan NULL.
 - db/199 pone las tildes a los nombres del catálogo («Acompanyamiento» → «Acompañamiento»). Los códigos no cambian.
@@ -138,7 +155,7 @@ Medido el 21/10/2026: **134 de alta** y **161 que se fueron desde el 01/01/2026*
 
 ## Lo que hay que saber
 
-- **Los permisos que había el 14/10/2026 no tienen tipo**, salvo el de Requena. Por eso no restan: entre ellos, una baja por paternidad, dos «no se le entregó el coche» y un día compensatorio. Uno dice **«permiso por asuntos personales»** (la ficha 283, del 06/10). Si es de asuntos propios, hay que marcarlo en Plantilla (corregir el tramo → tipo) para que reste.
+- **Los permisos que había el 14/10/2026 no tienen tipo**, salvo el de Requena: entre ellos, una baja por paternidad, dos «no se le entregó el coche» y un día compensatorio. Uno dice **«permiso por asuntos personales»** (la ficha 283, del 06/10), pero según Camilo (29/10/2026) el único día de asuntos propios del año es el de Requena: ese se queda como permiso.
 - **«De dónde sale»** es el motivo del tramo. Las de los Excel lo traen desde db/195 y db/196. Las 28 de la carga inicial (03/09/2026) entraron sin él y db/201 se lo pone: la fila de la pestaña VACACIONES de PLANTILLA TRABAJADORES y, si también está, la celda de Caverel. Dos lo dicen con matiz: Molina (el sistema hasta el 29/09, el Excel de hoy el 30/09) y Aboulghazi (Caverel desde el 01/08, no el 02/08). Si un tramo no trae motivo pero sí usuario, la pantalla dice **«Lo puso X el dd/mm/aaaa»** (quién y el día que se metió; se lee de la fila, no se copia). Así salen nueve que se pusieron a mano en Plantilla sin motivo; de ellas, siete son de personas con contrato abierto y se ven en el módulo. Solo siguen con guion los dos del 04/09 que entraron sin usuario (Kevin Ferreira y Daniel Castillo).
 - Wellim Matos (ficha 75) se fue 33 días, del 03/09 al 05/10/2026 (fila 29). BOLT lo confirma: de la jornada del 02/09 a la del 07/10 no tiene ni una hora. Con alta el 16/02/2026 le salen −11,2: o RRHH le adelantó vacaciones o parte no fueron vacaciones.
 - ETT: sale todo el que tiene contrato abierto. Las vacaciones de quien está por ETT las paga la agencia; el filtro de contrato los separa.

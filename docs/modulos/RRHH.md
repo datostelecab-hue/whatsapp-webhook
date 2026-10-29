@@ -134,7 +134,7 @@ Hay tres operaciones distintas y no son intercambiables:
 | **Añadir ausencia** | Mete un tramo suelto sin tocar nada de lo que ya hay | Vacaciones partidas: 13 días este mes y 3 en noviembre |
 | **Editar / borrar ausencia** | Corrige la fila que ya está | Hay un **error**: el 13 en vez del 15, unas vacaciones a quien no le tocaban |
 
-**Un permiso lleva su tipo** (14/10/2026): al poner un «Permiso retribuido», un segundo paso pregunta cuál es, con los tipos del convenio. Solo los de asuntos propios restan de las [[Vacaciones]]. Al corregir el tramo, el tipo también se puede cambiar.
+**Un permiso lleva su tipo** (14/10/2026): al poner un «Permiso retribuido», un segundo paso pregunta cuál es, con los tipos del convenio. Al corregir el tramo, el tipo también se puede cambiar. **Asuntos propios es su propia situación** desde el 29/10/2026 (db/225), con su banco aparte en [[Vacaciones]] (2 días al año): ningún permiso resta ya de las vacaciones.
 
 Añadir no cierra ni recorta nada: o el tramo cabe en un hueco libre, o se dice **cuál** es el que estorba, con su etiqueta y sus fechas. Y si el que estorba está abierto sin fecha de vuelta se dice también, porque mientras siga así no cabe ningún tramo después y el otro se quedaría probando fechas a ver cuál entra.
 

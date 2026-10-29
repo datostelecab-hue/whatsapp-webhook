@@ -404,8 +404,8 @@ No son de los seis, pero forman parte de la misma red:
   promedio de la casa no se sella. Y la letra del mes no cambia por esto.
 - **`comprobar-vacaciones-saldo.js`** (14/10/2026) — el saldo de vacaciones: 0,0821 por día
   natural desde el alta o el 01/01/2026 (lo de 2025 no cuenta, ni sus vacaciones ni sus festivos), sin suspensiones (la baja médica sí genera);
-  vacaciones que cruzan hoy, de antes del alta y programadas; cada día de permiso resta
-  uno solo si es de asuntos propios (sin tipo u otro tipo, no restan); un festivo suma con MÁS de 6 h (6 justas no), «sin datos» antes de junio de 2025
+  vacaciones que cruzan hoy, de antes del alta y programadas; ningún permiso resta
+  (desde el 29/10/2026 los asuntos propios tienen su banco aparte: 2 al año, sin prorratear, acumulados); un festivo suma con MÁS de 6 h (6 justas no), «sin datos» antes de junio de 2025
   y «calculándose» si el sistema aún no tiene sus horas. Y el cálculo de las horas de los
   festivos, con dobles.
 - **`comprobar-vacaciones.js`** (09/10/2026) — las vacaciones las aprueba una sola

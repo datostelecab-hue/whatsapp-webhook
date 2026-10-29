@@ -18,11 +18,22 @@
 //               Madrid en el que trabajó MÁS DE 6 HORAS (las de la nómina: viaje
 //               + espera de BOLT, por día natural).
 //   DISFRUTADAS − los días de vacaciones que ya pasaron.
-//   PERMISOS    − cada día de permiso de ASUNTOS PROPIOS resta un día entero
-//               (Camilo, 14/10/2026: «Solo restan los de asuntos propios»). El
-//               resto de permisos retribuidos no toca el saldo. El tipo es el
-//               del convenio (`leave_type_code`), que se elige al poner el
-//               permiso en Plantilla o al aplicar el ticket.
+//   PERMISOS    no tocan el saldo de vacaciones. Hasta el 29/10/2026 los de
+//               asuntos propios restaban un día cada uno; desde entonces tienen
+//               su banco aparte (abajo).
+//
+// LOS ASUNTOS PROPIOS, UN BANCO APARTE (29/10/2026). Camilo: «siempre, por
+// conductor, debe de sumarse dos días al año de asuntos propios; si no lo ha
+// usado, en vacaciones debe de quedarse el banco de asuntos propios aparte … que
+// no reste a las vacaciones, él se restará solo» y «existirá asuntos propios
+// (una situación de la plantilla) que resta él mismo en el módulo de
+// vacaciones, pero ambos serán separados».
+//   + 2 días por cada año natural desde el que se le calcula (2026, o el de su
+//     alta), enteros y sin prorratear. Lo que no usa se queda en el banco: el
+//     año siguiente suma otros 2 encima.
+//   − cada día en la situación «Asuntos propios» (db/225). Un permiso de los de
+//     antes con el tipo de asuntos propios cuenta igual.
+//   Los días de asuntos propios generan vacaciones, como un permiso.
 //
 // Lo programado (vacaciones y permisos de mañana en adelante) no toca el saldo
 // de hoy: se enseña aparte, con el saldo que quedará después.
@@ -56,7 +67,11 @@ const NUCLEO_DESDE = '2026-07-01';
 // han pasado estos días (como el sellado de la bitácora, que mira tres).
 const MARGEN_DIAS = 4;
 const NO_GENERAN = new Set(['suspendido', 'suspension_permiso']);
-const ASUNTOS_PROPIOS = 'PR_ASUNTOS_PROPIOS';   // el único permiso que resta
+const ASUNTOS_PROPIOS = 'PR_ASUNTOS_PROPIOS';   // el tipo del convenio (leave_type)
+const AP_POR_ANIO = 2;                          // días de asuntos propios cada año
+// Un día de asuntos propios: la situación propia (db/225) o, de antes, un
+// permiso con ese tipo.
+const esAsuntoPropio = t => t.estado === 'asuntos_propios' || (t.estado === 'permiso' && t.leave_type_code === ASUNTOS_PROPIOS);
 const FIN = '9999-12-31';
 
 // ── Fechas en 'AAAA-MM-DD', sin husos: todo es día natural ───────────────────
@@ -81,8 +96,8 @@ const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Mad
 function saldoDe(p, tramos, festivos, horas, hoy) {
   const inicio = p.alta > DESDE_HISTORICO ? p.alta : DESDE_HISTORICO;
   const manana = mas(hoy, 1);
-  const vacaciones = [], permisos = [], suspensiones = [];
-  let disfrutadas = 0, programadas = 0, diasPermiso = 0, permisoProgramado = 0, diasSuspension = 0;
+  const vacaciones = [], permisos = [], suspensiones = [], asuntos = [];
+  let disfrutadas = 0, programadas = 0, diasSuspension = 0, apUsados = 0, apProgramados = 0;
 
   for (const t of tramos || []) {
     const hasta = t.hasta || FIN;
@@ -101,12 +116,14 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
         // solo la vuelta (ver `validarCambio`).
         editable: !!t.hasta && t.hasta >= hoy,
         empezadas: t.desde <= hoy });
+    } else if (esAsuntoPropio(t)) {
+      if (!pasado && !futuro) continue;
+      apUsados += pasado; apProgramados += futuro;
+      asuntos.push({ ...linea, usados: pasado, programados: futuro, quien: t.quien || '', puesto: t.puesto || '',
+        ticket: t.ticket_id ? { id: t.ticket_id, codigo: t.ticket_codigo || '' } : null });
     } else if (t.estado === 'permiso') {
       if (!pasado && !futuro) continue;
-      const resta = t.leave_type_code === ASUNTOS_PROPIOS;
-      if (resta) { diasPermiso += pasado; permisoProgramado += futuro; }
-      permisos.push({ ...linea, tipo: t.tipo_permiso || '', resta, restan: resta ? pasado : 0,
-        programados: resta ? futuro : 0, dentro: pasado });
+      permisos.push({ ...linea, tipo: t.tipo_permiso || '', dentro: pasado, programados: futuro });
     } else if (NO_GENERAN.has(t.estado)) {
       if (!pasado) continue;
       diasSuspension += pasado;
@@ -129,18 +146,28 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
   });
   const festivosSuman = lista.filter(f => f.estado === 'suma').length;
 
-  const saldo = r2(generadas + festivosSuman - disfrutadas - diasPermiso);
+  const saldo = r2(generadas + festivosSuman - disfrutadas);
   const ahora = vacaciones.find(v => v.desde <= hoy && (v.hasta || FIN) >= hoy);
+  // El banco de asuntos propios: 2 por año natural, del año en que empieza a
+  // contar al de hoy (a quien se fue, al de su baja).
+  const anios = Number(hoy.slice(0, 4)) - Number(inicio.slice(0, 4)) + 1;
+  const apGenerados = AP_POR_ANIO * Math.max(0, anios);
+  const apSaldo = apGenerados - apUsados;
   return {
     inicio, desdeElAlta: inicio === p.alta,
     diasNaturales, diasSuspension, diasQueGeneran, generadas,
     festivosSuman, festivosSinDatos: lista.filter(f => f.estado === 'sin-datos').length,
     festivosPendientes: lista.filter(f => f.estado === 'pendiente' || f.estado === 'hoy').length,
-    disfrutadas, permisos: diasPermiso, saldo,
-    programadas, permisosProgramados: permisoProgramado,
-    saldoTras: r2(saldo - programadas - permisoProgramado),
+    disfrutadas, saldo,
+    programadas,
+    saldoTras: r2(saldo - programadas),
     deVacacionesHasta: ahora ? ahora.hasta : null,
-    detalle: { festivos: lista, vacaciones, permisos, suspensiones },
+    asuntosPropios: {
+      porAnio: AP_POR_ANIO, anios: Math.max(0, anios), desde: inicio.slice(0, 4),
+      generados: apGenerados, usados: apUsados, programados: apProgramados,
+      saldo: apSaldo, saldoTras: apSaldo - apProgramados,
+    },
+    detalle: { festivos: lista, vacaciones, permisos, suspensiones, asuntos },
   };
 }
 
@@ -177,8 +204,10 @@ function saldoPara(p, x, festivos, hoy) {
   const tramos = deBaja ? x.tramos.filter(t => t.desde <= p.baja) : x.tramos;
   const s = saldoDe(p, tramos, festivos, x.horas, corte);
   if (deBaja) {
-    s.programadas = 0; s.permisosProgramados = 0; s.saldoTras = s.saldo; s.deVacacionesHasta = null;
+    s.programadas = 0; s.saldoTras = s.saldo; s.deVacacionesHasta = null;
+    s.asuntosPropios.programados = 0; s.asuntosPropios.saldoTras = s.asuntosPropios.saldo;
     s.detalle.vacaciones.forEach(v => { v.editable = false; v.programados = 0; });
+    s.detalle.asuntos.forEach(a => { a.programados = 0; });
   }
   return { ...s, deBaja, baja: p.baja || null, motivoBaja: p.motivo_baja || '', corte };
 }
@@ -192,7 +221,7 @@ async function lista({ hoy = hoyMadrid() } = {}) {
     delete s.detalle;
     return { id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, ...s };
   });
-  return { filas, hoy, reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600 } };
+  return { filas, hoy, reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, apPorAnio: AP_POR_ANIO } };
 }
 
 /** La ficha de una persona: el saldo y de dónde sale cada número. */
@@ -210,7 +239,7 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
   const x = porId.get(p.id);
   return {
     id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, hoy,
-    reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, nucleoDesde: NUCLEO_DESDE },
+    reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO },
     ...saldoPara(p, x, festivos, hoy),
   };
 }
@@ -278,7 +307,7 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 }
 
 module.exports = {
-  TASA, DESDE_HISTORICO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS,
+  TASA, DESDE_HISTORICO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
   lista, ficha, sellarFestivos, cambiarVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };
