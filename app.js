@@ -43,7 +43,10 @@ app.set('trust proxy', 2);
 // Parser JSON global (2mb). Las rutas que suben archivos en base64 (documentos de
 // conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
 // límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.
-const jsonGlobal = express.json({ limit: '2mb' });
+// `verify` guarda el CUERPO CRUDO en req.rawBody: lo necesita la comprobación de
+// la firma del webhook de Meta (services/firmaMeta.js), que recalcula el HMAC
+// sobre los bytes exactos que llegaron, no sobre el JSON re-serializado.
+const jsonGlobal = express.json({ limit: '2mb', verify: (req, _res, buf) => { req.rawBody = buf; } });
 // Rutas que suben archivos en base64 y ponen su PROPIO limite mas alto dentro
 // de su router. Tienen que saltarse este parser: si corre antes, rechaza la
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.

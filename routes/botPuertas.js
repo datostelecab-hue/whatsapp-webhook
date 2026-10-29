@@ -7,6 +7,8 @@ const fichajeBot = require('../services/fichajeBot');
 const puertas = require('../services/puertasBot');
 const lavado = require('../services/lavadoBallenoil');
 const { SEDE_FLOTA } = require('../services/nucleo');
+const firmaMeta = require('../services/firmaMeta');
+const modoPruebas = require('../services/modoPruebas');
 
 // ¿QUIÉN LLEVA CADA CONVERSACIÓN? (28/09/2026)
 //
@@ -42,6 +44,27 @@ function yaVisto(id) {
 // RECIBIR MENSAJES
 // ============================================================
 router.post('/', async (req, res) => {
+  // ── AUTENTICAR A META ANTES DE PROCESAR NADA (X-Hub-Signature-256) ─────────
+  // El bot hace acciones físicas (desbloquear motor, abrir puertas) según el
+  // teléfono del remitente; el webhook está expuesto a internet. Si no viene
+  // firmado con el App Secret, no es de Meta y no se toca. Ver services/firmaMeta.js.
+  if (firmaMeta.configurada()) {
+    const f = firmaMeta.comprobar(req);
+    if (!f.ok) {
+      console.warn(`🚫 [WEBHOOK] Firma de Meta no válida (${f.motivo}): rechazado`);
+      return res.status(403).end();
+    }
+  } else if (modoPruebas.ACTIVO) {
+    // En local/lab sin secreto se procesa igual, para poder probar sin una app de
+    // Meta. El objetivo de pentest SÍ pone META_APP_SECRET, así que ahí se exige.
+    console.warn('⚠️  [WEBHOOK] META_APP_SECRET no configurada (MODO_PRUEBAS): se procesa sin verificar firma.');
+  } else {
+    // Producción sin secreto: se CIERRA. Mejor el bot caído y ruidoso que un
+    // webhook abierto a cualquiera. Pon META_APP_SECRET en Render.
+    console.error('🚨 [WEBHOOK] META_APP_SECRET no configurada en producción: rechazado. Defínela en Render.');
+    return res.status(403).end();
+  }
+
   console.log('\n=== WEBHOOK RECIBIDO ===');
   console.log(JSON.stringify(req.body, null, 2));
   res.status(200).end();

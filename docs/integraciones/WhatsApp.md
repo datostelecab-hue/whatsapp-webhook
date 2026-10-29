@@ -95,7 +95,14 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 
 ## Lo que entra: el webhook y el bot
 
-`app.js` verifica el webhook con `VERIFY_TOKEN` (en el entorno) y `routes/botPuertas.js` recibe los mensajes.
+`app.js` verifica el **GET** del webhook (el `hub.challenge` de alta de Meta) con `VERIFY_TOKEN` (en el entorno) y `routes/botPuertas.js` recibe los **POST** con los mensajes.
+
+**El POST se autentica con la firma de Meta (29/10/2026, seguridad).** Meta firma cada POST con `HMAC-SHA256` del **cuerpo crudo** usando el App Secret, en la cabecera `X-Hub-Signature-256: sha256=<hex>`. `routes/botPuertas.js` lo comprueba **antes de procesar nada** (`services/firmaMeta.js`); si no casa, responde `403` y no toca el bot. Hace falta porque el webhook está **expuesto a internet** y el bot hace acciones físicas (desbloquear motor, abrir puertas) según el teléfono del remitente: sin la firma, cualquiera que alcanzara la URL podía inyectar mensajes falsos. El `phone_number_id` (abajo) **no** es autenticación —va en el propio payload—; es solo para no contestar a otro número.
+
+- El secreto va en **`META_APP_SECRET`** (entorno de Render; en developers.facebook.com → la app → Configuración → Básica → «Clave secreta de la aplicación»). Nunca en el código.
+- El cuerpo crudo lo guarda el parser (`app.js`: `express.json({ verify })` → `req.rawBody`); la firma se recalcula sobre esos bytes, no sobre el JSON re-serializado.
+- **Sin `META_APP_SECRET`**: en producción el webhook se **cierra** (403, con aviso en el log) —mejor el bot caído que abierto—; en `MODO_PRUEBAS` (local) se procesa sin verificar, para poder probar sin una app de Meta. El objetivo de pentest (`lab-erp`) sí pone un secreto ficticio, así que ahí **exige** firma. Por eso, al desplegar: poner `META_APP_SECRET` en Render **antes** de subir el código.
+- Comprobado en el lab: POST sin firma → 403, firma correcta → 200 y procesado, firma incorrecta / `sha1=` / cuerpo manipulado → 403.
 
 **Solo se contesta lo que llega a nuestro número.** Lo primero que se mira es el `phone_number_id` del mensaje: si no es el de Telecab, se apunta en el log (`📵 Mensaje a otro número`) y no se contesta. La app de WhatsApp tiene colgado también otro número; Meta manda aquí sus mensajes, y sin este filtro quien le escribiera recibiría el saludo del bot de conductores.
 
