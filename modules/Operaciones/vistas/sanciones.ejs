@@ -40,7 +40,7 @@
     <div class="bg-telecab-card border-2 border-telecab-green/40 rounded-2xl p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Avisos enviados</p>
       <p id="v-avisos" class="text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
-      <p id="v-avisos-det" class="text-[11px] text-telecab-muted mt-1">Uno por cada exceso atribuido</p>
+      <p id="v-avisos-det" class="text-[11px] text-telecab-muted mt-1">Uno por exceso, con 5 min entre avisos</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin avisar</p>
@@ -109,6 +109,7 @@
         <option value="avisado">Solo los avisados</option>
         <option value="revisar">Los que hay que mirar a mano</option>
         <option value="simulado">Simulados (modo pruebas)</option>
+        <option value="agrupado">Con el aviso anterior (menos de 5 min)</option>
       </select>
       <input id="v-busca" type="search" placeholder="Conductor o matrícula…"
              class="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
@@ -158,6 +159,7 @@
     sin_conductor: { txt: 'Sin conductor',     cls: 'bg-telecab-card2 text-telecab-muted' },
     dudoso:        { txt: 'Atribución dudosa', cls: 'bg-telecab-warn/15 text-telecab-warn' },
     error:         { txt: 'Falló el envío',    cls: 'bg-telecab-red/20 text-telecab-red' },
+    agrupado:      { txt: 'Con el aviso anterior', cls: 'bg-telecab-card2 text-telecab-muted' },
   };
 
   let D = null, tab = 'cond', busca = '';
@@ -202,9 +204,11 @@
     // Un simulado NO es un aviso: es lo que se habría mandado. Mezclarlos hacía
     // que la pantalla dijera que a alguien se le avisó cinco veces cuando no
     // había recibido ninguno.
-    $('#v-avisos-det').textContent = r.simulados
-      ? `y ${r.simulados} simulado(s), que NO se enviaron`
-      : 'Uno por cada exceso atribuido';
+    // Lo que va a menos de 5 min de un aviso no es otro aviso (29/10/2026).
+    const det = [];
+    if (r.simulados) det.push(`y ${r.simulados} simulado(s), que NO se enviaron`);
+    if (r.agrupados) det.push(`${r.agrupados} exceso(s) más fueron con el aviso anterior`);
+    $('#v-avisos-det').textContent = det.join('; ') || 'Uno por exceso, con 5 min entre avisos';
     $('#v-sinavisar').textContent = r.sin_avisar ?? 0;
     $('#v-punta').textContent = r.punta ? n1(r.punta) + ' km/h' : '—';
     $('#v-fallos').textContent = r.fallos ? r.fallos + ' envío(s) fallidos' : '';

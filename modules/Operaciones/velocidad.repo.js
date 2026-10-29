@@ -14,7 +14,7 @@ const { deLaFlotaVigilada } = require('../../services/nucleo');
 const FLOTA_ALERTA = deLaFlotaVigilada('a.matricula');
 const FLOTA = deLaFlotaVigilada('e.placa');
 
-const ESTADOS = ['avisado', 'simulado', 'sin_conductor', 'dudoso', 'error'];
+const ESTADOS = ['avisado', 'simulado', 'sin_conductor', 'dudoso', 'error', 'agrupado'];
 
 /**
  * "Avisado" es SOLO 'avisado'. Un 'simulado' es un exceso que en modo pruebas
@@ -279,6 +279,34 @@ async function registrar(e) {
 }
 
 /**
+ * ¿HAY UN AVISO A ESE TELÉFONO A MENOS DE `seg` DE ESTE EXCESO? (29/10/2026)
+ *
+ * Antes o después: una alerta de Mapon que llega tarde también va con el aviso
+ * que ya salió. Cuenta lo avisado y lo simulado (en modo pruebas hace lo mismo),
+ * no lo que falló: a quien no le llegó nada se le vuelve a intentar.
+ *
+ * Devuelve { aviso: 'HH:MI' del más cercano o null, ultimoEnvioSeg: cuánto hace
+ * del último WhatsApp a ese teléfono, o null }. Ver SEPARACION_SEG en el servicio.
+ */
+async function avisoCercano(telefono, ocurridoIso, seg) {
+  const r = await db.consulta(`
+    SELECT
+      (SELECT to_char(e.ocurrido_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI')
+         FROM velocidad_exceso e
+        WHERE e.telefono = $1 AND e.estado IN ('avisado', 'simulado')
+          AND e.ocurrido_at > $2::timestamptz - $3::int * interval '1 second'
+          AND e.ocurrido_at < $2::timestamptz + $3::int * interval '1 second'
+        ORDER BY abs(extract(epoch FROM e.ocurrido_at - $2::timestamptz)), e.ocurrido_at
+        LIMIT 1) AS aviso,
+      (SELECT extract(epoch FROM now() - max(e.enviado_at))::int
+         FROM velocidad_exceso e
+        WHERE e.telefono = $1 AND e.enviado_at IS NOT NULL) AS ultimo_envio_seg`,
+    [txt(telefono, 24), ocurridoIso, Math.round(seg)]);
+  const x = r.rows[0] || {};
+  return { aviso: x.aviso || null, ultimoEnvioSeg: x.ultimo_envio_seg == null ? null : Number(x.ultimo_envio_seg) };
+}
+
+/**
  * EL RECUENTO: cuántas veces se le ha dicho a cada uno, y cuántas ha seguido
  * corriendo igual. Ordenado por avisos, que es la lista que se mira.
  *
@@ -343,6 +371,7 @@ async function resumen({ desde, hasta } = {}) {
            count(*) FILTER (WHERE estado = ANY($3))::int           AS avisos,
            count(*) FILTER (WHERE estado = 'simulado')::int        AS simulados,
            count(*) FILTER (WHERE estado = 'error')::int           AS fallos,
+           count(*) FILTER (WHERE estado = 'agrupado')::int        AS agrupados,
            count(*) FILTER (WHERE estado IN ('sin_conductor','dudoso'))::int AS sin_avisar,
            count(DISTINCT driver_uuid) FILTER (WHERE driver_uuid IS NOT NULL)::int AS gente,
            max(velocidad)::float8                                  AS punta
@@ -355,5 +384,5 @@ async function resumen({ desde, hasta } = {}) {
 
 module.exports = {
   ESTADOS, AVISADOS, padron, yaVistas, registrar, porConductor, historico, resumen,
-  excesosPendientes, quienConducia, conoceMatricula, frescuraIngesta,
+  excesosPendientes, avisoCercano, quienConducia, conoceMatricula, frescuraIngesta,
 };

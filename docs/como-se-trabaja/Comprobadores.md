@@ -577,6 +577,12 @@ No son de los seis, pero forman parte de la misma red:
   (modo pruebas: si intenta mandar un WhatsApp, falla), y los «coches rodando sin nadie»
   de Control (`rutas.kmSinDuenio`). 21 casos. Se saboteó quitando el desempate, y
   dejándolo solo por `id DESC`: saltan 3 en los dos casos.
+  **Cinco minutos entre avisos** (29/10/2026): un conductor inventado con teléfono, en
+  modo real con un WhatsApp de mentira que solo apunta; excesos a las 10:00, 10:03,
+  10:04:59, 10:05:30 y 10:30, tres pasadas y una alerta que llega tarde (10:28). Los de
+  menos de 5 min van con su aviso, el aparte espera si el último WhatsApp salió hace
+  menos de 5 min, y salen tres WhatsApps. 8 casos más (29). Saboteado con
+  `SEPARACION_SEG = 0`: falla.
 
 ---
 

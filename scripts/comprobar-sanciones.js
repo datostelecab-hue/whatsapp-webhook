@@ -27,6 +27,12 @@
 // «coches rodando sin nadie» de Control (`rutas.kmSinDuenio`), que elegían su
 // tramo con el mismo ORDER BY.
 //
+// Y CINCO MINUTOS ENTRE AVISOS (29/10/2026, Luis Alfredo Betancur Ramirez): un
+// conductor de mentira con teléfono, en modo real y con un WhatsApp de mentira
+// que solo apunta. Un exceso a menos de 5 min de un aviso va con él (`agrupado`,
+// sin WhatsApp); uno aparte espera a la pasada siguiente si el último WhatsApp
+// salió hace menos de 5 min; y una alerta que llega tarde también se agrupa.
+//
 //   node scripts/comprobar-sanciones.js
 //
 // HACE FALTA EL ENTORNO LOCAL (Docker telecab-pg en 127.0.0.1:5433, ver «Entorno
@@ -104,8 +110,21 @@ const CASOS = {
 };
 const clave = caso => `prueba-desempate|${caso}|speeding`;
 
+// Los cinco minutos: otro coche y otro conductor, este CON teléfono.
+const COCHE2 = 'prueba-separacion-coche';
+const MATRICULA2 = '0000ZZY';
+const UNIDAD2 = 999000112;
+const BETO = 'prueba-separacion-beto';
+const TEL_BETO = '+34600000999';
+const claveSep = hora => `prueba-separacion|${hora}|speeding`;
+
 async function sembrar(q) {
   await q(`INSERT INTO fv_conductor (uuid, nombre) VALUES ($1, $2)`, [ANA, NOMBRE]);
+  // La cuenta de Beto ya ahora: el padrón se lee en la primera pasada y se
+  // guarda un minuto. Sus tramos y sus excesos, en la sección 4.
+  await q(`INSERT INTO fv_conductor (uuid, nombre) VALUES ($1, 'Beto Prueba Inventado')`, [BETO]);
+  await q(`INSERT INTO conductor_externo (sistema, externo_id, externo_nombre, externo_telefono)
+           VALUES ('bolt', $1, 'Beto Prueba Inventado', $2)`, [BETO, TEL_BETO]);
   await q(`INSERT INTO fv_vehiculo (uuid, matricula, mapon_unit, visto_at) VALUES ($1, $2, $3, now())`,
     [COCHE, MATRICULA, UNIDAD]);
   for (const [caso, c] of Object.entries(CASOS)) {
@@ -144,8 +163,13 @@ async function sembrar(q) {
       consulta, transaccion: async fn => fn(cli), preparar: async () => true, conEsquema: f => f, HAY_BD: true,
     });
     // En modo pruebas no se llega a mandar nada; si se llegara, es un fallo.
+    // En la sección 4 (modo real) solo se apunta a quién iría.
+    let envios = null;
     sustituir('services/whatsapp', {
-      enviarPlantillaPosicional: async () => { fallos++; console.log('FALLA se intentó mandar un WhatsApp'); return { ok: false, error: 'comprobación' }; },
+      enviarPlantillaPosicional: async (tel) => {
+        if (envios) { envios.push(tel); return { ok: true, id: 'prueba-envio-' + envios.length }; }
+        fallos++; console.log('FALLA se intentó mandar un WhatsApp'); return { ok: false, error: 'comprobación' };
+      },
     });
     const repo = require('../modules/Operaciones/velocidad.repo');
     const sanciones = require('../modules/Operaciones/sanciones.service');
@@ -193,6 +217,57 @@ async function sembrar(q) {
     igual('y su último tramo es el viaje, no la espera de 0 s',
       sin && { situacion: sin.situacion, desde: new Date(sin.desde).toISOString(), ultimoConductor: sin.ultimoConductor },
       { situacion: 'viaje', desde: '2026-10-01T20:00:00.000Z', ultimoConductor: NOMBRE });
+
+    // ── 4. Cinco minutos entre avisos ─────────────────────────────────────────
+    console.log('\nCinco minutos entre avisos (modo real, WhatsApp de mentira)');
+    await consulta(`INSERT INTO fv_vehiculo (uuid, matricula, mapon_unit, visto_at) VALUES ($1, $2, $3, now())`,
+      [COCHE2, MATRICULA2, UNIDAD2]);
+    await consulta(`INSERT INTO fv_tramo (vehiculo_uuid, conductor_uuid, situacion, estado_bolt, desde, hasta, senal_at)
+                    VALUES ($1, $2, 'descanso', 'prueba', '2026-10-03T08:00:00Z', '2026-10-03T09:00:00Z', '2026-10-03T09:00:00Z')`,
+      [COCHE2, BETO]);
+    const alerta = hora => consulta(
+      `INSERT INTO mapon_alerta (clave, ocurrido_at, tipo, unit_id, matricula, velocidad, limite, exceso, msg, creado_at)
+       VALUES ($1, $2, 'speeding', $3, $4, 130, 90, 40, 'comprobar-sanciones: cinco minutos', now())`,
+      [claveSep(hora), `2026-10-03T${hora}Z`, String(UNIDAD2), MATRICULA2]);
+    for (const h of ['08:00:00', '08:03:00', '08:04:59', '08:05:30', '08:30:00']) await alerta(h);
+    // Pasa el tiempo: el último WhatsApp a Beto, hace 10 min.
+    const pasanDiez = () => consulta(
+      `UPDATE velocidad_exceso SET enviado_at = enviado_at - interval '10 minutes' WHERE telefono = $1 AND enviado_at IS NOT NULL`, [TEL_BETO]);
+    const deBeto = async () => (await consulta(
+      `SELECT split_part(clave, '|', 2) AS h, estado, nota FROM velocidad_exceso WHERE clave LIKE 'prueba-separacion|%' ORDER BY ocurrido_at`)).rows;
+
+    process.env.SANCIONES_MODO = 'live';
+    envios = [];
+    try {
+      let r = await sanciones.procesar({ dias });
+      igual('1.ª pasada: avisa el de las 10:00, agrupa los de 10:03 y 10:04:59, y deja dos para después',
+        [r.error || null, r.agrupados, r.espaciados], [null, 2, 2]);
+      igual('…y en el libro', (await deBeto()).map(x => [x.h, x.estado]),
+        [['08:00:00', 'avisado'], ['08:03:00', 'agrupado'], ['08:04:59', 'agrupado']]);
+      igual('…con la nota del aviso con el que van', (await deBeto())[1].nota,
+        'Va con el aviso de las 10:00, a menos de 5 min: no se le manda otro WhatsApp');
+
+      await pasanDiez();
+      r = await sanciones.procesar({ dias });
+      igual('2.ª pasada: el de 10:05:30 (5 min y medio después) es un aviso aparte; el de 10:30 espera',
+        [r.agrupados, r.espaciados], [0, 1]);
+      await pasanDiez();
+      r = await sanciones.procesar({ dias });
+      igual('3.ª pasada: sale el de 10:30', r.espaciados, 0);
+
+      // Una alerta que Mapon entrega tarde, 2 min ANTES de un aviso ya enviado.
+      await alerta('08:28:00');
+      await pasanDiez();
+      r = await sanciones.procesar({ dias });
+      igual('La que llega tarde, 2 min antes del aviso de 10:30, va con él', r.agrupados, 1);
+      igual('El libro de Beto al final', (await deBeto()).map(x => [x.h, x.estado]), [
+        ['08:00:00', 'avisado'], ['08:03:00', 'agrupado'], ['08:04:59', 'agrupado'],
+        ['08:05:30', 'avisado'], ['08:28:00', 'agrupado'], ['08:30:00', 'avisado']]);
+      igual('Tres WhatsApps, todos a Beto', envios, [TEL_BETO, TEL_BETO, TEL_BETO]);
+    } finally {
+      process.env.SANCIONES_MODO = 'test';
+      envios = null;
+    }
   } catch (e) {
     fallos++;
     console.log('FALLA ' + (e.stack || e.message));

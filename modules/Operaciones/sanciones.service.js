@@ -107,6 +107,23 @@ const DESDE_TS = inicioSistemaTs();
  * dejará de deducirse y pasará a estar declarada. Mientras tanto, media hora.)
  */
 const VENTANA_FIABLE_SEG = Number(process.env.SANCIONES_VENTANA_FIABLE || 1800);
+
+/**
+ * CINCO MINUTOS ENTRE AVISOS (29/10/2026). Camilo, por Luis Alfredo Betancur
+ * Ramirez: «que entre avisos haya al menos 5 minutos de diferencia, para que no
+ * se solapen entre ellos».
+ *
+ * Mapon parte un mismo tirón en varias alertas seguidas, y cada una era un
+ * WhatsApp y un aviso más en su cuenta y en su letra. Ahora:
+ *   · un exceso a menos de 5 min (antes o después) de otro ya avisado a ese
+ *     teléfono va CON ese aviso: queda `agrupado`, sin WhatsApp, y no cuenta
+ *     como aviso ni baja la letra;
+ *   · y el WhatsApp de un exceso que sí es aparte tampoco sale pegado al
+ *     anterior: si a ese teléfono se le mandó uno hace menos de 5 min, espera a
+ *     la pasada siguiente. Dos excesos a 6 min el uno del otro se procesan en
+ *     la misma pasada y llegaban en el mismo segundo.
+ */
+const SEPARACION_SEG = 5 * 60;
 const humanizar = seg => seg < 3600 ? `${Math.round(seg / 60)} min`
   : seg < 86400 ? `${Math.round(seg / 3600)} h` : `${Math.round(seg / 86400)} días`;
 
@@ -117,7 +134,8 @@ const EST = {
   SIMULADO: 'simulado',            // modo pruebas: se habría mandado
   SIN_CONDUCTOR: 'sin_conductor',  // el coche no tenía a nadie identificable
   DUDOSO: 'dudoso',                // hay candidato, pero el log es demasiado viejo
-  ERROR: 'error'                   // se intentó mandar y falló
+  ERROR: 'error',                  // se intentó mandar y falló
+  AGRUPADO: 'agrupado'             // a menos de 5 min de un aviso a ese teléfono: va con él
 };
 
 const normPlaca = s => (s || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -211,7 +229,7 @@ async function procesar(opciones = {}) {
   if (_corriendo) return { saltado: true, motivo: 'ya en curso' };
   _corriendo = true;
   const res = { modo: modo(), leidas: 0, nuevas: 0, avisos: 0, sinConductor: 0,
-    dudosas: 0, errores: 0, esperando: 0, detalle: [] };
+    dudosas: 0, errores: 0, esperando: 0, agrupados: 0, espaciados: 0, detalle: [] };
   try {
     // Ventana de lectura: por defecto los últimos 3 días. Ya no cuesta nada —es
     // una consulta— y así una alerta que Mapon entregue con retraso se recoge
@@ -285,6 +303,25 @@ async function procesar(opciones = {}) {
             `${humanizar(r.ventanaSeg)} antes del exceso; el coche pudo cambiar de manos). ` +
             'Confirmar antes de avisar.' });
         res.detalle.push({ matricula: a.matricula, conductor: nombre, estado: EST.DUDOSO });
+        continue;
+      }
+
+      // ── A menos de 5 minutos de otro aviso, va con él (SEPARACION_SEG) ──────
+      const cerca = telefono ? await repo.avisoCercano(telefono, base.ocurridoAt, SEPARACION_SEG) : null;
+      if (cerca && cerca.aviso) {
+        res.agrupados++;
+        await repo.registrar({ ...base, ...quien, estado: EST.AGRUPADO,
+          nota: `Va con el aviso de las ${cerca.aviso}, a menos de 5 min: no se le manda otro WhatsApp` });
+        res.detalle.push({ matricula: a.matricula, conductor: nombre, estado: EST.AGRUPADO });
+        continue;
+      }
+      // Es un aviso aparte, pero el WhatsApp anterior salió hace menos de 5 min:
+      // no se escribe nada y lo recoge la pasada siguiente, como si la ingesta
+      // no hubiera llegado. Solo cuando de verdad se va a mandar algo.
+      if (esLive() && !opciones.sinAvisar && cerca && cerca.ultimoEnvioSeg != null
+          && cerca.ultimoEnvioSeg < SEPARACION_SEG) {
+        res.espaciados++;
+        res.nuevas--;
         continue;
       }
 

@@ -90,6 +90,7 @@ El listado y el script están fuera del repo, en `Scripts de análisis/sanciones
 | `sin_conductor` | el coche no tenía a nadie identificable |
 | `dudoso` | hay candidato, pero el log es demasiado viejo |
 | `error` | se intentó mandar y falló; o Meta lo aceptó y **después** dijo que no lo entregó (desde el 05/10/2026, ver [[WhatsApp]], «Aceptado no es entregado») |
+| `agrupado` | a menos de 5 min de otro avisado al mismo teléfono: **va con ese aviso**, sin WhatsApp (desde el 29/10/2026, ver abajo) |
 
 Viven también en el `CHECK` de la tabla: si se añade uno aquí, hay que añadirlo allí.
 
@@ -100,6 +101,20 @@ Viven también en el `CHECK` de la tabla: si se añade uno aquí, hay que añadi
 La fila de `velocidad_exceso` es también la marca de *ya procesado*: `excesosPendientes` busca los avisos de Mapon que **no** tienen fila. Borrada, un reproceso desde /sanciones que mire tantos días atrás la vuelve a crear con el mismo cálculo y a la misma persona. Por eso cuando un exceso no era de alguien se le quita: sin conductor, uuid, teléfono ni ventana, en `sin_conductor` y con la nota de por qué. Así se hizo con los cinco del 3784LFV que se le habían atribuido a Edison Roman Vera Farfan (`db/169`, 01/10/2026). El coche sigue constando a esa velocidad ese día: eso pasó.
 
 > **"Avisado" es solo `avisado`.** Los tuve juntos con `simulado` y estaba mal. La lista de "quién no hace caso" es lo que alguien lleva delante cuando se sienta a hablar con un conductor, y decirle *"te hemos avisado cinco veces"* cuando no ha recibido ni uno es **la peor manera posible de empezar esa conversación**. Los simulados se cuentan aparte y se ven aparte.
+
+## Cinco minutos entre avisos (29/10/2026, db/226)
+
+Camilo, por Luis Alfredo Betancur Ramirez: *«le salen avisos de velocidad muy seguidos: que entre avisos haya al menos 5 minutos de diferencia para que no se solapen entre ellos, y arregla los que estén así»*.
+
+Mapon parte un mismo tirón en varias alertas seguidas, y cada una era un WhatsApp y un aviso más en su cuenta y en su letra. Ahora (`SEPARACION_SEG` en `sanciones.service.js`):
+
+- **Un exceso a menos de 5 min de otro avisado al mismo teléfono va con ese aviso**, antes o después (una alerta que Mapon entrega tarde también). Queda `agrupado`, con la nota «Va con el aviso de las HH:MI»: **no se manda WhatsApp, no cuenta como aviso y no baja la letra**. Sí cuenta como exceso. Se mide contra el aviso, no contra el exceso de justo antes: a las 10:00, 10:03 y 10:06 son dos avisos (10:00 y 10:06).
+- **El WhatsApp de un exceso que sí es aparte tampoco sale pegado al anterior.** Si a ese teléfono se le mandó uno hace menos de 5 min, no se escribe nada y lo recoge la pasada siguiente (15 min). Dos excesos a 6 min el uno del otro se procesan en la misma pasada y llegaban en el mismo segundo.
+- Lo que **falló** (`error`) no agrupa: a quien no le llegó nada se le vuelve a intentar.
+
+**Lo ya registrado lo corrige `db/226`**: por teléfono y en orden, el siguiente avisado a menos de 5 min del último que se queda pasa a `agrupado`, con el WhatsApp ya enviado anotado en la nota. En la copia local del 27/10 eran **14 de 11 personas** (de 171 avisados); los de Luis son posteriores a esa copia. La letra del mes en curso se rehace sola; la de los meses cerrados está sellada.
+
+En la pantalla: la etiqueta «Con el aviso anterior» en el histórico, su filtro, y debajo de «Avisos enviados» cuántos excesos fueron con un aviso anterior. Lo comprueba `scripts/comprobar-sanciones.js` (sección «Cinco minutos entre avisos»).
 
 ## El aviso
 
