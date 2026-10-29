@@ -1096,7 +1096,7 @@ async function iniciar({ telefono, nombre, matricula }) {
       if (falta === 'en-marcha') return { ok: false, motivo: 'ocupado-en-marcha', velocidad: m.velocidad, turno: ocupado };
       if (falta === 'encendido') return { ok: false, motivo: 'ocupado-encendido', turno: ocupado };
     }
-    const entregando = ocupado.tipo === 'turno' && !!ocupado.relevo;
+    const entregando = !!ocupado.relevo;
     let fueraDelPlan = false;
     if (!entregando && p.tipo === 'turno' && p.conductorId) {
       const plan = await repo.cochesDelPlan(p.conductorId).catch(() => null);
@@ -1204,11 +1204,14 @@ async function cerrarPorRelevo(t, quienEntra, { sinBoton = false, fueraDelPlan =
  * «ENTREGAR COCHE» (antes «Voy al relevo»). Se pulsa JUSTO ANTES de arrancar
  * hacia el sitio donde se le da el coche al compañero: desde esa hora se cuentan
  * los km del trayecto de entrega. `si = false` lo deshace, por si se pulsó sin querer.
+ *
+ * También en los VIAJES de la oficina desde el 29/10/2026 (Camilo: «que tengan
+ * algo parecido a los conductores, todo igual»). La base lo admite desde db/224;
+ * antes, la apuntaba solo en turnos.
  */
 async function marcarRelevo(telefono, si = true) {
   const t = await abiertoDe(telefono);
   if (!t) return { ok: false, motivo: 'sin-turno' };
-  if (t.tipo !== 'turno') return { ok: false, motivo: 'es-viaje', turno: t };
   const r = await repo.marcarRelevo(t.id, si);
   return r ? { ok: true, turno: r } : { ok: false, motivo: 'sin-turno' };
 }
@@ -1453,7 +1456,7 @@ async function soltarCoche({ matricula, motivo }, quien = {}) {
 module.exports = {
   participa, olvidar, decidirBloqueo, marcarRelevo, cochesDelPlan,
   activarConductor, estadoParaPanel, soltarCoche, cerrarDesdeOficina,
-  quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
+  quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno, abiertoDeCoche,
   revisarTurnosLargos, confirmarSigue, PRORROGA_HORAS,
   conductorMapon,
   liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, hayQueApagar, liberarConocidos, maponDisponible,

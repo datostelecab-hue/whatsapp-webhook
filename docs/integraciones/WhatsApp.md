@@ -117,7 +117,9 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 - **Las palabras**: al conductor **no se le dice «fichar» ni «fichaje»**. Esto no es el registro de jornada (ese es `/fichaje`): es quién lleva qué coche y cuántos km hace. Si se llamara igual, un turno abierto por WhatsApp sin trabajar se podría hacer pasar por horas fichadas.
 - Los ids de los botones son los de siempre (`abrir_puertas`, `ver_turnos`, `codigo_lavado`…): un botón de un mensaje viejo del chat sigue funcionando.
 
-**El panel de oficina** (quien tiene `/puertas` y no es conductor) sigue como estaba: escribe una matrícula y abre o cierra, sin turno. Desde el 02/10/2026, coches de **Madrid y de Barcelona**.
+**La oficina, como el conductor (29/10/2026).** Con «coge coches» encendido (desde db/224, toda la oficina) tiene la conversación del conductor en `services/fichajeBot.js`: la matrícula empieza su **viaje** y le salen los mismos botones, sin «Ver mis turnos». Ver [[Fichaje]].
+
+**El panel de oficina** (quien tiene `/puertas` y no es conductor) queda para cuando el coche es de Barcelona o lo lleva otra persona ahora mismo, y para quien tenga el permiso sin «coge coches»: escribe una matrícula y abre o cierra, sin viaje. Desde el 02/10/2026, coches de **Madrid y de Barcelona**.
 
 **Los conductores de Barcelona** (02/10/2026) no tienen ficha: el bot los reconoce por su **cuenta activa de BOLT de la empresa de Barcelona** y les da la misma conversación que a los de Madrid, con coches de Barcelona y sin tocar el motor. No les salen «Ver mis turnos» ni «Código de lavado». Ver [[Fichaje]] y [[Sedes]].
 
@@ -129,7 +131,7 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 - **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio (`services/puertasBot.js`, que usan las dos conversaciones).
 - **Códigos de lavado Ballenoil**: vuelven del 28/09 al 15/10/2026 con una tanda (566 códigos, db/164; vencían el 17/10). El 20/10/2026 llega otra: *«Nuevos códigos de ballenoil, el botón sigue vigente, mételos directamente a la base de datos»*. Son **338 códigos que caducan el 17/11/2026**, metidos directo en `ballenoil_codigo` desde el relevamiento del portal de Ballenoil de ese día; el 26440296 ya estaba (repartido en septiembre) y se quedó con su historia. `services/lavadoBallenoil.js`: `visible()` enseña el botón hasta `LAVADO_HASTA` (ahora el **17/11/2026**), y un doble toque no gasta dos bonos (en 30 min se repite el mismo). Se reparte primero el que antes caduca. El PIN de repostaje **no** vuelve: si alguien pulsa «VER PIN» en una bienvenida vieja, se le dice que ya no se usa.
 - **Ver turnos** → sus turnos **de hoy a 7 días** en texto libre (`turnos.service.textoTurnos`, ver [[Planificacion]]). Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
-- **Viajes de la empresa** (`services/fichajeBot.js`): quien tenga el fichaje encendido en `/usuarios` coge un coche y lo devuelve; va **antes** de la comprobación de acceso porque puede no tener el permiso de puertas. Ver [[Fichaje]].
+- **Viajes de la oficina** (`services/fichajeBot.js`): quien tenga «coge coches» en `/usuarios` coge un coche y lo devuelve con la conversación del conductor (29/10/2026); va **antes** de la comprobación de acceso porque puede no tener el permiso de puertas. Ver [[Fichaje]].
 
 Los botones llegan de dos formas distintas y hay que tratarlas aparte: los de un mensaje interactivo son `type: interactive` con `button_reply.id`, y los de una **plantilla** (quick reply) llegan como `type: button` con `button.text`/`payload`.
 

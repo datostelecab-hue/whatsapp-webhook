@@ -12,10 +12,14 @@ const { SEDE_FLOTA } = require('../services/nucleo');
 //
 //   · Un CONDUCTOR DE ALTA: services/fichajeBot. Saludo → matrícula → su turno
 //     en ese coche, con sus botones de siempre. Todo lo suyo pasa por allí.
-//   · Alguien de la EMPRESA con el fichaje encendido: también allí (viajes).
-//   · Alguien de OFICINA con el permiso /puertas: el panel de puertas de este
-//     fichero — escribe una matrícula y abre o cierra, sin turno. Coches de
-//     Madrid y de Barcelona (02/10/2026).
+//   · Alguien de OFICINA con «coge coches» (desde db/224, todos): también allí,
+//     y desde el 29/10/2026 con la misma conversación que el conductor —la
+//     matrícula empieza su viaje—, sin turnos.
+//   · El panel de puertas de este fichero (escribe una matrícula y abre o
+//     cierra, sin viaje) queda para la oficina con el permiso /puertas cuando
+//     el coche es de Barcelona o lo lleva otra persona ahora mismo (lo decide
+//     fichajeBot.antesDelViaje), y para quien tenga el permiso sin «coge
+//     coches». Coches de Madrid y de Barcelona (02/10/2026).
 //   · Un CONDUCTOR DE BARCELONA (02/10/2026, sin ficha: por su cuenta de BOLT):
 //     como uno de Madrid, en services/fichajeBot, con coches de Barcelona.
 

@@ -197,7 +197,7 @@ const falsoRepo = {
   cochesConQuienNoFicha: async () => new Set(Object.entries(plan)
     .filter(([, ids]) => ids.some(id => !conductor(id).activo)).map(([m]) => m)),
   marcarRelevo: async (ref, si) => {
-    const t = turnos.find(x => x.id === ref && abierto(x) && x.tipo === 'turno');
+    const t = turnos.find(x => x.id === ref && abierto(x));
     if (!t) return null;
     t.relevo = si ? (t.relevo || Math.floor(Date.now() / 1000)) : 0;
     return t;
@@ -383,7 +383,11 @@ const limpio = () => { ordenes.length = 0; };
   // 8c. Un viaje de la empresa también pasa de manos; y si al que entra no le
   // tocaba ese coche, queda anotado.
   r = await f.iniciar({ telefono: CAMILO, matricula: '3333CCC' });
-  comprobar('un viaje no tiene «Entregar coche»', r.ok && (await f.marcarRelevo(CAMILO, true)).motivo === 'es-viaje');
+  // Desde el 29/10/2026 la oficina también tiene «Entregar coche» (db/224).
+  let rv = await f.marcarRelevo(CAMILO, true);
+  comprobar('un viaje también tiene «Entregar coche»', r.ok && rv.ok && rv.turno.relevo > 0);
+  rv = await f.marcarRelevo(CAMILO, false);
+  comprobar('… y se deshace igual («Aún no he salido»)', rv.ok && !rv.turno.relevo);
   r = await f.iniciar({ telefono: BETO, matricula: '3333CCC' });
   comprobar('Beto coge el coche del viaje de Camilo', r.ok && r.relevoDe && r.relevoDe.tipo === 'viaje');
   comprobar('anotado que no lo tenía en el cuadrante', r.relevoDe && /no tenía ese coche en el cuadrante/.test(r.relevoDe.notas));

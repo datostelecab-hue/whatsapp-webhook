@@ -389,14 +389,15 @@ async function activados() {
 
 /**
  * «VOY AL RELEVO»: apunta (o quita) la hora a la que salió hacia el sitio donde
- * entrega el coche. Solo en un turno abierto y solo si es turno —un viaje no
- * tiene compañero—; la base lo vuelve a comprobar (ck_ft_relevo).
+ * entrega el coche. Solo en un turno o viaje abierto: el viaje de la oficina
+ * también la tiene desde el 29/10/2026, y la base lo admite desde db/224
+ * (ck_ft_relevo; antes, solo turnos).
  */
 async function marcarRelevo(referencia, si = true) {
   const r = await db.consulta(
     `UPDATE fichaje_turno
         SET relevo_at = CASE WHEN $2 THEN COALESCE(relevo_at, now()) END
-      WHERE referencia = $1 AND estado = 'abierto' AND tipo = 'turno'
+      WHERE referencia = $1 AND estado = 'abierto'
       RETURNING ${CAMPOS}`, [referencia, !!si]);
   return r.rows.length ? aTurno(r.rows[0]) : null;
 }

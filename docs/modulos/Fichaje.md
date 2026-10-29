@@ -211,7 +211,7 @@ Hasta el 24/09/2026 el fichaje solo respondía a los teléfonos de una variable 
 |---|---|---|
 | **Conductor de alta** | nada: **todos** | **Turnos** (desbloquea al empezar) |
 | **Conductor con bloqueo** | Planificador → botón **Bloqueo de motor** (`conductor.ficha_coche`) | además, **se le bloquea el motor al terminar** |
-| **Gente de la empresa** | `/usuarios` → «Puede coger coches por WhatsApp» (`usuario.ficha_coche`) | **Viajes** |
+| **Gente de la empresa** | `/usuarios` → «Puede coger coches por WhatsApp» (`usuario.ficha_coche`); **encendido a toda la oficina** desde db/224 (29/10/2026), y los nuevos nacen con él | **Viajes** |
 
 `usuario.ficha_coche` **no es** `usuario.ficha_obligatorio`: el segundo es fichar la jornada de oficina (Parte 1), el primero es coger un coche.
 
@@ -224,7 +224,7 @@ Hasta el 24/09/2026 el fichaje solo respondía a los teléfonos de una variable 
 
 La respuesta se guarda **20 segundos** —se pregunta en cada mensaje que llega al bot— y se olvida al momento al encender o apagar a alguien, y al empezar o terminar.
 
-Con un **conductor**, la conversación se queda **todo** lo que escriba (saludo, matrícula, `turnos`, `lavado`, `desbloquear`, `km`). Con alguien de la **empresa** solo se queda sus palabras (`turno`, `viaje`, `iniciar/terminar…`, `km`) y devuelve el resto al panel de puertas.
+Con un **conductor** y, desde el 29/10/2026, con alguien de la **oficina**, la conversación se queda **todo** lo que escriba (saludo, matrícula, `lavado`, `desbloquear`, `km`; `turnos` solo el conductor). Hasta entonces la oficina solo entraba con sus palabras (`viaje`, `km`…) y el resto iba al panel de puertas.
 
 ## Quién ficha, con su nombre de verdad
 
@@ -245,9 +245,20 @@ Se prueba con la escena 12 de `Scripts de análisis/simular-bot-conductor.js`.
 
 *(Hasta el 28/09 el bot proponía el coche del cuadrante con un botón «Iniciar 8203LTR». Camilo pidió que se escriba la matrícula; el botón viejo sigue funcionando si alguien lo pulsa en un mensaje antiguo.)*
 
-**La empresa (viaje).** Es el flujo que pidió Camilo: *«Por favor, indica la matrícula» → empieza el viaje (se suelta el motor) → al terminar se bloquea*. Escribe `viaje` (o `turno`) y el bot le pide la matrícula directamente. La espera de la matrícula **caduca a los 10 minutos**: sin eso, quien la dejaba a medias y escribía «hola» tres horas después recibía «eso no parece una matrícula».
+**La oficina (viaje), como el conductor desde el 29/10/2026.** Camilo, con la conversación de Ignacio delante (escribió «0835mmz» y el bot le contestó «indica la matrícula», y la tuvo que escribir otra vez): *«la idea es que tengan algo parecido a los conductores, todo igual, hasta el código de lavado, pero turnos no»*, *«que cuando mande la matrícula automáticamente empiece el viaje, nada de saludar»* y *«para todos igual, los mismos botones y lógica, menos turnos para oficina»*. Ahora:
 
-**Desde el panel de puertas** (solo la gente de oficina: los conductores ya no pasan por él). Tras escribir una matrícula para abrir o cerrar, el tercer botón **empieza el viaje en ese coche** (`turno_iniciar:MATRÍCULA`), sin volver a pedirla. Con algo abierto, el botón lleva al panel («Mi turno» / «Mi viaje»). Y alguien de la empresa con el fichaje encendido pero **sin** el permiso de puertas ya no recibe «no tienes permiso»: se le lleva a su panel.
+- **La matrícula empieza el viaje**, sea el primer mensaje o no. A cualquier otra cosa sin nada abierto, el saludo del conductor sin el botón «Ver mis turnos».
+- **Los mismos botones** que el conductor, en los mismos dos mensajes: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Terminar viaje*. Las palabras `lavado`, `km` y `desbloquear` también. Se dice «viaje» donde al conductor «turno» (*Viaje iniciado — ¡buen viaje, Ignacio!*, *En viaje desde las 13:46*).
+- Abrir, cerrar y lavado llevan **ids propios** (`turno_abrir`, `turno_cerrar`, `turno_lavado`): los de siempre (`abrir_puertas`…) los sigue usando el panel de puertas de oficina con el coche que se escribió allí, y un mismo id no puede querer decir dos cosas. Los botones de los mensajes viejos del viaje (*Ver km ahora*, *Desbloquear*) siguen funcionando.
+- **«Entregar coche» también en el viaje** (db/224 abre `ck_ft_relevo` a los viajes). Antes de aplicarla, pulsarlo en un viaje contesta que no se ha podido apuntar.
+- **Dos casos en los que la matrícula no empieza el viaje sin más** (`fichajeBot.antesDelViaje`), porque a lo mejor solo quería abrirle o cerrarle el coche a alguien:
+  - **El coche lo lleva otra persona ahora mismo.** Al conductor se le da sin preguntar —es su relevo—, pero a la oficina se le dice quién lo lleva y desde cuándo, y se pregunta: *Coger el coche* (le cierra el turno al otro, que recibe el aviso de siempre). Con el permiso de puertas, además le sale el panel de puertas, que trae su *Iniciar viaje*.
+  - **Un coche de Barcelona**: los viajes son solo de Madrid. Con el permiso de puertas, al panel de puertas como hasta ahora; sin él, *«es un coche de Barcelona: por aquí no se lleva»*.
+- Ya no hay «indica la matrícula» con espera de 10 minutos: los dos flujos toman la matrícula directamente.
+
+Se simula de punta a punta, en memoria, con `Scripts de análisis/simular-bot-oficina.js`.
+
+**El panel de puertas de oficina** (`routes/botPuertas.js`) queda para la oficina con el permiso `/puertas` en esos dos casos, y para quien tenga el permiso sin «coge coches». Tras escribir una matrícula para abrir o cerrar, el tercer botón **empieza el viaje en ese coche** (`turno_iniciar:MATRÍCULA`), sin volver a pedirla. Con algo abierto, el botón lleva al panel («Mi turno» / «Mi viaje»).
 
 ## El relevo: «Entregar coche» (antes «Voy al relevo»)
 
@@ -259,7 +270,7 @@ El conductor pulsa **Entregar coche** **justo antes de salir** hacia donde está
   - Queda en las notas si **no pulsó** «Entregar coche» (sin hora de salida no hay km de entrega) y si al que entra **no le tocaba ese coche** en el cuadrante de hoy: es lo que Tráfico mirará si algo no cuadra.
   - Al que lo tenía se le avisa: «*X ha cogido el 1205MJY* … el coche pasa a ser responsabilidad suya. Si no se lo has dado tú, avisa a Tráfico». Una matrícula mal escrita le quita el coche a otro, y así se entera en el momento. Vale igual si lo que tenía abierto era un **viaje** de la empresa.
   - **El motor no se corta en el relevo**: el coche pasa del uno al otro. Pero si al que lo tenía **se le bloquearía** al terminar (el coche tiene relé de corte y él el bloqueo encendido), se pide lo mismo que en *Terminar turno*: **parado y apagado**. Si no, al que entra se le dice «tiene el contacto puesto, apágalo y vuelve a escribirme la matrícula» (o «está en marcha»). Sin relé —como el de Deisy el 28/09— o sin el bloqueo, se cierra y ya.
-- Un **viaje** no tiene relevo: no hay compañero. Lo impide también la base (`ck_ft_relevo`).
+- Un **viaje** de la oficina también tiene **Entregar coche** desde el 29/10/2026 (db/224; hasta entonces la base lo impedía con `ck_ft_relevo`, «no hay compañero»).
 
 ## Cuándo se bloquea: el compañero que todavía no ficha
 
