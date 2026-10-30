@@ -49,7 +49,7 @@ No dan lo mismo porque la noche cruza la medianoche, y esa diferencia es lo que 
 
 Camilo: *«ayer a las 12:28 estábamos con este total de horas, hoy con estas. Así pero con dos días hacia atrás y también con el día de la semana pasada, como comparando el viernes de esta semana con el viernes de la semana pasada, con porcentajes reales, con gráficos que entienda una persona que no sabe de datos, directo al punto»*.
 
-Una tarjeta debajo de las de en vivo, solo en Madrid. Compara las **horas efectivas de hoy desde las 00:00 hasta ahora** con las de **ayer, anteayer y el mismo día de la semana pasada desde las 00:00 hasta la misma hora**.
+Una tarjeta debajo de las de en vivo, en Madrid y, desde el mismo día, en [[Barcelona]] (con sus horas y su planificador). Compara las **horas efectivas de hoy desde las 00:00 hasta ahora** con las de **ayer, anteayer y el mismo día de la semana pasada desde las 00:00 hasta la misma hora**.
 
 - **La frase de arriba** dice lo que se pregunta primero: «A las 12:28, hoy llevamos 485 horas: 4,9 % menos que ayer a esta hora».
 - **Una barra por día** (hoy en oro, los demás en gris) con sus horas. En los días de antes, una etiqueta con cuánto va hoy por encima o por debajo, en horas y en %: verde si hoy va por encima, rojo si va por debajo y «Igual que hoy» si no llega a media hora.

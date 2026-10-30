@@ -158,6 +158,42 @@ function resumen() {
   });
 }
 
+/**
+ * A ESTA HORA (30/10/2026, Camilo: «ponlo también en la Visibilidad de
+ * Barcelona»): hoy contra ayer, anteayer y el mismo día de la semana pasada,
+ * cada uno hasta la misma hora, por día natural, por turno y por jornada. La
+ * hora, los días y los % son los de Madrid (`momentoAEstaHora`,
+ * `armarAEstaHora`); las horas, de sus apuntes, y los turnos, por el plan de SU
+ * planificador, cortados a la hora de cada día como en Madrid.
+ */
+function aEstaHora(ref = {}) {
+  return conTablas(async () => {
+    const { hoy, hora, hNum, tarde, dias } = V.momentoAEstaHora(ref);
+    const ahora = Date.now();
+    // Ocho días: la noche del mismo día de la semana pasada puede ser la de la víspera.
+    const desde = R.sumarDias(hoy, -8);
+    const [ivs, asignaciones] = await Promise.all([
+      ratos(inicioDe(desde), ahora),
+      repo.asignacionesEntre(SEDE, R.sumarDias(desde, -1), R.sumarDias(hoy, 1)),
+    ]);
+    const plan = H.planDesde(asignaciones);
+    const efectivos = ivs.filter(x => H.EFECTIVAS.has(x.situacion)).map(x => ({ ...x, persona: x.uuid }));
+    const horasDe = s => (s.viajeSeg + s.esperaSeg) / 3600;
+    const natural = [], turnos = [];
+    dias.forEach(({ clave, dia, noche }) => {
+      const corte = Math.min(R.instante(dia, hNum), ahora);
+      natural.push({ clave, dia, horas: horasDe(H.sumaVentana(ivs, inicioDe(dia), corte)) });
+      // Como si fuera esa hora: lo de después no existe todavía.
+      const hastaElCorte = efectivos.filter(x => x.ini < corte).map(x => (x.fin > corte ? { ...x, fin: corte } : x));
+      const { porClave } = R.repartir(hastaElCorte, plan);
+      const h = k => { const x = porClave.get(k); return x ? horasDe(x) : 0; };
+      turnos.push({ clave, dia, noche, turnoDia: h(R.clave(dia, 'dia')), turnoNoche: h(R.clave(noche, 'noche')),
+        jornada: h(R.clave(dia, 'dia')) + h(R.clave(dia, 'noche')) });
+    });
+    return V.armarAEstaHora({ hoy, hora, tarde, natural, turnos });
+  });
+}
+
 // ── LA TENDENCIA: los gráficos largos (25/10/2026) ─────────────────────────
 // Las mismas piezas que Madrid (services/visibilidadTendencia.js): el rango con
 // su agrupación y su media móvil, «cómo vamos» contra el mes anterior y el
@@ -252,4 +288,4 @@ function serie(mesTexto) {
   return serieMes(Y, M);
 }
 
-module.exports = { SEDE, resumen, rango, crecimiento, comoVamos, serieMes, serie, leerConfig, guardarConfig };
+module.exports = { SEDE, resumen, aEstaHora, rango, crecimiento, comoVamos, serieMes, serie, leerConfig, guardarConfig };

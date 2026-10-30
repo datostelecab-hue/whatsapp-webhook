@@ -356,33 +356,36 @@ const restarDias = (iso, n) => {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 };
 
-async function aEstaHora(ref = {}) {
+/**
+ * LA HORA Y LOS DÍAS de «A esta hora»: hoy y los que se le comparan, con la hora
+ * de corte. La comparten Madrid y Barcelona (modules/Barcelona), que solo cambian
+ * de dónde salen las horas.
+ *   → { hoy, hora 'HH:MM', hNum (horas desde las 00:00), tarde (¿ha empezado la
+ *       noche de hoy?), dias: [{ clave, dia, noche }] } — `noche` = la fecha de la
+ *       noche en curso a esa hora de ese día.
+ */
+function momentoAEstaHora(ref = {}) {
   const hoy = /^\d{4}-\d{2}-\d{2}$/.test(ref.dia || '') ? ref.dia : hoyISO();
   const hora = /^\d{2}:\d{2}$/.test(ref.hora || '') ? ref.hora
     : new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
       .format(new Date()).replace(/^24/, '00');
   const [hh, mm] = hora.split(':').map(Number);
   const hNum = hh + mm / 60;
-  const hFin = hNum.toFixed(4);                    // horas desde las 00:00, al minuto
-  const reparto = require('./flotaViva/repartoTurnos');
-  const tarde = hNum >= reparto.INICIO.noche;      // ¿ha empezado ya la noche de hoy?
-  const dias = [['hoy', 0], ...OTROS_DIAS];
+  const tarde = hNum >= require('./flotaViva/repartoTurnos').INICIO.noche;
+  const dias = [['hoy', 0], ...OTROS_DIAS].map(([clave, n]) => {
+    const dia = restarDias(hoy, n);
+    return { clave, dia, noche: tarde ? dia : restarDias(dia, 1) };
+  });
+  return { hoy, hora, hNum, tarde, dias };
+}
+
+/**
+ * LA RESPUESTA de «A esta hora», de las horas ya contadas. Pura.
+ *   natural  [{ clave, dia, horas }]
+ *   turnos   [{ clave, dia, noche, turnoDia, turnoNoche, jornada }] (horas)
+ */
+function armarAEstaHora({ hoy, hora, tarde, natural, turnos }) {
   const r1 = v => Math.round(v * 10) / 10;
-  const [natural, turnos] = await Promise.all([
-    Promise.all(dias.map(async ([clave, n]) => {
-      const dia = restarDias(hoy, n);
-      const h = await horasVentana(dia, 0, 0, hFin);
-      return { clave, dia, horas: r1((h.viajeSeg + h.esperaSeg) / 3600) };
-    })),
-    Promise.all(dias.map(async ([clave, n]) => {
-      const dia = restarDias(hoy, n);
-      const noche = tarde ? dia : restarDias(dia, 1);
-      const m = await reparto.porTurno([dia, noche], { hasta: reparto.instante(dia, hNum) });
-      const h = k => { const x = m.get(k); return x ? (x.viajeSeg + x.esperaSeg) / 3600 : 0; };
-      return { clave, dia, noche, turnoDia: h(dia + '|dia'), turnoNoche: h(noche + '|noche'),
-        jornada: h(dia + '|dia') + h(dia + '|noche') };
-    })),
-  ]);
   // Cuánto va hoy por encima (+) o por debajo (−) de cada día, en horas y en %.
   // Contra un día con menos de MIN_COMPARAR horas el % no dice nada (a las 12:28
   // la noche lleva media hora: 0 contra 0,5 h sería «−100 %»): va `pocas`.
@@ -400,10 +403,29 @@ async function aEstaHora(ref = {}) {
   const de = (campo, fecha) => comparar(turnos.map(t => ({ clave: t.clave, dia: t[fecha], horas: r1(t[campo]) })));
   return {
     hora, hoy,
-    natural: { filas: comparar(natural) },
+    natural: { filas: comparar(natural.map(n => ({ clave: n.clave, dia: n.dia, horas: r1(n.horas) }))) },
     turno: { dia: { filas: de('turnoDia', 'dia') }, noche: { filas: de('turnoNoche', 'noche'), empezoHoy: tarde } },
     jornada: { filas: de('jornada', 'dia') },
   };
+}
+
+async function aEstaHora(ref = {}) {
+  const { hoy, hora, hNum, tarde, dias } = momentoAEstaHora(ref);
+  const hFin = hNum.toFixed(4);                    // horas desde las 00:00, al minuto
+  const reparto = require('./flotaViva/repartoTurnos');
+  const [natural, turnos] = await Promise.all([
+    Promise.all(dias.map(async ({ clave, dia }) => {
+      const h = await horasVentana(dia, 0, 0, hFin);
+      return { clave, dia, horas: (h.viajeSeg + h.esperaSeg) / 3600 };
+    })),
+    Promise.all(dias.map(async ({ clave, dia, noche }) => {
+      const m = await reparto.porTurno([dia, noche], { hasta: reparto.instante(dia, hNum) });
+      const h = k => { const x = m.get(k); return x ? (x.viajeSeg + x.esperaSeg) / 3600 : 0; };
+      return { clave, dia, noche, turnoDia: h(dia + '|dia'), turnoNoche: h(noche + '|noche'),
+        jornada: h(dia + '|dia') + h(dia + '|noche') };
+    })),
+  ]);
+  return armarAEstaHora({ hoy, hora, tarde, natural, turnos });
 }
 
 // ── Serie del MES para los gráficos (por día, acumulado, ideal, crítico, brecha) ─
@@ -613,6 +635,8 @@ async function backfillMesActual() {
 
 module.exports = {
   resumen, aEstaHora, serieMes, leerConfig, guardarConfig,
+  // Las piezas de «A esta hora» que comparte Barcelona.
+  momentoAEstaHora, armarAEstaHora,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
   slice, horasVentana, dineroVentana,

@@ -103,6 +103,8 @@ Lo que cambia es de dónde salen los datos (`modules/Barcelona/visibilidad.servi
 
 **Los gráficos de la tendencia** (25/10/2026: el rango de los días, «cómo vamos» y «cómo hemos crecido», ver [[Visibilidad#Los gráficos (25/10/2026)]]) son las mismas piezas de `services/visibilidadTendencia.js`; Barcelona solo pone sus días (`diasDeLaSede`) en `/barcelona/api/visibilidad/rango`, `/crecimiento` y `/como-vamos`. Su primer día es de media tarde y su septiembre, un día: por eso un % solo se da entre meses con 7 días con datos o más, y el «frente al periodo anterior» de un rango, con el 90 % de sus días.
 
+**«A esta hora»** (30/10/2026, Camilo: *«ponlo también en la Visibilidad de Barcelona»*, ver [[Visibilidad#A esta hora (30/10/2026)]]): hoy contra ayer, anteayer y el mismo día de la semana pasada hasta la misma hora, por día natural, por turno y por jornada. La hora, los días y los % son los de Madrid (`momentoAEstaHora` y `armarAEstaHora` en `services/visibilidad.js`); Barcelona pone sus horas (sus ratos de ocho días) y sus turnos (`repartir` con el plan de su planificador, cortando cada día a esa hora). `/barcelona/api/visibilidad/a-esta-hora`. Al separar las piezas, Madrid dio exactamente lo mismo que antes (26/10 a las 12:28 y a las 10:15).
+
 **Sin meta de partida.** No hay una meta de Barcelona que copiar, y una inventada pintaría un ideal y una brecha que no miden nada. Hasta que se ponga en *Config*, la pantalla enseña las horas sin el ideal, el crítico ni la brecha (en la tabla, «·»). Los coches, si no se dicen, son los activos en BOLT.
 
 Con datos reales de BOLT (07/10, script `barcelona-visibilidad-prueba.js` de los análisis): el 06/10, 121,9 h efectivas, 78,2 % de utilización, 18 conductores, 2.810,98 € y 23,05 €/h.

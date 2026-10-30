@@ -73,6 +73,8 @@ router.post('/api/asignar', responde(async req => barcelona.asignar(req.body || 
 // ── La Visibilidad ─────────────────────────────────────────────────────────
 
 router.get('/api/visibilidad/resumen', responde(() => visibilidad.resumen()));
+// A esta hora: hoy contra ayer, anteayer y la semana pasada, a la misma hora (como Madrid).
+router.get('/api/visibilidad/a-esta-hora', responde(() => visibilidad.aEstaHora()));
 router.get('/api/visibilidad/serie', responde(req => visibilidad.serie(req.query.mes)));
 // La tendencia (25/10/2026): las mismas tres que Madrid. Un parámetro que no vale es un 400.
 router.get('/api/visibilidad/rango', responde(req => visibilidad.rango(req.query)));
