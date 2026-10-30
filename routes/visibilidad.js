@@ -28,6 +28,17 @@ router.get('/api/resumen', async (req, res) => {
   }
 });
 
+// A esta hora: hoy contra ayer, anteayer y el mismo día de la semana pasada,
+// cada uno de 00:00 a la misma hora (services/visibilidad.js → aEstaHora).
+router.get('/api/a-esta-hora', async (req, res) => {
+  try {
+    res.json({ status: 'ok', ...(await vis.aEstaHora()) });
+  } catch (e) {
+    console.error('❌ [Visibilidad] /api/a-esta-hora:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 // Serie del mes para los gráficos (por día, acumulado, ideal, crítico, brecha).
 router.get('/api/serie', async (req, res) => {
   try {

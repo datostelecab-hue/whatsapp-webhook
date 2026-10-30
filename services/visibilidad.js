@@ -324,6 +324,48 @@ async function resumen({ gente = false } = {}) {
   };
 }
 
+// ── A ESTA HORA: hoy contra los días de antes, a la misma hora ────────────────
+// Camilo, 30/10/2026: «ayer a las 12:28 estábamos con este total de horas, hoy
+// con estas. Así pero con dos días hacia atrás y también con el día de la semana
+// pasada (el viernes de esta semana con el viernes de la semana pasada), con
+// porcentajes reales, y que lo entienda una persona que no sabe de datos».
+//
+// Las horas efectivas (viaje + espera) de HOY desde las 00:00 hasta ahora, contra
+// las de AYER, ANTEAYER y el MISMO DÍA DE LA SEMANA PASADA desde las 00:00 hasta
+// la MISMA HORA. Día natural, como la tarjeta de Hoy: a las 12:28 se comparan doce
+// horas y media con doce horas y media, no con el día entero. La ventana la clava
+// el SQL en Madrid, así que un día con cambio de hora corta a la misma hora del
+// reloj. `difPct` = cuánto va hoy por encima (+) o por debajo (−) de ese día.
+//
+// `ref` = { dia: 'AAAA-MM-DD', hora: 'HH:MM' } solo para probar con un día pasado.
+const OTROS_DIAS = [['ayer', 1], ['anteayer', 2], ['semana', 7]];
+const restarDias = (iso, n) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d, 12) - n * 86400000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+};
+
+async function aEstaHora(ref = {}) {
+  const hoy = /^\d{4}-\d{2}-\d{2}$/.test(ref.dia || '') ? ref.dia : hoyISO();
+  const hora = /^\d{2}:\d{2}$/.test(ref.hora || '') ? ref.hora
+    : new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
+      .format(new Date()).replace(/^24/, '00');
+  const [hh, mm] = hora.split(':').map(Number);
+  const hFin = (hh + mm / 60).toFixed(4);          // horas desde las 00:00, al minuto
+  const dias = [['hoy', 0], ...OTROS_DIAS];
+  const filas = await Promise.all(dias.map(async ([clave, n]) => {
+    const dia = restarDias(hoy, n);
+    const h = await horasVentana(dia, 0, 0, hFin);
+    return { clave, dia, horas: Math.round((h.viajeSeg + h.esperaSeg) / 360) / 10, conductores: h.conductores };
+  }));
+  const deHoy = filas[0].horas;
+  filas.forEach(f => {
+    f.difHoras = f.clave === 'hoy' ? null : Math.round((deHoy - f.horas) * 10) / 10;
+    f.difPct = f.clave === 'hoy' || !(f.horas > 0) ? null : Math.round((deHoy - f.horas) / f.horas * 1000) / 10;
+  });
+  return { hora, hoy, filas };
+}
+
 // ── Serie del MES para los gráficos (por día, acumulado, ideal, crítico, brecha) ─
 // Lee la foto diaria (visibilidad_dia). Si el mes pedido no tiene fotos aún, las
 // genera al vuelo (backfill perezoso), para que el gráfico nunca salga vacío. El
@@ -530,7 +572,7 @@ async function backfillMesActual() {
 }
 
 module.exports = {
-  resumen, serieMes, leerConfig, guardarConfig,
+  resumen, aEstaHora, serieMes, leerConfig, guardarConfig,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
   slice, horasVentana, dineroVentana,

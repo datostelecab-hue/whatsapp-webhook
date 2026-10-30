@@ -45,6 +45,20 @@ No dan lo mismo porque la noche cruza la medianoche, y esa diferencia es lo que 
 - **BOLT guarda los datos desde el 26/06/2025, y esa fecha avanza un día cada día.** No se ha traído nada de 2025: para que «1 año» esté entero haría falta del 26/10 al 31/12/2025 (unas 350 peticiones); todo lo que queda, del 26/06 al 31/12/2025 (unas 900).
 - **Las cifras de arriba de esos meses no tienen dinero**: `bolt_order` empieza el 01/07/2026, así que de enero a junio €/h, neto y viajes/h salen «—» con «sin pedidos de BOLT ese mes» (y no «0,00 €»).
 
+## A esta hora (30/10/2026)
+
+Camilo: *«ayer a las 12:28 estábamos con este total de horas, hoy con estas. Así pero con dos días hacia atrás y también con el día de la semana pasada, como comparando el viernes de esta semana con el viernes de la semana pasada, con porcentajes reales, con gráficos que entienda una persona que no sabe de datos, directo al punto»*.
+
+Una tarjeta debajo de las de en vivo, solo en Madrid. Compara las **horas efectivas de hoy desde las 00:00 hasta ahora** con las de **ayer, anteayer y el mismo día de la semana pasada desde las 00:00 hasta la misma hora**.
+
+- **La frase de arriba** dice lo que se pregunta primero: «A las 12:28, hoy llevamos 485 horas: 4,9 % menos que ayer a esta hora».
+- **Una barra por día** (hoy en oro, los demás en gris) con sus horas. En los días de antes, una etiqueta con cuánto va hoy por encima o por debajo, en horas y en %: verde si hoy va por encima, rojo si va por debajo y «Igual que hoy» si no llega a media hora.
+- **El % es real**, con un decimal: (hoy − ese día) ÷ ese día.
+- **Es día natural**, como la tarjeta de Hoy. La ventana la clava el SQL en Madrid: un día con cambio de hora corta a la misma hora del reloj (el 25/10/2026, de 00:00 a 12:28 hubo una hora más).
+- Se refresca con las tarjetas, cada 5 minutos, y con «Actualizar».
+- Piezas: `services/visibilidad.js` → `aEstaHora()` (con `ref` para probar un día pasado), `GET /visibilidad/api/a-esta-hora`, y el pintado `cargarAEstaHora` en `views/visibilidad.ejs`. Comprobado contra una consulta aparte el 27/10 a las 12:28: los cuatro días cuadran al décimo.
+- **En la copia local** hoy, ayer y anteayer salen casi iguales: los tramos que quedaron abiertos al copiar (27/10) se alargan hasta ahora. En producción se cierran solos.
+
 ## Los gráficos (25/10/2026)
 
 Camilo: *«necesito que le des una actualización a visibilidad, nuevos gráficos… que en el gráfico que muestras los últimos 15 días se pueda agrandar, tipo, última semana, últimos 15 días, hace 30 días, 2 meses, 1 año, etc. Pero quiero gráficos mucho más profesionales y que muestren cómo van las horas actualmente y cómo hemos crecido»*.

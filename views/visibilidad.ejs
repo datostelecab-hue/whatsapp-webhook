@@ -130,6 +130,23 @@
     </div>
   </div>
 
+  <%# A ESTA HORA (30/10/2026). Camilo: «ayer a las 12:28 estábamos con este total
+      de horas, hoy con estas; así con dos días hacia atrás y con el mismo día de la
+      semana pasada, con porcentajes reales, con gráficos que entienda una persona
+      que no sabe de datos, directo al punto». Una barra por día, las horas al lado
+      y, en los días de antes, cuánto va hoy por encima o por debajo, en horas y en
+      %. Solo Madrid: la Visibilidad de Barcelona tiene su propia API. %>
+  <% if (!SEDE_NOMBRE) { %>
+  <section id="aeh" class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mb-4" aria-labelledby="aeh-titulo">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <h2 id="aeh-titulo" class="text-sm font-semibold text-telecab-text">A esta hora</h2>
+      <p class="text-[11px] text-telecab-muted">Horas efectivas (viaje + espera) desde las 00:00 hasta la misma hora de cada día</p>
+    </div>
+    <p id="aeh-frase" class="text-base sm:text-lg font-semibold text-telecab-text mt-1 mb-3">—</p>
+    <div id="aeh-filas" class="space-y-3"><p class="text-sm text-telecab-muted">Cargando…</p></div>
+  </section>
+  <% } %>
+
   <%
     /* LA TENDENCIA (25/10/2026). Camilo: «que el gráfico de los últimos 15 días
        se pueda agrandar… gráficos mucho más profesionales, que muestren cómo van
@@ -366,6 +383,7 @@
   }
   const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
   const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const sig = x => (x > 0 ? '+' : x < 0 ? '−' : '') + nf0.format(Math.abs(x));
   const sigPct = x => (x > 0 ? '+' : x < 0 ? '−' : '') + pct1.format(Math.abs(x)) + ' %';
 
@@ -391,6 +409,63 @@
     if (!x.ok || !j || j.status !== 'ok') throw new Error((j && j.msg) || 'No se pudo cargar');
     return j;
   });
+
+  // ── A esta hora: hoy contra ayer, anteayer y el mismo día de la semana pasada ──
+  // Cada día, de 00:00 a la misma hora (services/visibilidad.js → aEstaHora). La
+  // frase dice lo de ayer, que es lo que se pregunta primero; las barras, todo.
+  async function cargarAEstaHora() {
+    const caja = document.getElementById('aeh-filas');
+    if (!caja) return;
+    const r = await fetch(API + '/a-esta-hora').then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok') {
+      caja.innerHTML = '<p class="text-sm text-telecab-muted">No se ha podido calcular ahora mismo. Prueba con «Actualizar».</p>';
+      return;
+    }
+    const filas = r.filas || [];
+    const hoyF = filas.find(f => f.clave === 'hoy') || { horas: 0 };
+    const ayerF = filas.find(f => f.clave === 'ayer');
+    const nombre = f => f.clave === 'hoy' ? 'Hoy' : f.clave === 'ayer' ? 'Ayer' : f.clave === 'anteayer' ? 'Anteayer'
+      : 'El ' + DIAS_LARGOS[fechaDe(f.dia).getDay()] + ' pasado';
+    const cuando = f => {
+      const d = fechaDe(f.dia);
+      return (f.clave === 'semana' ? '' : DIAS_LARGOS[d.getDay()] + ' ') + d.getDate() + ' de ' + MESES[d.getMonth()].toLowerCase();
+    };
+    const frase = !ayerF || ayerF.difPct == null
+      ? 'A las ' + r.hora + ', hoy llevamos ' + nf0.format(hoyF.horas) + ' horas.'
+      : 'A las ' + r.hora + ', hoy llevamos ' + nf0.format(hoyF.horas) + ' horas: ' +
+        (ayerF.difPct === 0 ? 'lo mismo que ayer a esta hora.'
+          : pct1.format(Math.abs(ayerF.difPct)) + ' % ' + (ayerF.difPct > 0 ? 'más' : 'menos') + ' que ayer a esta hora.');
+    setTxt('aeh-frase', frase);
+    setTxt('aeh-titulo', 'A esta hora · ' + r.hora);
+
+    const max = Math.max(1, ...filas.map(f => f.horas));
+    caja.innerHTML = filas.map(f => {
+      const esHoy = f.clave === 'hoy';
+      const ancho = Math.max(f.horas > 0 ? 1.5 : 0, f.horas / max * 100);
+      let dif = '';
+      if (!esHoy) {
+        if (f.difPct == null) dif = '<span class="text-xs text-telecab-muted">Sin horas ese día a esta hora</span>';
+        else if (Math.abs(f.difHoras) < 0.5) dif = '<span class="inline-flex px-2 py-1 rounded-lg text-xs font-semibold bg-telecab-card2 text-telecab-muted">Igual que hoy</span>';
+        else {
+          const sube = f.difPct >= 0;
+          dif = '<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-semibold tabular-nums ' +
+            (sube ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/15 text-telecab-red') + '" title="' +
+            esc('Hoy ' + nf1.format(hoyF.horas) + ' h, ' + nombre(f).toLowerCase() + ' ' + nf1.format(f.horas) + ' h, a las ' + r.hora) + '">' +
+            '<i class="fa-solid ' + (sube ? 'fa-arrow-up' : 'fa-arrow-down') + ' text-[10px]" aria-hidden="true"></i>' +
+            'Hoy ' + nf0.format(Math.abs(f.difHoras)) + ' h ' + (sube ? 'más' : 'menos') + ' (' + sigPct(f.difPct) + ')</span>';
+        }
+      }
+      return '<div class="grid grid-cols-[7.5rem_minmax(0,1fr)] sm:grid-cols-[9.5rem_minmax(0,1fr)_13rem] items-center gap-x-3 gap-y-1">' +
+        '<div class="min-w-0"><p class="text-sm font-semibold ' + (esHoy ? 'text-telecab-gold' : 'text-telecab-text') + '">' + esc(nombre(f)) + '</p>' +
+          '<p class="text-[11px] text-telecab-muted truncate">' + esc(cuando(f)) + '</p></div>' +
+        '<div class="flex items-center gap-2 min-w-0">' +
+          '<div class="flex-1 min-w-0 h-6 rounded-md bg-telecab-card2/60 overflow-hidden">' +
+            '<div class="h-full rounded-md ' + (esHoy ? 'bg-telecab-gold' : 'bg-telecab-muted/40') + '" style="width:' + ancho.toFixed(1) + '%"></div></div>' +
+          '<span class="w-16 text-right text-sm font-bold tabular-nums shrink-0">' + nf0.format(f.horas) + ' h</span></div>' +
+        '<div class="col-start-2 sm:col-start-auto sm:text-right">' + dif + '</div>' +
+      '</div>';
+    }).join('');
+  }
 
   // ── KPIs en vivo ──────────────────────────────────────────────────────────
   async function cargarResumen() {
@@ -1261,13 +1336,14 @@
   // los días y el crecimiento van siempre hasta hoy.
   document.getElementById('v-mes-prev').addEventListener('click', () => { mes--; if (mes < 1) { mes = 12; anio--; } cargarComoVamos(); });
   document.getElementById('v-mes-next').addEventListener('click', () => { mes++; if (mes > 12) { mes = 1; anio++; } cargarComoVamos(); });
-  document.getElementById('v-refrescar').addEventListener('click', () => { cargarResumen(); cargarComoVamos(); cargarRango(); cargarCrecimiento(); });
+  document.getElementById('v-refrescar').addEventListener('click', () => { cargarResumen(); cargarAEstaHora(); cargarComoVamos(); cargarRango(); cargarCrecimiento(); });
 
   cargarResumen();
+  cargarAEstaHora();
   cargarRango();
   cargarComoVamos();
   cargarCrecimiento();
   // Refresco suave cada 5 min de las tarjetas y del rango (el punto de hoy corre).
-  setInterval(() => { cargarResumen(); cargarRango(); }, 5 * 60 * 1000);
+  setInterval(() => { cargarResumen(); cargarAEstaHora(); cargarRango(); }, 5 * 60 * 1000);
 })();
 </script>
