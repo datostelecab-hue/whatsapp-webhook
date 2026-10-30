@@ -284,7 +284,7 @@ async function intervalosEfectivos(iniMs, finMs) {
  * Devuelve { porClave, porPersona } como `repartir`, con las claves de las
  * fechas pedidas (y alguna vecina, que se ignora).
  */
-async function cargar(fechas) {
+async function cargar(fechas, { hasta } = {}) {
   const lista = [...new Set(fechas.map(f => String(f).slice(0, 10)))].sort();
   if (!lista.length) return { porClave: new Map(), porPersona: new Map() };
   const db = require('../db');
@@ -292,7 +292,9 @@ async function cargar(fechas) {
   // Desde el mediodía de la víspera: una sesión que empezó la tarde anterior y
   // sigue de madrugada tiene que saberse que empezó allí.
   const iniMs = instante(desdeF, INICIO.noche);
-  const finMs = Math.min(Date.now(), instante(hastaF, INICIO.noche));
+  // `hasta` (ms) corta antes, como si fuera esa hora: «A esta hora» de
+  // Visibilidad mira ayer y anteayer hasta la misma hora que hoy.
+  const finMs = Math.min(Date.now(), instante(hastaF, INICIO.noche), Number(hasta) || Infinity);
 
   const [ivs, cuentas, prestadas, plan] = await Promise.all([
     intervalosEfectivos(iniMs, finMs),
@@ -379,8 +381,8 @@ async function cargar(fechas) {
  * sale de la misma carga, así que la lista y el total no pueden decir cosas
  * distintas.
  */
-async function porTurno(fechas, { gente = false } = {}) {
-  const { porClave, porPersona, cuentasDe, planes } = await cargar(fechas);
+async function porTurno(fechas, { gente = false, hasta } = {}) {
+  const { porClave, porPersona, cuentasDe, planes } = await cargar(fechas, { hasta });
   const out = new Map();
   [...new Set(fechas.map(f => String(f).slice(0, 10)))].forEach(f => ['dia', 'noche'].forEach(t => {
     const k = clave(f, t);

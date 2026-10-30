@@ -337,6 +337,17 @@ async function resumen({ gente = false } = {}) {
 // el SQL en Madrid, así que un día con cambio de hora corta a la misma hora del
 // reloj. `difPct` = cuánto va hoy por encima (+) o por debajo (−) de ese día.
 //
+// Y POR TURNO Y POR JORNADA (30/10/2026, Camilo: «dos botones para cambiar a la
+// vista de hora natural y hora por turno… y jornada»). Con la misma regla que las
+// tarjetas de turno (repartoTurnos: la gente de cada turno según el cuadrante; el
+// día cuenta desde las 00:00 y la noche desde las 12:00), cortada a la misma hora:
+//   · turno de día de cada día, de 00:00 a esa hora;
+//   · turno de noche EN CURSO: desde las 12:00 de hoy si ya han dado, y si no,
+//     la que empezó ayer a las 12:00; y la de cada día de antes, igual;
+//   · jornada de cada día = su turno de día + su turno de noche, todo lo que lleva
+//     hasta esa hora (antes de las 12:00 su noche aún no ha empezado).
+// Las tres vistas van en la misma respuesta: cambiar de botón no espera a nadie.
+//
 // `ref` = { dia: 'AAAA-MM-DD', hora: 'HH:MM' } solo para probar con un día pasado.
 const OTROS_DIAS = [['ayer', 1], ['anteayer', 2], ['semana', 7]];
 const restarDias = (iso, n) => {
@@ -351,19 +362,48 @@ async function aEstaHora(ref = {}) {
     : new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
       .format(new Date()).replace(/^24/, '00');
   const [hh, mm] = hora.split(':').map(Number);
-  const hFin = (hh + mm / 60).toFixed(4);          // horas desde las 00:00, al minuto
+  const hNum = hh + mm / 60;
+  const hFin = hNum.toFixed(4);                    // horas desde las 00:00, al minuto
+  const reparto = require('./flotaViva/repartoTurnos');
+  const tarde = hNum >= reparto.INICIO.noche;      // ¿ha empezado ya la noche de hoy?
   const dias = [['hoy', 0], ...OTROS_DIAS];
-  const filas = await Promise.all(dias.map(async ([clave, n]) => {
-    const dia = restarDias(hoy, n);
-    const h = await horasVentana(dia, 0, 0, hFin);
-    return { clave, dia, horas: Math.round((h.viajeSeg + h.esperaSeg) / 360) / 10, conductores: h.conductores };
-  }));
-  const deHoy = filas[0].horas;
-  filas.forEach(f => {
-    f.difHoras = f.clave === 'hoy' ? null : Math.round((deHoy - f.horas) * 10) / 10;
-    f.difPct = f.clave === 'hoy' || !(f.horas > 0) ? null : Math.round((deHoy - f.horas) / f.horas * 1000) / 10;
-  });
-  return { hora, hoy, filas };
+  const r1 = v => Math.round(v * 10) / 10;
+  const [natural, turnos] = await Promise.all([
+    Promise.all(dias.map(async ([clave, n]) => {
+      const dia = restarDias(hoy, n);
+      const h = await horasVentana(dia, 0, 0, hFin);
+      return { clave, dia, horas: r1((h.viajeSeg + h.esperaSeg) / 3600) };
+    })),
+    Promise.all(dias.map(async ([clave, n]) => {
+      const dia = restarDias(hoy, n);
+      const noche = tarde ? dia : restarDias(dia, 1);
+      const m = await reparto.porTurno([dia, noche], { hasta: reparto.instante(dia, hNum) });
+      const h = k => { const x = m.get(k); return x ? (x.viajeSeg + x.esperaSeg) / 3600 : 0; };
+      return { clave, dia, noche, turnoDia: h(dia + '|dia'), turnoNoche: h(noche + '|noche'),
+        jornada: h(dia + '|dia') + h(dia + '|noche') };
+    })),
+  ]);
+  // Cuánto va hoy por encima (+) o por debajo (−) de cada día, en horas y en %.
+  // Contra un día con menos de MIN_COMPARAR horas el % no dice nada (a las 12:28
+  // la noche lleva media hora: 0 contra 0,5 h sería «−100 %»): va `pocas`.
+  const MIN_COMPARAR = 10;
+  const comparar = filas => {
+    const deHoy = filas[0].horas;
+    filas.forEach(f => {
+      if (f.clave === 'hoy') { f.difHoras = null; f.difPct = null; return; }
+      f.pocas = f.horas < MIN_COMPARAR;
+      f.difHoras = f.pocas ? null : r1(deHoy - f.horas);
+      f.difPct = f.pocas ? null : Math.round((deHoy - f.horas) / f.horas * 1000) / 10;
+    });
+    return filas;
+  };
+  const de = (campo, fecha) => comparar(turnos.map(t => ({ clave: t.clave, dia: t[fecha], horas: r1(t[campo]) })));
+  return {
+    hora, hoy,
+    natural: { filas: comparar(natural) },
+    turno: { dia: { filas: de('turnoDia', 'dia') }, noche: { filas: de('turnoNoche', 'noche'), empezoHoy: tarde } },
+    jornada: { filas: de('jornada', 'dia') },
+  };
 }
 
 // ── Serie del MES para los gráficos (por día, acumulado, ideal, crítico, brecha) ─

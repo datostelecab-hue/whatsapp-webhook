@@ -57,6 +57,12 @@ Una tarjeta debajo de las de en vivo, solo en Madrid. Compara las **horas efecti
 - **Es día natural**, como la tarjeta de Hoy. La ventana la clava el SQL en Madrid: un día con cambio de hora corta a la misma hora del reloj (el 25/10/2026, de 00:00 a 12:28 hubo una hora más).
 - Se refresca con las tarjetas, cada 5 minutos, y con «Actualizar».
 - Piezas: `services/visibilidad.js` → `aEstaHora()` (con `ref` para probar un día pasado), `GET /visibilidad/api/a-esta-hora`, y el pintado `cargarAEstaHora` en `views/visibilidad.ejs`. Comprobado contra una consulta aparte el 27/10 a las 12:28: los cuatro días cuadran al décimo.
+- **Tres botones: Día natural, Por turno y Jornada** (30/10/2026, Camilo: *«dos botones para cambiar a la vista de hora natural y hora por turno… y jornada»*). Las tres llegan en la misma respuesta y cambiar de botón no pide nada; el navegador recuerda el último elegido.
+    - **Día natural:** todo lo trabajado desde las 00:00 hasta esa hora.
+    - **Por turno:** dos bloques, turno de día y turno de noche, con la regla de las tarjetas de turno (`repartoTurnos`: la gente de cada turno según el cuadrante; el día desde las 00:00, la noche desde las 12:00), cortados a la misma hora. La noche es la que está en curso: desde las 12:00 de hoy si ya han dado, y si no, la que empezó ayer a las 12:00 (sus etiquetas dicen «noche del domingo 25»). Entre las 12:00 y las 17:00 la noche apenas suma, y la tarjeta lo dice.
+    - **Jornada:** el turno de día de cada día más su turno de noche, todo lo que lleva hasta esa hora (antes de las 12:00 su noche aún no ha empezado y es igual al turno de día).
+    - El corte a una hora es `porTurno(fechas, { hasta })` (y `cargar`): sin `hasta` da exactamente lo de antes (comprobado con el 20/10: 492,1 y 482,8 h).
+    - **Contra un día con menos de 10 h no se da %** («Muy pocas horas para comparar»): a las 12:28 la noche lleva media hora y 0 contra 0,5 h saldría «−100 %».
 - **En la copia local** hoy, ayer y anteayer salen casi iguales: los tramos que quedaron abiertos al copiar (27/10) se alargan hasta ahora. En producción se cierran solos.
 
 ## Los gráficos (25/10/2026)

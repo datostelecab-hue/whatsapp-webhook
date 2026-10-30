@@ -138,9 +138,19 @@
       %. Solo Madrid: la Visibilidad de Barcelona tiene su propia API. %>
   <% if (!SEDE_NOMBRE) { %>
   <section id="aeh" class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mb-4" aria-labelledby="aeh-titulo">
-    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <h2 id="aeh-titulo" class="text-sm font-semibold text-telecab-text">A esta hora</h2>
-      <p class="text-[11px] text-telecab-muted">Horas efectivas (viaje + espera) desde las 00:00 hasta la misma hora de cada día</p>
+    <%# Tres formas de contar, como las tarjetas de arriba (Camilo, 30/10/2026: «dos
+        botones para cambiar a la vista de hora natural y hora por turno… y jornada»). %>
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div class="min-w-0">
+        <h2 id="aeh-titulo" class="text-sm font-semibold text-telecab-text">A esta hora</h2>
+        <p id="aeh-sub" class="text-[11px] text-telecab-muted">Horas efectivas (viaje + espera) desde las 00:00 hasta la misma hora de cada día</p>
+      </div>
+      <input type="hidden" id="aeh-vista" value="natural">
+      <div class="tc-selector tc-selector-compacto" data-para="aeh-vista" role="group" aria-label="Cómo se cuentan las horas">
+        <button type="button" data-v="natural" title="Todas las horas desde las 00:00 hasta esta hora, como la tarjeta de Hoy">Día natural</button>
+        <button type="button" data-v="turno" title="Las horas de la gente de cada turno: el de día desde las 00:00 y el de noche desde las 12:00, hasta esta hora">Por turno</button>
+        <button type="button" data-v="jornada" title="El turno de día de cada día más su turno de noche (que empieza a las 12:00), hasta esta hora">Jornada</button>
+      </div>
     </div>
     <p id="aeh-frase" class="text-base sm:text-lg font-semibold text-telecab-text mt-1 mb-3">—</p>
     <div id="aeh-filas" class="space-y-3"><p class="text-sm text-telecab-muted">Cargando…</p></div>
@@ -411,46 +421,73 @@
   });
 
   // ── A esta hora: hoy contra ayer, anteayer y el mismo día de la semana pasada ──
-  // Cada día, de 00:00 a la misma hora (services/visibilidad.js → aEstaHora). La
-  // frase dice lo de ayer, que es lo que se pregunta primero; las barras, todo.
+  // Cada día hasta la misma hora (services/visibilidad.js → aEstaHora), contado de
+  // tres formas que se eligen con los botones: día natural, por turno y jornada.
+  // Las tres llegan juntas: cambiar de botón repinta sin pedir nada. La frase dice
+  // lo de ayer, que es lo que se pregunta primero; las barras, todo.
+  let AEH = null;
+  const SUB_AEH = {
+    natural: 'Horas efectivas (viaje + espera) desde las 00:00 hasta la misma hora de cada día',
+    turno: 'La gente de cada turno según el cuadrante: el de día cuenta desde las 00:00 y el de noche desde las 12:00, hasta la misma hora de cada día',
+    jornada: 'La jornada de cada día es su turno de día más su turno de noche (que empieza a las 12:00), hasta la misma hora',
+  };
+  const inpAeh = document.getElementById('aeh-vista');
+  if (inpAeh) {
+    // El botón elegido se recuerda en este navegador (si se puede).
+    try { const g = localStorage.getItem('visibilidad.aEstaHora'); if (SUB_AEH[g]) inpAeh.value = g; } catch (_) { /* sin almacenamiento */ }
+    if (window.Selector) Selector.montar(inpAeh.parentElement);
+    inpAeh.addEventListener('change', () => {
+      try { localStorage.setItem('visibilidad.aEstaHora', inpAeh.value); } catch (_) { /* sin almacenamiento */ }
+      pintarAEstaHora();
+    });
+  }
+
   async function cargarAEstaHora() {
     const caja = document.getElementById('aeh-filas');
     if (!caja) return;
     const r = await fetch(API + '/a-esta-hora').then(x => x.json()).catch(() => null);
-    if (!r || r.status !== 'ok') {
+    if (!r || r.status !== 'ok' || !r.natural) {
       caja.innerHTML = '<p class="text-sm text-telecab-muted">No se ha podido calcular ahora mismo. Prueba con «Actualizar».</p>';
       return;
     }
-    const filas = r.filas || [];
-    const hoyF = filas.find(f => f.clave === 'hoy') || { horas: 0 };
-    const ayerF = filas.find(f => f.clave === 'ayer');
+    AEH = r;
+    pintarAEstaHora();
+  }
+
+  // «4,9 % menos que ayer a esta hora», o nada si no se puede comparar.
+  const contraAyer = filas => {
+    const a = filas.find(f => f.clave === 'ayer');
+    if (!a || a.difPct == null) return '';
+    return a.difPct === 0 ? 'lo mismo que ayer a esta hora'
+      : pct1.format(Math.abs(a.difPct)) + ' % ' + (a.difPct > 0 ? 'más' : 'menos') + ' que ayer a esta hora';
+  };
+  const deHoyEn = filas => (filas.find(f => f.clave === 'hoy') || { horas: 0 }).horas;
+
+  // Las barras de un grupo de días. `noche`: la fecha es la de la noche.
+  function barrasAEH(filas, { noche = false } = {}) {
+    const hoyH = deHoyEn(filas);
     const nombre = f => f.clave === 'hoy' ? 'Hoy' : f.clave === 'ayer' ? 'Ayer' : f.clave === 'anteayer' ? 'Anteayer'
-      : 'El ' + DIAS_LARGOS[fechaDe(f.dia).getDay()] + ' pasado';
+      : 'El ' + DIAS_LARGOS[fechaDe(AEH.hoy).getDay()] + ' pasado';
     const cuando = f => {
       const d = fechaDe(f.dia);
+      // La de noche, sin el mes: «noche del domingo 25» cabe en la columna.
+      if (noche) return 'noche del ' + DIAS_LARGOS[d.getDay()] + ' ' + d.getDate();
       return (f.clave === 'semana' ? '' : DIAS_LARGOS[d.getDay()] + ' ') + d.getDate() + ' de ' + MESES[d.getMonth()].toLowerCase();
     };
-    const frase = !ayerF || ayerF.difPct == null
-      ? 'A las ' + r.hora + ', hoy llevamos ' + nf0.format(hoyF.horas) + ' horas.'
-      : 'A las ' + r.hora + ', hoy llevamos ' + nf0.format(hoyF.horas) + ' horas: ' +
-        (ayerF.difPct === 0 ? 'lo mismo que ayer a esta hora.'
-          : pct1.format(Math.abs(ayerF.difPct)) + ' % ' + (ayerF.difPct > 0 ? 'más' : 'menos') + ' que ayer a esta hora.');
-    setTxt('aeh-frase', frase);
-    setTxt('aeh-titulo', 'A esta hora · ' + r.hora);
-
     const max = Math.max(1, ...filas.map(f => f.horas));
-    caja.innerHTML = filas.map(f => {
+    return '<div class="space-y-3">' + filas.map(f => {
       const esHoy = f.clave === 'hoy';
       const ancho = Math.max(f.horas > 0 ? 1.5 : 0, f.horas / max * 100);
       let dif = '';
       if (!esHoy) {
-        if (f.difPct == null) dif = '<span class="text-xs text-telecab-muted">Sin horas ese día a esta hora</span>';
+        if (f.pocas) dif = '<span class="text-xs text-telecab-muted">Muy pocas horas para comparar</span>';
+        else if (f.difPct == null) dif = '<span class="text-xs text-telecab-muted">Sin horas ese día a esta hora</span>';
         else if (Math.abs(f.difHoras) < 0.5) dif = '<span class="inline-flex px-2 py-1 rounded-lg text-xs font-semibold bg-telecab-card2 text-telecab-muted">Igual que hoy</span>';
         else {
           const sube = f.difPct >= 0;
           dif = '<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-semibold tabular-nums ' +
             (sube ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/15 text-telecab-red') + '" title="' +
-            esc('Hoy ' + nf1.format(hoyF.horas) + ' h, ' + nombre(f).toLowerCase() + ' ' + nf1.format(f.horas) + ' h, a las ' + r.hora) + '">' +
+            esc('Hoy ' + nf1.format(hoyH) + ' h, ' + nombre(f).toLowerCase() + ' ' + nf1.format(f.horas) + ' h, a las ' + AEH.hora) + '">' +
             '<i class="fa-solid ' + (sube ? 'fa-arrow-up' : 'fa-arrow-down') + ' text-[10px]" aria-hidden="true"></i>' +
             'Hoy ' + nf0.format(Math.abs(f.difHoras)) + ' h ' + (sube ? 'más' : 'menos') + ' (' + sigPct(f.difPct) + ')</span>';
         }
@@ -464,7 +501,39 @@
           '<span class="w-16 text-right text-sm font-bold tabular-nums shrink-0">' + nf0.format(f.horas) + ' h</span></div>' +
         '<div class="col-start-2 sm:col-start-auto sm:text-right">' + dif + '</div>' +
       '</div>';
-    }).join('');
+    }).join('') + '</div>';
+  }
+
+  function pintarAEstaHora() {
+    const caja = document.getElementById('aeh-filas');
+    if (!caja || !AEH) return;
+    const v = SUB_AEH[(inpAeh && inpAeh.value)] ? inpAeh.value : 'natural';
+    const hora = AEH.hora;
+    setTxt('aeh-titulo', 'A esta hora · ' + hora);
+    setTxt('aeh-sub', SUB_AEH[v]);
+    const conAyer = (inicio, filas) => inicio + nf0.format(deHoyEn(filas)) + ' horas' + (contraAyer(filas) ? ': ' + contraAyer(filas) : '') + '.';
+
+    if (v === 'turno') {
+      const d = AEH.turno.dia.filas, n = AEH.turno.noche.filas;
+      setTxt('aeh-frase', conAyer('A las ' + hora + ', el turno de día lleva ', d) + ' ' + conAyer('El de noche, ', n));
+      // La noche en curso: la que empezó hoy a las 12:00 o, por la mañana, la de ayer.
+      const [hh] = hora.split(':').map(Number);
+      const notaNoche = !AEH.turno.noche.empezoHoy
+        ? 'La noche en curso empezó ayer a las 12:00.'
+        : hh < 17 ? 'La noche empieza a contar a las 12:00, pero su gente entra hacia las 17:00: hasta entonces apenas suma.' : '';
+      const grupo = (titulo, filas, nota, noche) => '<div class="min-w-0">' +
+        '<p class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-1">' + titulo + '</p>' +
+        (nota ? '<p class="text-[11px] text-telecab-muted mb-2">' + esc(nota) + '</p>' : '<div class="mb-2"></div>') +
+        barrasAEH(filas, { noche }) + '</div>';
+      caja.innerHTML = '<div class="grid grid-cols-1 xl:grid-cols-2 gap-x-8 gap-y-6">' +
+        grupo('Turno día', d, '', false) + grupo('Turno noche', n, notaNoche, true) + '</div>';
+      return;
+    }
+    const filas = v === 'jornada' ? AEH.jornada.filas : AEH.natural.filas;
+    setTxt('aeh-frase', v === 'jornada'
+      ? conAyer('A las ' + hora + ', la jornada de hoy lleva ', filas)
+      : conAyer('A las ' + hora + ', hoy llevamos ', filas));
+    caja.innerHTML = barrasAEH(filas);
   }
 
   // ── KPIs en vivo ──────────────────────────────────────────────────────────
