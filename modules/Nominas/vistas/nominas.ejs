@@ -266,7 +266,7 @@ function filtrarYpintar() {
     <td class="px-3 py-2 text-right ${f.deltaHoras>0?'text-telecab-green font-medium':'text-telecab-muted/50'}">${f.deltaHoras>0?'+':''}${(Number(f.deltaHoras)||0).toFixed(1)}</td>
     <td class="px-3 py-2 text-right">${eur(f.propinas)}</td>
     <td class="px-3 py-2 text-right">${eur(f.peajes)}</td>
-    <td class="px-3 py-2 text-right">${eur(f.nocturnas)}</td>
+    <td class="px-3 py-2 text-right" title="${f.nocturnasHorasQuitadas>0?`${(Number(f.nocturnasHoras)||0).toFixed(1)} h nocturnas: se le quitan ${(Number(f.nocturnasHorasQuitadas)||0).toFixed(1)} h con la espera descontada`:`${(Number(f.nocturnasHoras)||0).toFixed(1)} h nocturnas`}">${eur(f.nocturnas)}</td>
     <td class="px-3 py-2 text-right ${f.compensacion>0?'text-telecab-muted/60':''}">${eur(f.mboFAS)}</td>
     <td class="px-3 py-2 text-right ${f.compensacion>0?'':'text-telecab-muted/50'}">${eur(f.compensacion)}</td>
     <td class="px-3 py-2 text-right ${f.diasExtra>0?'':'text-telecab-muted/50'}">${(Number(f.diasExtra)||0).toFixed(2)}</td>

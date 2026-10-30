@@ -251,7 +251,7 @@ function reglas(cfg) {
     ['Horas no justificadas', 'La diferencia cuando sale negativa; cero si llegó al objetivo. Es lo que falta y no tiene explicación: va en rojo.'],
     ['MBO horas extra', `Diferencia × ${num(cfg.eurHoraExtra)} € × utilización. Solo si la diferencia es positiva.`],
     ['MBO FAS', `(Facturación neta − umbral de su jornada) × ${pctTxt(cfg.pctMBOFAS)}. Solo si supera el umbral.`],
-    ['Nocturnas', `${num(cfg.eurHoraNoc)} € × horas nocturnas × ${num(cfg.factorNoc)}: ${num((Number(cfg.eurHoraNoc) || 0) * (Number(cfg.factorNoc) || 0))} € por cada hora entre las 22:00 y las 06:00.`],
+    ['Nocturnas', `${num(cfg.eurHoraNoc)} € × horas nocturnas × ${num(cfg.factorNoc)}: ${num((Number(cfg.eurHoraNoc) || 0) * (Number(cfg.factorNoc) || 0))} € por cada hora entre las 22:00 y las 06:00. Llevan el mismo recorte que las horas: de la espera que se quita se va también su parte nocturna (el viaje nocturno no se toca).`],
     ['TOTAL', 'Nocturnas + peajes + propinas + el MAYOR de los dos MBO. Los MBO no se suman: se cobra el que salga más alto, y por eso «Compensación» va a cero cuando gana el FAS.'],
     ['Días extra', `La diferencia en días de ${num(cfg.horasMetaDia)} h, cuando pasa de un día. Informativo: no entra en el total.`],
     ['Salario base bruto', `Pestaña «Nómina base», del 26 del mes anterior al 25 de este: (rodadas − espera quitada + J + vacaciones + permisos) × ${eur2(cfg.eurHoraBase)} €, con TOPE en el salario base de su jornada (${eur2(cfg.sueldoBase40)} € con 40 h, ${eur2(cfg.sueldoBase32)} € con 32 h) prorrateado por sus días de contrato. Lo que pasa del tope lo pagan las variables; quien no llega cobra lo que hizo.`],
@@ -267,7 +267,7 @@ const DATOS = [
   ['Vacaciones y permisos', 'Los tramos de estado de cada conductor (vacaciones y permiso), los mismos que lee Vacaciones.'],
   ['DNI, jornada y fecha de alta', 'La ficha del conductor y su periodo de empleo.'],
   ['Los dos nombres', 'El de BOLT, del padrón de la plataforma; el de la seguridad social, de la ficha de RRHH.'],
-  ['Quién entra', 'Solo plantilla propia. Los de ETT los paga la agencia y van en el «Parte de trabajo de la ETT».'],
+  ['Quién entra', 'Solo plantilla propia, y todo el que tuvo contrato algún día del mes, aunque sea con 0 horas. Los de ETT los paga la agencia y van en el «Parte de trabajo de la ETT»; quien pasó de la ETT a propia ese mes va en los dos, cada uno con sus días.'],
 ];
 
 /** Alto de una fila con texto partido: unas 15 unidades por línea. */
@@ -548,6 +548,12 @@ function comoSale(f, cfg) {
   }
   const mbo = Math.max(Number(f.mboHsExt) || 0, Number(f.mboFAS) || 0);
   if (f.mboHsExt > 0 && f.mboFAS > 0) p.push(`Se paga el ${ganaDe(f) === 'FAS' ? 'FAS' : 'de horas extra'}, que es el mayor.`);
+  // La nocturnidad, con el mismo recorte que las horas (30/10/2026).
+  if (f.nocturnasHorasQuitadas > 0) {
+    const brutas = (Number(f.nocturnasHoras) || 0) + (Number(f.nocturnasHorasQuitadas) || 0);
+    p.push(`Nocturnidad: ${h1(brutas)} h nocturnas − ${h1(f.nocturnasHorasQuitadas)} de la espera quitada = ` +
+      `${h1(f.nocturnasHoras)} h × ${eur2((Number(cfg.eurHoraNoc) || 0) * (Number(cfg.factorNoc) || 0))} € = ${eur2(f.nocturnas)} €.`);
+  }
   // Lo que se cobra
   const piezas = [[mbo, 'MBO'], [f.nocturnas, 'nocturnidad'], [f.propinas, 'propinas'], [f.peajes, 'peajes']]
     .filter(([v]) => Number(v) > 0);
@@ -746,6 +752,10 @@ const COL_DESCUENTO = [
   ['Horas justificadas', 15, f => f.horasJustificadas, HORAS_ETT],
   ['HORAS QUE SE PAGAN', 18, f => f.horasTrabajadas, HORAS_ETT],
   ['Importe descontado', 16, f => f.importeDescontado, CONTA],
+  // Las nocturnas llevan el mismo recorte (30/10/2026): la parte nocturna de la
+  // espera descontada, y lo que deja de costar de plus.
+  ['Horas nocturnas descontadas', 16, f => f.nocturnasHorasQuitadas || 0, HORAS_ETT],
+  ['Plus nocturno descontado', 15, f => f.plusNocturnoDescontado || 0, CONTA],
 ];
 
 /** Pinta una tabla con la banda de la casa, su cabecera, su pie y su filtro. */
@@ -831,7 +841,10 @@ async function generarExcelETT(r) {
     `€/Total = HORAS × ${r.eurHora} €/h.  Total Plus Nocturnidad = Horas Nocturnas × ${r.plusNocturno} € ` +
       '(es € POR HORA nocturna, no un porcentaje).  Total coste trabajador = la suma de los dos.',
     'HORAS = lo rodado en BOLT, menos las horas de espera descontadas por baja utilización, más las ' +
-      'horas justificadas (cada J aprobada suma las horas que se le pusieron al justificarla).',
+      'horas justificadas (cada J aprobada suma las horas que se le pusieron al justificarla). ' +
+      'Las Horas Nocturnas llevan el mismo descuento: sin la parte nocturna de esa espera.',
+    'Sale todo el que tuvo contrato con la agencia algún día del mes, aunque sea con 0 horas; quien pasó ' +
+      'a plantilla propia sale con su Fecha baja y solo con los días de la agencia.',
     'El detalle de los descuentos, con el porcentaje de utilización de cada uno, está en la segunda pestaña.',
     'Las horas van por día natural: del día 1 a las 00:00 al último a las 23:59.',
   ]);
@@ -857,6 +870,8 @@ async function generarExcelETT(r) {
       `${(r.utilExigida * 100).toFixed(0)} %: se le retiran horas DE ESPERA —nunca de viaje— hasta dejarlo exactamente ahí.`,
     'Nunca se descuenta más espera de la que esa persona tuvo: sale de la propia fórmula, ' +
       'X = (viaje + espera) − viaje ÷ exigida.',
+    'Las HORAS NOCTURNAS llevan el mismo recorte: de la espera descontada se va también su parte nocturna, ' +
+      'en la misma proporción. El viaje nocturno no se toca.',
     `A quien llega al ${(r.utilUmbral * 100).toFixed(0)} % no se le quita nada, y por eso no aparece en esta pestaña.`,
   ]);
 
@@ -979,6 +994,7 @@ async function libroDeMeses(r, { hoja, titulo, subtitulo, etiquetaTotal, avisos 
     const f = m.fila;
     if (!f) { linea('Sin actividad en este mes', null, 0); return; }
     linea('Horas nocturnas', f.nocturnasHoras, f.nocturnas);
+    if (f.nocturnasHorasQuitadas > 0) linea('   Horas nocturnas descontadas con la espera (baja utilización)', -f.nocturnasHorasQuitadas, null);
     linea('Propinas', null, f.propinas);
     linea('Peajes', null, f.peajes);
     // El MBO que se paga es el MAYOR de los dos. `compensacion` es solo lo que
@@ -1103,13 +1119,17 @@ function hojaDiaADia(wb, idLogo, p, m, cfg) {
     c.border = E.TODOS_BORDES;
   };
   pon(1, 'Según la nómina');
+  const nocQuitadas = f ? Number(f.nocturnasHorasQuitadas) || 0 : 0;
+  const nocQuitadasEur = nocQuitadas * (Number(cfg.eurHoraNoc) || 0) * (Number(cfg.factorNoc) || 0);
   if (f) {
     pon(3, f.horas, DOS); pon(4, f.horasViaje, DOS); pon(5, f.horasEspera, DOS);
     pon(6, f.horasJustificadas, DOS);
     pon(7, Math.round(((Number(f.horasVacaciones) || 0) + (Number(f.horasPermiso) || 0)) * 100) / 100, DOS);
-    pon(8, f.nocturnasHoras, DOS); pon(9, f.nocturnas, CONTA);
+    // Las nocturnas ANTES del recorte, que es lo que suman los días: el
+    // descuento se decide con el mes entero y va abajo, en su línea.
+    pon(8, Math.round((f.nocturnasHoras + nocQuitadas) * 100) / 100, DOS); pon(9, Math.round((f.nocturnas + nocQuitadasEur) * 100) / 100, CONTA);
     pon(10, f.propinas, CONTA); pon(11, f.peajes, CONTA);
-    pon(12, Math.round((f.nocturnas + f.propinas + f.peajes) * 100) / 100, CONTA);
+    pon(12, Math.round((f.nocturnas + nocQuitadasEur + f.propinas + f.peajes) * 100) / 100, CONTA);
   } else {
     pon(3, 'sin fila en la nómina: no trabajó ese mes');
   }
@@ -1134,6 +1154,10 @@ function hojaDiaADia(wb, idLogo, p, m, cfg) {
     if (f.horasEsperaQuitadas > 0) {
       resumen('Horas de espera descontadas por baja utilización (se mide con el mes entero, no por días)',
         -f.horasEsperaQuitadas, DOS);
+    }
+    if (nocQuitadas > 0) {
+      resumen(`Nocturnidad descontada con esa espera: ${nocQuitadas.toFixed(2).replace('.', ',')} h nocturnas (se mide con el mes entero, no por días)`,
+        -Math.round(nocQuitadasEur * 100) / 100, CONTA);
     }
     resumen('MBO del mes, el mayor de horas extra y facturación (se gana con el mes entero, no por días)',
       mboDe(f), CONTA);

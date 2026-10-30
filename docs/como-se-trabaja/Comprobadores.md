@@ -391,7 +391,9 @@ No son de los seis, pero forman parte de la misma red:
   (la propia prorrateada desde su alta, la de la ETT sin MBO y con su «Fecha baja» en el
   parte); quien tuvo contrato y ni una hora sale a cero; un día sin contrato va al tipo de
   la ficha; con un solo tipo, todo como siempre; y en sus Extras, las dos partes juntas.
-  Saboteado (sin partir), revienta en el primer caso nuevo.
+  Saboteado (sin partir), revienta en el primer caso nuevo. Y las nocturnas llevan
+  el recorte: se va la parte nocturna de la espera quitada; sin recorte, enteras; conectado
+  de noche sin un viaje, cero. Sin ese recorte fallan dos casos.
 - **`comprobar-portal.js`** (19/10/2026) — el portal de conductores, con dobles: el DNI se
   limpia; a quien no está, no tiene email o no tiene contrato se le contesta lo mismo; tres
   códigos cada 15 minutos y solo vale el último; el código no se guarda en claro, sirve una

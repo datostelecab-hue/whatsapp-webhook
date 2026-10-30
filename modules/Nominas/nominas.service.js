@@ -395,7 +395,15 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   const horasNoJustificadas = Math.max(0, -delta);
 
   const umbral = umbralDe(jornada, cfg);
-  const eurNoc = cfg.eurHoraNoc * c.nocturnasH * cfg.factorNoc;
+  // LAS NOCTURNAS LLEVAN EL MISMO RECORTE (30/10/2026, Camilo: «que las
+  // nocturnas sigan el mismo recorte»). Se quita espera, nunca viaje, así que
+  // de las nocturnas se va la parte de esa espera: lo que tenga de nocturno la
+  // espera que tuvo, en la misma proporción en que se le quita. Quien estuvo
+  // conectado de noche sin un viaje lo pierde todo; el viaje nocturno, nada.
+  const nocEspera = Math.min(c.nocEsperaH || 0, espera);
+  const nocturnasQuitadas = espera > 0 ? Math.min(c.nocturnasH || 0, horasEsperaQuitadas * (nocEspera / espera)) : 0;
+  const nocturnasH = (c.nocturnasH || 0) - nocturnasQuitadas;
+  const eurNoc = cfg.eurHoraNoc * nocturnasH * cfg.factorNoc;
 
   // EL MBO ES SOLO DE PLANTILLA PROPIA (regla 6). A quien viene por ETT lo
   // contrata la agencia: nosotros no le debemos horas extra ni participación en
@@ -452,7 +460,9 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     // horas (lo que la ETT necesita para pagarlas ella). Una no se deduce de la
     // otra sin saber la tarifa del mes, y una nómina congelada tiene que
     // poder explicarse sola.
-    nocturnasHoras: r2(c.nocturnasH || 0),
+    nocturnasHoras: r2(nocturnasH),
+    // Las nocturnas que se fueron con el recorte: la medida es la suma de las dos.
+    nocturnasHorasQuitadas: r2(nocturnasQuitadas),
     propinas: r2(c.propinas),
     peajes: r2(c.peajes),
     nocturnas: r2(eurNoc),
@@ -521,10 +531,11 @@ function partesDelMes(f, periodos, desde, hasta) {
 const soloDias = {
   horas(h, dias) {
     if (!h || !dias) return h;
-    const out = { horasSeg: 0, nocSeg: 0, viajeSeg: 0, esperaSeg: 0, primerDia: 0, porDia: new Map(), dias: new Map() };
+    const out = { horasSeg: 0, nocSeg: 0, nocEsperaSeg: 0, viajeSeg: 0, esperaSeg: 0, primerDia: 0, porDia: new Map(), dias: new Map() };
     h.dias.forEach((x, d) => {
       if (!dias.has(d)) return;
-      out.horasSeg += x.seg; out.nocSeg += x.nocSeg; out.viajeSeg += x.viajeSeg; out.esperaSeg += x.esperaSeg;
+      out.horasSeg += x.seg; out.nocSeg += x.nocSeg; out.nocEsperaSeg += x.nocEsperaSeg || 0;
+      out.viajeSeg += x.viajeSeg; out.esperaSeg += x.esperaSeg;
       out.porDia.set(d, x.seg);
       out.dias.set(d, x);
       if (!out.primerDia || d < out.primerDia) out.primerDia = d;
@@ -634,6 +645,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       vacDias: a.vacaciones,
       permDias: a.permiso,
       nocturnasH: h ? h.nocSeg / 3600 : 0,
+      nocEsperaH: h ? (h.nocEsperaSeg || 0) / 3600 : 0,
       utilPct: efectivos > 0 ? (h.viajeSeg / efectivos) * 100 : null,
       neto: d.neto, propinas: d.propinas, peajes: d.peajes,
     };
@@ -947,6 +959,8 @@ async function paraETT(mesTrabajo, anoTrabajo) {
         // Lo que la agencia se ahorra por el recorte, en euros. En horas ya lo
         // tiene; en euros es lo que va a mirar.
         importeDescontado: r2(f.horasEsperaQuitadas * cfg.ettEurHora),
+        // Y el plus de las nocturnas que se fueron con esa espera (30/10/2026).
+        plusNocturnoDescontado: r2((f.nocturnasHorasQuitadas || 0) * cfg.ettPlusNocturno),
         // Lo que cuesta esa persona: sus horas mas su nocturnidad.
         costeTrabajador: r2(importeHoras + plusNocturno),
         bajaEnElMes: bajaDelMes(f.baja),
@@ -960,12 +974,14 @@ async function paraETT(mesTrabajo, anoTrabajo) {
     t.horasTrabajadas += f.horasTrabajadas; t.nocturnasHoras += f.nocturnasHoras;
     t.importeHoras += f.importeHoras; t.plusNocturno += f.plusNocturno;
     t.importeDescontado += f.importeDescontado;
+    t.nocturnasHorasQuitadas += f.nocturnasHorasQuitadas || 0;
+    t.plusNocturnoDescontado += f.plusNocturnoDescontado;
     t.costeTrabajador += f.costeTrabajador;
     t.propinas += f.propinas; t.peajes += f.peajes;
     return t;
   }, { horas: 0, horasJustificadas: 0, horasEsperaQuitadas: 0, horasTrabajadas: 0,
        nocturnasHoras: 0, importeHoras: 0, plusNocturno: 0, costeTrabajador: 0,
-       importeDescontado: 0, propinas: 0, peajes: 0 });
+       importeDescontado: 0, nocturnasHorasQuitadas: 0, plusNocturnoDescontado: 0, propinas: 0, peajes: 0 });
   Object.keys(totales).forEach(k => { totales[k] = r2(totales[k]); });
 
   return {
@@ -1066,7 +1082,7 @@ async function mesesDeTrabajo(cid, persona, trabajos, cfg) {
  */
 const SUMABLES = ['horas', 'horasViaje', 'horasEspera', 'horasEsperaQuitadas', 'horasJustificadas',
   'diasJustificados', 'jSinHoras', 'diasVacaciones', 'horasVacaciones', 'diasPermiso',
-  'horasPermiso', 'nocturnasHoras', 'propinas', 'peajes', 'nocturnas', 'neto',
+  'horasPermiso', 'nocturnasHoras', 'nocturnasHorasQuitadas', 'propinas', 'peajes', 'nocturnas', 'neto',
   'mboFAS', 'mboHsExt', 'compensacion', 'diasExtra', 'total'];
 function unirFilas(filas) {
   if (!filas.length) return null;

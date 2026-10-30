@@ -133,6 +133,25 @@ Medido al cambiarlo, con la nómina de octubre de 2026 (trabajo de septiembre, p
 
 La columna de **% utilización** sigue enseñando la **real**, la de antes del recorte: es el diagnóstico, y esconderla dejaría la cifra retirada sin explicación.
 
+### Las nocturnas llevan el mismo recorte (30/10/2026)
+
+Camilo: *«Sí, que las nocturnas sigan el mismo recorte»*. Salió con Hassan Nouri en el parte de la ETT de octubre: **0 horas y 4,12 h nocturnas** (5,40 € de plus), porque el 01/10 estuvo 4,12 h conectado de noche sin un solo viaje, y el recorte se le llevaba toda la espera pero las nocturnas se quedaban.
+
+Se quita espera, nunca viaje, así que de las nocturnas se va **la parte nocturna de esa espera**, en la misma proporción en que se quita:
+
+```
+nocturnas quitadas = espera quitada × (nocturnas de la espera ÷ espera)     (como mucho, todas las nocturnas)
+nocturnas que cuentan = nocturnas − nocturnas quitadas
+```
+
+Las «nocturnas de la espera» salen del repositorio igual que las otras (`nocEsperaSeg` en `horasDelMes`: el trozo de 22:00 a 06:00 de la espera, con los ratos que se pisan fundidos). El viaje nocturno no se toca nunca, y quien llega al 75 % no pierde ninguna nocturna.
+
+- **En la nómina**, `nocturnasHoras` y la nocturnidad en euros ya son las que cuentan; lo quitado va en `nocturnasHorasQuitadas`, y «Cómo sale su total» lo escribe: *«Nocturnidad: 11,0 h nocturnas − 3,7 de la espera quitada = 7,3 h × 0,99 € = 7,26 €»*. En la pantalla, al pasar el ratón por la nocturnidad.
+- **En el parte de la ETT**, las Horas Nocturnas y su plus van ya sin esa parte, y la pestaña «Horas descontadas» añade las horas nocturnas descontadas y el plus que deja de costar.
+- **En el día a día** (Extras y finiquito) los días enseñan las nocturnas tal cual y la fila «Según la nómina» las de antes del recorte, para que cuadren con la suma de los días; el descuento va abajo en su línea, como el de la espera, porque se decide con el mes entero.
+
+Medido al cambiarlo (copia del 27/10): la nómina de octubre (trabajo de septiembre) baja **366,82 €** en 32 personas de propia, y la de noviembre (octubre, aún sin cerrar) unos **616 €** en 52; en el parte de la ETT de octubre se descuentan **530 h nocturnas, 694,55 € de plus**, en 36 personas. Lo congelado no cambia, pero en la copia del 27/10 **no había ningún mes congelado**: una nómina ya pagada sale con estas reglas si se vuelve a sacar.
+
 ## La fórmula
 
 ```
@@ -142,7 +161,7 @@ horas quitadas    = (viaje + espera) − viaje ÷ exigida (85 %)   (0 si llega a
 diferencia        = (horas rodadas − horas quitadas + horas justificadas) − objetivo
 MBO horas extra   = diferencia × € hora extra × utilización   (solo si la diferencia es positiva)
 MBO FAS           = (facturación neta − umbral) × % MBO FAS    (solo si supera el umbral de SU jornada)
-nocturnas         = € hora nocturna × horas nocturnas × factor
+nocturnas         = € hora nocturna × (horas nocturnas − las de la espera quitada) × factor
 
 TOTAL = nocturnas + peajes + propinas + el MAYOR de los dos MBO
 ```
@@ -280,7 +299,7 @@ Los números son los de la fila de la nómina, **no fórmulas**: la nómina redo
 
 **La facturación neta se guarda al congelar** desde `db/206` (columna `nomina_fila.neto`): antes solo se guardaba el FAS ya calculado, y de un mes cerrado solo se habría podido decir «no llegó al umbral». Sin la migración aplicada se congela y se lee como antes (el repositorio mira si la columna existe, por el `search_path`), y el resumen de esas filas da el FAS sin la facturación. Ensayado sobre copias temporales en las dos pasadas, sin la columna y con ella: 145 filas congeladas y leídas iguales, al céntimo.
 
-`scripts/comprobar-nomina.js` (43 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele; la base; y, desde el 30/10/2026, los que pasan de la ETT a propia y los que no hicieron ni una hora.
+`scripts/comprobar-nomina.js` (46 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele; la base; y, desde el 30/10/2026, los que pasan de la ETT a propia, los que no hicieron ni una hora y el recorte de las nocturnas.
 
 ## Los dos nombres del Excel
 

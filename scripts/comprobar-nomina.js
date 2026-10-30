@@ -15,7 +15,9 @@
 //     salario base de su jornada prorrateado por los días de contrato, y la
 //     nómina entera = base + variables;
 //   · (30/10/2026) sale todo el que tuvo contrato en el mes, aunque sea a cero,
-//     y quien pasa de la ETT a propia va dos veces, cada parte con sus días.
+//     y quien pasa de la ETT a propia va dos veces, cada parte con sus días;
+//     y las nocturnas llevan el mismo recorte: se va la parte nocturna de la
+//     espera que se quita.
 //
 //   node scripts/comprobar-nomina.js
 //
@@ -31,8 +33,9 @@ const sustituir = (rel, exp) => {
 // una que entra el 6 de octubre y otra que se fue el 20 de septiembre).
 const H = h => h * 3600;
 const tramos = new Map([
-  [1, { horasSeg: H(180), viajeSeg: H(135), esperaSeg: H(45), nocSeg: H(10), primerDia: 1, porDia: new Map([[3, H(2)]]) }],     // 75 % justo
-  [2, { horasSeg: H(180), viajeSeg: H(133.2), esperaSeg: H(46.8), nocSeg: 0, primerDia: 1, porDia: new Map() }],               // 74 %
+  [1, { horasSeg: H(180), viajeSeg: H(135), esperaSeg: H(45), nocSeg: H(10), nocEsperaSeg: H(5), primerDia: 1, porDia: new Map([[3, H(2)]]) }],     // 75 % justo
+  // 74 %: de sus 20 h nocturnas, 10 son de espera (30/10/2026: van con el recorte).
+  [2, { horasSeg: H(180), viajeSeg: H(133.2), esperaSeg: H(46.8), nocSeg: H(20), nocEsperaSeg: H(10), primerDia: 1, porDia: new Map() }],
   [3, { horasSeg: H(100), viajeSeg: H(90), esperaSeg: H(10), nocSeg: 0, primerDia: 1, porDia: new Map() }],                    // 90 %
   [4, { horasSeg: H(200), viajeSeg: H(100), esperaSeg: H(100), nocSeg: H(20), primerDia: 1, porDia: new Map() }],             // ETT al 50 %
   [5, { horasSeg: H(40), viajeSeg: H(36), esperaSeg: H(4), nocSeg: 0, primerDia: 6, porDia: new Map() }],                     // entra el 06/10
@@ -155,6 +158,17 @@ function igual(nombre, real, esperado) {
     30, { ...cfg, utilUmbral: 0.9, utilExigida: 0.6 }, 9, 2026);
   igual('Con el umbral por encima de la exigida no se quita nada en negativo', alReves.horasEsperaQuitadas, 0);
   igual('La ETT también lleva el recorte (es la hora que se le factura)', cuatro.horasEsperaQuitadas, Math.round((200 - 100 / 0.85) * 100) / 100);
+
+  // ── Las nocturnas llevan el mismo recorte (30/10/2026) ──────────────────
+  const qn = x * 10 / 46.8;
+  igual('Con el recorte se va la parte nocturna de la espera quitada, en su proporción',
+    [dos.nocturnasHorasQuitadas, dos.nocturnasHoras, dos.nocturnas],
+    [Math.round(qn * 100) / 100, Math.round((20 - qn) * 100) / 100, Math.round(9.9 * 0.1 * (20 - qn) * 100) / 100]);
+  igual('Sin recorte, las nocturnas enteras aunque tenga espera nocturna', [uno.nocturnasHoras, uno.nocturnasHorasQuitadas], [10, 0]);
+  const conectado = N._calcularFila({ conductorId: 9, ett: true, alta: '2025-01-01', horas: 4.12, viajeH: 0, esperaH: 4.12,
+    nocturnasH: 4.12, nocEsperaH: 4.12, utilPct: 0, jDias: [], neto: 0, propinas: 0, peajes: 0 }, 31, cfg, 10, 2026);
+  igual('Conectado de noche sin un viaje: sin horas y sin nocturnas',
+    [conectado.horasEsperaQuitadas, conectado.nocturnasHoras, conectado.nocturnasHorasQuitadas, conectado.total], [4.12, 0, 4.12, 0]);
 
   // ── Lo que se cobra ───────────────────────────────────────────────────────
   igual('Nocturnas a 9,9 € × 0,1 la hora', uno.nocturnas, 9.9);

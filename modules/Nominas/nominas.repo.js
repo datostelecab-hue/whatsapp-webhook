@@ -185,10 +185,13 @@ function segundosNocturnos(ini, fin) {
 /**
  * Horas, nocturnas y utilización de cada persona en el mes de trabajo, por DÍA
  * NATURAL (ver la nota de HORA_CORTE arriba).
- * Devuelve Map(conductor_id → { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia, dias }).
+ * Devuelve Map(conductor_id → { horasSeg, nocSeg, nocEsperaSeg, viajeSeg, esperaSeg, primerDia, porDia, dias }).
+ *
+ * `nocEsperaSeg` es la parte nocturna de la ESPERA: la que se va con el recorte
+ * por utilización, que solo quita espera (30/10/2026).
  *
  * `dias` es el mismo cálculo día a día (día del mes → { seg, viajeSeg,
- * esperaSeg, nocSeg }): los totales del mes SON su suma, así que el día a día
+ * esperaSeg, nocSeg, nocEsperaSeg }): los totales del mes SON su suma, así que el día a día
  * del finiquito no puede decir otra cosa que la nómina. Con `conductorId` se
  * pide solo esa persona.
  *
@@ -215,7 +218,7 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
 
   const out = new Map();
   acc.forEach((dias, cid) => {
-    let horasSeg = 0, nocSeg = 0, viajeSeg = 0, esperaSeg = 0, primerDia = 0;
+    let horasSeg = 0, nocSeg = 0, nocEsperaSeg = 0, viajeSeg = 0, esperaSeg = 0, primerDia = 0;
     // Los segundos de cada dia sueltos. Hacen falta para las J: una J cubre lo
     // que falte de ESE dia, asi que hay que saber que se rodo en el.
     const porDia = new Map();
@@ -226,17 +229,20 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
       if (seg <= 0) return;
       const noc = efectivo.reduce((a, [i, f]) => a + segundosNocturnos(i, f), 0);
       const vSeg = segundosDe(fundir(c.viaje));
-      const eSeg = segundosDe(fundir(c.espera));
+      const esperaFundida = fundir(c.espera);
+      const eSeg = segundosDe(esperaFundida);
+      const nocE = esperaFundida.reduce((a, [i, f]) => a + segundosNocturnos(i, f), 0);
       horasSeg += seg;
       nocSeg += noc;
+      nocEsperaSeg += nocE;
       viajeSeg += vSeg;
       esperaSeg += eSeg;
       const d = Number(dia.slice(8));
       porDia.set(d, seg);
-      detalle.set(d, { seg, viajeSeg: vSeg, esperaSeg: eSeg, nocSeg: noc });
+      detalle.set(d, { seg, viajeSeg: vSeg, esperaSeg: eSeg, nocSeg: noc, nocEsperaSeg: nocE });
       if (!primerDia || d < primerDia) primerDia = d;
     });
-    if (horasSeg > 0) out.set(cid, { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia, dias: detalle });
+    if (horasSeg > 0) out.set(cid, { horasSeg, nocSeg, nocEsperaSeg, viajeSeg, esperaSeg, primerDia, porDia, dias: detalle });
   });
   return out;
 }
