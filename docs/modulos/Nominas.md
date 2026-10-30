@@ -234,6 +234,25 @@ Las **horas llevan el recorte por utilización**, igual que las de casa — es l
 
 La **fecha de baja** solo sale cuando cae dentro del mes pedido. Y ese Excel va por **mes trabajado**, no a mes vencido: se elige agosto y salen los datos de agosto. La nómina va a mes vencido porque es un pago; un parte de trabajo lleva el mes que dice. Por eso tiene su propio selector en la pantalla.
 
+## Todos los del mes, y quien pasa de la ETT a propia (30/10/2026)
+
+Camilo: *«Deisy, fue dada de baja en la ETT para ser parte de nosotros, en ese caso debe de aparecer dos veces en la nómina. Una en donde se vea en plantilla propia y otra en la plantilla de la ETT de este mes pero como "Baja el xxxx". Y sin importar si tienen horas o no, que salgan todos los del mes, ya que me hacen falta por ejemplo Hassan Nouri de baja el 1 pero sin horas»*.
+
+**Sale todo el que tuvo contrato algún día del mes**, aunque sea con 0 horas: en la nómina si el contrato era de propia y en el parte de la ETT si era de la agencia, con su «Fecha baja» si se fue ese mes. Los contratos salen de `conductor_periodo_empleo` (`periodosDelMes`). Antes solo entraba quien tenía horas, J aprobadas o vacaciones y permisos: en la nómina de octubre (trabajo de septiembre) eran 56 personas más, todas a cero.
+
+**Quien cambia de la ETT a propia (o al revés) dentro del mes va dos veces**, una fila en cada sitio, y cada una con **sus días** (`partesDelMes` en el servicio):
+
+- cada día va al contrato que lo cubre; con dos el mismo día, al que empezó más tarde; un día sin contrato, al de la ficha (el del final del mes);
+- de cada parte salen solo sus horas, sus J, sus vacaciones y permisos y su dinero (este, día a día con `dineroPorDia`, porque el del mes viene sumado);
+- la de la ETT lleva el alta de su primer contrato de la agencia y la baja del último, así que sale en el parte con «Fecha baja»; la propia lleva su alta, y **su objetivo se prorratea desde ella**;
+- quien tiene un solo tipo de contrato en el mes (casi todos) sale exactamente igual que antes: una parte con todos los días.
+
+**Lo que cambia en dinero**: hasta ahora la persona era una sola fila con el contrato del final del mes, así que **las horas que hizo para la agencia contaban para nuestro MBO**, contra un objetivo prorrateado desde su alta en propia. Ya no: esas horas van al parte de la ETT (se le facturan a la agencia) y el MBO de propia sale solo de lo que hizo con nosotros. Medido en la copia del 27/10 con octubre (aún sin cerrar): son **9 personas**, y las variables de propia de esas 9 bajan unos **1.450 €** (la que más, de 390,52 € a 43,90 €), mientras su parte de la ETT gana esas horas. Las nóminas de septiembre y octubre (trabajo de agosto y septiembre) salieron idénticas fila a fila: allí nadie cambió de tipo dentro del mes.
+
+**En el finiquito y las Extras** de alguien así va el mes entero: las dos filas sumadas (`unirFilas`), con el objetivo y la diferencia de la parte propia, que es la única con MBO. Así cuadra con la suma de sus días.
+
+**La base no cambia**: sigue contando todas las horas del periodo del 26 al 25 (ver arriba, «un cambio de ETT a propia a mitad de periodo es el caso raro que podría colarse»). En octubre de 2026 los nueve cambios caen antes del 26 y no tocan la base de noviembre.
+
 ## El diseño de los Excel (16/10/2026)
 
 Los tres libros del módulo —la nómina, el parte de la ETT y el de una persona (finiquito o Extras)— salen con el **diseño de la casa** de `services/excelEstilo.js`: la banda oscura con el logo, la cabecera de tabla oscura, bordes finos, el pie con los totales en fórmula, el panel congelado y el filtro. Desde el 16/10/2026, además:
@@ -261,7 +280,7 @@ Los números son los de la fila de la nómina, **no fórmulas**: la nómina redo
 
 **La facturación neta se guarda al congelar** desde `db/206` (columna `nomina_fila.neto`): antes solo se guardaba el FAS ya calculado, y de un mes cerrado solo se habría podido decir «no llegó al umbral». Sin la migración aplicada se congela y se lee como antes (el repositorio mira si la columna existe, por el `search_path`), y el resumen de esas filas da el FAS sin la facturación. Ensayado sobre copias temporales en las dos pasadas, sin la columna y con ella: 145 filas congeladas y leídas iguales, al céntimo.
 
-`scripts/comprobar-nomina.js` (18 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele.
+`scripts/comprobar-nomina.js` (43 casos, sin base de datos) comprueba las reglas del 16/10/2026: las J con sus horas, los dos listones, la ETT aparte y que la config con claves retiradas no se cuele; la base; y, desde el 30/10/2026, los que pasan de la ETT a propia y los que no hicieron ni una hora.
 
 ## Los dos nombres del Excel
 

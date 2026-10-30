@@ -386,7 +386,12 @@ No son de los seis, pero forman parte de la misma red:
   o sin contraseña, al buzón falso; un buzón falso que no es de este PC, o nada, se frena.
 - **`comprobar-nomina.js`**, desde el 20/10/2026 también: una J aprobada en un día de
   vacaciones, permiso o baja no suma (manda la marca, como en la bitácora), se avisa y
-  «Cómo sale su total» dice cuál no ha contado.
+  «Cómo sale su total» dice cuál no ha contado. Y desde el 30/10/2026: quien pasa de la
+  ETT a propia en el mes sale dos veces, cada parte con sus días, su dinero y sus fechas
+  (la propia prorrateada desde su alta, la de la ETT sin MBO y con su «Fecha baja» en el
+  parte); quien tuvo contrato y ni una hora sale a cero; un día sin contrato va al tipo de
+  la ficha; con un solo tipo, todo como siempre; y en sus Extras, las dos partes juntas.
+  Saboteado (sin partir), revienta en el primer caso nuevo.
 - **`comprobar-portal.js`** (19/10/2026) — el portal de conductores, con dobles: el DNI se
   limpia; a quien no está, no tiene email o no tiene contrato se le contesta lo mismo; tres
   códigos cada 15 minutos y solo vale el último; el código no se guarda en claro, sirve una

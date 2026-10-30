@@ -470,6 +470,92 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
 // ── El mes entero ───────────────────────────────────────────────────────────
 
 /**
+ * LAS PARTES DEL MES DE UNA PERSONA: una por tipo de contrato (30/10/2026).
+ *
+ * Camilo, con Deisy: «fue dada de baja en la ETT para ser parte de nosotros,
+ * en ese caso debe de aparecer dos veces en la nómina. Una en donde se vea en
+ * plantilla propia y otra en la plantilla de la ETT de este mes pero como
+ * "Baja el xxxx"». Hasta ese día cada persona era UNA fila con el contrato del
+ * final del mes, así que todo su mes iba a plantilla propia —también lo que
+ * trabajó para la agencia— y la ETT no la veía en su parte.
+ *
+ * Si en el mes solo hay un tipo de contrato (casi todos), una sola parte con
+ * la ficha de siempre y `dias = null`: todos los días, como hasta ahora. Si hay
+ * los dos, una parte por tipo con SUS días: cada día va al contrato que lo
+ * cubre (con dos el mismo día, el que empezó más tarde), y uno sin contrato, al
+ * de la ficha. Su alta es la del primer contrato de ese tipo y su baja, la del
+ * último: así la de la ETT sale con «Baja el …» y la propia se prorratea desde
+ * su alta.
+ *
+ *   f         la ficha de `fichasDelMes` (el contrato del final del mes)
+ *   periodos  los contratos que tocan el mes, de `periodosDelMes`
+ */
+function partesDelMes(f, periodos, desde, hasta) {
+  const ps = periodos || [];
+  if (new Set(ps.map(p => p.ett)).size < 2) {
+    return [{ ett: !!f.ett, alta: f.alta || '', baja: f.baja || '', jornada: f.jornada, dias: null }];
+  }
+  const ultimo = Number(hasta.slice(8, 10));
+  const tipoDelDia = new Map();
+  ps.forEach(p => {
+    const ini = p.alta > desde ? Number(p.alta.slice(8, 10)) : 1;
+    const fin = p.baja && p.baja < hasta ? Number(p.baja.slice(8, 10)) : ultimo;
+    for (let d = ini; d <= fin; d++) tipoDelDia.set(d, p.ett);
+  });
+  return [false, true].map(ett => {
+    const suyos = ps.filter(p => p.ett === ett);
+    const dias = new Set();
+    for (let d = 1; d <= ultimo; d++) {
+      if ((tipoDelDia.has(d) ? tipoDelDia.get(d) : !!f.ett) === ett) dias.add(d);
+    }
+    const ult = suyos[suyos.length - 1];
+    return { ett, alta: suyos[0].alta, baja: ult.baja, jornada: ult.jornada, dias };
+  });
+}
+
+/**
+ * Lo de una persona, solo de unos días del mes (los de una parte). Con
+ * `dias = null`, todo tal cual: así quien tiene un solo contrato sale
+ * exactamente como antes.
+ */
+const soloDias = {
+  horas(h, dias) {
+    if (!h || !dias) return h;
+    const out = { horasSeg: 0, nocSeg: 0, viajeSeg: 0, esperaSeg: 0, primerDia: 0, porDia: new Map(), dias: new Map() };
+    h.dias.forEach((x, d) => {
+      if (!dias.has(d)) return;
+      out.horasSeg += x.seg; out.nocSeg += x.nocSeg; out.viajeSeg += x.viajeSeg; out.esperaSeg += x.esperaSeg;
+      out.porDia.set(d, x.seg);
+      out.dias.set(d, x);
+      if (!out.primerDia || d < out.primerDia) out.primerDia = d;
+    });
+    return out.horasSeg > 0 ? out : null;
+  },
+  dinero(porDia, dias) {
+    const t = { neto: 0, propinas: 0, peajes: 0 };
+    (porDia || new Map()).forEach((x, d) => {
+      if (!dias.has(d)) return;
+      t.neto += x.neto; t.propinas += x.propinas; t.peajes += x.peajes;
+    });
+    return t;
+  },
+  justificantes(j, dias) {
+    if (!dias) return j;
+    return {
+      aprobados: j.aprobados.filter(d => dias.has(d)),
+      horas: new Map([...(j.horas || new Map())].filter(([d]) => dias.has(d))),
+      pendientes: (j.pendientesDias || []).filter(d => dias.has(d)).length,
+      tapadas: (j.tapadas || []).filter(t => dias.has(t.dia)),
+    };
+  },
+  ausencias(a, dias) {
+    if (!dias) return a;
+    const dentro = iso => dias.has(Number(String(iso).slice(8, 10)));
+    return { vacaciones: a.vacaciones.filter(dentro), permiso: a.permiso.filter(dentro) };
+  },
+};
+
+/**
  * Calcula la nómina de un mes (el de PAGO) sin escribir nada.
  *
  * Las cuatro consultas van en paralelo: son independientes y la de las horas es
@@ -482,31 +568,49 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   const desde = `${anoD}-${pad(mesD)}-01`;
   const hasta = `${anoD}-${pad(mesD)}-${pad(diasDelMes)}`;
 
-  const [horas, dinero, fichas, justificantes, ausencias] = await Promise.all([
+  const [horas, dinero, fichas, justificantes, ausencias, periodos] = await Promise.all([
     repo.horasDelMes(desde, hasta),
     repo.dineroDelMes(desde, hasta),
     repo.fichasDelMes(hasta),
     repo.justificantesDelMes(desde, hasta),
     repo.ausenciasDelPeriodo(desde, hasta),
+    repo.periodosDelMes(desde, hasta),
   ]);
 
   // Entra quien TRABAJÓ ese mes, y también quien no rodó nada pero tiene J
   // aprobadas o días de vacaciones o de permiso: sin eso, el mes entero de
   // quien estuvo de baja con todo justificado, o de vacaciones, se perdía (ni
-  // horas, ni justificadas, ni fila). El dinero sin horas no hace nómina
-  // variable: son pedidos de alguien que ya no aparece en los tramos (una
-  // cuenta sin enlazar), y meterlo daría un objetivo contra cero horas hechas.
+  // horas, ni justificadas, ni fila).
+  //
+  // Y TODO EL QUE TUVO CONTRATO ESE MES, aunque sea con 0 horas (30/10/2026,
+  // Camilo: «sin importar si tienen horas o no, que salgan todos los del mes,
+  // ya que me hacen falta por ejemplo Hassan Nouri de baja el 1 pero sin
+  // horas»). El dinero sin horas ni contrato sigue sin hacer nómina: son
+  // pedidos de una cuenta sin enlazar, y meterlo daría un objetivo contra cero.
   const ids = new Set(horas.keys());
   justificantes.forEach((j, cid) => { if (j.aprobados.length) ids.add(cid); });
   ausencias.forEach((a, cid) => ids.add(cid));
+  periodos.forEach((p, cid) => ids.add(cid));
+
+  // Quien pasó de la ETT a plantilla propia (o al revés) dentro del mes va DOS
+  // veces: cada parte con sus días (ver `partesDelMes`). Su dinero se reparte
+  // por días, así que se pide día a día; son pocos.
+  const partes = new Map([...ids].map(cid => [cid, partesDelMes(fichas.get(cid) || {}, periodos.get(cid), desde, hasta)]));
+  const partidos = [...partes].filter(([, p]) => p.length > 1).map(([cid]) => cid);
+  const dineroDiario = new Map(await Promise.all(partidos.map(async cid => [cid, await repo.dineroPorDia(cid, desde, hasta)])));
+
   const diaDe = iso => Number(String(iso).slice(8, 10));
-  const gente = [...ids].map(cid => {
-    const h = horas.get(cid);
+  const gente = [...ids].flatMap(cid => partes.get(cid).map(parte => {
     const f = fichas.get(cid) || {};
-    const d = dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
-    const j = justificantes.get(cid) || { aprobados: [], horas: new Map(), pendientes: 0 };
-    const a = ausencias.get(cid) || { vacaciones: [], permiso: [] };
+    const { dias } = parte;
+    const h = soloDias.horas(horas.get(cid), dias);
+    const d = dias ? soloDias.dinero(dineroDiario.get(cid), dias)
+      : dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
+    const j = soloDias.justificantes(justificantes.get(cid) || { aprobados: [], horas: new Map(), pendientes: 0 }, dias);
+    const a = soloDias.ausencias(ausencias.get(cid) || { vacaciones: [], permiso: [] }, dias);
     const efectivos = h ? h.viajeSeg + h.esperaSeg : 0;
+    // Solo se usa sin fecha de alta (el criterio viejo): el primer día con algo.
+    const primerConAlgo = h ? h.primerDia : Math.min(...j.aprobados, ...a.vacaciones.map(diaDe), ...a.permiso.map(diaDe));
     return {
       conductorId: cid,
       nombre: f.nombre || `#${cid}`,
@@ -514,12 +618,12 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       nombreSS: f.nombreSS || '',
       nombreSSEnForma: f.nombreSSEnForma !== false,
       dni: f.dni || '',
-      ett: !!f.ett,
-      jornada: f.jornada,
-      alta: f.alta || '',
-      baja: f.baja || '',
-      // Solo se usa sin fecha de alta (el criterio viejo): el primer día con algo.
-      primerDia: h ? h.primerDia : Math.min(...j.aprobados, ...a.vacaciones.map(diaDe), ...a.permiso.map(diaDe)),
+      ett: parte.ett,
+      jornada: parte.jornada,
+      alta: parte.alta,
+      baja: parte.baja,
+      // Quien solo tiene el contrato, sin nada más, no tiene «primer día».
+      primerDia: Number.isFinite(primerConAlgo) ? primerConAlgo : 0,
       horas: h ? h.horasSeg / 3600 : 0,
       viajeH: h ? h.viajeSeg / 3600 : 0,
       esperaH: h ? h.esperaSeg / 3600 : 0,
@@ -533,7 +637,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       utilPct: efectivos > 0 ? (h.viajeSeg / efectivos) * 100 : null,
       neto: d.neto, propinas: d.propinas, peajes: d.peajes,
     };
-  });
+  }));
 
   // Quien entró DESPUÉS del mes de trabajo (p. ej. alta en julio para la nómina
   // que paga junio) no pinta nada aquí; si tiene horas es que la fecha está mal
@@ -931,9 +1035,11 @@ async function mesesDeTrabajo(cid, persona, trabajos, cfg) {
     const pago = mesSiguiente(t.mes, t.ano);
     const r = await calcular(pago.mes, pago.ano, { config: cfg });
     // Quien es de ETT ya no está en `filas` (la nómina es solo de propia),
-    // pero su mes sí se calcula: va en `filasETT`.
-    const fila = [...(r.filas || []), ...(r.filasETT || [])]
-      .find(x => Number(x.conductorId) === cid) || null;
+    // pero su mes sí se calcula: va en `filasETT`. Quien cambió de una a otra
+    // ese mes tiene una fila en cada lista, y aquí va el mes entero: las dos
+    // juntas, que es lo que suman sus días.
+    const fila = unirFilas([...(r.filas || []), ...(r.filasETT || [])]
+      .filter(x => Number(x.conductorId) === cid));
     const diasDelMes = new Date(t.ano, t.mes, 0).getDate();
     meses.push({
       mes: t.mes, ano: t.ano,
@@ -948,6 +1054,32 @@ async function mesesDeTrabajo(cid, persona, trabajos, cfg) {
     });
   }
   return meses;
+}
+
+/**
+ * Las filas de UNA persona en un mes, en una. Casi siempre es una sola y sale
+ * tal cual; con dos (cambió de la ETT a plantilla propia ese mes) se suman las
+ * cantidades —horas, dinero, MBO, total— y se rehace la utilización con el
+ * viaje y la espera de las dos. El objetivo y la diferencia son los de la parte
+ * de plantilla propia, la única con MBO. Las fechas son las del mes entero: el
+ * primer día con algo y la baja de la última.
+ */
+const SUMABLES = ['horas', 'horasViaje', 'horasEspera', 'horasEsperaQuitadas', 'horasJustificadas',
+  'diasJustificados', 'jSinHoras', 'diasVacaciones', 'horasVacaciones', 'diasPermiso',
+  'horasPermiso', 'nocturnasHoras', 'propinas', 'peajes', 'nocturnas', 'neto',
+  'mboFAS', 'mboHsExt', 'compensacion', 'diasExtra', 'total'];
+function unirFilas(filas) {
+  if (!filas.length) return null;
+  if (filas.length === 1) return filas[0];
+  const orden = [...filas].sort((a, b) => String(a.alta).localeCompare(String(b.alta)));
+  const propia = orden.find(f => !f.ett) || orden[orden.length - 1];
+  const u = { ...propia, partes: orden.map(f => ({ ett: f.ett, alta: f.alta, baja: f.baja, total: f.total })) };
+  SUMABLES.forEach(k => { u[k] = r2(orden.reduce((t, f) => t + (Number(f[k]) || 0), 0)); });
+  u.primerDia = Math.min(...orden.map(f => f.primerDia || 1));
+  u.alta = orden[0].alta;
+  u.jTapadas = orden.flatMap(f => f.jTapadas || []);
+  u.utilPct = u.horasViaje + u.horasEspera > 0 ? r2((u.horasViaje / (u.horasViaje + u.horasEspera)) * 100) : null;
+  return u;
 }
 
 /** 'AAAA-MM-DD' de hoy en Madrid: el servidor va en UTC. */
@@ -1156,4 +1288,5 @@ module.exports = {
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,
   _objetivoDe: objetivoDe, _mesSiguiente: mesSiguiente, _umbralDe: umbralDe,
   _ventanaBase: ventanaBase, _filaBase: filaBase, _esperaQuitada: esperaQuitada,
+  _partesDelMes: partesDelMes, _unirFilas: unirFilas,
 };

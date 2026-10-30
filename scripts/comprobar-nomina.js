@@ -13,7 +13,9 @@
 //     el objetivo, solo en su ventana;
 //   · la NÓMINA BASE: del 26 al 25 y hasta ayer, horas × 8,16 € con tope en el
 //     salario base de su jornada prorrateado por los días de contrato, y la
-//     nómina entera = base + variables.
+//     nómina entera = base + variables;
+//   · (30/10/2026) sale todo el que tuvo contrato en el mes, aunque sea a cero,
+//     y quien pasa de la ETT a propia va dos veces, cada parte con sus días.
 //
 //   node scripts/comprobar-nomina.js
 //
@@ -35,6 +37,19 @@ const tramos = new Map([
   [4, { horasSeg: H(200), viajeSeg: H(100), esperaSeg: H(100), nocSeg: H(20), primerDia: 1, porDia: new Map() }],             // ETT al 50 %
   [5, { horasSeg: H(40), viajeSeg: H(36), esperaSeg: H(4), nocSeg: 0, primerDia: 6, porDia: new Map() }],                     // entra el 06/10
   [6, { horasSeg: H(120), viajeSeg: H(108), esperaSeg: H(12), nocSeg: H(5), primerDia: 1, porDia: new Map() }],               // se fue el 20/09
+  // Siete pasa de la ETT a propia el 13/09: 10 h el día 5 (ETT) y 20 h el 20 (propia).
+  [7, { horasSeg: H(30), viajeSeg: H(27), esperaSeg: H(3), nocSeg: H(2), primerDia: 5, porDia: new Map([[5, H(10)], [20, H(20)]]),
+    dias: new Map([[5, { seg: H(10), viajeSeg: H(9), esperaSeg: H(1), nocSeg: H(2) }],
+      [20, { seg: H(20), viajeSeg: H(18), esperaSeg: H(2), nocSeg: 0 }]]) }],
+]);
+// Los contratos que tocan septiembre. Ocho es de la ETT, se fue el 01/09 y no
+// hizo ni una hora: tiene que salir en su parte igual (30/10/2026).
+const P = (ett, alta, baja = '') => ({ ett, alta, baja, jornada: 40 });
+const PERIODOS = new Map([
+  [1, [P(false, '2025-01-01')]], [2, [P(false, '2025-01-01')]], [3, [P(false, '2026-09-10')]],
+  [4, [P(true, '2025-01-01')]], [6, [P(false, '2025-01-01', '2026-09-20')]],
+  [7, [P(true, '2025-01-01', '2026-09-12'), P(false, '2026-09-13')]],
+  [8, [P(true, '2025-06-01', '2026-09-01')]],
 ]);
 // Lo que da el repositorio de verdad: recortado a las fechas que se piden.
 const entre = (lista, desde, hasta) => lista.filter(iso => iso >= desde && iso <= hasta);
@@ -43,8 +58,12 @@ const AUSENCIAS = { 1: { vacaciones: ['2026-09-20', '2026-09-21'], permiso: ['20
 sustituir('modules/Nominas/nominas.repo.js', {
   leerConfig: async () => ({ eurHoraNoc: 9.9, utilMinima: 0.65, lUtilizacion: 0.75, diasObjetivo: 22 }),
   horasDelMes: async () => tramos,
-  dineroDelMes: async () => new Map([[4, { neto: 9000, propinas: 10, peajes: 5 }]]),
+  dineroDelMes: async () => new Map([[4, { neto: 9000, propinas: 10, peajes: 5 }], [7, { neto: 400, propinas: 6, peajes: 1 }]]),
+  dineroPorDia: async cid => (cid === 7 ? new Map([[5, { neto: 100, propinas: 2, peajes: 1 }], [20, { neto: 300, propinas: 4, peajes: 0 }]]) : new Map()),
+  periodosDelMes: async () => PERIODOS,
   fichasDelMes: async () => new Map([
+    [7, { nombre: 'Siete', alta: '2026-09-13', jornada: 40 }],
+    [8, { nombre: 'Ocho', alta: '2025-06-01', baja: '2026-09-01', jornada: 40, ett: true }],
     [1, { nombre: 'Uno', alta: '2025-01-01', jornada: 40 }],
     [2, { nombre: 'Dos', alta: '2025-01-01', jornada: 40 }],
     [3, { nombre: 'Tres', alta: '2026-09-10', jornada: 40 }],
@@ -85,7 +104,28 @@ function igual(nombre, real, esperado) {
   const [uno, dos, tres, cuatro] = [1, 2, 3, 4].map(de);
 
   igual('La nómina es solo de propia; la ETT va aparte (y quien entra el 06/10 no es de septiembre)',
-    [r.filas.map(f => f.conductorId).sort(), r.filasETT.map(f => f.conductorId), r.avisos.ett], [[1, 2, 3, 6], [4], 1]);
+    [r.filas.map(f => f.conductorId).sort(), r.filasETT.map(f => f.conductorId).sort(), r.avisos.ett], [[1, 2, 3, 6, 7], [4, 7, 8], 3]);
+
+  // ── De la ETT a propia en el mes, y los que no hicieron nada (30/10/2026) ──
+  const siete = r.filas.find(f => f.conductorId === 7), sieteETT = r.filasETT.find(f => f.conductorId === 7);
+  igual('Quien pasa de la ETT a propia sale dos veces, cada parte con SUS días, su dinero y sus fechas',
+    [[siete.horas, siete.horasViaje, siete.propinas, siete.neto, siete.alta, siete.baja],
+      [sieteETT.horas, sieteETT.horasViaje, sieteETT.propinas, sieteETT.peajes, sieteETT.alta, sieteETT.baja]],
+    [[20, 18, 4, 300, '2026-09-13', ''], [10, 9, 2, 1, '2025-01-01', '2026-09-12']]);
+  igual('La parte propia se prorratea desde su alta (18 de 30 días) y la de la ETT no cobra MBO',
+    [siete.primerDia, siete.horasObjetivo, sieteETT.mboHsExt, sieteETT.mboFAS], [13, Math.round(172 * 18 / 30 * 100) / 100, 0, 0]);
+  const ocho = r.filasETT.find(f => f.conductorId === 8);
+  igual('Quien tuvo contrato y ni una hora sale igual, a cero', [ocho.horas, ocho.total, ocho.baja], [0, 0, '2026-09-01']);
+  const unida = N._unirFilas([sieteETT, siete]);
+  igual('En sus extras, el mes entero: las dos partes juntas, con el objetivo de la propia',
+    [unida.horas, unida.propinas, unida.total, unida.horasObjetivo, unida.alta, unida.partes.length],
+    [30, 6, Math.round((siete.total + sieteETT.total) * 100) / 100, siete.horasObjetivo, '2025-01-01', 2]);
+  const sueltos = N._partesDelMes({ ett: true }, [P(false, '2026-09-05', '2026-09-10'), P(true, '2026-09-20')], '2026-09-01', '2026-09-30');
+  igual('Un día sin contrato va al tipo de la ficha (la del final del mes)',
+    sueltos.map(x => [x.ett, x.dias.size]), [[false, 6], [true, 24]]);
+  igual('Con un solo tipo de contrato, una parte con todos los días (como siempre)',
+    N._partesDelMes({ alta: '2025-01-01' }, [P(false, '2025-01-01', '2026-09-10'), P(false, '2026-09-15')], '2026-09-01', '2026-09-30')
+      .map(x => [x.ett, x.dias, x.alta]), [[false, null, '2025-01-01']]);
 
   // ── Las J ──────────────────────────────────────────────────────────────────
   igual('Cada J vale sus horas, sumadas a lo rodado (3,5 h aunque ese día rodó 2)',
@@ -129,7 +169,10 @@ function igual(nombre, real, esperado) {
   const p = await N.paraETT(9, 2026);
   igual('El parte de la ETT trae a los suyos con sus listones',
     [p.filas.map(f => f.conductorId), p.utilUmbral, p.utilExigida, p.filas[0].horasTrabajadas],
-    [[4], 0.75, 0.85, Math.round((200 - cuatro.horasEsperaQuitadas) * 100) / 100]);
+    [[4, 7, 8], 0.75, 0.85, Math.round((200 - cuatro.horasEsperaQuitadas) * 100) / 100]);
+  igual('En el parte, quien pasó a propia y quien se fue sin horas, con su «Fecha baja»',
+    p.filas.filter(f => f.conductorId !== 4).map(f => [f.conductorId, f.horasTrabajadas, f.bajaEnElMes]),
+    [[7, 10, '2026-09-12'], [8, 0, '2026-09-01']]);
 
   // ── La nómina base ───────────────────────────────────────────────────────
   const v = N._ventanaBase(10, 2026, '2026-10-16');
@@ -142,7 +185,7 @@ function igual(nombre, real, esperado) {
   const b = await N.nominaBase(10, 2026, { hoy: '2026-10-16', variables: r });
   const bde = id => b.filas.find(x => x.conductorId === id);
   igual('En la base, solo propia: quien tiene contrato en el periodo y quien solo tiene variables',
-    b.filas.map(x => x.conductorId).sort(), [1, 2, 3, 5, 6]);
+    b.filas.map(x => x.conductorId).sort(), [1, 2, 3, 5, 6, 7]);
   const b1 = bde(1);
   igual('Las J y las vacaciones de fuera del periodo no cuentan en la base; el permiso del 02/10 sí',
     [b1.horasJustificadas, b1.diasVacaciones, b1.diasPermiso, b1.horasBase], [0, 0, 1, 188]);

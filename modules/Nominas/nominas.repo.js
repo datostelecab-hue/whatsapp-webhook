@@ -443,6 +443,41 @@ async function fichasDelMes(hastaIso) {
 }
 
 /**
+ * LOS CONTRATOS DEL MES: Map(conductor_id → [{ ett, jornada, alta, baja }]),
+ * todos los periodos de empleo que tocan algún día entre `desdeIso` y
+ * `hastaIso`, del más antiguo al más reciente.
+ *
+ * Dos cosas salen de aquí (30/10/2026): quién entra en la nómina aunque no haya
+ * hecho ni una hora —todo el que tuvo contrato ese mes—, y quién cambió de la
+ * ETT a plantilla propia (o al revés) dentro del mes, que va dos veces.
+ */
+async function periodosDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
+  const r = await db.consulta(
+    `SELECT p.conductor_id, p.tipo, p.jornada_horas,
+            to_char(p.alta, 'YYYY-MM-DD') AS alta,
+            to_char(p.baja, 'YYYY-MM-DD') AS baja
+       FROM conductor_periodo_empleo p
+       JOIN conductor c ON c.id = p.conductor_id AND NOT c.es_centinela
+      WHERE p.alta <= $2::date
+        AND (p.baja IS NULL OR p.baja >= $1::date)
+        AND ($3::bigint IS NULL OR p.conductor_id = $3::bigint)
+      ORDER BY p.conductor_id, p.alta`,
+    [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId)]);
+  const out = new Map();
+  for (const x of r.rows) {
+    const cid = Number(x.conductor_id);
+    if (!out.has(cid)) out.set(cid, []);
+    out.get(cid).push({
+      ett: x.tipo === 'ett',
+      jornada: x.jornada_horas == null ? null : Number(x.jornada_horas),
+      alta: x.alta || '',
+      baja: x.baja || '',
+    });
+  }
+  return out;
+}
+
+/**
  * Quién trabajó ese mes pero NO está en la bitácora, ni con una hora.
  *
  * La bitácora sella las horas el día que la jornada cierra y ya no las recalcula
@@ -686,7 +721,7 @@ async function personaConBaja(conductorId) {
 module.exports = {
   personaConBaja,
   leerConfig, guardarConfig,
-  horasDelMes, dineroDelMes, dineroPorDia, fichasDelMes, justificantesDelMes, sinSellarEnBitacora,
+  horasDelMes, dineroDelMes, dineroPorDia, fichasDelMes, periodosDelMes, justificantesDelMes, sinSellarEnBitacora,
   ausenciasDelPeriodo,
   congelar, leerCongelada, mesesCongelados, descongelar,
   // Expuestos para poder probarlos sin base de datos.
