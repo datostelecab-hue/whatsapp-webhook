@@ -429,7 +429,7 @@ async function leerBitacora() {
     // las rechazadas no cuentan pero se ven, que alguien tiene que volver a
     // llamar por ellas.
     db.consulta(
-      `SELECT j.conductor_id, to_char(j.dia_operativo, 'YYYY-MM-DD') AS dia,
+      `SELECT j.id, j.conductor_id, to_char(j.dia_operativo, 'YYYY-MM-DD') AS dia,
               j.horas_seg_momento, j.observacion, j.tipo,
               CASE WHEN j.anulado_at IS NOT NULL THEN 'rechazada'
                    WHEN j.aprobado_at IS NOT NULL THEN 'aprobada'
@@ -574,6 +574,8 @@ async function leerBitacora() {
     const i = idxDe(r.dia);
     const horas = r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 360) / 10 : null;
     const ficha = {
+      // `id`: para pedir su historial (db/228).
+      id: String(r.id),
       // `min`: los minutos exactos, para rellenar las casillas al editarla.
       horas, min: r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 60) : null, obs: r.observacion || '', tipo: r.tipo || 'personal', estado: r.estado,
       motivo: r.anulado_motivo || '', porQuien: r.estado === 'rechazada' ? (r.rechazada_por || '') : (r.aprobada_por || ''),

@@ -10,6 +10,9 @@
 
 const db = require('../db');
 const { normClave } = require('../nucleo');
+// TODO lo que escribe una J se FIRMA (quién y desde dónde) en su transacción, y
+// la base lo apunta en el libro de auditoría (db/228, `auditoriaJ.firmar`).
+const { firmar } = require('./auditoriaJ');
 
 // LOS CINCO TIPOS DE J, por QUIÉN RESPONDE de ella (los puso Tráfico, db/73):
 // una J de tráfico la aprueba Tráfico, una de RRHH la aprueba RRHH. El texto
@@ -46,7 +49,7 @@ function cambiaron() {
  * conductor_id ya resuelto. `diaIso` = 'AAAA-MM-DD'. `horas` = horas QUE SE
  * JUSTIFICAN (se SUMAN a las de BOLT), número o texto ("7,5" vale) o vacío.
  */
-async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usuarioId }) {
+async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usuarioId, origen }) {
   observacion = (observacion || '').toString().trim();
   if (!observacion) throw new Error('La observación es obligatoria para justificar');
   // Sin tipo válido cae en 'trafico' (quien justifica desde el cockpit ES
@@ -65,6 +68,7 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usu
   }
 
   const res = await db.transaccion(async cli => {
+    await firmar(cli, { usuarioId, origen });
     // Una libranza puesta A MANO por RRHH no se pisa con una J sin que nadie lo
     // vea: antes la J la machacaba y, al anularla, se borraba la fila entera y
     // la L manual desaparecía sin aviso.
@@ -75,6 +79,16 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usu
       throw new Error('Ese día está marcado a mano como libranza (L). Quita la libranza antes de justificarlo.');
     }
     // Un solo justificante vivo por conductor/día (índice parcial uq_just_vivo).
+    //
+    // EDITAR (30/10/2026, db/228, «bien auditadas en todo el flujo»):
+    //   · `usuario_id` es QUIEN LA PUSO y no se pisa. Antes cada edición lo
+    //     cambiaba por el último que la tocó. Quién editó y qué, en el libro.
+    //   · una J APROBADA que se edita (otras horas, otro motivo u otra área)
+    //     VUELVE A PENDIENTE: las horas nuevas no pueden entrar en la nómina
+    //     con el visto bueno que se le dio a las de antes.
+    const antes = await cli.query(
+      `SELECT aprobado_at FROM justificante
+        WHERE conductor_id = $1 AND dia_operativo = $2::date AND anulado_at IS NULL`, [conductorId, diaIso]);
     const j = await cli.query(
       `INSERT INTO justificante (conductor_id, dia_operativo, horas_seg_momento, observacion, tipo, usuario_id, escrito_en_bitacora)
        VALUES ($1, $2::date, $3, $4, $5, $6, TRUE)
@@ -82,9 +96,16 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usu
        DO UPDATE SET observacion = EXCLUDED.observacion,
                      horas_seg_momento = EXCLUDED.horas_seg_momento,
                      tipo = EXCLUDED.tipo,
-                     usuario_id = EXCLUDED.usuario_id
-       RETURNING id`, [conductorId, diaIso, horasSeg, observacion, tipo, usuarioId || null]);
+                     aprobado_at = CASE WHEN (justificante.horas_seg_momento, justificante.observacion, justificante.tipo)
+                                             IS DISTINCT FROM (EXCLUDED.horas_seg_momento, EXCLUDED.observacion, EXCLUDED.tipo)
+                                        THEN NULL ELSE justificante.aprobado_at END,
+                     aprobado_por = CASE WHEN (justificante.horas_seg_momento, justificante.observacion, justificante.tipo)
+                                              IS DISTINCT FROM (EXCLUDED.horas_seg_momento, EXCLUDED.observacion, EXCLUDED.tipo)
+                                         THEN NULL ELSE justificante.aprobado_por END
+       RETURNING id, aprobado_at`, [conductorId, diaIso, horasSeg, observacion, tipo, usuarioId || null]);
     const justId = j.rows[0].id;
+    // Para decírselo a quien la editó: estaba aprobada y ahora hay que aprobarla otra vez.
+    const volvioAPendiente = !!(antes.rows[0] && antes.rows[0].aprobado_at && !j.rows[0].aprobado_at);
     // La 'J' en la bitácora: marca_manual porque la pone una persona.
     await cli.query(
       `INSERT INTO bitacora_dia (conductor_id, dia_operativo, marca, marca_manual, justificante_id)
@@ -92,7 +113,7 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usu
        ON CONFLICT (conductor_id, dia_operativo)
        DO UPDATE SET marca = 'J', marca_manual = TRUE, justificante_id = EXCLUDED.justificante_id`,
       [conductorId, diaIso, justId]);
-    return { ok: true, conductorId, justificanteId: justId, enBitacora: true };
+    return { ok: true, conductorId, justificanteId: justId, enBitacora: true, volvioAPendiente };
   });
   cambiaron();
   return res;
@@ -156,16 +177,23 @@ async function quitarMarcaJ(cli, conductorId, dia, justificanteId) {
         AND NOT sin_libranza`, [conductorId, dia, justificanteId]);
 }
 
-/** Anula el justificante VIVO de un día (y quita su 'J' de la bitácora). */
-async function anularPorId({ conductorId, diaIso }) {
+/**
+ * Anula el justificante VIVO de un día (y quita su 'J' de la bitácora).
+ * Con QUIÉN y POR QUÉ (30/10/2026, db/228): antes se anulaba sin dejar ni lo
+ * uno ni lo otro, y una J que desaparecía no tenía explicación.
+ */
+async function anularPorId({ conductorId, diaIso, usuarioId, motivo, origen }) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
+  motivo = String(motivo || '').trim();
+  if (!motivo) throw new Error('Di por qué se anula: queda en el historial de la J');
   const res = await db.transaccion(async cli => {
+    await firmar(cli, { usuarioId, origen, accion: 'anular' });
     const r = await cli.query(
-      `UPDATE justificante SET anulado_at = now()
+      `UPDATE justificante SET anulado_at = now(), anulado_por = $3, anulado_motivo = $4
         WHERE conductor_id = $1 AND dia_operativo = $2::date AND anulado_at IS NULL
-        RETURNING id`, [cid, diaIso]);
+        RETURNING id`, [cid, diaIso, usuarioId || null, motivo.slice(0, 500)]);
     if (!r.rows.length) throw new Error('Ese día no tiene justificante vivo');
     // Se quita la J, y solo la J: la fila existe por ella (guardarPorId no
     // pisa una L manual) —pero se exige que siga siendo una J por si algo la
@@ -283,11 +311,14 @@ async function pendientesPorTipo() {
 }
 
 /** Aprueba una J pendiente. Idempotente no: dos aprobaciones son un error. */
-async function aprobar(id, { usuarioId } = {}) {
-  const r = await db.consulta(
-    `UPDATE justificante SET aprobado_at = now(), aprobado_por = $2
-      WHERE id = $1 AND aprobado_at IS NULL AND anulado_at IS NULL
-      RETURNING id`, [Number(id), usuarioId || null]);
+async function aprobar(id, { usuarioId, origen = 'justificantes' } = {}) {
+  const r = await db.transaccion(async cli => {
+    await firmar(cli, { usuarioId, origen, accion: 'aprobar' });
+    return cli.query(
+      `UPDATE justificante SET aprobado_at = now(), aprobado_por = $2
+        WHERE id = $1 AND aprobado_at IS NULL AND anulado_at IS NULL
+        RETURNING id`, [Number(id), usuarioId || null]);
+  });
   if (!r.rows.length) throw new Error('Esa J no está pendiente (ya se aprobó, se rechazó, o no existe)');
   cambiaron();
   return { ok: true, id: String(id) };
@@ -298,10 +329,11 @@ async function aprobar(id, { usuarioId } = {}) {
  * siempre (quita la marca de la bitácora), así que rechazar deja el día como
  * si la J no hubiera existido — que es lo que significa rechazarla.
  */
-async function rechazar(id, { usuarioId, motivo } = {}) {
+async function rechazar(id, { usuarioId, motivo, origen = 'justificantes' } = {}) {
   motivo = String(motivo || '').trim();
   if (!motivo) throw new Error('El motivo del rechazo es obligatorio: el que la puso tiene que saber por qué');
   const res = await db.transaccion(async cli => {
+    await firmar(cli, { usuarioId, origen, accion: 'rechazar' });
     const r = await cli.query(
       `UPDATE justificante SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
         WHERE id = $1 AND anulado_at IS NULL
@@ -340,7 +372,7 @@ async function rehacer(id, { horas, observacion, tipo, usuarioId } = {}) {
       ? horas : (j.horas_seg_momento != null ? j.horas_seg_momento / 3600 : ''),
     observacion: String(observacion || '').trim() || j.observacion,
     tipo: tipo || j.tipo,
-    usuarioId,
+    usuarioId, origen: 'justificantes',
   });
   return { ok: true, id: String(id), nueva: String(res.justificanteId) };
 }
@@ -350,23 +382,29 @@ async function rehacer(id, { horas, observacion, tipo, usuarioId } = {}) {
  * justificar. El día sigue sin justificar (rechazar ya lo sacó de la bitácora);
  * lo que cambia es que deja de pedir una llamada.
  */
-async function cerrar(id, { usuarioId, nota } = {}) {
+async function cerrar(id, { usuarioId, nota, origen = 'justificantes' } = {}) {
   nota = String(nota || '').trim();
   if (!nota) throw new Error('Di qué pasó al cerrarla: es lo que leerá el que la mire dentro de un mes');
-  const r = await db.consulta(
-    `UPDATE justificante SET cerrada_at = now(), cerrada_por = $2, cerrada_nota = $3
-      WHERE id = $1 AND anulado_at IS NOT NULL AND cerrada_at IS NULL
-      RETURNING id`, [Number(id), usuarioId || null, nota.slice(0, 300)]);
+  const r = await db.transaccion(async cli => {
+    await firmar(cli, { usuarioId, origen, accion: 'cerrar' });
+    return cli.query(
+      `UPDATE justificante SET cerrada_at = now(), cerrada_por = $2, cerrada_nota = $3
+        WHERE id = $1 AND anulado_at IS NOT NULL AND cerrada_at IS NULL
+        RETURNING id`, [Number(id), usuarioId || null, nota.slice(0, 300)]);
+  });
   if (!r.rows.length) throw new Error('Esa J no está rechazada, o ya se había cerrado');
   cambiaron();
   return { ok: true, id: String(id) };
 }
 
-/** Deshacer el cierre: vuelve a pedir llamada. */
-async function reabrir(id) {
-  const r = await db.consulta(
-    `UPDATE justificante SET cerrada_at = NULL, cerrada_por = NULL, cerrada_nota = NULL
-      WHERE id = $1 AND cerrada_at IS NOT NULL RETURNING id`, [Number(id)]);
+/** Deshacer el cierre: vuelve a pedir llamada. Quién lo reabrió, en el libro. */
+async function reabrir(id, { usuarioId, origen = 'justificantes' } = {}) {
+  const r = await db.transaccion(async cli => {
+    await firmar(cli, { usuarioId, origen, accion: 'reabrir' });
+    return cli.query(
+      `UPDATE justificante SET cerrada_at = NULL, cerrada_por = NULL, cerrada_nota = NULL
+        WHERE id = $1 AND cerrada_at IS NOT NULL RETURNING id`, [Number(id)]);
+  });
   if (!r.rows.length) throw new Error('Esa J no estaba cerrada');
   cambiaron();
   return { ok: true, id: String(id) };

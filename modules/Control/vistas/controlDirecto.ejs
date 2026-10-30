@@ -1174,9 +1174,17 @@
         ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
         : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
       '<i class="fa-brands fa-slack"></i>' + (sl ? ' <i class="fa-solid fa-check"></i>' : '') + '</button>';
+    // LA −J (db/227): constancia de un perjuicio a la empresa. Solo con ficha.
+    const btnMenos = f.conductorId
+      ? '<button data-menosj="' + esc(f.clave) + '" ' +
+          'title="Poner una −J: perjuicio a la empresa (por ejemplo, no le dio el coche a tiempo a un compañero). ' +
+          'No toca horas ni nómina; queda pendiente de aprobar en Justificantes." ' +
+          'class="px-1.5 py-0.5 rounded-md border border-telecab-border text-[11px] leading-none font-semibold ' +
+          'text-telecab-muted hover:border-telecab-red hover:text-telecab-red">−J</button>'
+      : '';
     // Los dos nuevos van JUNTOS: en una pantalla estrecha, si no caben, bajan los
     // dos a la vez en vez de dejar uno suelto debajo del teléfono.
-    return btnTel + btnJ + '<span class="inline-flex items-center gap-1">' + btnNo + btnSlack + '</span>';
+    return btnTel + btnJ + btnMenos + '<span class="inline-flex items-center gap-1">' + btnNo + btnSlack + '</span>';
   }
 
   function filaPorClave(clave) {
@@ -1195,6 +1203,7 @@
   const RESULTADOS_LLAMADA = <%- JSON.stringify(resultadosLlamada || []) %>;
   const CATALOGO_LLAMADA = <%- JSON.stringify(catalogoLlamada || []) %>;
   const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
+  const CASUISTICAS_MENOS_J = <%- JSON.stringify(typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : []) %>;
   // «No saldrá» y «Traza por Slack» (db/170): los catálogos vienen del servidor
   // (modules/Control/marcas.repo.js), como el buzón de resultados.
   const MOTIVOS_NO_SALE = <%- JSON.stringify(typeof motivosNoSale !== 'undefined' ? motivosNoSale : []) %>;
@@ -1452,15 +1461,46 @@
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo justificar');
       cargar();
+      // «Por compañero» es justo el caso de la −J: se ofrece en el mismo paso.
+      if (v.tipo === 'companero' && await Dialogo.confirmar({
+        titulo: '¿Le pones una −J a quien lo causó?',
+        texto: 'Si un compañero perjudicó a ' + f.conductor + ', puedes dejarle una −J (perjuicio a la empresa). ' +
+          'No toca horas ni nómina, y queda pendiente de aprobar en Justificantes.',
+        si: 'Poner la −J', no: 'Ahora no' })) {
+        await ponerMenosJ(null, {
+          perjudicado: { id: f.conductorId, nombre: f.conductor }, justificanteId: j.justificanteId,
+          minutos: h ? HorasMin.deHoras(Number(h)) : null, motivo: v.obs,
+          titulo: '−J a quien perjudicó a ' + f.conductor,
+        });
+      }
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo justificar', texto: e.message, tono: 'error' });
     }
   }
 
+  // LA −J (db/227). `f` = la fila de quien la recibe; sin ella, se elige en la
+  // lista (cuando nace de la J «Por compañero» del perjudicado).
+  let personasMenosJ = null;
+  async function ponerMenosJ(f, extra) {
+    if (!personasMenosJ) {
+      try {
+        const r = await fetch('/control/api/menos-j/personas').then(x => x.json());
+        if (r.status !== 'ok') throw new Error(r.msg);
+        personasMenosJ = r.personas || [];
+      } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo cargar la plantilla', texto: e.message, tono: 'error' }); }
+    }
+    const r = await MenosJ.poner(Object.assign({
+      url: '/control/api/menos-j', dia: DATOS && DATOS.dia,
+      conductor: f ? { id: f.conductorId, nombre: f.conductor } : null,
+      personas: personasMenosJ, casuisticas: CASUISTICAS_MENOS_J,
+    }, extra || {}));
+    if (r) Dialogo.hecho('−J puesta. Queda pendiente de aprobar en Justificantes.');
+  }
+
   function wire() {
     $('#d-lista').querySelectorAll('.dcab').forEach(cab =>
       cab.addEventListener('click', e => {
-        if (e.target.closest('[data-just],[data-llamar],[data-tellog],[data-justdir],a,button')) return;
+        if (e.target.closest('[data-just],[data-llamar],[data-tellog],[data-justdir],[data-menosj],a,button')) return;
         const fila = cab.closest('.dfila');
         if (fila.querySelector('.ddet').classList.contains('hidden')) abrirFila(fila);
         else cerrarFila(fila);
@@ -1469,6 +1509,8 @@
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.tellog); if (f) apuntarLlamada(f); }));
     $('#d-lista').querySelectorAll('[data-justdir]').forEach(b =>
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.justdir); if (f) justificarDirecto(f); }));
+    $('#d-lista').querySelectorAll('[data-menosj]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.menosj); if (f) ponerMenosJ(f); }));
     $('#d-lista').querySelectorAll('[data-nosale]').forEach(b =>
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.nosale); if (f) noSaldra(f); }));
     $('#d-lista').querySelectorAll('[data-slack]').forEach(b =>

@@ -583,6 +583,13 @@ No son de los seis, pero forman parte de la misma red:
   menos de 5 min van con su aviso, el aparte espera si el último WhatsApp salió hace
   menos de 5 min, y salen tres WhatsApps. 8 casos más (29). Saboteado con
   `SEPARACION_SEG = 0`: falla.
+- **`comprobar-menos-j.js`** (30/10/2026) — la −J y la auditoría de las J ([[Menos J]]), contra
+  la base del [[Entorno de pruebas local]] y dentro de una transacción que se deshace, con dos
+  personas de la copia: poner (lo que se rechaza y lo que guarda), la pestaña de /justificantes,
+  aprobar y rechazar, la −J que nace de una J «Por compañero», los CHECK, la Bitácora (sale al
+  momento y no toca horas) y el libro de auditoría (cada paso con quién y pantalla, editar una J
+  aprobada la devuelve a pendiente, anular pide el porqué, un cambio a mano sin firmar se apunta,
+  el libro no se cambia ni se borra). 42 casos. Saboteado quitando el aviso de caché de `poner`: falla.
 
 ---
 

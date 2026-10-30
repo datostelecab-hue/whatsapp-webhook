@@ -63,9 +63,10 @@ function igual(nombre, real, esperado) {
   const pasos = [
     ['Poner una J (también desde Control)', () => J.guardarPorId({ conductorId: 1, diaIso: '2026-10-11', horas: '3,5', observacion: 'FL', tipo: 'trafico', usuarioId: 2 })],
     ['Rechazarla', () => J.rechazar(9, { usuarioId: 2, motivo: 'No consta' })],
-    ['Anularla', () => J.anularPorId({ conductorId: 1, diaIso: '2026-10-11' })],
+    // Anular pide el porqué desde el 30/10/2026 (db/228, la auditoría).
+    ['Anularla', () => J.anularPorId({ conductorId: 1, diaIso: '2026-10-11', motivo: 'Puesta por error', usuarioId: 2 })],
     ['Darla por cerrada', () => J.cerrar(9, { usuarioId: 2, nota: 'Llamado' })],
-    ['Reabrirla', () => J.reabrir(9)],
+    ['Reabrirla', () => J.reabrir(9, { usuarioId: 2 })],
   ];
   for (const [nombre, hacer] of pasos) {
     const antes = lecturas;

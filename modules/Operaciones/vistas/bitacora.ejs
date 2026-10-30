@@ -38,6 +38,15 @@
     position: absolute; top: .3rem; right: .3rem; width: .42rem; height: .42rem;
     border-radius: 50%; background: rgb(var(--tc-gold)); box-shadow: 0 0 0 2px rgb(var(--tc-dark) / .8);
   }
+  /* Ese día tiene una −J (db/227): constancia, no horas. Abajo a la derecha,
+     para no pisar ni el número ni el punto de la cuenta prestada. Pendiente,
+     solo el borde: todavía no cuenta. */
+  .cal-menosj {
+    position: absolute; bottom: .3rem; right: .35rem; font-style: normal; font-size: 9px; font-weight: 700;
+    line-height: 1; padding: .12rem .28rem; border-radius: .35rem;
+    color: rgb(var(--tc-red)); background: rgb(var(--tc-red) / .14); border: 1px solid rgb(var(--tc-red) / .45);
+  }
+  .cal-menosj.pend { background: transparent; border-style: dashed; opacity: .8; }
   .cal-dia {
     position: relative; aspect-ratio: 1 / .78; border-radius: .8rem; padding: .45rem .55rem;
     display: flex; flex-direction: column; justify-content: space-between;
@@ -148,6 +157,11 @@
   // A QUIÉN SE MANDA LA J (26/10/2026): Tráfico, RRHH o Taller. La aprueba esa
   // área en /justificantes. Ver DESTINOS en bitacora.service.js.
   const DESTINOS_J = <%- JSON.stringify(destinosJ || []) %>;
+  // LA −J (db/227): constancia de un perjuicio a la empresa. No toca horas,
+  // nómina ni letra; nace pendiente y se aprueba en /justificantes.
+  const CASUISTICAS_MENOS_J = <%- JSON.stringify(typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : []) %>;
+  // Las de una persona un día, del payload (las tres: aprobadas, pendientes y rechazadas).
+  const menosJDe = (c, iso) => (((DATA && DATA.menosJ) || {})[c.conductorId] || {})[iso] || [];
   const NOMBRE_J = Object.fromEntries((<%- JSON.stringify(tiposJ || []) %>).map(t => [t.codigo, t.etiqueta]));
   /** El selector de la casa con las tres de aquí, y la que ya tenga si vino de Control (BOLT, compañero). */
   const selectorDestino = (id, actual) => {
@@ -719,7 +733,10 @@
           const resp = await (await fetch('/bitacora/api/justificar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV, tipo: tipoV }) })).json();
           if (resp.status !== 'ok') throw new Error(resp.msg || 'Error');
-          msg.textContent = '✓ Justificado y mandado a ' + (NOMBRE_J[tipoV] || 'Tráfico') + '. Actualizando…'; msg.className = 'text-xs mt-2 text-telecab-green';
+          msg.textContent = (resp.volvioAPendiente
+            ? '✓ Cambiada. Estaba aprobada: vuelve a PENDIENTE y ' + (NOMBRE_J[tipoV] || 'Tráfico') + ' tiene que aprobarla otra vez.'
+            : '✓ Justificado y mandado a ' + (NOMBRE_J[tipoV] || 'Tráfico') + '.') + ' Actualizando…';
+          msg.className = 'text-xs mt-2 text-telecab-green';
           await recargarYAbrir(c.conductorId);
         } catch (e) { msg.textContent = 'Error: ' + e.message; msg.className = 'text-xs mt-2 text-telecab-red'; }
       });
@@ -789,6 +806,18 @@
     return [etiqueta, total, total ? 'text-telecab-azul' : 'text-telecab-text', detalle];
   }
 
+  /** Las −J del periodo: cuentan las aprobadas; las pendientes van debajo. */
+  function menosJKpi(c, a, b) {
+    let apr = 0, pend = 0, min = 0;
+    for (let d = a; d <= b; d++) menosJDe(c, isoDe(d)).forEach(m => {
+      if (m.estado === 'aprobada') { apr++; min += m.minutos || 0; } else if (m.estado === 'pendiente') pend++;
+    });
+    const det = [min ? HorasMin.texto(min) + ' de perjuicio' : '', pend ? pend + ' pendiente' + (pend > 1 ? 's' : '') : '']
+      .filter(Boolean).join(' · ');
+    return ['−J', apr, apr ? 'text-telecab-red' : 'text-telecab-text', det || undefined,
+      'Constancia de perjuicios a la empresa. Solo cuentan las aprobadas en Justificantes; no tocan horas, nómina ni letra.'];
+  }
+
   function render() {
     const c = sel(); if (!c) return;
     document.querySelectorAll('.b-seg').forEach(b => {
@@ -806,6 +835,7 @@
       ['Ausencias', s.nosalio, s.nosalio ? 'text-telecab-red' : 'text-telecab-text'],
       ausenciasKpi(s),
       ['Justificados', s.J ? `${s.J}${s.horasJ ? ' · ' + nf1.format(s.horasJ) + ' h' : ''}` : 0, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
+      menosJKpi(c, r.a, r.b),
     ];
     $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"${
       k[4] || k[3] ? ` title="${esc(k[4] || k[3])}"` : ''}><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p>${
@@ -834,7 +864,7 @@
     const rech = (c.jRechazadas || {})[iso] || [];
     const caja = document.createElement('div');
     caja.className = 'mt-2 space-y-1.5';
-    caja.innerHTML = rech.map(r => `
+    caja.innerHTML = cajaMenosJ(c, iso) + rech.map(r => `
       <div class="rounded-lg border border-telecab-red/40 bg-telecab-red/[0.06] px-2.5 py-1.5">
         <div class="text-xs font-semibold text-telecab-red">
           <i class="fa-solid fa-xmark mr-1"></i>Justificación rechazada${r.horas != null ? ` · ${nf1.format(r.horas)} h` : ''}
@@ -844,6 +874,17 @@
         <div class="text-[11px] text-telecab-red/90">${r.motivo ? 'Motivo del rechazo: «' + esc(r.motivo) + '»' : 'Sin motivo apuntado.'}</div>
       </div>`).join('') + '<div data-seg class="text-[11px] text-telecab-muted">Buscando las llamadas de ese día…</div>';
     box.appendChild(caja);
+    const bMj = caja.querySelector('[data-menosj]');
+    if (bMj) bMj.addEventListener('click', () => ponerMenosJ(c, iso));
+    caja.querySelectorAll('[data-histmj]').forEach(b => b.addEventListener('click', () =>
+      MenosJ.historial(caja.querySelector(`[data-histmj-caja="${b.dataset.histmj}"]`),
+        '/bitacora/api/historial?entidad=menos_j&id=' + encodeURIComponent(b.dataset.histmj))));
+    const bHj = box.querySelector('[data-histj]');
+    if (bHj && !bHj.dataset.ligado) {
+      bHj.dataset.ligado = '1';
+      bHj.addEventListener('click', () => MenosJ.historial(box.querySelector('[data-histj-caja]'),
+        '/bitacora/api/historial?entidad=j&id=' + encodeURIComponent((c.justif[iso] || {}).id)));
+    }
 
     const dest = caja.querySelector('[data-seg]');
     fetch('/bitacora/api/dia?conductor=' + encodeURIComponent(c.conductorId) + '&dia=' + encodeURIComponent(iso))
@@ -903,6 +944,7 @@
           </span>` : ''}
         </div>
         ${j.obs ? `<p class="text-xs text-telecab-muted mt-1.5"><i class="fa-solid fa-quote-left mr-1 text-telecab-muted/50"></i>${esc(j.obs)}</p>` : '<p class="text-xs text-telecab-warn mt-1.5">Sin motivo apuntado.</p>'}
+        ${j.id ? `<button data-histj class="text-[11px] text-telecab-muted hover:text-telecab-text mt-1" title="Cada cambio de esta J: quién, cuándo, desde dónde y qué cambió"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial</button><div data-histj-caja></div>` : ''}
         <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
     } else if ((k === 'nosalio' || k === 'hoydia') && puedeJustificar) {
       const q = (c.lQuitada || {})[iso];
@@ -973,7 +1015,14 @@
       }))) return;
       post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso, quitar: true }, 'Libranza quitada.');
     });
-    on('anular', () => { if (confirm('¿Anular el justificante de este día? El registro queda anulado, no borrado.')) post('/bitacora/api/anular-justificante', { conductorId: c.conductorId, dia: iso }, '✓ Anulado.'); });
+    // Anular pide el PORQUÉ (db/228): queda con quién y por qué en el historial de la J.
+    on('anular', async () => {
+      const v = await Dialogo.formulario('Anular el justificante del ' + iso.split('-').reverse().join('/'), [
+        { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto-largo', obligatorio: true },
+      ], { textoBoton: 'Anular', nota: 'El registro queda anulado, no borrado, con tu nombre y el motivo en su historial.' });
+      if (!v || !String(v.motivo || '').trim()) return;
+      post('/bitacora/api/anular-justificante', { conductorId: c.conductorId, dia: iso, motivo: v.motivo }, '✓ Anulado.');
+    });
     on('editar', () => {
       const j = c.justif[iso] || {};
       const form = $('#b-justif-form'); if (!form) return;
@@ -990,6 +1039,43 @@
       form.scrollIntoView({ behavior: 'smooth', block: 'center' });
       $('#j-obs').focus();
     });
+  }
+
+  // ── LA −J del día (db/227) ──────────────────────────────────────────────────
+  // Lo que hay ese día y el botón para poner otra. Va en todos los días: el
+  // perjuicio no depende de si ese día trabajó, libró o se justificó.
+  function cajaMenosJ(c, iso) {
+    const lista = menosJDe(c, iso);
+    const tono = e => e === 'aprobada' ? 'text-telecab-red' : e === 'pendiente' ? 'text-telecab-text' : 'text-telecab-muted line-through';
+    const filas = lista.map(m => `
+      <div class="rounded-lg border ${m.estado === 'aprobada' ? 'border-telecab-red/40 bg-telecab-red/[0.06]' : 'border-telecab-border'} px-2.5 py-1.5">
+        <div class="text-xs font-semibold ${tono(m.estado)}">−J · ${esc(m.etiqueta)}
+          <span class="font-normal text-telecab-muted">· ${m.estado === 'aprobada' ? 'aprobada' + (m.aprobadaPor ? ' por ' + esc(m.aprobadaPor) : '')
+            : m.estado === 'pendiente' ? 'PENDIENTE de aprobar' : 'rechazada' + (m.rechazadaPor ? ' por ' + esc(m.rechazadaPor) : '')}</span>
+          ${m.minutos ? `<span class="font-normal text-telecab-muted">· costó ${esc(HorasMin.texto(m.minutos))}</span>` : ''}
+          ${m.companero ? `<span class="font-normal text-telecab-muted">· perjudicó a <b class="text-telecab-text">${esc(m.companero)}</b></span>` : ''}
+        </div>
+        <div class="text-[11px] text-telecab-muted mt-0.5">«${esc(m.motivo)}»${m.puestaPor ? ' — la puso ' + esc(m.puestaPor) : ''}</div>
+        ${m.estado === 'rechazada' && m.anuladoMotivo ? `<div class="text-[11px] text-telecab-muted">Motivo del rechazo: «${esc(m.anuladoMotivo)}»</div>` : ''}
+        <button data-histmj="${esc(m.id)}" class="text-[11px] text-telecab-muted hover:text-telecab-text mt-0.5" title="Cada cambio de esta −J"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial</button>
+        <div data-histmj-caja="${esc(m.id)}"></div>
+      </div>`).join('');
+    const boton = puedeJustificar
+      ? `<button data-menosj class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"
+           title="Constancia de un perjuicio a la empresa (por ejemplo, no le dio el coche a tiempo a un compañero). No toca horas, nómina ni letra; queda pendiente de aprobar en Justificantes.">−J · Poner una −J</button>`
+      : '';
+    return filas + (boton ? `<div>${boton}</div>` : '');
+  }
+
+  async function ponerMenosJ(c, iso) {
+    const personas = DATA.conductores.filter(x => x.vigente).map(x => ({ id: x.conductorId, nombre: x.id }));
+    const r = await MenosJ.poner({
+      url: '/bitacora/api/menos-j', dia: iso, origen: 'bitacora',
+      conductor: { id: c.conductorId, nombre: c.id }, personas, casuisticas: CASUISTICAS_MENOS_J,
+    });
+    if (!r) return;
+    Dialogo.hecho('−J puesta. Queda pendiente de aprobar en Justificantes.');
+    await recargarYAbrir(c.conductorId, diaSel);
   }
 
   // ── El calendario ─────────────────────────────────────────────────────────
@@ -1020,7 +1106,13 @@
     // Un punto en la esquina: no se puede poner el nombre de la cuenta dentro de
     // una celda de 20 px, pero sí avisar de que ahí hay algo que mirar.
     const marcaF = (c.fantasma || {})[isoDe(d)] ? '<i class="cal-fantasma"></i>' : '';
-    return `<div class="cal-dia ${clase(c, d)} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">${marcaF}
+    // La −J del día: las rechazadas no se pintan (se ven al abrir el día).
+    const mj = menosJDe(c, isoDe(d)).filter(m => m.estado !== 'rechazada');
+    const marcaM = mj.length
+      ? `<i class="cal-menosj${mj.every(m => m.estado === 'pendiente') ? ' pend' : ''}" title="${esc(
+          mj.map(m => '−J ' + (m.estado === 'pendiente' ? 'pendiente' : 'aprobada') + ': ' + m.motivo).join('\n'))}">−J${mj.length > 1 ? ' ' + mj.length : ''}</i>`
+      : '';
+    return `<div class="cal-dia ${clase(c, d)} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">${marcaF}${marcaM}
       <span class="cal-num">${conNumero ? f.getUTCDate() : DOW[dowDe(d)]}${conNumero && level === 'semana' ? ' ' + DOW[dowDe(d)] : ''}${
         d === DATA.hoyIdx ? '<b class="cal-hoytag">HOY</b>' : ''}</span>${contenido}</div>`;
   }

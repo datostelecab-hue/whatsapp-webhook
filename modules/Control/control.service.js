@@ -40,6 +40,7 @@ const { enDirecto } = require('./cockpit.service');
 const rutas = require('../../services/flotaViva/rutas');
 const llamadas = require('../../services/repo/llamadas');       // el "telefonito"
 const repoJust = require('../../services/repo/justificantes');  // justificar: PostgreSQL
+const menosJ = require('../../services/repo/menosJ');            // la −J (db/227)
 const marcas = require('./marcas.repo');                         // «No saldrá» y «Traza por Slack»
 const campanasSrv = require('./campanas.service');
 const historicoSrv = require('./historico.service');
@@ -79,6 +80,7 @@ const paraLaPantalla = () => ({
   resultadosLlamada: llamadas.RESULTADOS,
   catalogoLlamada: llamadas.CATALOGO,
   tiposJ: repoJust.TIPOS_J,
+  casuisticasMenosJ: menosJ.CASUISTICAS,
   motivosNoSale: marcas.MOTIVOS_NO_SALE,
   canalesSlack: marcas.CANALES_SLACK,
 });
@@ -355,11 +357,28 @@ async function justificarEnDirecto(b, usuario, usuarioId) {
     observacion: b.observacion,
     tipo: b.tipo,
     usuarioId: (usuario && usuario.id) || usuarioId,
+    origen: 'control',
   });
   console.log(`📝 [Control] J en directo · ${dia} · conductor ${r.conductorId} ` +
     `(${b.horas || 'sin'} h) · ${(usuario || {}).nombre || ''}`);
   return { dia, ...r };
 }
+
+// ── La −J (30/10/2026, db/227) ─────────────────────────────────────────────
+// Constancia de un perjuicio a la empresa: se pone desde la fila de quien lo
+// causó, o desde la J «Por compañero» del perjudicado (`justificanteId`). Nace
+// pendiente y se aprueba en /justificantes. No toca horas, nómina ni letra.
+async function ponerMenosJ(b, usuario, usuarioId) {
+  const r = await menosJ.poner({
+    ...b, dia: diaDe(b.dia),
+    origen: b.justificanteId ? 'justificante' : 'control', pantalla: 'control',
+    usuarioId: (usuario && usuario.id) || usuarioId,
+  });
+  console.log(`➖ [Control] −J · ${diaDe(b.dia)} · conductor ${b.conductorId} · ${(usuario || {}).nombre || ''}`);
+  return r;
+}
+
+const personasMenosJ = async () => ({ personas: await menosJ.personas() });
 
 // ── KM y traza ─────────────────────────────────────────────────────────────
 
@@ -532,7 +551,7 @@ module.exports = {
   paraLaPantalla, vistaDeCampanas,
   directo, ahora, campanas, campanasInforme,
   historico, historicoExcel, historicoPdf, trazos, historialLlamadas,
-  apuntarLlamada, listarLlamadas, justificarEnDirecto,
+  apuntarLlamada, listarLlamadas, justificarEnDirecto, ponerMenosJ, personasMenosJ,
   marcarNoSale, quitarNoSale, marcarSlack, quitarSlack,
   kmTraza, kmDiagnostico,
   asistenciaPdf, asistenciaExcel, asistenciaPeriodo, auditoriaLunesExcel,

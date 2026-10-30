@@ -89,6 +89,8 @@ Los **backfills** de `/flota-viva/api/*` piden rol de desarrollador o superadmin
 
 **Campañas son dos vistas de la misma cosa.** El gestor ve la operativa (a quién llamar); admin y desarrollador entran al informe (cómo va el día). Quién ve qué es una regla y vive en `control.service.vistaDeCampanas()`, no en la plantilla. Las tres pasadas tienen ventana propia (`modules/Control/campanas.service.js`): día 10-11, 11-12, 12→17; noche 18-19, 19-20, 20→05. Las ventanas abren y cierran pero **no bloquean botones**: dicen cuál es la campaña activa, y si alguien quiere adelantar una llamada es su criterio.
 
+**La −J y la auditoría (30/10/2026)**: /justificantes tiene la pestaña «−J · Perjuicios» y el historial de cada J y −J; editar una J aprobada la devuelve a pendiente y anular pide el porqué. Ver [[Menos J]].
+
 **Una J pendiente es presunta.** Cuenta como hora presunta (azul) hasta que alguien la mira; la aprobada es la única que entra en bitácora y en nómina; la rechazada es una alerta para volver a llamar. Una J rechazada tiene **dos finales** —rehacerla o cerrarla— porque sin ellos el caso se quedaba abierto para siempre: la alerta pedía llamar y no había forma de decir que ya se había llamado (`modules/Control/justificantes.service.js`).
 
 **La asistencia llega hasta ayer.** La jornada de hoy no ha terminado y quien entra a las 17:00 aún no ha faltado a nada.

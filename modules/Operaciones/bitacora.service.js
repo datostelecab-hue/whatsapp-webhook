@@ -33,6 +33,7 @@
 const repo = require('./bitacora.repo');
 const justificantes = require('../../services/repo/justificantes');
 const llamadas = require('../../services/repo/llamadas');
+const menosJ = require('../../services/repo/menosJ');
 
 // Tres minutos: lo bastante para que un refresco no repita la consulta, y lo
 // bastante poco para que nadie esté mirando una foto de ayer.
@@ -43,12 +44,20 @@ let cacheVac = null, tsVac = 0;
 
 /** Que la próxima carga muestre lo que se acaba de escribir. Ver la nota 2. */
 const olvidar = () => { cache = null; };
-// Una J que cambia en otra pantalla también la tira (nota 2).
+// Una J que cambia en otra pantalla también la tira (nota 2). Y una −J.
 justificantes.avisarCambios(olvidar);
+menosJ.avisarCambios(olvidar);
 
 /** LA REJILLA. Ver la nota 1: la misma para las dos pantallas. */
 async function datos() {
-  if (!cache || Date.now() - ts > TTL) { cache = await repo.leerBitacora(); ts = Date.now(); }
+  if (!cache || Date.now() - ts > TTL) {
+    const b = await repo.leerBitacora();
+    // LAS −J (db/227), aparte de la rejilla: no son una marca del día ni
+    // tocan horas. { conductorId: { 'AAAA-MM-DD': [−J…] } }, con su estado.
+    // Todas: empezaron el 30/10/2026 y son pocas.
+    cache = { ...b, menosJ: await menosJ.porConductorYDia('2000-01-01', '2100-12-31') };
+    ts = Date.now();
+  }
   return cache;
 }
 
@@ -88,7 +97,7 @@ async function justificar({ conductorId, dia, horas, observacion, tipo }, usuari
   const r = await justificantes.guardarPorId({
     conductorId, diaIso: dia,
     horas: (horas == null || horas === '') ? '' : Number(horas),
-    observacion, tipo: tipo || 'trafico', usuarioId,
+    observacion, tipo: tipo || 'trafico', usuarioId, origen: 'bitacora',
   });
   olvidar();
   console.log(`📝 [Bitácora] Justificante PG ${dia} · conductor ${r.conductorId}` +
@@ -96,9 +105,20 @@ async function justificar({ conductorId, dia, horas, observacion, tipo }, usuari
   return r;
 }
 
-/** Quitar la J de un día. El registro queda ANULADO, no borrado. */
-async function anularJustificante({ conductorId, dia }) {
-  const r = await justificantes.anularPorId({ conductorId, diaIso: dia });
+/**
+ * PONER UNA −J desde el panel del día (30/10/2026, db/227): constancia de un
+ * perjuicio a la empresa. Nace pendiente y se aprueba en /justificantes; no
+ * toca horas, nómina ni letra. La caché la tira el aviso del repositorio.
+ */
+async function ponerMenosJ(b, usuarioId) {
+  const r = await menosJ.poner({ ...(b || {}), origen: 'bitacora', pantalla: 'bitacora', usuarioId });
+  console.log(`➖ [Bitácora] −J · ${b.dia} · conductor ${b.conductorId}`);
+  return r;
+}
+
+/** Quitar la J de un día. El registro queda ANULADO, no borrado, con quién y por qué. */
+async function anularJustificante({ conductorId, dia, motivo }, usuarioId) {
+  const r = await justificantes.anularPorId({ conductorId, diaIso: dia, motivo, usuarioId, origen: 'bitacora' });
   olvidar();
   console.log(`🗑️ [Bitácora] Justificante anulado · conductor ${conductorId} · ${dia}`);
   return r;
@@ -294,7 +314,8 @@ async function sellarPuntuacionSemanal() {
 module.exports = {
   mediaDelMes, promedioHoras, recalcularPromedios, sellarPuntuacionSemanal,
   datos, vacaciones, llamadasDelDia,
-  justificar, anularJustificante, libranza, resellar, DESTINOS,
+  justificar, anularJustificante, libranza, resellar, DESTINOS, ponerMenosJ,
+  CASUISTICAS_MENOS_J: menosJ.CASUISTICAS,
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el
   // repositorio, que es lo que deja cambiar esto por dentro.
   // Y la rejilla en caché se tira: lo sellado cambia lo que enseña.

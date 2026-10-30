@@ -172,6 +172,12 @@ router.post('/api/llamada', responde(async req =>
 router.post('/api/justificar-directo', responde(async req =>
   control.justificarEnDirecto(req.body || {}, req.usuario, await actor.idDe(req)), 400));
 
+// La −J (db/227): a quien causó un perjuicio. La plantilla, para elegir al
+// compañero perjudicado o a quien lo causó.
+router.get('/api/menos-j/personas', responde(() => control.personasMenosJ()));
+router.post('/api/menos-j', responde(async req =>
+  control.ponerMenosJ(req.body || {}, req.usuario, await actor.idDe(req)), 400));
+
 // Una llamada para confirmar una cita del taller: queda en la cita y en su
 // historial de llamadas (tipo «Taller»).
 router.post('/api/citas-taller/:id/llamada', responde(async req =>

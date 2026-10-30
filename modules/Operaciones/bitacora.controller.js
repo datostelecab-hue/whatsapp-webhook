@@ -38,6 +38,7 @@ router.get('/', (req, res) => {
     // decir a quién fue una que vino de Control).
     destinosJ: bitacora.DESTINOS,
     tiposJ: require('../../services/repo/justificantes').TIPOS_J,
+    casuisticasMenosJ: bitacora.CASUISTICAS_MENOS_J,
   });
 });
 
@@ -52,6 +53,11 @@ router.get('/general', (req, res) => {
 router.get('/api/datos', responde(() => bitacora.datos(), 500));
 router.get('/api/vacaciones', responde(() => bitacora.vacaciones(), 500));
 
+// El historial de una J o una −J (db/228). Mirarlo es leer la bitácora.
+router.get('/api/historial', responde(async req => ({
+  historial: await require('../../services/repo/auditoriaJ').historial(req.query.entidad, req.query.id),
+})));
+
 router.get('/api/dia', responde(req =>
   bitacora.llamadasDelDia(req.query.conductor, req.query.dia)));
 
@@ -64,8 +70,13 @@ router.post('/api/justificar', responde(async req => {
     await quien(req));
 }));
 
-router.post('/api/anular-justificante', responde(req =>
-  bitacora.anularJustificante({ conductorId: (req.body || {}).conductorId, dia: (req.body || {}).dia })));
+// La −J (db/227): con el mismo permiso que justificar (services/permisos.js).
+router.post('/api/menos-j', responde(async req => bitacora.ponerMenosJ(req.body || {}, await quien(req))));
+
+router.post('/api/anular-justificante', responde(async req => {
+  const b = req.body || {};
+  return bitacora.anularJustificante({ conductorId: b.conductorId, dia: b.dia, motivo: b.motivo }, await quien(req));
+}));
 
 router.post('/api/libranza', responde(async req => {
   const b = req.body || {};

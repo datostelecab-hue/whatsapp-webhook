@@ -30,8 +30,21 @@
 // entrando al repositorio de Control.
 
 const repo = require('../../services/repo/justificantes');
+const menosJ = require('../../services/repo/menosJ');
 
 const TIPOS_J = repo.TIPOS_J;
+const CASUISTICAS_MENOS_J = menosJ.CASUISTICAS;
+
+// LA −J (30/10/2026, db/227) tiene su pestaña en esta misma cola: nace
+// pendiente y se aprueba o se rechaza aquí, como una J. Es constancia: no toca
+// horas, nómina ni letra. `tipo` = 'menos_j' es esa pestaña.
+const MENOS_J = 'menos_j';
+
+/** Las pendientes de cada pestaña: las de cada tipo de J y las −J. */
+async function pendientesTodas() {
+  const [porTipo, n] = await Promise.all([repo.pendientesPorTipo(), menosJ.pendientes()]);
+  return { ...porTipo, [MENOS_J]: n };
+}
 
 /**
  * LA COLA con lo que hace falta para pintarla de una vez: las filas del filtro,
@@ -40,11 +53,23 @@ const TIPOS_J = repo.TIPOS_J;
  * tres peticiones sueltas se desincronizan entre sí.
  */
 async function cola({ estado, tipo, desde, hasta } = {}) {
+  if (tipo === MENOS_J) {
+    const [filas, pendientes, cuentas] = await Promise.all([
+      menosJ.listar({ estado: estado || 'pendiente', desde, hasta }),
+      pendientesTodas(),
+      menosJ.cuentas({ desde, hasta }),
+    ]);
+    return { filas, pendientes, cuentas, menosJ: true };
+  }
   const [filas, pendientes, cuentas] = await Promise.all([
     repo.listar({ estado: estado || 'pendiente', tipo: tipo || undefined, desde, hasta }),
-    repo.pendientesPorTipo(),
+    pendientesTodas(),
     repo.cuentas({ desde, hasta }),
   ]);
+  // Las J «Por compañero» que ya llevan la −J de quien lo causó: a esas no se
+  // les vuelve a ofrecer.
+  const conMenos = await menosJ.deJustificantes(filas.filter(f => f.tipo === 'companero').map(f => f.id));
+  filas.forEach(f => { if (f.tipo === 'companero') f.conMenosJ = conMenos.has(f.id); });
   return { filas, pendientes, cuentas };
 }
 
@@ -57,6 +82,16 @@ const rehacer = (id, usuarioId, datos) => repo.rehacer(id, { ...(datos || {}), u
 /** Cerrarla sin rehacerla: se llamó, se habló y no hay horas que justificar. */
 const cerrar = (id, usuarioId, nota) => repo.cerrar(id, { usuarioId, nota });
 
-const reabrir = id => repo.reabrir(id);
+const reabrir = (id, usuarioId) => repo.reabrir(id, { usuarioId });
 
-module.exports = { TIPOS_J, cola, aprobar, rechazar, rehacer, cerrar, reabrir };
+// ── La −J ──
+/** Desde aquí nace siempre de una J «Por compañero»: la de quien salió perjudicado. */
+const ponerMenosJ = (b, usuarioId) => menosJ.poner({ ...b, origen: 'justificante', pantalla: 'justificantes', usuarioId });
+const aprobarMenosJ = (id, usuarioId) => menosJ.aprobar(id, { usuarioId });
+const rechazarMenosJ = (id, usuarioId, motivo) => menosJ.rechazar(id, { usuarioId, motivo });
+const personasMenosJ = () => menosJ.personas();
+
+module.exports = {
+  TIPOS_J, CASUISTICAS_MENOS_J, cola, aprobar, rechazar, rehacer, cerrar, reabrir,
+  ponerMenosJ, aprobarMenosJ, rechazarMenosJ, personasMenosJ,
+};

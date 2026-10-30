@@ -285,6 +285,7 @@ const RUTA_A_CLAVE = [
   ['/bitacora/api/justificar',          '/bitacora/justificar'],
   ['/bitacora/api/anular-justificante', '/bitacora/justificar'],
   ['/bitacora/api/libranza',            '/bitacora/justificar'],
+  ['/bitacora/api/menos-j',             '/bitacora/justificar'],
   // Cambiar el estado de una pieza del coche. MIRARLO no pasa por aquí: va por
   // '/vehiculos/api/ficha/:id/piezas', que cae en '/vehiculos'.
   ['/vehiculos/api/piezas',             '/vehiculos/piezas'],
