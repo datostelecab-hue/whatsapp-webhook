@@ -300,6 +300,52 @@
       </table>
     </div>
   </div>
+
+  <%# HORAS POR PLANTILLA (30/10/2026). Camilo: «dos tarjetas también de total de
+      horas, por plantilla propia y ETT, donde se pueda filtrar por fechas, desde y
+      hasta con los datos que tenemos disponibles». Cada día va al contrato que la
+      persona tenía ese día. Solo Madrid: Barcelona no tiene contratos de la ETT. %>
+  <% if (!SEDE_NOMBRE) { %>
+  <section id="hp" class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mt-4" aria-labelledby="hp-titulo">
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
+      <div class="min-w-0">
+        <h2 id="hp-titulo" class="text-sm font-semibold text-telecab-text">Horas por plantilla</h2>
+        <p class="text-xs text-telecab-muted">Horas efectivas (viaje + espera) por día natural, según el contrato de cada conductor ese día.</p>
+      </div>
+      <div class="flex items-end gap-2">
+        <label class="block">
+          <span class="text-[11px] text-telecab-muted">Desde</span>
+          <input id="hp-desde" class="js-fecha block w-32 mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm text-telecab-text"
+                 placeholder="dd/mm/aaaa" readonly data-max-field="hp-hasta">
+        </label>
+        <label class="block">
+          <span class="text-[11px] text-telecab-muted">Hasta</span>
+          <input id="hp-hasta" class="js-fecha block w-32 mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm text-telecab-text"
+                 placeholder="dd/mm/aaaa" readonly data-min-field="hp-desde" data-max="today">
+        </label>
+      </div>
+    </div>
+    <div id="hp-tarjetas" class="grid grid-cols-1 md:grid-cols-2 gap-3 transition-opacity">
+      <% [['propia', 'Plantilla propia'], ['ett', 'ETT']].forEach(([k, etq]) => { %>
+      <div class="rounded-2xl border border-telecab-border bg-telecab-card2/40 p-4 min-w-0">
+        <div class="flex flex-wrap items-center justify-between gap-x-2">
+          <p class="text-[11px] text-telecab-muted uppercase tracking-wide"><%= etq %></p>
+          <span id="hp-<%= k %>-cond" class="text-[11px] text-telecab-muted tabular-nums"></span>
+        </div>
+        <p class="text-xl sm:text-3xl font-bold mt-1 tabular-nums leading-none">
+          <span id="hp-<%= k %>-h" class="text-telecab-text">—</span>
+          <span class="text-sm text-telecab-muted font-normal">h</span>
+        </p>
+        <div class="mt-2.5 h-1.5 rounded-full bg-telecab-card2 overflow-hidden" title="Parte de las horas de la flota en esas fechas">
+          <div id="hp-<%= k %>-bar" class="h-full bg-telecab-gold" style="width:0%"></div>
+        </div>
+        <p class="text-[11px] text-telecab-muted mt-1"><span id="hp-<%= k %>-pct">—</span> de las horas · <span id="hp-<%= k %>-util">—</span> utilización · <span id="hp-<%= k %>-media">—</span> por conductor</p>
+      </div>
+      <% }) %>
+    </div>
+    <p id="hp-nota" class="text-[11px] text-telecab-muted mt-2"></p>
+  </section>
+  <% } %>
 </div>
 
 <!-- ── Panel de config (capacidad, meta, vehículos, días) ────────────────────── -->
@@ -1403,14 +1449,68 @@
   // los días y el crecimiento van siempre hasta hoy.
   document.getElementById('v-mes-prev').addEventListener('click', () => { mes--; if (mes < 1) { mes = 12; anio--; } cargarComoVamos(); });
   document.getElementById('v-mes-next').addEventListener('click', () => { mes++; if (mes > 12) { mes = 1; anio++; } cargarComoVamos(); });
-  document.getElementById('v-refrescar').addEventListener('click', () => { cargarResumen(); cargarAEstaHora(); cargarComoVamos(); cargarRango(); cargarCrecimiento(); });
+  // ── Horas por plantilla: propia y ETT entre dos fechas (30/10/2026) ──────────
+  // El calendario de la casa trabaja en dd/mm/aaaa y la API en ISO: se convierte
+  // aquí, en el borde. Por defecto, del 1 del mes a hoy; lo que hay va del primer
+  // día con tramos (01/07/2026) a hoy, y el calendario no deja salirse.
+  const hpDesde = document.getElementById('hp-desde'), hpHasta = document.getElementById('hp-hasta');
+  const aDMA = iso => iso.split('-').reverse().join('/');
+  const aISO = dma => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(dma || '')); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+  let HP = null;
+  async function cargarPlantilla() {
+    if (!hpDesde) return;
+    const desde = aISO(hpDesde.value), hasta = aISO(hpHasta.value);
+    if (!desde || !hasta) return;
+    const caja = document.getElementById('hp-tarjetas');
+    caja.style.opacity = '.5';
+    const r = await fetch(`${API}/plantilla?desde=${desde}&hasta=${hasta}`).then(x => x.json()).catch(() => null);
+    caja.style.opacity = '';
+    const nota = document.getElementById('hp-nota');
+    if (!r || r.status !== 'ok') { nota.textContent = (r && r.msg) || 'No se ha podido calcular ahora mismo. Prueba con «Actualizar».'; return; }
+    HP = r;
+    // Lo que hay, en el calendario: no deja elegir antes del primer día con tramos.
+    hpDesde.setAttribute('data-min', aDMA(r.disponible.desde));
+    hpHasta.setAttribute('data-min', aDMA(r.disponible.desde));
+    if (r.recortado) { hpDesde.value = aDMA(r.desde); hpHasta.value = aDMA(r.hasta); }
+    const total = r.total.horas || 0;
+    ['propia', 'ett'].forEach(k => {
+      const g = r[k];
+      const parte = total > 0 ? (g.horas / total) * 100 : 0;
+      setTxt(`hp-${k}-h`, nf0.format(g.horas));
+      setTxt(`hp-${k}-cond`, `${nf0.format(g.conductores)} conductores`);
+      setTxt(`hp-${k}-pct`, `${pct1.format(parte)} %`);
+      setTxt(`hp-${k}-util`, g.util == null ? '—' : `${pct1.format(g.util)} %`);
+      setTxt(`hp-${k}-media`, g.conductores ? `${nf1.format(g.horas / g.conductores)} h` : '—');
+      const bar = document.getElementById(`hp-${k}-bar`);
+      if (bar) bar.style.width = `${Math.min(100, parte)}%`;
+    });
+    // El resto, para que sume el total de la flota (el de la tabla de arriba).
+    const resto = [];
+    if (r.sinContrato.horas > 0) resto.push(`${nf1.format(r.sinContrato.horas)} h de ${nf0.format(r.sinContrato.conductores)} conductor${r.sinContrato.conductores === 1 ? '' : 'es'} sin contrato ese día`);
+    if (r.sinFicha.horas > 0) resto.push(`${nf1.format(r.sinFicha.horas)} h de cuentas de BOLT sin ficha`);
+    const dias = Math.round((fechaDe(r.hasta) - fechaDe(r.desde)) / 86400000) + 1;
+    nota.textContent = `Del ${aDMA(r.desde)} al ${aDMA(r.hasta)} (${dias} ${dias === 1 ? 'día' : 'días'}): ${nf0.format(total)} h de toda la flota` +
+      (resto.length ? `, con ${resto.join(' y ')}` : '') + '.' +
+      (r.incluyeHoy ? ' Hoy va en curso.' : '') +
+      ` Hay datos por persona desde el ${aDMA(r.disponible.desde)}.`;
+  }
+  if (hpDesde) {
+    const hoyIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    hpDesde.value = aDMA(hoyIso.slice(0, 8) + '01');
+    hpHasta.value = aDMA(hoyIso);
+    [hpDesde, hpHasta].forEach(i => i.addEventListener('change', cargarPlantilla));
+  }
+
+  document.getElementById('v-refrescar').addEventListener('click', () => { cargarResumen(); cargarAEstaHora(); cargarComoVamos(); cargarRango(); cargarCrecimiento(); cargarPlantilla(); });
 
   cargarResumen();
   cargarAEstaHora();
   cargarRango();
   cargarComoVamos();
   cargarCrecimiento();
+  cargarPlantilla();
   // Refresco suave cada 5 min de las tarjetas y del rango (el punto de hoy corre).
-  setInterval(() => { cargarResumen(); cargarAEstaHora(); cargarRango(); }, 5 * 60 * 1000);
+  // Las de plantilla, solo si llegan a hoy: un tramo cerrado ya no cambia.
+  setInterval(() => { cargarResumen(); cargarAEstaHora(); cargarRango(); if (HP && HP.incluyeHoy) cargarPlantilla(); }, 5 * 60 * 1000);
 })();
 </script>

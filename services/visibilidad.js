@@ -633,8 +633,113 @@ async function backfillMesActual() {
   return backfillMes(Y, M);
 }
 
+// ── HORAS POR PLANTILLA (30/10/2026) ─────────────────────────────────────────
+// Camilo: «dos tarjetas también de total de horas, por plantilla propia y ETT,
+// donde se pueda filtrar por fechas, desde y hasta con los datos que tenemos
+// disponibles». Las horas son las de Visibilidad (viaje + espera de BOLT, por
+// día natural en Madrid, tramo a tramo) y cada día va al contrato que esa
+// persona tenía ESE día: quien pasó de la ETT a propia el 14 cuenta en la ETT
+// hasta el 13. Lo que no es de nadie va aparte, para que todo sume el total:
+// horas de alguien sin contrato ese día y cuentas de BOLT sin ficha.
+//
+// Hay horas por persona desde el primer tramo del núcleo (01/07/2026): lo de
+// antes es la historia de la flota entera (db/217), sin saber de quién era.
+
+const SQL_PLANTILLA = `
+  WITH v AS (
+    SELECT ($1::date)::timestamp AT TIME ZONE 'Europe/Madrid'     AS ini,
+           ($2::date + 1)::timestamp AT TIME ZONE 'Europe/Madrid' AS fin
+  ),
+  tr AS (
+    SELECT t.situacion, t.conductor_uuid,
+           GREATEST(t.desde, v.ini) AS d, LEAST(COALESCE(t.hasta, now()), v.fin) AS h
+      FROM fv_tramo t CROSS JOIN v
+     WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+       AND t.situacion IN ('viaje', 'espera')
+  ),
+  -- Cada tramo partido por los días naturales que toca: el contrato es de un día.
+  trozos AS (
+    SELECT tr.situacion, tr.conductor_uuid, g.dia::date AS dia,
+           EXTRACT(EPOCH FROM LEAST(tr.h, (g.dia + interval '1 day')::timestamp AT TIME ZONE 'Europe/Madrid')
+                            - GREATEST(tr.d, g.dia::timestamp AT TIME ZONE 'Europe/Madrid')) AS seg
+      FROM tr
+      CROSS JOIN LATERAL generate_series((tr.d AT TIME ZONE 'Europe/Madrid')::date,
+                                         (tr.h AT TIME ZONE 'Europe/Madrid')::date, interval '1 day') g(dia)
+  ),
+  por AS (
+    SELECT conductor_uuid, dia,
+           COALESCE(sum(seg) FILTER (WHERE situacion = 'viaje'), 0)  AS viaje,
+           COALESCE(sum(seg) FILTER (WHERE situacion = 'espera'), 0) AS espera
+      FROM trozos WHERE seg > 0
+     GROUP BY 1, 2
+  )
+  SELECT CASE WHEN ce.conductor_id IS NULL THEN 'sinFicha'
+              WHEN pe.tipo = 'ett'        THEN 'ett'
+              WHEN pe.tipo IS NOT NULL    THEN 'propia'
+              ELSE 'sinContrato' END AS grupo,
+         sum(p.viaje)::float8  AS viaje,
+         sum(p.espera)::float8 AS espera,
+         count(DISTINCT COALESCE(ce.conductor_id::text, p.conductor_uuid))::int AS personas
+    FROM por p
+    LEFT JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = p.conductor_uuid
+    LEFT JOIN LATERAL (
+      SELECT pe.tipo FROM conductor_periodo_empleo pe
+       WHERE pe.conductor_id = ce.conductor_id
+         AND pe.alta <= p.dia AND (pe.baja IS NULL OR pe.baja >= p.dia)
+       ORDER BY pe.alta DESC LIMIT 1
+    ) pe ON TRUE
+   GROUP BY 1`;
+
+/** El primer día con horas por persona ('AAAA-MM-DD', Madrid), o null. */
+async function primerDiaConTramos() {
+  const r = await db.consulta(`SELECT to_char(min(desde) AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS d FROM fv_tramo`);
+  return (r.rows[0] && r.rows[0].d) || null;
+}
+
+/**
+ * Las horas de un tramo de fechas, por plantilla: propia, ETT y lo que no es de
+ * nadie. `desde` y `hasta` 'AAAA-MM-DD' (por defecto, del 1 del mes a hoy); se
+ * recortan a lo que hay —del primer día con tramos a hoy— y se dice.
+ */
+async function horasPorPlantilla(q = {}) {
+  const mal = msg => Object.assign(new Error(msg), { estado: 400 });
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const hoy = hoyISO();
+  const pedido = { desde: String(q.desde || `${hoy.slice(0, 8)}01`), hasta: String(q.hasta || hoy) };
+  if (!ISO.test(pedido.desde) || !ISO.test(pedido.hasta)) throw mal('Las fechas van como AAAA-MM-DD');
+  if (pedido.desde > pedido.hasta) throw mal('«Desde» no puede ir después de «Hasta»');
+  const primero = await primerDiaConTramos();
+  const es = iso => iso.split('-').reverse().join('/');
+  if (!primero) throw mal('Todavía no hay horas por persona');
+  const desde = pedido.desde < primero ? primero : pedido.desde;
+  const hasta = pedido.hasta > hoy ? hoy : pedido.hasta;
+  if (desde > hasta) throw mal(`Hay horas por persona del ${es(primero)} a hoy`);
+
+  const r = await db.consulta(SQL_PLANTILLA, [desde, hasta]);
+  const r1 = x => Math.round(x * 10) / 10;
+  const grupo = x => {
+    const viaje = (x && x.viaje) || 0, espera = (x && x.espera) || 0;
+    const horas = (viaje + espera) / 3600;
+    return { horas: r1(horas), viaje: r1(viaje / 3600), espera: r1(espera / 3600),
+      util: viaje + espera > 0 ? r1((viaje / (viaje + espera)) * 100) : null,
+      conductores: (x && x.personas) || 0 };
+  };
+  const de = new Map(r.rows.map(x => [x.grupo, x]));
+  const grupos = Object.fromEntries(['propia', 'ett', 'sinContrato', 'sinFicha'].map(k => [k, grupo(de.get(k))]));
+  const suma = k => r.rows.reduce((a, x) => a + (Number(x[k]) || 0), 0);
+  return {
+    desde, hasta, pedido, disponible: { desde: primero, hasta: hoy },
+    recortado: desde !== pedido.desde || hasta !== pedido.hasta,
+    incluyeHoy: hasta === hoy,
+    ...grupos,
+    total: grupo({ viaje: suma('viaje'), espera: suma('espera'), personas: grupos.propia.conductores + grupos.ett.conductores
+      + grupos.sinContrato.conductores + grupos.sinFicha.conductores }),
+  };
+}
+
 module.exports = {
   resumen, aEstaHora, serieMes, leerConfig, guardarConfig,
+  horasPorPlantilla,
   // Las piezas de «A esta hora» que comparte Barcelona.
   momentoAEstaHora, armarAEstaHora,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,

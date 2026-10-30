@@ -72,6 +72,14 @@ router.get('/api/crecimiento', async (req, res) => {
   } catch (e) { errorHttp(res, '/api/crecimiento', e); }
 });
 
+// Horas por plantilla (propia y ETT) entre dos fechas: ?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
+// (services/visibilidad.js → horasPorPlantilla).
+router.get('/api/plantilla', async (req, res) => {
+  try {
+    res.json({ status: 'ok', ...(await vis.horasPorPlantilla(req.query)) });
+  } catch (e) { errorHttp(res, '/api/plantilla', e); }
+});
+
 // La serie del mes de /api/serie, más el mes anterior y la comparación a la misma altura.
 router.get('/api/como-vamos', async (req, res) => {
   try {

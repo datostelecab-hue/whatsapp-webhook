@@ -65,6 +65,19 @@ Una tarjeta debajo de las de en vivo, en Madrid y, desde el mismo día, en [[Bar
     - **Contra un día con menos de 10 h no se da %** («Muy pocas horas para comparar»): a las 12:28 la noche lleva media hora y 0 contra 0,5 h saldría «−100 %».
 - **En la copia local** hoy, ayer y anteayer salen casi iguales: los tramos que quedaron abiertos al copiar (27/10) se alargan hasta ahora. En producción se cierran solos.
 
+## Horas por plantilla (30/10/2026)
+
+Camilo: *«abajo después de la tabla "Detalle por día" dos tarjetas también de total de horas, por plantilla propia y ETT, donde se pueda filtrar por fechas, desde y hasta con los datos que tenemos disponibles»*.
+
+Debajo de «Detalle por día», solo en Madrid (Barcelona no tiene contratos de la ETT): **Plantilla propia** y **ETT**, cada una con sus horas, su parte del total, su utilización, cuántos conductores y la media por conductor. Las fechas se eligen con el calendario de la casa (`js-fecha`); por defecto, del 1 del mes a hoy.
+
+- **Son las horas de Visibilidad**: viaje + espera de BOLT por día natural en Madrid, tramo a tramo. Del 1 al 26/10 la suma de los cuatro grupos da 23.867 h, lo mismo que `horasVentana` día a día.
+- **Cada día va al contrato de ese día** (`conductor_periodo_empleo`), con la cuenta de BOLT enlazada a la ficha (`conductor_externo`). Quien pasó de la ETT a propia el 14 cuenta en la ETT hasta el 13, como en la nómina.
+- **Lo que no es de nadie va en la nota de abajo**, para que todo sume el total de la flota: horas de alguien sin contrato ese día y de cuentas de BOLT sin ficha.
+- **Lo que hay**: horas por persona desde el primer tramo del núcleo (**01/07/2026**) hasta hoy; lo de antes es la historia de la flota entera (db/217), sin saber de quién era. El calendario no deja elegir antes (`data-min`, que pone la respuesta) ni después de hoy, y un «hasta» antes del «desde» tampoco (`data-min-field` / `data-max-field`). Si la URL pide fuera, se recorta y se dice.
+- **Se refresca** con «Actualizar» y, si el rango llega a hoy, cada 5 minutos.
+- Piezas: `services/visibilidad.js` → `horasPorPlantilla({ desde, hasta })` (una consulta, menos de 1 s con todo el rango), `GET /visibilidad/api/plantilla?desde=&hasta=` (400 con el motivo si las fechas no valen) y `cargarPlantilla` en `views/visibilidad.ejs`.
+
 ## Los gráficos (25/10/2026)
 
 Camilo: *«necesito que le des una actualización a visibilidad, nuevos gráficos… que en el gráfico que muestras los últimos 15 días se pueda agrandar, tipo, última semana, últimos 15 días, hace 30 días, 2 meses, 1 año, etc. Pero quiero gráficos mucho más profesionales y que muestren cómo van las horas actualmente y cómo hemos crecido»*.
