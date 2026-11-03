@@ -82,7 +82,16 @@ function leerCookie(req, nombre) {
   return null;
 }
 
-const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept') || '').includes('application/json');
+// ¿La pide una pantalla por debajo (fetch) o es una navegación? Una llamada de
+// datos recibe un 401/403 en JSON; una navegación, la redirección al login.
+// `Sec-Fetch-Dest: empty` lo manda el navegador en TODO fetch y XHR (una página
+// lleva `document`), y es lo que faltaba (03/11/2026): un fetch a una ruta sin
+// /api/ (/nominas/congelar, /cobertura/enviar-turnos…) recibía con la sesión
+// caducada el HTML del login, y la pantalla reventaba en el .json() con
+// «Unexpected token <» en vez de decir que había que volver a entrar.
+const esApi = req => req.path.includes('/api/') || req.xhr
+  || (req.get('accept') || '').includes('application/json')
+  || req.get('sec-fetch-dest') === 'empty';
 
 // LA SEDE CON LA QUE SE ENTRA (07/10/2026). En el login se elige Madrid o
 // Barcelona, y viaja en la sesión como el tema: decide qué menú se ve y adónde se

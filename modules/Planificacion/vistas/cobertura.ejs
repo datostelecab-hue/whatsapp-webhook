@@ -78,10 +78,7 @@ const fmtDia = v => { const d = new Date(v); return String(d.getUTCDate()).padSt
 async function cargar() {
   $('#cargando').classList.remove('hidden');
   try {
-    const r = await fetch('/cobertura/api/datos?semana=' + SEMANA);
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.msg);
-    D = d;
+    D = await Api.get('/cobertura/api/datos?semana=' + SEMANA);
     const s = D.semanaInfo || {};
     $('#sem-label').textContent = s.inicio
       ? `Semana ${fmtDia(s.inicio)} – ${fmtDia(s.fin)}` + (s.esActual ? ' (actual)' : '')
@@ -104,12 +101,13 @@ let INF_ABIERTO = false;
 
 async function cargarAvisos() {
   try {
-    const [e, i] = await Promise.all([
-      (await fetch('/cobertura/api/avisos-estado?semana=' + SEMANA)).json(),
-      (await fetch('/cobertura/api/avisos-informe' + (INF_DIA ? '?dia=' + INF_DIA : ''))).json(),
+    // Las dos a la vez (antes la segunda esperaba a la primera) y cada una por
+    // su lado: si falla una, la otra se pinta igual. Sin registro, la pantalla
+    // sigue: es un dato de más, no el principal.
+    [AVI, INF] = await Promise.all([
+      Api.get('/cobertura/api/avisos-estado?semana=' + SEMANA).catch(() => null),
+      Api.get('/cobertura/api/avisos-informe' + (INF_DIA ? '?dia=' + INF_DIA : '')).catch(() => null),
     ]);
-    AVI = e.status === 'ok' ? e : null;
-    INF = i.status === 'ok' ? i : null;
   } catch (_) { AVI = null; INF = null; }
   pintarInformeAvisos();
   pintarPersonas();
@@ -429,12 +427,13 @@ $('#lista-personas').addEventListener('click', async e => {
   }))) return;
   const o = b.innerHTML; b.disabled = true; b.innerHTML = 'Enviando…';
   try {
-    const r = await fetch('/cobertura/enviar-turnos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idBolt: b.dataset.id, semana: SEMANA }) });
-    const d = await r.json();
-    if (d.status !== 'ok') { alert(d.msg || 'No se pudo enviar'); b.innerHTML = o; b.disabled = false; return; }
-    b.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Enviado';
+    await Api.post('/cobertura/enviar-turnos', { idBolt: b.dataset.id, semana: SEMANA });
+    b.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Enviado';   // y se queda apagado: ya está enviado
     cargarAvisos();   // el aviso queda registrado: chip verde y el informe al día
-  } catch (err) { alert('Error: ' + err.message); b.innerHTML = o; b.disabled = false; }
+  } catch (err) {
+    b.innerHTML = o; b.disabled = false;
+    await Dialogo.aviso({ titulo: 'No se pudo enviar', texto: err.message, tono: 'error' });
+  }
 });
 
 $('#btn-turnos-todos').addEventListener('click', async () => {
@@ -451,15 +450,16 @@ $('#btn-turnos-todos').addEventListener('click', async () => {
   }))) return;
   $('#btn-turnos-todos').disabled = true;
   try {
-    const r = await fetch('/cobertura/enviar-turnos-todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semana: SEMANA }) });
-    const d = await r.json();
-    if (d.status !== 'ok') { alert(d.msg || 'No se pudo iniciar'); $('#btn-turnos-todos').disabled = false; return; }
-    arrancarPollTurnos();
-  } catch (err) { alert('Error: ' + err.message); $('#btn-turnos-todos').disabled = false; }
+    await Api.post('/cobertura/enviar-turnos-todos', { semana: SEMANA });
+    arrancarPollTurnos();   // el botón vuelve cuando el envío termina
+  } catch (err) {
+    $('#btn-turnos-todos').disabled = false;
+    await Dialogo.aviso({ titulo: 'No se pudo iniciar el envío', texto: err.message, tono: 'error' });
+  }
 });
 async function pollTurnos() {
   try {
-    const d = await (await fetch('/cobertura/enviar-turnos/estado')).json();
+    const d = await Api.get('/cobertura/enviar-turnos/estado');
     const p = d.progreso || {};
     $('#turnos-estado').textContent = p.activo
       ? `Enviando… ${p.enviados}/${p.total}${p.errores ? ' · ' + p.errores + ' err' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin tel' : ''}`

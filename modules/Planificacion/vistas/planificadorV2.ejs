@@ -330,11 +330,17 @@
   // menu de un coche, el panel de eventos, los relevos— y una lista de botones
   // se queda corta el dia que se añada el treinta y uno. Asi cualquier camino
   // que intente escribir se para en el mismo sitio y con el mismo aviso.
+  //
+  // PERO ES EL `fetch` DE ESTA PANTALLA, NO EL DE TODA LA PÁGINA (03/11/2026).
+  // Antes se reemplazaba window.fetch, y los componentes compartidos que también
+  // viven aquí —felicitar un cumpleaños, la −J, la foto de una persona— recibían
+  // el mismo 403 falso con el aviso del cuadrante. Declarado dentro de esta
+  // función, solo lo usan las llamadas del cuadrante; los demás, el de siempre.
   const PUEDE_EDITAR = <%- json(!!puedeEditar) %>;
-  if (!PUEDE_EDITAR) {
+  const fetch = PUEDE_EDITAR ? window.fetch.bind(window) : (function () {
     const fetchReal = window.fetch.bind(window);
     let avisando = false;
-    window.fetch = function (url, opciones) {
+    return function (url, opciones) {
       const metodo = String((opciones && opciones.method) || 'GET').toUpperCase();
       if (metodo === 'GET') return fetchReal(url, opciones);
       if (!avisando) {
@@ -350,7 +356,7 @@
         JSON.stringify({ status: 'error', msg: 'Solo lectura' }),
         { status: 403, headers: { 'Content-Type': 'application/json' } }));
     };
-  }
+  })();
 
   // Si quien mira puede abrir Plantilla: sin el permiso no se le ofrece «Ver su ficha».
   const VER_FICHAS = <%- json(!!verFichas) %>;
@@ -422,12 +428,20 @@
   // Alguien se dio de alta con una vacante del generador. Aceptar lo coloca en
   // las plazas de la vacante (todo o nada); rechazar lo deja en el banquillo.
   async function cargarIncorporaciones() {
-    let lista = [];
-    try {
-      const r = await (await fetch('/planificador-v2/api/incorporaciones')).json();
-      lista = r.incorporaciones || [];
-    } catch (_) {}
+    let lista = [], fallo = null;
+    try { lista = (await Api.get('/planificador-v2/api/incorporaciones')).incorporaciones || []; }
+    catch (e) { fallo = e; }
     const cont = $('#incorporaciones');
+    // LA ALERTA QUE NO SE VA NO PUEDE IRSE EN SILENCIO (03/11/2026). Si la
+    // consulta fallaba, la caja se escondía como si no hubiera nadie esperando,
+    // y una incorporación por aceptar se pasaba por alto sin aviso.
+    if (fallo) {
+      cont.classList.remove('hidden');
+      cont.innerHTML = `<div class="px-4 py-3 rounded-2xl border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red flex items-center gap-3">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>No se pudieron leer las incorporaciones pendientes y puede haber alguien esperando: recarga la página. <span class="text-telecab-muted">${esc(fallo.message)}</span></span></div>`;
+      return;
+    }
     cont.classList.toggle('hidden', !lista.length);
     cont.innerHTML = lista.map(i => {
       const det = i.detalle || {};

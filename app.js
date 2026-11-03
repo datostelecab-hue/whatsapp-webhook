@@ -303,6 +303,8 @@ app.use(sesion.cargarPermisos);
 // Qué cuadros de tickets pinta la barra de arriba (los de las bandejas que puede
 // abrir). Después de los permisos, que es de donde sale.
 app.use(require('./modules/Ticketera/ticketera.controller').enLaBarra);
+// Los errores de JavaScript que nadie captura en el navegador (public/assets/js/api.js).
+app.use('/cliente-error', require('./routes/clienteError'));
 app.use('/inicio', require('./routes/inicio'));
 app.use('/justificantes', require('./modules/Control/justificantes.controller'));
 app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller'));

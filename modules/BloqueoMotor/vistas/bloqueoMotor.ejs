@@ -50,12 +50,9 @@
     : f.cogen.length ? f.cogen.map(p => p.nombre + (p.fichaCoche ? '' : ' (sin bloqueo)')).join(', ')
       : 'Nadie hoy ni mañana');
 
-  async function post(url, cuerpo) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.status !== 'ok') throw new Error(j.msg || 'Error ' + r.status);
-    return j;
-  }
+  // Por Api (03/11/2026): mismo contrato —devuelve la respuesta o lanza con un
+  // mensaje que se puede enseñar—, y además sabe de la sesión caducada.
+  const post = (url, cuerpo) => Api.post(url, cuerpo);
 
   async function soltar(d, lst) {
     const v = await Dialogo.formulario(`Soltar el motor de ${d.matricula}`, [

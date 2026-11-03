@@ -47,6 +47,8 @@
   <!-- Componentes compartidos. Se cargan aqui, ANTES del cuerpo, porque cada
        modulo los invoca desde su propio bloque de codigo en linea. -->
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
+  <%# Api.pedir/get/post: la forma de la casa de hablar con el servidor, y el aviso de los errores de JavaScript que nadie captura. Pronto, para oírlos desde el principio. %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/api.js') : '/assets/js/api.js' %>"></script>
   <%# Horas y minutos de una J, en vez de un decimal (HorasMin; también `tipo: 'horas'` de Dialogo.formulario). %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/horasMin.js') : '/assets/js/horasMin.js' %>"></script>
   <%# El formulario de la −J (MenosJ.poner): Bitácora, Control y Justificantes piden lo mismo. %>
