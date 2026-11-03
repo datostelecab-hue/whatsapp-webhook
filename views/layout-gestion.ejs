@@ -74,75 +74,16 @@
   <!-- El selector de la casa para formularios montados a mano: el valor vive en
        un input oculto, así que quien lo use sigue leyendo `.value` de siempre. -->
   <script src="<%= typeof est === 'function' ? est('/assets/js/selector.js') : '/assets/js/selector.js' %>"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-  <script>
-    // Una escala entera de Tailwind (50…950) apuntando a un token: los tonos
-    // claros al token, los oscuros (600+) a su variante honda si la hay.
-    window.__tcCrudos = (function () {
-      const tok = n => 'rgb(var(--tc-' + n + ') / <alpha-value>)';
-      const escala = (n, hondo) => {
-        const e = {};
-        [50, 100, 200, 300, 400, 500].forEach(k => { e[k] = tok(n); });
-        [600, 700, 800, 900, 950].forEach(k => { e[k] = tok(hondo || n); });
-        return e;
-      };
-      return {
-        red: escala('red', 'red-hover'), rose: escala('red', 'red-hover'),
-        emerald: escala('green'), green: escala('green'),
-        amber: escala('warn'), orange: escala('warn'), yellow: escala('warn'),
-        sky: escala('azul'), blue: escala('azul'),
-        violet: escala('violet'), purple: escala('violet'), indigo: escala('violet'),
-      };
-    })();
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
-          colors: {
-            // Apuntan a los tokens CSS (public/assets/css/telecab.css). El
-            // <alpha-value> conserva los modificadores de opacidad (bg-…/15,
-            // border-…/40). Cambiar de tema solo cambia las variables.
-            'telecab': {
-              'dark': 'rgb(var(--tc-dark) / <alpha-value>)',
-              'card': 'rgb(var(--tc-card) / <alpha-value>)',
-              'card2': 'rgb(var(--tc-card2) / <alpha-value>)',
-              'border': 'rgb(var(--tc-border) / <alpha-value>)',
-              'gold': 'rgb(var(--tc-gold) / <alpha-value>)',
-              'gold-soft': 'rgb(var(--tc-gold-soft) / <alpha-value>)',
-              'gold-deep': 'rgb(var(--tc-gold-deep) / <alpha-value>)',
-              'red': 'rgb(var(--tc-red) / <alpha-value>)',
-              'red-hover': 'rgb(var(--tc-red-hover) / <alpha-value>)',
-              'green': 'rgb(var(--tc-green) / <alpha-value>)',
-              'warn': 'rgb(var(--tc-warn) / <alpha-value>)',
-              'violet': 'rgb(var(--tc-violet) / <alpha-value>)',
-              'azul': 'rgb(var(--tc-azul) / <alpha-value>)',
-              'text': 'rgb(var(--tc-text) / <alpha-value>)',
-              'muted': 'rgb(var(--tc-muted) / <alpha-value>)'
-            },
-            // Los colores crudos de Tailwind que usan las vistas se redirigen a los
-            // tokens, EN TODOS SUS TONOS: text-red-300 ES el rojo de la marca,
-            // bg-emerald-500/15 ES el verde de la marca al 15 %. Cambiar el tema
-            // los cambia a todos, y ninguna vista puede colar un color suelto.
-            // Desde el 27/09/2026 el ámbar y el naranja son AVISO (--tc-warn), no
-            // el acento: en las vistas marcan «pendiente», «sin contestar»,
-            // «provisional»… y el acento queda para lo que se pulsa o se elige.
-            ...window.__tcCrudos,
-          },
-          // Sombras neutras y de los tokens: ya no hay sombras de color.
-          boxShadow: {
-            'soft': 'var(--tc-sombra-alta)',
-            'gold': 'var(--tc-sombra)'
-          }
-        }
-      }
-    }
-  </script>
-
+  <!-- Tailwind COMPILADO (tailwind.config.js, services/tailwind.js), no la CDN
+       «Play» que lo compilaba en el navegador en cada página. Va el ÚLTIMO del
+       <head>, que es donde Play metía su hoja: así el reset de Tailwind y las
+       utilidades siguen ganando a telecab.css en los mismos sitios que antes. -->
+  <link rel="stylesheet" href="<%= typeof est === 'function' ? est('/assets/css/tailwind.css') : '/assets/css/tailwind.css' %>">
 </head>
 <body class="app-bg text-telecab-text min-h-screen">
 

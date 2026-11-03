@@ -255,6 +255,30 @@ en un `Map` y el resto es `new Date(ms + desfase)` con `getUTC*`. Mismo resultad
 en 296.000 instantes comprobados, 28 veces más rápido. Para una fecha suelta,
 `Intl` directo sigue bien; dentro de un bucle sobre tramos, no.
 
+### Una clase de Tailwind montada con trozos no existe
+
+`tailwind.config.js` · `scripts/tailwind-safelist.js`
+
+Desde el 03/11/2026 Tailwind va **compilado**, no por la CDN «Play». Play
+compilaba mirando la pantalla, así que cualquier clase funcionaba aunque se
+montara en tiempo de ejecución. El compilador lee el **código**: una clase
+existe solo si su nombre COMPLETO está escrito en algún fichero de `content`.
+
+```js
+`bg-telecab-${tono}/15`                    // NO genera nada: la insignia sale sin color
+{ ok: 'bg-telecab-green/15', … }[estado]   // SÍ: el nombre está entero en el mapa
+```
+
+No da ningún error: la pantalla sale, solo que sin ese color o ese borde. La
+auditoría de ese día encontró 121 construcciones así en 38 ficheros; 20 clases
+no estaban escritas enteras en ningún sitio (insignias de Bloqueo de motor y
+Vehículos, botones de la Ticketera, píldoras del Call Center).
+
+**Remedio:** escribir la clase entera en un mapa, o añadir su FORMA a
+`scripts/tailwind-safelist.js`, que ya cubre las de los ayudantes de la casa
+(`Listado.fmt.etiqueta`, los tonos de `Dialogo`…) con todos los tonos. En
+local se recompila sola al guardar una vista; en Render, en cada despliegue.
+
 ### La jornada operativa: cinco horas ciegas cada noche
 
 `modules/Control/cockpit.service.js`

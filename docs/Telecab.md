@@ -35,7 +35,7 @@ Los coches llevan GPS de **Mapon**; los conductores no están identificados en M
 
 ## Dónde vive
 
-- **Node + Express + EJS**, con Tailwind por CDN. Sin build.
+- **Node + Express + EJS**, con Tailwind **compilado** (desde el 03/11/2026; antes, por CDN). No hay más build que ese: lo genera el `postinstall` y el propio servidor al arrancar. → [[Reglas de la casa]], regla 7
 - **PostgreSQL en Render (Frankfurt)**. Las credenciales viven en variables de entorno del servicio; no en el repositorio.
 - Un **motor cada cinco minutos** que ingiere BOLT y Mapon y escribe en la base; las pantallas leen solo de la base. → [[Ingesta]] · [[Flota viva]]
 

@@ -38,43 +38,8 @@
   </script>
   <link rel="stylesheet" href="<%= _est('/assets/css/telecab.css') %>">
 
-  <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <script>
-    window.__tcCrudos = (function () {
-      const tok = n => 'rgb(var(--tc-' + n + ') / <alpha-value>)';
-      const escala = (n, hondo) => {
-        const e = {};
-        [50, 100, 200, 300, 400, 500].forEach(k => { e[k] = tok(n); });
-        [600, 700, 800, 900, 950].forEach(k => { e[k] = tok(hondo || n); });
-        return e;
-      };
-      return {
-        red: escala('red', 'red-hover'), emerald: escala('green'), green: escala('green'),
-        amber: escala('warn'), orange: escala('warn'), yellow: escala('warn'),
-        sky: escala('azul'), blue: escala('azul'),
-      };
-    })();
-    tailwind.config = {
-      theme: { extend: {
-        fontFamily: { sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
-        colors: { 'telecab': {
-          'dark': 'rgb(var(--tc-dark) / <alpha-value>)', 'card': 'rgb(var(--tc-card) / <alpha-value>)',
-          'card2': 'rgb(var(--tc-card2) / <alpha-value>)', 'border': 'rgb(var(--tc-border) / <alpha-value>)',
-          'gold': 'rgb(var(--tc-gold) / <alpha-value>)', 'gold-soft': 'rgb(var(--tc-gold-soft) / <alpha-value>)',
-          'gold-deep': 'rgb(var(--tc-gold-deep) / <alpha-value>)', 'red': 'rgb(var(--tc-red) / <alpha-value>)',
-          'green': 'rgb(var(--tc-green) / <alpha-value>)', 'text': 'rgb(var(--tc-text) / <alpha-value>)',
-          'muted': 'rgb(var(--tc-muted) / <alpha-value>)', 'azul': 'rgb(var(--tc-azul) / <alpha-value>)',
-          'warn': 'rgb(var(--tc-warn) / <alpha-value>)'
-        },
-        // Los crudos, a los tokens en todos sus tonos (igual que layout-gestion).
-        ...window.__tcCrudos,
-        },
-        boxShadow: { 'soft': 'var(--tc-sombra-alta)', 'gold': 'var(--tc-sombra)' }
-      } }
-    }
-  </script>
 
   <style>
     /* ── LA PANTALLA DE ACCESO (07/10/2026) ──────────────────────────────────
@@ -235,6 +200,11 @@
       .entrada, .sedes span, .btn-entrar { transition: none; }
     }
   </style>
+  <!-- Tailwind compilado, el mismo de layout-gestion: aquí ya no se ejecuta
+       ningún script de terceros en la página donde se escribe la contraseña.
+       El ÚLTIMO del <head>, detrás del <style> de arriba, que es donde Play
+       metía su hoja: la cascada queda igual que antes. -->
+  <link rel="stylesheet" href="<%= _est('/assets/css/tailwind.css') %>">
 </head>
 <body class="font-sans">
   <div class="acceso">

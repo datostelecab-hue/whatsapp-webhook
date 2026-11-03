@@ -92,12 +92,13 @@ app.use((req, res, next) => {
 
   // EN OBSERVACIÓN (Report-Only NO bloquea nada): la política de recursos
   // completa. El navegador avisa en su consola de lo que incumpliría, para poder
-  // pulirla antes de hacerla obligatoria. Lleva 'unsafe-inline' y 'unsafe-eval'
-  // porque la CDN de Tailwind los exige; el arreglo de fondo es compilar Tailwind
-  // en el build y quitar la CDN, y entonces esto pasa a ser la CSP obligatoria.
+  // pulirla antes de hacerla obligatoria. Desde el 03/11/2026 Tailwind va
+  // compilado (services/tailwind.js) y con él se fueron la CDN y 'unsafe-eval',
+  // que solo los pedía ella. Queda 'unsafe-inline' por los scripts en línea de
+  // las vistas: el paso que falta para hacerla obligatoria es darles un nonce.
   res.setHeader('Content-Security-Policy-Report-Only',
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; " +
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
     // LOS MOSAICOS DEL MAPA. MapLibre pide los trozos del mapa por `fetch`, asi
@@ -112,9 +113,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// El CSS de Tailwind, compilado antes de servir nada (services/tailwind.js): en
+// Render solo si el postinstall no lo dejó hecho; en local, siempre y vigilando
+// las vistas para recompilar al cambiarlas.
+require('./services/tailwind').alArrancar();
+
 // Archivos estáticos (logo, vídeo de marca…). Se cachean un día: son
 // inmutables en la práctica y no tiene sentido volver a pedirlos en cada página.
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '1d' }));
+// EN LOCAL, SIN CACHÉ FIJA: la marca ?v= solo cambia al reiniciar, y el CSS de
+// Tailwind se recompila sin reiniciar al guardar una vista. Con un día de
+// caché, el navegador seguiría con el viejo; así revalida (un 304 si no cambió).
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: process.env.RENDER ? '1d' : 0 }));
 
 // Configurar EJS con layouts
 app.use(expressLayouts);

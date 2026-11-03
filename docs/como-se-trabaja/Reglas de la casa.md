@@ -176,8 +176,8 @@ Lo que el corredor garantiza, y que hay que respetar al escribir una migración:
 ## 7. Las vistas no llevan color propio
 
 La identidad visual entera vive en `public/assets/css/telecab.css` y en la
-configuración de Tailwind de `views/layout-gestion.ejs`. **Ninguna vista lleva
-colores propios.**
+configuración de Tailwind, `tailwind.config.js` (una sola para los dos layouts,
+desde el 03/11/2026). **Ninguna vista lleva colores propios.**
 
 - Los colores son **tokens CSS** en `:root` (`--tc-gold`, `--tc-card`, `--tc-red`…)
   escritos como canales RGB (`"244 150 60"`) para que Tailwind pueda aplicarles
@@ -192,8 +192,15 @@ colores propios.**
   superficies lisas, sin cristal ni degradados; y **ningún emoji en pantalla**
   (el icono de la casa si dice algo, nada si era adorno). Todo, con el porqué, en
   [[Identidad visual]].
-- Tailwind viene por CDN y pinta sus utilidades **después** de la hoja propia, así
-  que los ajustes de aspecto se escriben con especificidad subida: `body .clase`.
+- Tailwind va **compilado** (`public/assets/css/tailwind.css`, generado, no se
+  versiona) y se carga el último del `<head>`: pinta sus utilidades **después** de
+  la hoja propia, así que los ajustes de aspecto se escriben con especificidad
+  subida: `body .clase`.
+- **Una clase de Tailwind existe solo si su nombre COMPLETO está escrito en el
+  código.** El compilador lee los ficheros, no la pantalla: `text-telecab-${tono}`
+  no genera nada. Se escribe entera en un mapa (`{ ok: 'text-telecab-green' }`) o
+  se añade a `scripts/tailwind-safelist.js`. En local se recompila sola al guardar
+  una vista. → [[Trampas conocidas]]
 - El tema del perfil se inyecta desde el servidor **antes** de pintar, para que no
   haya parpadeo; el menú contraído se decide igual, antes del primer pintado.
 - Las pantallas se montan sobre las piezas compartidas: `layout-gestion.ejs`,

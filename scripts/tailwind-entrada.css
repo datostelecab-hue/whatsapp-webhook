@@ -1,0 +1,6 @@
+/* La entrada del CSS de Tailwind. Lo que se compila sale de tailwind.config.js
+   (services/tailwind.js decide cuándo). Las mismas tres capas que inyectaba la
+   CDN «Play»: el reset, los componentes (ninguno propio) y las utilidades. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

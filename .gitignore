@@ -2,6 +2,10 @@ node_modules/
 package-lock.json
 .env
 
+# El CSS de Tailwind se genera del código (services/tailwind.js): versionarlo
+# permitiría desplegar uno que no corresponde a las vistas.
+public/assets/css/tailwind.css
+
 # Datos de migración con PII (no versionar)
 scripts/datos/
 

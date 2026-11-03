@@ -63,7 +63,7 @@ Todas las respuestas pasan por un middleware en `app.js` que pone las cabeceras.
 > nuestro ni leer nada nuestro. Si algún día se cambia de proveedor de mapas,
 > esta línea se cambia con él.
 
-> El ERP carga Tailwind desde `cdn.tailwindcss.com`, que exige `'unsafe-inline'` y `'unsafe-eval'` en `script-src`. Con eso, la CSP casi no protege de XSS por script. **El arreglo de fondo es compilar Tailwind en el build y quitar la CDN**; entonces la política de recursos puede hacerse obligatoria y con `nonce` en vez de `unsafe-inline`. Pendiente. → [[Estado y pendientes]]
+> **Primera mitad hecha el 03/11/2026:** Tailwind va compilado (`tailwind.config.js`, `services/tailwind.js`) y la CDN `cdn.tailwindcss.com` ya no se carga en ninguna página, tampoco en la del login. Con ella salieron de `script-src` el dominio y `'unsafe-eval'`, que solo pedía ella. **Falta la otra mitad**: los scripts en línea de las vistas siguen necesitando `'unsafe-inline'`; para hacer obligatoria la política hay que darles un `nonce` por petición. → [[Estado y pendientes]]
 
 Se quitó también la cabecera **`X-Powered-By: Express`** que Express pone sola: no ayuda a nadie de dentro y le dice a quien audita desde fuera el framework de un vistazo (`app.disable('x-powered-by')`).
 

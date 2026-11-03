@@ -245,7 +245,7 @@ El **21/09/2026** se pasó de **227 ayudas en 36 pantallas** a **310 en todas la
 
 ## Los colores
 
-Ninguna vista lleva color propio: todo son **tokens** (`--tc-gold`, `--tc-card`…) escritos como canales RGB para que Tailwind pueda darles opacidad. Los colores crudos de Tailwind están **remapeados** en todos sus tonos: `text-red-500` ES el rojo de la marca, y `text-amber-400` es el **aviso**, no el acento. Tailwind viene por CDN y pinta después de la hoja propia, así que los ajustes se escriben con especificidad subida (`body .clase`). → [[Reglas de la casa]], regla 7.
+Ninguna vista lleva color propio: todo son **tokens** (`--tc-gold`, `--tc-card`…) escritos como canales RGB para que Tailwind pueda darles opacidad. Los colores crudos de Tailwind están **remapeados** en todos sus tonos: `text-red-500` ES el rojo de la marca, y `text-amber-400` es el **aviso**, no el acento. Tailwind va compilado y pinta después de la hoja propia, así que los ajustes se escriben con especificidad subida (`body .clase`). Una clase que se monta con trozos (`text-telecab-${tono}`) no existe si no se añade a `scripts/tailwind-safelist.js`. → [[Reglas de la casa]], regla 7.
 
 **Un solo acento, superficies lisas, sin emojis** (27/09/2026): el acento marca lo que se pulsa o está elegido; lo demás es gris. Una tarjeta es `bg-telecab-card border border-telecab-border rounded-2xl` y ya queda como las demás. Las reglas, los tokens y la marca animada, en [[Identidad visual]].
 

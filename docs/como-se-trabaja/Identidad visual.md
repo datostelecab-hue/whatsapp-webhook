@@ -8,7 +8,7 @@ actualizado: 2026-09-27
 
 **Desde el 27/09/2026 la casa es corporativa.** Camilo: *«más moderna, elegante y un poco más minimalista, no quiero tanto emoji ni colores combinados, algo más corporativo»*. Sustituye al diseño del 05/09 (fondo negro cálido con resplandor ámbar, tarjetas de cristal, botones en degradado, Plus Jakarta Sans).
 
-Todo vive en **`public/assets/css/telecab.css`** y en la configuración de Tailwind de **`views/layout-gestion.ejs`** (y `layout-auth.ejs` para el acceso). Las vistas no llevan color propio → [[Reglas de la casa]], regla 7.
+Todo vive en **`public/assets/css/telecab.css`** y en la configuración de Tailwind, **`tailwind.config.js`**, que comparten la gestión y el acceso (hasta el 03/11/2026 iba copiada en cada layout). Las vistas no llevan color propio → [[Reglas de la casa]], regla 7.
 
 ## Las tres reglas
 
