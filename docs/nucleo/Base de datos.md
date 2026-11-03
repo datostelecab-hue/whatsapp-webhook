@@ -117,4 +117,13 @@ El crudo pesa porque las ventanas **se solapan a propósito** (estados cada 10 m
 
 El tamaño de `fv_odometro` es también la razón de que sus consultas lleven cotas fijas sobre la fecha. Sin ese recorte, PostgreSQL materializa la ventana, deja de saber qué fechas lleva y **lee la tabla entera en cada pregunta**: *En directo* pasó de segundos a medio minuto.
 
+## Sin JIT, y comprimido desde el origen (03/11/2026)
+
+PostgreSQL compila al vuelo (JIT) toda consulta cuyo coste estimado pase de `jit_above_cost` (100.000), y las listas del ERP lo pasan por sus `LATERAL`. La de Plantilla tardaba **220 ms, de los que 131 eran compilar**; sin JIT, **78 ms**. La compilación no se reaprovecha entre peticiones, así que en pantallas se paga siempre y no se amortiza nunca. Los dos pools (`services/db.js` y `services/flotaViva/db.js`) abren cada conexión con `-c jit=off`; `DB_JIT=on` lo devuelve a como estaba.
+
+> [!tip] Para comprobarlo en producción
+> En `/explorador`: `SELECT current_setting('jit'), pg_jit_available();` — con el código nuevo desplegado, la primera columna debe decir `off`.
+
+De paso, `app.js` comprime las respuestas con `compression` antes de los estáticos y las rutas. Cloudflare ya comprime hacia el navegador, pero el tramo Render → Cloudflare iba en crudo: la lista de Plantilla pasa de **818 KB a 73**, la Bitácora de **917 a 85**, el JSON de En directo de **219 a 18**.
+
 Ver también: [[Migraciones]], [[Ingesta]], [[Flota viva]], [[Reglas de la casa]], [[Glosario]].

@@ -18,6 +18,15 @@ const HAY_BD = !!URL;
 // La interna de Render (sin dominio público) no lleva TLS; la externa sí.
 const esExterna = /\.render\.com|amazonaws|\.rds\./i.test(URL);
 
+// SIN JIT (03/11/2026). PostgreSQL compila al vuelo (JIT) toda consulta que
+// estima cara (jit_above_cost, 100.000), y las listas de este ERP lo son por sus
+// LATERAL: la de Plantilla tardaba 220 ms, de los que 131 eran compilar, y la
+// compilación no se reaprovecha entre peticiones. Sin JIT, 78 ms. El JIT sirve
+// para análisis largos sobre millones de filas, no para pantallas. Va al abrir
+// cada conexión (opción de arranque: Render no pone PgBouncer delante).
+// DB_JIT=on lo devuelve a como estaba.
+const OPCIONES_PG = process.env.DB_JIT === 'on' ? undefined : '-c jit=off';
+
 let _pool = null;
 
 function pool() {
@@ -30,6 +39,7 @@ function pool() {
     connectionTimeoutMillis: 10000,
     // Render usa certificado propio: se cifra igual, pero no se valida la cadena.
     ssl: esExterna ? { rejectUnauthorized: false } : false,
+    options: OPCIONES_PG,
   });
   _pool.on('error', e => console.error('❌ [BD] Error en conexión inactiva:', e.message));
   console.log(`🐘 [BD] Pool listo (máx ${_pool.options.max} conexiones, ${esExterna ? 'externa con TLS' : 'interna'})`);

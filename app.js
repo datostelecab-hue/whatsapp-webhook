@@ -40,6 +40,15 @@ app.disable('x-powered-by');
 // Si mañana cambia la infraestructura, el libro de cuentas fantasma guarda la
 // cadena entera (db/136): se mira ahí y se ajusta este número, sin adivinar.
 app.set('trust proxy', 2);
+
+// COMPRIMIDO DESDE EL ORIGEN (03/11/2026). Cloudflare ya comprime hacia el
+// navegador (erptelecab.es sale en Brotli), pero el tramo Render → Cloudflare
+// iba en crudo: la lista de Plantilla son 818 KB que en gzip quedan en 82, y la
+// bitácora 917. Va antes de los estáticos y de las rutas para que alcance a
+// todo: HTML, JSON, JS y CSS. Lo que ya va comprimido (Excel, PDF, imágenes) lo
+// deja pasar solo, por su tipo.
+app.use(require('compression')());
+
 // Parser JSON global (2mb). Las rutas que suben archivos en base64 (documentos de
 // conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
 // límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.

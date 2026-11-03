@@ -43,6 +43,9 @@ function pool() {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     ssl: esExterna ? { rejectUnauthorized: false } : false,
+    // Sin JIT, como el pool principal (ver services/db.js): compilar cada
+    // consulta cara costaba más que ejecutarla. DB_JIT=on lo devuelve.
+    options: process.env.DB_JIT === 'on' ? undefined : '-c jit=off',
   });
   _pool.on('error', e => console.error('❌ [FLOTA VIVA] conexión inactiva:', e.message));
   console.log(`🐘 [FLOTA VIVA] Pool listo (${esExterna ? 'externa con TLS' : 'interna'})`);
