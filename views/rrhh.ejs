@@ -151,9 +151,12 @@
   let autoAbierto = false;   // para abrir una sola vez la ficha que llega por ?tel=
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  async function api(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    return r.json();
+  // Pasa por Api (03/11/2026): sin el velo, el `boton` que se le da es lo que
+  // impide mandar dos veces lo mismo con un doble clic. Al fallar devuelve
+  // igualmente un objeto con `status`, que es lo que miran quienes lo llaman.
+  async function api(url, body, boton) {
+    try { return await Api.post(url, body || {}, { boton }); }
+    catch (e) { return e.respuesta || { status: 'error', msg: e.message }; }
   }
   function msg(texto, ok) {
     const el = $('#ficha-msg');
@@ -233,10 +236,10 @@
     return d;
   }
   // Guarda los datos editados en el ticket (fusiona, no pisa el resto).
-  async function guardarDatos() {
+  async function guardarDatos(boton) {
     if (!ticketActual) return null;
     const edits = recogerEdits();
-    const r = await api('/seleccion/ticket', { tel: ticketActual.id, ...edits });
+    const r = await api('/seleccion/ticket', { tel: ticketActual.id, ...edits }, boton);
     if (r && r.status === 'ok') Object.assign(ticketActual, edits);   // refleja los cambios en local
     return r;
   }
@@ -322,7 +325,7 @@
     const el = $('#datos-msg');
     const aviso = (t, cls) => { el.textContent = t; el.className = 'text-xs mt-2 ' + cls; el.classList.remove('hidden'); };
     aviso('Guardando…', 'text-telecab-muted');
-    const r = await guardarDatos();
+    const r = await guardarDatos($('#btn-guardar-datos'));
     if (r && r.status === 'ok') { aviso('Cambios guardados.', 'text-telecab-green'); pintarDatos(ticketActual); }
     else aviso((r && r.msg) || 'No se pudo guardar', 'text-telecab-red');
   });
@@ -333,9 +336,12 @@
     const el = $('#pdf-msg');
     const aviso = (t, cls) => { el.textContent = t; el.className = 'text-xs ' + cls; el.classList.remove('hidden'); };
     aviso('Guardando y regenerando…', 'text-telecab-muted');
-    const g = await guardarDatos();
+    // El botón va apagado en las dos peticiones; entre una y otra no hay espera
+    // en la que quepa un clic.
+    const b = $('#btn-regenerar-pdf');
+    const g = await guardarDatos(b);
     if (!g || g.status !== 'ok') { aviso((g && g.msg) || 'No se pudo guardar antes de regenerar', 'text-telecab-red'); return; }
-    const r = await api('/seleccion/ficha', { tel: ticketActual.id });
+    const r = await api('/seleccion/ficha', { tel: ticketActual.id }, b);
     if (r.status === 'ok') {
       if (r.ficha && r.ficha.link) ticketActual.ficha_pdf_link = r.ficha.link;
       else if (r.link) ticketActual.ficha_pdf_link = r.link;
@@ -453,6 +459,9 @@
       if (!tels.length) return aviso('Marca al menos una ficha.', 'text-telecab-red');
       if (!fecha) return aviso('Elige la fecha del grupo de altas.', 'text-telecab-red');
       aviso('Generando el Excel…', 'text-telecab-muted');
+      // Es una descarga, no JSON: no pasa por Api. Sin el velo (03/11/2026), el
+      // botón apagado es lo que impide generar el mismo Excel dos veces.
+      btnExcel.disabled = true;
       try {
         const r = await fetch('/rrhh/altas-excel', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -469,6 +478,7 @@
         chkTodos.checked = false;
         cargar();   // refresca la lista y la ficha: ya salen marcadas como "en Excel"
       } catch (e) { aviso('No se pudo generar: ' + e.message, 'text-telecab-red'); }
+      finally { btnExcel.disabled = false; }
     });
   });
 

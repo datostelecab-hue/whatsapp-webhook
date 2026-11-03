@@ -383,13 +383,12 @@
   $('#btn-guardar-fijo').addEventListener('click', async () => {
     if (!FIJO) return;
     const mv = $('#msg-fijo');
-    const r = await (await fetch('/generador/api/guardar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'fijo', turno: FIJO.turno,
-        matriculas: [{ matricula: FIJO.matricula, plazaId: FIJO.plazaId, zona: FIJO.zona, dias: [] }] })
-    })).json();
-    if (r.status === 'ok') { mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes(); }
-    else { mv.textContent = r.msg || 'No se pudo guardar'; mv.className = 'text-xs mt-2 text-telecab-red'; }
+    try {
+      const r = await Api.post('/generador/api/guardar', { tipo: 'fijo', turno: FIJO.turno,
+        matriculas: [{ matricula: FIJO.matricula, plazaId: FIJO.plazaId, zona: FIJO.zona, dias: [] }] },
+        { boton: $('#btn-guardar-fijo') });
+      mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes();
+    } catch (e) { mv.textContent = e.message || 'No se pudo guardar'; mv.className = 'text-xs mt-2 text-telecab-red'; }
     mv.classList.remove('hidden');
   });
 

@@ -190,7 +190,7 @@
 
     $('#j-lista').querySelectorAll('[data-jid]').forEach(el => {
       const j = filas.find(x => x.id === el.dataset.jid);
-      const liga = (sel, fn) => { const b = el.querySelector(sel); if (b) b.addEventListener('click', () => fn(j)); };
+      const liga = (sel, fn) => { const b = el.querySelector(sel); if (b) b.addEventListener('click', () => fn(j, b)); };
       liga('[data-ok]', aprobar);
       liga('[data-no]', rechazar);
       liga('[data-rehacer]', rehacer);
@@ -238,15 +238,14 @@
       el.querySelector('[data-verhist]').addEventListener('click', () =>
         MenosJ.historial(el.querySelector('[data-hist]'), '/justificantes/api/historial?entidad=menos_j&id=' + encodeURIComponent(m.id)));
       const ok = el.querySelector('[data-ok]'), no = el.querySelector('[data-no]');
-      if (ok) ok.addEventListener('click', () => aprobarMenosJ(m));
+      if (ok) ok.addEventListener('click', () => aprobarMenosJ(m, ok));
       if (no) no.addEventListener('click', () => rechazarMenosJ(m));
     });
   }
 
-  async function aprobarMenosJ(m) {
+  async function aprobarMenosJ(m, boton) {
     try {
-      const r = await fetch('/justificantes/api/menos-j/' + m.id + '/aprobar', { method: 'POST' }).then(x => x.json());
-      if (r.status !== 'ok') throw new Error(r.msg);
+      await Api.pedir('/justificantes/api/menos-j/' + m.id + '/aprobar', { metodo: 'POST', boton });
       cargar();
     } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
@@ -286,10 +285,9 @@
     if (r) cargar();
   }
 
-  async function aprobar(j) {
+  async function aprobar(j, boton) {
     try {
-      const r = await fetch('/justificantes/api/' + j.id + '/aprobar', { method: 'POST' }).then(x => x.json());
-      if (r.status !== 'ok') throw new Error(r.msg);
+      await Api.pedir('/justificantes/api/' + j.id + '/aprobar', { metodo: 'POST', boton });
       // Una J «Por compañero» es justo el caso de la −J: se ofrece en el mismo paso.
       if (j.tipo === 'companero' && !j.conMenosJ && await Dialogo.confirmar({
         titulo: '¿Le pones una −J a quien lo causó?',
@@ -359,10 +357,9 @@
     } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
-  async function reabrir(j) {
+  async function reabrir(j, boton) {
     try {
-      const r = await fetch('/justificantes/api/' + j.id + '/reabrir', { method: 'POST' }).then(x => x.json());
-      if (r.status !== 'ok') throw new Error(r.msg);
+      await Api.pedir('/justificantes/api/' + j.id + '/reabrir', { metodo: 'POST', boton });
       cargar();
     } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }

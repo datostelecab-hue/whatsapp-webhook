@@ -280,7 +280,7 @@
     $('#sql-guardar').classList.add('hidden');
   }
 
-  async function escribir(confirmar) {
+  async function escribir(confirmar, boton) {
     const sql = $('#sql').value.trim();
     if (!sql) return;
     // Guardar solo lo que se probó: si se toca el texto después de la prueba, el
@@ -295,10 +295,12 @@
     }
 
     $('#sql-info').textContent = confirmar ? 'Guardando…' : 'Probando…';
-    const r = await api('/explorador/api/escribir', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql, confirmar: confirmar === true }),
-    });
+    // Por Api con el botón apagado (03/11/2026): sin el velo, un doble clic en
+    // «Guardar de verdad» ejecutaba la sentencia dos veces (un INSERT, dos filas).
+    let r;
+    try {
+      r = await Api.post('/explorador/api/escribir', { sql, confirmar: confirmar === true }, { boton });
+    } catch (e) { r = e.respuesta || { status: 'error', msg: e.message }; }
 
     if (r.status !== 'ok') {
       olvidarPrueba();
@@ -364,8 +366,8 @@
   $('#btn-sql').onclick = () => { $('#modal-sql').classList.remove('hidden'); $('#sql').focus(); };
   $('#sql-cerrar').onclick = () => $('#modal-sql').classList.add('hidden');
   $('#sql-ir').onclick = lanzar;
-  $('#sql-escribir').onclick = () => escribir(false);
-  $('#sql-guardar').onclick = () => escribir(true);
+  $('#sql-escribir').onclick = () => escribir(false, $('#sql-escribir'));
+  $('#sql-guardar').onclick = () => escribir(true, $('#sql-guardar'));
   // Tocar el texto invalida la prueba: el número de filas que se vio era de otra
   // sentencia, y guardar con ese número delante sería mentir.
   $('#sql').oninput = olvidarPrueba;

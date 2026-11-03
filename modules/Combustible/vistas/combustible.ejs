@@ -357,10 +357,10 @@
     return j;
   }
 
-  async function leerAhora(lst) {
+  async function leerAhora(lst, boton) {
     let l;
     try {
-      l = (await post('/combustible/api/leer')).lectura;
+      l = (await Api.post('/combustible/api/leer', {}, { boton })).lectura;
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo leer el buzón', texto: e.message, tono: 'error' });
       return;
@@ -506,10 +506,10 @@
   }
 
   // ── La ficha: auditar ahora y la gasolinera a mano ────────────────────────
-  async function auditarAhora(d, lst) {
+  async function auditarAhora(d, lst, boton) {
     let a;
     try {
-      a = (await post(`/combustible/api/repostaje/${encodeURIComponent(d.id)}/auditar`)).auditoria;
+      a = (await Api.post(`/combustible/api/repostaje/${encodeURIComponent(d.id)}/auditar`, {}, { boton })).auditoria;
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo auditar', texto: e.message, tono: 'error' });
       return;
@@ -863,7 +863,11 @@
         principal: false, onClick: () => verLecturas() },
       ...(PUEDE ? [
         { texto: 'Importar Excel', icono: 'fa-file-import', principal: false, onClick: lst => importarExcel(lst) },
-        { texto: 'Leer el buzón ahora', icono: 'fa-envelope-open-text', onClick: lst => leerAhora(lst) },
+        // El Listado no le pasa el botón a `onClick`: con `id` lleva su
+        // data-accion y se apaga mientras lee, que tarda unos segundos y sin
+        // el velo no se veía. El doble clic ya lo para el Listado (03/11/2026).
+        { texto: 'Leer el buzón ahora', id: 'leer-buzon', icono: 'fa-envelope-open-text',
+          onClick: lst => leerAhora(lst, document.querySelector('[data-accion="leer-buzon"]')) },
       ] : []),
     ],
 
@@ -1038,8 +1042,8 @@
       subtitulo: d => [primeraLinea(d.estacion), (PROVEEDORES[d.proveedor] || d.proveedor) + (deExcel(d) ? ' (Excel)' : ''),
         d.estado === 'leido' ? colorFrase(d) : d.estado === 'repetido' ? 'Repetido' : 'No se pudo leer'].filter(Boolean).join(' · '),
       acciones: [
-        { texto: 'Auditar ahora', icono: 'fa-satellite-dish', visible: d => PUEDE && d.estado === 'leido',
-          onClick: (d, lst) => auditarAhora(d, lst) },
+        { texto: 'Auditar ahora', id: 'auditar-ahora', icono: 'fa-satellite-dish', visible: d => PUEDE && d.estado === 'leido',
+          onClick: (d, lst) => auditarAhora(d, lst, document.querySelector('[data-accion="auditar-ahora"]')) },
       ],
       bloques: [
         {

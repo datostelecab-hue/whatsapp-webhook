@@ -1437,7 +1437,9 @@
       meta_turno_dia_h: document.getElementById('cfg-mtd').value,
       meta_turno_noche_h: document.getElementById('cfg-mtn').value,
     };
-    const r = await fetch(API + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }).then(x => x.json()).catch(() => null);
+    // Por Api con el botón apagado (03/11/2026): sin el velo, un doble clic
+    // guardaba y recalculaba dos veces. Un fallo sigue sin decir nada, como antes.
+    const r = await Api.post(API + '/config', cuerpo, { boton: document.getElementById('v-config-save') }).catch(() => null);
     // Se recarga TODO lo que mira la meta: las tarjetas de turno, el ritmo del
     // gráfico de los días, el ideal y la previsión de Cómo vamos, y la del mes en
     // curso en el crecimiento. Sin esto había que refrescar la página.

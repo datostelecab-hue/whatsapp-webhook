@@ -27,7 +27,8 @@ actualizado: 2026-10-23
 | Listar cosas | el componente **Listado** (`listado.js`) | una tabla nueva |
 | **Copiar un dato** (nombre, teléfono, matrícula) | `Copiar.boton(texto, titulo)` (`copiar.js`): el cuadrito al lado del dato; el clic se escucha una vez para toda la página | seleccionar texto en una fila que se abre al pulsarla |
 | **Explicar un dato** | un **`title`** en el elemento (lo pinta `ayuda.js`) | un icono de «?» propio |
-| Tapar mientras carga | `#cargando-overlay` de `layout-gestion` | un spinner propio |
+| Tapar mientras carga | `#cargando-overlay` de `layout-gestion`: **solo en la carga inicial** de la pantalla (desde el 03/11/2026 ya no sale al pulsar). Para una acción que no se puede tocar a medias, `Api.post(…, { bloquea: true })` o `telecabCarga.abrir()/cerrar()` | un spinner propio |
+| **Que un botón no guarde dos veces** | `Api.post(url, datos, { boton })`: lo apaga mientras dura y lo deja como estaba. Antes lo paraba el velo sin que nadie lo hubiera decidido; ya no está | confiar en que nadie pulse dos veces |
 | **Ver una foto en grande** | `VisorFoto.abrir({ src, titulo, pie, original })` (`visorFoto.js`) | abrirla en otra pestaña |
 | **La marca de Telecab** | `<%- include('partials/marca', { tam, anima }) %>` (SVG con los colores del tema) | el PNG del logo o un vídeo |
 | Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |

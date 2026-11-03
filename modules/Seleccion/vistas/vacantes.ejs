@@ -163,8 +163,9 @@
       cargar();
     }));
     document.querySelectorAll('[data-reabrir]').forEach(b => b.addEventListener('click', async () => {
-      const r = await (await fetch('/vacantes/api/reabrir/' + b.dataset.reabrir, { method: 'POST' })).json();
-      if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se pudo reabrir', texto: r.msg, tono: 'aviso' });
+      try {
+        await Api.pedir('/vacantes/api/reabrir/' + b.dataset.reabrir, { metodo: 'POST', boton: b });
+      } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo reabrir', texto: e.message, tono: 'aviso' }); }
       cargar();
     }));
   }

@@ -868,9 +868,9 @@
   // ── ¿Cuadra todo? ────────────────────────────────────────────────────
   // Con `callado` solo abre el aviso si algo falla o hay que repasar: se llama
   // sola después de un recálculo y no tiene sentido felicitarse cada vez.
-  async function cuadra({ callado = false } = {}) {
+  async function cuadra({ callado = false, boton } = {}) {
     try {
-      const c = await pedir('/recaudacion/api/comprobar');
+      const c = await Api.get('/recaudacion/api/comprobar', { boton });
       if (callado && c.ok && !c.revisar) return;
       const icono = p => (p.ok ? (p.revisar ? '⚑' : '✓') : '✕');
       const tono = p => (p.ok ? (p.revisar ? 'text-telecab-warn' : 'text-telecab-green') : 'text-telecab-red');
@@ -1064,7 +1064,7 @@
     $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
   $('#r-salida').addEventListener('click', salidaCaja);
   $('#r-calcular').addEventListener('click', recalcular);
-  $('#r-cuadra').addEventListener('click', () => cuadra());
+  $('#r-cuadra').addEventListener('click', ev => cuadra({ boton: ev.currentTarget }));
   $('#r-cierre').addEventListener('click', cargarCierre);
   if (PUEDE_NOMINA && $('#r-nomina')) $('#r-nomina').addEventListener('click', descuentoNomina);
 

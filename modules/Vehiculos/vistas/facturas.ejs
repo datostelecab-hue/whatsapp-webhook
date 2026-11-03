@@ -505,9 +505,9 @@
         total: f.total.value, notas: f.notas.value, lineas,
       };
       try {
-        const r = await pedir('/facturas/api/factura', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
-        });
+        // El botón apagado mientras guarda (03/11/2026): sin el velo, un doble
+        // clic o un Enter de más apuntaba la factura dos veces.
+        const r = await Api.post('/facturas/api/factura', cuerpo, { boton: f.querySelector('button[type=submit]') });
         cerrar();
         lista.recargar();
         const avisos = [];

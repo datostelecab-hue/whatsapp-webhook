@@ -240,7 +240,10 @@
     localStorage.setItem(KEY, actual);
     aplicar(actual); pintarSel(actual);
     // Persiste el tema en el perfil (y en la cookie de sesión): sigue al usuario entre dispositivos.
-    fetch('/configuracion/mi-tema', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tema: actual }) }).catch(() => {});
+    // Sin el velo (03/11/2026), el botón apagado es lo que evita mandarlo dos veces con un doble clic.
+    b.disabled = true;
+    fetch('/configuracion/mi-tema', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tema: actual }) }).catch(() => {})
+      .finally(() => { b.disabled = false; });
   }));
   pintarSel(actual);
 
@@ -261,9 +264,12 @@
   let YO = '';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs mt-2 ' + cls; msg.classList.remove('hidden'); };
-  async function api(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    return r.json();
+  // Pasa por Api (03/11/2026): sin el velo, el `boton` que se le da es lo que
+  // impide crear o cambiar dos veces con un doble clic. Al fallar devuelve
+  // igualmente un objeto con `status`, que es lo que miran quienes lo llaman.
+  async function api(url, body, boton) {
+    try { return await Api.post(url, body || {}, { boton }); }
+    catch (e) { return e.respuesta || { status: 'error', msg: e.message }; }
   }
 
   function fila(u) {
@@ -301,7 +307,7 @@
     const email = document.getElementById('u-email').value.trim();
     const rol = document.getElementById('u-rol').value;
     if (!nombre || !apellidos || !telefono || !email) return aviso('Completa nombre, apellidos, teléfono y correo.', 'text-telecab-red');
-    const r = await api('/usuarios/crear', { nombre, apellidos, telefono, email, rol });
+    const r = await api('/usuarios/crear', { nombre, apellidos, telefono, email, rol }, document.getElementById('u-crear'));
     if (r.status !== 'ok') return aviso(r.msg || 'No se pudo crear', 'text-telecab-red');
     ['u-nombre', 'u-apellidos', 'u-telefono', 'u-email'].forEach(id => { document.getElementById(id).value = ''; });
     if (r.correoEnviado) aviso('Usuario creado. Se le envió la contraseña provisional por correo.', 'text-telecab-green');
@@ -321,7 +327,7 @@
     const est = e.target.closest('.u-estado');
     const res = e.target.closest('.u-reset');
     if (est) {
-      const r = await api('/usuarios/estado', { email: est.dataset.email, estado: est.dataset.estado });
+      const r = await api('/usuarios/estado', { email: est.dataset.email, estado: est.dataset.estado }, est);
       if (r.status !== 'ok') aviso(r.msg || 'No se pudo cambiar el estado', 'text-telecab-red');
       cargar();
     } else if (res) {
@@ -348,9 +354,11 @@
   const $ = id => document.getElementById(id);
   const msg = $('c-msg');
   const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs mt-2 ' + cls; msg.classList.remove('hidden'); };
-  async function post(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    return r.json();
+  // Por Api (03/11/2026), como el de usuarios: el `boton` frena el doble clic y
+  // al fallar se devuelve igualmente un objeto con `status`.
+  async function post(url, body, boton) {
+    try { return await Api.post(url, body || {}, { boton }); }
+    catch (e) { return e.respuesta || { status: 'error', msg: e.message }; }
   }
   function pintar(e) {
     $('c-host').value = e.host || '';
@@ -367,14 +375,14 @@
   $('c-guardar').addEventListener('click', async () => {
     const body = { host: $('c-host').value.trim(), port: $('c-port').value.trim(), user: $('c-user').value.trim(), from: $('c-from').value.trim() };
     if ($('c-pass').value) body.pass = $('c-pass').value;
-    const r = await post('/configuracion/correo', body);
+    const r = await post('/configuracion/correo', body, $('c-guardar'));
     if (r.status !== 'ok') return aviso(r.msg || 'No se pudo guardar', 'text-telecab-red');
     $('c-pass').value = ''; pintar(r.estado); aviso('Guardado.', 'text-telecab-green');
   });
   $('c-prueba').addEventListener('click', async () => {
     aviso('Enviando prueba…', 'text-telecab-muted');
     const to = $('c-prueba-to').value.trim();
-    const r = await post('/configuracion/correo/prueba', to ? { to } : {});
+    const r = await post('/configuracion/correo/prueba', to ? { to } : {}, $('c-prueba'));
     if (r.enviado) aviso('Prueba enviada a ' + (to || 'tu correo') + '. Revísalo (mira también spam).', 'text-telecab-green');
     else aviso('No se pudo enviar: ' + (r.msg || 'revisa los datos'), 'text-telecab-red');
   });
@@ -413,8 +421,12 @@
     return (await fetch('/configuracion/mi-perfil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
   }
 
+  // Sin el velo (03/11/2026), los dos botones se apagan mientras dura lo suyo:
+  // es lo que impide guardar o mandar la prueba dos veces con un doble clic.
   $('p-guardar').addEventListener('click', async () => {
     if (!$('p-nombre').value.trim()) return aviso('Pon tu nombre.', 'text-telecab-red');
+    const b = $('p-guardar');
+    b.disabled = true;
     try {
       const r = await guardarPerfil(true);
       if (r.status !== 'ok') return aviso(r.msg || 'No se pudo guardar', 'text-telecab-red');
@@ -422,9 +434,12 @@
       aviso('Guardado.', 'text-telecab-green');
       estadoCorreo();
     } catch (_) { aviso('No se pudo guardar', 'text-telecab-red'); }
+    finally { b.disabled = false; }
   });
 
   $('p-probar-correo').addEventListener('click', async () => {
+    const b = $('p-probar-correo');
+    b.disabled = true;
     try {
       // Si escribió una contraseña nueva, se guarda antes de probar.
       if ($('p-pass-correo').value) {
@@ -438,6 +453,7 @@
       if (r.enviado) cAviso('Prueba enviada a tu correo. Revísalo (mira también spam).', 'text-telecab-green');
       else cAviso('No se pudo enviar: ' + (r.msg || 'revisa tu contraseña de correo'), 'text-telecab-red');
     } catch (_) { cAviso('No se pudo enviar la prueba', 'text-telecab-red'); }
+    finally { b.disabled = false; }
   });
 })();
 </script>

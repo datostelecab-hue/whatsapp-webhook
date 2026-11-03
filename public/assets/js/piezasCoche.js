@@ -411,18 +411,19 @@
       const cancelar = caja.querySelector('[data-cancelar]');
       if (cancelar) cancelar.addEventListener('click', () => { borrador = null; pintarEditor(); });
       const guardar = caja.querySelector('[data-guardar]');
-      if (guardar) guardar.addEventListener('click', () => guardarCambio(caja));
+      if (guardar) guardar.addEventListener('click', () => guardarCambio(caja, guardar));
     }
 
-    async function guardarCambio(caja) {
+    // Por Api con el botón (03/11/2026): sin el velo de los clics, un doble clic
+    // en «Guardar» apuntaba el cambio dos veces en el historial de la pieza.
+    async function guardarCambio(caja, boton) {
       const msg = caja.querySelector('[data-msg]');
       const aviso = (t, mal) => { msg.textContent = t; msg.className = 'text-xs mt-2 ' + (mal ? 'text-telecab-red' : 'text-telecab-muted'); };
       aviso('Guardando…');
       try {
-        const r = await (await fetch(`/vehiculos/api/piezas/${id}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pieza: mem.sel, estado: borrador.estado, observacion: borrador.estado === 'bien' ? '' : borrador.obs }),
-        })).json();
+        const r = await global.Api.post(`/vehiculos/api/piezas/${id}`,
+          { pieza: mem.sel, estado: borrador.estado, observacion: borrador.estado === 'bien' ? '' : borrador.obs },
+          { boton });
         if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo guardar');
         borrador = null;
         await traer();

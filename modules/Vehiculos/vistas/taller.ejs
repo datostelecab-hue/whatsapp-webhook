@@ -592,18 +592,15 @@
     const err = $('#mm-error');
     err.classList.add('hidden');
     try {
-      await api('/taller/api/mantenimiento', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehiculoId: $('#mm-vehiculo').value,
-          tipo: $('#mm-tipo').value,
-          fecha: $('#mm-fecha').value,
-          km: $('#mm-km').value,
-          coste: $('#mm-coste').value,
-          taller: $('#mm-taller').value,
-          descripcion: $('#mm-desc').value,
-        }),
-      });
+      await Api.post('/taller/api/mantenimiento', {
+        vehiculoId: $('#mm-vehiculo').value,
+        tipo: $('#mm-tipo').value,
+        fecha: $('#mm-fecha').value,
+        km: $('#mm-km').value,
+        coste: $('#mm-coste').value,
+        taller: $('#mm-taller').value,
+        descripcion: $('#mm-desc').value,
+      }, { boton: $('#mm-guardar') });
       cerrarModales();
       $('#p-ficha').classList.add('hidden');
       await cargar();
@@ -614,14 +611,11 @@
     const err = $('#ma-error');
     err.classList.add('hidden');
     try {
-      const j = await api('/taller/api/ancla', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehiculoId: $('#m-ancla').dataset.vehiculo,
-          km: $('#ma-km').value,
-          nota: $('#ma-nota').value,
-        }),
-      });
+      const j = await Api.post('/taller/api/ancla', {
+        vehiculoId: $('#m-ancla').dataset.vehiculo,
+        km: $('#ma-km').value,
+        nota: $('#ma-nota').value,
+      }, { boton: $('#ma-guardar') });
       cerrarModales();
       if (!j.seguira) {
         alert('Anclado. Aviso: este coche no tiene contador de GPS, así que la lectura se queda quieta ' +

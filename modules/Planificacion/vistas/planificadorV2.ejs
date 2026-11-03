@@ -1643,7 +1643,7 @@
       <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-sinct
               title="${coche.sinCT ? 'Volver a tener correturnos' : 'Sin correturnos: quitar sus correturnos y dar a cada fijo su propio descanso'}"><i class="fa-solid ${coche.sinCT ? 'fa-user-plus' : 'fa-user-slash'}"></i></button>`;
     tdAcc.querySelector('[data-sinct]').addEventListener('click', () => sinCorreturnosUI(coche));
-    tdAcc.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
+    tdAcc.querySelector('[data-cua]').addEventListener('click', e => enCuadrante ? sacarDeCuadrante(coche, e.currentTarget) : meterEnCuadrante(coche));
     tdAcc.querySelector('[data-swap]').addEventListener('click', () => reemplazarMatriculaUI(coche));
     tdAcc.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
     tr.appendChild(tdAcc);
@@ -1743,7 +1743,7 @@
     art.querySelectorAll('[data-desc-turno]').forEach(b =>
       b.addEventListener('click', () => fijarDescansoCoche(coche, b.dataset.descTurno)));
     art.querySelector('[data-sinct]').addEventListener('click', () => sinCorreturnosUI(coche));
-    art.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
+    art.querySelector('[data-cua]').addEventListener('click', e => enCuadrante ? sacarDeCuadrante(coche, e.currentTarget) : meterEnCuadrante(coche));
     art.querySelector('[data-swap]').addEventListener('click', () => reemplazarMatriculaUI(coche));
     art.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
     // Las plazas van por orden de slot (0 fijo día, 1 fijo noche, 2 CT día…):
@@ -2796,10 +2796,15 @@
     } catch (e) { alert(e.message); }
   }
 
-  async function sacarDeCuadrante(coche) {
+  // Escribe sin diálogo de por medio: el botón se apaga mientras dura, porque
+  // sin el velo de los clics un doble clic lo mandaba dos veces (03/11/2026).
+  async function sacarDeCuadrante(coche, boton) {
+    const estaba = boton ? boton.disabled : false;
+    if (boton) boton.disabled = true;
     try {
       await pedirTablero('/planificador-v2/api/cuadrante/coche', { vehiculoId: coche.vehiculoId, cuadranteId: null, dia: DIA });
     } catch (e) { alert(e.message); }
+    finally { if (boton) boton.disabled = estaba; }
   }
 
   async function borrarCuadranteUI(id, nombre) {

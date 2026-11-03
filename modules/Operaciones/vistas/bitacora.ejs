@@ -720,7 +720,7 @@
       };
       jbtn.addEventListener('click', () => { if (form.classList.toggle('hidden') === false) destinoNuevo(); });
       if (window.Selector) Selector.montar(form);
-      d.querySelector('#j-guardar').addEventListener('click', async () => {
+      d.querySelector('#j-guardar').addEventListener('click', async ev => {
         const msg = d.querySelector('#j-msg');
         const diaV = d.querySelector('#j-dia').value, hm = HorasMin.leer(d.querySelector('#j-horas')), obsV = d.querySelector('#j-obs').value.trim();
         const horasV = hm.horas;
@@ -730,9 +730,8 @@
         if (!obsV) { msg.textContent = 'El motivo es obligatorio.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
         msg.textContent = 'Guardando…'; msg.className = 'text-xs mt-2 text-telecab-muted';
         try {
-          const resp = await (await fetch('/bitacora/api/justificar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV, tipo: tipoV }) })).json();
-          if (resp.status !== 'ok') throw new Error(resp.msg || 'Error');
+          const resp = await Api.post('/bitacora/api/justificar',
+            { conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV, tipo: tipoV }, { boton: ev.currentTarget });
           msg.textContent = (resp.volvioAPendiente
             ? '✓ Cambiada. Estaba aprobada: vuelve a PENDIENTE y ' + (NOMBRE_J[tipoV] || 'Tráfico') + ' tiene que aprobarla otra vez.'
             : '✓ Justificado y mandado a ' + (NOMBRE_J[tipoV] || 'Tráfico') + '.') + ' Actualizando…';
@@ -985,17 +984,16 @@
 
     const msg = box.querySelector('[data-di-msg]');
     const aviso = (t, mal) => { msg.classList.remove('hidden'); msg.textContent = t; msg.className = 'text-xs mt-1.5 ' + (mal ? 'text-telecab-red' : 'text-telecab-muted'); };
-    const post = async (url, body, okTxt) => {
+    const post = async (url, body, okTxt, boton) => {
       aviso('Guardando…');
       try {
-        const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
-        if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+        const r = await Api.post(url, body, { boton });
         aviso('✓ ' + (r.msg || okTxt).replace(/^✓\s*/, ''));
         await recargarYAbrir(c.conductorId, d);
       } catch (e) { aviso('Error: ' + e.message, true); }
     };
     const on = (q, fn) => { const b = box.querySelector(`[data-di="${q}"]`); if (b) b.addEventListener('click', fn); };
-    on('justificar', () => {
+    on('justificar', ev => {
       const hm = HorasMin.leer(box.querySelector('[data-di="horas"]'));
       const horas = hm.horas;
       const obs = box.querySelector('[data-di="obs"]').value.trim();
@@ -1003,17 +1001,21 @@
       if (!obs) return aviso('El motivo es obligatorio.', true);
       const tipo = (box.querySelector('#di-tipo') || {}).value || 'trafico';
       post('/bitacora/api/justificar', { conductorId: c.conductorId, dia: iso, horas, observacion: obs, tipo },
-        '✓ Justificado y mandado a ' + (NOMBRE_J[tipo] || 'Tráfico') + '.');
+        '✓ Justificado y mandado a ' + (NOMBRE_J[tipo] || 'Tráfico') + '.', ev.currentTarget);
     });
-    on('libranza', () => post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso }, '✓ Marcado como libranza.'));
-    on('quitarl', async () => {
+    on('libranza', ev => post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso }, '✓ Marcado como libranza.', ev.currentTarget));
+    on('quitarl', async ev => {
+      // La puesta a mano se quita sin preguntar: apagar el botón mientras se
+      // guarda es lo que impide mandarlo dos veces (03/11/2026). Se coge antes
+      // del `await`, que después `ev.currentTarget` ya es null.
+      const boton = ev.currentTarget;
       // La del planificador se pregunta: sin horas, el día pasa a «Ausencia».
       if (!(c.lManual || {})[iso] && !(await Dialogo.confirmar({
         titulo: 'Quitar la libranza',
         texto: 'El planificador lo tenía de libranza ese día. Si la quitas, ese día cuenta como día de trabajo: sin horas en BOLT sale como «Ausencia». El planificador no se toca.',
         si: 'Quitar la libranza', tono: 'peligro',
       }))) return;
-      post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso, quitar: true }, 'Libranza quitada.');
+      post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso, quitar: true }, 'Libranza quitada.', boton);
     });
     // Anular pide el PORQUÉ (db/228): queda con quién y por qué en el historial de la J.
     on('anular', async () => {

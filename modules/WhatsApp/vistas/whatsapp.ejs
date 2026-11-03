@@ -450,9 +450,9 @@
       if (img && window.VisorFoto) VisorFoto.abrir({ src: img.getAttribute('src'), titulo: bonito(c.nombre), pie: '+' + c.telefono + (c.que ? ' · ' + c.que : '') });
     });
     const b = $('#w-bot');
-    if (b) b.addEventListener('click', () => cambiarBot(b.dataset.pausar === '1'));
+    if (b) b.addEventListener('click', () => cambiarBot(b.dataset.pausar === '1', b));
     const q = $('#w-quedar');
-    if (q) q.addEventListener('click', () => asignarA(yo));
+    if (q) q.addEventListener('click', () => asignarA(yo, q));
     const a = $('#w-asignar');
     if (a) a.addEventListener('click', elegirQuienLaLleva);
     pintarPie();
@@ -859,10 +859,9 @@
     }
   }
 
-  async function cambiarBot(pausar) {
+  async function cambiarBot(pausar, boton) {
     try {
-      const r = await json('/whatsapp/api/bot', { tel: actual, pausar });
-      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cambiar');
+      await Api.post('/whatsapp/api/bot', { tel: actual, pausar }, { boton });
       await refrescarChat();
       cargarLista();
     } catch (e) {
@@ -871,10 +870,9 @@
   }
 
   // ── Quién la lleva ──────────────────────────────────────────────────────
-  async function asignarA(usuario) {
+  async function asignarA(usuario, boton) {
     try {
-      const r = await json('/whatsapp/api/asignar', { tel: actual, usuario: usuario == null ? '' : usuario });
-      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo asignar');
+      await Api.post('/whatsapp/api/asignar', { tel: actual, usuario: usuario == null ? '' : usuario }, { boton });
       await refrescarChat();
       cargarLista();
     } catch (e) {

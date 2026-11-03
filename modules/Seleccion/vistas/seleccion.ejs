@@ -453,7 +453,13 @@
       })();
 
     const rehacer = hueco.querySelector('[data-ficha-rehacer]');
-    if (rehacer) rehacer.addEventListener('click', () => accionFichaPDF(d));
+    // Apagado mientras se genera (03/11/2026): tarda —lleva sus papeles dentro—
+    // y, sin el velo, un segundo clic la generaba otra vez.
+    if (rehacer) rehacer.addEventListener('click', async () => {
+      const estaba = rehacer.disabled;
+      rehacer.disabled = true;
+      try { await accionFichaPDF(d); } finally { rehacer.disabled = estaba; }
+    });
 
     hueco.querySelectorAll('[data-subir]').forEach(inp => {
       inp.addEventListener('change', () => {

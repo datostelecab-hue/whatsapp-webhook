@@ -966,12 +966,11 @@
   $('m-ok').onclick = async () => {
     const nota = $('m-nota').value.trim();
     if (!nota) { toast('Cuenta cómo se resolvió: sin nota no hay cierre.', true); return; }
-    const res = await fetch('/callcenter/api/resolver', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clave: resolviendo.clave, resolucion: nota, resultado: $('m-resultado').value || undefined })
-    });
-    const j = await res.json();
-    if (j.status !== 'ok') { toast(j.msg || 'No se pudo resolver', true); return; }
+    try {
+      await Api.post('/callcenter/api/resolver',
+        { clave: resolviendo.clave, resolucion: nota, resultado: $('m-resultado').value || undefined },
+        { boton: $('m-ok') });
+    } catch (e) { toast(e.message || 'No se pudo resolver', true); return; }
     $('modal-resolver').classList.add('hidden');
     toast('Seguimiento resuelto');
     cargaDatos();

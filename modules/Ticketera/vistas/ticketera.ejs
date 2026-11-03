@@ -289,9 +289,11 @@
 
     if (!t.cerrado) {
       if (!t.responsable) {
-        boton('Me lo quedo', 'fa-hand', 'gold', async () => {
-          const r = await api('/asignar', { id: t.id, responsable: YO });
-          r.status === 'ok' ? cargar() : aviso(r.msg, 'error');
+        boton('Me lo quedo', 'fa-hand', 'gold', async ev => {
+          try {
+            await Api.post(BASE + '/asignar', { id: t.id, responsable: YO }, { boton: ev.currentTarget });
+            cargar();
+          } catch (e) { aviso(e.message, 'error'); }
         });
       }
 

@@ -765,15 +765,15 @@
       $('#fi-pendientes').querySelectorAll('[data-corr]').forEach(b =>
         b.addEventListener('click', () => corregir(b.dataset.corr, b.dataset.usuario, b.dataset.quien, b.dataset.dia)));
       $('#fi-pendientes').querySelectorAll('[data-ok]').forEach(b =>
-        b.addEventListener('click', () => aprobar([Number(b.dataset.ok)])));
+        b.addEventListener('click', () => aprobar([Number(b.dataset.ok)], b)));
     } catch (e) {
       $('#fi-pendientes').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
     }
   }
 
-  async function aprobar(ids) {
+  async function aprobar(ids, boton) {
     try {
-      const r = await api('/fichaje/revisar/aprobar', { ids });
+      const r = await Api.post('/fichaje/revisar/aprobar', { ids }, { boton });
       if (window.Dialogo && Dialogo.hecho) {
         Dialogo.hecho(r.aprobados ? 'Confirmadas ' + r.aprobados + ' jornada(s)' : 'No quedaba nada por confirmar');
       }

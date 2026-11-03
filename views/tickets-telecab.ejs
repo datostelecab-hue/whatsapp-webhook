@@ -109,7 +109,8 @@
 
   // ── Detalle ──
   function avisoD(t, cls) { const m = $('#d-msg'); if (!m) return; m.textContent = t; m.className = 'text-xs ' + cls; m.classList.remove('hidden'); }
-  async function post(url, body) { const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); if (r.status !== 'ok') throw new Error(r.msg || 'error'); return r; }
+  // Por Api (03/11/2026): sin el velo, el `boton` apagado es lo que frena el doble clic.
+  async function post(url, body, boton) { const r = await Api.post(url, body, { boton }); if (r.status !== 'ok') throw new Error(r.msg || 'error'); return r; }
 
   function abrirDetalle(id) {
     const t = DATOS.tickets.find(x => x.id === id); if (!t) return;
@@ -162,8 +163,8 @@
          </div>
        </div>`;
 
-    $('#d-estado-btn').addEventListener('click', () => accion(() => post('/tickets-telecab/estado', { id: t.id, estado: $('#d-estado').value }), t.id, 'Estado actualizado'));
-    $('#d-notas-btn').addEventListener('click', () => accion(() => post('/tickets-telecab/notas', { id: t.id, notas: $('#d-notas').value }), t.id, 'Respuesta guardada'));
+    $('#d-estado-btn').addEventListener('click', () => accion(() => post('/tickets-telecab/estado', { id: t.id, estado: $('#d-estado').value }, $('#d-estado-btn')), t.id, 'Estado actualizado'));
+    $('#d-notas-btn').addEventListener('click', () => accion(() => post('/tickets-telecab/notas', { id: t.id, notas: $('#d-notas').value }, $('#d-notas-btn')), t.id, 'Respuesta guardada'));
   }
 
   async function accion(fn, id, okMsg) {

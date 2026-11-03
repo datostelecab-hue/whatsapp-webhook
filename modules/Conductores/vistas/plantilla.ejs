@@ -1265,7 +1265,9 @@
         await Dialogo.aviso({ titulo: 'Excel sin el promedio del mes', tono: 'aviso',
           texto: 'No se pudo calcular el promedio de horas. El Excel sale con todo lo demás y esas tres columnas vacías.' });
       }
-      lst.exportar();
+      // Esperándolo (03/11/2026): el botón del Excel sigue apagado hasta que
+      // acaba la descarga. Sin el `await` se encendía antes y se podía pedir dos veces.
+      await lst.exportar();
     },
 
     subtitulo: (v, t) => {

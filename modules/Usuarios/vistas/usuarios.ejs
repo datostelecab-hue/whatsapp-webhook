@@ -267,12 +267,12 @@
         const faltan = todas.some(c => !box.querySelector('[data-clave="' + c + '"]').checked);
         todas.forEach(c => { box.querySelector('[data-clave="' + c + '"]').checked = faltan; });
       }));
-      box.querySelector('[data-guardar]').addEventListener('click', async () => {
+      box.querySelector('[data-guardar]').addEventListener('click', async ev => {
         const msg = box.querySelector('[data-msg]');
         const marcadas = [...box.querySelectorAll('[data-clave]')].filter(c => c.checked).map(c => c.dataset.clave);
         msg.textContent = 'Guardando…';
         try {
-          await api('/usuarios/permisos', { usuarioId: u.id, claves: marcadas });
+          await Api.post('/usuarios/permisos', { usuarioId: u.id, claves: marcadas }, { boton: ev.currentTarget });
           D.permisos[u.id] = marcadas;
           msg.textContent = '✓ Guardado. Le aplica ya (como mucho en 1 minuto).';
           pintarLista();

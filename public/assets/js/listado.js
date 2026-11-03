@@ -163,6 +163,22 @@
     return j;
   }
 
+  /**
+   * El clic de una acción no se repite mientras la anterior no ha acabado
+   * (03/11/2026). El velo del layout era lo único que paraba el doble clic en
+   * las acciones que guardan (un `onClick` que devuelve su promesa); sin él se
+   * mandaban dos veces. No se toca `disabled`: hay pantallas que encienden y
+   * apagan sus acciones (`activa: false`) y se les pisaría.
+   */
+  function sinRepetir(fn) {
+    let enCurso = false;
+    return async () => {
+      if (enCurso) return;
+      enCurso = true;
+      try { await fn(); } finally { enCurso = false; }
+    };
+  }
+
   /** Sin acentos y en minúsculas, para que buscar "jose" encuentre "José". */
   function plano(v) {
     return String(v === null || v === undefined ? '' : v)
@@ -310,7 +326,13 @@
             transition bg-telecab-card border border-telecab-border hover:bg-telecab-card2"
             title="Descargar lo que se está viendo, en Excel">
             <i class="fa-solid fa-file-excel"></i></button>`);
-        b.addEventListener('click', () => (typeof c.exportar === 'function' ? c.exportar(this) : this.exportar()));
+        // Apagado mientras se genera (03/11/2026): sin el velo, un doble clic
+        // pedía y descargaba el Excel dos veces.
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          try { await (typeof c.exportar === 'function' ? c.exportar(this) : this.exportar()); }
+          finally { b.disabled = false; }
+        });
         this.el.acciones.appendChild(b);
       }
 
@@ -329,7 +351,7 @@
         // Una accion puede nacer apagada (`activa: false`) y encenderla quien
         // sepa cuando toca — por ejemplo, al marcar la primera casilla.
         if (a.activa === false) b.disabled = true;
-        b.addEventListener('click', () => a.onClick(this));
+        b.addEventListener('click', sinRepetir(() => a.onClick(this)));
         this.el.acciones.appendChild(b);
       });
     }
@@ -976,7 +998,7 @@
         // Una accion puede nacer apagada (`activa: false`) y encenderla quien
         // sepa cuando toca — por ejemplo, al marcar la primera casilla.
         if (a.activa === false) b.disabled = true;
-        b.addEventListener('click', () => a.onClick(d, this));
+        b.addEventListener('click', sinRepetir(() => a.onClick(d, this)));
         cab.querySelector('[data-acciones]').appendChild(b);
       });
 
@@ -1021,7 +1043,7 @@
               bg-telecab-card2 border-telecab-border text-telecab-muted
               hover:border-telecab-gold/50 hover:text-telecab-gold">
               ${a.icono ? `<i class="fa-solid ${esc(a.icono)} mr-1"></i>` : ''}${esc(a.texto || '')}</button>`);
-          bt.addEventListener('click', () => a.onClick(d, this));
+          bt.addEventListener('click', sinRepetir(() => a.onClick(d, this)));
           barra.appendChild(bt);
         });
       }
@@ -1086,7 +1108,7 @@
             // de al lado.
             const visibles = acc.filter(a => !a.visible || a.visible(f, d));
             const a = visibles[Number(bt.dataset.acc)];
-            if (a) bt.addEventListener('click', () => a.onClick(f, d, this));
+            if (a) bt.addEventListener('click', sinRepetir(() => a.onClick(f, d, this)));
           });
         }
         return caja;
