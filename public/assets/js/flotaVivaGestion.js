@@ -16,8 +16,8 @@
      GestionIncidencia.enganchar(caja, buscar, hecho); // los clics
 */
 window.GestionIncidencia = (function () {
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
-    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 
   // El de siempre. Si la petición falla se sigue con este: quedarse sin forma de
   // cerrar una incidencia porque no cargó un catálogo sería peor que el fallo.

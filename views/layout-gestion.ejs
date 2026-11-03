@@ -603,15 +603,10 @@
   const badge = document.getElementById('notif-badge');
   const lista = document.getElementById('notif-lista');
 
-  // Rol REAL de la sesión (lo inyecta el servidor). superadmin ve todo.
-  const rol = '<%= rol || "" %>';
-  // Departamentos que alimentan el buzón de pendientes, por rol.
-  const DEPS = {
-    superadmin: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
-    desarrollador: ['soporte'],   // el dev ve como pendientes sus tickets IT
-    oficina: ['reclutador', 'rrhh'],
-    trafico: ['trafico', 'operaciones']
-  };
+  // QUÉ BANDEJAS VE CADA ROL LO DECIDE EL SERVIDOR (DEPS_ROL de
+  // routes/notificaciones.js): solo manda las suyas, y aquí se pinta lo que
+  // llega. Había una copia del reparto en este fichero y ya no coincidía.
+  const ORDEN = ['reclutador', 'rrhh', 'trafico', 'operaciones', 'soporte'];
   const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico', operaciones: 'Operaciones', soporte: 'Tickets IT' };
   let datos = null;
 
@@ -624,7 +619,7 @@
 
   function pintar() {
     if (!datos || datos.status !== 'ok') return;
-    const deps = DEPS[rol] || [];
+    const deps = ORDEN.filter(k => datos[k]);
     let total = 0;
     lista.innerHTML = '';
     deps.forEach(dep => {
@@ -632,12 +627,22 @@
       total += d.total;
       (d.items || []).forEach(it => {
         const a = document.createElement('a');
-        a.href = it.href;
+        // Solo enlaces de la casa (una ruta que empieza por «/»): el servidor
+        // los arma con rutas fijas y aquí no se acepta otra cosa.
+        if (/^\/(?!\/)/.test(String(it.href || ''))) a.href = it.href;
         a.className = 'block px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition';
-        a.innerHTML =
-          (deps.length > 1 ? `<span class="block text-[10px] uppercase tracking-wide text-telecab-muted">${NOMBRE[dep]}</span>` : '') +
-          `<span class="block text-xs text-telecab-text">${it.texto}</span>` +
-          (it.detalle ? `<span class="block text-[11px] text-telecab-muted truncate">${it.detalle}</span>` : '');
+        // LOS TEXTOS, COMO TEXTO. Son títulos de ticket, nombres y motivos que
+        // escribe cualquiera: con innerHTML, un «<» en un título se pintaba como
+        // etiqueta. textContent no interpreta nada.
+        const linea = (clase, texto) => {
+          const s = document.createElement('span');
+          s.className = clase;
+          s.textContent = texto;
+          a.appendChild(s);
+        };
+        if (deps.length > 1) linea('block text-[10px] uppercase tracking-wide text-telecab-muted', NOMBRE[dep] || dep);
+        linea('block text-xs text-telecab-text', it.texto || '');
+        if (it.detalle) linea('block text-[11px] text-telecab-muted truncate', it.detalle);
         lista.appendChild(a);
       });
     });

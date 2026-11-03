@@ -110,7 +110,10 @@
   /** Etiqueta de color. `tono` es uno de los colores del tema. */
   function etiqueta(texto, tono) {
     if (texto === null || texto === undefined || texto === '') return '';
-    const t = tono || 'muted';
+    // El tono va dentro de class="…": solo vale un nombre de color (letras y
+    // guiones, como 'gold-soft'). Algunos llegan de catálogos de la base; lo
+    // que no tenga esa forma se pinta en 'muted' en vez de entrar en la clase.
+    const t = /^[a-z][a-z-]*$/.test(String(tono || '')) ? tono : 'muted';
     return `<span class="inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-lg text-xs font-semibold bg-telecab-${t}/15 text-telecab-${t} border border-telecab-${t}/30">${esc(texto)}</span>`;
   }
 

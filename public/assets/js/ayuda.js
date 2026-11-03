@@ -51,7 +51,7 @@
     || global.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
   const esc = s => String(s == null ? '' : s)
-    .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function crear() {
     if (globo) return globo;
