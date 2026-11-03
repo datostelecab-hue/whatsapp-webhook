@@ -239,6 +239,22 @@ nocturna se desplazaría **una hora en invierno y dos en verano**.
 
 **Remedio:** `PARTES_MADRID` con `Intl.DateTimeFormat` y `timeZone: 'Europe/Madrid'`.
 
+### `Intl.formatToParts` dentro de un bucle bloquea el servidor
+
+`services/flotaViva/repartoTurnos.js`
+
+El remedio de arriba es correcto, pero **caro**: cada `formatToParts` cuesta unos
+4 µs y monta un array de objetos. El reparto de turnos lo llamaba unas veinte
+veces por cada tramo de trabajo, y con miles de tramos eran **440 ms de CPU por
+cada carga de Control · En directo** (03/11/2026), la mitad de la petición. Es
+JavaScript síncrono: mientras dura, Node no contesta a ninguna otra petición.
+
+**Remedio:** el desfase de Madrid solo cambia en horas en punto UTC (el cambio de
+hora es a las 01:00 UTC). Se le pregunta a `Intl` **una vez por hora**, se guarda
+en un `Map` y el resto es `new Date(ms + desfase)` con `getUTC*`. Mismo resultado
+en 296.000 instantes comprobados, 28 veces más rápido. Para una fecha suelta,
+`Intl` directo sigue bien; dentro de un bucle sobre tramos, no.
+
 ### La jornada operativa: cinco horas ciegas cada noche
 
 `modules/Control/cockpit.service.js`

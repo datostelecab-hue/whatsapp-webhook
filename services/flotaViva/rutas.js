@@ -1212,7 +1212,10 @@ async function actividadDeVariosTurnos(dia, turnos) {
     const [hIni, off, hFin] = TURNOS[t];
     return { codigo: t, hIni, off, hFin };
   });
-  const km = await kmPorVentanas(dia, ventanas).catch(e => {
+  // SIN `await`: los km se piden y, mientras llegan, cada turno ya va leyendo
+  // sus tramos, que no los necesitan. Esperar a los km antes de empezar era
+  // poner en fila dos cosas independientes: 500 ms → 365 ms (03/11/2026).
+  const km = kmPorVentanas(dia, ventanas).catch(e => {
     // Si la pasada única falla, cada turno se lo pregunta por su cuenta: es más
     // lento, pero la pantalla sigue en pie. Un atajo que se lleva la pantalla
     // por delante cuando falla no es un atajo.
@@ -1221,7 +1224,7 @@ async function actividadDeVariosTurnos(dia, turnos) {
   });
 
   const hechos = await Promise.all(lista.map(t =>
-    actividadPorConductor(dia, t, km ? (km.get(t) || []) : null)));
+    actividadPorConductor(dia, t, km.then(m => (m ? (m.get(t) || []) : null)))));
   return new Map(lista.map((t, i) => [t, hechos[i]]));
 }
 
@@ -1317,8 +1320,11 @@ async function actividadPorConductor(dia, turno = 'dia', kmYaHechos = null) {
   // Un trayecto cuenta en la ventana donde EMPIEZA, igual que en el resto del ERP.
   // SI LOS KM YA VIENEN HECHOS, no se vuelve a preguntar. Es el caso del
   // cockpit, que pide cuatro ventanas del mismo día: `kmPorVentanas` las
-  // resuelve todas en una pasada y aquí solo se recogen las de esta.
-  const rk = kmYaHechos ? { rows: kmYaHechos } : await db.consulta(
+  // resuelve todas en una pasada y aquí solo se recogen las de esta. Pueden
+  // llegar como PROMESA (se piden a la vez que los tramos de arriba); si esa
+  // pasada falló, llega null y este turno se los pregunta por su cuenta.
+  const kmHechos = kmYaHechos ? await kmYaHechos : null;
+  const rk = kmHechos ? { rows: kmHechos } : await db.consulta(
     `WITH v AS (
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan

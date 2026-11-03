@@ -273,6 +273,28 @@ Y si la pasada única falla, cada turno vuelve a preguntárselo por su cuenta: m
 > [!warning] El reloj bajó menos que el trabajo
 > De 3,9 s a 3,3 s de mediana, con las vueltas entre 2,8 y 7,2 s. Lo que de verdad cambió es que la base hace **la mitad de trabajo**, y eso lo nota todo lo demás que la comparte —la ingesta de cada cinco minutos, las otras pantallas—, no solo esta.
 
+### La mitad del tiempo no era SQL: era una fecha (03/11/2026)
+
+Camilo: «la que más demora actualmente es control de tráfico». Medido en local con la copia de producción, en días ya cerrados: `/control/api/directo` tardaba **1,05–1,34 s** en cada llamada, y la pantalla la vuelve a pedir entera cada 45 s.
+
+La línea de tiempo de las consultas lo dejó claro: **la última acababa a los 568 ms y la respuesta salía a los 1.129**. El medio segundo que faltaba era JavaScript, y el perfil de CPU lo puso en una sola función: `partes()` de `services/flotaViva/repartoTurnos.js`, **440 ms por carga**. Llamaba a `Intl.DateTimeFormat.formatToParts` unas veinte veces por cada tramo de trabajo desde el mediodía de la víspera —miles de tramos—, y mientras tanto **el servidor no atendía a nadie más**: ni el refresco de 10 s del ahora, ni a otro operador, ni otra pantalla. → [[Trampas conocidas]]
+
+Dos arreglos, ninguno toca un número:
+
+- **El desfase de Madrid, una vez por hora.** Solo cambia en horas en punto UTC, así que se le pregunta a `Intl` una vez por hora y se guarda; lo demás es aritmética con `getUTC*`. Comprobado contra `Intl` en **296.000 instantes**, los cuatro cambios de hora de 2025-2026 segundo a segundo: ni uno distinto, y **28 veces más rápido**.
+- **Los km ya no esperan.** `actividadDeVariosTurnos` pedía los km de las cuatro ventanas y, *después*, los tramos de cada turno, que no los necesitan. Ahora van a la vez: esa rama baja de **500 a 365 ms**.
+
+| Día (cerrado) | antes | ahora |
+|---|---|---|
+| 26/10/2026 | 1.010 ms | **539 ms** |
+| 25/10/2026 (cambio de hora) | 1.150 ms | **623 ms** |
+| 24/10/2026 | 1.294 ms | **722 ms** |
+
+> [!note] Que dan lo mismo está comprobado
+> `enDirecto` de los tres días, con el código de `HEAD` y con el nuevo, volcado a JSON ordenado: **idéntico** salvo los campos `segundos` (el «hace cuánto» de cada coche, que avanza lo que tarda en arrancar el segundo proceso). El 25/10 es el día del cambio de hora, la prueba más dura para la cuenta nueva.
+
+El reparto lo usan también Visibilidad, el panel de Inicio, el Reporte de horas, el de turnos y Barcelona: todos heredan la mejora sin tocarlos. La Bitácora no, porque lee su histórico sellado.
+
 ## Ver también
 
 [[Control]] · [[Control Alertas]] · [[Control Reportes]] · [[Flota viva]] · [[BOLT]] · [[Mapon]] · [[Jornada y turnos]] · [[Glosario]]
