@@ -325,7 +325,10 @@
       if (r.status !== 'ok') aviso(r.msg || 'No se pudo cambiar el estado', 'text-telecab-red');
       cargar();
     } else if (res) {
-      if (!confirm('¿Enviar una nueva contraseña provisional a ' + res.dataset.email + '?')) return;
+      if (!(await Dialogo.confirmar({
+        titulo: 'Nueva contraseña provisional', tono: 'aviso', si: 'Enviar la provisional', no: 'Cancelar',
+        texto: 'Para ' + res.dataset.email + '. La que tenga ahora deja de valer y se le cierran las sesiones abiertas; al entrar con la provisional se le pedirá crear otra.',
+      }))) return;
       const r = await api('/usuarios/reset', { email: res.dataset.email });
       if (r.status !== 'ok') return aviso(r.msg || 'No se pudo resetear', 'text-telecab-red');
       if (r.correoEnviado) aviso('Nueva provisional enviada por correo a ' + res.dataset.email + '.', 'text-telecab-green');

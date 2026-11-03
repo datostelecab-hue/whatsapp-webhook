@@ -422,7 +422,11 @@ $('#sem-hoy').addEventListener('click', () => { if (SEMANA !== 0) { SEMANA = 0; 
 let _pollTurnos = null;
 $('#lista-personas').addEventListener('click', async e => {
   const b = e.target.closest('.btn-turno'); if (!b || b.disabled) return;
-  if (!confirm('¿Enviarle el aviso de turnos por WhatsApp? Al pulsar «Ver mis turnos» verá los suyos de ese día a 7 días.')) return;
+  const p = personas().find(x => String(x.id) === String(b.dataset.id)) || {};
+  if (!(await Dialogo.confirmar({
+    titulo: `Enviar sus turnos a ${p.nombre || b.dataset.id}`, si: 'Enviar', no: 'Cancelar',
+    texto: `Le llega el aviso por WhatsApp${p.telefono ? ' al ' + p.telefono : ''}. Al pulsar «Ver mis turnos» verá los suyos de ese día a 7 días.`,
+  }))) return;
   const o = b.innerHTML; b.disabled = true; b.innerHTML = 'Enviando…';
   try {
     const r = await fetch('/cobertura/enviar-turnos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idBolt: b.dataset.id, semana: SEMANA }) });
@@ -437,7 +441,14 @@ $('#btn-turnos-todos').addEventListener('click', async () => {
   // Los de baja no entran en la cuenta porque tampoco entran en el envío (lo
   // decide el servidor, esto solo es no mentir sobre cuántos van a recibirlo).
   const n = personas().filter(p => p.telefono && !p.deBaja && p.dias.some(d => d.trabaja)).length;
-  if (!confirm(`¿Enviar el aviso de turnos a los ${n} conductores que trabajan ${enVentana() ? 'de hoy a 7 días' : 'esa semana'} y tienen teléfono?`)) return;
+  // A CIENTOS DE PERSONAS Y SIN VUELTA ATRÁS (y Meta cobra cada plantilla que
+  // no vaya dentro de la ventana de 24 h): en rojo, con el número delante, y
+  // Enter cancela.
+  if (!(await Dialogo.confirmar({
+    titulo: `Enviar los turnos a ${n} conductor${n === 1 ? '' : 'es'}`, tono: 'peligro', enterCancela: true,
+    si: `Enviar ${n} WhatsApp`, no: 'Cancelar',
+    texto: `Les llega el aviso a los que trabajan ${enVentana() ? 'de hoy a 7 días' : 'esa semana'} y tienen teléfono. Los mensajes no se pueden retirar una vez enviados.`,
+  }))) return;
   $('#btn-turnos-todos').disabled = true;
   try {
     const r = await fetch('/cobertura/enviar-turnos-todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semana: SEMANA }) });

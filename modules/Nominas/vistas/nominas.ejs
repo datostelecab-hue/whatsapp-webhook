@@ -189,28 +189,65 @@ $('#ano').addEventListener('change', cargar);
 $('#btn-recargar').addEventListener('click', cargar);
 
 // ── Probar una config sin guardarla ──
-$('#btn-probar').addEventListener('click', async () => {
-  if (FUENTE === 'congelada' && !confirm('Este mes está CONGELADO. Lo que pruebes no cambia lo congelado: es solo para ver qué saldría. ¿Seguir?')) return;
+// LAS TRES ACCIONES DE LA NÓMINA (03/11/2026): con el Dialogo de la casa, no
+// con el confirm() del navegador —que salía con el dominio arriba y se aceptaba
+// con Enter por reflejo—, diciendo cuántos conductores toca, y sin quedarse en
+// «Congelando…» si la red falla: el botón se desactiva mientras trabaja y el
+// error se dice.
+const postNomina = async (url, cuerpo) =>
+  (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) })).json();
+const conductoresEnPantalla = () => (RESULTADO && RESULTADO.filas ? RESULTADO.filas.filter(f => !f.ett).length : 0);
+
+$('#btn-probar').addEventListener('click', async e => {
+  const b = e.currentTarget;
+  if (FUENTE === 'congelada' && !(await Dialogo.confirmar({
+    titulo: `${MESES[mes()-1]} ${ano()} está congelado`, tono: 'aviso', si: 'Probar', no: 'Cancelar',
+    texto: 'Lo que pruebes no cambia lo congelado: es solo para ver qué saldría con esos valores.',
+  }))) return;
+  b.disabled = true;
   msg('Recalculando con esos valores…');
-  const r = await (await fetch('/nominas/calcular',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),config:recogerConfig()})})).json();
-  if (r.status==='ok') { RESULTADO = r.resultado; FUENTE = 'prueba'; render(); msg('Simulación con esos valores. No está guardado ni congelado.'); }
-  else msg(''+(r.msg||'error'), true);
+  try {
+    const r = await postNomina('/nominas/calcular', { mes: mes(), ano: ano(), config: recogerConfig() });
+    if (r.status==='ok') { RESULTADO = r.resultado; FUENTE = 'prueba'; render(); msg('Simulación con esos valores. No está guardado ni congelado.'); }
+    else msg(''+(r.msg||'error'), true);
+  } catch (err) { msg('No se pudo recalcular: ' + err.message, true); }
+  finally { b.disabled = false; }
 });
 
 // ── Congelar / descongelar ──
-$('#btn-congelar').addEventListener('click', async () => {
+$('#btn-congelar').addEventListener('click', async e => {
+  const b = e.currentTarget;
   const dm = RESULTADO && RESULTADO.mesDatosNombre ? ` (trabajo de ${RESULTADO.mesDatosNombre})` : '';
-  if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}${dm}?\n\nSe guardan estos números tal cual. A partir de ahí no se recalculan, pase lo que pase con los datos.`)) return;
+  const n = conductoresEnPantalla();
+  if (!(await Dialogo.confirmar({
+    titulo: `Congelar la nómina de ${MESES[mes()-1]} ${ano()}${dm}`, tono: 'aviso', si: 'Congelar', no: 'Cancelar',
+    texto: `Se guardan los números de ${n} conductor${n === 1 ? '' : 'es'} tal cual. A partir de ahí no se recalculan, pase lo que pase con los datos.`,
+  }))) return;
+  b.disabled = true;
   msg('Congelando…');
-  const r = await (await fetch('/nominas/congelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
-  if (r.status==='ok') { msg(`Congelada · ${r.conductores} conductores · total ${eur(r.total)}`); cargar(); }
-  else msg(''+(r.msg||'error'), true);
+  try {
+    const r = await postNomina('/nominas/congelar', { mes: mes(), ano: ano() });
+    if (r.status==='ok') { msg(`Congelada · ${r.conductores} conductores · total ${eur(r.total)}`); cargar(); }
+    else { msg(''+(r.msg||'error'), true); b.disabled = false; }
+  } catch (err) { msg('No se pudo congelar: ' + err.message, true); b.disabled = false; }
 });
-if ($('#btn-descongelar')) $('#btn-descongelar').addEventListener('click', async () => {
-  if (!confirm(`¿Descongelar ${MESES[mes()-1]} ${ano()}?\n\nSe BORRA la nómina guardada y vuelve a calcularse desde los datos de hoy. Si ya se pagó, los números pueden salir distintos.`)) return;
-  const r = await (await fetch('/nominas/descongelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
-  if (r.status==='ok') { msg(r.borrada?'Descongelada. Vuelve a calcularse en vivo.':'No había ninguna congelada.'); cargar(); }
-  else msg(''+(r.msg||'error'), true);
+if ($('#btn-descongelar')) $('#btn-descongelar').addEventListener('click', async e => {
+  const b = e.currentTarget;
+  const n = conductoresEnPantalla();
+  const cuando = RESULTADO && RESULTADO.congeladaAt
+    ? ` el ${fecha(RESULTADO.congeladaAt)}${RESULTADO.congeladaPor ? ' por ' + RESULTADO.congeladaPor : ''}` : '';
+  if (!(await Dialogo.confirmar({
+    titulo: `Descongelar ${MESES[mes()-1]} ${ano()}`, tono: 'peligro', enterCancela: true,
+    si: `Borrar la nómina de ${n} conductor${n === 1 ? '' : 'es'}`, no: 'Cancelar',
+    texto: `Se BORRA la nómina que se congeló${cuando}, con los números de ${n} conductor${n === 1 ? '' : 'es'}, y vuelve a calcularse con los datos de hoy.\n\nSi ya se pagó, los números pueden salir distintos de lo pagado.`,
+  }))) return;
+  b.disabled = true;
+  try {
+    const r = await postNomina('/nominas/descongelar', { mes: mes(), ano: ano() });
+    if (r.status==='ok') { msg(r.borrada?'Descongelada. Vuelve a calcularse en vivo.':'No había ninguna congelada.'); cargar(); }
+    else msg(''+(r.msg||'error'), true);
+  } catch (err) { msg('No se pudo descongelar: ' + err.message, true); }
+  finally { b.disabled = false; }
 });
 
 $('#btn-descargar').addEventListener('click', e => { e.preventDefault(); window.open(`/nominas/nomina.xlsx?mes=${mes()}&ano=${ano()}`,'_blank'); });

@@ -869,7 +869,10 @@ async function sondearProgreso() {
 }
 $('#a-procesar').onclick = async () => {
   const p = DATA.pendientes || []; if (!p.length) return;
-  if (!confirm(`¿Procesar ${p.length} día(s)? Es pesado: consulta el recorrido de cada coche en Mapon.`)) return;
+  if (!(await Dialogo.confirmar({
+    titulo: `Procesar ${p.length} día${p.length === 1 ? '' : 's'}`, si: 'Procesar', no: 'Cancelar',
+    texto: 'Es pesado: consulta el recorrido de cada coche en Mapon.',
+  }))) return;
   $('#a-procesar').disabled = true;
   try {
     // Se manda la LISTA exacta de días pendientes: mandando solo los extremos se

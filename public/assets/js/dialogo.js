@@ -7,6 +7,7 @@
 //
 //   await Dialogo.aviso({ titulo, texto, tono })                  → nada
 //   await Dialogo.confirmar({ titulo, texto, si, no, tono })      → true / false
+//         (+ enterCancela: true si no tiene vuelta atrás: Enter cancela)
 //   await Dialogo.elegir({ titulo, texto, opciones })             → el valor elegido, o null
 //
 // Los tres devuelven una promesa. Es la diferencia importante con `confirm()`,
@@ -93,6 +94,9 @@
       const ficha = { cerrar };
       abierto = ficha;
 
+      // Enter y el foco van al botón principal, salvo que una opción se pida
+      // para Enter (`porEnter`): ver `enterCancela` en confirmar().
+      const hayPorEnter = opciones.some(x => x.porEnter);
       opciones.forEach((o, i) => {
         const ultimo = i === opciones.length - 1;
         const tn = TONOS[o.tono] || null;
@@ -106,7 +110,7 @@
             : 'bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold/40');
         b.textContent = o.texto;
         b.addEventListener('click', () => cerrar(o.valor));
-        if (o.principal || (ultimo && !opciones.some(x => x.principal))) b.dataset.principal = '1';
+        if (hayPorEnter ? o.porEnter : (o.principal || (ultimo && !opciones.some(x => x.principal)))) b.dataset.principal = '1';
         barra.appendChild(b);
       });
 
@@ -137,13 +141,20 @@
     });
   };
 
-  /** Una pregunta de sí o no. Sustituye a `confirm()`, pero con `await`. */
+  /**
+   * Una pregunta de sí o no. Sustituye a `confirm()`, pero con `await`.
+   *
+   * `enterCancela: true` para lo que no tiene vuelta atrás (borrar una nómina
+   * congelada, mandar cientos de WhatsApp): Enter y el foco van a «Cancelar», y
+   * para hacerlo hay que pulsar el botón con el ratón. Aceptar con Enter por
+   * reflejo es justo lo que no puede pasar ahí.
+   */
   const confirmar = o => {
     const c = typeof o === 'string' ? { texto: o } : (o || {});
     return abrir({
       tono: 'pregunta', ...c,
       opciones: [
-        { texto: c.no || 'Cancelar', valor: false },
+        { texto: c.no || 'Cancelar', valor: false, porEnter: !!c.enterCancela },
         { texto: c.si || 'Aceptar', valor: true, principal: true, tono: c.tono },
       ],
       valorAlCerrar: false,
