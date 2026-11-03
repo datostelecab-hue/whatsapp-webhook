@@ -49,24 +49,30 @@ async function paraLaPantalla() {
  */
 async function lista({ momento, soloVigentes } = {}) {
   const opciones = { momento: momento || null, soloVigentes: !!soloVigentes };
-  // EL PROMEDIO DE HORAS, PARA EL EXCEL (Camilo, 14/10/2026): las de BOLT MÁS
-  // las justificadas, del mes corrido, y cada día que no salió cuenta como un
-  // día de 0 h («los días de ausencia cuentan como 0»). Es la media «contando la
-  // ausencia» de la bitácora, y por eso se le pide a ella: si lo contara
-  // Plantilla por su cuenta, las dos pantallas acabarían diciendo cosas
-  // distintas.
+  const [filas, resumen] = await Promise.all([con.listar(opciones), con.resumen(opciones)]);
+  return { filas, resumen };
+}
+
+/**
+ * EL PROMEDIO DE HORAS DEL MES, SOLO PARA EL EXCEL (Camilo, 14/10/2026): las de
+ * BOLT MÁS las justificadas, del mes corrido, y cada día que no salió cuenta
+ * como un día de 0 h («los días de ausencia cuentan como 0»). Es la media
+ * «contando la ausencia» de la bitácora, y por eso se le pide a ella: si lo
+ * contara Plantilla por su cuenta, las dos pantallas dirían cosas distintas.
+ *
+ * VA APARTE DE LA LISTA (03/11/2026). Iba dentro de `lista`, y para tres
+ * columnas que solo salen en el Excel cada apertura de Plantilla rehacía la
+ * bitácora entera (su caché dura 3 minutos): unos 380 ms en local, bastante más
+ * en la base de Render. Ahora la pantalla lo pide al pulsar «Excel».
+ *
+ * Devuelve { desde, hasta, porId: { id: { media, dias, ausencias } } }.
+ */
+async function mediaDelMes({ momento } = {}) {
   const bitacora = require('../Operaciones/bitacora.service');
-  const [filas, resumen, media] = await Promise.all([con.listar(opciones), con.resumen(opciones),
-    bitacora.mediaDelMes({ hasta: momento })
-      .catch(e => { console.error('⚠️  [PLANTILLA] media por día de la bitácora:', e.message); return null; })]);
-  // Sin media (falló la bitácora), la lista sale igual: la columna, vacía.
-  if (media) filas.forEach(f => {
-    const h = media.porId.get(String(f.id));
-    f.horas_dia_media = h ? h.conAus : null;
-    f.dias_trabajados_mes = h ? h.dias : null;
-    f.ausencias_mes = h ? h.ausencias : null;
-  });
-  return { filas, resumen, mediaDelMes: media && { desde: media.desde, hasta: media.hasta } };
+  const m = await bitacora.mediaDelMes({ hasta: momento || undefined });
+  const porId = {};
+  m.porId.forEach((h, id) => { porId[id] = { media: h.conAus, dias: h.dias, ausencias: h.ausencias }; });
+  return { desde: m.desde, hasta: m.hasta, porId };
 }
 
 /** La ficha administrativa. Revienta si no existe, en vez de devolver nada. */
@@ -556,7 +562,7 @@ const descargarDocumento = id => docs.descargar(Number(id));
 const documentosQueVencen = dias => docs.porVencer({ dias });
 
 module.exports = {
-  paraLaPantalla, lista, ficha, hoja, catalogos, campos, buscarPersona,
+  paraLaPantalla, lista, mediaDelMes, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,

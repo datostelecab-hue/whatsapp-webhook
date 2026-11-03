@@ -78,6 +78,17 @@ router.get('/api/lista', async (req, res) => {
   }
 });
 
+// El promedio de horas del mes, para las tres columnas del Excel. Va aparte de
+// la lista para no rehacer la bitácora cada vez que alguien abre Plantilla.
+router.get('/api/media-mes', async (req, res) => {
+  try {
+    res.json({ status: 'ok', ...(await plantilla.mediaDelMes({ momento: momentoDe(req) })) });
+  } catch (e) {
+    console.error('❌ [PLANTILLA] /api/media-mes:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 router.get('/api/ficha/:id', async (req, res) => {
   try {
     res.json(await plantilla.ficha(req.params.id, { momento: momentoDe(req) }));
