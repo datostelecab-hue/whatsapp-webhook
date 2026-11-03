@@ -399,6 +399,24 @@ cobertura.service  datos(semana) · conductorPorTelefono(tel)
 - **El permiso de verdad está en el servidor** (`/planificador/editar` sobre cualquier petición que no sea un GET). La pantalla envuelve `fetch` entera en vez de apagar botones uno a uno: en este cuadrante se escribe desde treinta sitios y una lista de botones se queda corta el día que se añada el treinta y uno.
 - Los días de la semana viven **una sola vez** en `services/nucleo.js` (`DIAS_CORTOS`, `DIAS_LARGOS`, `LETRAS_DIA`). Había seis copias, y la del motor obligaba al tablero a llamar hacia arriba solo para saber cómo se abrevia "miércoles".
 
+### Un guardado repinta solo lo que cambió (03/11/2026)
+
+Cada guardado devuelve el tablero entero (~510 KB) y `aplicar()` rehacía el cuadrante entero: ~7.800 nodos, y lo caro no era el JavaScript sino **recalcular estilos y maqueta**. Además, al llegar el semáforo de avisos se volvía a pintar todo para cambiar unos chips. Medido en un portátil rápido: ~210 ms de pantalla congelada por guardado; en uno de oficina, bastante más.
+
+Ahora cada sección del cuadrante lleva una **firma** (`firmaSeccion`): todo lo que su pintado lee, en una cadena. Si no cambia, la sección que ya está en pantalla se queda, con sus botones; `ponerSecciones` coloca las nuevas **sin desenganchar** las que se quedan (un nodo que sale del documento pierde su estilo calculado). El semáforo rellena sus chips en el sitio (`pintarChipsAviso`).
+
+| | antes | ahora |
+|---|---|---|
+| Guardado (`aplicar`) | ~128 ms | **~45 ms** |
+| Al llegar el semáforo | ~81 ms (todo otra vez) | **~1 ms** (los chips) |
+| Buscar, filtrar, volver a pintar sin cambios | ~81 ms | **~3 ms** |
+| Secciones rehechas al cambiar el estado de un coche | 31 de 31 | **1** |
+
+> [!warning] Si el pintado de una sección empieza a leer algo nuevo, va a la firma
+> La firma lleva sus coches, la ficha de su gente (`porId`), la **libranza de sus CT** —que sale de los coches de *otros* cuadrantes: cambiar el descanso de un coche del 13 cambia la cabecera del 12—, la vista, las columnas, el día y la mediana de horas. Lo que se deja fuera a propósito es `iceberg.orden`: un coche que cambia de estado renumera a los 46 y eso solo ordena. Un dato que el pintado lea y la firma no, y esa sección se queda con lo viejo **sin ningún error**.
+
+Comprobado ese día con una prueba que, cada vez que reutilizaba una pieza, la rehacía también desde cero y comparaba su HTML: cero diferencias en nueve cambios fabricados (nombre, ausencia, bloqueo de motor, letra, mediana, estado, CT compartido entre cuadrantes, columna de refuerzo), en buscar, filtrar, cambiar de base y de vista, y en dos guardados reales. Una sección estropeada a mano sí la cazó. Al final, el cuadrante montado a trozos y el recargado desde cero eran **idénticos byte a byte** (661.678 bytes).
+
 ## Lo que aún no está bien
 
 `modules/Planificacion/planificador.repo.js` son ~2.262 líneas con reglas dentro que son de servicio: qué pasa al cambiar un coche, cómo se encadena un relevo. Se movió el módulo primero — mover y partir a la vez es como se pierde una ruta sin enterarse.

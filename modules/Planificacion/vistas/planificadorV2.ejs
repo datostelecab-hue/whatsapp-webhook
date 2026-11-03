@@ -726,11 +726,11 @@
     const mio = ++_avToken;
     AV = null;
     const off = Math.round((new Date(T.lunes + 'T00:00:00') - new Date(lunesDeIso(hoyISO()) + 'T00:00:00')) / 6048e5);
-    if (off < 0 || off > 8) { pintar(); return; }
+    if (off < 0 || off > 8) { pintarChipsAviso(); return; }
     try {
       const j = await (await fetch('/cobertura/api/avisos-estado?semana=' + off)).json();
       if (mio !== _avToken) return;                    // llegó tarde: ya se mira otra semana
-      if (j.status === 'ok') { AV = j; pintar(); }
+      if (j.status === 'ok') { AV = j; pintarChipsAviso(); }
     } catch (_) { /* sin registro no hay semáforo, y ya está */ }
   }
 
@@ -764,6 +764,17 @@
     return `<span class="${base} bg-telecab-green/15 text-telecab-green border-telecab-green/40"
       title="${esc(`Avisado ${u.ultimoAt}${u.ultimoPor ? ' por ' + u.ultimoPor : ''} · ${veces} envío(s) · sin cambios desde entonces`)}">
       <i class="fa-solid fa-check"></i> Avisado ${esc(u.ultimoAt)}${u.ultimoPor ? ' · ' + esc(u.ultimoPor) : ''}${veces > 1 ? ` · ×${veces}` : ''}</span>`;
+  }
+
+  // EL CHIP VA EN SU PROPIO HUECO (03/11/2026). El semáforo llega aparte y
+  // después del tablero; antes, al llegar, se repintaba el cuadrante ENTERO
+  // solo para cambiar estos chips (unos 80 ms de pantalla congelada en cada
+  // guardado). Ahora se rellena el hueco y nada más. `contents` hace que el
+  // envoltorio no cuente en la fila: el chip sigue siendo un hijo más del flex.
+  const huecoChipAviso = lista => `<span data-chip-aviso class="contents">${chipAvisoCuadrante(lista)}</span>`;
+  const guardarListaChip = (cab, lista) => { const h = cab.querySelector('[data-chip-aviso]'); if (h) h._lista = lista; };
+  function pintarChipsAviso() {
+    document.querySelectorAll('#cuadrante [data-chip-aviso]').forEach(h => { h.innerHTML = chipAvisoCuadrante(h._lista || []); });
   }
 
   // ── KPIs y subtítulo ────────────────────────────────────────────────────────
@@ -1286,7 +1297,7 @@
       ${horasDelCuadrante(cu)}
       <button data-bloque class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50 transition"><i class="fa-solid fa-plus"></i> Bloque</button>
       <div class="flex items-center gap-2 ml-1">${chipCT(ctDia, 'día')}${chipCT(ctNoche, 'noche')}</div>
-      ${lista.length ? `<span class="ml-auto"></span>${chipAvisoCuadrante(lista)}<button data-waturnos class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
+      ${lista.length ? `<span class="ml-auto"></span>${huecoChipAviso(lista)}<button data-waturnos class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
               title="Enviar por WhatsApp a la gente de este cuadrante sus turnos de la semana que estás mirando">
         <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>` : ''}
       <button data-borrar-cua class="${lista.length ? '' : 'ml-auto '}text-xs text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i> borrar cuadrante</button>`;
@@ -1298,6 +1309,7 @@
     cab.querySelector('[data-ct="noche"]').addEventListener('click', () =>
       asignarCTCuadrante(cu.id, 'noche', conCT, (ctNoche && ctNoche !== 'varios') ? ctNoche.id : null));
     cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(cu.id, cu.nombre));
+    guardarListaChip(cab, lista);
     const bZona = cab.querySelector('[data-zona-cua]');
     if (bZona) bZona.addEventListener('click', () => cambiarZonaDe(cu, lista.length));
     sec.appendChild(cab);
@@ -1319,11 +1331,12 @@
     cab.innerHTML = `
       <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-muted flex items-center gap-2">
         <i class="fa-solid fa-car-side"></i>Coches sueltos <span class="font-normal normal-case">${lista.length}</span></h3>
-      <span class="ml-auto"></span>${chipAvisoCuadrante(lista)}
+      <span class="ml-auto"></span>${huecoChipAviso(lista)}
       <button data-waturnos class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
               title="Enviar por WhatsApp a la gente de estos coches sus turnos de la semana que estás mirando">
         <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>`;
     cab.querySelector('[data-waturnos]').addEventListener('click', e => enviarTurnosCuadrante('coches sueltos', lista, e.currentTarget));
+    guardarListaChip(cab, lista);
     sec.appendChild(cab);
     sec.appendChild(cochesEnVista(lista, false));
     return sec;
@@ -1415,11 +1428,10 @@
 
     const hayAlgo = cuadrantes.length || sueltos.length;
     const b = baseActual();
-    cont.innerHTML = '';
     if (!hayAlgo && b && !filtrando) {
       cont.classList.remove('hidden');
       $('#vacio').classList.add('hidden');
-      cont.appendChild(baseVacia(b));
+      ponerSecciones(cont, [{ crear: () => baseVacia(b) }]);
       return;
     }
     $('#vacio').classList.toggle('hidden', hayAlgo > 0);
@@ -1428,26 +1440,102 @@
     // Sin base abierta, cada base lleva su cabecera; dentro de cada base, una
     // franja por escalón. Buscando, solo la cabecera de base: con pocos
     // resultados, las franjas serían más ruido que ayuda.
+    const piezas = [];
     let base = null, escalon = null;
     cuadrantes.forEach(cu => {
       const z = zonaDe(cu);
       if (!ZONA && z !== base) {
         base = z; escalon = null;
-        cont.appendChild(cabeceraBase(z));
+        piezas.push({ clave: 'base:' + z, crear: () => cabeceraBase(z) });
       }
       const e = escalonDe(cu);
       if (!buscando && e !== escalon) {
         escalon = e;
-        cont.appendChild(franjaEscalon(e, cuadrantes.filter(x => zonaDe(x) === z && escalonDe(x) === e), porCua));
+        const delEscalon = cuadrantes.filter(x => zonaDe(x) === z && escalonDe(x) === e);
+        piezas.push({ clave: 'franja:' + z + ':' + e, crear: () => franjaEscalon(e, delEscalon, porCua) });
       }
-      cont.appendChild(seccionCuadrante(cu, porCua.get(String(cu.id)) || []));
+      const lista = porCua.get(String(cu.id)) || [];
+      piezas.push({ clave: 'cu:' + cu.id, firma: firmaSeccion(cu, lista), crear: () => seccionCuadrante(cu, lista) });
     });
     // Los coches sin cuadrante, al final: con todas las bases a la vista, bajo
     // su propia cabecera para que no parezcan de la última base.
     if (sueltos.length) {
-      if (!ZONA) cont.appendChild(cabeceraBase(SIN_BASE));
-      cont.appendChild(seccionSueltos(sueltos));
+      if (!ZONA) piezas.push({ clave: 'base:' + SIN_BASE, crear: () => cabeceraBase(SIN_BASE) });
+      piezas.push({ clave: 'sueltos', firma: firmaSeccion(null, sueltos), crear: () => seccionSueltos(sueltos) });
     }
+    ponerSecciones(cont, piezas);
+  }
+
+  // ── REPINTAR SOLO LO QUE HA CAMBIADO (03/11/2026) ───────────────────────────
+  //
+  // Cada guardado trae el tablero entero y antes se rehacía el cuadrante entero:
+  // unos 7.800 nodos y, sobre todo, recalcular sus estilos y su maqueta, que era
+  // lo caro (unos 100 de los 130 ms que se quedaba congelada la pantalla en un
+  // portátil rápido). Pero un guardado toca uno o dos cuadrantes de treinta.
+  //
+  // Cada sección lleva una FIRMA: todo lo que su pintado lee, en una cadena. Si
+  // no ha cambiado, la sección que ya está en pantalla vale tal cual, con sus
+  // botones. Las piezas pequeñas (cabeceras de base, franjas del iceberg) no
+  // llevan firma —cuentan cosas de toda la base—: se hacen fuera del documento,
+  // que es barato, y si salen IGUALES a la que ya está, se queda la de antes.
+  // Meter un nodo nuevo, aunque sea idéntico, obliga a maquetar de nuevo todo
+  // lo que va detrás.
+  let SECCIONES = new Map();   // clave → { firma, nodo }
+
+  // LA FIRMA: lo que leen seccionCuadrante/seccionSueltos y todo lo que llaman
+  // al pintar (sacado del código ese día). Sus coches; la ficha de su gente en
+  // porId (nombre, ausencias, letra, bloqueo de motor…); la libranza de sus CT,
+  // que sale de los coches de OTROS cuadrantes (libraCT); la vista y las
+  // columnas; el día y la fecha de hoy (las ausencias, «sin CT desde»); y la
+  // mediana de horas del título de cada coche. El chip de avisos NO: se rellena
+  // aparte (pintarChipsAviso). Si un día el pintado de una sección lee algo
+  // más, tiene que entrar aquí: si no, esa sección no se repintaría al cambiar.
+  //
+  // Lo que se deja FUERA: `iceberg.orden`, el puesto de cada coche en toda la
+  // flota. Un coche que cambia de estado los renumera a todos (46 de 46 en la
+  // prueba) y rehacía 25 secciones de 31 por un número que no se pinta: solo
+  // ordena, y el orden ya está en la firma —es el de la propia lista—.
+  const SIN_ORDEN = (k, v) => (k === 'orden' ? undefined : v);
+  function firmaSeccion(cu, lista) {
+    const gente = new Set();
+    lista.forEach(c => (c.personas || []).forEach(p => { if (p && p.id) gente.add(String(p.id)); }));
+    const conCT = lista.filter(c => !c.sinCT);
+    const libras = [2, 3].map(slot => {
+      const p = ctDelCuadrante(conCT, slot);
+      return p && p !== 'varios' ? libraCT(p) : '';
+    });
+    return JSON.stringify([cu, lista, [...gente].map(id => porId.get(id) || null), libras,
+      VISTA, !!(T && T.refuerzoVisible), DIA, hoyLocal(), ((T && T.resumen) || {}).horasEstimadas], SIN_ORDEN);
+  }
+
+  // Pone las piezas en orden SIN desenganchar las que se quedan: un nodo que
+  // sale del documento pierde sus estilos calculados y, al volver, se recalcula
+  // entero, que es justo lo que se quiere ahorrar. Primero se quitan las que
+  // sobran; luego cada pieza nueva entra delante de la que le toca. Una que se
+  // queda solo se mueve si cambia de puesto (el iceberg la sube o la baja).
+  function ponerSecciones(cont, piezas) {
+    const nuevas = new Map();
+    piezas.forEach(p => {
+      // Una clave repetida en la misma pasada no reutiliza nada: dos piezas con
+      // el mismo nodo dejarían una de ellas fuera de la pantalla.
+      if (p.clave && nuevas.has(p.clave)) p.clave = null;
+      const vieja = p.clave && SECCIONES.get(p.clave);
+      if (p.firma !== undefined) {
+        p.nodo = vieja && vieja.firma === p.firma ? vieja.nodo : p.crear();
+      } else {
+        p.nodo = p.crear();
+        if (vieja && vieja.nodo.outerHTML === p.nodo.outerHTML) p.nodo = vieja.nodo;
+      }
+      if (p.clave) nuevas.set(p.clave, { firma: p.firma, nodo: p.nodo });
+    });
+    const quedan = new Set(piezas.map(p => p.nodo));
+    [...cont.childNodes].forEach(n => { if (!quedan.has(n)) n.remove(); });
+    let cursor = cont.firstChild;
+    piezas.forEach(p => {
+      if (p.nodo === cursor) cursor = cursor.nextSibling;
+      else cont.insertBefore(p.nodo, cursor);
+    });
+    SECCIONES = nuevas;
   }
 
   function filaCoche(coche, enCuadrante, columnas = cols()) {
