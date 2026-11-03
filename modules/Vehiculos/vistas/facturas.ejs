@@ -104,9 +104,9 @@
 <script>
 (() => {
   const { fecha, etiqueta, esc, euros } = Listado.fmt;
-  const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
-  const TODAS_SEDES = <%- JSON.stringify(!!verTodasLasSedes) %>;
-  const EXIGE_DESDE = <%- JSON.stringify(exigeMatriculaDesde) %>;
+  const PUEDE = <%- json(!!puedeApuntar) %>;
+  const TODAS_SEDES = <%- json(!!verTodasLasSedes) %>;
+  const EXIGE_DESDE = <%- json(exigeMatriculaDesde) %>;
   const $ = s => document.querySelector(s);
 
   const eur = v => (v == null ? '—' : euros(v));

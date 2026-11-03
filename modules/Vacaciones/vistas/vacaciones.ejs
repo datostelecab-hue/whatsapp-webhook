@@ -3,10 +3,10 @@
 <script>
 (function () {
   const { esc, etiqueta } = Listado.fmt;
-  const R = <%- JSON.stringify(reglas || {}) %>;
+  const R = <%- json(reglas || {}) %>;
   // Quien aprueba vacaciones (una sola persona, db/189): solo para enseñar el
   // botón de cambiar. Lo que manda es el servidor.
-  const APRUEBA = <%- JSON.stringify(typeof aprueba !== 'undefined' && aprueba ? aprueba : { puede: false, quien: null }) %>;
+  const APRUEBA = <%- json(typeof aprueba !== 'undefined' && aprueba ? aprueba : { puede: false, quien: null }) %>;
 
   // Fechas de la base en 'AAAA-MM-DD' → dd/mm/aaaa, sin pasar por Date (un
   // DATE leído como Date puede caer en el día anterior).

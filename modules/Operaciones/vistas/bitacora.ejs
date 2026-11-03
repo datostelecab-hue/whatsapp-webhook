@@ -156,13 +156,13 @@
   const puedeJustificar = <%= puedeJustificar ? 'true' : 'false' %>;
   // A QUIÉN SE MANDA LA J (26/10/2026): Tráfico, RRHH o Taller. La aprueba esa
   // área en /justificantes. Ver DESTINOS en bitacora.service.js.
-  const DESTINOS_J = <%- JSON.stringify(destinosJ || []) %>;
+  const DESTINOS_J = <%- json(destinosJ || []) %>;
   // LA −J (db/227): constancia de un perjuicio a la empresa. No toca horas,
   // nómina ni letra; nace pendiente y se aprueba en /justificantes.
-  const CASUISTICAS_MENOS_J = <%- JSON.stringify(typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : []) %>;
+  const CASUISTICAS_MENOS_J = <%- json(typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : []) %>;
   // Las de una persona un día, del payload (las tres: aprobadas, pendientes y rechazadas).
   const menosJDe = (c, iso) => (((DATA && DATA.menosJ) || {})[c.conductorId] || {})[iso] || [];
-  const NOMBRE_J = Object.fromEntries((<%- JSON.stringify(tiposJ || []) %>).map(t => [t.codigo, t.etiqueta]));
+  const NOMBRE_J = Object.fromEntries((<%- json(tiposJ || []) %>).map(t => [t.codigo, t.etiqueta]));
   /** El selector de la casa con las tres de aquí, y la que ya tenga si vino de Control (BOLT, compañero). */
   const selectorDestino = (id, actual) => {
     const ops = DESTINOS_J.concat(actual && !DESTINOS_J.includes(actual) && NOMBRE_J[actual] ? [actual] : []);

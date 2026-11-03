@@ -145,10 +145,10 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const DEN = <%- JSON.stringify(denominaciones || []) %>;
-  const TIPOS = <%- JSON.stringify(tiposMovimiento || []) %>;
-  const SALIDAS = <%- JSON.stringify(salidasCaja || []) %>;
-  const SALIDAS_TODAS = <%- JSON.stringify(etiquetasSalida || salidasCaja || []) %>;
+  const DEN = <%- json(denominaciones || []) %>;
+  const TIPOS = <%- json(tiposMovimiento || []) %>;
+  const SALIDAS = <%- json(salidasCaja || []) %>;
+  const SALIDAS_TODAS = <%- json(etiquetasSalida || salidasCaja || []) %>;
   const PUEDE_NOMINA = <%= puedeNomina ? 'true' : 'false' %>;
 
   const nf = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

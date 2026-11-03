@@ -72,11 +72,11 @@
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const BASE = <%- JSON.stringify(base) %>;
+  const BASE = <%- json(base) %>;
   // LA PARTE DE LA BANDEJA (?grupo=), si se ha llegado desde un cuadro partido
   // de la barra (RRHH en pantalla grande): «Casos de nómina», «Vacaciones»…
   // «otros» es lo que no cae en ninguna.
-  const PARTES = <%- JSON.stringify(typeof partes !== 'undefined' ? partes : []) %>;
+  const PARTES = <%- json(typeof partes !== 'undefined' ? partes : []) %>;
   const GRUPO = (() => {
     const g = new URLSearchParams(location.search).get('grupo');
     if (!g || !PARTES.length) return null;
@@ -87,12 +87,12 @@
     const p = PARTES.find(x => x.clave === g);
     return p ? { etiqueta: p.etiqueta, pasa: s => p.subtipos.includes(s) } : null;
   })();
-  const YO   = <%- JSON.stringify(yo || '') %>;
+  const YO   = <%- json(yo || '') %>;
   // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026, db/189): Laura
   // Blanco. El resto ve sus tickets, se los queda, los enlaza y escribe en
   // ellos, pero no los aplica, ni los cierra ni los saca de la bandeja. El
   // candado de verdad está en el servidor; aquí solo no se ofrecen.
-  const VAC  = <%- JSON.stringify(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
+  const VAC  = <%- json(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
 
   let TICKETS = [], SUBTIPOS = [], ESTADOS = [], AUSENCIAS = [], PERSONAS = null, TIPOS_PERMISO = [];
 

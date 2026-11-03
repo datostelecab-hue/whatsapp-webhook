@@ -330,7 +330,7 @@
   // menu de un coche, el panel de eventos, los relevos— y una lista de botones
   // se queda corta el dia que se añada el treinta y uno. Asi cualquier camino
   // que intente escribir se para en el mismo sitio y con el mismo aviso.
-  const PUEDE_EDITAR = <%- JSON.stringify(!!puedeEditar) %>;
+  const PUEDE_EDITAR = <%- json(!!puedeEditar) %>;
   if (!PUEDE_EDITAR) {
     const fetchReal = window.fetch.bind(window);
     let avisando = false;
@@ -353,7 +353,7 @@
   }
 
   // Si quien mira puede abrir Plantilla: sin el permiso no se le ofrece «Ver su ficha».
-  const VER_FICHAS = <%- JSON.stringify(!!verFichas) %>;
+  const VER_FICHAS = <%- json(!!verFichas) %>;
   // La ficha de Plantilla se abre siempre en OTRA pestaña: el cuadrante se queda
   // como estaba (su base, su vista, su scroll).
   const hrefFicha = id => '/plantilla#' + encodeURIComponent(id);
@@ -370,8 +370,8 @@
           class="tc-pulsable inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/10">
          <i class="fa-solid fa-id-card text-[10px]"></i>Ver su ficha</a>`
     : '');
-  const DIAS_LETRA = <%- JSON.stringify(letrasDia) %>;              // ['L','M','X','J','V','S','D']
-  const ESTADOS = <%- JSON.stringify(estadosVehiculo) %>;           // catálogo de estados del coche
+  const DIAS_LETRA = <%- json(letrasDia) %>;              // ['L','M','X','J','V','S','D']
+  const ESTADOS = <%- json(estadosVehiculo) %>;           // catálogo de estados del coche
   const ESTADO_ETQ = new Map(ESTADOS.map(e => [e.codigo, e.etiqueta]));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

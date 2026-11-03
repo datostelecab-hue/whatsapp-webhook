@@ -2,9 +2,9 @@
 
 <script>
 (function () {
-  const CAT = <%- JSON.stringify(catalogos || {}) %>;
-  const VACANTES = <%- JSON.stringify(vacantes || []) %>;
-  const DOCS = <%- JSON.stringify(documentos || []) %>;
+  const CAT = <%- json(catalogos || {}) %>;
+  const VACANTES = <%- json(vacantes || []) %>;
+  const DOCS = <%- json(documentos || []) %>;
   const { fecha, hace, esc } = Listado.fmt;
 
   /** Llama a la API y devuelve el JSON, o lanza con el mensaje del servidor. */

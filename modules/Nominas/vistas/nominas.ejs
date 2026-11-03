@@ -126,7 +126,7 @@
 </div>
 
 <script type="application/json" id="datos-servidor">
-  <%- JSON.stringify({ mesActual: mesActual, anoActual: anoActual, campos: campos, esDesarrollador: esDesarrollador }) %>
+  <%- json({ mesActual: mesActual, anoActual: anoActual, campos: campos, esDesarrollador: esDesarrollador }) %>
 </script>
 <script>
 const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);

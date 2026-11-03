@@ -136,11 +136,11 @@
 <script src="<%= typeof est === 'function' ? est('/assets/js/coche3d.js') : '/assets/js/coche3d.js' %>"></script>
 <script>
 (function () {
-  const TONO = <%- JSON.stringify(TONO_ESTADO) %>;
+  const TONO = <%- json(TONO_ESTADO) %>;
   // Quién puede cambiar el estado de las piezas (el servidor lo comprueba igual).
-  const PUEDE_PIEZAS = <%- JSON.stringify(!!(typeof puedePiezas !== 'undefined' && puedePiezas)) %>;
+  const PUEDE_PIEZAS = <%- json(!!(typeof puedePiezas !== 'undefined' && puedePiezas)) %>;
   const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
-  const VER_SEDES = <%- JSON.stringify(!!verTodasLasSedes) %>;
+  const VER_SEDES = <%- json(!!verTodasLasSedes) %>;
 
   // ---------- la pantalla ----------
 

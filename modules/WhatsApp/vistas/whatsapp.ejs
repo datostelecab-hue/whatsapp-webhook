@@ -64,12 +64,12 @@
 
 <script>
 (function () {
-  const PUEDE_ESCRIBIR = <%- JSON.stringify(!!puedeEscribir) %>;
-  const VER_LLAMADAS = <%- JSON.stringify(!!verLlamadas) %>;
-  const ABRIR_TEL = <%- JSON.stringify(abrirTel || '') %>;
-  const SIN_TELEFONO = <%- JSON.stringify(!!sinTelefono) %>;
+  const PUEDE_ESCRIBIR = <%- json(!!puedeEscribir) %>;
+  const VER_LLAMADAS = <%- json(!!verLlamadas) %>;
+  const ABRIR_TEL = <%- json(abrirTel || '') %>;
+  const SIN_TELEFONO = <%- json(!!sinTelefono) %>;
   // Los vídeos de la casa (services/videosWhatsapp.js), para mandarlos con la ventana abierta.
-  const VIDEOS = <%- JSON.stringify(locals.videos || []) %>;
+  const VIDEOS = <%- json(locals.videos || []) %>;
   // Lo que se enseña al pasar por la marca «Sin WhatsApp» (pestaña «Sin Wsp»).
   const SIN_WSP_AYUDA = 'Meta avisó de que no pudo entregarle el último mensaje (error 131026): el número no tiene WhatsApp o no puede recibir mensajes de empresa. Si escribe o le llega algo, vuelve a la lista normal.';
   const $ = s => document.querySelector(s);

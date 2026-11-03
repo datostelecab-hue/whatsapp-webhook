@@ -13,7 +13,7 @@
 <script>
 (() => {
   const { fechaHora, hace, etiqueta, esc } = Listado.fmt;
-  const PUEDE = <%- JSON.stringify(!!puedeSoltar) %>;
+  const PUEDE = <%- json(!!puedeSoltar) %>;
 
   // Cada estado con su nombre y su tono. Semánticos, no el acento: el oro se
   // queda para lo que se pulsa.

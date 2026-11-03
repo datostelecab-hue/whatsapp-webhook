@@ -219,7 +219,7 @@
   // Corregir, confirmar y aprobar: solo quien tiene la llave de verdad. Los
   // roles de acceso total ven el registro, pero sin esos botones.
   const PUEDE_APROBAR = <%= puedeAprobar ? 'true' : 'false' %>;
-  const APRUEBA = <%- JSON.stringify(quienAprueba || null).replace(/</g, '\\u003c') %>;
+  const APRUEBA = <%- json(quienAprueba || null) %>;
   // Hoy y desde cuándo se puede pedir una corrección. Los da el servidor.
   let HOY = '', DESDE_CORR = '';
 

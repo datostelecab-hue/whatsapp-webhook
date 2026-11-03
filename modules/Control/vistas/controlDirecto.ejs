@@ -1200,14 +1200,14 @@
   // El buzón de resultados lo manda el servidor (repo/llamadas): la MISMA lista
   // que usan las campañas, porque la etiqueta que se pone aquí decide la cola
   // del conductor en la campaña siguiente. Dos listas se separan solas.
-  const RESULTADOS_LLAMADA = <%- JSON.stringify(resultadosLlamada || []) %>;
-  const CATALOGO_LLAMADA = <%- JSON.stringify(catalogoLlamada || []) %>;
-  const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
-  const CASUISTICAS_MENOS_J = <%- JSON.stringify(typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : []) %>;
+  const RESULTADOS_LLAMADA = <%- json(resultadosLlamada || []) %>;
+  const CATALOGO_LLAMADA = <%- json(catalogoLlamada || []) %>;
+  const TIPOS_J = <%- json(tiposJ || []) %>;
+  const CASUISTICAS_MENOS_J = <%- json(typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : []) %>;
   // «No saldrá» y «Traza por Slack» (db/170): los catálogos vienen del servidor
   // (modules/Control/marcas.repo.js), como el buzón de resultados.
-  const MOTIVOS_NO_SALE = <%- JSON.stringify(typeof motivosNoSale !== 'undefined' ? motivosNoSale : []) %>;
-  const CANALES_SLACK = <%- JSON.stringify(typeof canalesSlack !== 'undefined' ? canalesSlack : []) %>;
+  const MOTIVOS_NO_SALE = <%- json(typeof motivosNoSale !== 'undefined' ? motivosNoSale : []) %>;
+  const CANALES_SLACK = <%- json(typeof canalesSlack !== 'undefined' ? canalesSlack : []) %>;
 
   /** Los canales de una traza, como se escriben en Slack: «#9-rrhh, #4-bajas-medicas». */
   const canalesTexto = sl => ((sl && sl.canales) || []).map(c => '#' + c).join(', ');

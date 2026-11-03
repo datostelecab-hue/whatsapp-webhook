@@ -2,7 +2,7 @@
 
 <script>
 (function () {
-  const CAT = <%- JSON.stringify(catalogos || {}) %>;
+  const CAT = <%- json(catalogos || {}) %>;
   const { fecha, fechaHora, hace, etiqueta, esc } = Listado.fmt;
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -10,7 +10,7 @@
   // cualquier entero de 1 a 40 (db/130): estas jornadas raras —18, 21, 24, 27,
   // 29— son contratos de verdad de la ETT, no erratas. La lista es la de
   // `conductores.repo` (JORNADAS): aquí no se escribe otra.
-  const JORNADAS = <%- JSON.stringify(typeof jornadas !== 'undefined' ? jornadas : []) %>;
+  const JORNADAS = <%- json(typeof jornadas !== 'undefined' ? jornadas : []) %>;
   const ROL = '<%= typeof rol !== "undefined" ? rol : "" %>';
   // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
   const SOLO_OPERATIVO = ROL === 'trafico';
@@ -18,13 +18,13 @@
   // son nómina. Lo toca quien tenga la llave —hoy William— y quien abre todo.
   // MIRARLO no: ver que alguien trabajó con una cuenta prestada es información
   // que RRHH necesita para entender su ficha.
-  const PERMISOS = <%- JSON.stringify(typeof permisos !== 'undefined' ? permisos : []) %>;
+  const PERMISOS = <%- json(typeof permisos !== 'undefined' ? permisos : []) %>;
   const PUEDE_FANTASMA = ['superadmin', 'desarrollador'].includes(ROL)
     || PERMISOS.includes('/plantilla/fantasma');
   // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026, db/189): Laura
   // Blanco. Quien no tiene la llave las ve, pero no las pone, ni las corrige ni
   // las borra. El candado de verdad está en el servidor; aquí solo no se ofrece.
-  const VAC = <%- JSON.stringify(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
+  const VAC = <%- json(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
   const sinVacaciones = lista => (VAC.puede ? lista : lista.filter(x => x.codigo !== 'vacaciones'));
   const notaVacaciones = VAC.puede ? '' : ` Las vacaciones solo las pone ${VAC.quien || 'quien tiene la llave de aprobarlas'}.`;
 

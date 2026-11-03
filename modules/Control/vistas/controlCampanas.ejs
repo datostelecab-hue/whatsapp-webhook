@@ -100,8 +100,8 @@
   const hora = ts => (ts ? new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '');
 
   // El buzón y los tipos de J los manda el servidor: una sola lista para todo.
-  const RESULTADOS = <%- JSON.stringify(resultadosLlamada || []) %>;
-  const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
+  const RESULTADOS = <%- json(resultadosLlamada || []) %>;
+  const TIPOS_J = <%- json(tiposJ || []) %>;
 
   let D = null;              // el estado que manda /api/campanas
   let tabVista = null;       // qué campaña se está mirando (null = la activa)

@@ -31,7 +31,7 @@
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
 <script>
 (function () {
-  const RESULTADOS = <%- JSON.stringify(resultados) %>;
+  const RESULTADOS = <%- json(resultados) %>;
   const C = window.CitasTaller;
   const esc = C.esc;
   const $ = s => document.querySelector(s);

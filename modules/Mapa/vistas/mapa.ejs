@@ -290,7 +290,7 @@
   };
 
   // EL ANILLO DE LA M-30, del servidor (modules/Mapa/m30.js). Solo números.
-  const M30 = <%- JSON.stringify(typeof m30 !== 'undefined' && m30 ? m30 : []) %>;
+  const M30 = <%- json(typeof m30 !== 'undefined' && m30 ? m30 : []) %>;
 
   const hhmm = s => {
     if (s == null) return '';

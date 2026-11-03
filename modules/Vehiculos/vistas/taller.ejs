@@ -265,9 +265,9 @@
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
 <script>
 (function () {
-  const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
-  const TIPOS = <%- JSON.stringify(tipos) %>;
-  const GENERAL = <%- JSON.stringify(intervaloGeneral) %>;
+  const PUEDE = <%- json(!!puedeApuntar) %>;
+  const TIPOS = <%- json(tipos) %>;
+  const GENERAL = <%- json(intervaloGeneral) %>;
   // Lo que pintan igual Mantenimientos y Control de una cita (citasTaller.js).
   const CT = window.CitasTaller;
   const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
@@ -636,8 +636,8 @@
 
   // ══════════ LAS CITAS DEL TALLER ══════════
   const C = window.CitasTaller;
-  const ESTADOS_CITA = <%- JSON.stringify(citasEstados) %>;
-  const DIAS_ANTES = <%- JSON.stringify(citasDiasAntes) %>;
+  const ESTADOS_CITA = <%- json(citasEstados) %>;
+  const DIAS_ANTES = <%- json(citasDiasAntes) %>;
   const TRAMOS = [
     { id: 'proximas', texto: 'Próximas' },
     { id: 'pasadas', texto: 'Últimos 30 días' },

@@ -73,7 +73,7 @@
 </div>
 
 <script>
-const TIPOS = <%- JSON.stringify(tipos) %>;
+const TIPOS = <%- json(tipos) %>;
 const UMBRAL = <%= umbral %>;
 const $ = s => document.querySelector(s);
 let ALERTAS = [], filtroTipo = '', textoBusqueda = '', truncado = false;

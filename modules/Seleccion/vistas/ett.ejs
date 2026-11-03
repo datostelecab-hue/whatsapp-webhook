@@ -2,9 +2,9 @@
 
 <script>
 (function () {
-  const CAT = <%- JSON.stringify(catalogos || {}) %>;
+  const CAT = <%- json(catalogos || {}) %>;
   // Los contratos del alta rápida, en horas: los decide el servidor (ett.service).
-  const CONTRATOS = <%- JSON.stringify(locals.contratos || []) %>;
+  const CONTRATOS = <%- json(locals.contratos || []) %>;
   const { fecha, fechaHora, esc } = Listado.fmt;
 
   async function api(url, opciones) {

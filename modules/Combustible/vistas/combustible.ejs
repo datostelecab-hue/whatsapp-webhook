@@ -47,10 +47,10 @@
 <script>
 (() => {
   const { esc, etiqueta, hace } = Listado.fmt;
-  const PUEDE = <%- JSON.stringify(!!puedeLeer) %>;
+  const PUEDE = <%- json(!!puedeLeer) %>;
   // Quien entra con la sede de Barcelona ve de entrada sus repostajes; el resto,
   // los de todas, con la sede en su columna.
-  const SEDE_SESION = <%- JSON.stringify(typeof sede !== 'undefined' && sede ? sede : 'madrid') %>;
+  const SEDE_SESION = <%- json(typeof sede !== 'undefined' && sede ? sede : 'madrid') %>;
 
   // ── Las fechas: dd/mm/aaaa en pantalla, ISO hacia el servidor ─────────────
   const aIso = v => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };

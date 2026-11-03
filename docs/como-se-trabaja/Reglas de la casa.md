@@ -212,6 +212,13 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   inventario entero, con qué usar en cada caso, está en [[Componentes de la casa]]:
   **léelo antes de escribir una pantalla**, y apúntalo ahí cuando hagas una pieza
   nueva.
+- **Los datos del servidor entran en un `<script>` con `<%- json(x) %>`**, nunca con
+  `<%- JSON.stringify(x) %>` (03/11/2026, `app.locals.json` en `app.js`).
+  `JSON.stringify` no escapa «<», y un texto que lleve `</script>` (un nombre de
+  vacante, de documento…) cerraría el bloque y dejaría la pantalla rota.
+- **Un texto que viene de datos se pinta como texto**: `textContent`, o `esc()`
+  si va dentro de una plantilla HTML. El `esc` de la casa escapa los cinco
+  (`& < > " '`); el de `Listado.fmt.esc` vale para todo.
 
 ## 8. Cómo se mueve un módulo sin romper nada
 

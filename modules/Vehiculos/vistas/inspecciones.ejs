@@ -90,8 +90,8 @@
 
 <script>
 (function () {
-  const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
-  let CAT = <%- JSON.stringify(catalogos || { elementos: [], estados: [], resultados: [] }) %>;
+  const PUEDE = <%- json(!!puedeApuntar) %>;
+  let CAT = <%- json(catalogos || { elementos: [], estados: [], resultados: [] }) %>;
   const { esc, fecha, etiqueta } = Listado.fmt;
   const $ = s => document.querySelector(s);
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',

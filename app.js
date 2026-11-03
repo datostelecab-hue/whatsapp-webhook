@@ -156,6 +156,23 @@ app.locals.v = (process.env.RENDER_GIT_COMMIT || '').slice(0, 8) || String(Date.
 // cambian nunca y asi se siguen cacheando de verdad.
 app.locals.est = ruta => ruta + (ruta.indexOf('?') === -1 ? '?v=' : '&v=') + app.locals.v;
 
+// DATOS DEL SERVIDOR DENTRO DE UN <script>: `<%- json(x) %>`, nunca
+// `<%- JSON.stringify(x) %>` (03/11/2026). JSON.stringify no escapa «<», y un
+// nombre de vacante o de documento que lleve «</script>» cerraría el bloque y
+// dejaría la pantalla rota para todos. Cada «<» sale como su escape unicode
+// (barra, u, 003c): es el mismo carácter para JSON y para JavaScript, pero el
+// navegador ya no lo lee como etiqueta. Los separadores de línea U+2028 y
+// U+2029, igual, por los navegadores viejos (se construyen con fromCharCode:
+// escritos tal cual en el fuente romperían la propia expresión regular). Sin
+// valor (undefined) sale vacío, igual que antes.
+const SEP_LINEA = new RegExp(String.fromCharCode(0x2028), 'g');
+const SEP_PARRAFO = new RegExp(String.fromCharCode(0x2029), 'g');
+app.locals.json = v => {
+  const s = JSON.stringify(v);
+  if (s === undefined) return '';
+  return s.replace(/</g, '\\u003c').replace(SEP_LINEA, '\\u2028').replace(SEP_PARRAFO, '\\u2029');
+};
+
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
