@@ -212,6 +212,12 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   inventario entero, con qué usar en cada caso, está en [[Componentes de la casa]]:
   **léelo antes de escribir una pantalla**, y apúntalo ahí cuando hagas una pieza
   nueva.
+- **Todo `<script>` en línea lleva el nonce: `<script nonce="<%= nonce %>">`**, y
+  ningún manejador va escrito en un atributo (`onclick="…"`, `onerror="…"`, ni en
+  el HTML ni en el que se monta con cadenas): se usa `addEventListener`. Desde el
+  03/11/2026 la CSP de scripts es obligatoria y el navegador **no ejecuta** ni lo
+  uno ni lo otro: la pantalla sale muerta, sin error en el servidor.
+  `node scripts/comprobar-vistas.js` lo avisa. → [[Seguridad]]
 - **Los datos del servidor entran en un `<script>` con `<%- json(x) %>`**, nunca con
   `<%- JSON.stringify(x) %>` (03/11/2026, `app.locals.json` en `app.js`).
   `JSON.stringify` no escapa «<», y un texto que lleve `</script>` (un nombre de

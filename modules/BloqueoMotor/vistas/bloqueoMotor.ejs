@@ -10,7 +10,7 @@
 %>
 <div id="modulo"></div>
 
-<script>
+<script nonce="<%= nonce %>">
 (() => {
   const { fechaHora, hace, etiqueta, esc } = Listado.fmt;
   const PUEDE = <%- json(!!puedeSoltar) %>;

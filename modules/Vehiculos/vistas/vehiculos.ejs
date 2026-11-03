@@ -134,7 +134,7 @@
 <script src="<%= typeof est === 'function' ? est('/assets/js/piezasCoche.js') : '/assets/js/piezasCoche.js' %>"></script>
 <%# El resumen en 3D (pestaña «3D»): three.js y el modelo se bajan solo al abrirla. %>
 <script src="<%= typeof est === 'function' ? est('/assets/js/coche3d.js') : '/assets/js/coche3d.js' %>"></script>
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const TONO = <%- json(TONO_ESTADO) %>;
   // Quién puede cambiar el estado de las piezas (el servidor lo comprueba igual).

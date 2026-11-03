@@ -17,7 +17,7 @@
 
 </div>
 
-<script>
+<script nonce="<%= nonce %>">
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 

@@ -128,7 +128,7 @@
 <script type="application/json" id="datos-servidor">
   <%- json({ mesActual: mesActual, anoActual: anoActual, campos: campos, esDesarrollador: esDesarrollador }) %>
 </script>
-<script>
+<script nonce="<%= nonce %>">
 const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
 const $ = s => document.querySelector(s);
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];

@@ -29,7 +29,7 @@
 </div>
 
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const RESULTADOS = <%- json(resultados) %>;
   const C = window.CitasTaller;

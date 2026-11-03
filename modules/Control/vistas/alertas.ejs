@@ -112,7 +112,7 @@
 </div>
 <% } %>
 
-<script>
+<script nonce="<%= nonce %>">
 (() => {
   const PUEDE_CONFIG = <%- puedeConfig ? 'true' : 'false' %>;
   const $ = s => document.querySelector(s);

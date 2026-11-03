@@ -62,7 +62,7 @@
   <%- json({ diasSem: diasSem, turnos: turnos }) %>
 </script>
 
-<script>
+<script nonce="<%= nonce %>">
 const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
 const DIAS_SEM = CFG.diasSem;
 

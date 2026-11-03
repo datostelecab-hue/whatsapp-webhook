@@ -44,7 +44,7 @@
 
 <div id="modulo"></div>
 
-<script>
+<script nonce="<%= nonce %>">
 (() => {
   const { esc, etiqueta, hace } = Listado.fmt;
   const PUEDE = <%- json(!!puedeLeer) %>;

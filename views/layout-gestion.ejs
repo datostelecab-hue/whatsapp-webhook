@@ -9,7 +9,7 @@
 
   <!-- Tema del PERFIL (lo inyecta el servidor) ANTES de pintar, sin parpadeo. Si no
        hay (o falla), cae al localStorage del dispositivo. -->
-  <script>
+  <script nonce="<%= nonce %>">
     (function () {
       try {
         var perfil = '<%= (typeof tema !== "undefined" && tema) ? tema : "" %>';
@@ -33,7 +33,7 @@
   <!-- Menú contraído o no, ANTES de pintar: si se decidiera después, el menú
        aparecería ancho y daría un salto al encogerse. Sin preferencia guardada
        se decide por el ancho de la pantalla, que es lo que de verdad importa. -->
-  <script>
+  <script nonce="<%= nonce %>">
     (function () {
       try {
         var g = localStorage.getItem('telecab-menu');
@@ -99,7 +99,7 @@
     <p class="tc-carga-texto text-[11px] uppercase font-medium">Cargando</p>
   </div>
 </div>
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const overlay = document.getElementById('cargando-overlay');
   let activos = 0, ultima = performance.now(), inicial = true;
@@ -511,7 +511,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="<%= nonce %>">
 // IIFE para NO filtrar estos nombres al ámbito global: los scripts de cada vista
 // (bitácora, fichas…) también corren en global y declaran su propia función
 // `abrir`; sin este aislamiento chocaban ("Identifier 'abrir' already declared")
@@ -596,7 +596,7 @@
 </script>
 
 <!-- ══════════ Roles (según sesión) + buzón de pendientes por departamento ══════════ -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const btn = document.getElementById('notif-btn');
   const panel = document.getElementById('notif-panel');
@@ -671,7 +671,7 @@
 </script>
 
 <!-- ══════════ El botón de FICHAR de la barra ══════════ -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const btn = document.getElementById('fichar-btn');
   const txt = document.getElementById('fichar-txt');
@@ -823,7 +823,7 @@
 </script>
 
 <!-- ══════════ Selector de fechas (calendario propio, a juego con el tema) ══════════ -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -1057,7 +1057,7 @@
      lisas con la esquina apenas redondeada, rejilla fina, la tipografía de la
      casa y el globo con los colores del tema. Lo que un gráfico fija por su
      cuenta (sus colores de serie) lo sigue mandando él. -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   if (!window.Chart) return;
   const css = getComputedStyle(document.documentElement);

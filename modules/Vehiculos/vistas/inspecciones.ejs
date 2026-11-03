@@ -88,7 +88,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const PUEDE = <%- json(!!puedeApuntar) %>;
   let CAT = <%- json(catalogos || { elementos: [], estados: [], resultados: [] }) %>;

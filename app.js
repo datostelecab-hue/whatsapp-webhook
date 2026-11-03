@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const app = express();
@@ -82,23 +83,39 @@ app.use((req, res, next) => {
 
   // ── CONTENT-SECURITY-POLICY, EN DOS PARTES A PROPÓSITO ─────────────────────
   //
-  // OBLIGATORIA: solo las reglas que NO pueden romper una web normal porque no
-  // tocan de dónde se cargan scripts, estilos ni fuentes. `frame-ancestors` es
-  // el anti-clickjacking moderno (mejor que X-Frame-Options); las otras tres
-  // cierran vectores reales (robar la <base>, cargar plugins, mandar el
-  // formulario a otro sitio) sin riesgo de dejar la pantalla en blanco.
+  // OBLIGATORIA: lo que cierra vectores reales sin riesgo de dejar la pantalla
+  // en blanco. `frame-ancestors` es el anti-clickjacking moderno; `base-uri`,
+  // `object-src` y `form-action` impiden robar la <base>, cargar plugins o
+  // mandar un formulario a otro sitio.
+  //
+  // Y DESDE EL 03/11/2026, LOS SCRIPTS. Solo se ejecuta lo que viene de aquí, de
+  // cdnjs o lleva el NONCE de esta petición: un valor aleatorio, nuevo en cada
+  // respuesta, que va en la cabecera y en cada <script> de las vistas
+  // (`<script nonce="<%= nonce %>">`). Un script colado en un dato no lo
+  // conoce, así que no corre; tampoco un onclick="…" en el HTML. Antes iba en
+  // observación con 'unsafe-inline', que es lo mismo que no tenerla.
+  // `worker-src` va con ella: sin él, el navegador aplica script-src a los
+  // workers, y el mapa (MapLibre dibuja en un worker desde un blob) se quedaría
+  // en gris.
+  //
+  // VÁLVULA: CSP_SCRIPTS=observar en el entorno devuelve los scripts a
+  // observación sin desplegar, por si algo se rompe en producción.
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.locals.nonce = nonce;
+  const scripts = `script-src 'self' 'nonce-${nonce}' https://cdnjs.cloudflare.com; worker-src 'self' blob:`;
+  const observarScripts = process.env.CSP_SCRIPTS === 'observar';
   res.setHeader('Content-Security-Policy',
-    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");
+    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'" +
+    (observarScripts ? '' : '; ' + scripts));
 
   // EN OBSERVACIÓN (Report-Only NO bloquea nada): la política de recursos
   // completa. El navegador avisa en su consola de lo que incumpliría, para poder
-  // pulirla antes de hacerla obligatoria. Desde el 03/11/2026 Tailwind va
-  // compilado (services/tailwind.js) y con él se fueron la CDN y 'unsafe-eval',
-  // que solo los pedía ella. Queda 'unsafe-inline' por los scripts en línea de
-  // las vistas: el paso que falta para hacerla obligatoria es darles un nonce.
+  // pulirla antes de hacerla obligatoria. Lo que queda por pasar a obligatorio
+  // son los estilos (style="…" en todas las vistas), las imágenes y las
+  // conexiones: ahí romper algo no compensa.
   res.setHeader('Content-Security-Policy-Report-Only',
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+    scripts + '; ' +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
     // LOS MOSAICOS DEL MAPA. MapLibre pide los trozos del mapa por `fetch`, asi
@@ -107,7 +124,7 @@ app.use((req, res, next) => {
     // OpenFreeMap: sin clave, sin cuenta y sin limite de vistas.
     "img-src 'self' data: blob:; media-src 'self'; " +
     "connect-src 'self' https://tiles.openfreemap.org; " +
-    "worker-src 'self' blob:; child-src 'self' blob:; " +
+    "child-src 'self' blob:; " +
     "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");
 
   next();

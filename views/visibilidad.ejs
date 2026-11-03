@@ -397,7 +397,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="<%= typeof est === 'function' ? est('/assets/js/graficos.js') : '/assets/js/graficos.js' %>"></script>
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   // Dónde preguntar: Madrid, /visibilidad/api; Barcelona, la suya.
   const API = '<%= API %>';

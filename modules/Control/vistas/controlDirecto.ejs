@@ -148,7 +148,7 @@
 </style>
 
 <script src="/assets/js/flotaVivaGestion.js?v=<%= v %>"></script>
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
   const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
@@ -160,10 +160,17 @@
   const tel9 = t => String(t || '').replace(/\D/g, '').slice(-9);
   const telBonito = t => { const n = tel9(t); return n.length === 9 ? n.slice(0, 3) + ' ' + n.slice(3, 6) + ' ' + n.slice(6) : (t || ''); };
   const enlaceTel = (t, clase) => (tel9(t)
-    ? '<a href="tel:' + esc(t) + '" onclick="event.stopPropagation()" ' +
+    ? '<a href="tel:' + esc(t) + '" data-solo-llamar ' +
       'class="' + (clase || '') + ' hover:text-telecab-gold hover:underline" title="Llamar a este número">' +
       esc(telBonito(t)) + '</a>'
     : '<span class="text-telecab-border">sin teléfono</span>');
+  // PULSAR UN TELÉFONO LLAMA, NO ABRE LA FILA. Antes era un manejador escrito en
+  // el propio enlace (atributo onclick), y la CSP obligatoria (03/11/2026) no
+  // deja correr código escrito en un atributo. Se corta aquí, en la fase de captura: el clic no
+  // llega a la fila, y el enlace llama igual (eso no lo para stopPropagation).
+  document.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('a[data-solo-llamar]')) e.stopPropagation();
+  }, true);
 
   // EL VEREDICTO LO DA EL SERVIDOR (directo.js salidaDe), que es quien sabe la
   // ventana de cada turno. Aquí solo se pinta. Antes esta fórmula estaba duplicada

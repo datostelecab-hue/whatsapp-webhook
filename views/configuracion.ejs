@@ -162,7 +162,7 @@
 
 </div>
 
-<script>
+<script nonce="<%= nonce %>">
   const KEY = 'telecab-tema';
   // Cada tema: clave (= data-theme), nombre, y colores de la mini-vista-previa.
   const TEMAS = [
@@ -251,7 +251,7 @@
 </script>
 
 <!-- Gestión de usuarios (solo se activa si el superadmin ve la tarjeta). -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const card = document.getElementById('card-usuarios');
   if (!card) return;   // no es superadmin → no hay tarjeta
@@ -341,7 +341,7 @@
 </script>
 
 <!-- Correo para procesos (solo se activa si el superadmin ve la tarjeta). -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const card = document.getElementById('card-correo');
   if (!card) return;
@@ -383,7 +383,7 @@
 </script>
 
 <!-- Mi perfil: cada usuario completa su nombre/apellidos/teléfono (su firma). -->
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const card = document.getElementById('card-perfil');
   if (!card) return;
@@ -442,7 +442,7 @@
 })();
 </script>
 
-<script>
+<script nonce="<%= nonce %>">
 // ── SESIONES ABIERTAS ───────────────────────────────────────────────────────
 // La pantalla NO decide nada: esconde el botón para no prometer lo que no se
 // puede hacer, pero quien dice que no es el servidor. `mando` viene de ahí.
@@ -568,7 +568,7 @@
 })();
 </script>
 
-<script>
+<script nonce="<%= nonce %>">
 // ── EL INTERRUPTOR DE LAS AYUDAS ────────────────────────────────────────────
 // Se enciende y se apaga EN CALIENTE: `Ayudas.activar` cambia la marca del
 // documento, así que se nota en la misma pantalla sin recargar. Y además se

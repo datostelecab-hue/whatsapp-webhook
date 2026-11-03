@@ -1,6 +1,6 @@
 <div id="modulo"></div>
 
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const { esc, etiqueta } = Listado.fmt;
   const R = <%- json(reglas || {}) %>;

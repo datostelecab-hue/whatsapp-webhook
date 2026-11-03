@@ -1,6 +1,6 @@
 <div id="modulo"></div>
 
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const CAT = <%- json(catalogos || {}) %>;
   // Los contratos del alta rápida, en horas: los decide el servidor (ett.service).

@@ -63,7 +63,9 @@ Todas las respuestas pasan por un middleware en `app.js` que pone las cabeceras.
 > nuestro ni leer nada nuestro. Si algún día se cambia de proveedor de mapas,
 > esta línea se cambia con él.
 
-> **Primera mitad hecha el 03/11/2026:** Tailwind va compilado (`tailwind.config.js`, `services/tailwind.js`) y la CDN `cdn.tailwindcss.com` ya no se carga en ninguna página, tampoco en la del login. Con ella salieron de `script-src` el dominio y `'unsafe-eval'`, que solo pedía ella. **Falta la otra mitad**: los scripts en línea de las vistas siguen necesitando `'unsafe-inline'`; para hacer obligatoria la política hay que darles un `nonce` por petición. → [[Estado y pendientes]]
+> **Hecho el 03/11/2026.** Tailwind va compilado (`tailwind.config.js`, `services/tailwind.js`) y la CDN ya no se carga en ninguna página. Y la parte de **scripts es obligatoria**: `script-src 'self' 'nonce-…' https://cdnjs.cloudflare.com` y `worker-src 'self' blob:` (el mapa dibuja en un worker). El nonce es aleatorio y nuevo en cada respuesta (`res.locals.nonce`); cada `<script>` en línea de las vistas lo lleva, y no queda ningún manejador escrito en un atributo. `node scripts/comprobar-vistas.js` vigila las dos cosas.
+>
+> **Válvula:** `CSP_SCRIPTS=observar` en el entorno devuelve los scripts a observación sin desplegar. Siguen en observación los estilos (hay `style="…"` en todas las vistas), las imágenes y las conexiones. → [[Estado y pendientes]]
 
 Se quitó también la cabecera **`X-Powered-By: Express`** que Express pone sola: no ayuda a nadie de dentro y le dice a quien audita desde fuera el framework de un vistazo (`app.disable('x-powered-by')`).
 

@@ -219,7 +219,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
   - **Punto ciego de `comprobar-sql`** — repasar a mano los SQL con interpolación `${...}` de datos de usuario (el comprobador no los ve); todo valor va como `$1`.
   - **`/mi-red` sin clave de permiso** — cualquier usuario logueado ve la topología de red interna; ponerle clave de desarrollador.
   - **Rutas viejas de subida** (`/api/subir`, `/api/archivo/:id`) — arman la carpeta con texto libre (path traversal); retirarlas (ya marcadas «para borrar»).
-- **Promover la CSP de recursos a obligatoria.** Hoy va en `Report-Only` (no bloquea, solo avisa en consola). Tailwind ya va compilado y sin CDN (03/11/2026), así que `unsafe-eval` ya no hace falta; lo que queda es dar un `nonce` a los scripts en línea de las vistas para quitar `unsafe-inline`, y entonces hacerla obligatoria. → [[Seguridad]]
+- **CSP: la parte de scripts ya es obligatoria** (03/11/2026, con nonce por petición). Quedan en `Report-Only` los estilos, las imágenes y las conexiones; pasar los estilos pide quitar los `style="…"` de las vistas. → [[Seguridad]]
 - **`/control/historico` va lento**: unos 26 s de base, más 12 s desde que los km salen del odómetro. Es la pantalla lenta de la casa desde antes; se arregla igual que se arregló En directo (mirar el plan de la consulta, no adivinar).
 - **¿Es fija la IP de la oficina?** El reconocimiento de «dentro / fuera de la empresa» usa una IP concreta. Si el operador la cambia, todo el mundo pasa a salir «fuera». Si es dinámica, hay que dejar el prefijo en vez de la IP entera.
 - **El móvil sale «fuera» estando en la WiFi de la empresa.** Sin resolver. La forma de salir de dudas es abrir `/mi-red` desde el propio teléfono conectado a la WiFi y mirar qué IP llega.

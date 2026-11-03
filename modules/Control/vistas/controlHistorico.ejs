@@ -95,7 +95,7 @@
   .hchevron { transition: transform .15s ease; }
 </style>
 
-<script>
+<script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
   const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
