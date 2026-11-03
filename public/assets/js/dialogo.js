@@ -7,7 +7,7 @@
 //
 //   await Dialogo.aviso({ titulo, texto, tono })                  → nada
 //   await Dialogo.confirmar({ titulo, texto, si, no, tono })      → true / false
-//         (+ enterCancela: true si no tiene vuelta atrás: Enter cancela)
+//         (con tono 'peligro', Enter cancela; enterCancela: true, con cualquier tono)
 //   await Dialogo.elegir({ titulo, texto, opciones })             → el valor elegido, o null
 //
 // Los tres devuelven una promesa. Es la diferencia importante con `confirm()`,
@@ -94,11 +94,21 @@
       const ficha = { cerrar };
       abierto = ficha;
 
-      // Enter y el foco van al botón principal, salvo que una opción se pida
-      // para Enter (`porEnter`): ver `enterCancela` en confirmar().
-      const hayPorEnter = opciones.some(x => x.porEnter);
-      opciones.forEach((o, i) => {
-        const ultimo = i === opciones.length - 1;
+      // ENTER Y EL FOCO. Van a la opción pedida para Enter (`porEnter`, ver
+      // `enterCancela` en confirmar), si no a la principal, si no a la última.
+      // SALVO QUE ESA SEA ROJA (03/11/2026, Camilo: «aplícalo a todos los
+      // diálogos en rojo»): lo que no tiene vuelta atrás —dar de baja, borrar,
+      // cerrar sesiones— no se acepta con Enter por reflejo. Entonces van a la
+      // salida segura: la que da lo mismo que cerrar («Cancelar»), o la primera
+      // que no sea roja. El botón rojo sigue ahí; hay que pulsarlo.
+      const esRoja = o => (TONOS[o.tono] || {}).color === 'red';
+      let paraEnter = opciones.find(x => x.porEnter)
+        || opciones.find(x => x.principal) || opciones[opciones.length - 1];
+      if (paraEnter && esRoja(paraEnter)) {
+        paraEnter = opciones.find(x => x.valor === valorAlCerrar && !esRoja(x))
+          || opciones.find(x => !esRoja(x)) || null;
+      }
+      opciones.forEach(o => {
         const tn = TONOS[o.tono] || null;
         const b = document.createElement('button');
         b.type = 'button';
@@ -110,7 +120,7 @@
             : 'bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold/40');
         b.textContent = o.texto;
         b.addEventListener('click', () => cerrar(o.valor));
-        if (hayPorEnter ? o.porEnter : (o.principal || (ultimo && !opciones.some(x => x.principal)))) b.dataset.principal = '1';
+        if (o === paraEnter) b.dataset.principal = '1';
         barra.appendChild(b);
       });
 
@@ -144,10 +154,9 @@
   /**
    * Una pregunta de sí o no. Sustituye a `confirm()`, pero con `await`.
    *
-   * `enterCancela: true` para lo que no tiene vuelta atrás (borrar una nómina
-   * congelada, mandar cientos de WhatsApp): Enter y el foco van a «Cancelar», y
-   * para hacerlo hay que pulsar el botón con el ratón. Aceptar con Enter por
-   * reflejo es justo lo que no puede pasar ahí.
+   * Con `tono: 'peligro'` el botón sale en rojo y Enter va SOLO a «Cancelar»
+   * (ver abrir). `enterCancela: true` hace lo mismo con cualquier otro tono,
+   * para lo que no tiene vuelta atrás aunque no se pinte en rojo.
    */
   const confirmar = o => {
     const c = typeof o === 'string' ? { texto: o } : (o || {});

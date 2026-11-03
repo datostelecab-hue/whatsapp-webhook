@@ -16,7 +16,7 @@ actualizado: 2026-10-23
 | Lo que necesitas | La pieza | NO uses |
 |---|---|---|
 | Avisar de algo | `Dialogo.aviso({titulo, texto\|html, tono, ancho})` | `alert()` |
-| Preguntar sí/no | `Dialogo.confirmar({titulo, texto, si, no, tono})` (`si` y `no` son los textos de los botones; `textoBoton` es de `formulario` y aquí no hace nada: sale «Aceptar»). Para lo que no tiene vuelta atrás: `tono: 'peligro', enterCancela: true` y el número en el botón («Borrar la nómina de 159 conductores»): Enter y el foco van a «Cancelar» | `confirm()` (desde el 03/11/2026 no queda ninguno) |
+| Preguntar sí/no | `Dialogo.confirmar({titulo, texto, si, no, tono})` (`si` y `no` son los textos de los botones; `textoBoton` es de `formulario` y aquí no hace nada: sale «Aceptar»). Para lo que no tiene vuelta atrás, `tono: 'peligro'` y el número en el botón («Borrar la nómina de 159 conductores»): el botón sale en rojo y **Enter y el foco van a «Cancelar»** (en todo diálogo cuya opción de Enter sea roja, desde el 03/11/2026). `enterCancela: true` hace lo mismo sin pintarlo en rojo | `confirm()` (desde el 03/11/2026 no queda ninguno) |
 | Elegir de una lista | `Dialogo.elegir({titulo, texto, opciones})` | `prompt()` con números |
 | Pedir varios datos | `Dialogo.formulario(titulo, campos, opciones)` | `prompt()` encadenados |
 | Confirmación breve | `Dialogo.hecho(texto, {tono, segundos})` | — |
