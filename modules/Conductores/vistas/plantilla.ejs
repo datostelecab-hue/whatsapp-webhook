@@ -1239,6 +1239,35 @@
       campos: ['nombre_completo', 'nombre_legal', 'naf', 'dni_nie', 'bolt_id', 'matricula', 'telefono', 'zona'],
     },
 
+    // EL EXCEL LLEVA EL PROMEDIO DEL MES (03/11/2026). La lista ya no lo trae:
+    // para tres columnas que solo salen aquí, cada apertura de Plantilla rehacía
+    // la bitácora entera. Se pide al pulsar «Excel» y se mete en las mismas
+    // filas que el Listado va a volcar (las tres columnas soloExcel de abajo).
+    exportar: async lst => {
+      let media = null;
+      try {
+        const r = await fetch('/plantilla/api/media-mes').then(x => x.json());
+        if (r && r.status === 'ok') media = r;
+      } catch (e) { /* sin media: lo decide el bloque de abajo */ }
+      // Los mismos valores que daba la lista: null donde no hay dato (la
+      // columna sale vacía). `visibles()` devuelve estas mismas filas, así que
+      // lo que se escribe aquí es lo que se vuelca.
+      if (media) {
+        lst.filas.forEach(f => {
+          const h = media.porId[String(f.id)];
+          f.horas_dia_media = h ? h.media : null;
+          f.dias_trabajados_mes = h ? h.dias : null;
+          f.ausencias_mes = h ? h.ausencias : null;
+        });
+      } else {
+        // Sin promedio, el Excel sale igual —el resto vale—, pero se dice: tres
+        // columnas vacías se confunden con «nadie trabajó».
+        await Dialogo.aviso({ titulo: 'Excel sin el promedio del mes', tono: 'aviso',
+          texto: 'No se pudo calcular el promedio de horas. El Excel sale con todo lo demás y esas tres columnas vacías.' });
+      }
+      lst.exportar();
+    },
+
     subtitulo: (v, t) => {
       const alta = t.filter(f => f.empleo_vigente !== false).length;
       const detalle = `${alta} de alta · ${t.length - alta} de baja`;
