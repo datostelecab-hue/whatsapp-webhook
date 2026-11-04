@@ -1,0 +1,1122 @@
+// views/visibilidad.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  // Dónde preguntar: Madrid, /visibilidad/api; Barcelona, la suya.
+  const API = DEL_SERVIDOR.api;
+  const SIN_PLAN = DEL_SERVIDOR.sinPlan;
+  const ES_MADRID = DEL_SERVIDOR.esMadrid;
+  // Sin las tablas de la sede (una migración sin aplicar), se dice en vez de pintar ceros.
+  const avisarFalta = r => {
+    const caja = document.getElementById('v-aviso');
+    if (!r || !r.faltaMigracion || !caja) return false;
+    caja.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Falta aplicar la migración <b>db/181</b> (en Migraciones): esta sede aún no tiene horas.';
+    caja.classList.remove('hidden');
+    return true;
+  };
+  const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+  const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+  const pct1 = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  /**
+   * EL COLOR DE LA META. VERDE SOLO AL LLEGAR: 458 de 500 no es verde, es ámbar.
+   *
+   * Se interpola el TONO de HSL, que es una rueda: 0 es rojo y 120 es verde. Pero
+   * la rampa se para en el AMARILLO (55) justo antes del 100 %, y el verde entra
+   * de golpe al cumplir la meta. Si la rampa llegara al verde poco a poco, un
+   * 92 % ya se vería verdoso y parecería hecho cuando faltan cuarenta horas.
+   *
+   * Por debajo del 40 % se queda rojo del todo: ahí ya da igual cuánto falte.
+   *
+   * La saturación y la luminosidad son fijas para que los colores de la fila pesen
+   * lo mismo y ninguno destaque por estar más vivo que su vecino.
+   */
+  const HUE_TOPE = 55;      // amarillo: el último tono antes del verde
+  function colorMeta(pct) {
+    const p = Math.max(0, Number(pct) || 0);
+    if (p >= 100) return 'hsl(120 72% 42%)';                 // meta cumplida
+    const t = Math.max(0, (p - 40) / 60);                    // 0 en el 40 %, 1 en el 100 %
+    return `hsl(${Math.round(t * HUE_TOPE)} 78% 50%)`;
+  }
+  const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+  const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  const esc = Casa.esc;
+  const sig = x => (x > 0 ? '+' : x < 0 ? '−' : '') + nf0.format(Math.abs(x));
+  const sigPct = x => (x > 0 ? '+' : x < 0 ? '−' : '') + pct1.format(Math.abs(x)) + ' %';
+
+  // Estado: mes visible.
+  const hoy = new Date();
+  let anio = hoy.getFullYear(), mes = hoy.getMonth() + 1;
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
+  const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  // Una fecha 'AAAA-MM-DD' a mediodía: getDay/getDate dan ese día en cualquier huso.
+  const fechaDe = iso => new Date(iso + 'T12:00:00');
+  const mesLargo = ym => MESES[Number(ym.slice(5, 7)) - 1].toLowerCase();
+  let charts = {};
+  // Las piezas de los gráficos (paleta, cruceta, globo, ejes, leyenda, cifras y
+  // la tabla gemela) son de la casa: public/assets/js/graficos.js.
+  const { ANIMA, paleta, cruceta, etiquetasFinales, globo, area, ejeX, ejeY, ejeEscalado,
+          leyenda, cifra, flechaDe, tonoDe, tablaVista, atenuar, errorEn } = window.Graficos;
+  Graficos.botonesTabla();
+
+  const pedir = url => fetch(url).then(async x => {
+    const j = await x.json().catch(() => null);
+    if (!x.ok || !j || j.status !== 'ok') throw new Error((j && j.msg) || 'No se pudo cargar');
+    return j;
+  });
+
+  // ── A esta hora: hoy contra ayer, anteayer y el mismo día de la semana pasada ──
+  // Cada día hasta la misma hora (services/visibilidad.js → aEstaHora), contado de
+  // tres formas que se eligen con los botones: día natural, por turno y jornada.
+  // Las tres llegan juntas: cambiar de botón repinta sin pedir nada. La frase dice
+  // lo de ayer, que es lo que se pregunta primero; las barras, todo.
+  let AEH = null;
+  const SUB_AEH = {
+    natural: 'Horas efectivas (viaje + espera) desde las 00:00 hasta la misma hora de cada día',
+    turno: 'La gente de cada turno según el cuadrante: el de día cuenta desde las 00:00 y el de noche desde las 12:00, hasta la misma hora de cada día',
+    jornada: 'La jornada de cada día es su turno de día más su turno de noche (que empieza a las 12:00), hasta la misma hora',
+  };
+  const inpAeh = document.getElementById('aeh-vista');
+  if (inpAeh) {
+    // El botón elegido se recuerda en este navegador (si se puede).
+    try { const g = localStorage.getItem('visibilidad.aEstaHora'); if (SUB_AEH[g]) inpAeh.value = g; } catch (_) { /* sin almacenamiento */ }
+    if (window.Selector) Selector.montar(inpAeh.parentElement);
+    inpAeh.addEventListener('change', () => {
+      try { localStorage.setItem('visibilidad.aEstaHora', inpAeh.value); } catch (_) { /* sin almacenamiento */ }
+      pintarAEstaHora();
+    });
+  }
+
+  async function cargarAEstaHora() {
+    const caja = document.getElementById('aeh-filas');
+    if (!caja) return;
+    const r = await fetch(API + '/a-esta-hora').then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok' || !r.natural) {
+      caja.innerHTML = '<p class="text-sm text-telecab-muted">No se ha podido calcular ahora mismo. Prueba con «Actualizar».</p>';
+      return;
+    }
+    AEH = r;
+    pintarAEstaHora();
+  }
+
+  // «4,9 % menos que ayer a esta hora», o nada si no se puede comparar.
+  const contraAyer = filas => {
+    const a = filas.find(f => f.clave === 'ayer');
+    if (!a || a.difPct == null) return '';
+    return a.difPct === 0 ? 'lo mismo que ayer a esta hora'
+      : pct1.format(Math.abs(a.difPct)) + ' % ' + (a.difPct > 0 ? 'más' : 'menos') + ' que ayer a esta hora';
+  };
+  const deHoyEn = filas => (filas.find(f => f.clave === 'hoy') || { horas: 0 }).horas;
+
+  // Las barras de un grupo de días. `noche`: la fecha es la de la noche.
+  function barrasAEH(filas, { noche = false } = {}) {
+    const hoyH = deHoyEn(filas);
+    const nombre = f => f.clave === 'hoy' ? 'Hoy' : f.clave === 'ayer' ? 'Ayer' : f.clave === 'anteayer' ? 'Anteayer'
+      : 'El ' + DIAS_LARGOS[fechaDe(AEH.hoy).getDay()] + ' pasado';
+    const cuando = f => {
+      const d = fechaDe(f.dia);
+      // La de noche, sin el mes: «noche del domingo 25» cabe en la columna.
+      if (noche) return 'noche del ' + DIAS_LARGOS[d.getDay()] + ' ' + d.getDate();
+      return (f.clave === 'semana' ? '' : DIAS_LARGOS[d.getDay()] + ' ') + d.getDate() + ' de ' + MESES[d.getMonth()].toLowerCase();
+    };
+    const max = Math.max(1, ...filas.map(f => f.horas));
+    return '<div class="space-y-3">' + filas.map(f => {
+      const esHoy = f.clave === 'hoy';
+      const ancho = Math.max(f.horas > 0 ? 1.5 : 0, f.horas / max * 100);
+      let dif = '';
+      if (!esHoy) {
+        if (f.pocas) dif = '<span class="text-xs text-telecab-muted">Muy pocas horas para comparar</span>';
+        else if (f.difPct == null) dif = '<span class="text-xs text-telecab-muted">Sin horas ese día a esta hora</span>';
+        else if (Math.abs(f.difHoras) < 0.5) dif = '<span class="inline-flex px-2 py-1 rounded-lg text-xs font-semibold bg-telecab-card2 text-telecab-muted">Igual que hoy</span>';
+        else {
+          const sube = f.difPct >= 0;
+          dif = '<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-semibold tabular-nums ' +
+            (sube ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/15 text-telecab-red') + '" title="' +
+            esc('Hoy ' + nf1.format(hoyH) + ' h, ' + nombre(f).toLowerCase() + ' ' + nf1.format(f.horas) + ' h, a las ' + AEH.hora) + '">' +
+            '<i class="fa-solid ' + (sube ? 'fa-arrow-up' : 'fa-arrow-down') + ' text-[10px]" aria-hidden="true"></i>' +
+            'Hoy ' + nf0.format(Math.abs(f.difHoras)) + ' h ' + (sube ? 'más' : 'menos') + ' (' + sigPct(f.difPct) + ')</span>';
+        }
+      }
+      return '<div class="grid grid-cols-[7.5rem_minmax(0,1fr)] sm:grid-cols-[9.5rem_minmax(0,1fr)_13rem] items-center gap-x-3 gap-y-1">' +
+        '<div class="min-w-0"><p class="text-sm font-semibold ' + (esHoy ? 'text-telecab-gold' : 'text-telecab-text') + '">' + esc(nombre(f)) + '</p>' +
+          '<p class="text-[11px] text-telecab-muted truncate">' + esc(cuando(f)) + '</p></div>' +
+        '<div class="flex items-center gap-2 min-w-0">' +
+          '<div class="flex-1 min-w-0 h-6 rounded-md bg-telecab-card2/60 overflow-hidden">' +
+            '<div class="h-full rounded-md ' + (esHoy ? 'bg-telecab-gold' : 'bg-telecab-muted/40') + '" style="width:' + ancho.toFixed(1) + '%"></div></div>' +
+          '<span class="w-16 text-right text-sm font-bold tabular-nums shrink-0">' + nf0.format(f.horas) + ' h</span></div>' +
+        '<div class="col-start-2 sm:col-start-auto sm:text-right">' + dif + '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function pintarAEstaHora() {
+    const caja = document.getElementById('aeh-filas');
+    if (!caja || !AEH) return;
+    const v = SUB_AEH[(inpAeh && inpAeh.value)] ? inpAeh.value : 'natural';
+    const hora = AEH.hora;
+    setTxt('aeh-titulo', 'A esta hora · ' + hora);
+    setTxt('aeh-sub', SUB_AEH[v]);
+    const conAyer = (inicio, filas) => inicio + nf0.format(deHoyEn(filas)) + ' horas' + (contraAyer(filas) ? ': ' + contraAyer(filas) : '') + '.';
+
+    if (v === 'turno') {
+      const d = AEH.turno.dia.filas, n = AEH.turno.noche.filas;
+      setTxt('aeh-frase', conAyer('A las ' + hora + ', el turno de día lleva ', d) + ' ' + conAyer('El de noche, ', n));
+      // La noche en curso: la que empezó hoy a las 12:00 o, por la mañana, la de ayer.
+      const [hh] = hora.split(':').map(Number);
+      const notaNoche = !AEH.turno.noche.empezoHoy
+        ? 'La noche en curso empezó ayer a las 12:00.'
+        : hh < 17 ? 'La noche empieza a contar a las 12:00, pero su gente entra hacia las 17:00: hasta entonces apenas suma.' : '';
+      const grupo = (titulo, filas, nota, noche) => '<div class="min-w-0">' +
+        '<p class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-1">' + titulo + '</p>' +
+        (nota ? '<p class="text-[11px] text-telecab-muted mb-2">' + esc(nota) + '</p>' : '<div class="mb-2"></div>') +
+        barrasAEH(filas, { noche }) + '</div>';
+      caja.innerHTML = '<div class="grid grid-cols-1 xl:grid-cols-2 gap-x-8 gap-y-6">' +
+        grupo('Turno día', d, '', false) + grupo('Turno noche', n, notaNoche, true) + '</div>';
+      return;
+    }
+    const filas = v === 'jornada' ? AEH.jornada.filas : AEH.natural.filas;
+    setTxt('aeh-frase', v === 'jornada'
+      ? conAyer('A las ' + hora + ', la jornada de hoy lleva ', filas)
+      : conAyer('A las ' + hora + ', hoy llevamos ', filas));
+    caja.innerHTML = barrasAEH(filas);
+  }
+
+  // ── KPIs en vivo ──────────────────────────────────────────────────────────
+  async function cargarResumen() {
+    const r = await fetch(API + '/resumen').then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok' || avisarFalta(r)) return;
+    // La etiqueta corta se pinta; la larga de la API ("Turno noche · anoche") va al
+    // title, que es donde cabe. Seis tarjetas en fila no perdonan un texto largo.
+    const CORTA = { 'm-hoy': 'Hoy', 'm-ayer': 'Ayer', 'm-semana': 'Semana', 'm-tdia': 'Turno día', 'm-tnoche': 'Turno noche', 'm-ajor': 'Ayer · jornada' };
+    // Las metas por turno viven en la config del visor. La de la jornada entera es
+    // la SUMA de las dos: una jornada son sus dos turnos, y así no hay un tercer
+    // número que mantener y que se quede desfasado.
+    const cfg = r.config || {};
+    const metaDia = Number(cfg.meta_turno_dia_h) || 0;
+    const metaNoche = Number(cfg.meta_turno_noche_h) || 0;
+    const META = { 'm-tdia': metaDia, 'm-tnoche': metaNoche, 'm-ajor': metaDia + metaNoche };
+
+    const pon = (id, s) => {
+      if (!s) return;
+      setTxt(id + '-etq', CORTA[id] || s.etq);
+      const e = document.getElementById(id + '-etq'); if (e) e.title = s.etq || '';
+      setTxt(id + '-h', nf1.format(s.horasEfectivas));
+      setTxt(id + '-util', s.utilizacion == null ? '—' : nf1.format(s.utilizacion));
+      setTxt(id + '-cond', (s.conductores || 0) + ' cond.');
+      // En las de turno, cuánto es de gente sin plan (va por su hora de inicio).
+      const cond = document.getElementById(id + '-cond');
+      if (cond && s.horasNN != null) {
+        cond.title = s.conductoresNN
+          ? 'De ellos, ' + s.conductoresNN + ' ' + SIN_PLAN + ' con ' + nf1.format(s.horasNN) + ' h'
+          : 'Ninguno ' + SIN_PLAN;
+      }
+
+      const meta = META[id] || 0;
+      const bar = document.getElementById(id + '-bar');
+      if (meta > 0) {
+        const pct = (s.horasEfectivas / meta) * 100;
+        setTxt(id + '-meta', ' / ' + nf0.format(meta));
+        setTxt(id + '-pct', nf1.format(pct));
+        const color = colorMeta(pct);
+        if (bar) {
+          bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+          bar.className = 'h-full transition-all';
+          bar.style.backgroundColor = color;
+        }
+        // La cifra también se tiñe: la barra se ve de lejos, el número es lo que
+        // se mira. Las dos cosas dicen lo mismo y no hay que interpretar nada.
+        const h = document.getElementById(id + '-h');
+        if (h) { h.classList.remove('text-telecab-text'); h.style.color = color; }
+        const caja = document.getElementById(id + '-barcaja');
+        if (caja) caja.title = `${nf1.format(s.horasEfectivas)} h de ${nf0.format(meta)} · ${nf1.format(pct)} %`;
+      } else if (bar) {
+        bar.style.width = Math.max(0, Math.min(100, s.utilizacion || 0)) + '%';
+      }
+    };
+    pon('m-hoy', r.dia); pon('m-ayer', r.ayer); pon('m-semana', r.semana);
+    pon('m-tdia', r.turnoDia); pon('m-tnoche', r.turnoNoche); pon('m-ajor', r.ayerJornada);
+    setTxt('v-actualizado', '· actualizado ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }));
+  }
+
+  // ══ 1. HORAS POR DÍA, CON RANGOS ══════════════════════════════════════════
+  // El rango elegido se recuerda en este navegador (y aparte en cada sede): es
+  // una comodidad de quien mira, no un dato.
+  const CLAVE_RANGO = 'tc.visibilidad.rango' + (ES_MADRID ? '' : '.' + API);
+  // Con su preposición: pegar «de » delante daba «de el último año».
+  const RANGOS = { '7': 'de la última semana', '15': 'de los últimos 15 días', '30': 'de los últimos 30 días', '60': 'de los últimos 2 meses', '182': 'de los últimos 6 meses', '365': 'del último año', 'todo': 'de toda la historia' };
+  const inpRango = document.getElementById('v-rango');
+  try {
+    const guardado = localStorage.getItem(CLAVE_RANGO);
+    if (guardado && RANGOS[guardado]) inpRango.value = guardado;
+  } catch (e) { /* sin almacenamiento, el de siempre: 15 días */ }
+  if (window.Selector) Selector.montar(inpRango.parentElement);
+  inpRango.addEventListener('change', () => {
+    try { localStorage.setItem(CLAVE_RANGO, inpRango.value); } catch (e) { /* da igual */ }
+    cargarRango();
+  });
+
+  function etiquetaEje(p, agr, n) {
+    const f = fechaDe(p.desde);
+    if (agr === 'dia') return p.enCurso ? 'hoy' : (n <= 31 ? DIAS_CORTOS[f.getDay()] + ' ' + f.getDate() : f.getDate() + ' ' + MESES_CORTOS[f.getMonth()]);
+    if (agr === 'semana') return f.getDate() + ' ' + MESES_CORTOS[f.getMonth()];
+    return MESES_CORTOS[f.getMonth()] + ' ' + String(f.getFullYear()).slice(2);
+  }
+  function tituloPunto(p, agr) {
+    const f = fechaDe(p.desde);
+    if (agr === 'dia') return DIAS_LARGOS[f.getDay()] + ' ' + f.getDate() + ' de ' + MESES[f.getMonth()].toLowerCase() + ' de ' + f.getFullYear() + (p.enCurso ? ' · hoy, en curso' : '');
+    if (agr === 'semana') {
+      const g = fechaDe(p.hasta);
+      return 'Semana del ' + f.getDate() + ' ' + MESES_CORTOS[f.getMonth()] + ' al ' + g.getDate() + ' ' + MESES_CORTOS[g.getMonth()] + (p.enCurso ? ' · en curso' : '');
+    }
+    return MESES[f.getMonth()] + ' de ' + f.getFullYear() + (p.enCurso ? ' · en curso' : '');
+  }
+  const fuenteDe = p => (p.origen === 'historico' || p.origen === 'mixto')
+    ? (p.origen === 'mixto' ? 'Parte del histórico de BOLT' : 'Del histórico de BOLT') + (p.fuentes && p.fuentes.length ? ' (' + p.fuentes.join(', ') + ')' : '')
+    : '';
+  function pieDe(p, agr) {
+    const l = [];
+    if (p.valor == null && !p.enCurso) l.push('Sin datos de este ' + (agr === 'dia' ? 'día' : 'periodo'));
+    if (agr !== 'dia' && p.diasConDatos) l.push(nf0.format(p.total - (p.hoy || 0)) + ' h en ' + p.diasConDatos + (p.diasConDatos === 1 ? ' día cerrado' : ' días cerrados'));
+    if (agr !== 'dia' && p.enCurso && p.hoy != null) l.push('Hoy, en curso: ' + nf0.format(p.hoy) + ' h (no entra en la media)');
+    if (p.viajeH || p.esperaH) l.push('Viaje ' + nf0.format(p.viajeH) + ' h · espera ' + nf0.format(p.esperaH) + ' h' + (p.utilizacion != null ? ' · ' + nf1.format(p.utilizacion) + ' % utilización' : ''));
+    if (p.conductores) l.push(nf0.format(p.conductores) + (agr === 'dia' ? ' conductores' : ' conductores al día, de media'));
+    const f = fuenteDe(p); if (f) l.push(f);
+    return l;
+  }
+
+  // UN TURNO POR CARGA. Cada clic del selector (y cada flecha del teclado, y el
+  // refresco de cada 5 minutos) lanza una petición, y la de «Todo» tarda más que
+  // la de «Semana»: si llegaba después, pintaba encima y el botón decía Semana
+  // con el gráfico, las cifras y el subtítulo de toda la historia. Solo pinta la
+  // última que se pidió, y solo ella quita la media luz.
+  let turnoRango = 0;
+  async function cargarRango() {
+    const yo = ++turnoRango;
+    const v = inpRango.value;
+    const q = v === 'todo' ? 'desde=inicio' : 'ultimos=' + encodeURIComponent(v);
+    atenuar('g-rango-caja', true);
+    try {
+      const r = await pedir(API + '/rango?' + q);
+      if (yo !== turnoRango) return;
+      if (avisarFalta(r)) return;
+      pintarRango(r, v);
+    } catch (e) {
+      if (yo === turnoRango) errorEn('g-rango-cifras', 'No se pudieron cargar las horas por día: ' + e.message);
+    } finally { if (yo === turnoRango) atenuar('g-rango-caja', false); }
+  }
+
+  function pintarRango(r, v) {
+    const pal = paleta();
+    const agr = r.agrupacion, puntos = r.puntos || [], n = puntos.length;
+    const res = r.resumen || {};
+    const porDia = agr === 'dia';
+    const nombreSerie = porDia ? 'horas del día' : agr === 'semana' ? 'media diaria de la semana' : 'media diaria del mes';
+    const ritmos = puntos.map(p => p.ritmoMeta);
+    const hayMeta = ritmos.some(x => x > 0);
+    // El de la leyenda es el del último punto (la raya va en escalones, mes a mes).
+    const ritmoActual = hayMeta ? ritmos[ritmos.length - 1] : null;
+
+    setTxt('g-rango-titulo', porDia ? 'Horas por día' : 'Horas por día · ' + (agr === 'semana' ? 'por semanas' : 'por meses'));
+    setTxt('g-rango-sub', 'Horas efectivas (viaje + espera) ' + (RANGOS[v] || 'del rango') + '. ' +
+      (porDia ? 'Hoy va aparte, en un punto hueco, porque aún corre.' : 'Cada punto es la media diaria de su ' + (agr === 'semana' ? 'semana' : 'mes') + ': el eje dice lo mismo en todos los rangos.'));
+
+    // ── Las cifras: cómo van las horas AHORA ──
+    const ant = res.anterior;
+    const etqMejor = porDia ? 'Mejor día' : agr === 'semana' ? 'Mejor semana' : 'Mejor mes';
+    const mejorTxt = res.mejor ? tituloPunto({ ...res.mejor, enCurso: false }, agr).replace(/ de \d{4}$/, '') : '';
+    // Contra el ritmo de los MISMOS días que la media (lo pondera el servidor):
+    // con la media de los ritmos de cada punto, el % no salía con el ritmo que se
+    // leía debajo («la meta pide 968» y −12,9 %, cuando 860 / 968 es −11,1 %).
+    const vsMeta = res.vsMetaPct;
+    document.getElementById('g-rango-cifras').innerHTML = [
+      cifra({ etq: 'Media del periodo', valor: res.media == null ? '—' : nf0.format(res.media), unidad: 'h/día',
+        sub: res.diasConDatos ? res.diasConDatos + ' días cerrados con datos' : 'sin días cerrados',
+        ayuda: 'La media de horas por día de los días CERRADOS del rango. Hoy no entra: va a medias y hundiría la media.' }),
+      cifra({ etq: 'Frente al periodo anterior', valor: res.cambioPct == null ? '—' : sigPct(res.cambioPct),
+        tono: tonoDe(res.cambioPct), flecha: flechaDe(res.cambioPct),
+        sub: ant ? 'antes ' + nf0.format(ant.media) + ' h/día (' + fechaDe(ant.desde).getDate() + ' ' + MESES_CORTOS[fechaDe(ant.desde).getMonth()] + ' – ' + fechaDe(ant.hasta).getDate() + ' ' + MESES_CORTOS[fechaDe(ant.hasta).getMonth()] + ')' : 'no hay un periodo anterior con datos',
+        ayuda: 'La media diaria de los días cerrados del rango contra la de los ' + (ant ? ant.dias + ' ' : '') + 'días justo antes: la misma longitud, sin contar hoy.' }),
+      cifra({ etq: 'Contra el ritmo de la meta', valor: vsMeta == null ? '—' : sigPct(vsMeta),
+        tono: vsMeta == null ? null : vsMeta >= 0 ? 'bien' : 'mal', flecha: flechaDe(vsMeta),
+        sub: res.ritmoMeta ? 'la meta pide ' + (res.ritmoMetaVaria ? 'de media ' : '') + nf0.format(res.ritmoMeta) + ' h/día' + (res.ritmoMetaVaria ? ' en el periodo' : '')
+          : (hayMeta ? 'sin días cerrados con datos' : 'sin meta en Config'),
+        ayuda: 'La media del periodo contra el ritmo que pide la meta esos mismos días (meta ÷ días de su mes, día a día).' }),
+      cifra({ etq: etqMejor, valor: res.mejor ? nf0.format(res.mejor.valor) : '—', unidad: res.mejor ? (porDia ? 'h' : 'h/día') : '',
+        sub: res.mejor ? mejorTxt : (res.hoy != null ? 'hoy van ' + nf0.format(res.hoy) + ' h' : ''),
+        ayuda: 'El mejor ' + (porDia ? 'día cerrado' : agr === 'semana' ? 'semana (por su media diaria)' : 'mes (por su media diaria)') + ' del rango.' + (res.hoy != null ? '\nHoy, en curso: ' + nf0.format(res.hoy) + ' h.' : '') }),
+    ].join('');
+
+    // ── El gráfico: una línea que sube y baja ──
+    // Línea y no barras (25/10/2026, Camilo: «la línea de subida y bajada estaba
+    // mejor»). Hoy NO va en la línea: va a medias y la hundiría al final (un día de
+    // mil horas lleva cuatrocientas a mediodía). Va aparte, en un punto hueco.
+    const labels = puntos.map(p => etiquetaEje(p, agr, n));
+    const valores = puntos.map(p => p.valor);
+    const cerrados = puntos.map(p => (p.enCurso ? null : p.valor));
+    const enCurso = puntos.map(p => (p.enCurso ? p.valor : null));
+    // Sin la media móvil (25/10/2026). Era una raya gris por encima de la del día y
+    // Camilo no sabía qué era («quita la línea de la mediana, no sé de qué es»): la
+    // tendencia ya la dice la línea oro, y la media del periodo, la cifra de arriba.
+    // El servidor la sigue mandando (`media` de cada punto) por si vuelve.
+    // Los puntos y sus cifras, mientras quepan: con 15 días se leen todas; con un
+    // año por semanas, la línea sola (las cifras las dicen el globo y la tabla).
+    const radio = n <= 16 ? 4 : n <= 35 ? 3 : 0;
+    const caben = ctx => radio > 0 && ctx.chart.chartArea && ctx.chart.chartArea.width / n >= 38;
+    // La cifra, encima si el día sube y debajo si baja: la raya que llega no la pisa.
+    const baja = i => { let k = i - 1; while (k >= 0 && cerrados[k] == null) k--; return k >= 0 && cerrados[i] < cerrados[k]; };
+    const cifraPunto = (color, peso, conRumbo) => ({ anchor: 'center', offset: 6, clamp: true,
+      align: ctx => (conRumbo && baja(ctx.dataIndex) ? 'bottom' : 'top'),
+      color, font: { size: 10.5, weight: peso }, formatter: v => (v == null ? '' : nf0.format(v)) });
+    if (charts.rango) charts.rango.destroy();
+    const canvas = document.getElementById('g-rango');
+    charts.rango = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: nombreSerie, data: cerrados, order: 1,
+          borderColor: pal.acento, borderWidth: 2.5, borderCapStyle: 'round', borderJoinStyle: 'round',
+          // «monotone» y no una tensión a ojo: la curva no se pasa por encima del
+          // mejor día ni por debajo de cero entre dos puntos.
+          cubicInterpolationMode: 'monotone', fill: 'origin', backgroundColor: area('--tc-gold', pal.claro ? 0.16 : 0.2),
+          pointRadius: radio, pointHoverRadius: Math.max(radio, 3) + 2,
+          pointBackgroundColor: pal.acento, pointBorderColor: pal.superficie, pointBorderWidth: 2,
+          pointHoverBackgroundColor: pal.acento, pointHoverBorderColor: pal.superficie, pointHoverBorderWidth: 2,
+          datalabels: { display: ctx => cerrados[ctx.dataIndex] != null && caben(ctx), ...cifraPunto(pal.tinta, '600', true) } },
+        { label: porDia ? 'hoy, en curso' : 'en curso (sin hoy)', data: enCurso, order: 0, showLine: false,
+          pointRadius: 5, pointHoverRadius: 6, pointBackgroundColor: pal.superficie, pointBorderColor: pal.acento, pointBorderWidth: 2.5,
+          pointHoverBackgroundColor: pal.superficie, pointHoverBorderColor: pal.acento, pointHoverBorderWidth: 2.5,
+          datalabels: { display: ctx => enCurso[ctx.dataIndex] != null && caben(ctx), ...cifraPunto(pal.acento, '700') } },
+        { label: 'ritmo que pide la meta', data: hayMeta ? ritmos : [], order: 3, borderColor: pal.apagado, fill: false,
+          borderDash: [6, 4], borderWidth: 1.5, stepped: 'middle', pointRadius: 0, pointHoverRadius: 0, hidden: !hayMeta },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: ANIMA,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 18, right: 14 } },
+        plugins: {
+          legend: { display: false },
+          cruceta: { color: pal.rejilla },
+          tooltip: globo(pal, { callbacks: {
+            title: it => tituloPunto(puntos[it[0].dataIndex], agr),
+            label: c => nf0.format(c.parsed.y) + (c.datasetIndex <= 1 && porDia ? ' h' : ' h/día') + ' · ' + c.dataset.label,
+            labelPointStyle: c => ({ pointStyle: c.datasetIndex === 1 ? 'circle' : 'line', rotation: 0 }),
+            labelColor: c => ({ borderColor: c.datasetIndex <= 1 ? pal.acento : c.dataset.borderColor,
+              backgroundColor: c.datasetIndex === 1 ? pal.superficie : c.datasetIndex === 0 ? pal.acento : c.dataset.borderColor, borderWidth: 2 }),
+            footer: it => pieDe(puntos[it[0].dataIndex], agr),
+          } }),
+        },
+        // La escala de la casa, como los otros dos: con la de Chart.js el techo
+        // saltaba a 1.500 para días de 1.070 y la tercera parte de arriba iba vacía.
+        scales: { x: ejeX(pal), y: ejeEscalado(pal, [...valores, ...(hayMeta ? ritmos : [])]) },
+      },
+      plugins: [cruceta],
+    });
+    canvas.setAttribute('aria-label', 'Horas por día ' + (RANGOS[v] || 'del rango') +
+      (res.media != null ? ': media de ' + nf0.format(res.media) + ' horas al día' : '') +
+      (res.cambioPct != null ? ', ' + sigPct(res.cambioPct) + ' frente al periodo anterior' : '') + '. Los datos están en la tabla.');
+
+    leyenda('g-rango-leyenda', [
+      { tipo: 'linea', color: pal.acento, texto: porDia ? 'Horas del día' : 'Media diaria del periodo' },
+      enCurso.some(x => x != null) ? { tipo: 'punto', hueco: true, color: pal.acento, texto: porDia ? 'Hoy, en curso' : 'En curso (sin hoy)' } : null,
+      hayMeta ? { tipo: 'discontinua', color: pal.apagado, texto: 'Ritmo que pide la meta' + (ritmoActual ? ' (' + nf0.format(ritmoActual) + ' h/día)' : '') } : null,
+    ]);
+
+    // Lo que hay que saber para leerlo bien: dónde empiezan los datos y si falta el histórico.
+    const notas = [];
+    if (r.desdePedido && r.primerDia && r.desdePedido < r.primerDia) notas.push('Hay datos desde el ' + r.primerDia.split('-').reverse().join('/') + ': el rango empieza ahí.');
+    if (r.faltaHistorico) notas.push('El histórico de BOLT de antes de julio de 2026 aún no está cargado (migración db/217).');
+    if (puntos.some(p => p.origen === 'historico' || p.origen === 'mixto')) notas.push('Los días de antes del 01/07/2026 salen del histórico de BOLT, no del núcleo.');
+    const nota = document.getElementById('g-rango-nota');
+    nota.textContent = notas.join(' ');
+    nota.classList.toggle('hidden', !notas.length);
+
+    tablaVista('g-rango-tabla',
+      [porDia ? 'Día' : agr === 'semana' ? 'Semana' : 'Mes', porDia ? 'Horas' : 'h/día', 'Ritmo meta', 'Total h', 'Viaje h', 'Espera h', '% util.', 'Conductores', 'Fuente'],
+      puntos.map(p => [tituloPunto(p, agr), p.valor == null ? '' : nf1.format(p.valor),
+        p.ritmoMeta ? nf0.format(p.ritmoMeta) : '', nf1.format(p.total), nf1.format(p.viajeH), nf1.format(p.esperaH),
+        p.utilizacion == null ? '' : nf1.format(p.utilizacion), p.conductores || '', p.origen === 'historico' ? 'histórico BOLT' : p.origen === 'mixto' ? 'mixto' : p.origen ? 'núcleo' : '']));
+  }
+
+  // ══ 2. CÓMO VAMOS — y la serie del mes (cifras, tabla) ════════════════════
+  // El mismo turno que el rango: con las flechas de mes, cada mes pide dos
+  // serieMes, y si septiembre llegaba después que octubre el rótulo decía
+  // «Octubre 2026» con las cifras, la tabla y Cómo vamos de septiembre.
+  let turnoMes = 0;
+  async function cargarComoVamos() {
+    const yo = ++turnoMes;
+    setTxt('v-mes-lbl', MESES[mes - 1] + ' ' + anio);
+    const mm = String(mes).padStart(2, '0');
+    atenuar('g-vamos-caja', true);
+    atenuar('g-brecha-caja', true);
+    let r;
+    try {
+      r = await pedir(API + '/como-vamos?mes=' + anio + '-' + mm);
+    } catch (e) {
+      if (yo !== turnoMes) return;
+      errorEn('g-vamos-cifras', 'No se pudo cargar el mes: ' + e.message);
+      atenuar('g-vamos-caja', false);
+      atenuar('g-brecha-caja', false);
+      return;
+    }
+    if (yo !== turnoMes) return;
+    atenuar('g-vamos-caja', false);
+    atenuar('g-brecha-caja', false);
+    if (avisarFalta(r)) return;
+    pintarKpis(r.totales || {}, r.config || {});
+    setTxt('k-sub-mes', MESES[r.mes - 1] + ' ' + r.anio);
+    rellenarTabla(r.dias, r.ultimoConDatos, sinMeta(r));
+    rellenarConfig(r.config);
+    pintarVamos(r);
+    pintarBrecha(r);
+  }
+
+  // KPIs grandes del MES elegido (siguen al selector de mes, no a "hoy").
+  function pintarKpis(t, c) {
+    // SIN PEDIDOS NO HAY DINERO QUE MEDIR. bolt_order empieza el 01/07/2026, y los
+    // meses del histórico de BOLT (enero a junio) tienen horas pero ni un pedido:
+    // «0,00 €» por hora y «0 v/h» se leían como datos reales. Con horas y sin
+    // pedidos, «—» y el motivo. (Se decide aquí y no en armarSerie: la cuenta la
+    // comparte Barcelona y el Inicio lee otra.)
+    const sinPedidos = (t.horasEfectivas || 0) > 0 && !(t.viajes > 0) && !t.neto;
+    const SIN = 'sin pedidos de BOLT ese mes';
+    setTxt('k-horas', nf1.format(t.horasEfectivas || 0) + ' h');
+    setTxt('k-util', t.utilizacion == null ? '—' : nf1.format(t.utilizacion) + ' %');
+    setTxt('k-eurhora', sinPedidos || t.eurosHora == null ? '—' : eur.format(t.eurosHora));
+    setTxt('k-eurhora-sub', sinPedidos ? SIN : 'neto / horas efectivas');
+    setTxt('k-neto', sinPedidos ? '—' : eur.format(t.neto || 0));
+    setTxt('k-neto-sub', sinPedidos ? SIN : 'facturación del mes');
+    setTxt('k-viahora', sinPedidos || t.viajesHora == null ? '—' : nf1.format(t.viajesHora) + ' v/h');
+    setTxt('k-viajes', sinPedidos ? SIN : nf0.format(t.viajes || 0) + ' viajes terminados');
+    const meta = Number(c.meta) || 0;
+    const pct = meta > 0 ? (t.horasEfectivas || 0) / meta * 100 : 0;
+    setTxt('k-meta-pct', meta > 0 ? nf1.format(pct) + ' %' : '—');
+    setTxt('k-meta-val', meta > 0 ? '(' + nf0.format(meta) + ' h)' : '');
+    const bar = document.getElementById('k-meta-bar');
+    if (bar) bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
+
+  // SIN META (Barcelona, hasta que se ponga en Config) no hay ideal, crítico ni
+  // brecha que enseñar: serían rayas a cero y una brecha que no mide nada.
+  const sinMeta = r => !(Number((r.config || {}).meta) > 0);
+
+  function rellenarTabla(dias, ultimo, noMeta) {
+    const tb = document.getElementById('v-tabla');
+    tb.innerHTML = dias.map(d => {
+      const futuro = d.dia > ultimo;
+      const bClass = d.brecha >= 0 ? 'text-telecab-green' : 'text-telecab-red';
+      const sClass = d.sobreCritico >= 0 ? 'text-telecab-muted' : 'text-telecab-red font-semibold';
+      const s1 = x => (x > 0 ? '+' : '') + nf1.format(x);
+      const hoyClase = d.dia === ultimo && futuro === false && dias.some(x => x.dia > ultimo) ? ' bg-telecab-gold/[0.06]' : '';
+      // Un día del histórico de BOLT (antes de que el núcleo tuviera datos) lo dice.
+      const marca = d.origen === 'historico'
+        ? ' <span class="text-[10px] text-telecab-muted" title="Del histórico de BOLT: de antes de que el núcleo tuviera datos (01/07/2026).">BOLT</span>' : '';
+      return `<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 ${futuro ? 'opacity-40' : ''}${hoyClase}">
+        <td class="text-left px-4 py-1.5 text-telecab-text">${d.dia}${marca}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-text">${d.total ? nf1.format(d.total) : '·'}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${d.waiting ? nf1.format(d.waiting) : '·'}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${d.utilizacion == null ? '·' : nf1.format(d.utilizacion)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-text">${futuro ? '·' : nf0.format(d.acumulado)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${noMeta ? '·' : nf0.format(d.ideal)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${noMeta ? '·' : nf0.format(d.critico)}</td>
+        <td class="text-right px-3 py-1.5 ${futuro || noMeta ? 'text-telecab-muted' : bClass}">${futuro || noMeta ? '·' : s1(d.brecha)}</td>
+        <td class="text-right px-4 py-1.5 ${futuro || noMeta ? 'text-telecab-muted' : sClass}">${futuro || noMeta ? '·' : s1(d.sobreCritico)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  /**
+   * CÓMO VAMOS. El acumulado del mes elegido contra el del anterior, día a día,
+   * con el ideal de la meta y el suelo crítico; en el mes en curso, la previsión
+   * de cierre al ritmo de ahora, en raya de puntos. Las cifras de la derecha lo
+   * dicen en números: por delante o por detrás, cuánto, y adónde llegamos.
+   */
+  function pintarVamos(r) {
+    const pal = paleta();
+    const ca = r.comoVamos || {};
+    const ant = r.anterior || { dias: [] };
+    const noMeta = sinMeta(r);
+    const dm = r.diasMes, nX = Math.max(dm, ant.diasMes || 0);
+    const nombreMes = MESES[r.mes - 1].toLowerCase(), nombreAnt = MESES[ant.mes - 1].toLowerCase();
+    const corte = ca.corte || 0;
+    const relleno = (arr, f) => Array.from({ length: nX }, (_, i) => (i < arr.length ? f(arr[i], i) : null));
+
+    // Un mes pasado sin un dato no «cerró» con 0 h: es un mes sin datos.
+    const titulo = r.esMesActual ? 'Cómo vamos este mes'
+      : !r.ultimoConDatos ? 'Cómo va ' + nombreMes + ' de ' + r.anio
+      : ca.sinDatos ? MESES[r.mes - 1] + ' de ' + r.anio + ': sin datos'
+      : 'Cómo cerró ' + nombreMes + ' de ' + r.anio;
+    setTxt('g-vamos-titulo', titulo);
+    setTxt('g-vamos-sub', 'Horas efectivas acumuladas de ' + nombreMes + ' contra ' + nombreAnt + ', día a día' +
+      (r.esMesActual ? ', hasta ayer: hoy aún corre.' : '.') + (noMeta ? '' : ' En rojo, el suelo por debajo del cual la meta ya no se alcanza.'));
+
+    // ── Las cifras ──
+    const cif = [];
+    const etqAnt = 'Frente a ' + nombreAnt;
+    if (!corte) {
+      cif.push(cifra({ etq: r.esMesActual ? 'Este mes' : MESES[r.mes - 1] + ' de ' + r.anio, valor: '—',
+        sub: r.esMesActual ? 'aún no hay días cerrados' : r.ultimoConDatos ? 'no hay horas de este mes' : 'el mes aún no ha empezado' }));
+    } else if (ca.anterior && ca.diferencia != null) {
+      // Un mes cerrado se compara ENTERO con el anterior (la misma cuenta que su
+      // cierre y que Cómo hemos crecido); el mes en curso, a la misma altura.
+      cif.push(cifra({ etq: etqAnt + (ca.mesEntero ? '' : ' a día ' + ca.anterior.dia), valor: sig(ca.diferencia), unidad: 'h',
+        tono: tonoDe(ca.diferencia), flecha: flechaDe(ca.diferencia),
+        sub: (ca.diferenciaPct != null ? sigPct(ca.diferenciaPct) + ' · ' : '') + nf0.format(ca.mediaDia) + ' frente a ' + nf0.format(ca.mediaDiaAnterior) + ' h/día',
+        ayuda: ca.mesEntero
+          ? 'Los dos meses enteros: ' + nombreMes + ' sumó ' + nf0.format(ca.acumulado) + ' h en ' + ca.diasConDatos + ' días con datos y ' + nombreAnt + ' ' + nf0.format(ca.anterior.acumulado) + ' h en ' + ca.anterior.diasConDatos + '.\nPor día, la media de los días con datos de cada mes, la misma de Cómo hemos crecido.'
+          : 'El acumulado de ' + nombreMes + ' hasta el día ' + corte + ' (' + nf0.format(ca.acumulado) + ' h) contra el de ' + nombreAnt + ' hasta el día ' + ca.anterior.dia + ' (' + nf0.format(ca.anterior.acumulado) + ' h).' }));
+    } else {
+      cif.push(cifra({ etq: etqAnt, valor: '—', sub: 'sin datos suficientes de ' + nombreAnt }));
+    }
+    if (corte && !noMeta && ca.brecha != null) {
+      cif.push(cifra({ etq: 'Sobre el ideal de la meta', valor: sig(ca.brecha), unidad: 'h', tono: tonoDe(ca.brecha), flecha: flechaDe(ca.brecha),
+        sub: 'ideal a día ' + corte + ': ' + nf0.format(ca.ideal) + ' h',
+        ayuda: 'El acumulado menos el ideal (la meta repartida por igual entre los días del mes) al cierre del día ' + corte + '.' +
+          (ca.sobreCritico != null ? '\nSobre el crítico: ' + sig(ca.sobreCritico) + ' h' + (ca.sobreCritico < 0 ? ' (por debajo del suelo: ya no hay capacidad para llegar).' : '.') : '') }));
+    }
+    const p = ca.proyeccion;
+    if (p) {
+      const tonoCierre = p.pctMeta == null ? null : p.pctMeta >= 100 ? 'bien' : p.pctMeta >= 90 ? 'aviso' : 'mal';
+      cif.push(cifra({ etq: 'Cierre previsto', valor: nf0.format(p.cierre), unidad: 'h', tono: tonoCierre,
+        sub: (p.pctMeta != null ? nf0.format(p.pctMeta) + ' % de la meta · ' : '') + 'a ' + nf0.format(p.ritmo) + ' h/día',
+        ayuda: 'Lo hecho hasta ayer (' + nf0.format(p.real) + ' h) más ' + p.quedan + ' días (hoy incluido) al ritmo de los últimos 7 días cerrados: ' + nf0.format(p.ritmo) + ' h/día.' +
+          (p.ritmoMes != null ? '\nAl ritmo del mes (' + nf0.format(p.ritmoMes) + ' h/día) serían ' + nf0.format(p.real + p.ritmoMes * p.quedan) + ' h.' : '') }));
+      if (p.ritmoNecesario != null && p.meta) {
+        const llega = p.ritmoNecesario <= p.ritmo;
+        cif.push(cifra({ etq: 'Para llegar a la meta', valor: nf0.format(p.ritmoNecesario), unidad: 'h/día', tono: llega ? 'bien' : 'aviso',
+          sub: p.quedan + (p.quedan === 1 ? ' día que queda' : ' días que quedan') + (ca.hoy ? ' · hoy van ' + nf0.format(ca.hoy) + ' h' : ''),
+          ayuda: 'Lo que falta (' + nf0.format(p.faltan) + ' h) entre los días que quedan, hoy incluido.' + (llega ? '\nEl ritmo de ahora alcanza.' : '\nHay que ir ' + nf0.format(p.ritmoNecesario - p.ritmo) + ' h/día por encima del ritmo de ahora.') }));
+      }
+    } else if (ca.cierre) {
+      const c = ca.cierre;
+      cif.push(cifra({ etq: 'Cierre del mes', valor: nf0.format(c.total), unidad: 'h',
+        tono: c.pctMeta == null ? null : c.pctMeta >= 100 ? 'bien' : c.pctMeta >= 90 ? 'aviso' : 'mal',
+        sub: (c.pctMeta != null ? nf0.format(c.pctMeta) + ' % de la meta' : 'sin meta') + (c.vsAnteriorPct != null ? ' · ' + sigPct(c.vsAnteriorPct) + ' que ' + nombreAnt : '') }));
+      cif.push(cifra({ etq: 'Media por día', valor: nf0.format(ca.mediaDia), unidad: 'h/día',
+        sub: ca.mediaDiaAnterior != null ? nombreAnt + ': ' + nf0.format(ca.mediaDiaAnterior) + ' h/día' : '',
+        ayuda: 'La media de los ' + ca.diasConDatos + ' días con datos del mes.' }));
+    }
+    document.getElementById('g-vamos-cifras').innerHTML = cif.join('');
+
+    // ── El gráfico ──
+    const labels = Array.from({ length: nX }, (_, i) => String(i + 1));
+    const actual = relleno(r.dias, (d, i) => (i < corte ? d.acumulado : null));
+    const anterior = ca.anterior ? relleno(ant.dias, d => d.acumulado) : [];
+    const ideal = noMeta ? [] : relleno(r.dias, d => d.ideal);
+    const critico = noMeta ? [] : relleno(r.dias, d => d.critico);
+    const prevision = Array(nX).fill(null);
+    if (p && p.serie) p.serie.forEach(s => { if (s.dia >= 1 && s.dia <= nX) prevision[s.dia - 1] = s.acumulado; });
+    // El primer punto de la previsión es el último real: la raya sale de ahí.
+    if (p && corte >= 1) prevision[corte - 1] = actual[corte - 1];
+    const iAnt = ant.dias ? ant.dias.length - 1 : -1;
+    const D = { actual: 0, prevision: 1, anterior: 2, ideal: 3, critico: 4 };
+    const finales = [
+      corte ? { ds: D.actual, i: corte - 1, texto: (r.esMesActual ? 'ayer · ' : '') + nf0.format(actual[corte - 1]) + ' h', color: pal.acento, fondo: pal.superficie } : null,
+      p ? { ds: D.prevision, i: dm - 1, texto: 'previsto ' + nf0.format(p.cierre), color: pal.acento, discontinua: true } : null,
+      ca.anterior ? { ds: D.anterior, i: iAnt, texto: MESES_CORTOS[ant.mes - 1] + ' ' + nf0.format(ant.dias[iAnt].acumulado), color: pal.contexto } : null,
+      noMeta ? null : { ds: D.ideal, i: dm - 1, texto: 'meta ' + nf0.format(Number(r.config.meta)), color: pal.apagado, discontinua: true },
+    ].filter(Boolean);
+
+    if (charts.vamos) charts.vamos.destroy();
+    const canvas = document.getElementById('g-vamos');
+    // En una pantalla estrecha (el móvil) las etiquetas de la derecha se comían un
+    // tercio del gráfico: ahí solo queda la de «ayer», y el resto lo dicen la
+    // leyenda y las cifras de debajo. Se decide AL DIBUJAR, con el ancho del
+    // gráfico (ANCHO_ETIQUETAS): medido una vez al pintar, con la tabla a la vista
+    // la caja medía 0 y al volver al gráfico faltaban «previsto», «sept.» y «meta»;
+    // y al girar el móvil se quedaba con lo de antes.
+    const ANCHO_ETIQUETAS = 560;
+    charts.vamos = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets: [
+        // Sin relleno debajo: con el lavado rojo del crítico, los dos juntos daban un
+        // marrón que no era ningún dato. La raya del mes, en el acento, ya manda.
+        { label: nombreMes, data: actual, borderColor: pal.acento, fill: false,
+          borderWidth: 2.5, tension: 0.2, spanGaps: false, borderCapStyle: 'round',
+          pointRadius: actual.map((_, i) => (i === corte - 1 ? 4 : 0)), pointBackgroundColor: pal.acento, pointBorderColor: pal.superficie, pointBorderWidth: 2,
+          pointHoverRadius: 4, pointHoverBorderColor: pal.superficie, pointHoverBorderWidth: 2 },
+        { label: 'previsión al ritmo de ahora', data: prevision, borderColor: pal.acento, borderDash: [5, 4], borderWidth: 2, fill: false,
+          pointRadius: prevision.map((_, i) => (i === dm - 1 ? 4 : 0)), pointBackgroundColor: pal.superficie, pointBorderColor: pal.acento, pointBorderWidth: 2,
+          pointHoverRadius: 0, hidden: !p },
+        { label: nombreAnt, data: anterior, borderColor: pal.contexto, borderWidth: 2, fill: false, tension: 0.2,
+          pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: pal.contexto, pointHoverBorderColor: pal.superficie, pointHoverBorderWidth: 2, hidden: !ca.anterior },
+        { label: 'ideal de la meta', data: ideal, borderColor: pal.apagado, borderDash: [6, 4], borderWidth: 1.5, fill: false, pointRadius: 0, pointHoverRadius: 0, hidden: noMeta },
+        // El crítico rellena hasta el suelo con un lavado rojo muy suave: es la zona
+        // en la que ya no hay capacidad para llegar a la meta. Antes era rojo al 40 %
+        // y era lo que más se veía del gráfico sin ser un dato.
+        { label: 'crítico', data: critico, borderColor: pal.rojo, borderDash: [3, 3], borderWidth: 1.5, fill: 'origin', backgroundColor: pal.rojoLavado,
+          pointRadius: 0, pointHoverRadius: 0, hidden: noMeta },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: ANIMA,
+        interaction: { mode: 'index', intersect: false },
+        // A la derecha, el sitio de las etiquetas de final de línea («previsto 27.890»).
+        layout: { padding: c => ({ top: 8, right: c.chart.width < ANCHO_ETIQUETAS ? 8 : 116 }) },
+        plugins: {
+          legend: { display: false },
+          cruceta: { color: pal.rejilla },
+          etiquetasFinales: { items: finales, tinta: pal.texto, raya: pal.apagado, anchoMinimo: ANCHO_ETIQUETAS },
+          tooltip: globo(pal, { callbacks: {
+            title: it => 'Día ' + (it[0].dataIndex + 1),
+            label: c => nf0.format(c.parsed.y) + ' h · ' + c.dataset.label,
+            labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 }),
+            labelColor: c => ({ borderColor: c.dataset.borderColor, backgroundColor: c.dataset.borderColor, borderWidth: 2 }),
+            footer: it => {
+              const i = it[0].dataIndex;
+              const a = actual[i], b = anterior[i];
+              return a != null && b != null ? [sig(a - b) + ' h frente a ' + nombreAnt + ' el mismo día'] : [];
+            },
+          } }),
+        },
+        scales: { x: ejeX(pal, { ticks: { color: pal.apagado, maxRotation: 0, autoSkip: true, autoSkipPadding: 10 } }),
+          y: ejeEscalado(pal, [Number(r.config.meta) || 0, ...actual, ...anterior, ...prevision]) },
+      },
+      plugins: [cruceta, etiquetasFinales],
+    });
+    canvas.setAttribute('aria-label', 'Acumulado de ' + nombreMes + (corte ? ' hasta el día ' + corte + ': ' + nf0.format(ca.acumulado) + ' horas' : '') +
+      (ca.diferencia != null ? ', ' + sig(ca.diferencia) + ' frente a ' + nombreAnt : '') + (p ? '. Cierre previsto: ' + nf0.format(p.cierre) + ' horas' : '') + '. Los datos están en la tabla.');
+
+    leyenda('g-vamos-leyenda', [
+      { tipo: 'linea', color: pal.acento, texto: MESES[r.mes - 1] + (r.esMesActual ? ' (hasta ayer)' : '') },
+      p ? { tipo: 'discontinua', color: pal.acento, texto: 'Previsión al ritmo de los últimos 7 días' } : null,
+      ca.anterior ? { tipo: 'linea', color: pal.contexto, texto: MESES[ant.mes - 1] } : null,
+      noMeta ? null : { tipo: 'discontinua', color: pal.apagado, texto: 'Ideal de la meta' },
+      noMeta ? null : { tipo: 'discontinua', color: pal.rojo, texto: 'Crítico' },
+    ]);
+
+    tablaVista('g-vamos-tabla',
+      ['Día', MESES[r.mes - 1] + ' (acum.)', MESES[ant.mes - 1] + ' (acum.)', 'Diferencia', 'Ideal', 'Crítico', 'Previsión'],
+      labels.map((l, i) => [l, actual[i] == null ? '' : nf0.format(actual[i]), anterior[i] == null ? '' : nf0.format(anterior[i]),
+        actual[i] != null && anterior[i] != null ? sig(actual[i] - anterior[i]) : '',
+        ideal[i] == null ? '' : nf0.format(ideal[i]), critico[i] == null ? '' : nf0.format(critico[i]),
+        prevision[i] == null || i < corte ? '' : nf0.format(prevision[i])]));
+  }
+
+  /**
+   * BRECHA SOBRE EL IDEAL, en barras y solo del mes elegido. Es la de antes de la
+   * tendencia: se quitó con ella (la cifra quedó en Cómo vamos) y volvió el mismo
+   * 25/10/2026, Camilo: «esa era muy buena, solo del mes». Cada día cerrado, su
+   * acumulado menos el ideal de la meta: en verde lo que vamos por delante, en
+   * rojo las horas que debemos. Rojo y verde porque aquí el dato ES un estado.
+   * Hoy no entra (va a medias: su barra siempre saldría hundida); los días por
+   * venir dejan su hueco, para que se vea cuánto mes queda.
+   */
+  function pintarBrecha(r) {
+    const pal = paleta();
+    const ca = r.comoVamos || {};
+    const noMeta = sinMeta(r);
+    const corte = ca.corte || 0;            // el último día cerrado (en un mes pasado, el último con datos)
+    const dias = r.dias || [];
+    const nombreMes = MESES[r.mes - 1].toLowerCase();
+    const labels = dias.map((d, i) => String(i + 1));
+    const brechas = dias.map((d, i) => (noMeta || i >= corte || d.brecha == null ? null : d.brecha));
+    // Lo que cada día movió la brecha: sus horas menos lo que pedía la meta ese día.
+    const cambio = brechas.map((b, i) => (b == null ? null : i === 0 ? b : brechas[i - 1] == null ? null : b - brechas[i - 1]));
+    const colorDe = v => (v >= 0 ? pal.verde : pal.rojo);
+
+    setTxt('g-brecha-sub', noMeta
+      ? 'Sin meta no hay ideal: ponla en Config para ver la brecha.'
+      : 'El acumulado de ' + nombreMes + ' menos el ideal de la meta, al cierre de cada día.' + (r.esMesActual ? ' Hoy no entra: aún corre.' : ''));
+    // La cifra grande, la de la tarjeta de Cómo vamos: el mismo día, la misma cuenta.
+    const b = noMeta || !corte ? null : (ca.brecha != null ? ca.brecha : brechas[corte - 1]);
+    const num = document.getElementById('g-brecha-num');
+    if (num) {
+      num.textContent = b == null ? '—' : sig(b) + ' h';
+      num.className = 'text-2xl font-semibold tabular-nums leading-none ' + (b == null ? 'text-telecab-muted' : b >= 0 ? 'text-telecab-green' : 'text-telecab-red');
+    }
+    setTxt('g-brecha-num-sub', noMeta ? 'sin meta en Config' : corte ? 'al cierre del día ' + corte : r.esMesActual ? 'aún no hay días cerrados' : 'sin días con datos');
+
+    if (charts.brecha) charts.brecha.destroy();
+    const canvas = document.getElementById('g-brecha');
+    charts.brecha = new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets: [{
+        label: 'sobre el ideal', data: brechas,
+        backgroundColor: brechas.map(v => (v == null ? 'transparent' : colorDe(v))),
+        hoverBackgroundColor: brechas.map(v => (v == null ? 'transparent' : colorDe(v))),
+        // La punta redondeada y la base recta, en el cero (arriba o abajo según el signo).
+        borderRadius: 3, borderSkipped: 'start', maxBarThickness: 24, barPercentage: 0.8, categoryPercentage: 0.9,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: ANIMA,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 8, right: 8 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: globo(pal, { callbacks: {
+            // Sobre un día sin barra (hoy, los que faltan, todo el mes sin meta) Chart.js
+            // llama al globo con la lista vacía: sin título ni pie, no lo dibuja.
+            // Antes reventaba en it[0] y el globo del último día se quedaba congelado.
+            title: it => { if (!it.length) return ''; const dia = it[0].dataIndex + 1; return DIAS_LARGOS[new Date(r.anio, r.mes - 1, dia).getDay()].replace(/^./, c => c.toUpperCase()) + ' ' + dia + ' de ' + nombreMes; },
+            label: c => sig(c.parsed.y) + ' h sobre el ideal',
+            labelPointStyle: () => ({ pointStyle: 'rect', rotation: 0 }),
+            labelColor: c => ({ borderColor: colorDe(c.parsed.y), backgroundColor: colorDe(c.parsed.y), borderWidth: 2 }),
+            footer: it => {
+              if (!it.length) return [];
+              const i = it[0].dataIndex, d = dias[i];
+              const l = ['Acumulado ' + nf0.format(d.acumulado) + ' h · ideal ' + nf0.format(d.ideal) + ' h'];
+              if (cambio[i] != null) l.push('Ese día: ' + nf0.format(d.total || 0) + ' h (' + sig(cambio[i]) + ' h a la brecha)');
+              return l;
+            },
+          } }),
+        },
+        // El eje no es el de horas desde cero hacia arriba: la brecha va casi siempre
+        // por debajo. El cero, más marcado: es la raya que separa deber de ir por delante.
+        scales: { x: ejeX(pal, { ticks: { color: pal.apagado, maxRotation: 0, autoSkip: true, autoSkipPadding: 6 } }),
+          y: ejeY(pal, { grace: '8%',
+            grid: { color: c => (c.tick && c.tick.value === 0 ? pal.apagado : pal.rejilla), lineWidth: c => (c.tick && c.tick.value === 0 ? 1.5 : 1), drawTicks: false },
+            // precision 0: sin una barra el eje va de 0 a 1 y salían «0, +1, +1, +2».
+            ticks: { color: pal.apagado, padding: 6, maxTicksLimit: 6, precision: 0, callback: v => sig(v) } }) },
+      },
+    });
+    canvas.setAttribute('aria-label', 'Brecha sobre el ideal de ' + nombreMes + (b != null ? ': ' + sig(b) + ' horas al cierre del día ' + corte : '') + '. Los datos están en la tabla.');
+
+    leyenda('g-brecha-leyenda', noMeta ? [] : [
+      { tipo: 'barra', color: pal.verde, texto: 'Por delante del ideal' },
+      { tipo: 'barra', color: pal.rojo, texto: 'Por detrás: las horas que debemos' },
+    ]);
+
+    tablaVista('g-brecha-tabla', ['Día', 'Horas del día', 'Acumulado', 'Ideal', 'Brecha', 'Cambio del día'],
+      dias.slice(0, corte).map((d, i) => [String(i + 1), nf1.format(d.total || 0), nf0.format(d.acumulado),
+        noMeta ? '' : nf0.format(d.ideal), brechas[i] == null ? '' : sig(brechas[i]), cambio[i] == null ? '' : sig(cambio[i])]));
+  }
+
+  // ══ 3. CÓMO HEMOS CRECIDO ═════════════════════════════════════════════════
+  let turnoCrec = 0;     // como el rango: solo pinta la última que se pidió
+  async function cargarCrecimiento() {
+    const yo = ++turnoCrec;
+    atenuar('g-crec-caja', true);
+    try {
+      const r = await pedir(API + '/crecimiento');
+      if (yo !== turnoCrec) return;
+      if (avisarFalta(r)) return;
+      pintarCrecimiento(r);
+    } catch (e) {
+      if (yo === turnoCrec) errorEn('g-crec-cifras', 'No se pudo cargar el crecimiento: ' + e.message);
+    } finally { if (yo === turnoCrec) atenuar('g-crec-caja', false); }
+  }
+
+  /**
+   * TRES GRÁFICOS PEQUEÑOS EN VEZ DE UNO CON DOS EJES. Horas, horas por día y
+   * conductores tienen escalas distintas: en un solo gráfico con dos ejes, dónde
+   * se cruzan las líneas lo decide cómo se alinean las escalas, no los datos.
+   * Encima de cada punto, el % frente al mes anterior.
+   */
+  function pintarCrecimiento(r) {
+    const pal = paleta();
+    const meses = r.meses || [];
+    const res = r.resumen;
+    const variosAnios = meses.length && meses[0].mes.slice(0, 4) !== meses[meses.length - 1].mes.slice(0, 4);
+    const etq = m => MESES_CORTOS[Number(m.mes.slice(5, 7)) - 1] + (variosAnios || m.mes.slice(5, 7) === '01' ? ' ' + m.mes.slice(2, 4) : '');
+    // UN MES CON POCOS DÍAS NO PESA COMO UNO ENTERO. El septiembre de Barcelona es
+    // el 30/09 desde las 15:00: con el color de octubre, sus 29 h/día al lado de
+    // 134 sugerían que se había multiplicado por 4,6. Los meses que no se comparan
+    // (menos de 7 días con datos) van en gris, y el eje dice «pocos días».
+    const pocos = meses.map(m => !m.comparable);
+    const labels = meses.map((m, i) => (pocos[i] ? [etq(m), 'pocos días'] : etq(m)));
+    const colorDe = (i, base, gris) => (pocos[i] ? gris : base);
+    const iCurso = meses.findIndex(m => m.enCurso);
+    const actual = iCurso >= 0 ? meses[iCurso] : null;
+
+    // ── Las cifras: tres comparaciones a la vez, de las horas por día del último
+    //    mes (el en curso, por sus días cerrados), y el mejor mes. Una sola habría
+    //    contado media historia: desde enero sale −7 % y desde julio, +15 %.
+    const comparables = meses.filter(m => m.comparable && !m.enCurso);
+    const mejor = comparables.reduce((a, m) => (!a || m.horasDia > a.horasDia ? m : a), null);
+    const nombreDe = ym => mesLargo(ym) + (ym.slice(0, 4) !== (res ? res.hasta.slice(0, 4) : '') ? ' de ' + ym.slice(0, 4) : '');
+    const tarjetaFrente = (etq, f, ayuda) => cifra({
+      etq: f ? etq + ' (' + nombreDe(f.mes) + ')' : etq,
+      valor: f && f.horasDiaPct != null ? sigPct(f.horasDiaPct) : '—', tono: f && tonoDe(f.horasDiaPct), flecha: f && flechaDe(f.horasDiaPct),
+      sub: f ? nf0.format(f.horasDiaDesde) + ' → ' + nf0.format(f.horasDiaHasta) + ' h/día' +
+        (f.conductoresPct != null ? ' · conductores ' + sigPct(f.conductoresPct) : '') : 'no hay con qué compararlo',
+      ayuda: ayuda + (f && f.horasPorConductorPct != null ? '\nHoras por conductor: ' + sigPct(f.horasPorConductorPct) + ' (si crecemos por más gente o porque cada uno hace más).' : ''),
+    });
+    document.getElementById('g-crec-cifras').innerHTML = !meses.length
+      ? cifra({ etq: 'Sin datos', valor: '—', sub: 'todavía no hay días con horas' })
+      : [
+        tarjetaFrente('Frente al mes anterior', res && res.anterior, 'Las horas por día de ' + (res ? mesLargo(res.hasta) : 'este mes') + ' (por sus días cerrados) contra las del mes anterior.'),
+        tarjetaFrente('Frente a hace tres meses', res && res.hace3, 'Las horas por día de ' + (res ? mesLargo(res.hasta) : 'este mes') + ' contra las de tres meses antes.'),
+        tarjetaFrente('Desde el primer mes', res && res.desdeElPrimero, 'Las horas por día de ' + (res ? mesLargo(res.hasta) : 'este mes') + ' contra las del primer mes con datos suficientes (7 días o más).'),
+        cifra({ etq: 'Mejor mes', valor: mejor ? nf0.format(mejor.horasDia) : '—', unidad: mejor ? 'h/día' : '',
+          sub: mejor ? mesLargo(mejor.mes) + ' de ' + mejor.mes.slice(0, 4) + ' · ' + nf0.format(mejor.horas) + ' h' : 'aún no hay un mes entero',
+          ayuda: 'El mes cerrado con más horas por día.' }),
+      ].join('');
+
+    const etiquetaPct = (valor, prefijo) => (valor == null ? '' : (prefijo || '') + sigPct(valor));
+    // El % de cada punto, si cabe (unos 36 px por mes); si no (el móvil con muchos
+    // meses), lo dicen el globo y la tabla: montados no los lee nadie. Encima si
+    // sube y debajo si baja: así la raya que llega al punto no pisa su cifra.
+    // `izquierda`: arriba y a la izquierda (la previsión, que va pegada al borde).
+    const datalabelsPct = (pctDe, mostrar, { prefijo, izquierda } = {}) => ({
+      display: ctx => mostrar(ctx.dataIndex) && pctDe(ctx.dataIndex) != null && ctx.chart.chartArea && ctx.chart.chartArea.width / meses.length >= 36,
+      anchor: 'center', align: ctx => (izquierda ? 235 : pctDe(ctx.dataIndex) < 0 ? 'bottom' : 'top'), offset: 6, clamp: true,
+      color: pal.apagado, font: { size: 10, weight: '600' }, formatter: (v, ctx) => etiquetaPct(pctDe(ctx.dataIndex), prefijo),
+    });
+    const pieMes = m => {
+      const l = [];
+      if (m.diasConDatos < m.diasCerrados) l.push(m.diasConDatos + ' de ' + m.diasCerrados + ' días cerrados con datos');
+      if (!m.comparable) l.push('Pocos días con datos para compararlo');
+      const f = fuenteDe(m); l.push(f || (m.origen === 'sede' ? 'De los apuntes de BOLT de la sede' : 'Del núcleo'));
+      return l;
+    };
+    const titulo = it => { const m = meses[it[0].dataIndex]; return mesLargo(m.mes)[0].toUpperCase() + mesLargo(m.mes).slice(1) + ' de ' + m.mes.slice(0, 4) + (m.enCurso ? ' · en curso' : ''); };
+    const opciones = (extra) => ({
+      responsive: true, maintainAspectRatio: false, animation: ANIMA,
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 18, right: 18 } },
+      plugins: Object.assign({ legend: { display: false } }, extra.plugins),
+      scales: { x: ejeX(pal, extra.x), y: ejeEscalado(pal, extra.valores, extra.y) },
+    });
+    // LÍNEAS, NO BARRAS (25/10/2026, Camilo: «la línea de subida y bajada estaba
+    // mejor»). Cada mes es un punto. El que lleva pocos días va gris, y el tramo que
+    // lo toca, gris y discontinuo: se ve, pero no se lee como subida ni bajada. El
+    // mes en curso va en un anillo (hueco), como todo lo que aún corre.
+    const radio = meses.length <= 18 ? 4 : 3;
+    const tocaPocos = s => pocos[s.p0DataIndex] || pocos[s.p1DataIndex];
+    const linea = (datos, extra) => Object.assign({
+      data: datos, borderColor: pal.acento, borderWidth: 2.5, borderCapStyle: 'round', borderJoinStyle: 'round',
+      cubicInterpolationMode: 'monotone', fill: 'origin', backgroundColor: area('--tc-gold', pal.claro ? 0.14 : 0.18),
+      segment: { borderColor: s => (tocaPocos(s) ? pal.contexto : undefined), borderDash: s => (tocaPocos(s) ? [4, 4] : undefined) },
+      pointRadius: radio, pointHoverRadius: radio + 2,
+      pointBackgroundColor: meses.map((m, i) => (m.enCurso ? pal.superficie : colorDe(i, pal.acento, pal.contexto))),
+      pointBorderColor: meses.map((m, i) => (m.enCurso ? colorDe(i, pal.acento, pal.contexto) : pal.superficie)),
+      pointBorderWidth: meses.map(m => (m.enCurso ? 2.5 : 2)),
+      pointHoverBackgroundColor: meses.map((m, i) => (m.enCurso ? pal.superficie : colorDe(i, pal.acento, pal.contexto))),
+      pointHoverBorderColor: meses.map((m, i) => (m.enCurso ? colorDe(i, pal.acento, pal.contexto) : pal.superficie)),
+      pointHoverBorderWidth: meses.map(m => (m.enCurso ? 2.5 : 2)),
+    }, extra || {});
+    ['crecHoras', 'crecDia', 'crecCond'].forEach(k => { if (charts[k]) charts[k].destroy(); });
+
+    // Horas al mes. El mes en curso NO va en la línea: a día 10 lleva un tercio y
+    // parecería que se hunde. Va su anillo con lo que lleva y, discontinua, la raya
+    // desde el último mes cerrado hasta donde cerraría al ritmo de ahora.
+    // Si el mes anterior lleva pocos días (el septiembre de Barcelona es una tarde),
+    // la raya no sale de él: subiría de 9 h a 4.000 y parecería un crecimiento.
+    // Entonces la previsión es su punto solo.
+    const proy = actual && actual.proyeccion ? actual.proyeccion : null;
+    const iAncla = proy && iCurso > 0 && !pocos[iCurso - 1] ? iCurso - 1 : -1;
+    const cierre = meses.map((m, i) => (!proy ? null : i === iCurso ? proy.cierre : i === iAncla ? m.horas : null));
+    charts.crecHoras = new Chart(document.getElementById('g-crec-horas'), {
+      type: 'line',
+      data: { labels, datasets: [
+        linea(meses.map(m => (m.enCurso ? null : m.horas)), { label: 'hechas', order: 1,
+          datalabels: datalabelsPct(i => meses[i].cambioHorasPct, i => !meses[i].enCurso) }),
+        { label: 'previsión de cierre al ritmo de ahora', data: cierre, order: 2, fill: false,
+          borderColor: pal.acento, borderWidth: 2, borderDash: [6, 4], borderCapStyle: 'round',
+          pointRadius: c => (c.dataIndex === iCurso ? 4 : 0), pointHoverRadius: c => (c.dataIndex === iCurso ? 5 : 0),
+          pointBackgroundColor: pal.acentoSuave, pointBorderColor: pal.acento, pointBorderWidth: 1.5,
+          pointHoverBackgroundColor: pal.acentoSuave, pointHoverBorderColor: pal.acento, pointHoverBorderWidth: 1.5,
+          datalabels: datalabelsPct(i => meses[i].cambioHorasPct, i => i === iCurso, { prefijo: 'prev. ', izquierda: true }) },
+        linea(meses.map(m => (m.enCurso ? m.horas : null)), { label: 'llevamos', order: 0, showLine: false, fill: false }),
+      ] },
+      options: opciones({
+        valores: meses.map(m => Math.max(m.horas || 0, m.enCurso && m.proyeccion ? m.proyeccion.cierre : 0)),
+        plugins: { tooltip: globo(pal, {
+          // La raya de la previsión arranca en el último mes cerrado: ahí no es previsión.
+          filter: it => it.parsed && it.parsed.y != null && !(it.datasetIndex === 1 && it.dataIndex !== iCurso),
+          callbacks: {
+          title: titulo,
+          label: c => {
+            const m = meses[c.dataIndex];
+            if (c.datasetIndex === 1) return nf0.format(c.parsed.y) + ' h · previsión de cierre';
+            return nf0.format(m.horas) + ' h · ' + (m.enCurso ? 'hechas (' + m.diasCerrados + ' días cerrados y hoy)' : 'hechas');
+          },
+          labelPointStyle: c => ({ pointStyle: c.datasetIndex === 2 ? 'circle' : 'line', rotation: 0 }),
+          labelColor: c => ({ borderColor: pal.acento, backgroundColor: c.datasetIndex === 2 ? pal.superficie : pal.acento, borderWidth: 2 }),
+          footer: it => {
+            const m = meses[it[0].dataIndex], l = [];
+            if (m.cambioHorasPct != null) l.push(sigPct(m.cambioHorasPct) + ' frente a ' + mesLargo(meses[it[0].dataIndex - 1].mes) + (m.cambioHorasEsProyeccion ? ' (con la previsión)' : ''));
+            if (m.enCurso && m.proyeccion && m.proyeccion.pctMeta != null) l.push(nf0.format(m.proyeccion.pctMeta) + ' % de la meta, al ritmo de los últimos 7 días');
+            return l.concat(pieMes(m));
+          },
+        } }) },
+      }),
+    });
+
+    // Horas por día: el mes en curso, por sus días cerrados (es real, no previsión).
+    charts.crecDia = new Chart(document.getElementById('g-crec-dia'), {
+      type: 'line',
+      data: { labels, datasets: [
+        linea(meses.map(m => m.horasDia), { label: 'horas por día',
+          datalabels: datalabelsPct(i => meses[i].cambioHorasDiaPct, () => true) }),
+      ] },
+      options: opciones({ valores: meses.map(m => m.horasDia), plugins: { tooltip: globo(pal, { callbacks: {
+        title: titulo,
+        label: c => nf0.format(c.parsed.y) + ' h/día · media de ' + meses[c.dataIndex].diasConDatos + ' días',
+        labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 }),
+        footer: it => { const m = meses[it[0].dataIndex]; return (m.cambioHorasDiaPct != null ? [sigPct(m.cambioHorasDiaPct) + ' frente al mes anterior'] : []).concat(pieMes(m)); },
+      } }) } }),
+    });
+
+    charts.crecCond = new Chart(document.getElementById('g-crec-cond'), {
+      type: 'line',
+      data: { labels, datasets: [
+        linea(meses.map(m => m.conductoresDia), { label: 'conductores al día',
+          datalabels: datalabelsPct(i => meses[i].cambioConductoresPct, () => true) }),
+      ] },
+      options: opciones({ valores: meses.map(m => m.conductoresDia), plugins: { tooltip: globo(pal, { callbacks: {
+        title: titulo,
+        label: c => nf0.format(c.parsed.y) + ' conductores al día, de media',
+        labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 }),
+        footer: it => {
+          const m = meses[it[0].dataIndex], l = [];
+          if (m.horasPorConductor != null) l.push(nf1.format(m.horasPorConductor) + ' h por conductor y día' + (m.cambioHorasPorConductorPct != null ? ' (' + sigPct(m.cambioHorasPorConductorPct) + ')' : ''));
+          if (m.cambioConductoresPct != null) l.push(sigPct(m.cambioConductoresPct) + ' conductores frente al mes anterior');
+          return l.concat(pieMes(m));
+        },
+      } }) } }),
+    });
+
+    leyenda('g-crec-leyenda', [
+      { tipo: 'linea', color: pal.acento, texto: 'Real' },
+      actual ? { tipo: 'punto', hueco: true, color: pal.acento, texto: mesLargo(actual.mes)[0].toUpperCase() + mesLargo(actual.mes).slice(1) + ', en curso' } : null,
+      proy ? { tipo: 'discontinua', color: pal.acento, texto: 'Previsión de cierre de ' + mesLargo(actual.mes) + ' al ritmo de los últimos 7 días' } : null,
+      pocos.some(Boolean) ? { tipo: 'punto', color: pal.contexto, texto: 'Menos de 7 días con datos: no se compara' } : null,
+    ]);
+    // Y qué es el número de encima de cada punto, que no tiene marca de color.
+    const leyendaCaja = document.getElementById('g-crec-leyenda');
+    if (leyendaCaja && meses.length > 1) {
+      const t = document.createElement('span');
+      t.textContent = 'Encima de cada punto (si cabe) y en el globo, el % frente al mes anterior';
+      leyendaCaja.appendChild(t);
+    }
+
+    // De dónde sale cada mes: el núcleo, el histórico de BOLT, o la sede.
+    const tramos = [];
+    meses.forEach(m => {
+      const o = m.origen || 'nucleo';
+      const ult = tramos[tramos.length - 1];
+      if (ult && ult.o === o) ult.hasta = m.mes; else tramos.push({ o, desde: m.mes, hasta: m.mes });
+    });
+    const NOMBRE = { nucleo: 'el núcleo (fv_tramo)', historico: 'el histórico de BOLT (visibilidad_dia_historico)', mixto: 'el histórico de BOLT y el núcleo', sede: 'los apuntes de BOLT de la sede' };
+    const rangoMes = t => (t.desde === t.hasta ? mesLargo(t.desde) : mesLargo(t.desde) + ' a ' + mesLargo(t.hasta)) + ' de ' + t.hasta.slice(0, 4);
+    const nota = tramos.length ? 'De dónde sale cada mes: ' + tramos.map(t => rangoMes(t) + ', ' + NOMBRE[t.o]).join('; ') + '.' : '';
+    setTxt('g-crec-nota', nota + (r.faltaHistorico ? ' El histórico de antes de julio de 2026 aún no está cargado (migración db/217).' : '') +
+      (meses.some(m => !m.comparable) ? ' Un mes con menos de 7 días con datos no se compara.' : ''));
+
+    tablaVista('g-crec-tabla',
+      ['Mes', 'Horas', 'Cierre previsto', '% frente al anterior', 'h/día', '% h/día', 'Conductores/día', '% cond.', 'h/conductor', 'Días con datos', 'Fuente'],
+      meses.map(m => [mesLargo(m.mes) + ' ' + m.mes.slice(0, 4) + (m.enCurso ? ' (en curso)' : ''), nf0.format(m.horas),
+        m.proyeccion ? nf0.format(m.proyeccion.cierre) : '', m.cambioHorasPct == null ? '' : sigPct(m.cambioHorasPct) + (m.cambioHorasEsProyeccion ? ' (prev.)' : ''),
+        m.horasDia == null ? '' : nf0.format(m.horasDia), m.cambioHorasDiaPct == null ? '' : sigPct(m.cambioHorasDiaPct),
+        m.conductoresDia == null ? '' : nf0.format(m.conductoresDia), m.cambioConductoresPct == null ? '' : sigPct(m.cambioConductoresPct),
+        m.horasPorConductor == null ? '' : nf1.format(m.horasPorConductor), m.diasConDatos + ' / ' + (m.enCurso ? m.diasCerrados : m.diasMes),
+        m.origen === 'historico' ? 'histórico BOLT' : m.origen === 'mixto' ? 'mixto' : m.origen === 'sede' ? 'BOLT sede' : 'núcleo']));
+  }
+
+  // ── Config ────────────────────────────────────────────────────────────────
+  function rellenarConfig(c) {
+    if (!c) return;
+    document.getElementById('cfg-cap').value = c.capacidad_diaria_h ?? '';
+    document.getElementById('cfg-meta').value = c.meta ?? '';
+    document.getElementById('cfg-veh').value = c.vehiculos ?? '';
+    document.getElementById('cfg-dias').value = c.dias_del_mes ?? '';
+    document.getElementById('cfg-mtd').value = c.meta_turno_dia_h ?? '';
+    document.getElementById('cfg-mtn').value = c.meta_turno_noche_h ?? '';
+    sumaMetas();
+  }
+
+  // La suma se enseña mientras se escribe: es la meta del día, y verla evita
+  // guardar 500 y 400 creyendo que se han puesto las mil.
+  function sumaMetas() {
+    const n = id => Number(document.getElementById(id).value) || 0;
+    setTxt('cfg-meta-dia', String(n('cfg-mtd') + n('cfg-mtn')));
+  }
+  ['cfg-mtd', 'cfg-mtn'].forEach(id =>
+    document.getElementById(id).addEventListener('input', sumaMetas));
+  const modal = document.getElementById('v-config-modal');
+  const abrirCfg = () => modal.classList.remove('hidden');
+  const cerrarCfg = () => modal.classList.add('hidden');
+  document.getElementById('v-config-btn').addEventListener('click', abrirCfg);
+  document.getElementById('v-config-x').addEventListener('click', cerrarCfg);
+  document.getElementById('v-config-cancel').addEventListener('click', cerrarCfg);
+  modal.addEventListener('click', e => { if (e.target === modal) cerrarCfg(); });
+  document.getElementById('v-config-save').addEventListener('click', async () => {
+    const cuerpo = {
+      capacidad_diaria_h: document.getElementById('cfg-cap').value,
+      meta: document.getElementById('cfg-meta').value,
+      vehiculos: document.getElementById('cfg-veh').value,
+      dias_del_mes: document.getElementById('cfg-dias').value,   // vacío → null (auto) en el server
+      meta_turno_dia_h: document.getElementById('cfg-mtd').value,
+      meta_turno_noche_h: document.getElementById('cfg-mtn').value,
+    };
+    // Por Api con el botón apagado (03/11/2026): sin el velo, un doble clic
+    // guardaba y recalculaba dos veces. Un fallo sigue sin decir nada, como antes.
+    const r = await Api.post(API + '/config', cuerpo, { boton: document.getElementById('v-config-save') }).catch(() => null);
+    // Se recarga TODO lo que mira la meta: las tarjetas de turno, el ritmo del
+    // gráfico de los días, el ideal y la previsión de Cómo vamos, y la del mes en
+    // curso en el crecimiento. Sin esto había que refrescar la página.
+    if (r && r.status === 'ok') { cerrarCfg(); cargarComoVamos(); cargarResumen(); cargarRango(); cargarCrecimiento(); }
+  });
+
+  // ── Navegación de mes + refresco ──────────────────────────────────────────
+  // El mes elegido mueve las cifras de arriba, Cómo vamos y la tabla. El rango de
+  // los días y el crecimiento van siempre hasta hoy.
+  document.getElementById('v-mes-prev').addEventListener('click', () => { mes--; if (mes < 1) { mes = 12; anio--; } cargarComoVamos(); });
+  document.getElementById('v-mes-next').addEventListener('click', () => { mes++; if (mes > 12) { mes = 1; anio++; } cargarComoVamos(); });
+  // ── Horas por plantilla: propia y ETT entre dos fechas (30/10/2026) ──────────
+  // El calendario de la casa trabaja en dd/mm/aaaa y la API en ISO: se convierte
+  // aquí, en el borde. Por defecto, del 1 del mes a hoy; lo que hay va del primer
+  // día con tramos (01/07/2026) a hoy, y el calendario no deja salirse.
+  const hpDesde = document.getElementById('hp-desde'), hpHasta = document.getElementById('hp-hasta');
+  const aDMA = iso => iso.split('-').reverse().join('/');
+  const aISO = dma => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(dma || '')); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+  let HP = null;
+  async function cargarPlantilla() {
+    if (!hpDesde) return;
+    const desde = aISO(hpDesde.value), hasta = aISO(hpHasta.value);
+    if (!desde || !hasta) return;
+    const caja = document.getElementById('hp-tarjetas');
+    caja.style.opacity = '.5';
+    const r = await fetch(`${API}/plantilla?desde=${desde}&hasta=${hasta}`).then(x => x.json()).catch(() => null);
+    caja.style.opacity = '';
+    const nota = document.getElementById('hp-nota');
+    if (!r || r.status !== 'ok') { nota.textContent = (r && r.msg) || 'No se ha podido calcular ahora mismo. Prueba con «Actualizar».'; return; }
+    HP = r;
+    // Lo que hay, en el calendario: no deja elegir antes del primer día con tramos.
+    hpDesde.setAttribute('data-min', aDMA(r.disponible.desde));
+    hpHasta.setAttribute('data-min', aDMA(r.disponible.desde));
+    if (r.recortado) { hpDesde.value = aDMA(r.desde); hpHasta.value = aDMA(r.hasta); }
+    const total = r.total.horas || 0;
+    ['propia', 'ett'].forEach(k => {
+      const g = r[k];
+      const parte = total > 0 ? (g.horas / total) * 100 : 0;
+      setTxt(`hp-${k}-h`, nf0.format(g.horas));
+      setTxt(`hp-${k}-cond`, `${nf0.format(g.conductores)} conductores`);
+      setTxt(`hp-${k}-pct`, `${pct1.format(parte)} %`);
+      setTxt(`hp-${k}-util`, g.util == null ? '—' : `${pct1.format(g.util)} %`);
+      setTxt(`hp-${k}-media`, g.conductores ? `${nf1.format(g.horas / g.conductores)} h` : '—');
+      const bar = document.getElementById(`hp-${k}-bar`);
+      if (bar) bar.style.width = `${Math.min(100, parte)}%`;
+    });
+    // El resto, para que sume el total de la flota (el de la tabla de arriba).
+    const resto = [];
+    if (r.sinContrato.horas > 0) resto.push(`${nf1.format(r.sinContrato.horas)} h de ${nf0.format(r.sinContrato.conductores)} conductor${r.sinContrato.conductores === 1 ? '' : 'es'} sin contrato ese día`);
+    if (r.sinFicha.horas > 0) resto.push(`${nf1.format(r.sinFicha.horas)} h de cuentas de BOLT sin ficha`);
+    const dias = Math.round((fechaDe(r.hasta) - fechaDe(r.desde)) / 86400000) + 1;
+    nota.textContent = `Del ${aDMA(r.desde)} al ${aDMA(r.hasta)} (${dias} ${dias === 1 ? 'día' : 'días'}): ${nf0.format(total)} h de toda la flota` +
+      (resto.length ? `, con ${resto.join(' y ')}` : '') + '.' +
+      (r.incluyeHoy ? ' Hoy va en curso.' : '') +
+      ` Hay datos por persona desde el ${aDMA(r.disponible.desde)}.`;
+  }
+  if (hpDesde) {
+    const hoyIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    hpDesde.value = aDMA(hoyIso.slice(0, 8) + '01');
+    hpHasta.value = aDMA(hoyIso);
+    [hpDesde, hpHasta].forEach(i => i.addEventListener('change', cargarPlantilla));
+  }
+
+  document.getElementById('v-refrescar').addEventListener('click', () => { cargarResumen(); cargarAEstaHora(); cargarComoVamos(); cargarRango(); cargarCrecimiento(); cargarPlantilla(); });
+
+  cargarResumen();
+  cargarAEstaHora();
+  cargarRango();
+  cargarComoVamos();
+  cargarCrecimiento();
+  cargarPlantilla();
+  // Refresco suave cada 5 min de las tarjetas y del rango (el punto de hoy corre).
+  // Las de plantilla, solo si llegan a hoy: un tramo cerrado ya no cambia.
+  setInterval(() => { cargarResumen(); cargarAEstaHora(); cargarRango(); if (HP && HP.incluyeHoy) cargarPlantilla(); }, 5 * 60 * 1000);
+})();

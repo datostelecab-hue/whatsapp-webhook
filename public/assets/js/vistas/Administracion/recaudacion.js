@@ -1,0 +1,935 @@
+// modules/Administracion/vistas/recaudacion.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  const $ = s => document.querySelector(s);
+  const esc = Casa.esc;
+
+  const DEN = DEL_SERVIDOR.denominaciones;
+  const TIPOS = DEL_SERVIDOR.tiposMovimiento;
+  const SALIDAS = DEL_SERVIDOR.salidasCaja;
+  const SALIDAS_TODAS = DEL_SERVIDOR.etiquetasSalida;
+  const PUEDE_NOMINA = DEL_SERVIDOR.puedeNomina;
+
+  const nf = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const eur = n => nf.format(Number(n) || 0) + ' €';
+  // Un cero no se pinta igual que una cifra: en una tabla de dinero, los ceros
+  // en gris dejan ver de un vistazo dónde hay algo.
+  const cifra = (n, clase) => (Math.abs(Number(n) || 0) < 0.005
+    ? '<span class="text-telecab-muted/40">—</span>'
+    : '<span class="' + (clase || '') + '">' + eur(n) + '</span>');
+  const fecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+  // Un instante (no un día): "09/09 13:40". Lo usa el aviso de cuándo se leyó
+  // el padrón de BOLT, para no dar por actual un dato de hace horas.
+  const hora = ts => (ts ? new Date(ts).toLocaleString('es-ES',
+    { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
+  const hoyIso = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
+  // El calendario de la casa (input.js-fecha, en layout-gestion) escribe y lee
+  // en dd/mm/aaaa. El servidor ya entiende los dos formatos.
+  const hoyDdmm = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
+
+  let D = null;            // el cuadro que devolvió el servidor
+  let conductores = null;  // el padrón para los desplegables (se pide una vez)
+  let fichaAbierta = null;
+
+  const pedir = async (url, opciones) => {
+    const r = await fetch(url, opciones).then(x => x.json());
+    if (r.status !== 'ok') throw new Error(r.msg || 'No se ha podido');
+    return r;
+  };
+  const fallo = e => Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' });
+
+  async function padron() {
+    if (!conductores) conductores = (await pedir('/recaudacion/api/candidatos')).conductores;
+    return conductores;
+  }
+  /**
+   * BUSCADOR DE CONDUCTOR. Un <select> con doscientos nombres obliga a
+   * recorrerlos con la rueda, sale con la pinta que le pone el sistema
+   * operativo y no hay forma de maquetarlo. Esto es un campo de texto que
+   * filtra una lista nuestra: se escribe "gaz" y aparece Gaztelu.
+   *
+   * Guarda el id en un campo oculto, así que quien lo lee lo lee igual que
+   * antes: `[data-cond].value`.
+   */
+  function comboConductor(id, ini, etiqueta) {
+    return '<div class="relative" data-combo>' +
+      '<input data-combo-txt type="text" autocomplete="off" aria-label="' + esc(etiqueta || 'Conductor') + '" placeholder="Escribe un nombre…" ' +
+        'class="w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text">' +
+      '<input type="hidden" ' + id + '>' +
+      '<div data-combo-lista class="hidden absolute z-30 left-0 right-0 mt-1 max-h-60 overflow-auto ' +
+        'bg-telecab-card border border-telecab-border rounded-xl shadow-soft"></div>' +
+    '</div>';
+  }
+
+  /** Le da vida al buscador: filtrar, elegir, teclado. */
+  function activarCombo(caja, alElegir) {
+    const txt = caja.querySelector('[data-combo-txt]');
+    const oculto = caja.querySelector('input[type=hidden]');
+    const lista = caja.querySelector('[data-combo-lista]');
+    let marcado = -1, visibles = [];
+
+    // Sin tildes y sin mayúsculas: "muñoz" encuentra a MUNOZ y al revés.
+    const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    const pintar = () => {
+      const q = llave(txt.value.trim());
+      visibles = q ? conductores.filter(c => llave(c.nombre).includes(q)) : conductores;
+      marcado = visibles.length ? 0 : -1;
+      lista.innerHTML = visibles.length
+        ? visibles.slice(0, 80).map((c, i) =>
+            '<button type="button" data-i="' + i + '" class="w-full text-left px-3 py-2 text-sm ' +
+              (i === marcado ? 'bg-telecab-gold/15 text-telecab-text' : 'text-telecab-text hover:bg-telecab-card2') + '">' +
+              esc(c.nombre) +
+              (c.enPlantilla ? '' : '<span class="ml-1 text-[10px] text-telecab-muted">ya no está</span>') +
+            '</button>').join('') +
+          (visibles.length > 80 ? '<p class="px-3 py-2 text-[11px] text-telecab-muted">… y ' + (visibles.length - 80) + ' más. Afina la búsqueda.</p>' : '')
+        : '<p class="px-3 py-2 text-sm text-telecab-muted">Nadie con ese nombre.</p>';
+      lista.classList.remove('hidden');
+      lista.querySelectorAll('[data-i]').forEach(b =>
+        b.addEventListener('mousedown', e => { e.preventDefault(); elegir(visibles[Number(b.dataset.i)]); }));
+    };
+    const elegir = c => {
+      if (!c) return;
+      oculto.value = c.id; txt.value = c.nombre;
+      lista.classList.add('hidden');
+      if (alElegir) alElegir(c);
+    };
+    const mover = paso => {
+      if (!visibles.length) return;
+      marcado = (marcado + paso + visibles.length) % visibles.length;
+      lista.querySelectorAll('[data-i]').forEach((b, i) => {
+        b.className = 'w-full text-left px-3 py-2 text-sm ' +
+          (i === marcado ? 'bg-telecab-gold/15 text-telecab-text' : 'text-telecab-text hover:bg-telecab-card2');
+        if (i === marcado) b.scrollIntoView({ block: 'nearest' });
+      });
+    };
+
+    txt.addEventListener('input', () => { oculto.value = ''; pintar(); });
+    txt.addEventListener('focus', pintar);
+    txt.addEventListener('blur', () => setTimeout(() => lista.classList.add('hidden'), 120));
+    txt.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); mover(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mover(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); elegir(visibles[marcado]); }
+      else if (e.key === 'Escape') lista.classList.add('hidden');
+    });
+    return { fijar: cid => { const c = conductores.find(x => String(x.id) === String(cid)); if (c) elegir(c); } };
+  }
+
+  // ── Los días sin entregar ────────────────────────────────────────────
+  // Más de una semana es ir con retraso: los recibos van de semana en semana,
+  // así que ocho días ya es haberse saltado una vuelta. El mismo umbral que
+  // usa el servidor para contar los rezagados.
+  const DIAS_REZAGADO = 7;
+
+  /**
+   * La celda de "sin entregar".
+   *
+   * A quien NO debe nada no se le pinta: que lleve veinte días sin venir es lo
+   * normal si no tiene nada que traer, y pintarlo en rojo llenaría la lista de
+   * alarmas falsas justo donde hay que mirar.
+   *
+   * Un número NEGATIVO no es un error: es un recibo con fecha futura. Hay dos
+   * del traspaso del Excel fechados al día 15. Se dice en vez de taparlo.
+   */
+  function sinEntregar(f) {
+    if (!(f.aRecaudar > 0.005)) return '<span class="text-telecab-muted/30">—</span>';
+    if (f.diasSinEntregar === null) {
+      return '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-telecab-red/20 text-telecab-red ' +
+        'border border-telecab-red/40" title="No ha entregado nunca">nunca</span>';
+    }
+    const d = f.diasSinEntregar;
+    if (d < 0) {
+      return '<span class="text-telecab-warn" title="Su último recibo lleva fecha del ' + esc(f.ultimaEntrega) +
+        ', que todavía no ha llegado: revisa esa fecha">fecha futura</span>';
+    }
+    const tono = d > DIAS_REZAGADO * 2 ? 'text-telecab-red font-bold'
+      : d > DIAS_REZAGADO ? 'text-telecab-warn font-semibold'
+      : 'text-telecab-muted';
+    const txt = d === 0 ? 'hoy' : d === 1 ? 'ayer' : d + ' días';
+    return '<span class="' + tono + '" title="Última entrega: ' + esc(f.ultimaEntrega || '—') + '">' + txt + '</span>';
+  }
+
+  // ── La ordenación del cuadro ─────────────────────────────────────────
+  // Por nombre al abrir, que es como se busca a alguien. Pinchando una cabecera
+  // se ordena por esa columna, y pinchándola otra vez se le da la vuelta.
+  const ORDEN = { k: 'conductor', desc: false };
+
+  function ordenar(filas) {
+    const k = ORDEN.k, signo = ORDEN.desc ? -1 : 1;
+    filas.sort((a, b) => {
+      if (k === 'conductor') return signo * String(a.conductor).localeCompare(String(b.conductor), 'es');
+      // "Nunca ha entregado" es lo más urgente que hay, así que ordenando por
+      // días tiene que salir por delante del que lleva cien. Va al infinito, no
+      // a cero: a cero se colaría entre los que acaban de pagar.
+      const v = x => {
+        if (k !== 'diasSinEntregar') return Number(x[k]) || 0;
+        if (!(x.aRecaudar > 0.005)) return -Infinity;      // no debe: al fondo
+        return x.diasSinEntregar === null ? Infinity : x.diasSinEntregar;
+      };
+      const d = v(a) - v(b);
+      // A igualdad, por nombre: así la lista no baila entre repintados.
+      return d ? signo * d : String(a.conductor).localeCompare(String(b.conductor), 'es');
+    });
+  }
+
+  // ── Los filtros del cuadro ───────────────────────────────────────────
+  // Por defecto salen SOLO los que deben, que es a lo que se entra: la lista
+  // entera con cincuenta al día no dice nada.
+  const llaveTxt = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  function filtrar(filas) {
+    const q = llaveTxt(($('#f-busca').value || '').trim());
+    const est = $('#f-estado').value;
+    const pl = $('#f-plantilla').value;
+    const dias = $('#f-dias').value;
+    return filas.filter(f => {
+      // El filtro de días SOLO mira a quien debe algo. Quien está al día y no
+      // aparece no es un rezagado: es que no tiene nada que traer, y meterlo en
+      // la lista de los que hay que perseguir la vuelve inútil.
+      if (dias) {
+        if (!(f.aRecaudar > 0.005)) return false;
+        if (dias === 'nunca') { if (f.diasSinEntregar !== null) return false; }
+        else if (!(f.diasSinEntregar === null || f.diasSinEntregar > Number(dias))) return false;
+      }
+      if (q && !llaveTxt(f.conductor).includes(q)) return false;
+      // Los sin ficha no son "en plantilla" ni "ya no está": se quedan siempre,
+      // que es justo lo que no puede volver a perderse de vista.
+      if (pl === 'si' && !f.enPlantilla && !f.sinFicha) return false;
+      if (pl === 'no' && (f.enPlantilla || f.sinFicha)) return false;
+      if (est === 'deuda' && !(f.aRecaudar > 0.005)) return false;
+      if (est === 'dia' && Math.abs(f.aRecaudar) >= 0.005) return false;
+      if (est === 'favor' && !(f.aRecaudar < -0.005)) return false;
+      if (est === 'sinficha' && !f.sinFicha) return false;
+      if (est === 'efectivo' && !f.efectivoActivo) return false;
+      if (est === 'efectivofuera' && !(f.efectivoActivo && !f.enPlantilla)) return false;
+      return true;
+    });
+  }
+
+  // ── Los ojos ─────────────────────────────────────────────────────────
+  // Cada botón [data-ojo="X"] tapa los [data-secreto="X"] que haya, y recuerda
+  // SU estado por separado: se puede querer enseñar lo recaudado sin enseñar lo
+  // que queda en el cajón, o al revés.
+  //
+  // Todos arrancan TAPADOS mientras nadie diga lo contrario: esta pantalla se
+  // abre con un conductor delante más veces de las que se abre a solas, y
+  // acordarse de taparla a tiempo no es un plan.
+  const llaveOjo = g => 'telecab-tapado-' + g;
+  const estaTapado = g => {
+    try { return localStorage.getItem(llaveOjo(g)) !== '0'; } catch (e) { return true; }
+  };
+  function aplicarOjo(b, tapado) {
+    const g = b.dataset.ojo, que = b.dataset.ojoQue || 'esta cifra';
+    b.setAttribute('aria-pressed', tapado ? 'true' : 'false');
+    b.title = (tapado ? 'Enseñar ' : 'Tapar ') + que;
+    document.querySelectorAll('[data-secreto="' + g + '"]').forEach(e =>
+      e.setAttribute('data-oculto', tapado ? '1' : '0'));
+  }
+  /** Se llama al arrancar y tras cada repintado: lo que se repinta sale tapado. */
+  function ojos() {
+    document.querySelectorAll('[data-ojo]').forEach(b => {
+      if (b.dataset.tamOjo !== '1' && b.dataset.ojoTam) {
+        b.style.setProperty('--tc-ojo-tam', b.dataset.ojoTam);
+        b.dataset.tamOjo = '1';
+      }
+      if (!b.dataset.enganchado) {
+        b.dataset.enganchado = '1';
+        b.addEventListener('click', () => {
+          const tapado = b.getAttribute('aria-pressed') !== 'true';
+          try { localStorage.setItem(llaveOjo(b.dataset.ojo), tapado ? '1' : '0'); }
+          catch (e) { /* sin memoria, pero funciona */ }
+          aplicarOjo(b, tapado);
+        });
+      }
+      aplicarOjo(b, estaTapado(b.dataset.ojo));
+    });
+  }
+  ojos();
+
+  // ── El cuadre de caja: lo que hay y lo que falta ─────────────────────
+  function pintarCaja() {
+    const c = D.caja || {};
+    $('#c-efectivo').textContent = eur(c.efectivo);
+    $('#c-efectivo-det').textContent =
+      'entró ' + eur(c.entradas) + ' en mano · salió ' + eur(c.salidas) +
+      (c.devuelto > 0.005 ? ' · devuelto ' + eur(c.devuelto) : '') +
+      (c.cambio > 0.005 ? ' · ' + eur(c.cambio) + ' en cambio por la calle' : '');
+    $('#c-pendiente').textContent = eur(c.pendiente);
+    $('#c-pendiente-det').innerHTML =
+      'de ' + eur(c.deuda) + ' cobrados en la calle' +
+      (c.cambio > 0.005 ? ' + ' + eur(c.cambio) + ' de cambio prestado' : '') +
+      ' · ' + eur(c.nomina) + ' recuperados por nómina' +
+      (c.transferencia > 0.005 ? ' · ' + eur(c.transferencia) + ' por transferencia' : '') +
+      (c.deudaSinFicha > 0.005
+        ? ' · <span class="text-telecab-red font-semibold">' + eur(c.deudaSinFicha) + ' de gente sin ficha</span>'
+        : '');
+  }
+
+  function pintarSalidas() {
+    const s = D.salidas || [];
+    const etq = t => (SALIDAS_TODAS.find(x => x.codigo === t) || {}).etiqueta || t;
+    if (!s.length) { $('#r-salidas').innerHTML = ''; return; }
+    const porTipo = {};
+    s.filter(x => !x.anulado).forEach(x => { porTipo[x.tipo] = (porTipo[x.tipo] || 0) + x.importe; });
+    $('#r-salidas').innerHTML =
+      '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
+        '<div class="px-4 py-2.5 border-b border-telecab-border flex flex-wrap items-center gap-x-3 gap-y-1">' +
+          '<span class="text-xs font-semibold uppercase tracking-wide text-telecab-muted">Lo que ha salido de la caja</span>' +
+          SALIDAS_TODAS.map(t => (porTipo[t.codigo]
+            ? '<span class="text-[11px] px-2 py-0.5 rounded-lg bg-telecab-card2 text-telecab-text">' +
+              esc(t.etiqueta) + ' <b class="tabular-nums">' + eur(porTipo[t.codigo]) + '</b></span>'
+            : '')).join('') +
+        '</div>' +
+        s.map(x =>
+          '<div class="px-4 py-2 flex flex-wrap items-baseline gap-2 text-sm border-b border-telecab-border/40 ' +
+            (x.anulado ? 'opacity-50' : '') + '" data-sid="' + esc(x.id) + '">' +
+            '<span class="text-telecab-muted tabular-nums text-xs w-[70px]">' + fecha(x.fecha) + '</span>' +
+            '<span class="font-semibold tabular-nums text-telecab-warn' + (x.anulado ? ' line-through' : '') + '">-' + eur(x.importe) + '</span>' +
+            '<span class="text-xs px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">' + esc(etq(x.tipo)) + '</span>' +
+            '<span class="text-xs text-telecab-muted">&laquo;' + esc(x.observacion) + '&raquo;</span>' +
+            '<span class="text-[11px] text-telecab-muted/70">&middot; ' + esc(x.quien) + '</span>' +
+            (x.anulado
+              ? '<span class="text-[11px] text-telecab-red">anulada por ' + esc(x.anuladoPor || '?') + ': &laquo;' + esc(x.anuladoMotivo) + '&raquo;</span>'
+              : '<button data-anular-s class="ml-auto text-[11px] px-2 py-0.5 rounded border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">Anular</button>') +
+          '</div>').join('') +
+      '</div>';
+    $('#r-salidas').querySelectorAll('[data-anular-s]').forEach(b =>
+      b.addEventListener('click', () => anular(b.closest('[data-sid]').dataset.sid)));
+  }
+
+  // ── Sacar dinero de la caja ──────────────────────────────────────────
+  async function salidaCaja() {
+    const v = await Dialogo.formulario('Salida de caja', [
+      { id: 'tipo', etiqueta: 'A dónde va', tipo: 'lista', obligatorio: true,
+        valor: SALIDAS[0].codigo, opciones: SALIDAS.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
+      { id: 'fecha', etiqueta: 'Fecha', tipo: 'fecha', obligatorio: true, valor: hoyIso() },
+      { id: 'importe', etiqueta: 'Importe (€)', obligatorio: true, ayuda: 'Lo que sale del cajón. "250,00" vale.' },
+      { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Obligatoria: a qué va ese dinero. Es lo que se mira cuando la caja no cuadra.' },
+    ], { nota: 'Baja el efectivo del cajón. NO cambia lo que los conductores deben.' });
+    if (!v || !v.importe || !v.observacion) return;
+    try {
+      await pedir('/recaudacion/api/movimiento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(v),
+      });
+      await cargar();
+    } catch (e) { fallo(e); }
+  }
+
+  // ── El cuadro ────────────────────────────────────────────────────────
+  // Cinco columnas y ni una más. Lo que se pregunta delante de un conductor es
+  // quién es, si puede seguir cobrando en efectivo, cuánto ha traído, cuánto ha
+  // cobrado y cuánto falta. El desglose por quincenas vive en su ficha, que es
+  // donde se mira cuando alguien discute una cifra.
+  function pintarCuadro() {
+    const t = D.total;
+    $('#t-enmano').textContent = eur(t.enMano);
+    // Lo que bajó la deuda sin pasar por la ventanilla, al lado de lo de en mano.
+    const fuera = [t.nomina > 0.005 ? eur(t.nomina) + ' por nómina' : '',
+      t.transferencia > 0.005 ? eur(t.transferencia) + ' por transferencia' : ''].filter(Boolean);
+    $('#t-enmano-det').textContent = fuera.length ? 'y ' + fuera.join(' y ') : '';
+    $('#t-bolt').textContent = eur(t.bolt);
+    $('#t-bolt-det').textContent = D.corte ? 'Excel hasta el corte · BOLT desde ' + D.corte : '';
+    $('#t-arecaudar').textContent = eur(t.aRecaudar);
+    $('#t-condeuda').textContent = t.conDeuda ? t.conDeuda + (t.conDeuda === 1 ? ' persona' : ' personas') : '';
+    // Quien puede cobrar en mano y ya no trabaja aquí es un grifo abierto: se
+    // avisa arriba, no escondido en una columna.
+    $('#t-efectivo').innerHTML = t.conEfectivo
+      ? '<span class="text-telecab-green">' + t.conEfectivo + ' con el efectivo activado en BOLT</span>' +
+        (t.efectivoFuera
+          ? ' · <button id="t-fuera" class="text-telecab-red font-semibold underline decoration-dotted">' +
+            t.efectivoFuera + (t.efectivoFuera === 1 ? ' de ellos ya no trabaja aquí' : ' de ellos ya no trabajan aquí') + '</button>'
+          : '')
+      : '';
+    const bf = document.getElementById('t-fuera');
+    if (bf) bf.addEventListener('click', () => { $('#f-estado').value = 'efectivofuera'; pintarCuadro(); });
+
+    if (!D.filas.length) {
+      $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
+        'Nada todavía: ni efectivo cargado desde BOLT, ni dinero entregado.</p>';
+      $('#f-cuenta').textContent = '';
+      return;
+    }
+
+    const filas = filtrar(D.filas);
+    $('#f-cuenta').textContent = filas.length === D.filas.length
+      ? D.filas.length + ' conductores'
+      : filas.length + ' de ' + D.filas.length + ' conductores';
+    if (!filas.length) {
+      $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
+        'Nadie con esos filtros.</p>';
+      return;
+    }
+    const cab = [
+      { t: 'Conductor', al: 'text-left', k: 'conductor' },
+      { t: 'Efectivo', al: 'text-center', ay: 'Si BOLT le deja cobrar en efectivo ahora mismo' },
+      { t: 'Total en mano', al: 'text-right', k: 'enMano', ay: 'Lo que ha entregado en ventanilla, menos lo devuelto' },
+      { t: 'Total en BOLT', al: 'text-right', k: 'bolt', ay: 'Todo el efectivo que ha cobrado en la calle' },
+      { t: 'Cambio', al: 'text-right', k: 'cambio',
+        ay: 'El cambio que se le dio para trabajar y aún no ha vuelto. Lo ponemos nosotros: BOLT no sabe nada de este dinero' },
+      { t: 'Total a recaudar', al: 'text-right', k: 'aRecaudar', ay: 'Lo de BOLT, MÁS el cambio que se le dio, menos lo que ya ha entregado' },
+      { t: 'Sin entregar', al: 'text-right', k: 'diasSinEntregar',
+        ay: 'Cuánto hace que no pasa por ventanilla. Solo se pinta a quien debe algo' },
+    ];
+    ordenar(filas);
+    // Las celdas van más juntas por debajo de 1536 px (2xl): con «Cobrar»,
+    // «Transferencia» y el cambio en cada fila, a 1280 la tabla ya no cabía.
+    $('#r-cuadro').innerHTML =
+      '<div class="overflow-x-auto"><table class="w-full text-sm">' +
+      '<thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted border-b border-telecab-border">' +
+        cab.map(c => '<th class="px-2 2xl:px-3 py-2.5 ' + c.al + ' font-semibold whitespace-nowrap' +
+          (c.k ? ' cursor-pointer select-none hover:text-telecab-gold transition' : '') + '"' +
+          (c.k ? ' data-orden="' + c.k + '"' : '') +
+          (c.ay ? ' title="' + c.ay + (c.k ? ' · pincha para ordenar' : '') + '"'
+                : c.k ? ' title="Pincha para ordenar"' : '') + '>' + c.t +
+          (c.k ? '<span class="ml-1 ' + (ORDEN.k === c.k ? 'text-telecab-gold' : 'text-telecab-muted/30') + '">' +
+            (ORDEN.k === c.k ? (ORDEN.desc ? '\u25bc' : '\u25b2') : '\u21c5') + '</span>' : '') +
+          '</th>').join('') +
+        '<th class="px-2 2xl:px-3 py-2.5"></th></tr></thead><tbody>' +
+      filas.map(f =>
+        '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition' +
+          (f.sinFicha ? ' bg-telecab-red/5' : '') + '" data-cid="' + esc(f.conductorId) + '">' +
+          '<td class="px-2 2xl:px-3 py-2.5"><button data-ficha class="text-left font-medium transition ' +
+            (f.sinFicha ? 'text-telecab-red hover:underline' : 'hover:text-telecab-gold') + '">' +
+            esc(f.conductor) + '</button>' +
+            // Tres estados distintos, no dos: de alta, de baja, y SIN FICHA
+            // —rodó y cobró en BOLT y nunca se le dio de alta aquí—. Ese
+            // tercero no es una baja: a un baja se le puede llamar.
+            (f.sinFicha
+              ? '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 text-telecab-red font-bold border border-telecab-red/40" ' +
+                'title="Rodó y cobró en efectivo con su cuenta de BOLT, pero no está en la plantilla: no tiene ficha, ni de alta ni de baja">' +
+                'SIN FICHA</span>'
+              : f.enPlantilla ? ''
+              : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
+          // Tres estados, no dos: lo tiene, no lo tiene, o el padrón todavía
+          // no lo ha dicho de esa cuenta. El tercero no se pinta como un "no".
+          '<td class="px-2 2xl:px-3 py-2.5 text-center">' + (f.efectivoActivo === null
+            ? '<span class="text-telecab-muted/40" title="El padrón de BOLT aún no ha dicho nada de esta cuenta">?</span>'
+            : f.efectivoActivo
+              ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' +
+                (f.enPlantilla ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/20 text-telecab-red border border-telecab-red/40') +
+                '" title="' + (f.enPlantilla
+                  ? 'Puede cobrar en efectivo' + (f.efectivoAt ? ' · según el padrón de ' + hora(f.efectivoAt) : '')
+                  : 'PUEDE COBRAR EN EFECTIVO Y YA NO TRABAJA AQUÍ') + '">€</span>'
+              : '<span class="text-telecab-muted/40" title="No puede cobrar en efectivo">—</span>') + '</td>' +
+          '<td class="px-2 2xl:px-3 py-2.5 text-right tabular-nums">' + cifra(f.enMano, 'text-telecab-green') +
+            // La nómina no tiene columna, pero SÍ resta de lo que se le pide:
+            // sin esto la resta no cuadraría a ojo y alguien pediría dos veces.
+            (f.nomina > 0.005
+              ? '<div class="text-[10px] text-sky-400" title="Descontado de su nómina">+ ' + eur(f.nomina) + ' nómina</div>'
+              : '') +
+            // La transferencia, igual: no ha pasado por la ventanilla, pero resta.
+            (f.transferencia > 0.005
+              ? '<div class="text-[10px] text-telecab-muted" title="Pagado por transferencia">+ ' + eur(f.transferencia) + ' transferencia</div>'
+              : '') + '</td>' +
+          '<td class="px-2 2xl:px-3 py-2.5 text-right tabular-nums">' + cifra(f.bolt) + '</td>' +
+          // El cambio se pinta en ámbar y no en rojo: no es que deba de más, es
+          // dinero nuestro que lleva encima. Se ve aparte para poder preguntar
+          // «¿cuánto cambio tenemos en la calle?» de un vistazo.
+          '<td class="px-2 2xl:px-3 py-2.5 text-right tabular-nums">' +
+            (f.cambio > 0.005
+              ? '<span class="text-telecab-warn" title="Cambio que se le dio y aún no ha vuelto">' + eur(f.cambio) + '</span>'
+              : '<span class="text-telecab-muted/30">—</span>') + '</td>' +
+          '<td class="px-2 2xl:px-3 py-2.5 text-right tabular-nums font-bold ' +
+            (f.aRecaudar > 0.005 ? 'text-telecab-red' : f.aRecaudar < -0.005 ? 'text-telecab-green' : '') + '">' +
+            (Math.abs(f.aRecaudar) < 0.005 ? '<span class="text-telecab-green">al día</span>' : eur(f.aRecaudar)) + '</td>' +
+          '<td class="px-2 2xl:px-3 py-2.5 text-right tabular-nums whitespace-nowrap">' + sinEntregar(f) + '</td>' +
+          '<td class="px-2 2xl:px-3 py-2.5 text-right whitespace-nowrap">' +
+            '<button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition">' +
+              '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
+            // Sin ficha no hay a quién apuntársela: primero se le da de alta.
+            (f.sinFicha ? '' :
+            '<button data-transferencia class="ml-1 text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition" ' +
+              'title="Lo ha pagado por transferencia: el importe y el ID de la transferencia. Baja lo que debe y no entra en la caja">' +
+              '<i class="fa-solid fa-building-columns mr-1"></i>Transferencia</button>') +
+            '<button data-cambio class="ml-1 text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-warn hover:text-telecab-warn transition" ' +
+              'title="Darle cambio para trabajar"><i class="fa-solid fa-hand-holding-dollar"></i></button>' +
+          '</td>' +
+        '</tr>').join('') +
+      '</tbody></table></div>';
+
+    $('#r-cuadro').querySelectorAll('[data-orden]').forEach(th =>
+      th.addEventListener('click', () => {
+        const k = th.dataset.orden;
+        // Pinchar la misma columna le da la vuelta; pinchar otra empieza por lo
+        // más alto, que es lo que se busca al ordenar por una cifra.
+        if (ORDEN.k === k) ORDEN.desc = !ORDEN.desc;
+        else { ORDEN.k = k; ORDEN.desc = k !== 'conductor'; }
+        pintarCuadro();
+      }));
+    $('#r-cuadro').querySelectorAll('[data-ficha]').forEach(b =>
+      b.addEventListener('click', () => abrirFicha(b.closest('[data-cid]').dataset.cid)));
+    $('#r-cuadro').querySelectorAll('[data-cambio]').forEach(b =>
+      b.addEventListener('click', () => recibo(b.closest('[data-cid]').dataset.cid, 'cambio')));
+    $('#r-cuadro').querySelectorAll('[data-cobrar]').forEach(b =>
+      b.addEventListener('click', () => recibo(b.closest('[data-cid]').dataset.cid)));
+    $('#r-cuadro').querySelectorAll('[data-transferencia]').forEach(b =>
+      b.addEventListener('click', () => transferencia(b.closest('[data-cid]').dataset.cid)));
+  }
+
+  // ── EL RECIBO, con la misma pinta que el de papel ────────────────────
+  /**
+   * EL RECIBO, en sus dos sentidos. Es la MISMA cuadrícula de billetes y
+   * monedas porque es el mismo acto —contar dinero delante de alguien—; lo que
+   * cambia es hacia dónde va:
+   *
+   *   'ingreso'  el conductor trae lo que debe   → entra en caja, debe menos
+   *   'cambio'   se le da para que tenga suelto  → sale de caja, debe MÁS
+   *
+   * Se distinguen a la vista —color, título, el verbo del botón— porque contar
+   * 600 € y apuntarlos al revés descuadra la caja por 1.200.
+   */
+  async function recibo(conductorId, modo) {
+    const esCambio = modo === 'cambio';
+    await padron();
+    const p = $('#r-panel');
+    p.classList.remove('hidden');
+    p.innerHTML =
+      '<div class="bg-telecab-card border-2 ' + (esCambio ? 'border-telecab-warn/50' : 'border-telecab-gold/40') + ' rounded-2xl overflow-hidden">' +
+        '<div class="px-4 py-3 border-b border-telecab-border flex items-center justify-between gap-3">' +
+          '<h2 class="font-bold text-telecab-text tracking-wide"><i class="fa-solid ' +
+            (esCambio ? 'fa-hand-holding-dollar text-telecab-warn' : 'fa-receipt text-telecab-gold') + ' mr-2"></i>' +
+            (esCambio ? 'CAMBIO ENTREGADO' : 'RECIBO DE EFECTIVO') + '</h2>' +
+          '<button data-cerrar aria-label="Cerrar" class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>' +
+        '</div>' +
+        '<div class="p-4 space-y-4">' +
+          '<div class="grid sm:grid-cols-[2fr,1fr,1fr] gap-3">' +
+            '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">' + (esCambio ? 'Entregado a' : 'Recibí de') +
+              '<div class="mt-1">' + comboConductor('data-cond', null, esCambio ? 'Entregado a' : 'Recibí de') + '</div></div>' +
+            '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Fecha' +
+              '<input data-fecha class="js-fecha mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text" ' +
+                'value="' + hoyDdmm() + '" data-max="today" readonly placeholder="dd/mm/aaaa"></label>' +
+            '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Importe' +
+              '<p data-total class="mt-1 px-3 py-2 rounded-lg bg-telecab-dark border ' +
+                (esCambio ? 'border-telecab-warn/50 text-telecab-warn' : 'border-telecab-gold/40 text-telecab-gold') +
+                ' text-lg font-bold tabular-nums leading-tight">0,00 €</p></div>' +
+          '</div>' +
+
+          // La cuadrícula del recibo: una columna por billete y por moneda.
+          '<div class="overflow-x-auto rounded-xl border border-telecab-border">' +
+            '<table class="w-full text-center text-xs" data-rejilla>' +
+              '<thead><tr class="bg-telecab-card2/60">' +
+                '<th class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted whitespace-nowrap">Valor €</th>' +
+                DEN.map(d => '<th class="px-1 py-1.5 font-semibold text-telecab-text whitespace-nowrap">' + esc(d.etiqueta) + '</th>').join('') +
+                '<th class="px-2 py-1.5 text-[10px] uppercase tracking-wide text-telecab-gold">Total</th></tr></thead>' +
+              '<tbody>' +
+                '<tr class="border-t border-telecab-border">' +
+                  '<td class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted">Cantidad</td>' +
+                  DEN.map(d => '<td class="p-0.5"><input data-den="' + d.centimos + '" type="number" min="0" step="1" inputmode="numeric" ' +
+                    'aria-label="Cantidad de ' + esc(d.etiqueta) + ' €" ' +
+                    'class="w-full min-w-[44px] bg-telecab-dark border border-telecab-border rounded px-1 py-1.5 text-center text-sm text-telecab-text tabular-nums"></td>').join('') +
+                  '<td class="px-2 py-1.5 text-telecab-muted tabular-nums" data-uds>0</td></tr>' +
+                '<tr class="border-t border-telecab-border bg-telecab-card2/30">' +
+                  '<td class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted">Importe €</td>' +
+                  DEN.map(d => '<td class="px-1 py-1.5 text-telecab-muted tabular-nums" data-sub="' + d.centimos + '">—</td>').join('') +
+                  '<td class="px-2 py-1.5 font-bold text-telecab-gold tabular-nums" data-total2>0,00</td></tr>' +
+              '</tbody></table>' +
+          '</div>' +
+
+          (esCambio
+            ? '<p class="text-xs text-telecab-warn/90 bg-telecab-warn/5 border border-telecab-warn/30 rounded-lg px-3 py-2">' +
+                '<i class="fa-solid fa-circle-info mr-1"></i>Este dinero <b>sale de la caja</b> y se le suma a lo que debe, ' +
+                'por encima de lo que diga BOLT. Vuelve cuando lo entregue con su recaudación.</p>'
+            : '') +
+          '<label class="block text-[11px] text-telecab-muted uppercase tracking-wide">Observación' +
+            '<input data-obs type="text" maxlength="255" placeholder="' +
+              (esCambio ? 'p. ej. cambio para el turno de noche' : 'p. ej. entrega de la quincena, o el número del recibo de papel') + '" ' +
+              'class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text"></label>' +
+          '<p data-aviso class="text-xs text-telecab-warn hidden"></p>' +
+          '<div class="flex flex-wrap items-center justify-end gap-2">' +
+            '<button data-cancelar class="px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">Cancelar</button>' +
+            '<button data-guardar class="px-4 py-2 rounded-lg text-sm font-semibold ' +
+              (esCambio ? 'bg-telecab-warn text-telecab-dark' : 'bg-telecab-gold text-telecab-dark') + '">' +
+              '<i class="fa-solid fa-check mr-1"></i>' + (esCambio ? 'Guardar el cambio' : 'Guardar el ingreso') + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const combo = activarCombo(p.querySelector('[data-combo]'));
+    if (conductorId) combo.fijar(conductorId);
+    p.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // El total se recalcula EN CÉNTIMOS a cada tecla: en euros con decimales,
+    // 0,10 + 0,20 no da 0,30 y el recibo no cuadraría con su propia suma.
+    const recalcular = () => {
+      let centimos = 0, uds = 0;
+      p.querySelectorAll('[data-den]').forEach(inp => {
+        const c = Number(inp.dataset.den);
+        const n = Math.max(0, Math.floor(Number(inp.value) || 0));
+        const sub = c * n;
+        centimos += sub; uds += n;
+        const celda = p.querySelector('[data-sub="' + c + '"]');
+        celda.textContent = n ? nf.format(sub / 100) : '—';
+        celda.className = 'px-1 py-1.5 tabular-nums ' + (n ? 'text-telecab-text font-semibold' : 'text-telecab-muted/40');
+      });
+      p.querySelector('[data-total]').textContent = nf.format(centimos / 100) + ' €';
+      p.querySelector('[data-total2]').textContent = nf.format(centimos / 100);
+      p.querySelector('[data-uds]').textContent = uds;
+      return centimos;
+    };
+    p.querySelectorAll('[data-den]').forEach(i => i.addEventListener('input', recalcular));
+
+    const cerrar = () => { p.classList.add('hidden'); p.innerHTML = ''; };
+    p.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+    p.querySelector('[data-cancelar]').addEventListener('click', cerrar);
+
+    p.querySelector('[data-guardar]').addEventListener('click', async () => {
+      const centimos = recalcular();
+      const aviso = p.querySelector('[data-aviso]');
+      if (!p.querySelector('[data-cond]').value) {
+        aviso.textContent = esCambio
+          ? 'Elige a quién se le da el cambio: escribe su nombre y pincha en él.'
+          : 'Elige de quién es el dinero: escribe su nombre y pincha en él.';
+        aviso.classList.remove('hidden');
+        return;
+      }
+      if (centimos <= 0) {
+        aviso.textContent = 'Cuenta los billetes y las monedas: el recibo no puede ser de cero.';
+        aviso.classList.remove('hidden');
+        return;
+      }
+      const desglose = {};
+      p.querySelectorAll('[data-den]').forEach(i => {
+        const n = Math.max(0, Math.floor(Number(i.value) || 0));
+        if (n) desglose[i.dataset.den] = n;
+      });
+      const btn = p.querySelector('[data-guardar]');
+      btn.disabled = true; btn.classList.add('opacity-60');
+      try {
+        const r = await pedir('/recaudacion/api/movimiento', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conductorId: p.querySelector('[data-cond]').value,
+            fecha: p.querySelector('[data-fecha]').value,
+            tipo: esCambio ? 'cambio' : 'presencial', importe: (centimos / 100).toFixed(2), desglose,
+            observacion: p.querySelector('[data-obs]').value,
+          }),
+        });
+        cerrar();
+        Dialogo.hecho ? Dialogo.hecho((esCambio ? 'Cambio entregado: ' : 'Ingreso apuntado: ') + eur(r.importe)) : null;
+        await cargar();
+        if (fichaAbierta) await abrirFicha(fichaAbierta);
+      } catch (e) {
+        btn.disabled = false; btn.classList.remove('opacity-60');
+        aviso.textContent = e.message; aviso.classList.remove('hidden');
+      }
+    });
+  }
+
+  // ── La transferencia (db/208) ────────────────────────────────────────
+  /**
+   * LO QUE PAGA POR TRANSFERENCIA (16/10/2026). Baja lo que debe y NO entra en
+   * la caja: el dinero está en el banco, no en el cajón. No hay billetes que
+   * contar, pero sí el ID de la transferencia, obligatorio y escrito a mano: es
+   * lo que se busca en el extracto, y con él la misma no se apunta dos veces.
+   *
+   * Si el servidor dice que no (el ID ya está, la fecha es futura…), la ventana
+   * vuelve a abrirse con lo escrito: perder un ID largo por un error es justo lo
+   * que hace que la próxima vez se apunte en una libreta.
+   */
+  async function transferencia(conductorId) {
+    await padron();
+    const fila = ((D && D.filas) || []).find(x => String(x.conductorId) === String(conductorId));
+    const quien = (conductores.find(x => String(x.id) === String(conductorId)) || {}).nombre || (fila && fila.conductor) || '';
+    const debe = fila && fila.aRecaudar > 0.005 ? ' Debe ' + eur(fila.aRecaudar) + '.' : '';
+    let previo = { fecha: hoyDdmm() };
+    for (;;) {
+      const v = await Dialogo.formulario('Transferencia de ' + quien, [
+        { id: 'importe', etiqueta: 'Importe (€)', obligatorio: true, valor: previo.importe, marcador: '0,00',
+          ayuda: 'Lo que ha llegado al banco. "125,50" vale.' },
+        { id: 'referencia', etiqueta: 'ID de la transferencia', obligatorio: true, max: 100, valor: previo.referencia,
+          ayuda: 'El del justificante del banco, tal cual. Es obligatorio, y la misma transferencia no se puede apuntar dos veces.' },
+        { id: 'fecha', etiqueta: 'Fecha de la transferencia', tipo: 'fecha', obligatorio: true, valor: previo.fecha },
+        { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', max: 255, valor: previo.observacion },
+      ], { textoBoton: 'Guardar la transferencia',
+           nota: 'Baja lo que debe, pero no entra en la caja: el dinero está en el banco.' + debe });
+      if (!v) return;
+      try {
+        const r = await pedir('/recaudacion/api/movimiento', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...v, conductorId, tipo: 'transferencia' }),
+        });
+        if (Dialogo.hecho) Dialogo.hecho('Transferencia apuntada: ' + eur(r.importe));
+        await cargar();
+        if (fichaAbierta) await abrirFicha(fichaAbierta);
+        return;
+      } catch (e) {
+        await fallo(e);
+        // La fecha vuelve en ISO y la casilla la quiere en dd/mm/aaaa.
+        previo = { ...v, fecha: fecha(v.fecha) };
+      }
+    }
+  }
+
+  // ── El descuento de nómina (RRHH) ────────────────────────────────────
+  async function descuentoNomina() {
+    await padron();
+    const v = await Dialogo.formulario('Descuento de nómina', [
+      { id: 'conductorId', etiqueta: 'Conductor', tipo: 'lista', obligatorio: true,
+        opciones: conductores.map(c => ({ valor: c.id, texto: c.nombre })) },
+      { id: 'fecha', etiqueta: 'Fecha del descuento', tipo: 'fecha', obligatorio: true, valor: hoyIso(),
+        ayuda: 'La que corresponda a la nómina, no tiene por qué ser la de hoy.' },
+      { id: 'importe', etiqueta: 'Importe (€)', obligatorio: true, ayuda: 'Lo que se le descuenta. "125,50" vale.' },
+      { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo' },
+    ], { nota: 'Queda apuntado con tu nombre y cuenta como recaudado, igual que si lo hubiera traído en mano.' });
+    if (!v || !v.importe) return;
+    try {
+      await pedir('/recaudacion/api/movimiento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...v, tipo: 'nomina' }),
+      });
+      await cargar();
+      if (fichaAbierta) await abrirFicha(fichaAbierta);
+    } catch (e) { fallo(e); }
+  }
+
+  // ── Recalcular la quincena desde los pedidos en efectivo de BOLT ─────
+  async function recalcular() {
+    const previo = await Dialogo.confirmar({
+      titulo: 'Poner al día lo que dice BOLT',
+      texto: 'Se vuelve a sumar el efectivo de BOLT (los viajes pagados en mano y terminados) desde ' +
+             (D.corte || 'el corte') + ' hasta hoy. Lo anterior al corte lo manda el Excel y no se toca. ' +
+             'Lo que esté corregido a mano tampoco.',
+      tono: 'pregunta',
+    });
+    if (!previo) return;
+    try {
+      const r = await pedir('/recaudacion/api/cierre/calcular', { method: 'POST' });
+      await cargar();
+      const lista = (t, arr, tono) => (arr.length
+        ? '<p class="mt-2 ' + tono + '">' + t + ':</p><ul class="mt-1 text-xs space-y-0.5 max-h-40 overflow-auto">' +
+          arr.slice(0, 40).map(x => '<li>· ' + esc(x.conductor) + ' — ' +
+            (x.antes != null ? eur(x.antes) + ' → ' : '') + eur(x.importe) +
+            (x.quincena ? ' <span class="text-telecab-muted">(' + esc(x.quincena) + ')</span>' : '') + '</li>').join('') +
+          (arr.length > 40 ? '<li>· … y ' + (arr.length - 40) + ' más</li>' : '') + '</ul>'
+        : '');
+      await Dialogo.aviso({
+        titulo: r.conductores + (r.conductores === 1 ? ' conductor con efectivo' : ' conductores con efectivo'),
+        tono: r.cambios.length ? 'aviso' : 'info',
+        html: '<p>Suman <b>' + eur(r.total) + '</b> desde ' + esc(r.desde) + '.</p>' +
+          lista('Nuevos', r.nuevos, 'text-telecab-muted') +
+          lista('CAMBIARON respecto a lo que había', r.cambios, 'text-telecab-warn') +
+          (r.cambios.length
+            ? '<p class="mt-2 text-xs text-telecab-muted">Desde el corte el importe es el que mide BOLT. ' +
+              'Si alguna de esas cifras tenía una corrección hecha a mano, ahora hay que ponerla como ' +
+              '<b>ajuste</b>, que lleva su motivo y ningún recálculo lo toca.</p>'
+            : ''),
+      });
+      // Un recálculo puede dejar obsoleto un arrastre: si lo que faltaba en una
+      // quincena ya viene en su importe, el ajuste que lo cubría cobra dos
+      // veces. Por eso se comprueba justo después, no cuando alguien se acuerde.
+      if (r.cambios.length) await cuadra({ callado: true });
+    } catch (e) { fallo(e); }
+  }
+
+  // ── ¿Cuadra todo? ────────────────────────────────────────────────────
+  // Con `callado` solo abre el aviso si algo falla o hay que repasar: se llama
+  // sola después de un recálculo y no tiene sentido felicitarse cada vez.
+  async function cuadra({ callado = false, boton } = {}) {
+    try {
+      const c = await Api.get('/recaudacion/api/comprobar', { boton });
+      if (callado && c.ok && !c.revisar) return;
+      const icono = p => (p.ok ? (p.revisar ? '⚑' : '✓') : '✕');
+      const tono = p => (p.ok ? (p.revisar ? 'text-telecab-warn' : 'text-telecab-green') : 'text-telecab-red');
+      await Dialogo.aviso({
+        titulo: c.ok ? (c.revisar ? 'Cuadra, pero hay algo que repasar' : 'Cuadra todo') : 'NO cuadra',
+        tono: c.ok ? (c.revisar ? 'aviso' : 'info') : 'aviso',
+        html:
+          '<p class="text-sm">' + eur(c.cifras.deuda) + ' cobrados en la calle · ' +
+            eur(c.cifras.enMano) + ' entregados · <b>' + eur(c.cifras.aRecaudar) + ' por recaudar</b> · ' +
+            eur(c.cifras.efectivo) + ' en la caja.</p>' +
+          '<ul class="mt-3 space-y-1.5 text-xs">' +
+          c.pruebas.map(p =>
+            '<li class="' + tono(p) + '"><b>' + icono(p) + '</b> ' + esc(p.titulo) +
+              ' <span class="text-telecab-muted">— ' + esc(p.detalle) + '</span>' +
+              (p.gente
+                ? '<ul class="mt-1 ml-4 space-y-0.5 text-telecab-muted max-h-40 overflow-auto">' +
+                  p.gente.slice(0, 30).map(g => '<li>· ' + esc(g) + '</li>').join('') +
+                  (p.gente.length > 30 ? '<li>· … y ' + (p.gente.length - 30) + ' más</li>' : '') + '</ul>'
+                : '') +
+            '</li>').join('') +
+          '</ul>',
+      });
+    } catch (e) { fallo(e); }
+  }
+
+  // ── Cargar el cierre de BOLT de la quincena ──────────────────────────
+  async function cargarCierre() {
+    // La pantalla ya no navega por quincenas, pero el Excel del que sale esto
+    // SÍ viene por quincenas y hay que decir a cuál pertenece: si no, no se
+    // sabría a qué periodo pisar.
+    const v = await Dialogo.formulario('Cargar un cierre desde el Excel', [
+      { id: 'periodo', etiqueta: 'Periodo (aaaa-mm-Q)', tipo: 'texto', obligatorio: true,
+        ayuda: 'Q1 es del 1 al 15 y Q2 del 16 a fin de mes. Por ejemplo 2026-07-2.' },
+      { id: 'texto', etiqueta: 'Pega aquí las dos columnas', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Una línea por conductor: el nombre y el efectivo de esa quincena. Tal cual sale del Excel.' },
+    ], { nota: 'Se PISA lo que hubiera de ese periodo, no se suma. Los nombres que no se reconozcan se dicen uno a uno.' });
+    if (!v || !v.texto) return;
+    const m = String(v.periodo || '').trim().match(/^(\d{4})[-\/](\d{1,2})[-\/]?Q?([12])$/i);
+    if (!m) return Dialogo.aviso({ titulo: 'El periodo no vale', tono: 'aviso',
+      html: '<p>Se escribe <code>aaaa-mm-Q</code>, por ejemplo <code>2026-07-2</code>.</p>' });
+    try {
+      const r = await pedir('/recaudacion/api/cierre/importar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anio: +m[1], mes: +m[2], quincena: +m[3], texto: v.texto }),
+      });
+      await cargar();
+      await Dialogo.aviso({
+        titulo: r.guardados + (r.guardados === 1 ? ' conductor cargado' : ' conductores cargados'),
+        tono: r.sinCasar.length ? 'aviso' : 'info',
+        html: '<p>Suman <b>' + eur(r.total) + '</b> en ' + esc(r.quincena.etiqueta) + '.</p>' +
+          (r.sinCasar.length
+            ? '<p class="mt-2 text-telecab-warn">Estas ' + r.sinCasar.length + ' líneas se han quedado fuera:</p>' +
+              '<ul class="mt-1 text-xs space-y-0.5 max-h-48 overflow-auto">' +
+              r.sinCasar.map(x => '<li>· <code>' + esc(x.linea.slice(0, 60)) + '</code> — ' + esc(x.porque) + '</li>').join('') + '</ul>'
+            : '<p class="mt-2 text-telecab-green">Todas las líneas han casado.</p>'),
+      });
+    } catch (e) { fallo(e); }
+  }
+
+  // ── La ficha de un conductor: su histórico ───────────────────────────
+  async function abrirFicha(conductorId) {
+    try {
+      const f = await pedir('/recaudacion/api/conductor/' + encodeURIComponent(conductorId));
+      fichaAbierta = conductorId;
+      const etqTipo = t => (TIPOS.find(x => x.codigo === t) || {}).etiqueta || t;
+      // El cambio en ámbar, como en la tabla: no es un ingreso ni una devolución,
+      // es dinero de la casa que anda por la calle.
+      const tono = t => (t === 'presencial' || t === 'transferencia' ? 'text-telecab-green' : t === 'nomina' ? 'text-sky-400'
+        : t === 'cambio' ? 'text-telecab-warn' : 'text-telecab-muted');
+      // Sale dinero del cajón en los dos casos, aunque por razones distintas.
+      const signo = t => (t === 'entrega' || t === 'cambio' ? '−' : '+');
+
+      const desgloseTxt = d => {
+        if (!d) return '';
+        const partes = DEN.filter(x => d[String(x.centimos)])
+          .map(x => d[String(x.centimos)] + '×' + x.etiqueta);
+        return partes.length ? '<span class="text-telecab-muted/70">(' + esc(partes.join('  ')) + ')</span>' : '';
+      };
+
+      $('#r-ficha').classList.remove('hidden');
+      $('#r-ficha').innerHTML =
+        '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
+          '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center justify-between gap-2">' +
+            '<div><h2 class="font-bold ' + (f.conductor.sinFicha ? 'text-telecab-red' : 'text-telecab-text') + '">' +
+              esc(f.conductor.nombre) +
+              (f.conductor.sinFicha ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 border border-telecab-red/40 align-middle">SIN FICHA</span>' : '') + '</h2>' +
+              '<p class="text-[11px] text-telecab-muted font-mono tabular-nums">' + (esc(f.conductor.telefono) || 'sin teléfono') +
+              (f.conductor.sinFicha ? ' · cuenta de BOLT sin ficha en la plantilla'
+                : f.conductor.enPlantilla ? '' : ' · ya no está en plantilla') + '</p></div>' +
+            '<div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-right">' +
+              '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Efectivo</p><p class="font-bold tabular-nums">' + eur(f.total.deuda) + '</p></div>' +
+              '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Entregado</p><p class="font-bold text-telecab-green tabular-nums">' + eur(f.total.recaudado) + '</p></div>' +
+              (f.total.cambio > 0.005
+                ? '<div title="Cambio que se le dio para trabajar"><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Cambio</p>' +
+                  '<p class="font-bold text-telecab-warn tabular-nums">' + eur(f.total.cambio) + '</p></div>'
+                : '') +
+              '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Pendiente</p>' +
+                '<p class="font-bold tabular-nums ' + (f.total.pendiente > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(f.total.pendiente) + '</p></div>' +
+              '<button data-cobrar-ficha class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold whitespace-nowrap"><i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
+              (f.conductor.sinFicha ? '' :
+              '<button data-transferencia-ficha class="px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold text-sm whitespace-nowrap transition" ' +
+                'title="Lo ha pagado por transferencia: el importe y el ID de la transferencia"><i class="fa-solid fa-building-columns mr-1"></i>Transferencia</button>') +
+              '<button data-cambio-ficha class="px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-warn hover:text-telecab-warn text-sm whitespace-nowrap transition" ' +
+                'title="Darle cambio para trabajar"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>Cambio</button>' +
+              '<button data-cerrar-ficha aria-label="Cerrar la ficha" class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>' +
+            '</div>' +
+          '</div>' +
+          (f.quincenas.length
+            ? f.quincenas.map(q =>
+              '<div class="border-b border-telecab-border/50">' +
+                '<div class="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 bg-telecab-card2/30">' +
+                  '<span class="font-semibold text-sm">' + esc(q.etiqueta) + '</span>' +
+                  '<span class="text-xs text-telecab-muted">efectivo <b class="text-telecab-text tabular-nums">' + eur(q.deuda) + '</b>' +
+                    (q.ajuste ? ' <span class="text-telecab-gold" title="' + esc(q.ajusteMotivo) + '">(' +
+                      eur(q.bolt) + ' de BOLT + ' + eur(q.ajuste) + ' arrastrados)</span>' : '') + '</span>' +
+                  '<span class="text-xs text-telecab-muted">entregado <b class="text-telecab-green tabular-nums">' + eur(q.recaudado) + '</b></span>' +
+                  (q.cambio > 0.005
+                    ? '<span class="text-xs text-telecab-muted" title="Cambio que se le dio en esta quincena">cambio ' +
+                      '<b class="text-telecab-warn tabular-nums">' + eur(q.cambio) + '</b></span>'
+                    : '') +
+                  '<span class="ml-auto text-xs text-telecab-muted">saldo tras esta quincena ' +
+                    '<b class="tabular-nums ' + (q.saldo > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(q.saldo) + '</b></span>' +
+                '</div>' +
+                (q.movimientos.length
+                  ? q.movimientos.map(m =>
+                    '<div class="px-4 py-2 flex flex-wrap items-baseline gap-2 text-sm ' + (m.anulado ? 'opacity-50' : '') + '" data-mid="' + esc(m.id) + '">' +
+                      '<span class="text-telecab-muted tabular-nums text-xs w-[70px]">' + fecha(m.fecha) + '</span>' +
+                      '<span class="font-semibold tabular-nums ' + tono(m.tipo) + (m.anulado ? ' line-through' : '') + '">' +
+                        signo(m.tipo) + eur(m.importe) + '</span>' +
+                      '<span class="text-xs px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">' + esc(etqTipo(m.tipo)) + '</span>' +
+                      desgloseTxt(m.desglose) +
+                      (m.referencia
+                        ? '<span class="text-xs font-mono tabular-nums text-telecab-text" title="ID de la transferencia">ID ' + esc(m.referencia) + '</span>'
+                        : '') +
+                      (m.observacion ? '<span class="text-xs text-telecab-muted">«' + esc(m.observacion) + '»</span>' : '') +
+                      '<span class="text-[11px] text-telecab-muted/70">· ' + esc(m.quien) + '</span>' +
+                      (m.anulado
+                        ? '<span class="text-[11px] text-telecab-red">anulado por ' + esc(m.anuladoPor || '¿?') + ': «' + esc(m.anuladoMotivo) + '»</span>'
+                        : '<button data-anular class="ml-auto text-[11px] px-2 py-0.5 rounded border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">Anular</button>') +
+                    '</div>').join('')
+                  : '<p class="px-4 py-2 text-xs text-telecab-muted">Sin movimientos en esta quincena.</p>') +
+              '</div>').join('')
+            : '<p class="px-4 py-8 text-center text-sm text-telecab-muted">Sin nada apuntado todavía.</p>') +
+        '</div>';
+
+      const cerrarFicha = () => { $('#r-ficha').classList.add('hidden'); $('#r-ficha').innerHTML = ''; fichaAbierta = null; };
+      $('#r-ficha').querySelector('[data-cerrar-ficha]').addEventListener('click', cerrarFicha);
+      $('#r-ficha').querySelector('[data-cobrar-ficha]').addEventListener('click', () => recibo(conductorId));
+      const bTransf = $('#r-ficha').querySelector('[data-transferencia-ficha]');
+      if (bTransf) bTransf.addEventListener('click', () => transferencia(conductorId));
+      $('#r-ficha').querySelector('[data-cambio-ficha]').addEventListener('click', () => recibo(conductorId, 'cambio'));
+      $('#r-ficha').querySelectorAll('[data-anular]').forEach(b =>
+        b.addEventListener('click', () => anular(b.closest('[data-mid]').dataset.mid)));
+      $('#r-ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) { fallo(e); }
+  }
+
+  async function anular(movimientoId) {
+    const v = await Dialogo.formulario('Anular este movimiento', [
+      { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto-largo', obligatorio: true },
+    ], { tono: 'peligro', nota: 'El apunte no se borra: queda tachado, con tu nombre y con el motivo. Es dinero.' });
+    if (!v || !v.motivo) return;
+    try {
+      await pedir('/recaudacion/api/movimiento/' + encodeURIComponent(movimientoId) + '/anular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: v.motivo }),
+      });
+      await cargar();
+      if (fichaAbierta) await abrirFicha(fichaAbierta);
+    } catch (e) { fallo(e); }
+  }
+
+  // ── Carga ────────────────────────────────────────────────────────────
+  async function cargar() {
+    try {
+      D = await pedir('/recaudacion/api/cuadro');
+      pintarCaja();
+      pintarCuadro();
+      pintarSalidas();
+      // Las cifras se repintan enteras en cada carga; los ojos vuelven a
+      // taparlas. Si no, un recálculo las enseñaría sin avisar.
+      ojos();
+    } catch (e) {
+      $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#r-nuevo').addEventListener('click', () => recibo(null, 'ingreso'));
+  $('#r-cambio').addEventListener('click', () => recibo(null, 'cambio'));
+  ['#f-busca', '#f-estado', '#f-plantilla', '#f-dias'].forEach(s =>
+    $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
+  $('#r-salida').addEventListener('click', salidaCaja);
+  $('#r-calcular').addEventListener('click', recalcular);
+  $('#r-cuadra').addEventListener('click', ev => cuadra({ boton: ev.currentTarget }));
+  $('#r-cierre').addEventListener('click', cargarCierre);
+  if (PUEDE_NOMINA && $('#r-nomina')) $('#r-nomina').addEventListener('click', descuentoNomina);
+
+  cargar();
+})();

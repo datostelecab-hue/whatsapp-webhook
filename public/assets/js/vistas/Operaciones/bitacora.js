@@ -1,0 +1,1099 @@
+// modules/Operaciones/vistas/bitacora.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  const $ = s => document.querySelector(s);
+  const esc = Casa.esc;
+  const rol = DEL_SERVIDOR.rol;
+  // Lo decide el permiso '/bitacora/justificar' de la matriz de /usuarios, no
+  // el rol: así se le puede dar a taller (que justifica sus averías) sin abrirlo
+  // a todo el que lleve ese rol. El servidor lo comprueba igual en cada API;
+  // esto solo evita enseñar botones que darían 403.
+  const puedeJustificar = DEL_SERVIDOR.puedeJustificar;
+  // A QUIÉN SE MANDA LA J (26/10/2026): Tráfico, RRHH o Taller. La aprueba esa
+  // área en /justificantes. Ver DESTINOS en bitacora.service.js.
+  const DESTINOS_J = DEL_SERVIDOR.destinosJ;
+  // LA −J (db/227): constancia de un perjuicio a la empresa. No toca horas,
+  // nómina ni letra; nace pendiente y se aprueba en /justificantes.
+  const CASUISTICAS_MENOS_J = DEL_SERVIDOR.casuisticasMenosJ;
+  // Las de una persona un día, del payload (las tres: aprobadas, pendientes y rechazadas).
+  const menosJDe = (c, iso) => (((DATA && DATA.menosJ) || {})[c.conductorId] || {})[iso] || [];
+  const NOMBRE_J = Object.fromEntries((DEL_SERVIDOR.tiposJ).map(t => [t.codigo, t.etiqueta]));
+  /** El selector de la casa con las tres de aquí, y la que ya tenga si vino de Control (BOLT, compañero). */
+  const selectorDestino = (id, actual) => {
+    const ops = DESTINOS_J.concat(actual && !DESTINOS_J.includes(actual) && NOMBRE_J[actual] ? [actual] : []);
+    return `<div class="tc-selector" data-para="${id}" role="group" aria-label="A quién se manda la justificación">` +
+      ops.map(v => `<button type="button" data-v="${v}">${esc(NOMBRE_J[v] || v)}</button>`).join('') + '</div>';
+  };
+  // Las casillas de horas y minutos de una J (horasMin.js), con la cara de las de aquí.
+  const CASILLA_HM = 'bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text';
+  const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+  const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+  // Quién puso o quitó a mano una libranza, y cuándo: « por Ana el 24/09/2026».
+  // Las puestas antes del 24/09/2026 no lo guardan y no dicen nada.
+  const firma = m => (m && m.por ? ' por ' + esc(m.por) : '') + (m && m.el ? ' el ' + esc(m.el) : '');
+
+  // Colores por marca, desde los tokens del tema.
+  const CH = { V: 'var(--tc-vac)', B: 'var(--tc-med)', P: 'var(--tc-permiso)', J: 'var(--tc-just)' };
+  const clr = t => `rgb(${CH[t]})`, tint = t => `rgb(${CH[t]} / .16)`;
+  const NOM = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso', J: 'Justificado', L: 'Libranza' };
+  const MESES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const OBJETIVO = 8;   // horas de referencia de una jornada
+
+  let DATA = null, MESES = [], SEL = null, filtro = 'vigentes';
+  let level = 'mes', mIdx = 0, wIdx = 0, diaSel = null;
+
+  // ── Fechas: todo por índice desde el 1 de junio ───────────────────────────
+  const fechaDe = idx => new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + idx));
+  const isoDe = idx => fechaDe(idx).toISOString().slice(0, 10);
+  const dowDe = idx => (fechaDe(idx).getUTCDay() + 6) % 7;          // 0 = lunes
+  const fmtLargo = idx => { const f = fechaDe(idx); return DOW[dowDe(idx)] === 'X' ? 'miércoles ' + f.getUTCDate() : ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dowDe(idx)] + ' ' + f.getUTCDate() + ' de ' + MESES_L[f.getUTCMonth()]; };
+  function construirMeses(ini) {
+    const M = []; let cur = null;
+    for (let d = 0; d < 365; d++) {
+      const dt = fechaDe(d); const y = dt.getUTCFullYear(), mo = dt.getUTCMonth();
+      if (!cur || cur.y !== y || cur.mo !== mo) { cur = { y, mo, label: MESES_L[mo] + ' ' + y, corto: ABBR[mo] + ' ' + String(y).slice(2), start: d, len: 0 }; M.push(cur); }
+      cur.len++;
+    }
+    return M;
+  }
+  const mesDeHoy = () => Math.max(0, MESES.findIndex(m => DATA.hoyIdx >= m.start && DATA.hoyIdx < m.start + m.len));
+  const semDeHoy = () => Math.floor((DATA.hoyIdx + dowDe(0)) / 7);        // la semana (empieza en lunes) que contiene hoy
+  const iniSemana = w => w * 7 - dowDe(0);                                // índice del lunes de la semana w
+  const esAus = v => v === 'V' || v === 'B' || v === 'P';
+  const val = (c, d) => (d >= 0 && d < c.dias.length ? c.dias[d] : null);
+
+  // LAS HORAS DE UN DÍA SON LAS DE BOLT **MÁS** LAS JUSTIFICADAS. 2 h de taller
+  // justificadas y 5 rodando son un día de 7, y de 7 se colorea la celda: es la
+  // misma cuenta que hace la nómina. Antes un día con J se pintaba siempre del
+  // mismo azul, así que "J de 2 h y se fue a casa" y "J de 2 h + 8 en BOLT" se
+  // veían igual. Devuelve null si el día no es de trabajo (libranza, ausencia…).
+  // SOLO LAS J APROBADAS SON HORAS. Una J pendiente todavía no la ha mirado
+  // nadie: si la rechazan, esas horas nunca existieron, y contarlas en la nómina
+  // antes de que alguien diga que sí es pagar una promesa. Las pendientes se
+  // enseñan aparte, en azul, con `horasConPresuntas`.
+  function horasDe(c, d) {
+    const v = val(c, d);
+    if (typeof v === 'number') return v;
+    if (v === 'J') {
+      const iso = isoDe(d), j = c.justif[iso] || {};
+      const firmes = j.estado === 'aprobada' ? (j.horas || 0) : 0;
+      return firmes + ((c.horasBolt || {})[iso] || 0);
+    }
+    return null;
+  }
+  /** Lo que sería el día SI se aprueba lo que está pendiente. */
+  function horasConPresuntas(c, d) {
+    const base = horasDe(c, d);
+    if (base == null) return null;
+    const j = c.justif[isoDe(d)] || {};
+    return j.estado === 'pendiente' ? Math.round((base + (j.horas || 0)) * 10) / 10 : base;
+  }
+  /** La J de ese día, si está pendiente de que alguien la apruebe. */
+  const jPendiente = (c, d) => {
+    const j = c.justif[isoDe(d)] || {};
+    return j.estado === 'pendiente' ? j : null;
+  };
+  // El tramo de color por horas: t1 flojo · t2 medio · t3 cumplió.
+  const tramo = h => h >= OBJETIVO ? 't3' : h >= OBJETIVO / 2 ? 't2' : 't1';
+
+  // ── La clase de un día: qué se pinta y qué se dice ────────────────────────
+  //   futuro · fuera (antes del alta / tras la baja) · t1/t2/t3 (trabajó, por horas)
+  //   · V/B/P (ausencia) · J (justificado) · L (libranza) · nosalio
+  /**
+   * ¿Ese día estaba fuera de la casa? 'antes', 'despues', 'hueco' (entre dos
+   * contratos) o null. Mira TODOS sus periodos: el primero empieza en su
+   * primera alta o en su antigüedad, la más antigua.
+   */
+  function fueraDe(c, d) {
+    if (c.altaIdx != null && d < c.altaIdx) return 'antes';
+    if (c.bajaIdx != null && d > c.bajaIdx) return 'despues';
+    if ((c.huecos || []).some(([a, b]) => d >= a && d <= b)) return 'hueco';
+    return null;
+  }
+  function clase(c, d) {
+    const fuera = fueraDe(c, d);
+    if (fuera) {
+      // Si ese día trabajó, se ve: esconderlo es justo lo que dejaba a alguien
+      // «sin salir» con semanas de trabajo detrás. Con el borde de aviso.
+      const h = val(c, d);
+      return d <= DATA.hoyIdx && typeof h === 'number' && h > 0 ? tramo(h) + ' sincontrato' : 'fuera';
+    }
+    const v = val(c, d);
+    // EL FUTURO SE VE. Si ya hay algo decidido para mañana —vacaciones, una baja,
+    // un permiso, una libranza— se pinta con su color, atenuado. Antes todo el
+    // futuro salía en blanco y poner a alguien de vacaciones para mañana no se
+    // notaba en ninguna pantalla.
+    if (d > DATA.hoyIdx) {
+      return (esAus(v) || v === 'J' || v === 'L') ? v + ' porvenir' : 'futuro';
+    }
+    // HOY NO CUENTA TODAVÍA (15/10/2026, Camilo). El día va a medias: quien
+    // entra a las 17:00 no ha faltado a nada a las 14:00, y salía «Ausencia» y
+    // bajaba su media. Lo que haga hoy entra en su promedio mañana. Se pinta
+    // neutro con «HOY» y sus horas si ya tiene; si no, solo «HOY». Lo ya
+    // decidido (vacaciones, baja, permiso, libranza, una J) se pinta como siempre.
+    if (d === DATA.hoyIdx && !(esAus(v) || v === 'J' || v === 'L')) {
+      return typeof v === 'number' && v > 0 ? tramo(v) + ' hoyh' : 'hoydia';
+    }
+    if (typeof v === 'number' && v > 0) return tramo(v);
+    // La J NO se pinta de un azul fijo: el color sale de las HORAS del día
+    // (justificadas + BOLT), y de ahí los tres casos —jcumple, jpura, jcorto—
+    // que están explicados arriba, con las clases.
+    //
+    // El color se decide con las horas PRESUNTAS —si la J se aprueba, el día es
+    // ese— pero se marca `jpend` para que se vea que aún no es firme.
+    if (v === 'J') {
+      const p = jPendiente(c, d);
+      // Con la pendiente incluida: si no, un día ya explicado y a la espera del
+      // visto bueno saldría rojo y mandaría a llamar otra vez a quien ya dio la
+      // cara. Que está pendiente lo dice `jpend` (azul y borde punteado).
+      const h = (p ? horasConPresuntas(c, d) : horasDe(c, d)) || 0;
+      const bolt = (c.horasBolt || {})[isoDe(d)] || 0;
+      const cual = h < OBJETIVO ? 'jcorto' : bolt > 0 ? 'jcumple' : 'jpura';
+      return 'J ' + cual + (p ? ' jpend' : '');
+    }
+    if (esAus(v) || v === 'L') return v;
+    // Sin plaza ese día, o en una situación sin marca (suspensión…): no se le
+    // esperaba en ningún coche. No es «Ausencia» ni cuenta en su promedio
+    // (15/10/2026, la regla de la casa: bitacora.service.promedioHoras).
+    if (enTramo(c.situaciones, d)) return 'sinmarca';
+    if (enTramo(c.sinPlaza, d)) return 'sinplaza';
+    return 'nosalio';
+  }
+  /** ¿Cae el día en uno de esos tramos [desde, hasta, …]? */
+  function enTramo(tramos, d) { return (tramos || []).some(t => d >= t[0] && d <= t[1]); }
+  /** La situación sin marca de ese día (su nombre), si la hay. */
+  function situacionDe(c, d) { const t = (c.situaciones || []).find(x => d >= x[0] && d <= x[1]); return t ? t[2] : ''; }
+  // La clase "de verdad" sin el sufijo, para comparar (k === 'V', etc.).
+  const soloClase = k => String(k).split(' ')[0];
+  const trabajo = k => k === 't1' || k === 't2' || k === 't3';
+  function textoDia(c, d) {
+    const k = soloClase(clase(c, d)), v = val(c, d);
+    const porvenir = d > DATA.hoyIdx ? ' (programado)' : '';
+    if (k === 'futuro') return 'Todavía no ha llegado.';
+    if (d === DATA.hoyIdx && (k === 'hoydia' || trabajo(k))) {
+      return (trabajo(k) ? 'Hoy, en curso: ' + nf1.format(v) + ' h efectivas hasta ahora.' : 'Hoy: todavía sin horas.') +
+        ' Cuenta para su promedio a partir de mañana.';
+    }
+    if (k === 'fuera') {
+      const f = fueraDe(c, d);
+      return f === 'antes' ? 'Antes de su alta.' : f === 'despues' ? 'Después de su baja.' : 'Sin contrato: entre dos periodos.';
+    }
+    // Si ese día trabajó con la cuenta de otro, hay que decirlo: la hora cuenta
+    // igual, pero quien mire esto dentro de tres meses tiene que poder entender
+    // por qué en BOLT ese día sale el nombre de otra persona.
+    const fant = (c.fantasma || {})[isoDe(d)];
+    if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
+      (fant ? ' · HORAS DE CUENTA FANTASMA «' + fant + '»' : '') +
+      (fueraDe(c, d) ? ' · SIN CONTRATO ese día en el sistema' : '');
+    if (k === 'J') {
+      const j = c.justif[isoDe(d)] || {}, hb = (c.horasBolt || {})[isoDe(d)] || 0;
+      const firme = horasDe(c, d) || 0;
+      // Una J PENDIENTE no suma todavía: decir "día de 6,1 h · justificadas 6,1
+      // + BOLT 6,1" era una cuenta que no cuadra a la vista. Se dice lo que hay
+      // hoy y lo que sería si la aprueban.
+      if (j.estado === 'pendiente') {
+        return 'Día de ' + nf1.format(firme) + ' h (solo BOLT)' +
+          ' · ' + nf1.format(j.horas || 0) + ' h justificadas PENDIENTES de aprobar' +
+          ' → sería un día de ' + nf1.format(firme + (j.horas || 0)) + ' h' +
+          (j.obs ? ' · ' + j.obs : '') + porvenir;
+      }
+      return 'Día de ' + nf1.format(firme) + ' h' + (firme < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
+        ' · justificadas ' + nf1.format(j.horas || 0) + ' h' +
+        ' + BOLT ' + nf1.format(hb) + ' h' + (j.obs ? ' · ' + j.obs : '') + porvenir;
+    }
+    if (k === 'L') return ((c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)') + porvenir;
+    if (k === 'sinmarca') return situacionDe(c, d) + ': no le tocaba salir. No cuenta en su promedio.';
+    if (k === 'sinplaza') return 'Sin plaza ese día: no tenía coche asignado. No cuenta en su promedio.';
+    if (esAus(k)) return NOM[k];
+    return 'Ausencia: ni una hora, sin libranza, vacaciones, baja ni permiso.' +
+      ((c.lQuitada || {})[isoDe(d)] ? ' (El planificador lo tenía de libranza y se quitó a mano.)' : '');
+  }
+
+  // ── Resúmenes ────────────────────────────────────────────────────────────
+  // LA MISMA CUENTA DE HORAS Y DÍAS, EN EL SERVIDOR: bitacora.service.mediaDelMes
+  // (la usa el Excel de Plantilla, con la media «contando la ausencia»). Si aquí
+  // cambia qué es un día trabajado o una ausencia, allí también.
+  function resumen(c, a, b) {
+    const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0,
+                dias: 0, horasJ: 0, ausFuturas: 0 };
+    for (let d = a; d <= b; d++) {
+      const k = soloClase(clase(c, d));
+      if (k === 'futuro' || k === 'fuera') continue;
+      // EL FUTURO NO SE HA TRABAJADO, PERO UNA AUSENCIA FUTURA YA ESTÁ DECIDIDA.
+      //
+      // El resto de cifras cortan en hoy y hacen bien: nadie ha trabajado
+      // mañana. Una ausencia no es lo mismo — está firmada, con sus fechas, y
+      // por eso el calendario ya la pinta—. Cortándola en hoy, el número decía
+      // «8 ausencias» mientras en pantalla se veían 19 casillas azules, y las
+      // dos cosas eran de la misma persona y del mismo mes.
+      //
+      // Y HOY TAMPOCO SE CUENTA (15/10/2026): ni sus horas ni como ausencia; entra
+      // mañana. Así la media cuadra con el Excel de Plantilla
+      // (bitacora.service.mediaDelMes), que ya cortaba en ayer.
+      if (d >= DATA.hoyIdx) {
+        if (k === 'V' || k === 'B' || k === 'P') { r[k]++; if (d > DATA.hoyIdx) r.ausFuturas++; }
+        continue;
+      }
+      r.dias++;
+      if (trabajo(k)) { const v = val(c, d); r.horas += v; r.trabajados++; if (v < OBJETIVO) r.cortos++; }
+      else if (k === 'J') {
+        // Un día justificado ES un día trabajado para la cuenta de horas: entra
+        // con su total (justificadas + BOLT) y cuenta como corto si no llega.
+        const h = horasDe(c, d) || 0;
+        r.horas += h; r.trabajados++; if (h < OBJETIVO) r.cortos++;
+        r.J++; const j = c.justif[isoDe(d)]; if (j && j.horas != null) r.horasJ += j.horas;
+      }
+      else if (r[k] != null) {
+        r[k]++;
+      }
+    }
+    return r;
+  }
+  const badges = r => ['B', 'V', 'P', 'J'].filter(t => r[t]).map(t =>
+    `<span style="background:${tint(t)};color:${clr(t)}" class="text-[10px] px-1.5 py-0.5 rounded font-semibold" title="${NOM[t]}">${t}${r[t]}</span>`).join('');
+
+  // ── KPIs de flota ─────────────────────────────────────────────────────────
+  function pintarKpisFlota() {
+    const mes = MESES[mesDeHoy()], wa = iniSemana(semDeHoy()), wb = Math.min(wa + 6, DATA.hoyIdx);
+    let vig = 0, aus = 0, sinSalir = 0, horas = 0, jotas = 0;
+    // LAS HORAS DEL MES: las de BOLT de TODOS los que trabajaron, sin hoy (29/10/2026).
+    // Solo sumaba a los vigentes, y con sus J: quien se daba de baja a mitad de mes
+    // se llevaba sus horas (unas 1.800 h el 26/10) y la tarjeta no cuadraba con
+    // Visibilidad. Ahora entran también los de baja, los días con marca en los que
+    // rodó y nada de J, que tienen su tarjeta. La diferencia que queda con
+    // Visibilidad es hoy (aquí no cuenta) y el corte de la noche: aquí por
+    // jornada, allí a las 00:00.
+    const finMes = Math.min(mes.start + mes.len - 1, DATA.hoyIdx - 1);
+    DATA.conductores.forEach(c => {
+      for (let d = mes.start; d <= finMes; d++) {
+        const v = val(c, d);
+        horas += typeof v === 'number' ? v : ((c.horasBolt || {})[isoDe(d)] || 0);
+      }
+      if (!c.vigente) return;
+      vig++;
+      if (esAus(val(c, DATA.hoyIdx))) aus++;
+      let algo = false; for (let d = Math.max(wa, c.altaIdx || 0); d <= wb; d++) { const k = soloClase(clase(c, d)); if (trabajo(k) || k === 'J' || k === 'L' || esAus(k)) { algo = true; break; } }
+      if (!algo && (c.altaIdx || 0) <= wb) sinSalir++;
+      jotas += resumen(c, mes.start, mes.start + mes.len - 1).J;
+    });
+    [vig, aus, sinSalir, nf0.format(Math.round(horas)), jotas].forEach((v, i) => { document.querySelectorAll('#kpis-flota .kpi-val')[i].textContent = v; });
+  }
+
+  // ── Lista ────────────────────────────────────────────────────────────────
+  const FILTROS = [
+    ['vigentes', 'Vigentes'], ['ausentes', 'Ausentes hoy'], ['B', 'Baja médica'], ['V', 'Vacaciones'],
+    ['sinsalir', 'Sin salir esta semana'], ['conJ', 'Con justificantes'], ['bajas', 'De baja'], ['todos', 'Todos'],
+  ];
+  function pasaFiltro(c) {
+    const hoy = val(c, DATA.hoyIdx);
+    if (filtro === 'todos') return true;
+    if (filtro === 'bajas') return !c.vigente;
+    if (!c.vigente) return false;
+    if (filtro === 'vigentes') return true;
+    if (filtro === 'ausentes') return esAus(hoy);
+    if (filtro === 'B' || filtro === 'V') return hoy === filtro;
+    if (filtro === 'conJ') return Object.keys(c.justif).length > 0;
+    if (filtro === 'sinsalir') {
+      const wa = iniSemana(semDeHoy()), wb = Math.min(wa + 6, DATA.hoyIdx);
+      for (let d = Math.max(wa, c.altaIdx || 0); d <= wb; d++) { const k = soloClase(clase(c, d)); if (trabajo(k) || k === 'J' || k === 'L' || esAus(k)) return false; }
+      return (c.altaIdx || 0) <= wb;
+    }
+    return true;
+  }
+  function pintarFiltros() {
+    $('#b-filtros').innerHTML = FILTROS.map(([k, t]) => `<button type="button" data-f="${k}" class="b-chip ${filtro === k ? 'on' : ''}">${t}</button>`).join('');
+    $('#b-filtros').querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; pintarFiltros(); pintarLista(); }));
+  }
+  function pintarLista() {
+    const q = $('#b-buscar').value.trim().toLowerCase();
+    const mes = MESES[mesDeHoy()];
+    const vis = DATA.conductores.filter(c => pasaFiltro(c) && (!q || c.id.toLowerCase().includes(q) || (c.nombre || '').toLowerCase().includes(q) || (c.telefono || '').replace(/\D/g, '').includes(q.replace(/\D/g, '') || '§')));
+    const cont = $('#b-lista');
+    if (!vis.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm p-3">Nadie con ese filtro.</p>'; }
+    else cont.innerHTML = vis.map(c => {
+      const r = resumen(c, mes.start, mes.start + mes.len - 1);
+      const hoy = val(c, DATA.hoyIdx), kHoy = soloClase(clase(c, DATA.hoyIdx));
+      const punto = esAus(hoy) ? clr(hoy) : trabajo(kHoy) ? 'rgb(var(--tc-green))' : kHoy === 'L' ? 'rgb(var(--tc-muted))' : c.vigente ? 'rgb(var(--tc-border))' : 'transparent';
+      return `<button type="button" data-id="${c.conductorId}" class="b-item w-full text-left px-2.5 py-2 rounded-xl hover:bg-telecab-card2 transition ${SEL === c.conductorId ? 'bg-telecab-card2 ring-1 ring-telecab-gold/50' : ''}">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full shrink-0" style="background:${punto}" title="Hoy"></span>
+          <span class="min-w-0 flex-1 text-sm text-telecab-text truncate ${c.vigente ? '' : 'opacity-60'}">${esc(c.id)}</span>
+          <span class="text-[11px] text-telecab-muted tabular-nums whitespace-nowrap">${nf0.format(Math.round(r.horas))} h</span>
+        </div>
+        <div class="flex items-center gap-1.5 mt-1 pl-4">
+          <span class="text-[10px] text-telecab-muted font-mono">${esc(c.telefono || 'sin teléfono')}</span>
+          ${c.tipo ? `<span class="text-[10px] text-telecab-muted">· ${esc(c.tipo)}</span>` : ''}
+          ${!c.vigente && c.baja ? `<span class="text-[10px] text-telecab-red">· baja ${c.baja.slice(8, 10)}/${c.baja.slice(5, 7)}</span>` : ''}
+          <span class="ml-auto flex gap-1">${badges(r)}</span>
+        </div>
+      </button>`;
+    }).join('');
+    cont.querySelectorAll('.b-item').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.id))));
+    $('#b-count').textContent = `${vis.length} de ${DATA.conductores.length} · ${DATA.conductores.filter(c => c.vigente).length} vigentes`
+      + (DATA.avisos && DATA.avisos.sinFicha ? ` · ${DATA.avisos.sinFicha} cuenta BOLT sin ficha` : '');
+  }
+
+  // ── Panel por defecto: hoy, de un vistazo ─────────────────────────────────
+  function pintarDefault() {
+    $('#b-detalle').classList.add('hidden'); $('#b-default').classList.remove('hidden');
+    const hoy = DATA.hoyIdx, mes = MESES[mesDeHoy()];
+    const aus = DATA.conductores.filter(c => c.vigente && esAus(val(c, hoy)));
+    const porTipo = { B: [], V: [], P: [] }; aus.forEach(c => porTipo[val(c, hoy)].push(c));
+    const fila = c => `<button type="button" data-id="${c.conductorId}" class="b-open w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 transition">
+        <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(c.id)}</span>
+        <span class="text-[11px] text-telecab-muted font-mono">${esc(c.telefono || '')}</span>
+        ${(() => { const a = c.ausencias.find(x => x.desde <= isoDe(hoy) && x.hasta >= isoDe(hoy)); return a ? `<span class="text-[11px] text-telecab-muted">desde ${a.desde.slice(8, 10)}/${a.desde.slice(5, 7)}${a.abierta ? ' · sin fecha de vuelta' : ' · hasta ' + a.hasta.slice(8, 10) + '/' + a.hasta.slice(5, 7)}</span>` : ''; })()}
+      </button>`;
+    const bloque = (t, lista) => lista.length ? `<div><p class="text-xs font-semibold mb-1.5" style="color:${clr(t)}">${NOM[t]} · ${lista.length}</p><div class="space-y-1">${lista.map(fila).join('')}</div></div>` : '';
+    const jotasMes = DATA.conductores.reduce((s, c) => s + resumen(c, mes.start, mes.start + mes.len - 1).J, 0);
+    $('#b-default').innerHTML =
+      `<div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+         <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-calendar-day text-telecab-gold"></i> Hoy, ${esc(fmtLargo(hoy))}</h2>
+         <div class="flex items-center gap-2">
+           <a href="/bitacora/general" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition"><i class="fa-solid fa-table-cells mr-1"></i>Bitácora general</a>
+           <button id="b-vac-btn" class="text-xs px-3 py-2 rounded-lg font-semibold" style="background:${tint('V')};color:${clr('V')}"><i class="fa-solid fa-umbrella-beach mr-1"></i>Vacaciones por meses</button>
+         </div>
+       <p class="text-xs text-telecab-muted mb-4">Quién falta hoy y por qué. Elige a alguien en la lista para ver su calendario completo, día a día.</p>
+       <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">${bloque('B', porTipo.B)}${bloque('V', porTipo.V)}${bloque('P', porTipo.P)}</div>
+       ${aus.length ? '' : '<p class="text-telecab-muted text-sm">Nadie ausente hoy.</p>'}
+       <p class="text-xs text-telecab-muted mt-6">Este mes llevamos <b class="text-telecab-text">${jotasMes}</b> días justificados (J) en toda la plantilla.</p>`;
+    $('#b-default').querySelectorAll('.b-open').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.id))));
+    const vb = $('#b-vac-btn');
+    if (vb) vb.addEventListener('click', abrirVacaciones);
+  }
+
+  // ── Vacaciones por meses: disfrutadas + PROGRAMADAS, para asignar sin pisarse ──
+  // Una parrilla por mes: una fila por persona de vacaciones, una celda por día.
+  // Lo ya disfrutado va sólido; lo programado (aún no llega), rayado. La fila
+  // "a la vez" de arriba dice cuánta gente falta cada día — el dato que evita
+  // que RRHH junte media flota el mismo puente. Y al final, quién no tiene NI
+  // UN DÍA todavía: la lista de a quién le toca asignar.
+  let VAC = null, vacMesSel = null;
+  const pad2 = n => String(n).padStart(2, '0');
+  const mesIdxDe = iso => { const [y, m] = iso.split('-').map(Number); return y * 12 + (m - 1); };
+
+  async function abrirVacaciones() {
+    SEL = null; diaSel = null; pintarLista();
+    $('#b-detalle').classList.add('hidden');
+    const d = $('#b-default'); d.classList.remove('hidden');
+    if (!VAC) {
+      d.innerHTML = '<p class="text-sm text-telecab-muted">Cargando vacaciones…</p>';
+      try {
+        const r = await (await fetch('/bitacora/api/vacaciones')).json();
+        if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+        VAC = r;
+      } catch (e) { d.innerHTML = '<p class="text-sm text-telecab-red">No se pudieron cargar las vacaciones: ' + esc(e.message) + '</p>'; return; }
+    }
+    if (vacMesSel == null) vacMesSel = mesIdxDe(VAC.hoy);
+    pintarVacaciones();
+  }
+
+  // Personas de vacaciones en un mes (índice año*12+mes), con sus tramos ya
+  // recortados al mes: [{...persona, segs: [{a, b}]}].
+  function filasDeMes(vm) {
+    const y = Math.floor(vm / 12), m = vm % 12;
+    const nD = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const iso1 = y + '-' + pad2(m + 1) + '-01', isoN = y + '-' + pad2(m + 1) + '-' + pad2(nD);
+    const porCond = new Map();
+    (VAC.periodos || []).forEach(p => {
+      const h = p.hasta || '9999-12-31';
+      if (p.desde > isoN || h < iso1) return;
+      const a = p.desde > iso1 ? Number(p.desde.slice(8, 10)) : 1;
+      const b = (p.hasta && p.hasta <= isoN) ? Number(p.hasta.slice(8, 10)) : nD;
+      if (!porCond.has(p.conductorId)) porCond.set(p.conductorId, { ...p, segs: [] });
+      porCond.get(p.conductorId).segs.push({ a, b, abierta: p.abierta, sigue: h > isoN, venia: p.desde < iso1 });
+    });
+    return { y, m, nD, filas: [...porCond.values()].sort((x, z) =>
+      Math.min(...x.segs.map(s => s.a)) - Math.min(...z.segs.map(s => s.a)) || x.nombre.localeCompare(z.nombre, 'es')) };
+  }
+
+  function pintarVacaciones() {
+    const d = $('#b-default');
+    const hoyVm = mesIdxDe(VAC.hoy);
+    // La tira de meses: de junio 2026 hasta la última vacación programada (con
+    // 3 meses de margen para poder asignar hacia delante).
+    let maxVm = hoyVm + 3;
+    (VAC.periodos || []).forEach(p => { maxVm = Math.max(maxVm, mesIdxDe(p.hasta || p.desde)); });
+    // Tope de 15 meses vista: una fecha con el año mal tecleado (pasó) no puede
+    // convertir la tira de meses en una alfombra hasta 2029.
+    maxVm = Math.min(maxVm, hoyVm + 15);
+    const meses = []; for (let i = mesIdxDe('2026-06-01'); i <= maxVm; i++) meses.push(i);
+    if (vacMesSel < meses[0] || vacMesSel > maxVm) vacMesSel = hoyVm;
+
+    const { y, m, nD, filas } = filasDeMes(vacMesSel);
+    const cuenta = new Array(nD + 1).fill(0);
+    filas.forEach(f => f.segs.forEach(s => { for (let i = s.a; i <= s.b; i++) cuenta[i]++; }));
+    const maxC = Math.max(1, ...cuenta.slice(1));
+    const diasMes = filas.reduce((t, f) => t + f.segs.reduce((s2, s) => s2 + (s.b - s.a + 1), 0), 0);
+    const programadas = new Set((VAC.periodos || []).filter(p => p.desde > VAC.hoy).map(p => p.conductorId));
+    const finde = i => { const dow = new Date(Date.UTC(y, m, i)).getUTCDay(); return dow === 0 || dow === 6; };
+    const cols = 'grid-template-columns: minmax(9rem, 12rem) repeat(' + nD + ', minmax(0, 1fr));';
+
+    const filaHtml = f => {
+      let celdas = '';
+      for (let i = 1; i <= nD; i++) {
+        const s = f.segs.find(x => i >= x.a && i <= x.b);
+        const iso = y + '-' + pad2(m + 1) + '-' + pad2(i);
+        celdas += s ? '<i class="' + (iso > VAC.hoy ? 'vac-prog' : 'vac-on') + '"></i>'
+                    : '<i class="' + (finde(i) ? 'finde' : '') + '"></i>';
+      }
+      const dias = f.segs.reduce((t, s) => t + (s.b - s.a + 1), 0);
+      const abierta = f.segs.some(s => s.abierta);
+      return '<div class="vac-fila" style="' + cols + '">' +
+        '<span class="vac-nombre min-w-0 pr-2 text-sm text-telecab-text truncate" data-abrir="' + esc(f.conductorId) + '" ' +
+          'title="' + esc(f.nombre + (f.telefono ? ' · ' + f.telefono : '') + ' · ' + dias + ' día(s) este mes' + (abierta ? ' · sin fecha de vuelta' : '')) + '">' +
+          esc(f.nombre) + ' <span class="text-[11px] text-telecab-muted">' + dias + 'd' + (abierta ? ' →' : '') + '</span></span>' +
+        celdas + '</div>';
+    };
+
+    d.innerHTML =
+      '<div class="flex items-center justify-between flex-wrap gap-2 mb-1">' +
+        '<h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">' +
+          '<i class="fa-solid fa-umbrella-beach" style="color:' + clr('V') + '"></i> Vacaciones por meses</h2>' +
+        '<button id="b-vac-volver" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Hoy</button>' +
+      '</div>' +
+      '<p class="text-xs text-telecab-muted mb-3">Lo disfrutado va sólido; lo <b>programado</b>, rayado. La fila «a la vez» dice cuánta gente falta cada día: si se pone caliente, ese mes no cabe nadie más.</p>' +
+      '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">' +
+        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">De vacaciones en ' + MESES_L[m] + '</p><p class="text-lg font-bold tabular-nums">' + filas.length + '</p></div>' +
+        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">Días de vacaciones del mes</p><p class="text-lg font-bold tabular-nums">' + diasMes + '</p></div>' +
+        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">Con vacaciones programadas</p><p class="text-lg font-bold tabular-nums" style="color:' + clr('V') + '">' + programadas.size + '</p></div>' +
+        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">Sin ni un día todavía</p><p class="text-lg font-bold tabular-nums text-telecab-warn">' + (VAC.sinVacaciones || []).length + '</p></div>' +
+      '</div>' +
+      '<div class="flex flex-wrap gap-1 mb-4">' + meses.map(i => {
+        const n = filasDeMes(i).filas.length;
+        return '<button data-vacmes="' + i + '" class="b-chip ' + (i === vacMesSel ? 'on' : '') + '">' +
+          MESES_L[i % 12].slice(0, 3) + ' ' + String(Math.floor(i / 12)).slice(2) +
+          (n ? ' <b>' + n + '</b>' : '') + (i === hoyVm ? ' ·' : '') + '</button>';
+      }).join('') + '</div>' +
+      (filas.length
+        ? '<div class="space-y-[3px]">' +
+            '<div class="vac-fila" style="' + cols + '"><span></span>' +
+              Array.from({ length: nD }, (_, i) => '<span class="text-center text-[10px] ' + (finde(i + 1) ? 'text-telecab-muted/50' : 'text-telecab-muted') + '">' + (i + 1) + '</span>').join('') + '</div>' +
+            '<div class="vac-fila" style="' + cols + '"><span class="text-[10px] text-telecab-muted text-right pr-2">a la vez</span>' +
+              cuenta.slice(1).map((c, i) => '<b style="background: rgb(var(--tc-vac) / ' + (c ? (0.12 + 0.68 * c / maxC).toFixed(2) : 0.04) + ')" title="' + c + ' de vacaciones el ' + (i + 1) + '">' + (c || '') + '</b>').join('') + '</div>' +
+            filas.map(filaHtml).join('') +
+          '</div>'
+        : '<p class="text-sm text-telecab-muted py-6 text-center">Nadie de vacaciones en ' + MESES_L[m] + ' ' + y + '.</p>') +
+      '<details class="mt-5"><summary class="cursor-pointer text-sm text-telecab-warn font-semibold">Sin vacaciones todavía (' + (VAC.sinVacaciones || []).length + ') — a quién le toca asignar</summary>' +
+        '<div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-1.5 mt-2">' + (VAC.sinVacaciones || []).map(c =>
+          '<button data-abrir="' + esc(c.conductorId) + '" class="text-left px-3 py-1.5 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 transition">' +
+            '<span class="block text-sm text-telecab-text truncate">' + esc(c.nombre) + '</span>' +
+            '<span class="block text-[11px] text-telecab-muted">' + esc(c.telefono || '') + (c.turno ? ' · ' + esc(c.turno) : '') + (c.zona ? ' · ' + esc(c.zona) : '') + '</span></button>').join('') +
+        '</div></details>';
+
+    d.querySelector('#b-vac-volver').addEventListener('click', pintarDefault);
+    d.querySelectorAll('[data-vacmes]').forEach(b => b.addEventListener('click', () => { vacMesSel = Number(b.dataset.vacmes); pintarVacaciones(); }));
+    d.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.abrir))));
+  }
+
+  // ── Detalle ──────────────────────────────────────────────────────────────
+  const rango = () => level === 'año' ? { a: 0, b: 364 } : level === 'mes' ? { a: MESES[mIdx].start, b: MESES[mIdx].start + MESES[mIdx].len - 1 } : { a: iniSemana(wIdx), b: iniSemana(wIdx) + 6 };
+  const sel = () => DATA.conductores.find(x => x.conductorId === SEL);
+
+  function abrir(id) {
+    const c = DATA.conductores.find(x => x.conductorId === id); if (!c) return;
+    SEL = id; level = 'mes'; mIdx = mesDeHoy(); wIdx = semDeHoy(); diaSel = null;
+    pintarLista();
+    $('#b-default').classList.add('hidden');
+    const d = $('#b-detalle'); d.classList.remove('hidden');
+    const estadoChip = c.ausente
+      ? `<span class="text-xs px-2 py-0.5 rounded-lg font-medium" style="background:${tint(val(c, DATA.hoyIdx) || 'B')};color:${clr(val(c, DATA.hoyIdx) || 'B')}">${esc(c.estado)}</span>`
+      : c.vigente ? '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-green/15 text-telecab-green font-medium">Activo</span>'
+      : `<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-red/15 text-telecab-red font-medium">Baja ${c.baja ? c.baja.split('-').reverse().join('/') : ''}</span>`;
+    d.innerHTML =
+      `<div class="flex flex-wrap items-start gap-3 mb-4">
+         <button id="b-volver" class="text-xs px-2.5 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Hoy</button>
+         <div class="min-w-0 flex-1">
+           <div class="flex flex-wrap items-center gap-2">
+             <h2 class="text-xl font-bold text-telecab-text truncate">${esc(c.id)}</h2>${estadoChip}
+           </div>
+           <p class="text-xs text-telecab-muted mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+             ${c.telefono ? `<a href="tel:${esc(c.telefono)}" class="font-mono hover:text-telecab-gold"><i class="fa-solid fa-phone mr-1"></i>${esc(c.telefono)}</a>` : '<span>sin teléfono</span>'}
+             ${c.tipo ? `<span>${esc(c.tipo === 'ett' ? 'ETT' : 'Plantilla propia')}</span>` : ''}
+             ${c.zona ? `<span><i class="fa-solid fa-location-dot mr-1"></i>${esc(c.zona)}</span>` : ''}
+             ${c.turno ? `<span>${esc(c.turno)}</span>` : ''}
+             ${c.alta ? `<span>alta ${c.alta.split('-').reverse().join('/')}</span>` : ''}
+             ${c.desde && c.alta && c.desde < c.alta ? `<span title="Su primera alta o su antigüedad, la más antigua: la bitácora cuenta desde aquí">en la casa desde ${c.desde.split('-').reverse().join('/')}</span>` : ''}
+             ${c.nombreBolt && c.nombre && c.nombreBolt !== c.nombre ? `<span class="text-telecab-muted/70">en plantilla: ${esc(c.nombre)}</span>` : ''}
+           </p>
+         </div>
+         ${puedeJustificar ? `<button id="b-justif-btn" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar un día</button>` : ''}
+       </div>
+       ${puedeJustificar ? `
+       <div id="b-justif-form" class="hidden mb-4 p-3 rounded-xl bg-telecab-dark/50 border border-telecab-border">
+         <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. Las horas que pongas son las que SE JUSTIFICAN, y se suman a las que hiciera en BOLT ese día: 2 h de taller + 8 h conectado = día de 10 h. Eso es lo que cuenta para la nómina, cuando la apruebe el área a la que la mandes.</p>
+         <div class="flex flex-wrap items-end gap-3">
+           <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${isoDe(0)}" max="${isoDe(DATA.hoyIdx)}" value="${isoDe(DATA.hoyIdx)}" class="mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <div class="text-xs text-telecab-muted">Horas que se justifican<div class="mt-1">${HorasMin.html({ id: 'j-horas', clase: CASILLA_HM })}</div></div>
+           <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Motivo (obligatorio)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. 2 horas ITV"></label>
+           <div class="text-xs text-telecab-muted">Se manda a<input type="hidden" id="j-tipo" value="trafico"><div id="j-tipo-hueco" class="mt-1">${selectorDestino('j-tipo')}</div></div>
+           <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold">Guardar J</button>
+         </div>
+         <p id="j-msg" class="text-xs mt-2"></p>
+       </div>` : ''}
+       <div class="flex items-center gap-3 flex-wrap mb-4">
+         <div class="inline-flex rounded-xl overflow-hidden border border-telecab-border">
+           ${['año', 'mes', 'semana'].map(l => `<button data-lv="${l}" class="b-seg px-3 py-1.5 text-sm capitalize">${l}</button>`).join('')}
+         </div>
+         <div class="flex items-center gap-2 ml-auto">
+           <button id="b-prev" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition" aria-label="Periodo anterior"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+           <span id="b-period" class="text-sm font-semibold text-telecab-text min-w-[150px] text-center capitalize"></span>
+           <button id="b-next" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition" aria-label="Periodo siguiente"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+         </div>
+       </div>
+       <div id="b-kpis" class="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4"></div>
+       <div id="b-cal"></div>
+       <div id="b-diainfo" class="hidden mt-3 px-3 py-2 rounded-xl bg-telecab-dark/50 border border-telecab-border text-sm"></div>
+       <div class="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-[11px] text-telecab-muted">
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:rgb(var(--tc-green))"></span>Trabajó (más lleno = más horas)</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:rgb(var(--tc-red) / .6)"></span>Ausencia</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:rgb(var(--tc-muted) / .45)"></span>Libranza</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('J')}"></span>Justificado</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('B')}"></span>Baja médica</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('V')}"></span>Vacaciones</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('P')}"></span>Permiso</span>
+       </div>
+       <p class="text-xs text-telecab-muted mt-6 mb-2">Horas por ${level === 'año' ? 'mes' : 'día'} <span class="text-telecab-muted/60">· la línea es la jornada de ${OBJETIVO} h</span></p>
+       <div id="b-hours" class="relative flex gap-1 items-end h-36"></div>
+       <div id="b-hlabels" class="flex gap-1 mt-1"></div>
+       <div id="b-ausencias" class="mt-6"></div>`;
+    d.querySelector('#b-volver').addEventListener('click', () => { SEL = null; pintarLista(); pintarDefault(); });
+    d.querySelectorAll('.b-seg').forEach(b => b.addEventListener('click', () => { level = b.dataset.lv; diaSel = null; render(); }));
+    d.querySelector('#b-prev').addEventListener('click', () => nav(-1));
+    d.querySelector('#b-next').addEventListener('click', () => nav(1));
+    const jbtn = d.querySelector('#b-justif-btn');
+    if (jbtn) {
+      const form = d.querySelector('#b-justif-form');
+      // Al abrirlo para un día nuevo, de vuelta a las tres de siempre y a Tráfico
+      // (si antes se editó una J de BOLT, su opción ya no pinta nada aquí).
+      const destinoNuevo = () => {
+        d.querySelector('#j-tipo').value = 'trafico';
+        d.querySelector('#j-tipo-hueco').innerHTML = selectorDestino('j-tipo');
+        if (window.Selector) Selector.montar(form);
+      };
+      jbtn.addEventListener('click', () => { if (form.classList.toggle('hidden') === false) destinoNuevo(); });
+      if (window.Selector) Selector.montar(form);
+      d.querySelector('#j-guardar').addEventListener('click', async ev => {
+        const msg = d.querySelector('#j-msg');
+        const diaV = d.querySelector('#j-dia').value, hm = HorasMin.leer(d.querySelector('#j-horas')), obsV = d.querySelector('#j-obs').value.trim();
+        const horasV = hm.horas;
+        const tipoV = d.querySelector('#j-tipo').value || 'trafico';
+        if (!diaV) { msg.textContent = 'Elige un día.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
+        if (hm.error) { msg.textContent = hm.error; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
+        if (!obsV) { msg.textContent = 'El motivo es obligatorio.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
+        msg.textContent = 'Guardando…'; msg.className = 'text-xs mt-2 text-telecab-muted';
+        try {
+          const resp = await Api.post('/bitacora/api/justificar',
+            { conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV, tipo: tipoV }, { boton: ev.currentTarget });
+          msg.textContent = (resp.volvioAPendiente
+            ? '✓ Cambiada. Estaba aprobada: vuelve a PENDIENTE y ' + (NOMBRE_J[tipoV] || 'Tráfico') + ' tiene que aprobarla otra vez.'
+            : '✓ Justificado y mandado a ' + (NOMBRE_J[tipoV] || 'Tráfico') + '.') + ' Actualizando…';
+          msg.className = 'text-xs mt-2 text-telecab-green';
+          await recargarYAbrir(c.conductorId);
+        } catch (e) { msg.textContent = 'Error: ' + e.message; msg.className = 'text-xs mt-2 text-telecab-red'; }
+      });
+    }
+    render();
+  }
+  function nav(dir) {
+    if (level === 'mes') mIdx = Math.max(0, Math.min(MESES.length - 1, mIdx + dir));
+    else if (level === 'semana') wIdx = Math.max(0, Math.min(52, wIdx + dir));
+    diaSel = null; render();
+  }
+
+  /**
+   * LA TARJETA DE AUSENCIAS DICE CUÁL, no «ausencias» a secas.
+   *
+   * «8 ausencias» de alguien que está de vacaciones se lee como un reproche, y
+   * no lo es: unas vacaciones son un derecho, no una falta. Cuando todas las del
+   * periodo son de un tipo, la tarjeta se llama por su nombre —«Vacaciones»,
+   * «Baja médica», «Permiso»— y solo se queda en «Ausencias» cuando hay mezcla,
+   * que es cuando la palabra genérica sí dice algo.
+   */
+  /**
+   * EL PROMEDIO H/DÍA, EL DE LA CASA (15/10/2026). Es el mismo número que la
+   * ficha, la letra del planificador, Control y los reportes, y se calcula igual
+   * en el servidor (bitacora.service.promedioHoras):
+   *
+   *   horas ÷ (días que salió + «Ausencias», cada una a 0 h)
+   *
+   * Las horas son las de BOLT de su turno más las J aprobadas. No cuentan
+   * vacaciones, bajas, permisos, libranzas, situaciones sin marca, días sin
+   * plaza ni hoy. Debajo, solo si hubo ausencias, la media de los días que salió.
+   * Hasta el 15/10 la grande era esa (Nelson Ontiveros en agosto: 7,7 h los días
+   * que salió y 6,4 h contando sus 4 ausencias).
+   */
+  function mediaKpi(s) {
+    const media = s.trabajados ? s.horas / s.trabajados : null;
+    const dias = s.trabajados + s.nosalio;
+    const prom = dias ? s.horas / dias : null;
+    const color = prom != null && prom < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text';
+    const titulo = `El promedio de la casa, el mismo de la ficha, la letra y los reportes: ` +
+      `${nf0.format(Math.round(s.horas))} h ÷ ${dias} días (${s.trabajados} que salió` +
+      `${s.nosalio ? ' + ' + s.nosalio + (s.nosalio === 1 ? ' ausencia' : ' ausencias') + ' a 0 h' : ''}).\n` +
+      'Horas de BOLT de su turno más las J aprobadas. No cuentan vacaciones, bajas, permisos, libranzas, ' +
+      'días sin plaza, situaciones sin marca ni hoy.';
+    return ['Promedio h/día', prom != null ? nf1.format(prom) + ' h' : '—', color,
+      s.nosalio && media != null ? `${nf1.format(media)} h los días que salió` : undefined, titulo];
+  }
+
+  function ausenciasKpi(s) {
+    const tipos = [['V', 'Vacaciones', 'vacaciones'], ['B', 'Baja médica', 'bajas'],
+      ['P', 'Permiso', 'permisos']].filter(([k]) => s[k]);
+    const total = s.V + s.B + s.P;
+    // "Ausencias" es ahora el dia que no salio, que es como lo llama el
+    // calendario. Asi que este KPI se nombra por lo que de verdad trae:
+    // "Vacaciones y bajas", "Bajas y permisos"... Con un solo tipo, su nombre.
+    const lista = tipos.map(t => t[2]);
+    const juntos = lista.length > 1 ? lista.slice(0, -1).join(', ') + ' y ' + lista[lista.length - 1] : '';
+    const etiqueta = tipos.length === 1 ? tipos[0][1]
+      : tipos.length ? juntos.charAt(0).toUpperCase() + juntos.slice(1)
+      : 'Vacaciones y bajas';
+    // Con un solo tipo, el nombre ya lo dice todo y repetirlo debajo sobra: ahi
+    // solo va lo que el numero no puede contar, que es cuantas aun no han pasado.
+    const detalle = tipos.length > 1
+      ? tipos.map(([k, n]) => `${s[k]} de ${n.toLowerCase()}`).join(' · ')
+        + (s.ausFuturas ? ` · ${s.ausFuturas} por venir` : '')
+      : (s.ausFuturas ? `${s.ausFuturas} aún por venir` : '');
+    return [etiqueta, total, total ? 'text-telecab-azul' : 'text-telecab-text', detalle];
+  }
+
+  /** Las −J del periodo: cuentan las aprobadas; las pendientes van debajo. */
+  function menosJKpi(c, a, b) {
+    let apr = 0, pend = 0, min = 0;
+    for (let d = a; d <= b; d++) menosJDe(c, isoDe(d)).forEach(m => {
+      if (m.estado === 'aprobada') { apr++; min += m.minutos || 0; } else if (m.estado === 'pendiente') pend++;
+    });
+    const det = [min ? HorasMin.texto(min) + ' de perjuicio' : '', pend ? pend + ' pendiente' + (pend > 1 ? 's' : '') : '']
+      .filter(Boolean).join(' · ');
+    return ['−J', apr, apr ? 'text-telecab-red' : 'text-telecab-text', det || undefined,
+      'Constancia de perjuicios a la empresa. Solo cuentan las aprobadas en Justificantes; no tocan horas, nómina ni letra.'];
+  }
+
+  function render() {
+    const c = sel(); if (!c) return;
+    document.querySelectorAll('.b-seg').forEach(b => {
+      const on = b.dataset.lv === level;
+      b.className = 'b-seg px-3 py-1.5 text-sm capitalize ' + (on ? 'bg-telecab-gold/20 text-telecab-gold font-semibold' : 'text-telecab-muted hover:text-telecab-text');
+    });
+    ['#b-prev', '#b-next'].forEach(s => { $(s).style.visibility = level === 'año' ? 'hidden' : 'visible'; });
+    const r = rango(), s = resumen(c, r.a, r.b);
+    $('#b-period').textContent = level === 'año' ? 'junio 2026 – mayo 2027' : level === 'mes' ? MESES[mIdx].label : 'semana del ' + fechaDe(r.a).getUTCDate() + ' de ' + MESES_L[fechaDe(r.a).getUTCMonth()];
+    const kp = [
+      ['Horas', nf0.format(Math.round(s.horas)), 'text-telecab-text', undefined,
+        r.b >= DATA.hoyIdx ? 'Hasta ayer: lo que haga hoy entra mañana en sus horas y en su media.' : undefined],
+      ['Días trabajados', s.trabajados, 'text-telecab-green'],
+      mediaKpi(s),
+      ['Ausencias', s.nosalio, s.nosalio ? 'text-telecab-red' : 'text-telecab-text'],
+      ausenciasKpi(s),
+      ['Justificados', s.J ? `${s.J}${s.horasJ ? ' · ' + nf1.format(s.horasJ) + ' h' : ''}` : 0, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
+      menosJKpi(c, r.a, r.b),
+    ];
+    $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"${
+      k[4] || k[3] ? ` title="${esc(k[4] || k[3])}"` : ''}><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p>${
+      k[3] ? `<p class="text-[10px] text-telecab-muted truncate">${esc(k[3])}</p>` : ''}</div>`).join('');
+    pintarCalendario(c); pintarHoras(c); pintarAusencias(c);
+    pintarDiaInfo(c);
+  }
+
+  // ── El panel del día: la etiqueta y las acciones ──────────────────────────
+  // Un día J enseña el MOTIVO, las horas que SE JUSTIFICAN (se suman a las de
+  // BOLT: 2 de taller + 8 conectado = día de 10) y la suma, con Editar/Anular.
+  // Un "no salió" se arregla AHÍ MISMO: o se
+  // justifica con horas y motivo, o se marca como libranza (manual, bitacora_dia).
+  /**
+   * LO QUE PASÓ ESE DÍA, debajo de la marca: las justificaciones que se
+   * RECHAZARON (con su motivo y quién lo dijo) y las LLAMADAS que se le
+   * hicieron, con lo que contestó de cada alerta.
+   *
+   * Es lo que convierte la bitácora en algo que se puede leer meses después: la
+   * casilla dice "día de 5 h", y debajo está el porqué —se le llamó a las 9:40,
+   * dijo que el coche estaba en el taller, se le puso una J de 3 h y RRHH la
+   * tumbó porque el parte no llegó—. Sin esto hay que preguntar a quien estuvo
+   * de turno ese día, y a los dos meses ya nadie se acuerda.
+   */
+  function pintarExtraDia(box, c, iso) {
+    const rech = (c.jRechazadas || {})[iso] || [];
+    const caja = document.createElement('div');
+    caja.className = 'mt-2 space-y-1.5';
+    caja.innerHTML = cajaMenosJ(c, iso) + rech.map(r => `
+      <div class="rounded-lg border border-telecab-red/40 bg-telecab-red/[0.06] px-2.5 py-1.5">
+        <div class="text-xs font-semibold text-telecab-red">
+          <i class="fa-solid fa-xmark mr-1"></i>Justificación rechazada${r.horas != null ? ` · ${nf1.format(r.horas)} h` : ''}
+          ${r.porQuien ? `<span class="font-normal text-telecab-muted">· la rechazó ${esc(r.porQuien)}</span>` : ''}
+        </div>
+        ${r.obs ? `<div class="text-[11px] text-telecab-muted mt-0.5">Pedía: «${esc(r.obs)}»</div>` : ''}
+        <div class="text-[11px] text-telecab-red/90">${r.motivo ? 'Motivo del rechazo: «' + esc(r.motivo) + '»' : 'Sin motivo apuntado.'}</div>
+      </div>`).join('') + '<div data-seg class="text-[11px] text-telecab-muted">Buscando las llamadas de ese día…</div>';
+    box.appendChild(caja);
+    const bMj = caja.querySelector('[data-menosj]');
+    if (bMj) bMj.addEventListener('click', () => ponerMenosJ(c, iso));
+    caja.querySelectorAll('[data-histmj]').forEach(b => b.addEventListener('click', () =>
+      MenosJ.historial(caja.querySelector(`[data-histmj-caja="${b.dataset.histmj}"]`),
+        '/bitacora/api/historial?entidad=menos_j&id=' + encodeURIComponent(b.dataset.histmj))));
+    const bHj = box.querySelector('[data-histj]');
+    if (bHj && !bHj.dataset.ligado) {
+      bHj.dataset.ligado = '1';
+      bHj.addEventListener('click', () => MenosJ.historial(box.querySelector('[data-histj-caja]'),
+        '/bitacora/api/historial?entidad=j&id=' + encodeURIComponent((c.justif[iso] || {}).id)));
+    }
+
+    const dest = caja.querySelector('[data-seg]');
+    fetch('/bitacora/api/dia?conductor=' + encodeURIComponent(c.conductorId) + '&dia=' + encodeURIComponent(iso))
+      .then(r => r.json())
+      .then(r => {
+        const ll = (r && r.llamadas) || [];
+        if (!ll.length) { dest.remove(); return; }
+        dest.className = 'rounded-lg border border-telecab-border bg-telecab-dark/30 px-2.5 py-2';
+        dest.innerHTML = `<div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">
+            Llamadas de ese día · ${ll.length}</div>` +
+          ll.map(l => `<div class="text-xs py-1 border-t border-telecab-border/40 first:border-0">
+            <span class="text-telecab-muted tabular-nums">${esc(l.hora)}</span>
+            ${l.tipo ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-telecab-card2 text-telecab-muted">${esc(l.tipo)}</span>` : ''}
+            <b class="ml-1 text-telecab-text">${esc(l.resultado || '—')}</b>
+            ${l.quien ? `<span class="text-telecab-muted">· ${esc(l.quien)}</span>` : ''}
+            ${l.nota ? `<div class="text-telecab-muted">«${esc(l.nota)}»</div>` : ''}
+            ${(l.alertas || []).map(a => `<div class="text-telecab-muted pl-3">
+                <i class="fa-solid fa-angle-right text-[9px] mr-1 text-telecab-muted/60"></i>
+                <span class="text-telecab-text">${esc(a.etiqueta || a.alerta)}</span>: «${esc(a.comentario)}»</div>`).join('')}
+          </div>`).join('');
+      })
+      .catch(() => dest.remove());
+  }
+
+  function pintarDiaInfo(c) {
+    const box = $('#b-diainfo');
+    box.classList.toggle('hidden', diaSel == null);
+    if (diaSel == null) return;
+    // `clase` devuelve la clase CON sufijos ('J jcumple', 'V porvenir'), así que hay
+    // que limpiarla para comparar — como hacen `celda` y `textoDia`. Sin esto el
+    // `k === 'J'` de abajo nunca era cierto y la ficha de un día justificado caía
+    // al caso genérico: ni se veía el justificante ni sus botones de editar o
+    // anular, que llevaban ahí sin poder pulsarse.
+    const d = diaSel, k = soloClase(clase(c, d)), iso = isoDe(d);
+    const hb = (c.horasBolt || {})[iso];
+    const cab = `<b class="text-telecab-text capitalize">${esc(fmtLargo(d))}</b>`;
+    const boltTxt = hb != null ? `en BOLT hizo <b class="text-telecab-text">${nf1.format(hb)} h</b>` : 'sin horas en BOLT ese día';
+
+    if (k === 'J') {
+      const j = c.justif[iso] || {};
+      const pend = j.estado === 'pendiente';
+      // Lo que CUENTA hoy (aprobadas + BOLT) y lo que contaría si se aprueba.
+      const firme = (j.estado === 'aprobada' ? (j.horas || 0) : 0) + (hb || 0);
+      box.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2">
+          ${cab}
+          <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${pend ? 'rgb(var(--tc-azul)/.15)' : tint('J')};color:${pend ? 'rgb(var(--tc-azul))' : clr('J')}">
+            Justificante${j.horas != null ? ` · ${nf1.format(j.horas)} h` : ' · sin horas'} · ${pend ? 'PENDIENTE de aprobar' : 'aprobado'}${!pend && j.porQuien ? ' por ' + esc(j.porQuien) : ''}</span>
+          ${NOMBRE_J[j.tipo] ? `<span class="text-xs text-telecab-muted" title="El área que la aprueba en Justificantes">Área: <b class="text-telecab-text">${esc(NOMBRE_J[j.tipo])}</b></span>` : ''}
+          <span class="text-xs text-telecab-muted">${boltTxt}</span>
+          ${pend
+            ? `<span class="text-xs font-semibold" style="color:rgb(var(--tc-azul))" title="Mientras no se apruebe, esas horas son PRESUNTAS y no cuentan para la nómina">→ día de ${nf1.format(firme + (j.horas || 0))} h presuntas <span class="text-telecab-muted font-normal">(firmes: ${nf1.format(firme)} h)</span></span>`
+            : `<span class="text-xs font-semibold text-telecab-text" title="Justificadas aprobadas + BOLT: lo que cuenta para la nómina">→ día de ${nf1.format(firme)} h</span>`}
+          ${puedeJustificar ? `<span class="ml-auto flex gap-1.5">
+            <button data-di="editar" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition"><i class="fa-solid fa-pen mr-1"></i>Editar</button>
+            <button data-di="anular" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"><i class="fa-solid fa-ban mr-1"></i>Anular</button>
+          </span>` : ''}
+        </div>
+        ${j.obs ? `<p class="text-xs text-telecab-muted mt-1.5"><i class="fa-solid fa-quote-left mr-1 text-telecab-muted/50"></i>${esc(j.obs)}</p>` : '<p class="text-xs text-telecab-warn mt-1.5">Sin motivo apuntado.</p>'}
+        ${j.id ? `<button data-histj class="text-[11px] text-telecab-muted hover:text-telecab-text mt-1" title="Cada cambio de esta J: quién, cuándo, desde dónde y qué cambió"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial</button><div data-histj-caja></div>` : ''}
+        <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
+    } else if ((k === 'nosalio' || k === 'hoydia') && puedeJustificar) {
+      const q = (c.lQuitada || {})[iso];
+      box.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2">${cab}
+          ${k === 'hoydia'
+            ? '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-gold/15 text-telecab-gold font-semibold" title="Lo que haga hoy cuenta para su promedio a partir de mañana">Hoy · sin horas todavía</span>'
+            : '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-red/15 text-telecab-red font-semibold">Ausencia</span>'}
+          <span class="text-xs text-telecab-muted">${boltTxt}</span></div>
+        ${q ? `<p class="text-xs text-telecab-muted mt-1"><i class="fa-solid fa-bed mr-1 text-telecab-muted/60"></i>El planificador lo tenía de libranza y se quitó a mano${firma(q)}. Si de verdad libraba, «Era libranza» la vuelve a poner.</p>` : ''}
+        <div class="flex flex-wrap items-end gap-2 mt-2">
+          <div class="text-[11px] text-telecab-muted">Horas que se justifican<div data-di="horas" class="mt-1">${HorasMin.html({ clase: CASILLA_HM })}</div></div>
+          <label class="flex-1 min-w-[160px] text-[11px] text-telecab-muted">Motivo de la ausencia<br><input data-di="obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. coche en taller"></label>
+          <div class="text-[11px] text-telecab-muted">Se manda a<input type="hidden" id="di-tipo" value="trafico"><div class="mt-1">${selectorDestino('di-tipo')}</div></div>
+          <button data-di="justificar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar</button>
+          <button data-di="libranza" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-text transition whitespace-nowrap" title="Ese día le tocaba librar: se marca a mano, sin tocar el planificador"><i class="fa-solid fa-bed mr-1"></i>Era libranza</button>
+        </div>
+        <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
+    } else if (k === 'L') {
+      // Se quitan las dos: la puesta a mano y la del planificador (esta, solo
+      // en la bitácora y solo de días que ya han llegado; la futura se cambia
+      // en el cuadrante, que es de donde sale).
+      const manual = (c.lManual || {})[iso];
+      const sePuede = puedeJustificar && (manual || d <= DATA.hoyIdx);
+      box.innerHTML = `<div class="flex flex-wrap items-center gap-2">${cab}
+        <span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-card2 text-telecab-muted font-semibold">Libranza${manual ? ' · puesta a mano' + firma(manual) : ' · del planificador'}</span>
+        ${hb != null ? `<span class="text-xs text-telecab-muted">aun así, ${boltTxt}</span>` : ''}
+        ${sePuede ? `<button data-di="quitarl" class="ml-auto text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition" title="Ese día no libraba: se quita de la bitácora, sin tocar el planificador"><i class="fa-solid fa-xmark mr-1"></i>Quitar la libranza</button>` : ''}</div>
+        ${puedeJustificar && !sePuede ? '<p class="text-xs text-telecab-muted mt-1">Todavía no ha llegado: si esta libranza está mal, se cambia en el planificador.</p>' : ''}
+        <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
+    } else {
+      box.innerHTML = `${cab} <span class="text-telecab-muted">· ${esc(textoDia(c, d))}</span>`;
+      pintarExtraDia(box, c, iso);
+      return;
+    }
+    pintarExtraDia(box, c, iso);
+    if (window.Selector) Selector.montar(box);
+
+    const msg = box.querySelector('[data-di-msg]');
+    const aviso = (t, mal) => { msg.classList.remove('hidden'); msg.textContent = t; msg.className = 'text-xs mt-1.5 ' + (mal ? 'text-telecab-red' : 'text-telecab-muted'); };
+    const post = async (url, body, okTxt, boton) => {
+      aviso('Guardando…');
+      try {
+        const r = await Api.post(url, body, { boton });
+        aviso('✓ ' + (r.msg || okTxt).replace(/^✓\s*/, ''));
+        await recargarYAbrir(c.conductorId, d);
+      } catch (e) { aviso('Error: ' + e.message, true); }
+    };
+    const on = (q, fn) => { const b = box.querySelector(`[data-di="${q}"]`); if (b) b.addEventListener('click', fn); };
+    on('justificar', ev => {
+      const hm = HorasMin.leer(box.querySelector('[data-di="horas"]'));
+      const horas = hm.horas;
+      const obs = box.querySelector('[data-di="obs"]').value.trim();
+      if (hm.error) return aviso(hm.error, true);
+      if (!obs) return aviso('El motivo es obligatorio.', true);
+      const tipo = (box.querySelector('#di-tipo') || {}).value || 'trafico';
+      post('/bitacora/api/justificar', { conductorId: c.conductorId, dia: iso, horas, observacion: obs, tipo },
+        '✓ Justificado y mandado a ' + (NOMBRE_J[tipo] || 'Tráfico') + '.', ev.currentTarget);
+    });
+    on('libranza', ev => post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso }, '✓ Marcado como libranza.', ev.currentTarget));
+    on('quitarl', async ev => {
+      // La puesta a mano se quita sin preguntar: apagar el botón mientras se
+      // guarda es lo que impide mandarlo dos veces (03/11/2026). Se coge antes
+      // del `await`, que después `ev.currentTarget` ya es null.
+      const boton = ev.currentTarget;
+      // La del planificador se pregunta: sin horas, el día pasa a «Ausencia».
+      if (!(c.lManual || {})[iso] && !(await Dialogo.confirmar({
+        titulo: 'Quitar la libranza',
+        texto: 'El planificador lo tenía de libranza ese día. Si la quitas, ese día cuenta como día de trabajo: sin horas en BOLT sale como «Ausencia». El planificador no se toca.',
+        si: 'Quitar la libranza', tono: 'peligro',
+      }))) return;
+      post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso, quitar: true }, 'Libranza quitada.', boton);
+    });
+    // Anular pide el PORQUÉ (db/228): queda con quién y por qué en el historial de la J.
+    on('anular', async () => {
+      const v = await Dialogo.formulario('Anular el justificante del ' + iso.split('-').reverse().join('/'), [
+        { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto-largo', obligatorio: true },
+      ], { textoBoton: 'Anular', nota: 'El registro queda anulado, no borrado, con tu nombre y el motivo en su historial.' });
+      if (!v || !String(v.motivo || '').trim()) return;
+      post('/bitacora/api/anular-justificante', { conductorId: c.conductorId, dia: iso, motivo: v.motivo }, '✓ Anulado.');
+    });
+    on('editar', () => {
+      const j = c.justif[iso] || {};
+      const form = $('#b-justif-form'); if (!form) return;
+      form.classList.remove('hidden');
+      $('#j-dia').value = iso;
+      // En minutos exactos: con el decimal redondeado (1,3) 1 h 20 min volvía como 1 h 18 min.
+      HorasMin.poner($('#j-horas'), j.min != null ? j.min : HorasMin.deHoras(j.horas));
+      $('#j-obs').value = j.obs || '';
+      // Editar NO la cambia de área a escondidas: antes se guardaba siempre como
+      // Tráfico y una J de RRHH o de BOLT acababa en la cola equivocada.
+      $('#j-tipo').value = NOMBRE_J[j.tipo] ? j.tipo : 'trafico';
+      $('#j-tipo-hueco').innerHTML = selectorDestino('j-tipo', j.tipo);
+      if (window.Selector) Selector.montar(form);
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('#j-obs').focus();
+    });
+  }
+
+  // ── LA −J del día (db/227) ──────────────────────────────────────────────────
+  // Lo que hay ese día y el botón para poner otra. Va en todos los días: el
+  // perjuicio no depende de si ese día trabajó, libró o se justificó.
+  function cajaMenosJ(c, iso) {
+    const lista = menosJDe(c, iso);
+    const tono = e => e === 'aprobada' ? 'text-telecab-red' : e === 'pendiente' ? 'text-telecab-text' : 'text-telecab-muted line-through';
+    const filas = lista.map(m => `
+      <div class="rounded-lg border ${m.estado === 'aprobada' ? 'border-telecab-red/40 bg-telecab-red/[0.06]' : 'border-telecab-border'} px-2.5 py-1.5">
+        <div class="text-xs font-semibold ${tono(m.estado)}">−J · ${esc(m.etiqueta)}
+          <span class="font-normal text-telecab-muted">· ${m.estado === 'aprobada' ? 'aprobada' + (m.aprobadaPor ? ' por ' + esc(m.aprobadaPor) : '')
+            : m.estado === 'pendiente' ? 'PENDIENTE de aprobar' : 'rechazada' + (m.rechazadaPor ? ' por ' + esc(m.rechazadaPor) : '')}</span>
+          ${m.minutos ? `<span class="font-normal text-telecab-muted">· costó ${esc(HorasMin.texto(m.minutos))}</span>` : ''}
+          ${m.companero ? `<span class="font-normal text-telecab-muted">· perjudicó a <b class="text-telecab-text">${esc(m.companero)}</b></span>` : ''}
+        </div>
+        <div class="text-[11px] text-telecab-muted mt-0.5">«${esc(m.motivo)}»${m.puestaPor ? ' — la puso ' + esc(m.puestaPor) : ''}</div>
+        ${m.estado === 'rechazada' && m.anuladoMotivo ? `<div class="text-[11px] text-telecab-muted">Motivo del rechazo: «${esc(m.anuladoMotivo)}»</div>` : ''}
+        <button data-histmj="${esc(m.id)}" class="text-[11px] text-telecab-muted hover:text-telecab-text mt-0.5" title="Cada cambio de esta −J"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial</button>
+        <div data-histmj-caja="${esc(m.id)}"></div>
+      </div>`).join('');
+    const boton = puedeJustificar
+      ? `<button data-menosj class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"
+           title="Constancia de un perjuicio a la empresa (por ejemplo, no le dio el coche a tiempo a un compañero). No toca horas, nómina ni letra; queda pendiente de aprobar en Justificantes.">−J · Poner una −J</button>`
+      : '';
+    return filas + (boton ? `<div>${boton}</div>` : '');
+  }
+
+  async function ponerMenosJ(c, iso) {
+    const personas = DATA.conductores.filter(x => x.vigente).map(x => ({ id: x.conductorId, nombre: x.id }));
+    const r = await MenosJ.poner({
+      url: '/bitacora/api/menos-j', dia: iso, origen: 'bitacora',
+      conductor: { id: c.conductorId, nombre: c.id }, personas, casuisticas: CASUISTICAS_MENOS_J,
+    });
+    if (!r) return;
+    Dialogo.hecho('−J puesta. Queda pendiente de aprobar en Justificantes.');
+    await recargarYAbrir(c.conductorId, diaSel);
+  }
+
+  // ── El calendario ─────────────────────────────────────────────────────────
+  function celda(c, d, conNumero) {
+    const k = soloClase(clase(c, d)), v = val(c, d);
+    let contenido = '';
+    if (trabajo(k)) contenido = `<span class="cal-val">${nf1.format(v)} h</span>`;
+    else if (k === 'nosalio') contenido = '<span class="cal-val">Ausencia</span>';
+    else if (k === 'hoydia') contenido = '';
+    else if (k === 'sinplaza') contenido = '<span class="cal-val">sin plaza</span>';
+    else if (k === 'sinmarca') contenido = `<span class="cal-val">${esc(situacionDe(c, d).split(' ')[0].toLowerCase())}</span>`;
+    else if (k === 'L') contenido = '<span class="cal-val">libra</span>';
+    else if (k === 'J') {
+      // El número que vale para la nómina (justificadas APROBADAS + BOLT) y la
+      // "J" al lado en pequeño. Si la J está pendiente, el número es PRESUNTO y
+      // va en azul: todavía no es una hora.
+      const iso = isoDe(d), j = c.justif[iso] || {}, hb = (c.horasBolt || {})[iso] || 0;
+      const pend = j.estado === 'pendiente';
+      const tot = (pend ? horasConPresuntas(c, d) : horasDe(c, d)) || 0;
+      const tip = pend
+        ? nf1.format(j.horas || 0) + ' h justificadas PENDIENTES de aprobar (presuntas) + ' + nf1.format(hb) + ' h en BOLT'
+        : nf1.format(j.horas || 0) + ' h justificadas y aprobadas + ' + nf1.format(hb) + ' h en BOLT';
+      contenido = `<span class="cal-val cal-j">${nf1.format(tot)} h` +
+        `<i class="cal-jmini" title="${esc(tip)}">J${pend ? '?' : ''}${j.horas ? ' ' + nf1.format(j.horas) : ''}</i></span>`;
+    }
+    else if (esAus(k)) contenido = `<span class="cal-tag" style="background:${clr(k)};color:white">${k}</span>`;
+    const f = fechaDe(d);
+    // Un punto en la esquina: no se puede poner el nombre de la cuenta dentro de
+    // una celda de 20 px, pero sí avisar de que ahí hay algo que mirar.
+    const marcaF = (c.fantasma || {})[isoDe(d)] ? '<i class="cal-fantasma"></i>' : '';
+    // La −J del día: las rechazadas no se pintan (se ven al abrir el día).
+    const mj = menosJDe(c, isoDe(d)).filter(m => m.estado !== 'rechazada');
+    const marcaM = mj.length
+      ? `<i class="cal-menosj${mj.every(m => m.estado === 'pendiente') ? ' pend' : ''}" title="${esc(
+          mj.map(m => '−J ' + (m.estado === 'pendiente' ? 'pendiente' : 'aprobada') + ': ' + m.motivo).join('\n'))}">−J${mj.length > 1 ? ' ' + mj.length : ''}</i>`
+      : '';
+    return `<div class="cal-dia ${clase(c, d)} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">${marcaF}${marcaM}
+      <span class="cal-num">${conNumero ? f.getUTCDate() : DOW[dowDe(d)]}${conNumero && level === 'semana' ? ' ' + DOW[dowDe(d)] : ''}${
+        d === DATA.hoyIdx ? '<b class="cal-hoytag">HOY</b>' : ''}</span>${contenido}</div>`;
+  }
+  function pintarCalendario(c) {
+    const cal = $('#b-cal');
+    if (level === 'año') {
+      cal.innerHTML = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' + MESES.map((m, i) => {
+        let puntos = ''; for (let p = 0; p < dowDe(m.start); p++) puntos += '<i style="visibility:hidden"></i>';
+        for (let d = m.start; d < m.start + m.len; d++) puntos += `<i class="${clase(c, d)}" title="${esc(fechaDe(d).getUTCDate() + ' ' + ABBR[m.mo] + ' · ' + textoDia(c, d))}"></i>`;
+        const s = resumen(c, m.start, m.start + m.len - 1);
+        return `<button type="button" data-m="${i}" class="b-mes text-left p-3 rounded-xl border border-telecab-border/60 bg-telecab-dark/30 hover:border-telecab-gold/60 transition">
+          <div class="flex items-baseline justify-between mb-2"><span class="text-xs font-semibold text-telecab-text capitalize">${m.label}</span><span class="text-[11px] text-telecab-muted tabular-nums">${s.dias ? nf0.format(Math.round(s.horas)) + ' h' : ''}</span></div>
+          <div class="mini">${puntos}</div>
+          <div class="flex gap-1 mt-2 text-[10px]">${s.nosalio ? `<span class="text-telecab-red">${s.nosalio} ausencia${s.nosalio > 1 ? 's' : ''}</span>` : ''}${badges(s) ? '<span class="ml-auto flex gap-1">' + badges(s) + '</span>' : ''}</div>
+        </button>`;
+      }).join('') + '</div>';
+      cal.querySelectorAll('.b-mes').forEach(b => b.addEventListener('click', () => { level = 'mes'; mIdx = Number(b.dataset.m); render(); }));
+      return;
+    }
+    const r = rango();
+    let html = '<div class="cal mb-1">' + DOW.map(x => `<div class="text-center text-[11px] font-semibold text-telecab-muted">${x}</div>`).join('') + '</div><div class="cal">';
+    if (level === 'mes') for (let p = 0; p < dowDe(r.a); p++) html += '<div></div>';
+    for (let d = r.a; d <= Math.min(r.b, 364); d++) html += celda(c, d, true);
+    cal.innerHTML = html + '</div>';
+    cal.querySelectorAll('.cal-dia').forEach(el => el.addEventListener('click', () => {
+      const d = Number(el.dataset.d), k = clase(c, d);
+      if (k === 'futuro' || k === 'fuera') return;
+      diaSel = diaSel === d ? null : d;
+      const inp = $('#j-dia'); if (inp && diaSel != null) { inp.value = isoDe(d); const v = val(c, d); const h = $('#j-horas'); if (h && typeof v === 'number') HorasMin.poner(h, HorasMin.deHoras(v)); }
+      render();
+    }));
+  }
+
+  // ── Las horas, en barras, con la línea de la jornada ─────────────────────
+  function pintarHoras(c) {
+    const hc = $('#b-hours'), hl = $('#b-hlabels');
+    let vals = [], labs = [], clases = [];
+    if (level === 'año') { MESES.forEach(m => { const s = resumen(c, m.start, m.start + m.len - 1); vals.push(Math.round(s.horas)); labs.push(m.corto); clases.push('t3'); }); }
+    else { const r = rango(); for (let d = r.a; d <= r.b; d++) { const v = val(c, d), k = clase(c, d); vals.push(trabajo(soloClase(k)) ? Math.round(v * 10) / 10 : 0); clases.push(k); labs.push(level === 'semana' ? DOW[dowDe(d)] : (fechaDe(d).getUTCDate() % 5 === 1 ? fechaDe(d).getUTCDate() : '')); } }
+    const ref = level === 'año' ? null : OBJETIVO;
+    const max = Math.max(ref || 1, ...vals);
+    const colorDe = k => trabajo(k) ? 'rgb(var(--tc-green))' : k === 'J' ? clr('J') : esAus(k) ? clr(k) : 'transparent';
+    hc.innerHTML = (ref ? `<div class="absolute left-0 right-0 border-t border-dashed border-telecab-gold/60 pointer-events-none" style="bottom:${Math.round(ref / max * 100)}%"><span class="absolute right-0 -top-4 text-[10px] text-telecab-gold">${ref} h</span></div>` : '') +
+      vals.map((v, i) => `<div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:100%;" title="${esc(labs[i])}: ${v} h">
+         <span class="text-[9px] text-telecab-muted tabular-nums">${v > 0 ? nf0.format(v) : ''}</span>
+         <div style="width:100%;border-radius:4px 4px 0 0;background:${colorDe(clases[i])};height:${Math.round(v / max * 100)}%;min-height:${v > 0 ? 3 : 0}px;opacity:${v > 0 ? 1 : 0}"></div>
+       </div>`).join('');
+    hl.innerHTML = labs.map(l => `<div style="flex:1 1 0;text-align:center;" class="text-[10px] text-telecab-muted">${l}</div>`).join('');
+  }
+
+  // ── Periodos de ausencia y justificantes, como lista ──────────────────────
+  function pintarAusencias(c) {
+    const a = c.ausencias.slice().sort((x, y) => y.desde.localeCompare(x.desde));
+    const js = Object.entries(c.justif).sort((x, y) => y[0].localeCompare(x[0]));
+    const f = iso => iso.split('-').reverse().slice(0, 2).join('/');
+    $('#b-ausencias').innerHTML = (a.length || js.length) ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div><p class="text-xs text-telecab-muted mb-2">Periodos de ausencia</p>${a.length ? a.map(x => `<div class="flex items-center gap-2 text-sm py-1.5 border-b border-telecab-border/40">
+        <span class="cal-tag" style="background:${clr(x.marca)};color:white">${x.marca}</span><span class="text-telecab-text">${esc(x.etiqueta)}</span>
+        <span class="ml-auto text-xs text-telecab-muted tabular-nums">${f(x.desde)} → ${x.abierta ? '<span class="text-telecab-warn">sin fecha de vuelta</span>' : f(x.hasta)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
+      <div><p class="text-xs text-telecab-muted mb-2">Justificantes</p>${js.length ? js.map(([dia, j]) => `<div class="flex items-center gap-2 text-sm py-1.5 border-b border-telecab-border/40">
+        <span class="cal-tag" style="background:${clr('J')};color:white">J</span><span class="text-telecab-text tabular-nums">${f(dia)}</span>
+        ${j.horas != null ? `<span class="text-xs text-telecab-muted">justifica ${nf1.format(j.horas)} h</span>` : ''}<span class="ml-auto text-xs text-telecab-muted truncate max-w-[16rem]" title="${esc(j.obs)}">${esc(j.obs)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
+    </div>` : '';
+  }
+
+  // ── Carga ────────────────────────────────────────────────────────────────
+  async function cargar() {
+    try {
+      const r = await (await fetch('/bitacora/api/datos')).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+      DATA = r; MESES = construirMeses(r.inicio);
+      pintarKpisFlota(); pintarFiltros(); pintarLista();
+      // ENLACE DIRECTO: /bitacora?conductor=83&dia=2026-09-04 abre esa persona
+      // en ese dia. Lo usa la Bitacora general para saltar del cuadro grande al
+      // detalle: sin esto, pinchar una celda te dejaba en la pantalla de inicio
+      // y habia que volver a buscar a la persona a mano, que es justo el paso
+      // que se queria ahorrar.
+      if (!abrirDesdeUrl()) pintarDefault();
+    } catch (e) {
+      $('#b-default').innerHTML = '<p class="text-telecab-red text-sm">No se pudo cargar la bitácora: ' + esc(e.message) + '</p>';
+    }
+  }
+  /** Abre lo que pida la URL. Devuelve si ha abierto algo. */
+  function abrirDesdeUrl() {
+    const q = new URLSearchParams(location.search);
+    const id = Number(q.get('conductor'));
+    if (!Number.isInteger(id) || id <= 0) return false;
+    if (!DATA.conductores.find(x => x.conductorId === id)) return false;
+    abrir(id);
+    const dia = q.get('dia');
+    if (dia && /^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+      // idxDe vive en la rejilla: el indice del dia desde el inicio.
+      const [y, m, d] = dia.split('-').map(Number);
+      const i = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d)) / 86400000);
+      if (i >= 0) {
+        diaSel = i;
+        const mm = MESES.findIndex(x => i >= x.start && i < x.start + x.len);
+        if (mm >= 0) mIdx = mm;
+        render();
+      }
+    }
+    return true;
+  }
+
+  async function recargarYAbrir(id, dia) {
+    try {
+      const r = await (await fetch('/bitacora/api/datos')).json();
+      if (r.status !== 'ok') return;
+      DATA = r; MESES = construirMeses(r.inicio);
+      pintarKpisFlota(); pintarLista();
+      if (!DATA.conductores.find(x => x.conductorId === id)) { pintarDefault(); return; }
+      abrir(id);
+      // Volver al día (y al mes) que se estaba mirando, para ver el cambio hecho.
+      if (dia != null) {
+        diaSel = dia;
+        const m = MESES.findIndex(x => dia >= x.start && dia < x.start + x.len);
+        if (m >= 0) mIdx = m;
+        render();
+      }
+    } catch (e) { /* si falla, se queda como está */ }
+  }
+  $('#b-buscar').addEventListener('input', pintarLista);
+  cargar();
+})();

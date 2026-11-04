@@ -1,0 +1,356 @@
+// modules/Control/vistas/justificantes.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  const $ = s => document.querySelector(s);
+  const esc = Casa.esc;
+  const TIPOS = DEL_SERVIDOR.tiposJ;
+  // La −J (db/227): su pestaña es este «tipo», que no es un tipo de J.
+  const MENOS_J = 'menos_j';
+  const CASUISTICAS = DEL_SERVIDOR.casuisticasMenosJ;
+  let personas = null;    // para elegir quién lo causó; se piden la primera vez
+  const fecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+  const hora = ts => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
+
+  let tipo = '';          // '' = todos
+  let filas = [], pendientes = {}, cuentas = {};
+
+  const ESTADOS = [
+    { id: 'pendiente', etq: 'Presuntas', icono: 'fa-hourglass-half',
+      clase: 'border-sky-500/40 text-sky-300', on: 'bg-sky-500/20 border-sky-500 text-sky-200' },
+    { id: 'aprobada', etq: 'Aprobadas', icono: 'fa-circle-check',
+      clase: 'border-emerald-500/40 text-emerald-300', on: 'bg-emerald-500/20 border-emerald-500 text-emerald-200' },
+    { id: 'rechazada', etq: 'Rechazadas', icono: 'fa-circle-xmark',
+      clase: 'border-red-500/40 text-red-300', on: 'bg-red-500/20 border-red-500 text-red-200' },
+  ];
+
+  function pintarEstados() {
+    const sel = $('#j-estado').value;
+    const esMenos = tipo === MENOS_J;
+    $('#j-estados').innerHTML = ESTADOS.map(e => {
+      const on = e.id === sel;
+      const n = cuentas[e.id];
+      const abiertas = e.id === 'rechazada' ? (cuentas.abiertas || 0) : 0;
+      return '<button data-estado="' + e.id + '" class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition ' +
+        (on ? e.on : 'bg-telecab-card ' + e.clase + ' hover:brightness-125') + '">' +
+        '<i class="fa-solid ' + e.icono + ' mr-1.5"></i>' + (esMenos && e.id === 'pendiente' ? 'Pendientes' : e.etq) +
+        (n != null ? ' <span class="opacity-80">' + n + '</span>' : '') +
+        (abiertas ? '<span class="ml-1.5 px-1.5 rounded-full text-[10px] font-bold bg-red-500 text-white" ' +
+          'title="Rechazadas que ni se rehicieron ni se cerraron: siguen pidiendo una llamada">' +
+          abiertas + ' por llamar</span>' : '') +
+        '</button>';
+    }).join('') +
+      (esMenos
+        ? '<span class="ml-auto self-center text-xs text-telecab-muted">Tiempo de perjuicio: ' +
+          '<b class="text-telecab-text">' + (HorasMin.texto(cuentas.minutosAprobados || 0) || '0 min') + '</b> aprobado · ' +
+          '<b class="text-sky-400">' + (HorasMin.texto(cuentas.minutosPendientes || 0) || '0 min') + '</b> pendiente</span>'
+        : cuentas.horasAprobadas != null
+        ? '<span class="ml-auto self-center text-xs text-telecab-muted">' +
+          '<b class="text-emerald-400">' + String(cuentas.horasAprobadas).replace('.', ',') + ' h</b> aprobadas · ' +
+          '<b class="text-sky-400">' + String(cuentas.horasPendientes).replace('.', ',') + ' h</b> presuntas</span>'
+        : '');
+    $('#j-estados').querySelectorAll('[data-estado]').forEach(b =>
+      b.addEventListener('click', () => { $('#j-estado').value = b.dataset.estado; cargar(); }));
+  }
+
+  function pintarTabs() {
+    // «Todas» son las J: la −J va en su pestaña y no suma aquí.
+    const total = Object.entries(pendientes).reduce((a, [k, n]) => a + (k === MENOS_J ? 0 : n), 0);
+    const tab = (cod, txt, n) => {
+      const on = tipo === cod;
+      return '<button data-tipo="' + cod + '" class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition ' +
+        (on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+            : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text') + '">' +
+        txt + (n > 0 ? ' <span class="ml-1 px-1.5 rounded-full text-[10px] font-bold ' +
+          (on ? 'bg-telecab-dark/20 text-telecab-dark' : 'bg-telecab-red text-white') + '">' + n + '</span>' : '') +
+        '</button>';
+    };
+    $('#j-tabs').innerHTML = tab('', 'Todas', total) +
+      TIPOS.map(t => tab(t.codigo, t.etiqueta, pendientes[t.codigo] || 0)).join('') +
+      '<span class="w-px bg-telecab-border mx-1"></span>' + tab(MENOS_J, '−J · Perjuicios', pendientes[MENOS_J] || 0);
+    $('#j-tabs').querySelectorAll('[data-tipo]').forEach(b =>
+      b.addEventListener('click', () => { tipo = b.dataset.tipo; cargar(); }));
+  }
+
+  function pintarLista() {
+    const estado = $('#j-estado').value;
+    if (!filas.length) {
+      $('#j-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
+        (estado === 'pendiente' ? 'Nada pendiente. Al día.' : 'Nada con ese filtro.') + '</p>';
+      return;
+    }
+    if (tipo === MENOS_J) return pintarMenosJ();
+    const etqTipo = c => (TIPOS.find(t => t.codigo === c) || {}).etiqueta || c;
+    $('#j-lista').innerHTML = filas.map(j =>
+      '<div class="px-4 py-3 border-b border-telecab-border/50 flex items-start gap-3' +
+        (j.abierta ? ' bg-red-500/[.06] shadow-[inset_3px_0_0_0_rgb(239,68,68)]' : '') +
+        '" data-jid="' + esc(j.id) + '">' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex items-center gap-2 flex-wrap">' +
+            '<span class="font-medium text-sm">' + esc(j.conductor) + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-telecab-card2 text-telecab-text">' + esc(etqTipo(j.tipo)) + '</span>' +
+            '<span class="text-[11px] text-telecab-muted">' + fecha(j.dia) + '</span>' +
+            (j.horas != null ? '<span class="text-[11px] font-semibold text-sky-400">J ' + String(j.horas).replace('.', ',') + ' h</span>' : '') +
+            (j.rehechaEn ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full border border-telecab-border text-telecab-muted">rehecha</span>' : '') +
+            (j.cerradaAt ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full border border-telecab-border text-telecab-muted">cerrada</span>' : '') +
+            (j.abierta ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">hay que llamar</span>' : '') +
+            (j.conMenosJ ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full border border-telecab-border text-telecab-muted" title="Quien lo causó ya tiene su −J por esto">con su −J</span>' : '') +
+          '</div>' +
+          '<div class="text-xs text-telecab-muted mt-0.5">«' + esc(j.observacion) + '»</div>' +
+          '<div class="text-[11px] text-telecab-muted/80 mt-0.5">puesta por <b>' + esc(j.puestaPor || '¿?') + '</b> el ' + hora(j.creadoAt) +
+            (j.estado === 'aprobada' ? ' · <span class="text-telecab-green">aprobada por ' + esc(j.aprobadaPor || 'de oficio') + '</span>' : '') +
+            (j.estado === 'rechazada' ? ' · <span class="text-telecab-red">rechazada por ' + esc(j.rechazadaPor || '¿?') +
+              ' el ' + hora(j.anuladoAt) +
+              (j.anuladoMotivo ? ': «' + esc(j.anuladoMotivo) + '»' : '') + '</span>' : '') +
+          '</div>' +
+          // LO QUE SE CONTESTÓ al volver a llamar por el rechazo. Es la mitad
+          // que faltaba: el motivo lo pone quien rechaza, esto es lo que dijo
+          // el conductor cuando se le llamó.
+          ((j.respuestas || []).length
+            ? '<div class="mt-1.5 space-y-1">' + j.respuestas.map(r =>
+                '<div class="text-[11px] text-telecab-text bg-telecab-card2/50 border border-telecab-border rounded-lg px-2 py-1">' +
+                  '<i class="fa-solid fa-quote-left text-telecab-gold/60 mr-1 text-[9px]"></i>' + esc(r.comentario) +
+                  ' <span class="text-telecab-muted">— ' + esc(r.agente || '¿?') + ', ' + esc(r.hora) + '</span>' +
+                '</div>').join('') + '</div>'
+            : (j.abierta ? '<div class="text-[11px] text-telecab-red/80 mt-1">Nadie ha apuntado todavía qué dijo el conductor.</div>' : '')) +
+          (j.cerradaAt
+            ? '<div class="text-[11px] text-telecab-muted mt-1"><i class="fa-solid fa-flag-checkered mr-1"></i>' +
+              'Cerrada por <b>' + esc(j.cerradaPor || '¿?') + '</b> el ' + hora(j.cerradaAt) +
+              (j.cerradaNota ? ': «' + esc(j.cerradaNota) + '»' : '') + '</div>'
+            : '') +
+          '<div data-hist></div>' +
+        '</div>' +
+        '<div class="flex items-center gap-1.5 shrink-0">' +
+          '<button data-verhist class="px-2.5 h-8 rounded-lg border border-telecab-border text-telecab-muted text-xs hover:text-telecab-text" ' +
+            'title="Cada cambio de esta J: quién, cuándo, desde dónde y qué cambió"><i class="fa-solid fa-clock-rotate-left"></i></button>' +
+          (j.tipo === 'companero' && j.estado !== 'rechazada' && !j.conMenosJ
+            ? '<button data-menosj class="px-3 h-8 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-xs font-semibold hover:border-telecab-red hover:text-telecab-red" ' +
+                'title="Poner una −J a quien lo causó: constancia de un perjuicio a la empresa">−J a quien lo causó</button>'
+            : '') +
+          (j.estado === 'pendiente'
+            ? '<button data-ok aria-label="' + esc('Aprobar la J de ' + (j.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1" aria-hidden="true"></i>Aprobar</button>' +
+              '<button data-no aria-label="' + esc('Rechazar la J de ' + (j.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1" aria-hidden="true"></i>Rechazar</button>'
+            : '') +
+          (j.estado === 'rechazada' && !j.rehechaEn
+            ? '<button data-rehacer class="px-3 h-8 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold text-xs font-semibold" ' +
+                'title="Corrígela y vuelve a mandarla a revisión"><i class="fa-solid fa-pen mr-1"></i>Editar y reenviar</button>'
+            : '') +
+          (j.estado === 'rechazada' && !j.cerradaAt
+            ? '<button data-cerrar class="px-3 h-8 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-muted text-xs font-semibold" ' +
+                'title="Ya se llamó y no hay nada que justificar: deja de pedir llamada"><i class="fa-solid fa-flag-checkered mr-1"></i>Dar por cerrada</button>'
+            : '') +
+          (j.cerradaAt
+            ? '<button data-reabrir class="px-3 h-8 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-muted text-xs"><i class="fa-solid fa-rotate-left mr-1"></i>Reabrir</button>'
+            : '') +
+        '</div>' +
+      '</div>').join('');
+
+    $('#j-lista').querySelectorAll('[data-jid]').forEach(el => {
+      const j = filas.find(x => x.id === el.dataset.jid);
+      const liga = (sel, fn) => { const b = el.querySelector(sel); if (b) b.addEventListener('click', () => fn(j, b)); };
+      liga('[data-ok]', aprobar);
+      liga('[data-no]', rechazar);
+      liga('[data-rehacer]', rehacer);
+      liga('[data-cerrar]', cerrar);
+      liga('[data-reabrir]', reabrir);
+      liga('[data-menosj]', menosJDeJ);
+      liga('[data-verhist]', () => MenosJ.historial(el.querySelector('[data-hist]'), '/justificantes/api/historial?entidad=j&id=' + encodeURIComponent(j.id)));
+    });
+  }
+
+  // ── La pestaña −J ─────────────────────────────────────────────────────────
+  function pintarMenosJ() {
+    $('#j-lista').innerHTML = filas.map(m =>
+      '<div class="px-4 py-3 border-b border-telecab-border/50 flex items-start gap-3" data-mid="' + esc(m.id) + '">' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex items-center gap-2 flex-wrap">' +
+            '<span class="font-medium text-sm">' + esc(m.conductor) + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-telecab-red/15 text-telecab-red">−J</span>' +
+            '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-telecab-card2 text-telecab-text">' + esc(m.etiqueta) + '</span>' +
+            '<span class="text-[11px] text-telecab-muted">' + fecha(m.dia) + '</span>' +
+            (m.minutos ? '<span class="text-[11px] font-semibold text-telecab-text">costó ' + esc(HorasMin.texto(m.minutos)) + '</span>' : '') +
+            (m.companero ? '<span class="text-[11px] text-telecab-muted">perjudicó a <b class="text-telecab-text">' + esc(m.companero) + '</b></span>' : '') +
+          '</div>' +
+          '<div class="text-xs text-telecab-muted mt-0.5">«' + esc(m.motivo) + '»</div>' +
+          '<div class="text-[11px] text-telecab-muted/80 mt-0.5">puesta por <b>' + esc(m.puestaPor || '¿?') + '</b> el ' + hora(m.creadoAt) +
+            (m.justificanteId ? ' · desde la J de ' + esc(m.companero || 'su compañero') : '') +
+            (m.estado === 'aprobada' ? ' · <span class="text-telecab-green">aprobada por ' + esc(m.aprobadaPor || '¿?') + '</span>' : '') +
+            (m.estado === 'rechazada' ? ' · <span class="text-telecab-red">rechazada por ' + esc(m.rechazadaPor || '¿?') +
+              ' el ' + hora(m.anuladoAt) + (m.anuladoMotivo ? ': «' + esc(m.anuladoMotivo) + '»' : '') + '</span>' : '') +
+          '</div>' +
+          '<div data-hist></div>' +
+        '</div>' +
+        '<div class="flex items-center gap-1.5 shrink-0">' +
+          '<button data-verhist class="px-2.5 h-8 rounded-lg border border-telecab-border text-telecab-muted text-xs hover:text-telecab-text" ' +
+            'title="Cada cambio de esta −J: quién, cuándo, desde dónde y qué cambió"><i class="fa-solid fa-clock-rotate-left"></i></button>' +
+        (m.estado === 'pendiente'
+          ? 
+              '<button data-ok aria-label="' + esc('Aprobar la −J de ' + (m.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1" aria-hidden="true"></i>Aprobar</button>' +
+              '<button data-no aria-label="' + esc('Rechazar la −J de ' + (m.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1" aria-hidden="true"></i>Rechazar</button>'
+          : '') +
+        '</div>' +
+      '</div>').join('');
+    $('#j-lista').querySelectorAll('[data-mid]').forEach(el => {
+      const m = filas.find(x => x.id === el.dataset.mid);
+      el.querySelector('[data-verhist]').addEventListener('click', () =>
+        MenosJ.historial(el.querySelector('[data-hist]'), '/justificantes/api/historial?entidad=menos_j&id=' + encodeURIComponent(m.id)));
+      const ok = el.querySelector('[data-ok]'), no = el.querySelector('[data-no]');
+      if (ok) ok.addEventListener('click', () => aprobarMenosJ(m, ok));
+      if (no) no.addEventListener('click', () => rechazarMenosJ(m));
+    });
+  }
+
+  async function aprobarMenosJ(m, boton) {
+    try {
+      await Api.pedir('/justificantes/api/menos-j/' + m.id + '/aprobar', { metodo: 'POST', boton });
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function rechazarMenosJ(m) {
+    const v = await Dialogo.formulario('Rechazar la −J de ' + m.conductor, [
+      { id: 'motivo', etiqueta: 'Por qué se rechaza', tipo: 'texto-largo', obligatorio: true },
+    ], { nota: 'Se queda en el libro como rechazada, con tu nombre y el motivo, y no cuenta. ' +
+         'Quien la puso (' + (m.puestaPor || '¿?') + ') verá por qué.' });
+    if (!v || !String(v.motivo || '').trim()) return;
+    try {
+      const r = await fetch('/justificantes/api/menos-j/' + m.id + '/rechazar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: v.motivo }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg);
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  /** LA −J DESDE LA J DEL PERJUDICADO: la J «Por compañero» de Carlos lleva la
+      −J de quien lo causó. Se elige quién; el resto viene de la J. */
+  async function menosJDeJ(j) {
+    if (!personas) {
+      try {
+        const r = await fetch('/justificantes/api/menos-j/personas').then(x => x.json());
+        if (r.status !== 'ok') throw new Error(r.msg);
+        personas = r.personas || [];
+      } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo cargar la plantilla', texto: e.message, tono: 'error' }); }
+    }
+    const r = await MenosJ.poner({
+      url: '/justificantes/api/menos-j', dia: j.dia, origen: 'justificante', justificanteId: j.id,
+      perjudicado: { id: j.conductorId, nombre: j.conductor }, personas, casuisticas: CASUISTICAS,
+      minutos: j.minutos, motivo: j.observacion,
+      titulo: '−J a quien perjudicó a ' + j.conductor + ' · ' + fecha(j.dia),
+    });
+    if (r) cargar();
+  }
+
+  async function aprobar(j, boton) {
+    try {
+      await Api.pedir('/justificantes/api/' + j.id + '/aprobar', { metodo: 'POST', boton });
+      // Una J «Por compañero» es justo el caso de la −J: se ofrece en el mismo paso.
+      if (j.tipo === 'companero' && !j.conMenosJ && await Dialogo.confirmar({
+        titulo: '¿Le pones una −J a quien lo causó?',
+        texto: 'La J de ' + j.conductor + ' es «Por compañero». Si un compañero le perjudicó, puedes dejarle una −J ' +
+          '(perjuicio a la empresa). No toca horas ni nómina, y queda pendiente de aprobar.',
+        si: 'Poner la −J', no: 'Ahora no' })) await menosJDeJ(j);
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function rechazar(j) {
+    const v = await Dialogo.formulario('Rechazar la J de ' + j.conductor, [
+      { id: 'motivo', etiqueta: 'Por qué se rechaza', tipo: 'texto-largo', obligatorio: true },
+    ], { nota: 'Rechazarla la ANULA: ese día vuelve a contar como no justificado, y quien la puso (' +
+         (j.puestaPor || '¿?') + ') verá el motivo.' });
+    if (!v || !String(v.motivo || '').trim()) return;
+    try {
+      const r = await fetch('/justificantes/api/' + j.id + '/rechazar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: v.motivo }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg);
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  /** EDITAR Y VOLVER A MANDAR A REVISIÓN. Crea una J nueva; la rechazada se
+      queda con su motivo y su firma, que es lo que hay que poder consultar. */
+  async function rehacer(j) {
+    const v = await Dialogo.formulario('Rehacer la J de ' + j.conductor + ' · ' + fecha(j.dia), [
+      { id: 'horas', etiqueta: 'Horas que se justifican', tipo: 'horas',
+        minutos: j.minutos != null ? j.minutos : HorasMin.deHoras(j.horas) },
+      { id: 'tipo', etiqueta: 'De quién es', tipo: 'opciones', valor: j.tipo,
+        opciones: TIPOS.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
+      { id: 'observacion', etiqueta: 'Motivo (corregido)', tipo: 'texto-largo',
+        obligatorio: true, valor: j.observacion },
+    ], { textoBoton: 'Mandar a revisión',
+         nota: 'Se rechazó porque: «' + (j.anuladoMotivo || 'sin motivo apuntado') +
+           '». Vuelve a nacer PRESUNTA y hay que aprobarla otra vez.' });
+    if (!v) return;
+    try {
+      const r = await fetch('/justificantes/api/' + j.id + '/rehacer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ horas: v.horas, observacion: v.observacion,
+          tipo: (v.tipo && v.tipo.valor) || j.tipo }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg);
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  /** DARLA POR CERRADA: se llamó y no hay nada que justificar. */
+  async function cerrar(j) {
+    const v = await Dialogo.formulario('Dar por cerrada la J de ' + j.conductor, [
+      { id: 'nota', etiqueta: 'Qué pasó', tipo: 'texto-largo', obligatorio: true },
+    ], { textoBoton: 'Cerrar el caso',
+         nota: 'El día sigue SIN justificar: lo que cambia es que deja de pedir una llamada. ' +
+           'Queda en la lista con tu nombre y lo que escribas.' });
+    if (!v || !String(v.nota || '').trim()) return;
+    try {
+      const r = await fetch('/justificantes/api/' + j.id + '/cerrar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nota: v.nota }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg);
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function reabrir(j, boton) {
+    try {
+      await Api.pedir('/justificantes/api/' + j.id + '/reabrir', { metodo: 'POST', boton });
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function cargar() {
+    const estado = $('#j-estado').value;
+    const q = new URLSearchParams({ estado });
+    if (tipo) q.set('tipo', tipo);
+    if ($('#j-desde').value) q.set('desde', $('#j-desde').value);
+    if ($('#j-hasta').value) q.set('hasta', $('#j-hasta').value);
+    try {
+      const r = await fetch('/justificantes/api/cola?' + q).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+      filas = r.filas; pendientes = r.pendientes || {}; cuentas = r.cuentas || {};
+      pintarEstados(); pintarTabs(); pintarLista();
+    } catch (e) {
+      $('#j-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#j-estado').addEventListener('change', cargar);
+  $('#j-desde').addEventListener('change', cargar);
+  $('#j-hasta').addEventListener('change', cargar);
+  $('#j-limpiar').addEventListener('click', () => {
+    $('#j-desde').value = ''; $('#j-hasta').value = ''; cargar();
+  });
+
+  // Se puede llegar con la pestaña puesta: /justificantes?estado=rechazada, que
+  // es a donde apunta la alerta "Justificación rechazada".
+  const q0 = new URLSearchParams(location.search);
+  if (['pendiente', 'aprobada', 'rechazada'].includes(q0.get('estado'))) $('#j-estado').value = q0.get('estado');
+  if (q0.get('tipo') === MENOS_J || TIPOS.some(t => t.codigo === q0.get('tipo'))) tipo = q0.get('tipo');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(q0.get('dia') || '')) { $('#j-desde').value = q0.get('dia'); $('#j-hasta').value = q0.get('dia'); }
+  cargar();
+})();

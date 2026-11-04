@@ -1,0 +1,639 @@
+// modules/Seleccion/vistas/seleccion.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  const CAT = DEL_SERVIDOR.catalogos;
+  const VACANTES = DEL_SERVIDOR.vacantes;
+  const DOCS = DEL_SERVIDOR.documentos;
+  const { fecha, hace, esc } = Listado.fmt;
+
+  /** Llama a la API y devuelve el JSON, o lanza con el mensaje del servidor. */
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!r.ok || (j && j.status === 'error')) {
+      const e = new Error((j && j.msg) || 'Error ' + r.status);
+      // El servidor dice MÁS que un mensaje: si el fallo es un choque con
+      // alguien que ya existe, viene con quién es y qué se puede hacer.
+      if (j) { e.conflicto = j.conflicto; e.situacion = j.situacion; }
+      throw e;
+    }
+    return j;
+  }
+
+  const enviar = (url, metodo, cuerpo) => api(url, {
+    method: metodo,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo || {}),
+  });
+
+  /**
+   * Ejecuta algo, refresca la pantalla y avisa de cómo ha ido.
+   *
+   * El aviso de que SÍ se ha guardado importa tanto como el del error: sin él,
+   * guardar y no guardar se ven exactamente igual.
+   */
+  async function hacer(fn, hecho) {
+    try {
+      const r = await fn();
+      await seleccion.recargar();
+      if (hecho !== false) Dialogo.hecho(hecho || 'Guardado');
+      return r;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
+      return null;
+    }
+  }
+
+  const tel9 = v => { const d = String(v || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
+
+  // ── Abrir o crear por teléfono ──────────────────────────────────────────
+  //
+  // Es como empieza todo: se escribe un número y el sistema dice qué hay detrás
+  // ANTES de dejar rellenar nada. Preguntarlo después solo permitiría rechazar
+  // el alta con un error, y quien lo lee se quedaría sin saber si debe seguir un
+  // proceso que ya existe, restaurar a alguien o empezar de cero.
+
+  async function abrirPorTelefono() {
+    const v = await Dialogo.formulario('Abrir o crear candidato', [
+      { id: 'telefono', etiqueta: 'Teléfono (9 dígitos)', marcador: '6XX XXX XXX' },
+    ], { textoBoton: 'Buscar' });
+    if (!v || tel9(v.telefono).length !== 9) return;
+
+    let r;
+    try { r = await api('/seleccion/api/telefono/' + tel9(v.telefono)); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo buscar', texto: e.message, tono: 'error' }); }
+
+    // Ya hay un proceso vivo con ese número: se abre y punto.
+    if (r.candidatura) return seleccion.abrir(r.candidatura.id);
+
+    const s = r.situacion || {};
+    const avisos = (s.avisos || []).map(a => '<li>' + esc(a) + '</li>').join('');
+    const sigue = await Dialogo.confirmar({
+      titulo: s.titulo || 'Candidato nuevo',
+      html: '<p class="text-sm">' + esc(s.explica || '') + '</p>'
+        + (s.ficha
+          ? '<p class="text-sm mt-2"><b>' + esc(s.ficha.quien) + '</b>'
+            + (s.ficha.baja ? ' · se fue el ' + esc(fecha(s.ficha.baja)) : '') + '</p>'
+          : '')
+        + (s.bolt
+          ? '<p class="text-sm mt-2">En BOLT como <b>' + esc(s.bolt.nombre || '—') + '</b> con el '
+            + esc(s.bolt.telefono || '—') + (s.bolt.activa ? '' : ' (cuenta desactivada)') + '</p>'
+          : '')
+        + (avisos
+          ? '<ul class="text-xs text-telecab-warn mt-3 space-y-1 list-disc pl-4">' + avisos + '</ul>'
+          : ''),
+      si: 'Abrir candidatura',
+    });
+    if (!sigue) return;
+
+    // Si no tenemos ficha suya hace falta un nombre para crearla. Si BOLT nos da
+    // uno, viene puesto: escribirlo otra vez solo sirve para que salga distinto.
+    let datos = { telefono: tel9(v.telefono) };
+    if (!s.ficha) {
+      // Nombre y apellidos POR SEPARADO. Pedirlos juntos obliga a adivinar dónde
+      // acaba uno y empiezan los otros, y con "Andrés Camilo Bedoya Corrales" no
+      // hay forma de acertar: la base los guarda separados, así que se preguntan
+      // separados.
+      const n = await Dialogo.formulario('Datos para abrir la candidatura', [
+        { id: 'nombre', etiqueta: 'Nombre', valor: s.nombreSugerido || '' },
+        { id: 'apellidos', etiqueta: 'Apellidos' },
+        { id: 'canal', etiqueta: 'Canal de origen', tipo: 'lista',
+          opciones: (CAT.canales || []).map(c => ({ valor: c.codigo, texto: c.etiqueta })) },
+      ], { textoBoton: 'Crear' });
+      if (!n || !String(n.nombre || '').trim()) return;
+      datos = Object.assign(datos, n);
+    }
+
+    const creada = await hacer(() => enviar('/seleccion/api/candidatura', 'POST', datos));
+    if (creada && creada.id) seleccion.abrir(creada.id);
+  }
+
+  // ── Acciones de la ficha ────────────────────────────────────────────────
+
+  /** Mover dentro del embudo, o sacar de él. */
+  async function accionEstado(d) {
+    const ops = (CAT.estados || [])
+      .filter(e => e.en_funnel || e.es_salida || e.etapa === 'seleccion')
+      .map(e => ({ valor: e.codigo, texto: e.etiqueta }));
+    const v = await Dialogo.formulario('Estado de ' + d.quien, [
+      { id: 'estado', etiqueta: 'Estado', tipo: 'lista', opciones: ops, valor: d.estado, obligatorio: true },
+      { id: 'motivo', etiqueta: 'Motivo (si se descarta o se devuelve)', tipo: 'texto-largo' },
+    ]);
+    if (!v || !v.estado || v.estado === d.estado) return;
+    await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/estado', 'POST', v));
+  }
+
+  /**
+   * Todos los datos en un formulario: los de la persona y los del proceso.
+   *
+   * La lista de campos viene del SERVIDOR, no escrita aquí: son los mismos que
+   * valida al guardar, así que no pueden discrepar.
+   */
+  async function accionDatos(d) {
+    const LISTAS = {
+      canal: (CAT.canales || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })),
+      turno_id: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })),
+      base_zona_id: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })),
+      // La vacante se elige de la LISTA de las abiertas, y el texto dice todo lo
+      // que hace falta para no elegir a ciegas: puesto y jornada, zona,
+      // matrículas, libranza y, si es un recambio, a quién sustituye.
+      vacante_id: VACANTES.map(x => ({
+        valor: x.id,
+        texto: [x.puesto, x.zonas, x.matriculas,
+          x.libranzas ? 'libra ' + x.libranzas : '',
+          x.motivo === 'recambio' && x.sustituye ? '↔ releva a ' + x.sustituye : '',
+        ].filter(Boolean).join(' · '),
+      })),
+    };
+
+    // UN SÍ O UN NO SE ELIGE, NO SE TECLEA. El diálogo no conoce el tipo
+    // «booleano», así que lo pintaba como un hueco de texto y había que escribir
+    // literalmente "true" para poder seguir. Se traduce aquí al selector de la
+    // casa, con su tercera opción: en estos campos «no consta» no es «no».
+    const SI_NO = [
+      { valor: '', texto: '— Sin dato —' },
+      { valor: 'si', texto: 'Sí' },
+      { valor: 'no', texto: 'No' },
+    ];
+    const esBooleano = c => c.tipo === 'booleano';
+    const aSiNo = v => (v == null || v === '' ? '' : (v === true || v === 'true' || v === 't' ? 'si' : 'no'));
+
+    const campos = (CAT.campos || []).map(c => ({
+      id: c.id,
+      etiqueta: c.etiqueta || c.id,
+      grupo: c.grupo,
+      ayuda: c.id === 'iban' && d.tiene_iban
+        ? 'Ya hay uno guardado. Escribe solo si quieres cambiarlo.' : c.ayuda,
+      tipo: LISTAS[c.id] ? 'lista' : esBooleano(c) ? 'opciones' : (c.tipo || 'texto'),
+      opciones: LISTAS[c.id] || (esBooleano(c) ? SI_NO : c.opciones),
+      // El sexo es una lista en vertical, alta: ocupa tres filas y a su lado se
+      // apilan el estado civil y las dos fechas del carne, sin dejar hueco.
+      filas: c.id === 'sexo' ? 3 : undefined,
+      // Lo que cabe en su columna: más no se deja escribir (09/10/2026).
+      max: c.max,
+      // El IBAN nunca vuelve del servidor: está cifrado. Se deja vacío y solo se
+      // manda si se escribe algo, para no borrarlo sin querer al guardar.
+      valor: c.id === 'iban' ? ''
+        : esBooleano(c) ? aSiNo(d[c.id])
+          : c.tipo === 'fecha' ? fecha(d[c.id])
+            : (d[c.id] == null ? '' : String(d[c.id])),
+    }));
+
+    const v = await Dialogo.formulario('Datos de ' + d.quien, campos, {
+      ancho: 'max-w-3xl', columnas: 2,
+      nota: 'Cada cambio queda registrado con tu nombre y la hora.',
+    });
+    if (!v) return;
+
+    // Solo lo que ha cambiado: así el registro de auditoría no se llena de
+    // campos que nadie ha tocado.
+    const cambios = {};
+    campos.forEach(c => {
+      const ahora = v[c.id] == null ? '' : String(v[c.id]);
+      if (c.id === 'iban') { if (ahora) cambios.iban = ahora; return; }
+      const antes = c.tipo === 'fecha' ? (Dialogo.aISO(c.valor) || '') : (c.valor || '');
+      if (ahora === antes) return;
+      // El sí/no vuelve a ser booleano —o nulo— antes de salir hacia el servidor:
+      // lo que la base guarda es un BOOLEAN, no la palabra "si".
+      cambios[c.id] = c.tipo === 'opciones' && c.opciones === SI_NO
+        ? (ahora === '' ? null : ahora === 'si')
+        : v[c.id];
+    });
+    if (!Object.keys(cambios).length) return;
+    await guardarDatos(d, cambios);
+  }
+
+  /**
+   * Guarda los datos de la candidatura. Si el cambio dice OTRO tipo de contrato
+   * que el que ya tiene abierto en su ficha (13/10/2026), no se guarda a medias:
+   * se pregunta si fue un error al darle de alta y, si lo fue, se corrige
+   * también el contrato, con la misma fecha de alta.
+   */
+  async function guardarDatos(d, cambios) {
+    const url = '/seleccion/api/candidatura/' + d.id;
+    try {
+      await enviar(url, 'PUT', cambios);
+    } catch (e) {
+      const k = e.conflicto;
+      if (!k || k.tipo !== 'contrato') {
+        return Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
+      }
+      if (!k.puedeCorregir) {
+        return Dialogo.aviso({ titulo: 'Su contrato dice otra cosa', texto: e.message, tono: 'aviso' });
+      }
+      const nuevo = k.nuevo === 'ett' ? 'ETT' : 'plantilla propia';
+      const ok = await Dialogo.confirmar({
+        titulo: 'Su contrato dice otra cosa', tono: 'aviso',
+        si: 'Corregir también el contrato', no: 'Cancelar',
+        html: `<p>${esc(e.message)}</p>
+               <p class="mt-2">¿Se le dio de alta con el tipo equivocado? Se corrige también su contrato a
+               <b>${esc(nuevo)}</b>, el mismo y con la misma fecha de alta, y el planificador lo verá así.</p>
+               <p class="mt-2 text-telecab-muted text-sm">Si lo que pasa es que <b>ahora</b> pasa de la ETT a
+               plantilla propia, cancela: eso es otro contrato y se hace con «Pasar a propia» en su ficha de Plantilla.</p>`,
+      });
+      if (!ok) return;
+      return hacer(() => enviar(url, 'PUT', { ...cambios, corregirContrato: true }), 'Guardado, y su contrato corregido');
+    }
+    await seleccion.recargar();
+    Dialogo.hecho('Guardado');
+  }
+
+  /** Sacar las coordenadas de la dirección ya escrita. */
+  async function accionGeo(d) {
+    try {
+      const r = await enviar('/seleccion/api/geocodificar', 'POST', {
+        via: d.via_nombre, numero: d.via_numero, tipoVia: d.via_tipo,
+        codigo_postal: d.codigo_postal, localidad: d.localidad, provincia: d.provincia,
+        direccion: d.direccion,
+      });
+      if (!r.lat || !r.lng) throw new Error('No se encontró esa dirección');
+      const ok = await Dialogo.confirmar({
+        titulo: 'Coordenadas encontradas',
+        texto: r.lat + ', ' + r.lng + (r.formateada ? ' — ' + r.formateada : '') + '. ¿Se guardan?',
+      });
+      if (!ok) return;
+      await hacer(() => enviar('/seleccion/api/candidatura/' + d.id, 'PUT',
+        { coordenadas: r.lat + ', ' + r.lng }));
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo geocodificar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  /**
+   * Selección termina aquí: se le abre el contrato y YA ESTÁ DE ALTA.
+   *
+   * Antes esto solo dejaba la ficha «esperando a RRHH», y después venían dos
+   * paradas más —el Excel de altas y el PIN de Ballenoil— que no cambiaban nada
+   * de lo que la persona necesita para trabajar. Lo que le falta a partir de
+   * aquí no es papeleo nuestro: es un coche, y de eso avisa el planificador.
+   */
+  async function accionRRHH(d) {
+    if ((d.faltan || []).length) {
+      return Dialogo.aviso({
+        titulo: 'Todavía falta algo',
+        html: '<p class="text-sm">Antes de darle de alta hay que completar:</p>'
+          + '<ul class="text-sm mt-2 space-y-1 list-disc pl-4">'
+          + d.faltan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>',
+        tono: 'aviso',
+      });
+    }
+
+    const v = await Dialogo.formulario('Contratar a ' + d.quien, [
+      { id: 'alta', etiqueta: 'Fecha de inicio', tipo: 'fecha',
+        valor: fecha(d.inicio_previsto), obligatorio: true },
+      { id: 'jornadaHoras', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
+      { id: 'tipo', etiqueta: 'Tipo de contrato', tipo: 'lista', obligatorio: true,
+        valor: /ETT/i.test(d.tipo_contrato || '') ? 'ett' : 'propia',
+        opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: 'GiGroup',
+        ayuda: 'Solo si el contrato es por ETT. Cámbialo si viene de otra.' },
+    ], { nota: 'Se le abre el periodo de empleo y queda dado de alta. '
+             + 'El planificador recibe el aviso para colocarlo.' });
+    if (!v || !v.alta) return;
+
+    const r = await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/rrhh', 'POST', v));
+    if (!r) return;
+    await Dialogo.aviso({
+      titulo: 'Dado de alta',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>'
+        + '<p class="text-sm mt-2">'
+        + (r.incorporacion && r.incorporacion.plazas
+          ? 'El planificador ya tiene el aviso con sus ' + esc(r.incorporacion.plazas) + ' plaza(s).'
+          : 'El planificador ya tiene el aviso para colocarlo.') + '</p>'
+        + (r.faltaBolt
+          ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
+            + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
+          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>')
+        // Entra con el bloqueo de motor encendido (26/10/2026).
+        + (r.induccion ? '<p class="text-sm mt-2 text-telecab-warn"><b>Inducción del bloqueo de motor.</b> ' + esc(r.induccion) + '</p>' : ''),
+      tono: (r.faltaBolt || r.induccion) ? 'aviso' : 'ok',
+    });
+  }
+
+  /** La FICHA DE ALTA en PDF, con sus documentos incrustados. */
+  async function accionFichaPDF(d) {
+    const r = await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/ficha-pdf', 'POST'));
+    if (!r) return;
+    await Dialogo.aviso({
+      titulo: 'Ficha generada',
+      html: '<p class="text-sm">' + esc(r.nombre) + ' · ' + r.adjuntos + ' documento(s) dentro</p>'
+        + '<p class="text-sm mt-2 text-telecab-muted">Queda guardada en sus <b>Documentos</b>, aquí y en su ficha de Plantilla.</p>'
+        + (r.link ? '<p class="mt-2"><a href="' + esc(r.link) + '" target="_blank" rel="noopener" '
+        + 'class="text-telecab-gold underline">Abrir la ficha</a></p>' : ''),
+      tono: 'ok',
+    });
+  }
+
+  /**
+   * Borrar una candidatura que no debería existir.
+   *
+   * No es lo mismo que descartar: descartar es una decisión del proceso y deja
+   * rastro. Esto es para un teléfono mal tecleado, una fila duplicada o una
+   * prueba. El servidor se niega si la persona ha trabajado aquí.
+   */
+  async function accionEliminar(d) {
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Borrar la candidatura de ' + d.quien + '?',
+      html: '<p class="text-sm">Desaparece del sistema, con sus documentos. <b>No tiene vuelta atrás.</b></p>'
+        + '<p class="text-sm mt-2 text-telecab-muted">Si lo que pasa es que no sigue en el proceso, '
+        + 'no la borres: <b>descártala</b>, y queda constancia de que se presentó.</p>',
+      tono: 'peligro',
+      si: 'Borrar',
+    });
+    if (!ok) return;
+    const r = await hacer(() => api('/seleccion/api/candidatura/' + d.id, { method: 'DELETE' }), false);
+    if (!r) return;
+    seleccion.volver();
+    Dialogo.hecho('Borrada la candidatura de ' + r.quien
+      + (r.personaBorrada ? ' y su ficha' : ' (la ficha se queda: tiene más historia)'));
+  }
+
+  // ── Documentos ──────────────────────────────────────────────────────────
+
+  /**
+   * Sube un papel y punto. NO se preguntan fechas.
+   *
+   * Antes, cada subida abría un formulario pidiendo emisión y caducidad, y el
+   * servidor las exigía en los tipos que caducan. Eran dos fechas tecleadas a
+   * mano por papel, con el documento delante — y por eso salían mal: en la ficha
+   * de un alta real el carné decía 12/12/2024 cuando el papel ponía 12/02/2024.
+   * Las fechas ya están en la imagen; quien la mire las ve.
+   */
+  async function subirDocumento(d, key, archivo) {
+    const fd = new FormData();
+    fd.append('tipo', key);
+    fd.append('archivo', archivo, archivo.name);
+    await hacer(() => api('/seleccion/api/candidatura/' + d.id + '/documento',
+      { method: 'POST', body: fd }));
+  }
+
+  // ── PEGAR EL PANTALLAZO ─────────────────────────────────────────────────
+  // El pegado no se puede enganchar a la fila: el evento `paste` va al elemento
+  // con el foco o al documento, y aquí no hay ninguno enfocado. Así que se
+  // escucha UNA vez en el documento y se mira sobre qué fila está el ratón. Es
+  // lo que hace que «pongo el cursor encima y pego» funcione sin tener que
+  // hacer clic en nada antes.
+  let filaDocumento = null;      // { d, key } de la fila señalada
+  let pegadoPuesto = false;
+
+  function nombreDePegado(key, tipo) {
+    const ext = (tipo || '').split('/')[1] || 'png';
+    return 'pantallazo-' + key + '.' + ext.replace(/[^a-z0-9]/gi, '');
+  }
+
+  /** La imagen de un portapapeles o de un arrastre, si la hay. */
+  function imagenDe(datos, key) {
+    const lista = [...((datos && datos.items) || [])];
+    const it = lista.find(x => x.kind === 'file' && /^image\//.test(x.type || ''));
+    const f = it ? it.getAsFile() : ((datos && datos.files || [])[0] || null);
+    if (!f) return null;
+    // Lo pegado llega sin nombre; el servidor guarda por nombre, así que se le pone uno.
+    return f.name ? f : new File([f], nombreDePegado(key, f.type), { type: f.type || 'image/png' });
+  }
+
+  function engancharPegado() {
+    if (pegadoPuesto) return;
+    pegadoPuesto = true;
+    document.addEventListener('paste', ev => {
+      if (!filaDocumento) return;
+      const f = imagenDe(ev.clipboardData, filaDocumento.key);
+      if (!f) return;
+      ev.preventDefault();
+      subirDocumento(filaDocumento.d, filaDocumento.key, f);
+    });
+  }
+
+  function pintarDocumentos(d, hueco) {
+    hueco.className = 'p-5 space-y-2';
+    const puestos = new Map((d.documentos || []).filter(x => x.vigente).map(x => [x.tipo, x]));
+
+    engancharPegado();
+
+    hueco.innerHTML = '<p class="text-xs text-telecab-muted pb-1">'
+      + 'Cada papel se sube desde el explorador, arrastrándolo encima, o '
+      + '<b>poniendo el ratón sobre su línea y pegando</b> el pantallazo con Ctrl+V.</p>'
+      + (d.documentosPedidos || DOCS).map(def => {
+      const doc = puestos.get(def.tipo);
+      return '<div data-fila="' + esc(def.key) + '" '
+        + 'class="flex items-center gap-3 text-sm border-b border-telecab-border/50 pb-2 '
+        + 'rounded px-1 -mx-1 transition">'
+        + '<i class="fa-solid ' + (doc ? 'fa-circle-check text-telecab-green' : 'fa-circle text-telecab-muted/40')
+        + ' text-xs"></i>'
+        + '<span class="flex-1">' + esc(def.label) + '</span>'
+        + (doc
+          ? (doc.caducado ? '<span class="text-telecab-red text-xs">caducado</span>' : '')
+            + '<a href="' + esc(doc.enlace || '#') + '" target="_blank" rel="noopener" '
+            + 'aria-label="' + esc('ver ' + def.label) + '" class="text-telecab-gold text-xs underline">ver</a>'
+            + '<button data-quitar="' + doc.id + '" aria-label="' + esc('quitar ' + def.label) + '" class="text-telecab-red text-xs">quitar</button>'
+          : '<span class="text-telecab-muted text-[11px]" data-pista>o pega aquí</span>'
+            + '<label class="text-telecab-gold text-xs cursor-pointer">subir'
+            + '<input type="file" class="hidden" data-subir="' + esc(def.key) + '" aria-label="' + esc('subir ' + def.label) + '"></label>')
+        + '</div>';
+    }).join('')
+      // LA FICHA DE ALTA, al final. No se sube: se genera con el botón, y queda
+      // guardada aquí (y en los documentos de Plantilla). Antes solo se podía
+      // abrir desde el aviso que sale al generarla.
+      + (() => {
+        const fa = (d.documentos || []).find(x => x.tipo === 'ficha_alta' && x.vigente);
+        const cuando = fa && fa.subido_at
+          ? new Date(fa.subido_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '';
+        return '<div class="flex items-center gap-3 text-sm pt-1">'
+          + '<i class="fa-solid ' + (fa ? 'fa-file-pdf text-telecab-gold' : 'fa-file-pdf text-telecab-muted/40') + ' text-xs"></i>'
+          + '<span class="flex-1">Ficha de alta'
+          + (fa ? ' <span class="text-[11px] text-telecab-muted">· generada el ' + esc(cuando) + '</span>' : '') + '</span>'
+          + (fa
+            ? '<a href="' + esc(fa.enlace || '#') + '" target="_blank" rel="noopener" class="text-telecab-gold text-xs underline">ver</a>'
+              + '<button data-ficha-rehacer class="text-telecab-muted hover:text-telecab-gold text-xs" '
+              + 'title="Vuelve a generarla con los datos y papeles de ahora. La anterior se conserva como no vigente.">rehacer</button>'
+            : '<span class="text-telecab-muted text-[11px]">sin generar</span>'
+              + '<button data-ficha-rehacer class="text-telecab-gold text-xs underline">generar</button>')
+          + '</div>';
+      })();
+
+    const rehacer = hueco.querySelector('[data-ficha-rehacer]');
+    // Apagado mientras se genera (03/11/2026): tarda —lleva sus papeles dentro—
+    // y, sin el velo, un segundo clic la generaba otra vez.
+    if (rehacer) rehacer.addEventListener('click', async () => {
+      const estaba = rehacer.disabled;
+      rehacer.disabled = true;
+      try { await accionFichaPDF(d); } finally { rehacer.disabled = estaba; }
+    });
+
+    hueco.querySelectorAll('[data-subir]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0];
+        if (f) subirDocumento(d, inp.dataset.subir, f);
+      });
+    });
+
+    // La fila señalada: es la que recibe lo que se pegue. Y de paso acepta que
+    // le suelten el fichero encima, que es el mismo gesto con el ratón.
+    hueco.querySelectorAll('[data-fila]').forEach(fila => {
+      const key = fila.dataset.fila;
+      const puesto = puestos.has((d.documentosPedidos || DOCS).find(x => x.key === key).tipo);
+      if (puesto) return;                         // ya está subido: no admite otro
+      const marcar = on => {
+        fila.classList.toggle('bg-telecab-gold/10', on);
+        filaDocumento = on ? { d, key } : (filaDocumento && filaDocumento.key === key ? null : filaDocumento);
+      };
+      fila.addEventListener('mouseenter', () => marcar(true));
+      fila.addEventListener('mouseleave', () => marcar(false));
+      fila.addEventListener('dragover', ev => { ev.preventDefault(); marcar(true); });
+      fila.addEventListener('dragleave', () => marcar(false));
+      fila.addEventListener('drop', ev => {
+        ev.preventDefault();
+        marcar(false);
+        const f = imagenDe(ev.dataTransfer, key);
+        if (f) subirDocumento(d, key, f);
+      });
+    });
+
+    hueco.querySelectorAll('[data-quitar]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const ok = await Dialogo.confirmar({
+          titulo: '¿Quitar el documento?',
+          texto: 'Se borra también el archivo de Drive. No tiene vuelta atrás.',
+          tono: 'peligro',
+        });
+        if (!ok) return;
+        await hacer(() => api('/seleccion/api/documento/' + b.dataset.quitar, { method: 'DELETE' }));
+      });
+    });
+  }
+
+  // ── La pantalla ─────────────────────────────────────────────────────────
+
+  const seleccion = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Selección',
+    icono: 'fa-user-plus',
+    clave: 'id',
+    origen: '/seleccion/api/lista',
+    vacio: 'No hay ninguna candidatura abierta. Empieza por el teléfono.',
+    buscar: {
+      texto: 'Buscar nombre, teléfono, DNI…',
+      campos: ['quien', 'telefono', 'dni_nie', 'responsable'],
+    },
+    acciones: [
+      { texto: 'Abrir / crear', icono: 'fa-id-card', onClick: abrirPorTelefono },
+    ],
+
+    subtitulo: (v, t) => (v.length === t.length
+      ? t.length + ' candidatura(s) abiertas'
+      : v.length + ' de ' + t.length),
+
+    // Un contador por paso del embudo, y se pincha para filtrar. Vienen del
+    // servidor con su orden: la pantalla no lleva su propia lista de etapas, que
+    // es como se desincronizaban.
+    kpis: (filas, extra) => (((extra.resumen || {}).funnel) || []).map(e => ({
+      etiqueta: e.etiqueta,
+      valor: e.cuantos,
+      tono: e.cuantos ? 'text' : 'muted',
+      filtro: { id: 'estado', valor: e.codigo },
+    })),
+
+    filtros: [
+      { id: 'estado', etiqueta: 'Estado', campo: 'estado',
+        opciones: (CAT.estados || []).map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
+      { id: 'canal', etiqueta: 'Canal', campo: 'canal',
+        opciones: (CAT.canales || []).map(c => ({ valor: c.codigo, texto: c.etiqueta })) },
+    ],
+
+    columnas: [
+      { titulo: 'Candidato', campo: 'quien', principal: true },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm',
+        ayuda: 'El teléfono es lo que enlaza a esta persona con su cuenta de BOLT cuando entre.\nSi está mal, el alta se hace igual pero sus horas no aparecerán.' },
+      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm',
+        ayuda: 'La identidad de la casa: dos fichas con el mismo DNI son la misma persona.\nEs por lo que se detecta a quien ya estuvo aquí antes.' },
+      { titulo: 'Estado', valor: d => d.estado_etiqueta,
+        ayuda: 'Por dónde va la candidatura. Avanza sola al completar datos y documentos;\nsolo se salta a mano cuando alguien lo decide.' },
+      { titulo: 'Canal', valor: d => d.canal_etiqueta || '—',
+        ayuda: 'De dónde salió: la web, una ETT, alguien que la trajo…\nEs lo que dice qué vía está funcionando y cuál no.' },
+      { titulo: 'Responsable', valor: d => d.responsable || '—',
+        ayuda: 'Quién se hizo cargo. Sin responsable, una candidatura se queda parada sin que nadie lo note.' },
+      { titulo: 'Abierta', valor: d => hace(d.creado_at),
+        ayuda: 'Lo que lleva esperando desde que entró.\nAquí el tiempo cuesta gente: quien lleva dos semanas esperando ya está en otro sitio.' },
+    ],
+
+    detalle: {
+      origen: id => '/seleccion/api/ficha/' + id,
+      titulo: d => d.quien,
+      subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
+      // LA FOTO, al lado del nombre: la misma que en Plantilla, porque es de la
+      // persona. OPCIONAL: nada pide que la haya.
+      avatar: (d, hueco) => FotoPersona.pintar(hueco, {
+        url: '/seleccion/api/candidatura/' + d.id + '/foto',
+        fotoId: ((d.documentos || []).find(x => x.tipo === 'foto' && x.vigente) || {}).id || null,
+        nombre: d.quien,
+        puede: true,
+      }),
+      acciones: [
+        { texto: 'Dar de alta', icono: 'fa-user-check', principal: true,
+          visible: d => d.en_funnel, onClick: accionRRHH },
+        { texto: 'Estado', icono: 'fa-diagram-next', principal: false, onClick: accionEstado },
+        { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },
+        { texto: 'Coordenadas', icono: 'fa-location-crosshairs', principal: false, onClick: accionGeo },
+        { texto: 'Ficha de alta', icono: 'fa-file-pdf', principal: false, onClick: accionFichaPDF },
+        { texto: 'Borrar', icono: 'fa-trash', peligro: true, principal: false,
+          onClick: accionEliminar },
+      ],
+
+      bloques: [
+        {
+          // Lo primero es lo que hay que arreglar. Si no falta nada, no aparece.
+          titulo: 'Falta por completar', icono: 'fa-triangle-exclamation',
+          visible: d => (d.faltan || []).length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = '<ul class="text-sm space-y-1">' + d.faltan.map(x =>
+              '<li class="flex items-center gap-2 text-telecab-warn">'
+              + '<i class="fa-solid fa-circle-exclamation text-xs"></i>' + esc(x) + '</li>').join('')
+              + '</ul>';
+          },
+        },
+        {
+          titulo: 'El proceso', icono: 'fa-diagram-project',
+          campos: [
+            { etiqueta: 'Estado', valor: d => d.estado_etiqueta },
+            { etiqueta: 'Etapa', valor: d => d.etapa_etiqueta },
+            { etiqueta: 'Canal', valor: d => d.canal_etiqueta },
+            { etiqueta: 'Responsable', valor: d => d.responsable },
+            { etiqueta: 'Vacante', valor: d => d.vacante_ref, ancho: 'sm:col-span-2' },
+            { etiqueta: 'Turno', valor: d => d.turno },
+            { etiqueta: 'Zona', valor: d => d.zona },
+            { etiqueta: 'Inicio previsto', valor: d => fecha(d.inicio_previsto) },
+            { etiqueta: 'Jornada', valor: d => (d.jornada_horas ? d.jornada_horas + ' h' : '') },
+            { etiqueta: 'Abierta', valor: d => fecha(d.creado_at) },
+            { etiqueta: 'Motivo', valor: d => d.motivo },
+            { etiqueta: 'Notas', valor: d => d.notas, ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+        {
+          titulo: 'La persona', icono: 'fa-id-card',
+          campos: [
+            { etiqueta: 'Nombre', valor: d => d.nombre },
+            { etiqueta: 'Apellidos', valor: d => d.apellidos },
+            { etiqueta: 'DNI / NIE', valor: d => d.dni_nie },
+            { etiqueta: 'Fecha de nacimiento', valor: d => fecha(d.fecha_nacimiento) },
+            { etiqueta: 'Sexo', valor: d => d.sexo },
+            { etiqueta: 'Estado civil', valor: d => d.estado_civil },
+            { etiqueta: 'Nacionalidad', valor: d => d.nacionalidad },
+            { etiqueta: 'Nº Seguridad Social', valor: d => d.naf },
+            { etiqueta: 'Centro de trabajo', valor: d => d.centro_codigo },
+            { etiqueta: 'Correo', valor: d => d.email },
+            { etiqueta: 'Teléfono', valor: d => d.telefono },
+            { etiqueta: 'Contacto de emergencia', valor: d => d.tel_emergencia },
+            { etiqueta: 'IBAN', valor: d => (d.tiene_iban ? 'Guardado (cifrado)' : '') },
+            { etiqueta: 'Dirección', valor: d => d.direccion, ancho: 'sm:col-span-2 lg:col-span-3' },
+            { etiqueta: 'Coordenadas', valor: d => d.coordenadas },
+          ],
+        },
+        { titulo: 'Documentos', icono: 'fa-folder-open', pinta: pintarDocumentos },
+      ],
+    },
+  });
+})();

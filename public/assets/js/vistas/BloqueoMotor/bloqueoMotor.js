@@ -1,0 +1,217 @@
+// modules/BloqueoMotor/vistas/bloqueoMotor.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(() => {
+  const DEL_SERVIDOR = Casa.datos();
+  const { fechaHora, hace, etiqueta, esc } = Listado.fmt;
+  const PUEDE = DEL_SERVIDOR.puedeSoltar;
+
+  // Cada estado con su nombre y su tono. Semánticos, no el acento: el oro se
+  // queda para lo que se pulsa.
+  const ESTADO = {
+    'no-corta':      { texto: 'El corte no corta',       tono: 'red',
+      ayuda: 'Mapon lo da con el motor cortado y el coche se mueve sin nadie en turno. Es la instalación del relé: taller.' },
+    'bloqueado':     { texto: 'Bloqueado',               tono: 'text',
+      ayuda: 'Lo bloqueó quien terminó su turno. Lo suelta el siguiente al empezar, o Tráfico desde aquí.' },
+    'no-bloqueado':  { texto: 'No se pudo bloquear',     tono: 'warn',
+      ayuda: 'Al terminar el turno no se pudo bloquear (sin cobertura, sin relé…). Está libre y nadie lo va a reintentar.' },
+    'cortado-fuera': { texto: 'Cortado fuera del ciclo', tono: 'warn',
+      ayuda: 'Mapon lo da cortado y no lo cortó ningún conductor al terminar: el repaso que ya no existe, o alguien desde Mapon.' },
+    'suelto-fuera':  { texto: 'Soltado desde Mapon',     tono: 'muted',
+      ayuda: 'Se bloqueó al terminar y Mapon ya lo da libre: lo soltaron por fuera del ERP.' },
+    'en-turno':      { texto: 'En turno',                tono: 'green',
+      ayuda: 'Lo lleva alguien con el bloqueo encendido (o un viaje). Al terminar se bloqueará.' },
+    'fuera':         { texto: 'Fuera del ciclo',         tono: 'muted',
+      ayuda: 'Lo soltó Tráfico (por ejemplo, se queda en el taller). No se vuelve a bloquear hasta que alguien empiece y termine un turno en él.' },
+    'pendiente':     { texto: 'Pendiente de entrar',     tono: 'warn',
+      ayuda: 'Un coche del planificador que no está en el ciclo. «Qué pasa» dice por qué y qué hacer; si no hace falta nada, entra solo al terminar el próximo turno.' },
+    'sin-ciclo':     { texto: 'No está en el ciclo',     tono: 'muted', ayuda: '' },
+  };
+  const est = e => ESTADO[e] || { texto: e, tono: 'muted', ayuda: '' };
+  const AVISOS = ['no-corta', 'no-bloqueado', 'cortado-fuera', 'suelto-fuera'];
+  // Pendiente de entrar en el ciclo: un coche del planificador que está fuera, o
+  // que se va a quedar libre al terminar. Los que hay que arreglar (sin relé,
+  // alguien sin el bloqueo) y los que entran solos se cuentan aparte.
+  const pendiente = f => !!f.pendiente;
+  const hayQueArreglar = f => !!f.pendiente && !f.seArreglaSolo;
+  const RELE = { cortado: ['Cortado', 'text'], libre: ['Libre', 'muted'], 'sin relé': ['Sin relé', 'muted'], 'sin datos': ['Sin datos', 'warn'] };
+  const pintaRele = r => (RELE[r] ? etiqueta(RELE[r][0], RELE[r][1]) : '<span class="text-telecab-muted">—</span>');
+  const cuando = v => (v ? `${fechaHora(v)} · ${hace(v)}` : '');
+  const cogen = f => (f.cogen == null ? ''
+    : f.cogen.length ? f.cogen.map(p => p.nombre + (p.fichaCoche ? '' : ' (sin bloqueo)')).join(', ')
+      : 'Nadie hoy ni mañana');
+
+  // Por Api (03/11/2026): mismo contrato —devuelve la respuesta o lanza con un
+  // mensaje que se puede enseñar—, y además sabe de la sesión caducada.
+  const post = (url, cuerpo) => Api.post(url, cuerpo);
+
+  async function soltar(d, lst) {
+    const v = await Dialogo.formulario(`Soltar el motor de ${d.matricula}`, [
+      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true,
+        marcador: 'Ej.: se queda en el taller hasta el viernes',
+        ayuda: 'Queda escrito con tu nombre. El coche sale del ciclo: no se vuelve a bloquear hasta que alguien empiece y termine un turno en él.' },
+    ], { textoBoton: 'Soltar el motor' });
+    if (!v) return;
+    try {
+      const r = await post('/bloqueo-motor/api/soltar', { matricula: d.matricula, motivo: v.motivo });
+      if (r.hecho) Dialogo.hecho(r.yaEstaba ? `${d.matricula} ya estaba libre` : `Motor de ${d.matricula} suelto`);
+      else await Dialogo.aviso({ titulo: 'El coche no lo ha confirmado', tono: 'aviso',
+        texto: `${r.motivo || 'Sin respuesta'}. Vuelve a intentarlo en un minuto.` });
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo soltar', texto: e.message, tono: 'error' });
+      return;
+    }
+    lst.volver();
+    await lst.recargar();
+  }
+
+  /**
+   * CERRAR EL TURNO DE QUIEN SE OLVIDÓ AL ENTREGAR EL COCHE (27/10/2026): a la
+   * hora de la entrega, para que lo de después no se le apunte, y sin tocar el
+   * motor. En Mapon deja de ser el conductor del coche.
+   */
+  async function cerrarTurno(d, lst) {
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const v = await Dialogo.formulario(`Cerrar el turno de ${d.quien || 'quien lo lleva'} en ${d.matricula}`, [
+      { id: 'dia', etiqueta: 'Día de la entrega', tipo: 'fecha', obligatorio: true, valor: hoy.split('-').reverse().join('/') },
+      { id: 'hora', etiqueta: 'Hora de la entrega', tipo: 'texto', obligatorio: true, marcador: 'Ej.: 05:24',
+        ayuda: 'Lo que pase en el coche después de esa hora ya no es suyo.' },
+      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true,
+        marcador: 'Ej.: se le olvidó cerrarlo al entregárselo al compañero',
+        ayuda: 'Queda escrito con tu nombre. El motor no se toca: si hay que bloquearlo, es aparte.' },
+    ], { textoBoton: 'Cerrar el turno' });
+    if (!v) return;
+    try {
+      const r = await post('/bloqueo-motor/api/cerrar-turno', { matricula: d.matricula, dia: v.dia, hora: v.hora, motivo: v.motivo });
+      Dialogo.hecho(`Turno de ${r.nombre} cerrado`);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo cerrar el turno', texto: e.message, tono: 'error' });
+      return;
+    }
+    lst.volver();
+    await lst.recargar();
+  }
+
+  const cuenta = (filas, e) => filas.filter(f => f.estado === e).length;
+
+  Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Ciclo de bloqueo de motor',
+    icono: 'fa-lock',
+    clave: 'matricula',
+    origen: '/bloqueo-motor/api/lista',
+    vacio: 'Ningún coche en el ciclo. Entra el primero cuando alguien con el bloqueo encendido termine un turno.',
+    buscar: { texto: 'Buscar por matrícula o persona…', campos: ['matricula', 'quien'] },
+    subtitulo: (v, t) => (v.length === t.length ? `${t.length} coches` : `${v.length} de ${t.length} coches`)
+      + ' · los bloquea el conductor al terminar, o el cierre de las 14 h con el coche detenido',
+
+    kpis: filas => {
+      const avisos = filas.filter(f => AVISOS.includes(f.estado)).length;
+      const pendientes = filas.filter(pendiente).length, arreglar = filas.filter(hayQueArreglar).length;
+      return [
+        { etiqueta: 'Pendientes de entrar', valor: pendientes, tono: arreglar ? 'warn' : 'muted',
+          pie: arreglar ? `${arreglar} por arreglar · ${pendientes - arreglar} entran solos` : 'entran solos al terminar un turno',
+          filtro: { id: 'estado', valor: 'pendientes' },
+          ayuda: 'Coches del planificador que no están en el ciclo, o que se quedarán libres al terminar: sin relé de corte, alguien que los lleva sin el bloqueo, o que todavía no los ha terminado nadie con él.' },
+        { etiqueta: 'Bloqueados', valor: cuenta(filas, 'bloqueado'), tono: 'text', pie: 'esperan a que alguien empiece',
+          filtro: { id: 'estado', valor: 'bloqueado' }, ayuda: est('bloqueado').ayuda },
+        { etiqueta: 'En turno', valor: cuenta(filas, 'en-turno'), tono: 'green', pie: 'se bloquearán al terminar',
+          filtro: { id: 'estado', valor: 'en-turno' }, ayuda: est('en-turno').ayuda },
+        { etiqueta: 'Fuera del ciclo', valor: cuenta(filas, 'fuera'), tono: 'muted', pie: 'soltados por Tráfico',
+          filtro: { id: 'estado', valor: 'fuera' }, ayuda: est('fuera').ayuda },
+        { etiqueta: 'Para mirar', valor: avisos, tono: avisos ? 'warn' : 'muted', pie: 'no se bloquearon, cortados por fuera…',
+          filtro: { id: 'estado', valor: 'avisos' },
+          ayuda: 'Coches que no están donde el ciclo dice: no se pudieron bloquear, los cortó o soltó alguien por fuera, o el corte no corta.' },
+      ];
+    },
+
+    filtros: [{
+      id: 'estado', etiqueta: 'Estado', textoTodos: 'Todos los estados',
+      pasa: (f, v) => (v === 'avisos' ? AVISOS.includes(f.estado)
+        : v === 'pendientes' ? pendiente(f) : v === 'arreglar' ? hayQueArreglar(f) : f.estado === v),
+      opciones: filas => [
+        { valor: 'pendientes', texto: 'Pendientes de entrar (con los de otro estado)', cuenta: filas.filter(pendiente).length },
+        { valor: 'arreglar', texto: 'Pendientes, por arreglar', cuenta: filas.filter(hayQueArreglar).length },
+        { valor: 'avisos', texto: 'Para mirar', cuenta: filas.filter(f => AVISOS.includes(f.estado)).length },
+        ...Object.keys(ESTADO).filter(e => filas.some(f => f.estado === e))
+          .map(e => ({ valor: e, texto: est(e).texto, cuenta: cuenta(filas, e) })),
+      ],
+    }],
+
+    // Lo que hay que saber antes de fiarse de la lista.
+    // Todo lo que pase a la vez, junto: con una sola nota, la del planificador
+    // quedaba tapada por la de Mapon y la lista parecía sin pendientes.
+    nota: (v, extra) => {
+      const x = extra || {}, avisos = [];
+      if (x.bloqueoActivo === false) avisos.push({ icono: 'fa-power-off',
+        texto: 'El corte de motor está apagado en el servidor (FICHAJE_BLOQUEO_MOTOR): al terminar un turno no se bloquea nada. Lo de aquí es lo que ya estaba.' });
+      if (x.errorMapon) avisos.push({ icono: 'fa-satellite-dish',
+        texto: `Mapon no contesta (${x.errorMapon}): el relé sale «sin datos» y los cortados por fuera no se ven.` });
+      if (x.errorPlan) avisos.push({ icono: 'fa-calendar-xmark',
+        texto: `No se pudo leer el planificador (${x.errorPlan}): los coches pendientes de entrar en el ciclo no salen.` });
+      if (!avisos.length) return null;
+      return { tono: 'aviso', icono: avisos[0].icono, texto: avisos.map(a => a.texto).join(' ') };
+    },
+
+    columnas: [
+      { titulo: 'Matrícula', campo: 'matricula', clase: 'font-mono font-semibold whitespace-nowrap' },
+      { titulo: 'Estado', campo: 'estado', clase: 'whitespace-nowrap',
+        // Un coche fuera del ciclo que es del planificador lleva además la
+        // marca de pendiente (salvo el que ya ES «Pendiente de entrar»).
+        pinta: (v, f) => `<span title="${esc(est(v).ayuda)}">${etiqueta(est(v).texto, est(v).tono)}</span>` +
+          (f.pendiente && v !== 'pendiente' ? ` <span title="${esc(f.pendiente)}">${etiqueta('Pendiente de entrar', f.seArreglaSolo ? 'muted' : 'warn')}</span>` : ''),
+        ayuda: 'En qué punto del ciclo está el coche. Pasa el cursor por encima de cada estado para ver qué quiere decir.' },
+      { titulo: 'Desde', campo: 'desde', clase: 'whitespace-nowrap tabular-nums text-telecab-muted',
+        pinta: v => (v ? esc(cuando(v)) : '<span class="text-telecab-muted">—</span>') },
+      { titulo: 'Quién', campo: 'quien',
+        ayuda: 'Bloqueado: quien terminó el último turno. En turno: quien lo lleva. Fuera del ciclo: quién lo soltó.' },
+      { titulo: 'Lo cogen', valor: f => cogen(f), clase: 'text-telecab-muted',
+        ayuda: 'Quién lo lleva hoy o mañana según el cuadrante. El primero que empiece su turno lo suelta.' },
+      { titulo: 'Relé', campo: 'rele', pinta: v => pintaRele(v),
+        ayuda: 'Cómo está el relé de corte AHORA según Mapon.' },
+      { titulo: 'Qué pasa', campo: 'detalle', clase: 'text-xs text-telecab-muted min-w-[18rem]' },
+    ],
+
+    detalle: {
+      origen: id => `/bloqueo-motor/api/coche/${encodeURIComponent(id)}`,
+      titulo: d => d.matricula,
+      subtitulo: d => [est(d.estado).texto, d.quien].filter(Boolean).join(' · '),
+      acciones: PUEDE ? [{
+        texto: 'Soltar el motor', icono: 'fa-lock-open', principal: true,
+        visible: d => !!d.puedeSoltar, onClick: (d, lst) => soltar(d, lst),
+      }, {
+        // Quien se olvidó de cerrar al entregar el coche (27/10/2026).
+        texto: 'Cerrar el turno', icono: 'fa-user-clock',
+        visible: d => d.estado === 'en-turno', onClick: (d, lst) => cerrarTurno(d, lst),
+      }] : [],
+      bloques: [
+        {
+          titulo: 'Ahora', icono: 'fa-lock',
+          campos: [
+            { etiqueta: 'Estado', valor: d => est(d.estado).texto },
+            { etiqueta: 'Desde', valor: d => cuando(d.desde) },
+            { etiqueta: 'Quién', valor: d => d.quien },
+            { etiqueta: 'Relé según Mapon', valor: d => (RELE[d.rele] ? RELE[d.rele][0] : d.rele) },
+            { etiqueta: 'Lo cogen hoy o mañana', valor: d => cogen(d) },
+            { etiqueta: 'Qué pasa', valor: d => d.detalle, ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+        {
+          titulo: 'Lo que ha pasado', icono: 'fa-clock-rotate-left',
+          tabla: {
+            datos: d => d.historia || [],
+            vacio: 'Nada apuntado todavía.',
+            columnas: [
+              { titulo: 'Cuándo', campo: 'cuando', clase: 'whitespace-nowrap tabular-nums', pinta: v => esc(fechaHora(v)) },
+              { titulo: 'Qué', campo: 'que',
+                pinta: (v, e) => (e.motor ? `<i class="fa-solid fa-lock text-telecab-muted mr-1.5 text-xs"></i><b>${esc(v)}</b>` : esc(v)) },
+              { titulo: 'Quién', campo: 'quien' },
+              { titulo: 'Nota', campo: 'nota', clase: 'text-xs text-telecab-muted' },
+            ],
+          },
+        },
+      ],
+    },
+  });
+})();

@@ -1,0 +1,410 @@
+// modules/Planificacion/vistas/cobertura.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+const CFG = Casa.datos();
+const DIAS_SEM = CFG.diasSem;
+
+let D = null;
+const $ = s => document.querySelector(s);
+const esc = Casa.esc;
+const icono = t => t === 'Día' ? '<i class="fa-solid fa-sun text-[11px] text-telecab-muted"></i>' : '<i class="fa-solid fa-moon text-[11px] text-telecab-muted"></i>';
+
+let SEMANA = 0;
+const fmtDia = v => { const d = new Date(v); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
+
+async function cargar() {
+  $('#cargando').classList.remove('hidden');
+  try {
+    D = await Api.get('/cobertura/api/datos?semana=' + SEMANA);
+    const s = D.semanaInfo || {};
+    $('#sem-label').textContent = s.inicio
+      ? `Semana ${fmtDia(s.inicio)} – ${fmtDia(s.fin)}` + (s.esActual ? ' (actual)' : '')
+      : '—';
+    $('#sem-prev').disabled = SEMANA === 0;
+    pintar();
+    cargarAvisos();
+  } catch (e) {
+    $('#cargando').innerHTML = '<p class="text-telecab-red">' + esc(e.message) + '</p>';
+    return;
+  }
+  $('#cargando').classList.add('hidden');
+}
+
+// ════════ El registro de avisos (semáforo por persona + informe del día) ════════
+let AVI = null;        // estado de la semana mirada: { conductores: { id: {...} } }
+let INF = null;        // informe del día elegido
+let INF_DIA = '';      // '' = hoy
+let INF_ABIERTO = false;
+
+async function cargarAvisos() {
+  try {
+    // Las dos a la vez (antes la segunda esperaba a la primera) y cada una por
+    // su lado: si falla una, la otra se pinta igual. Sin registro, la pantalla
+    // sigue: es un dato de más, no el principal.
+    [AVI, INF] = await Promise.all([
+      Api.get('/cobertura/api/avisos-estado?semana=' + SEMANA).catch(() => null),
+      Api.get('/cobertura/api/avisos-informe' + (INF_DIA ? '?dia=' + INF_DIA : '')).catch(() => null),
+    ]);
+  } catch (_) { AVI = null; INF = null; }
+  pintarInformeAvisos();
+  pintarPersonas();
+}
+
+// El chip de una persona: verde avisada y al día, rojo si sus turnos CAMBIARON
+// después del aviso, gris si trabaja y nadie le ha avisado aún.
+function chipAviso(p) {
+  if (!AVI || !AVI.conductores) return '';
+  const base = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold border';
+  const a = AVI.conductores[p.id];
+  if (a) {
+    return a.cambiado
+      ? `<span class="${base} bg-telecab-red/15 text-telecab-red border-telecab-red/40"
+           title="Se le avisó ${esc(a.ultimoAt)}${a.ultimoPor ? ' (' + esc(a.ultimoPor) + ')' : ''} pero sus turnos han CAMBIADO después: toca reenviar">
+           <i class="fa-solid fa-triangle-exclamation"></i> Cambió tras el aviso</span>`
+      : `<span class="${base} bg-telecab-green/15 text-telecab-green border-telecab-green/40"
+           title="Último aviso ${esc(a.ultimoAt)}${a.ultimoPor ? ' por ' + esc(a.ultimoPor) : ''} · ${a.veces} envío(s) esta semana · sin cambios desde entonces">
+           <i class="fa-solid fa-check"></i> Avisado${a.veces > 1 ? ' ×' + a.veces : ''}</span>`;
+  }
+  return p.dias.some(d => d.trabaja)
+    ? `<span class="${base} border-telecab-border text-telecab-muted" title="Trabaja esta semana y todavía no se le han enviado los turnos">Sin avisar</span>`
+    : '';
+}
+
+/** Quien trabajó esta semana pero ya NO está de alta. */
+function chipBaja(p) {
+  if (!p.deBaja) return '';
+  return `<span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border
+      bg-telecab-red/15 text-telecab-red border-telecab-red/40"
+      title="Ya no está de alta: se le ven los turnos que hizo, pero no se le avisa">
+      <i class="fa-solid fa-user-slash"></i> Ya no está</span>`;
+}
+
+function pintarInformeAvisos() {
+  const c = $('#avisos-dia');
+  if (!INF) { c.innerHTML = ''; return; }
+  const hoy = !INF_DIA;
+  const usuarios = (INF.porUsuario || [])
+    .map(u => `<span class="font-medium text-telecab-text">${esc(u.usuario)}</span> ${u.envios} a ${u.personas} persona(s)`)
+    .join(' <span class="text-telecab-muted">·</span> ');
+  const filas = (INF.detalle || []).map(d => `
+    <tr class="border-t border-telecab-border/50">
+      <td class="px-3 py-1.5">${esc(d.nombre)}</td>
+      <td class="px-3 py-1.5 text-telecab-muted">${esc(d.cuadrante || '—')}</td>
+      <td class="px-3 py-1.5 text-center font-semibold">${d.vecesHoy}</td>
+      <td class="px-3 py-1.5 text-center text-telecab-muted" title="Veces avisado en total de la semana que se le mandó">${d.vecesSemana}</td>
+      <td class="px-3 py-1.5 text-center">${esc(d.ultima)}</td>
+      <td class="px-3 py-1.5">${esc(d.por || '—')}</td>
+      <td class="px-3 py-1.5">${d.ultimoResultado === 'ok' ? '<span class="text-telecab-green">✓</span>'
+        : d.ultimoResultado === 'sin-telefono' ? '<span class="text-telecab-warn">sin teléfono</span>'
+        : '<span class="text-telecab-red">error</span>'}</td>
+    </tr>`).join('');
+  c.innerHTML = `
+    <div class="rounded-xl bg-telecab-card border border-telecab-border px-4 py-3">
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span class="font-semibold text-telecab-text"><i class="fa-solid fa-clipboard-check text-telecab-gold mr-1"></i>
+          Avisos ${hoy ? 'de hoy' : 'del día'}</span>
+        <input id="inf-dia" type="date" value="${esc(INF_DIA)}" aria-label="Día de los avisos"
+               class="px-2 py-1 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text text-xs">
+        <span class="text-telecab-text"><b>${INF.personas || 0}</b> persona(s) avisadas · <b>${INF.envios || 0}</b> envío(s)</span>
+        ${usuarios ? `<span class="text-telecab-muted">—</span> <span class="text-telecab-muted">${usuarios}</span>` : ''}
+        ${INF.errores ? `<span class="text-telecab-red">${INF.errores} con error</span>` : ''}
+        ${INF.sin_telefono ? `<span class="text-telecab-warn">${INF.sin_telefono} sin teléfono</span>` : ''}
+        <button id="inf-abrir" class="ml-auto text-xs text-telecab-muted hover:text-telecab-text transition">
+          ${INF_ABIERTO ? 'Ocultar detalle ▴' : 'Ver detalle ▾'}</button>
+      </div>
+      ${INF_ABIERTO ? ((INF.detalle || []).length ? `
+      <div class="mt-3 overflow-x-auto max-h-80 overflow-y-auto rounded-lg border border-telecab-border/60">
+        <table class="w-full text-xs">
+          <thead class="sticky top-0 bg-telecab-dark text-telecab-muted">
+            <tr><th class="px-3 py-2 text-left">Conductor</th><th class="px-3 py-2 text-left">Cuadrante</th>
+                <th class="px-3 py-2">Veces (día)</th><th class="px-3 py-2">Veces (semana)</th>
+                <th class="px-3 py-2">Última</th><th class="px-3 py-2 text-left">Avisó</th><th class="px-3 py-2 text-left">Resultado</th></tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>` : '<p class="mt-3 text-xs text-telecab-muted">Ese día no se avisó a nadie.</p>') : ''}
+    </div>`;
+  $('#inf-abrir').addEventListener('click', () => { INF_ABIERTO = !INF_ABIERTO; pintarInformeAvisos(); });
+  $('#inf-dia').addEventListener('change', ev => { INF_DIA = ev.target.value || ''; cargarAvisos(); });
+}
+
+function pintar() {
+  const totalRelevos = D.relevos.length;
+  // Los tramos "pre-alta" (el asignado entra más tarde) NO son turnos sin conductor:
+  // la plaza ya tiene dueño, solo que aún no ha llegado. Se cuentan aparte.
+  const esPre = c => c.tipo === 'titular-pre-alta';
+  const totalHuecos = D.cobertura.reduce((n, c) => n + c.sinConductor.filter(x => !esPre(x)).length, 0);
+  const totalPre = D.cobertura.reduce((n, c) => n + c.sinConductor.filter(esPre).length, 0);
+  $('#resumen').textContent =
+    `${D.coches.length} coches operativos · ${totalRelevos} relevos a la semana · ${totalHuecos} turnos sin conductor` +
+    (totalPre ? ` · ${totalPre} por incorporación` : '');
+  pintarAusentes();
+  pintarTodoTurno();
+  pintarDias();
+  pintarPersonas();
+}
+
+// ════════ No salen: titular de vacaciones/baja AÚN en la plaza ════════
+function pintarAusentes() {
+  const box = $('#ausentes-plaza');
+  const lista = D.ausentesEnPlaza || [];
+  if (!lista.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="rounded-xl border border-amber-600/50 bg-amber-900/20 p-4">
+      <div class="flex items-center gap-2 mb-2 text-amber-300 font-semibold">
+        <i class="fa-solid fa-umbrella-beach"></i>
+        No salen — titular de vacaciones/baja aún en la plaza (${lista.length})
+      </div>
+      <ul class="space-y-1 text-sm">
+        ${lista.map(a => `
+          <li class="flex flex-wrap items-baseline gap-x-2">
+            <span class="font-medium text-telecab-text">${esc(a.matricula)}</span>
+            <span class="text-telecab-muted">(${esc(a.plaza)})</span>
+            <span class="text-telecab-text">${esc(a.nombre)}</span>
+            <span class="text-amber-400">· ${esc(a.estado)}${a.reincorporacion ? ' hasta ' + esc(a.reincorporacion) : ''}</span>
+            ${a.dias && a.dias.length ? `<span class="text-telecab-muted/80">· no sale ${a.dias.map(esc).join(' ')}</span>` : ''}
+            ${a.zona ? `<span class="text-telecab-muted/60">· ${esc(a.zona)}</span>` : ''}
+          </li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+// ════════ TodoTurno: mismo conductor cubre DÍA y NOCHE del mismo coche ════════
+// Se deriva del propio tablero (D.coches[].semana): en un día, si el tramo de Día y el de
+// Noche del mismo coche llevan al MISMO conductor, ese conductor hace TodoTurno ese día.
+// Ese coche sale de día Y de noche, así que conviene tenerlos presentes en la cobertura.
+function pintarTodoTurno() {
+  const box = $('#todoturno');
+  const porDriver = new Map();   // id -> { nombre, coches: Map(matrícula -> Set(diaNombre)) }
+  (D.coches || []).forEach(coche => {
+    const s = coche.semana || [];
+    for (let d = 0; d < 7; d++) {
+      const dia = s[d * 2], noche = s[d * 2 + 1];   // orden de TURNOS: [Día, Noche]
+      if (!dia || !noche || !dia.id || dia.id !== noche.id) continue;   // ha de cubrir AMBOS
+      const reg = porDriver.get(dia.id) || { nombre: dia.nombre || dia.id, coches: new Map() };
+      const dias = reg.coches.get(coche.matricula) || new Set();
+      dias.add(dia.diaNombre);
+      reg.coches.set(coche.matricula, dias);
+      porDriver.set(dia.id, reg);
+    }
+  });
+
+  if (!porDriver.size) { box.innerHTML = ''; return; }
+  const items = [...porDriver.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const abrev = d => (d || '').slice(0, 3);
+  box.innerHTML = `
+    <div class="rounded-xl border border-indigo-500/40 bg-indigo-900/20 p-4">
+      <div class="flex items-center gap-2 mb-2 text-indigo-300 font-semibold">
+        <i class="fa-solid fa-circle-half-stroke"></i> TodoTurno — cubren día y noche del mismo coche (${items.length})
+      </div>
+      <ul class="space-y-1 text-sm">
+        ${items.map(v => `
+          <li class="flex flex-wrap items-baseline gap-x-2">
+            <span class="font-medium text-telecab-text">${esc(v.nombre)}</span>
+            ${[...v.coches.entries()].map(([mat, dias]) =>
+              `<span class="text-telecab-muted">· <span class="font-mono text-telecab-text">${esc(mat)}</span>
+                 <span class="text-telecab-muted/70">(${[...dias].map(abrev).map(esc).join(' ')})</span></span>`).join('')}
+          </li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+// ════════ Por día ════════
+function pintarDias() {
+  const porDia = {};
+  D.cobertura.forEach(c => { (porDia[c.diaNombre] = porDia[c.diaNombre] || []).push(c); });
+
+  $('#panel-dias').innerHTML = DIAS_SEM.map(dia => {
+    const turnos = porDia[dia] || [];
+    return `
+    <div class="rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-telecab-border font-semibold text-telecab-text">${esc(dia)}</div>
+      <div class="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-telecab-border">
+        ${turnos.map(t => `
+          <div class="p-4">
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-sm text-telecab-text">${icono(t.turno)} ${esc(t.turno)}</span>
+              <span class="text-xs">
+                <span class="text-telecab-green">${t.enCalle.length} en la calle</span>
+                ${t.sinConductor.length ? ` · <span class="text-telecab-red">${t.sinConductor.length} parados</span>` : ''}
+              </span>
+            </div>
+            ${t.sinConductor.length ? `
+              <details class="text-xs">
+                <summary class="cursor-pointer text-telecab-red hover:underline">Ver por qué no salen (${t.sinConductor.length})</summary>
+                <ul class="mt-2 space-y-1">
+                  ${t.sinConductor.map(c => {
+                    const col = c.tipo === 'conflicto' ? 'text-telecab-red'
+                              : c.tipo === 'titular-pre-alta' ? 'text-sky-400'   // informativo: ya asignado, entra más tarde
+                              : c.tipo === 'sin_conductor' ? 'text-telecab-muted'
+                              : 'text-amber-400';   // vehículo o motivo de fecha
+                    const pre = c.tipo === 'titular-pre-alta' ? '<i class="fa-regular fa-hourglass-half mr-1"></i>' : '';
+
+                    return `<li class="flex items-baseline gap-2">
+                      <span class="font-medium text-telecab-text">${esc(c.matricula)}</span>
+                      <span class="${col}">${pre}${esc(c.motivo)}</span>
+                      ${c.zona ? `<span class="text-telecab-muted/70">· ${esc(c.zona)}</span>` : ''}
+                    </li>`;
+                  }).join('')}
+                </ul>
+              </details>` : '<p class="text-xs text-telecab-green">Todos los coches con conductor</p>'}
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════ Por conductor ════════
+// En la semana ACTUAL, cada conductor de HOY a 7 días (D.proximos): lo mismo que
+// ve él al pulsar «Ver mis turnos». Lo que ya pasó no interesa (28/09/2026). Las
+// semanas que vienen se siguen viendo de lunes a domingo, para planificar.
+const enVentana = () => SEMANA === 0 && !!(D && D.proximos);
+const personas = () => (enVentana() ? D.proximos.porConductor : D.porConductor) || [];
+const DIAS_ABR = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const fechaCorta = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number);
+  return `${DIAS_ABR[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`; };
+
+function pintarPersonas() {
+  const texto = $('#f-persona').value.trim().toLowerCase();
+  const v = enVentana() ? D.proximos : null;
+  $('#personas-ventana').textContent = v
+    ? `De hoy, ${fechaCorta(v.desde)}, al ${fechaCorta(v.hasta)}: lo mismo que ve cada conductor al pulsar «Ver mis turnos».`
+    : '';
+  // Se busca por nombre/ID/teléfono Y por MATRÍCULA: escribiendo "1208MJY" salen
+  // todos los conductores asociados a ese coche esta semana (fijos y correturnos).
+  const lista = personas()
+    .filter(p => {
+      if (!texto) return true;
+      const matriculas = p.dias.map(d => d.matricula || '').join(' ');
+      return `${p.nombre} ${p.id} ${p.telefono} ${matriculas}`.toLowerCase().includes(texto);
+    });
+
+  // Cuándo es el paso del coche, solo cuando aporta: si el coche queda parado en
+  // medio (no directo) y, en las semanas de lunes a domingo, al cruzar la semana
+  // ("lo deja el domingo pasado"). En el relevo directo pasa de mano en el momento.
+  // En la ventana de hoy a 7 días va con fecha: «pasado» ya no dice respecto a qué.
+  const suave = t => ` <span class="text-telecab-muted/70">· ${t}</span>`;
+  const cuandoRec = d => { const r = d.recibeDe || {}; const dia = (r.dia || '').toLowerCase();
+    if (v) return (!r.directo && r.fecha && r.fecha !== d.fecha) ? suave(`lo deja el ${esc(fechaCorta(r.fecha))}`) : '';
+    if (r.semanaPasada) return suave(`lo deja el ${esc(dia || 'domingo')} pasado`);
+    return (!r.directo && r.dia && r.dia !== d.diaNombre) ? suave(`lo deja el ${esc(dia)}`) : ''; };
+  const cuandoEnt = d => { const e = d.entregaA || {}; const dia = (e.dia || '').toLowerCase();
+    if (v) return (!e.directo && e.fecha && e.fecha !== d.fecha) ? suave(`lo coge el ${esc(fechaCorta(e.fecha))}`) : '';
+    if (e.semanaSiguiente) return suave(`lo coge el ${esc(dia || 'lunes')} que viene`);
+    return (!e.directo && e.dia && e.dia !== d.diaNombre) ? suave(`lo coge el ${esc(dia)}`) : ''; };
+  // En la ventana, cada día con su fecha y «hoy» marcado.
+  const etiqueta = d => v
+    ? `${esc(d.diaNombre)} <span class="font-normal text-telecab-muted">${esc(fechaCorta(d.fecha).split(' ')[1])}</span>` +
+      (d.hoy ? ' <span class="text-[10px] uppercase tracking-wide text-telecab-gold">hoy</span>' : '')
+    : esc(d.diaNombre);
+  const recibeTxt = d => d.recibeDe ? `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}${cuandoRec(d)}` : '';
+  const entregaTxt = d => d.entregaA ? `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}${cuandoEnt(d)}` : '';
+
+  $('#lista-personas').innerHTML = lista.map(p => {
+    const dias = p.dias.map(d => {
+      if (!d.trabaja) return `
+        <div class="flex items-baseline gap-3 text-sm py-1">
+          <span class="w-28 shrink-0 font-medium text-telecab-muted">${etiqueta(d)}</span>
+          <span class="${d.sinPlan ? "text-telecab-muted/40 italic" : "text-telecab-muted/60"}">${d.sinPlan ? "Sin plan cargado" : (p.deBaja ? "—" : "Libra")}</span>
+        </div>`;
+      const rec = recibeTxt(d), ent = entregaTxt(d);
+      return `
+        <div class="text-sm border-l-2 border-telecab-gold/40 pl-3 py-1">
+          <div class="flex items-baseline gap-2 flex-wrap">
+            <span class="w-28 shrink-0 font-semibold text-telecab-text">${etiqueta(d)}</span>
+            <span class="text-xs text-telecab-muted"><i class="fa-regular fa-clock mr-1"></i>${esc(d.turno)}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark text-telecab-text font-mono">${esc(d.matricula)}</span>
+          </div>
+          ${rec ? `<div class="text-telecab-muted text-[13px] mt-0.5 ml-1"><i class="fa-solid fa-arrow-right text-telecab-green text-[10px] mr-1"></i>${rec}</div>` : ''}
+          ${ent ? `<div class="text-telecab-muted text-[13px] ml-1"><i class="fa-solid fa-arrow-left text-amber-400 text-[10px] mr-1"></i>${ent}</div>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+        <div class="mb-3 flex items-start justify-between gap-2">
+          <div>
+            <div class="text-telecab-text font-semibold">${esc(p.nombre || p.id)}</div>
+            <div class="text-xs text-telecab-muted flex items-center gap-2 flex-wrap">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''} ${chipBaja(p)}${chipAviso(p)}</div>
+          </div>
+          <button class="btn-turno shrink-0 px-3 py-1.5 rounded-lg bg-green-600/15 text-green-400 text-xs font-medium hover:bg-green-600/25 disabled:opacity-40"
+                  data-id="${esc(p.id)}" ${p.telefono && !p.deBaja ? '' : 'disabled'} title="${p.deBaja ? 'Ya no está de alta: no se le avisa' : (p.telefono ? 'Enviar sus turnos por WhatsApp' : 'Sin teléfono en la agenda')}">
+            <i class="fa-brands fa-whatsapp mr-1"></i> Enviar
+          </button>
+        </div>
+        <div class="space-y-1">${dias}</div>
+      </div>`;
+  }).join('') || '<p class="text-telecab-muted">Ningún conductor coincide.</p>';
+}
+
+// ════════ Pestañas y filtros ════════
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => {
+    const activa = x === t;
+    x.className = 'tab whitespace-nowrap px-5 py-2.5 font-medium border-b-2 ' +
+      (activa ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+  });
+  ['dias', 'personas'].forEach(p =>
+    $('#panel-' + p).classList.toggle('hidden', t.dataset.tab !== p));
+}));
+
+$('#f-persona').addEventListener('input', pintarPersonas);
+$('#btn-recargar').addEventListener('click', cargar);
+$('#sem-prev').addEventListener('click', () => { if (SEMANA > 0) { SEMANA--; cargar(); } });
+$('#sem-next').addEventListener('click', () => { if (SEMANA < 8) { SEMANA++; cargar(); } });
+$('#sem-hoy').addEventListener('click', () => { if (SEMANA !== 0) { SEMANA = 0; cargar(); } });
+
+// ── Envío de turnos por WhatsApp ──
+let _pollTurnos = null;
+$('#lista-personas').addEventListener('click', async e => {
+  const b = e.target.closest('.btn-turno'); if (!b || b.disabled) return;
+  const p = personas().find(x => String(x.id) === String(b.dataset.id)) || {};
+  if (!(await Dialogo.confirmar({
+    titulo: `Enviar sus turnos a ${p.nombre || b.dataset.id}`, si: 'Enviar', no: 'Cancelar',
+    texto: `Le llega el aviso por WhatsApp${p.telefono ? ' al ' + p.telefono : ''}. Al pulsar «Ver mis turnos» verá los suyos de ese día a 7 días.`,
+  }))) return;
+  const o = b.innerHTML; b.disabled = true; b.innerHTML = 'Enviando…';
+  try {
+    await Api.post('/cobertura/enviar-turnos', { idBolt: b.dataset.id, semana: SEMANA });
+    b.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Enviado';   // y se queda apagado: ya está enviado
+    cargarAvisos();   // el aviso queda registrado: chip verde y el informe al día
+  } catch (err) {
+    b.innerHTML = o; b.disabled = false;
+    await Dialogo.aviso({ titulo: 'No se pudo enviar', texto: err.message, tono: 'error' });
+  }
+});
+
+$('#btn-turnos-todos').addEventListener('click', async () => {
+  // Los de baja no entran en la cuenta porque tampoco entran en el envío (lo
+  // decide el servidor, esto solo es no mentir sobre cuántos van a recibirlo).
+  const n = personas().filter(p => p.telefono && !p.deBaja && p.dias.some(d => d.trabaja)).length;
+  // A CIENTOS DE PERSONAS Y SIN VUELTA ATRÁS (y Meta cobra cada plantilla que
+  // no vaya dentro de la ventana de 24 h): en rojo, con el número delante, y
+  // Enter cancela.
+  if (!(await Dialogo.confirmar({
+    titulo: `Enviar los turnos a ${n} conductor${n === 1 ? '' : 'es'}`, tono: 'peligro', enterCancela: true,
+    si: `Enviar ${n} WhatsApp`, no: 'Cancelar',
+    texto: `Les llega el aviso a los que trabajan ${enVentana() ? 'de hoy a 7 días' : 'esa semana'} y tienen teléfono. Los mensajes no se pueden retirar una vez enviados.`,
+  }))) return;
+  $('#btn-turnos-todos').disabled = true;
+  try {
+    await Api.post('/cobertura/enviar-turnos-todos', { semana: SEMANA });
+    arrancarPollTurnos();   // el botón vuelve cuando el envío termina
+  } catch (err) {
+    $('#btn-turnos-todos').disabled = false;
+    await Dialogo.aviso({ titulo: 'No se pudo iniciar el envío', texto: err.message, tono: 'error' });
+  }
+});
+async function pollTurnos() {
+  try {
+    const d = await Api.get('/cobertura/enviar-turnos/estado');
+    const p = d.progreso || {};
+    $('#turnos-estado').textContent = p.activo
+      ? `Enviando… ${p.enviados}/${p.total}${p.errores ? ' · ' + p.errores + ' err' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin tel' : ''}`
+      : (p.total ? `${p.enviados}/${p.total} enviados${p.errores ? ' · ' + p.errores + ' con error' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin teléfono' : ''}` : '');
+    if (!p.activo) { clearInterval(_pollTurnos); _pollTurnos = null; $('#btn-turnos-todos').disabled = false; cargarAvisos(); }
+  } catch (_) {}
+}
+function arrancarPollTurnos() { $('#turnos-estado').textContent = 'Iniciando…'; if (!_pollTurnos) _pollTurnos = setInterval(pollTurnos, 3000); pollTurnos(); }
+
+cargar();

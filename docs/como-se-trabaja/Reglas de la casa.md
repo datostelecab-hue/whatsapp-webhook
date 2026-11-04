@@ -218,10 +218,25 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   03/11/2026 la CSP de scripts es obligatoria y el navegador **no ejecuta** ni lo
   uno ni lo otro: la pantalla sale muerta, sin error en el servidor.
   `node scripts/comprobar-vistas.js` lo avisa. → [[Seguridad]]
-- **Los datos del servidor entran en un `<script>` con `<%- json(x) %>`**, nunca con
-  `<%- JSON.stringify(x) %>` (03/11/2026, `app.locals.json` en `app.js`).
-  `JSON.stringify` no escapa «<», y un texto que lleve `</script>` (un nombre de
-  vacante, de documento…) cerraría el bloque y dejaría la pantalla rota.
+- **El JavaScript de una pantalla vive en su fichero, no en la vista** (04/11/2026,
+  FRO-4): `public/assets/js/vistas/<Módulo>/<vista>.js` (las de `views/`, en
+  `vistas/<vista>.js`; el layout, en `public/assets/js/layout/`), cargado con
+  `<script src="<%= est('/assets/js/vistas/…') %>"></script>`. Ahí se cachea y
+  pasa `npm run lint` (ESLint con `no-undef`). En una vista solo caben los
+  arranques cortos que corren antes de pintar (el tema de la cabecera de los
+  layouts); `comprobar-vistas` falla con un `<script>` en línea de más de 30
+  líneas.
+- **Los datos del servidor van en el bloque de la vista y se leen con `Casa.datos()`**
+  (04/11/2026, FRO-4), porque un `.js` no pasa por EJS:
+  `<script type="application/json" id="datos-servidor"><%- json({ a, b }) %></script>`
+  justo antes del script, y en él `const DEL_SERVIDOR = Casa.datos();` (dentro de
+  la IIFE, si la hay). No `DATOS`: ya existe en varias pantallas y dos `const` del
+  mismo nombre en una página matan el segundo script. El valor tiene que llegar
+  con su tipo (un permiso, `!!x`; un número, `Number(n)`). Siempre con
+  `<%- json(…) %>` (`app.locals.json`), nunca con `JSON.stringify`, que no escapa
+  «<». `comprobar-vistas` mira que cada `DEL_SERVIDOR.x` esté en el bloque y que
+  dos scripts de una página no declaren el mismo nombre; `Casa.datos()` avisa al
+  log de una clave que no llegó.
 - **Un texto que viene de datos se pinta como texto**: `textContent`, o `esc()`
   si va dentro de una plantilla HTML. En una vista, `const esc = Casa.esc;`
   (`nucleo.js`, 04/11/2026), que escapa los cinco (`& < > " '`); no se escribe

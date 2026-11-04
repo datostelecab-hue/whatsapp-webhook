@@ -1,0 +1,463 @@
+// modules/Seleccion/vistas/generador.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026).
+
+  const $ = s => document.querySelector(s);
+  let DATOS = { zonas: [] };
+  const estado = { tipo: 'CT', turno: 'Día', contrato: 40 };
+  const LETRA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const DIAS_NOM = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const fijosTexto = b => `Fijo día: ${b.fijoDia || 'no asignado'} · Fijo noche: ${b.fijoNoche || 'no asignado'}`;
+
+  // Estado del resultado interactivo (CT) y de la vacante fija.
+  let POOL = {}, POOL_ARR = [], SEL = new Set(), OBJETIVO = 6, TURNO = 'Día', ZONA = '', CONTRATO = null;
+  let FIJO = null;
+
+  function pintarToggle(id, val) {
+    document.querySelectorAll(`#${id} [data-val]`).forEach(b => {
+      const on = b.dataset.val == val;
+      b.className = 'flex-1 px-3 py-2 text-sm transition' + (b.previousElementSibling ? ' border-l border-telecab-border' : '') +
+        (on ? ' bg-telecab-gold/20 text-telecab-gold font-semibold' : ' text-telecab-muted hover:bg-telecab-card2');
+    });
+  }
+  $('#tg-turno').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.turno = b.dataset.val; pintarToggle('tg-turno', estado.turno); llenarMatriculas(); pintarPendientes(); });
+  $('#tg-dias').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.contrato = Number(b.dataset.val); pintarToggle('tg-dias', estado.contrato); });
+
+  const AYUDA_TIPO = {
+    CT: 'Se encadenan los días de descanso de varios coches hasta completar el contrato. Es el correturnos.',
+    Fijo: 'Una matrícula, toda la semana que ese coche sale. Jornada completa.',
+    Recambio: 'A alguien se le va a sacar y hay que buscar quién lo sustituya. La vacante sale de las plazas que ocupa HOY —con su coche, su zona y sus libranzas— y ofrece el contrato que corresponda a eso.',
+  };
+
+  function pintarTipo() {
+    document.querySelectorAll('#tg-tipo [data-val]').forEach(b => {
+      const on = b.dataset.val === estado.tipo;
+      b.className = 'px-4 py-2 text-sm transition' + (b.previousElementSibling ? ' border-l border-telecab-border' : '') +
+        (on ? ' bg-telecab-gold/20 text-telecab-gold font-semibold' : ' text-telecab-muted hover:bg-telecab-card2');
+    });
+    const fijo = estado.tipo === 'Fijo';
+    const recambio = estado.tipo === 'Recambio';
+    $('#tipo-ayuda').textContent = AYUDA_TIPO[estado.tipo] || '';
+    $('#modo-hueco').classList.toggle('hidden', recambio);
+    $('#modo-recambio').classList.toggle('hidden', !recambio);
+    $('#pendientes-wrap').classList.toggle('hidden', recambio);
+    $('#wrap-dias').classList.toggle('hidden', fijo);
+    $('#lbl-matricula').textContent = fijo ? 'Matrícula del fijo' : 'Matrícula de partida';
+    $('#resultado').classList.add('hidden');
+    $('#resultado-fijo').classList.add('hidden');
+    $('#resultado-recambio').classList.add('hidden');
+    if (recambio) { buscarPlantilla(); return; }
+    llenarMatriculas();
+    pintarPendientes();
+  }
+  $('#tg-tipo').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.tipo = b.dataset.val; pintarTipo(); });
+
+  function huecosDe(mat) { return estado.turno === 'Día' ? (mat.dia || []) : (mat.noche || []); }
+
+  function llenarMatriculas() {
+    const zona = $('#sel-zona').value;
+    const z = DATOS.zonas.find(x => x.zona === zona);
+    const sel = $('#sel-matricula');
+    sel.innerHTML = '<option value="">—</option>';
+    if (z) {
+      // Fijo: matrículas cuyo fijo de ese turno está SIN asignar. CT: con huecos.
+      const fijoVacio = m => estado.turno === 'Día' ? !m.fijoDia : !m.fijoNoche;
+      z.matriculas
+        .filter(m => estado.tipo === 'Fijo' ? fijoVacio(m) : huecosDe(m).length)
+        .forEach(m => {
+          const o = document.createElement('option');
+          o.value = m.matricula;
+          o.textContent = estado.tipo === 'Fijo'
+            ? m.matricula
+            : `${m.matricula} (huecos: ${huecosDe(m).map(d => LETRA[d]).join('')})`;
+          sel.appendChild(o);
+        });
+    }
+    $('#btn-generar').disabled = !sel.value;
+  }
+  $('#sel-zona').addEventListener('change', llenarMatriculas);
+  $('#sel-matricula').addEventListener('change', () => { $('#btn-generar').disabled = !$('#sel-matricula').value; });
+
+  // ---- Pendientes de generar (huecos sin vacante guardada) ----
+  function huecosTurno(m) { return estado.turno === 'Día' ? (m.dia || []) : (m.noche || []); }
+  function enVacanteTurno(m) { return estado.turno === 'Día' ? m.enVacanteDia : m.enVacanteNoche; }
+  function fijoTurnoVacio(m) { return estado.turno === 'Día' ? !m.fijoDia : !m.fijoNoche; }
+
+  function pintarPendientes() {
+    const pend = [];
+    DATOS.zonas.forEach(z => z.matriculas.forEach(m => {
+      // Pendiente = hueco de CT en este turno O fijo de este turno sin asignar.
+      if ((huecosTurno(m).length || fijoTurnoVacio(m)) && !enVacanteTurno(m)) pend.push({ ...m, zona: z.zona });
+    }));
+    $('#pend-turno').textContent = `(${estado.turno}: ${pend.length})`;
+    const wrap = $('#pendientes-wrap');
+    if (!pend.length) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    $('#pendientes').innerHTML = pend.map(m => {
+      const huecos = huecosTurno(m).map(d => LETRA[d]).join('');
+      const esFijo = fijoTurnoVacio(m);
+      const tag = esFijo
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-gold/15 text-telecab-gold shrink-0">fijo</span>'
+        : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted shrink-0">CT</span>';
+      return `<button data-pend="${m.zona}|${m.matricula}|${esFijo ? 'Fijo' : 'CT'}" class="w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition">
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-mono text-telecab-text">${m.matricula} <span class="text-telecab-gold text-xs">${huecos}</span></span>
+            <span class="block text-[11px] text-telecab-muted truncate">${m.zona} · ${fijosTexto(m)}</span></span>
+          ${tag}</button>`;
+    }).join('');
+  }
+
+  $('#pendientes').addEventListener('click', e => {
+    const b = e.target.closest('[data-pend]'); if (!b) return;
+    const [zona, matricula, tipo] = b.dataset.pend.split('|');
+    $('#sel-zona').value = zona;
+    estado.tipo = tipo; pintarTipo();               // fija tipo + llenarMatriculas (con zona ya puesta)
+    $('#sel-matricula').value = matricula; $('#btn-generar').disabled = !matricula;
+    generar();
+  });
+
+  async function refrescarPendientes() {
+    try { const r = await (await fetch('/generador/api/datos')).json(); if (r.status === 'ok') { DATOS = r; pintarPendientes(); } } catch (_) {}
+  }
+
+  function msg(t, ok) { const el = $('#msg'); el.textContent = t; el.className = 'text-xs ' + (ok ? 'text-telecab-green' : 'text-telecab-red'); el.classList.remove('hidden'); }
+
+  // ---- Render interactivo ----
+  function diasCubiertos() { const s = new Set(); SEL.forEach(m => (POOL[m].dias || []).forEach(d => s.add(d.dia))); return s; }
+  function matriculaDelDia(d) { for (const m of SEL) if ((POOL[m].dias || []).some(x => x.dia === d)) return m; return null; }
+
+  function celdaDia(d) {
+    const m = matriculaDelDia(d);
+    if (!m) return `<div class="rounded-lg border border-telecab-border bg-telecab-dark px-2 py-3 text-center">
+        <div class="text-[10px] text-telecab-muted uppercase">${DIAS_NOM[d]}</div>
+        <div class="text-xs text-telecab-muted mt-1">Libre</div></div>`;
+    const b = POOL[m];
+    const cls = b.sugerido ? 'border-sky-500/50 bg-sky-500/15' : 'border-telecab-gold/50 bg-telecab-gold/15';
+    return `<div class="rounded-lg border ${cls} px-2 py-3 text-center">
+        <div class="text-[10px] text-telecab-muted uppercase">${DIAS_NOM[d]}</div>
+        <div class="text-xs font-mono text-telecab-text mt-1 truncate" title="${m} · ${b.zona} · ${fijosTexto(b)}">${m}</div>
+        ${b.sugerido ? '<div class="text-[9px] text-sky-400 truncate">' + b.zona + '</div>' : ''}</div>`;
+  }
+
+  function filaBloque(m, modo) {
+    const b = POOL[m];
+    const dias = b.dias.map(x => x.nombre).join(', ');
+    const badge = b.sugerido
+      ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 whitespace-nowrap">${b.zona} · ${b.km} km</span>`
+      : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-gold/15 text-telecab-gold whitespace-nowrap">${b.zona}</span>`;
+    const btn = modo === 'sel'
+      ? `<button data-quitar="${m}" aria-label="Quitar ${Casa.esc(m)}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-red hover:bg-telecab-red/10 border border-telecab-red/30 text-xs transition">Quitar</button>`
+      : `<button data-agregar="${m}" aria-label="Agregar ${Casa.esc(m)}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-green hover:bg-telecab-green/10 border border-telecab-green/30 text-xs transition">Agregar</button>`;
+    return `<div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40">
+        <span class="w-8 h-8 rounded-lg bg-telecab-card2 text-telecab-text flex items-center justify-center shrink-0"><i class="fa-solid fa-car-side text-xs"></i></span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm font-mono text-telecab-text">${m} <span class="text-telecab-muted font-sans text-xs">· ${dias}</span></span>
+          <span class="block text-xs text-telecab-muted">${fijosTexto(b)}</span></span>
+        ${badge}${btn}</div>`;
+  }
+
+  function renderResultado() {
+    const cub = diasCubiertos();
+    $('#res-titulo').textContent = `Vacante CT ${TURNO}${CONTRATO ? ' · ' + CONTRATO + ' h' : ''} · ${cub.size}/${OBJETIVO} días · zona ${ZONA}`;
+    const est = $('#res-estado');
+    if (cub.size >= OBJETIVO) { est.textContent = 'Completa'; est.className = 'text-xs px-2.5 py-1 rounded-full border border-telecab-green/40 text-telecab-green bg-telecab-green/10'; }
+    else { est.textContent = `Faltan ${OBJETIVO - cub.size} días`; est.className = 'text-xs px-2.5 py-1 rounded-full border border-telecab-gold/40 text-telecab-gold bg-telecab-gold/10'; }
+
+    $('#semana').innerHTML = [0, 1, 2, 3, 4, 5, 6].map(celdaDia).join('');
+    $('#sel-bloques').innerHTML = [...SEL].map(m => filaBloque(m, 'sel')).join('') || '<p class="text-telecab-muted text-sm">Ninguna matrícula.</p>';
+
+    const comp = POOL_ARR
+      .filter(m => !SEL.has(m) && POOL[m].dias.every(x => !cub.has(x.dia)))
+      .sort((a, b) => {
+        const A = POOL[a], B = POOL[b];
+        if (A.sugerido !== B.sugerido) return A.sugerido ? 1 : -1;
+        if (A.km !== B.km) return A.km - B.km;
+        return B.dias.length - A.dias.length;
+      });
+    $('#compatibles').innerHTML = comp.map(m => filaBloque(m, 'comp')).join('') ||
+      '<p class="text-telecab-muted text-sm">No hay más opciones compatibles (los huecos restantes chocan de día).</p>';
+  }
+
+  $('#resultado').addEventListener('click', e => {
+    const a = e.target.closest('[data-agregar]'); if (a) { SEL.add(a.dataset.agregar); renderResultado(); return; }
+    const q = e.target.closest('[data-quitar]'); if (q) { SEL.delete(q.dataset.quitar); renderResultado(); return; }
+  });
+
+  $('#btn-guardar-vac').addEventListener('click', async () => {
+    const mv = $('#msg-vac');
+    if (!SEL.size) { mv.textContent = 'La vacante no tiene matrículas.'; mv.className = 'text-xs mt-2 text-telecab-red'; return; }
+    // La PLAZA viaja con la matrícula: la vacante apunta a la plaza real del
+    // tablero, no a un texto que haya que resolver el día del alta.
+    const matriculas = [...SEL].map(m => ({ matricula: m, plazaId: POOL[m].plazaId, zona: POOL[m].zona, dias: POOL[m].dias.map(x => x.dia) }));
+    const btn = $('#btn-guardar-vac'); btn.disabled = true;
+    const r = await (await fetch('/generador/api/guardar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turno: TURNO, objetivo: OBJETIVO, contrato: CONTRATO, matriculas })
+    })).json();
+    btn.disabled = false;
+    if (r.status === 'ok') { mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes(); }
+    else { mv.textContent = r.msg || 'No se pudo guardar'; mv.className = 'text-xs mt-2 text-telecab-red'; }
+    mv.classList.remove('hidden');
+  });
+
+  function renderFijo(zona, matricula) {
+    const z = DATOS.zonas.find(x => x.zona === zona);
+    const m = z && z.matriculas.find(x => x.matricula === matricula);
+    if (!m) { msg('Matrícula no encontrada.', false); return; }
+    FIJO = { matricula, zona, turno: estado.turno, fijoDia: m.fijoDia || '', fijoNoche: m.fijoNoche || '',
+             plazaId: estado.turno === 'Día' ? m.plazaFijoDia : m.plazaFijoNoche };
+    $('#fijo-titulo').textContent = `Vacante Fijo ${estado.turno} · zona ${zona}`;
+    $('#fijo-detalle').innerHTML =
+      `<div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40">
+        <span class="w-8 h-8 rounded-lg bg-telecab-card2 text-telecab-text flex items-center justify-center shrink-0"><i class="fa-solid fa-car-side text-xs"></i></span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm font-mono text-telecab-text">${matricula}</span>
+          <span class="block text-xs text-telecab-muted">${fijosTexto(m)}</span>
+          <span class="block text-[11px] text-telecab-muted">Trabaja toda la semana (${estado.turno}); librá 2 días a definir.</span></span>
+      </div>`;
+    $('#msg-fijo').classList.add('hidden');
+    $('#resultado').classList.add('hidden');
+    $('#resultado-fijo').classList.remove('hidden');
+    $('#resultado-fijo').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('#btn-guardar-fijo').addEventListener('click', async () => {
+    if (!FIJO) return;
+    const mv = $('#msg-fijo');
+    try {
+      const r = await Api.post('/generador/api/guardar', { tipo: 'fijo', turno: FIJO.turno,
+        matriculas: [{ matricula: FIJO.matricula, plazaId: FIJO.plazaId, zona: FIJO.zona, dias: [] }] },
+        { boton: $('#btn-guardar-fijo') });
+      mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes();
+    } catch (e) { mv.textContent = e.message || 'No se pudo guardar'; mv.className = 'text-xs mt-2 text-telecab-red'; }
+    mv.classList.remove('hidden');
+  });
+
+  async function generar() {
+    const zona = $('#sel-zona').value, matricula = $('#sel-matricula').value;
+    if (!zona || !matricula) { msg('Elige zona y matrícula.', false); return; }
+    $('#msg').classList.add('hidden');
+    if (estado.tipo === 'Fijo') { renderFijo(zona, matricula); return; }
+    const btn = $('#btn-generar'); btn.disabled = true;
+    const r = await (await fetch('/generador/api/generar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zona, turno: estado.turno, contrato: estado.contrato, matricula })
+    })).json();
+    btn.disabled = false;
+    if (r.status !== 'ok') { msg(r.msg || 'No se pudo generar', false); return; }
+
+    POOL = {}; POOL_ARR = [];
+    (r.pool || []).forEach(b => { POOL[b.matricula] = b; POOL_ARR.push(b.matricula); });
+    SEL = new Set((r.propuesta || []).filter(m => POOL[m]));
+    OBJETIVO = r.objetivo; TURNO = r.turno; ZONA = r.zona; CONTRATO = r.contrato;
+    renderResultado();
+    $('#resultado').classList.remove('hidden');
+    $('#resultado').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  $('#btn-generar').addEventListener('click', generar);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUSCAR RECAMBIO
+  // ═══════════════════════════════════════════════════════════════════════
+  // El otro sentido de generar una vacante: no se parte de un hueco, se parte de
+  // una PERSONA a la que hay que sustituir. Lo que ocupa hoy —sus plazas, su
+  // coche, sus días— ES la vacante, y el contrato sale de ahí: un fijo son 40 h;
+  // un correturnos, 32, o 40 si llega a los 6 días (tres coches).
+
+  let RC = null;                    // la propuesta que se está mirando
+  let RC_SEL = new Set();           // qué plazas se incluyen
+  let rcTimer = null;
+
+  const rcHoras = n => (n == null ? '—' : String(n).replace('.', ',') + ' h');
+  // El semáforo de horas de la casa: por debajo de 6 h de media el problema no es
+  // que falte gente, es esa persona.
+  const rcTono = h => (h == null ? 'text-telecab-muted'
+    : h < 6 ? 'text-telecab-red' : h < 8 ? 'text-telecab-warn' : 'text-telecab-green');
+
+  async function buscarPlantilla() {
+    const q = $('#rc-busca').value.trim();
+    const cont = $('#rc-lista');
+    cont.innerHTML = '<p class="text-sm text-telecab-muted px-1">Buscando…</p>';
+    try {
+      const r = await (await fetch('/generador/api/plantilla?limite=250&q=' + encodeURIComponent(q))).json();
+      if (r.status !== 'ok') throw new Error(r.msg);
+      pintarPlantilla(r.filas || []);
+    } catch (e) {
+      cont.innerHTML = '<p class="text-sm text-telecab-red px-1">' + e.message + '</p>';
+    }
+  }
+
+  function pintarPlantilla(filas) {
+    const cont = $('#rc-lista');
+    if (!filas.length) {
+      cont.innerHTML = '<p class="text-sm text-telecab-muted px-1">Nadie con ese nombre o esa matrícula.</p>';
+      return;
+    }
+    cont.innerHTML = filas.map(f => {
+      const ya = f.vacanteAbierta
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet whitespace-nowrap" title="Ya tiene una vacante abierta para sustituirlo">${f.vacanteAbierta}</span>` : '';
+      const aus = f.ausente
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 whitespace-nowrap">${f.estado}</span>` : '';
+      const sub = `${f.rol === 'CT' ? 'CT' : 'Fijo'} ${f.turno} · ${f.matriculas || '—'} · ${f.zonas || 'sin zona'}`
+        + ` · ${f.dias} día(s) · ${f.contrato}${f.jornadaHoras ? ' ' + f.jornadaHoras + ' h' : ''}`;
+      return `<button data-rc="${f.conductorId}" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition">
+        <span class="min-w-0 flex-1">
+          <span class="block text-sm text-telecab-text truncate">${f.nombre}</span>
+          <span class="block text-[11px] text-telecab-muted truncate">${sub}</span>
+        </span>
+        ${aus}${ya}
+        <span class="text-sm font-semibold tabular-nums whitespace-nowrap ${rcTono(f.mediaHoras)}" title="Media de horas de las últimas 4 semanas">${rcHoras(f.mediaHoras)}</span>
+      </button>`;
+    }).join('');
+  }
+
+  $('#rc-busca').addEventListener('input', () => {
+    clearTimeout(rcTimer);
+    rcTimer = setTimeout(buscarPlantilla, 250);
+  });
+
+  $('#rc-lista').addEventListener('click', e => {
+    const b = e.target.closest('[data-rc]');
+    if (b) abrirRecambio(b.dataset.rc);
+  });
+
+  async function abrirRecambio(conductorId) {
+    const r = await (await fetch('/generador/api/recambio/' + conductorId)).json();
+    if (r.status !== 'ok') {
+      return Dialogo.aviso({ titulo: 'No se puede armar el recambio', texto: r.msg, tono: 'aviso' });
+    }
+    RC = r;
+    // Las plazas ya prometidas en otra vacante no se pueden volver a prometer:
+    // entran desmarcadas y bloqueadas, con el código de la que las tiene.
+    RC_SEL = new Set(r.plazas.filter(x => !x.comprometida).map(x => x.plazaId));
+    $('#rc-salida').value = '';
+    $('#rc-notas').value = '';
+    $('#msg-rc').classList.add('hidden');
+    renderRecambio();
+    $('#resultado-recambio').classList.remove('hidden');
+    $('#resultado-recambio').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  /** Los días que cubren las plazas elegidas, y el contrato que sale de eso. */
+  function rcCalculo() {
+    const dias = new Set();
+    RC.plazas.filter(x => RC_SEL.has(x.plazaId)).forEach(x => (x.dias || []).forEach(d => dias.add(d)));
+    // La MISMA regla que aplica el servidor, para que la pantalla no diga una
+    // cosa y se guarde otra: fijo, jornada completa; CT, por días cubiertos.
+    const tramos = (DATOS.contratos || []).slice().sort((x, y) => x.horas - y.horas);
+    let horas = null;
+    if (RC.rol === 'FIJO') horas = tramos.length ? tramos[tramos.length - 1].horas : null;
+    else {
+      const cabe = tramos.filter(t => t.dias <= dias.size);
+      horas = cabe.length ? cabe[cabe.length - 1].horas : (tramos[0] || {}).horas;
+    }
+    return { dias, horas };
+  }
+
+  function renderRecambio() {
+    const c = RC.conductor;
+    const calc = rcCalculo();
+    const dias = calc.dias, horas = calc.horas;
+    const libra = [1, 2, 3, 4, 5, 6, 7].filter(d => !dias.has(d)).map(d => LETRA[d - 1]);
+
+    $('#rc-titulo').textContent = 'Recambio de ' + c.nombre;
+    $('#rc-sub').textContent =
+      `${RC.rol === 'CT' ? 'Correturnos' : 'Fijo'} ${RC.turno} · ${RC.zonas || 'sin zona'} · `
+      + `${RC_SEL.size} de ${RC.plazas.length} plaza(s) · ${dias.size} día(s) · libra ${libra.join(' ') || '—'}`;
+    $('#rc-jornada').textContent = horas ? 'Contrato de ' + horas + ' h' : 'Sin contrato';
+
+    const dato = (et, v, tono) => `<div class="px-3 py-2 rounded-xl bg-telecab-dark/40">
+        <p class="text-[10px] uppercase tracking-wide text-telecab-muted">${et}</p>
+        <p class="text-sm ${tono || 'text-telecab-text'} truncate">${v || '—'}</p></div>`;
+    $('#rc-persona').innerHTML =
+      dato('Teléfono', c.telefono)
+      + dato('Contrato actual', c.contrato + (c.jornadaHoras ? ' · ' + c.jornadaHoras + ' h' : ''))
+      + dato('Media 4 semanas', rcHoras(c.mediaHoras), rcTono(c.mediaHoras) + ' font-semibold')
+      + dato('Estado', c.estado + (c.alta ? ' · alta ' + c.alta.split('-').reverse().join('/') : ''));
+
+    $('#rc-plazas').innerHTML = RC.plazas.map(x => {
+      const on = RC_SEL.has(x.plazaId);
+      const bloqueada = !!x.comprometida;
+      const rol = x.rol === 'CT' ? 'CT' + (x.ordenCt || '') : 'Fijo';
+      return `<label class="flex items-center gap-3 px-3 py-2 rounded-xl ${bloqueada ? 'bg-telecab-violet/5 border border-telecab-violet/25 opacity-70' : 'bg-telecab-dark/40 cursor-pointer'}">
+        <input type="checkbox" data-plaza="${x.plazaId}" ${on ? 'checked' : ''} ${bloqueada ? 'disabled' : ''}
+               class="w-4 h-4 accent-telecab-gold shrink-0">
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm font-mono text-telecab-text">${x.matricula}
+            <span class="text-telecab-gold text-xs font-sans">${x.letras || ''}</span>
+            <span class="text-telecab-muted font-sans text-xs">· ${rol} ${x.turno}</span></span>
+          <span class="block text-[11px] text-telecab-muted truncate">${x.zona || 'sin zona'}${x.cuadrante ? ' · ' + x.cuadrante : ''} · el coche descansa ${x.descansoLetras || '—'} · ${x.estadoCoche}</span>
+        </span>
+        ${bloqueada ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet whitespace-nowrap" title="Esta plaza ya está prometida en otra vacante">${x.comprometida}</span>` : ''}
+      </label>`;
+    }).join('');
+
+    $('#rc-semana').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(d => {
+      const x = RC.plazas.find(y => RC_SEL.has(y.plazaId) && (y.dias || []).includes(d));
+      if (!x) return `<div class="rounded-lg border border-telecab-border bg-telecab-dark px-2 py-3 text-center">
+          <div class="text-[10px] text-telecab-muted uppercase">${DIAS_NOM[d - 1]}</div>
+          <div class="text-xs text-telecab-muted mt-1">Libra</div></div>`;
+      return `<div class="rounded-lg border border-telecab-gold/50 bg-telecab-gold/15 px-2 py-3 text-center">
+          <div class="text-[10px] text-telecab-muted uppercase">${DIAS_NOM[d - 1]}</div>
+          <div class="text-xs font-mono text-telecab-text mt-1 truncate" title="${x.matricula} · ${x.zona}">${x.matricula}</div></div>`;
+    }).join('');
+
+    $('#rc-porque').textContent = RC.rol === 'FIJO'
+      ? 'Fijo: lleva su coche todos los días que sale, jornada completa.'
+      : `Correturnos de ${dias.size} día(s) en ${RC_SEL.size} coche(s) → contrato de ${horas} h.`;
+  }
+
+  $('#rc-plazas').addEventListener('change', e => {
+    const cb = e.target.closest('[data-plaza]');
+    if (!cb) return;
+    if (cb.checked) RC_SEL.add(cb.dataset.plaza); else RC_SEL.delete(cb.dataset.plaza);
+    renderRecambio();
+  });
+
+  $('#btn-rc-volver').addEventListener('click', () => {
+    $('#resultado-recambio').classList.add('hidden');
+    $('#rc-busca').focus();
+  });
+
+  $('#btn-guardar-recambio').addEventListener('click', async () => {
+    const mv = $('#msg-rc');
+    if (!RC_SEL.size) {
+      mv.textContent = 'Hay que dejar al menos una plaza.';
+      mv.className = 'text-xs text-telecab-red';
+      mv.classList.remove('hidden');
+      return;
+    }
+    const btn = $('#btn-guardar-recambio');
+    btn.disabled = true;
+    const r = await (await fetch('/generador/api/recambio', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conductorId: RC.conductor.id,
+        plazas: [...RC_SEL],
+        salidaPrevista: $('#rc-salida').value || null,
+        notas: $('#rc-notas').value || null,
+      }),
+    })).json();
+    btn.disabled = false;
+    if (r.status === 'ok') {
+      mv.textContent = `Vacante ${r.codigo} creada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`;
+      mv.className = 'text-xs text-telecab-green';
+      buscarPlantilla();
+    } else {
+      mv.textContent = r.msg || 'No se pudo guardar';
+      mv.className = 'text-xs text-telecab-red';
+    }
+    mv.classList.remove('hidden');
+  });
+
+  async function cargar() {
+    const r = await (await fetch('/generador/api/datos')).json();
+    if (r.status !== 'ok') return;
+    DATOS = r;
+    $('#sel-zona').innerHTML = '<option value="">— elige zona —</option>' +
+      DATOS.zonas.map(z => `<option value="${z.zona}">${z.zona}</option>`).join('');
+    pintarToggle('tg-turno', estado.turno);
+    pintarToggle('tg-dias', estado.contrato);
+    pintarTipo();
+    pintarPendientes();
+  }
+  cargar();

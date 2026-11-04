@@ -1,0 +1,471 @@
+// modules/Ticketera/vistas/ticketera.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  const $ = s => document.querySelector(s);
+  const esc = Casa.esc;
+  const BASE = DEL_SERVIDOR.base;
+  // LA PARTE DE LA BANDEJA (?grupo=), si se ha llegado desde un cuadro partido
+  // de la barra (RRHH en pantalla grande): «Casos de nómina», «Vacaciones»…
+  // «otros» es lo que no cae en ninguna.
+  const PARTES = DEL_SERVIDOR.partes;
+  const GRUPO = (() => {
+    const g = new URLSearchParams(location.search).get('grupo');
+    if (!g || !PARTES.length) return null;
+    if (g === 'otros') {
+      const todos = new Set(PARTES.flatMap(p => p.subtipos));
+      return { etiqueta: 'Otros de RRHH', pasa: s => !todos.has(s) };
+    }
+    const p = PARTES.find(x => x.clave === g);
+    return p ? { etiqueta: p.etiqueta, pasa: s => p.subtipos.includes(s) } : null;
+  })();
+  const YO   = DEL_SERVIDOR.yo;
+  // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026, db/189): Laura
+  // Blanco. El resto ve sus tickets, se los queda, los enlaza y escribe en
+  // ellos, pero no los aplica, ni los cierra ni los saca de la bandeja. El
+  // candado de verdad está en el servidor; aquí solo no se ofrecen.
+  const VAC  = DEL_SERVIDOR.vacaciones;
+
+  let TICKETS = [], SUBTIPOS = [], ESTADOS = [], AUSENCIAS = [], PERSONAS = null, TIPOS_PERMISO = [];
+
+  const aviso = (t, tipo) => {
+    const m = $('#msg');
+    if (!t) { m.classList.add('hidden'); return; }
+    const tono = tipo === 'error' ? 'red' : tipo === 'ok' ? 'green' : 'gold';
+    m.className = `text-sm rounded-xl px-4 py-3 border border-telecab-${tono}/40 bg-telecab-${tono}/5 text-telecab-${tono}`;
+    m.textContent = t;
+  };
+
+  async function api(url, body) {
+    const r = await fetch(BASE + url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    return r.json();
+  }
+
+  /**
+   * EL TEXTO DEL CONDUCTOR, CON SUS ENLACES PINCHABLES.
+   *
+   * Casi todos los certificados llegan como un enlace de Drive dentro de lo que
+   * escribió. Hasta ahora había que seleccionar la URL a mano y pegarla en otra
+   * pestaña — cada justificante, una vez—, así que mirar el papel costaba más
+   * que aplicar la ausencia.
+   *
+   * Se escapa PRIMERO cada trozo y se construye el enlace aparte: escapar el
+   * HTML ya hecho rompería las comillas del href, y no escaparlo dejaría que un
+   * formulario que rellena cualquiera metiera etiquetas en esta pantalla.
+   */
+  function conEnlaces(txt) {
+    const s = String(txt == null ? '' : txt);
+    const re = /https?:\/\/[^\s<>"']+/g;
+    let fuera = '', i = 0, m;
+    while ((m = re.exec(s))) {
+      // La puntuación final no es del enlace: un punto detrás de una URL cierra
+      // la frase, y metido dentro del href da un 404.
+      const url = m[0].replace(/[.,;:)\]]+$/, '');
+      fuera += esc(s.slice(i, m.index));
+      const corto = url.length > 48 ? url.slice(0, 45) + '…' : url;
+      fuera += `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"
+        class="text-telecab-gold underline decoration-telecab-gold/40 hover:decoration-telecab-gold break-all"
+        title="${esc(url)}"><i class="fa-solid fa-paperclip mr-1 text-[10px]"></i>${esc(corto)}</a>`;
+      i = m.index + url.length;
+      re.lastIndex = i;
+    }
+    return fuera + esc(s.slice(i));
+  }
+
+  // ── Los filtros ───────────────────────────────────────────────────────────
+  const plano = s => String(s == null ? '' : s).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  // El campo de fecha del diálogo se escribe en dd/mm/aaaa y devuelve ISO. Hay
+  // que DARLE dd/mm/aaaa, o la casilla enseña el formato de la base.
+  const aEs = iso => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
+    ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : (iso || '');
+
+  /**
+   * ¿Pasa este ticket los filtros?
+   *
+   * LA FECHA SE MIDE SOBRE LA AUSENCIA cuando el ticket la tiene, y sobre la
+   * fecha en que se pidió cuando no. Es lo que se busca de verdad: «las
+   * vacaciones de noviembre» no se encuentran por la fecha en que se pidieron,
+   * y «lo que entró la semana pasada» no tiene más fecha que esa.
+   *
+   * Y se mira por SOLAPE, no por "empieza dentro": unas vacaciones del 28 de
+   * octubre al 10 de noviembre son de noviembre también.
+   */
+  function pasa(t, f) {
+    if (GRUPO && !GRUPO.pasa(t.subtipoCodigo)) return false;
+    if (f.subtipo && t.subtipoCodigo !== f.subtipo) return false;
+
+    if (f.busca) {
+      const heno = plano([t.quien, t.escribio, t.dni, t.telefono, t.codigo,
+        t.matricula, t.subtipo].join(' '));
+      if (!f.busca.every(aguja => heno.includes(aguja))) return false;
+    }
+
+    if (f.desde || f.hasta) {
+      const ini = t.fechaIniIso || t.pedidoIso;
+      if (!ini) return false;
+      const fin = t.fechaFinIso || ini;
+      if (f.desde && fin < f.desde) return false;
+      if (f.hasta && ini > f.hasta) return false;
+    }
+    return true;
+  }
+
+  // El calendario de la casa escribe dd/mm/aaaa; las fechas del ticket vienen en
+  // ISO. Se compara en ISO, que es lo único que se ordena solo.
+  const aIso = v => {
+    const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  };
+
+  const filtros = () => ({
+    busca: plano($('#f-busca').value).split(/\s+/).filter(Boolean),
+    desde: aIso($('#f-desde').value),
+    hasta: aIso($('#f-hasta').value),
+    subtipo: $('#f-subtipo').value || '',
+  });
+
+  // ── Pintar ────────────────────────────────────────────────────────────────
+
+  function pintarResumen(visibles) {
+    const abiertos = visibles.filter(t => !t.cerrado);
+    const sinDuenio = abiertos.filter(t => !t.responsable).length;
+    const sinPersona = abiertos.filter(t => !t.conductorId).length;
+    // La media de lo que llevan esperando dice más que el total: veinte tickets
+    // de hoy no son lo mismo que cinco de hace tres semanas.
+    const espera = abiertos.length
+      ? (abiertos.reduce((s, t) => s + (t.horas || 0), 0) / abiertos.length / 24).toFixed(1)
+      : '0';
+    const caja = (et, v, tono) => `
+      <div class="bg-telecab-card border border-telecab-border rounded-xl p-3">
+        <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${et}</p>
+        <p class="text-xl font-bold text-telecab-${tono}">${v}</p>
+      </div>`;
+    $('#resumen').innerHTML =
+      caja('Abiertos', abiertos.length, abiertos.length ? 'gold' : 'green') +
+      caja('Sin dueño', sinDuenio, sinDuenio ? 'warn' : 'green') +
+      caja('Sin identificar', sinPersona, sinPersona ? 'red' : 'green') +
+      caja('Espera media', espera + ' d', 'text');
+  }
+
+  function tarjeta(t) {
+    const el = document.createElement('div');
+    el.className = 'bg-telecab-card border border-telecab-border rounded-2xl p-4' +
+      (t.cerrado ? ' opacity-60' : '');
+
+    const dias = t.horas != null ? (t.horas / 24).toFixed(1) + ' d' : '';
+    // Un ticket sin persona enlazada es el que no se puede aplicar, así que se
+    // señala arriba y no escondido en un detalle.
+    const sinPersona = !t.conductorId
+      ? `<span class="px-2 py-0.5 rounded-lg text-[11px] bg-telecab-red/15 text-telecab-red border border-telecab-red/30">sin identificar</span>` : '';
+
+    el.innerHTML = `
+      <div class="flex items-start gap-3 flex-wrap">
+        <div class="min-w-0 flex-1">
+          <p class="flex items-center gap-2 flex-wrap">
+            <span class="font-mono text-xs text-telecab-muted">${esc(t.codigo)}</span>
+            <span class="px-2 py-0.5 rounded-lg text-[11px] border"
+                  style="color:${t.color};border-color:${t.color}55;background:${t.color}15">${esc(t.estadoEtiqueta)}</span>
+            ${sinPersona}
+            ${t.prioridad ? `<span class="text-[11px] text-telecab-warn">${esc(t.prioridad)}</span>` : ''}
+          </p>
+          <p class="text-sm font-semibold text-telecab-text mt-1">${esc(t.subtipo)} · ${esc(t.quien)}</p>
+          <p class="text-[11px] text-telecab-muted">${esc(t.gestion || '')}${
+            t.dni ? ` · DNI ${esc(t.dni)}` : ''}${t.telefono ? ` · ${esc(t.telefono)}` : ''}</p>
+        </div>
+        <div class="text-right text-[11px] text-telecab-muted shrink-0">
+          <p>${esc(t.pedido || t.creado)}</p>
+          <p>${t.cerrado ? 'tardó' : 'lleva'} ${dias}</p>
+          ${t.responsable ? `<p class="text-telecab-text">${esc(t.responsable)}</p>` : ''}
+        </div>
+      </div>
+
+      ${(t.fechaIni || t.matricula) ? `
+        <p class="text-xs text-telecab-text mt-2">
+          ${t.fechaIni ? `<i class="fa-solid fa-calendar-days text-telecab-muted mr-1"></i>${esc(t.fechaIni)}${t.fechaFin ? ' → ' + esc(t.fechaFin) : ''}` : ''}
+          ${t.matricula ? `<span class="ml-3"><i class="fa-solid fa-car text-telecab-muted mr-1"></i>${esc(t.matricula)}</span>` : ''}
+        </p>` : ''}
+
+      ${t.descripcion ? `
+        <details class="mt-2" ${/https?:\/\//.test(t.descripcion) ? 'open' : ''}>
+          <summary class="cursor-pointer text-xs text-telecab-muted">Lo que escribió</summary>
+          <div class="mt-1 text-xs text-telecab-text whitespace-pre-wrap bg-telecab-dark/30 rounded-lg p-2">${conEnlaces(t.descripcion)}</div>
+        </details>` : ''}
+
+      ${(t.adjuntos || []).length ? `
+        <p class="mt-2 flex flex-wrap gap-2">${t.adjuntos.map(a => {
+          const u = typeof a === 'string' ? a : (a.url || a.enlace || '');
+          const n = typeof a === 'string' ? 'Adjunto' : (a.nombre || 'Adjunto');
+          return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer"
+            class="px-2 py-1 rounded-lg text-[11px] border border-telecab-border text-telecab-gold hover:border-telecab-gold transition">
+            <i class="fa-solid fa-paperclip mr-1"></i>${esc(n)}</a>` : '';
+        }).join('')}</p>` : ''}
+
+      ${t.resolucion ? `<p class="text-xs text-telecab-green mt-2"><i class="fa-solid fa-check mr-1"></i>${esc(t.resolucion)}</p>` : ''}
+
+      <div class="acciones mt-3 flex flex-wrap items-center gap-2"></div>`;
+
+    const acc = el.querySelector('.acciones');
+    const boton = (txt, icono, tono, fn) => {
+      const b = document.createElement('button');
+      b.className = `px-3 py-1.5 rounded-lg text-xs border border-telecab-${tono}/40 bg-telecab-${tono}/10 text-telecab-${tono} hover:bg-telecab-${tono}/20 transition`;
+      b.innerHTML = `<i class="fa-solid ${icono} mr-1"></i>${txt}`;
+      b.addEventListener('click', fn);
+      acc.appendChild(b);
+      return b;
+    };
+
+    if (!t.cerrado) {
+      if (!t.responsable) {
+        boton('Me lo quedo', 'fa-hand', 'gold', async ev => {
+          try {
+            await Api.post(BASE + '/asignar', { id: t.id, responsable: YO }, { boton: ev.currentTarget });
+            cargar();
+          } catch (e) { aviso(e.message, 'error'); }
+        });
+      }
+
+      if (!t.conductorId) {
+        boton('Enlazar persona', 'fa-link', 'red', () => enlazar(t));
+      }
+
+      const deVacaciones = t.subtipoCodigo === 'VACACIONES';
+      if (deVacaciones && !VAC.puede) {
+        const n = document.createElement('span');
+        n.className = 'text-xs text-telecab-muted';
+        n.innerHTML = `<i class="fa-solid fa-lock mr-1"></i>Las vacaciones las aprueba ${esc(VAC.quien || 'quien tiene la llave')}`;
+        acc.appendChild(n);
+      } else {
+        if (t.afectaPlanning && t.conductorId) {
+          boton('Aplicar', 'fa-wand-magic-sparkles', 'green', () => aplicar(t));
+        }
+
+        boton('Resolver', 'fa-flag-checkered', 'green', () => resolver(t));
+        boton('Mover', 'fa-arrows-turn-to-dots', 'text', () => mover(t));
+      }
+    }
+
+    boton('Historia', 'fa-clock-rotate-left', 'text', () => historia(t));
+
+    return el;
+  }
+
+  // ── Acciones que necesitan preguntar algo ────────────────────────────────
+  // Todas van por el diálogo de la casa. Antes eran `prompt()` del navegador,
+  // que no deja poner un calendario, ni una lista, ni decir de quién es el
+  // ticket mientras lo rellenas — y se pinta con los colores del sistema, así
+  // que en una pantalla oscura parece de otra aplicación.
+
+  /**
+   * APLICAR: abre la ausencia en la ficha de la persona.
+   *
+   * El tipo viene PROPUESTO por el subtipo del ticket, y se puede cambiar: el
+   * formulario lo rellena el conductor, y «Baja o ausencia» cabe en una baja
+   * médica, un permiso o un asunto propio. Quien aplica lo ve y lo corrige sin
+   * salir de aquí.
+   */
+  async function aplicar(t) {
+    const v = await Dialogo.formulario(`Aplicar a ${t.quien}`, [
+      // 'lista' Y NO 'opciones'. Se ven igual —las dos pintan el selector de la
+      // casa— pero devuelven cosas distintas: 'opciones' da un objeto y 'lista'
+      // el valor a secas. Aquí iba 'opciones' y lo que llegaba al servidor era
+      // "[object Object]", así que NINGUNA aplicación pasaba, ni eligiendo la
+      // ausencia que el propio ticket proponía.
+      { id: 'estado', etiqueta: 'Qué se le abre', tipo: 'lista', obligatorio: true,
+        valor: t.estadoAbre || '',
+        // Sin la llave, de aquí no salen unas vacaciones (db/189).
+        opciones: AUSENCIAS.filter(a => VAC.puede || a.codigo !== 'vacaciones').map(a => ({ valor: a.codigo, texto: a.etiqueta })),
+        ayuda: 'Lo propone el tipo del ticket. Cámbialo si el conductor lo escribió en otro sitio.' },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: aEs(t.fechaIniIso), obligatorio: true },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', valor: aEs(t.fechaFinIso),
+        ayuda: 'Vacío = sin fecha de vuelta. Ojo: una ausencia sin fecha no termina nunca.' },
+      { id: 'motivo', etiqueta: 'Nota', tipo: 'texto', valor: `Ticket ${t.codigo}`,
+        ayuda: 'Se queda escrito en su ficha, junto a la ausencia.' },
+    ], { textoBoton: 'Aplicar', ancho: 'max-w-lg',
+      nota: `${t.subtipo}${t.fechaIni ? ' · pidió ' + t.fechaIni + (t.fechaFin ? ' → ' + t.fechaFin : '') : ''}` });
+    if (!v) return;
+
+    // QUÉ PERMISO ES (14/10/2026), con los del convenio. Los asuntos propios ya
+    // no son un permiso (29/10/2026): se eligen arriba, como su propia situación.
+    if (v.estado === 'permiso') {
+      const p = await Dialogo.formulario('¿Qué permiso es?', [
+        { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
+          opciones: TIPOS_PERMISO.map(x => ({ valor: x.codigo, texto: x.etiqueta }))
+            .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]), buscador: { tope: 20 } },
+      ], { textoBoton: 'Aplicar', nota: 'Los permisos no tocan las vacaciones. Si son asuntos propios, cancela y elige la situación «Asuntos propios».' });
+      if (!p) return;
+      v.tipoPermiso = p.tipoPermiso;
+    }
+
+    const r = await api('/aplicar', { id: t.id, ...v });
+    if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se ha podido aplicar', texto: r.msg, tono: 'error' });
+    aviso('Aplicado: la ausencia ya está en su ficha.', 'ok');
+    cargar();
+  }
+
+  /** ENLAZAR: qué persona de la plantilla es la que escribió. */
+  async function enlazar(t) {
+    if (!PERSONAS) {
+      const r = await (await fetch(BASE + '/api/personas')).json();
+      PERSONAS = r.personas || [];
+    }
+    // El buscador va DENTRO del selector: con cuatrocientas fichas, una lista
+    // plana no se puede leer, y preguntar "escribe parte del nombre" y luego
+    // "¿cuál de los siete?" eran dos ventanas para una sola decisión.
+    const v = await Dialogo.formulario('¿Quién es?', [
+      { id: 'conductorId', etiqueta: 'Persona', tipo: 'lista', obligatorio: true,
+        opciones: PERSONAS.map(p => ({ valor: String(p.id),
+          texto: p.nombre + (p.vigente ? '' : ' · ya no está') + (p.dni ? ' · ' + p.dni : '') })),
+        buscador: { marcador: 'Nombre o DNI…', tope: 12 } },
+    ], { textoBoton: 'Enlazar', ancho: 'max-w-lg',
+      nota: `Escribió «${t.escribio || '—'}»${t.dni ? ' · DNI ' + t.dni : ''}${t.telefono ? ' · tel ' + t.telefono : ''}` });
+    if (!v) return;
+    const r = await api('/enlazar', { id: t.id, conductorId: v.conductorId });
+    r.status === 'ok' ? cargar() : aviso(r.msg, 'error');
+  }
+
+  /**
+   * RESOLVER: cerrarlo diciendo cómo queda.
+   *
+   * Un ticket que abre una ausencia (vacaciones, bajas, permisos) NO se
+   * «aprueba»: se APLICA, que es lo que lo pone en su ficha (13/10/2026). Antes
+   * «Aprobado» salía el primero y ya marcado, y las vacaciones de Chistel
+   * Carbajal se quedaron aprobadas en el ticket y sin llegar a su ficha.
+   */
+  async function resolver(t) {
+    const cierres = ESTADOS.filter(e => e.cierra && !(t.estadoAbre && e.codigo === 'aprobado'));
+    const v = await Dialogo.formulario(`Resolver ${t.codigo}`, [
+      { id: 'estado', etiqueta: '¿Cómo queda?', tipo: 'lista', obligatorio: true,
+        valor: (cierres[0] || {}).codigo || '',
+        opciones: cierres.map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
+      { id: 'resolucion', etiqueta: '¿En qué quedó?', tipo: 'texto-largo',
+        ayuda: 'Se guarda con el ticket y se ve en la historia.' },
+    ], { textoBoton: 'Resolver', nota: `${t.subtipo} · ${t.quien}`
+      + (t.estadoAbre ? '. Para dárselo, usa «Aplicar»: es lo que lo pone en su ficha. Aquí solo se cierra sin dárselo.' : '') });
+    if (!v) return;
+    const r = await api('/estado', { id: t.id, estado: v.estado, resolucion: v.resolucion });
+    r.status === 'ok' ? cargar() : aviso(r.msg, 'error');
+  }
+
+  /** MOVER: a otra bandeja, cuando el formulario lo clasificó mal. */
+  async function mover(t) {
+    const v = await Dialogo.formulario(`Mover ${t.codigo}`, [
+      { id: 'subtipo', etiqueta: '¿A qué bandeja?', tipo: 'lista', obligatorio: true,
+        valor: t.subtipoCodigo || '',
+        opciones: SUBTIPOS.map(s => ({ valor: s.codigo, texto: `${s.etiqueta} · ${s.area_codigo}` })),
+        buscador: { marcador: 'Buscar bandeja…', tope: 12 } },
+    ], { textoBoton: 'Mover', nota: `Ahora está en «${t.subtipo}»` });
+    if (!v) return;
+    const r = await api('/reclasificar', { id: t.id, subtipo: v.subtipo });
+    if (r.status === 'ok') { aviso(`Movido a ${r.ticket.area}.`, 'ok'); cargar(); }
+    else aviso(r.msg, 'error');
+  }
+
+  /** HISTORIA: lo que le ha pasado a este ticket, en una tabla que se lee. */
+  async function historia(t) {
+    const r = await (await fetch(`${BASE}/api/ticket/${t.id}`)).json();
+    if (r.status !== 'ok') return aviso(r.msg, 'error');
+    const filas = (r.historia || []).map(h => `
+      <tr class="border-t border-telecab-border/60">
+        <td class="py-1.5 pr-3 text-telecab-muted whitespace-nowrap">${esc(h.cuando)}</td>
+        <td class="py-1.5 pr-3">${esc(h.quien || '—')}</td>
+        <td class="py-1.5 pr-3 text-telecab-muted whitespace-nowrap">${esc(h.estado_antes || '—')} → ${esc(h.estado_despues || '—')}</td>
+        <td class="py-1.5 text-telecab-muted">${conEnlaces(h.nota || '')}</td>
+      </tr>`).join('');
+    await Dialogo.aviso({
+      titulo: `Historia de ${t.codigo}`, ancho: 'max-w-2xl',
+      html: filas ? `<div class="overflow-x-auto"><table class="w-full text-xs">
+          <thead class="text-[11px] uppercase tracking-wide text-telecab-muted">
+            <tr><th class="text-left pb-1 pr-3">Cuándo</th><th class="text-left pb-1 pr-3">Quién</th>
+                <th class="text-left pb-1 pr-3">Estado</th><th class="text-left pb-1">Nota</th></tr>
+          </thead><tbody>${filas}</tbody></table></div>`
+        : '<p class="text-sm text-telecab-muted">Sin apuntes todavía.</p>',
+    });
+  }
+
+  // ── Carga y pintado ──────────────────────────────────────────────────────
+
+  function pintar() {
+    const f = filtros();
+    const visibles = TICKETS.filter(t => pasa(t, f));
+    pintarResumen(visibles);
+
+    const hayFiltro = f.busca.length || f.desde || f.hasta || f.subtipo || GRUPO;
+    $('#f-cuenta').textContent = hayFiltro
+      ? `${visibles.length} de ${TICKETS.length} tickets`
+      : `${TICKETS.length} tickets`;
+
+    const cont = $('#lista');
+    cont.innerHTML = '';
+    if (!visibles.length) {
+      cont.innerHTML = hayFiltro
+        ? '<p class="text-telecab-muted text-sm">Ningún ticket cuadra con esos filtros.</p>'
+        : '<p class="text-telecab-muted text-sm">No hay tickets aquí.</p>';
+      return;
+    }
+    visibles.forEach(t => cont.appendChild(tarjeta(t)));
+  }
+
+  async function cargar() {
+    const cerrados = $('#f-cerrados').checked ? '1' : '0';
+    // El ticket del enlace directo viene aunque sea de otro mes.
+    const directo = pedido ? '&ticket=' + encodeURIComponent(pedido) : '';
+    const r = await (await fetch(`${BASE}/api/datos?cerrados=${cerrados}${directo}`)).json();
+    if (r.status !== 'ok') return aviso(r.msg, 'error');
+    if (r.desde) {
+      $('#nota-mes').innerHTML = '<i class="fa-solid fa-calendar-day mr-1"></i>Solo los pedidos desde el ' + esc(r.desde) +
+        (pedido ? ' · y el ' + esc(pedido) + ', que es el del enlace' : '') +
+        (GRUPO ? ' · <b>' + esc(GRUPO.etiqueta) + '</b> · <a href="' + esc(BASE) + '" class="underline hover:text-telecab-text">ver todos</a>' : '');
+      $('#nota-mes').classList.remove('hidden');
+    }
+    // Los cuadros de la barra de arriba, al día con lo que se acaba de hacer.
+    if (typeof window.__refrescarBandejas === 'function') window.__refrescarBandejas();
+    TICKETS = r.tickets || []; SUBTIPOS = r.subtipos || [];
+    ESTADOS = r.estados || []; AUSENCIAS = r.ausencias || []; TIPOS_PERMISO = r.tiposPermiso || [];
+
+    // El desplegable de tipos se llena con lo que HAY en la bandeja, no con el
+    // catálogo entero: ofrecer veinte filtros que dan cero no ayuda a nadie.
+    const sel = $('#f-subtipo'), previo = sel.value;
+    // Y si se mira una parte (?grupo=), solo los tipos de esa parte.
+    const presentes = [...new Set(TICKETS.map(t => t.subtipoCodigo))].filter(Boolean)
+      .filter(c => !GRUPO || GRUPO.pasa(c));
+    sel.innerHTML = '<option value="">Todos</option>' + SUBTIPOS
+      .filter(s => presentes.includes(s.codigo))
+      .map(s => `<option value="${esc(s.codigo)}">${esc(s.etiqueta)}</option>`).join('');
+    sel.value = previo;
+
+    pintar();
+  }
+
+  $('#btn-recargar').addEventListener('click', cargar);
+  $('#f-cerrados').addEventListener('change', cargar);
+  // 'change' además de 'input': el calendario de la casa rellena el campo desde
+  // fuera —pinchando un día—, y eso no dispara 'input' en todos los navegadores.
+  ['#f-busca', '#f-desde', '#f-hasta', '#f-subtipo'].forEach(s => {
+    $(s).addEventListener('input', pintar);
+    $(s).addEventListener('change', pintar);
+  });
+  $('#f-limpiar').addEventListener('click', () => {
+    ['#f-busca', '#f-desde', '#f-hasta'].forEach(s => { $(s).value = ''; });
+    $('#f-subtipo').value = '';
+    pintar();
+  });
+
+  // SE PUEDE LLEGAR AQUI DESDE FUERA. La ficha de un conductor ensena de que
+  // ticket salio cada ausencia; el codigo es un enlace a esta pantalla con la
+  // busqueda ya puesta. Y con los CERRADOS encendidos, porque un ticket ya
+  // aplicado esta cerrado: sin eso el enlace llevaria a una bandeja vacia.
+  const pedido = new URLSearchParams(location.search).get('ticket');
+  if (pedido) {
+    $('#f-busca').value = pedido;
+    $('#f-cerrados').checked = true;
+  }
+
+  cargar();
+})();

@@ -1,0 +1,1570 @@
+// modules/Control/vistas/controlDirecto.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026). Lo que le deja el servidor llega por Casa.datos(), del bloque
+// <script type="application/json" id="datos-servidor"> de la vista.
+
+(function () {
+  const DEL_SERVIDOR = Casa.datos();
+  const $ = s => document.querySelector(s);
+  const esc = Casa.esc;
+  const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
+  const horas = min => ((Number(min) || 0) / 60).toFixed(1);
+  // El teléfono va SIEMPRE al lado del nombre: esta pantalla existe para llamar, y
+  // buscar el número en otra pestaña es justo lo que hace que no se llame.
+  const tel9 = t => String(t || '').replace(/\D/g, '').slice(-9);
+  const telBonito = t => { const n = tel9(t); return n.length === 9 ? n.slice(0, 3) + ' ' + n.slice(3, 6) + ' ' + n.slice(6) : (t || ''); };
+  const enlaceTel = (t, clase) => (tel9(t)
+    ? '<a href="tel:' + esc(t) + '" data-solo-llamar ' +
+      'class="' + (clase || '') + ' hover:text-telecab-gold hover:underline" title="Llamar a este número">' +
+      esc(telBonito(t)) + '</a>'
+    : '<span class="text-telecab-border">sin teléfono</span>');
+  // PULSAR UN TELÉFONO LLAMA, NO ABRE LA FILA. Antes era un manejador escrito en
+  // el propio enlace (atributo onclick), y la CSP obligatoria (03/11/2026) no
+  // deja correr código escrito en un atributo. Se corta aquí, en la fase de captura: el clic no
+  // llega a la fila, y el enlace llama igual (eso no lo para stopPropagation).
+  document.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('a[data-solo-llamar]')) e.stopPropagation();
+  }, true);
+
+  // EL VEREDICTO LO DA EL SERVIDOR (directo.js salidaDe), que es quien sabe la
+  // ventana de cada turno. Aquí solo se pinta. Antes esta fórmula estaba duplicada
+  // y contaba los km rodados estando desconectado, así que daba por salido a quien
+  // había terminado su noche a las 03:51 y dejó el coche rodando pasadas las 05:00.
+  const salio = f => ['conectado', 'salio', 'descanso'].includes(f.salida);
+  // Con «No saldrá» apuntado ya no falta nadie por llamar: se sabe por qué no sale.
+  const falta = f => f.salida === 'no_salio' && !f.noSale;
+
+  const TONO = {
+    ok:    'bg-emerald-500/15 text-emerald-500',
+    aviso: 'bg-amber-500/15 text-amber-500',
+    error: 'bg-red-500/15 text-red-500',
+    muted: 'bg-telecab-border/40 text-telecab-muted',
+  };
+  const chip = (txt, tono) =>
+    '<span class="px-2 py-0.5 rounded-md text-xs font-medium ' + (TONO[tono] || TONO.muted) + '">' + esc(txt) + '</span>';
+
+  let DATOS = null;
+  let seq = 0;                           // nº de la última carga pedida: la única que se pinta
+  const abiertos = new Set();            // filas desplegadas (se conservan al refrescar)
+
+  // Turno activo. Arranca en el que corre AHORA: día 05–17, noche el resto.
+  const TURNOS = [
+    { id: 'dia',        etq: 'Día',       icono: 'fa-sun' },
+    { id: 'noche',      etq: 'Noche',     icono: 'fa-moon' },
+    { id: 'todoturno',  etq: 'TodoTurno', icono: 'fa-clock-rotate-left' },
+    { id: 'nn',         etq: 'NN',        icono: 'fa-user-clock' },
+  ];
+  const horaAhora = new Date().getHours();
+  let turnoActivo = (horaAhora >= 5 && horaAhora < 17) ? 'dia' : 'noche';
+  let soloNoSalieron = false;   // filtro: solo los que NO han salido (a llamar)
+  let soloNoTerminara = false;  // filtro: solo «No terminará la jornada» (06/10/2026)
+  // Conectado (o en descanso) y no le da el tiempo: el aviso lo marca el servidor
+  // con su `variante` (cockpit.service), porque comparte código con «No llegará».
+  const noTerminara = f => (f.avisos || []).some(a => a.variante === 'no_terminara');
+  let soloEnRiesgo = false;     // filtro: «En riesgo», sin aviso (06/10/2026)
+  // Parado —desconectado o en descanso— sin sus horas, y todavía le da el tiempo
+  // si vuelve ya. Las presuntas cuentan como en la proyección: con ellas llega,
+  // sin ellas no se sabe. Cuando se le acaba el margen pasa a «No terminará».
+  const enRiesgo = f => {
+    const p = f.proyeccion;
+    return !!p && !p.cerrado && p.alcanza && !f.noSale && !noTerminara(f) &&
+      ['desconectado', 'descanso'].includes(grupoDe(f)) &&
+      p.hechas + p.justificadas + p.presuntas < p.objetivo;
+  };
+  // Horas de margen: lo que puede seguir parado antes de no llegar.
+  const margen = f => f.proyeccion ? f.proyeccion.maximo - f.proyeccion.objetivo : Infinity;
+
+  // ── Pestañas ────────────────────────────────────────────────────────────────
+  function pintarTabs() {
+    const p = (DATOS && DATOS.porTurno) || {};
+    $('#d-tabs').innerHTML = TURNOS.map(t => {
+      const arr = (t.id === 'nn' ? (p.nn || []) : (p[t.id] || []));
+      const n = arr.length;
+      const activo = turnoActivo === t.id;
+      const rojo = t.id === 'nn' && n > 0;
+      // Turnos: "salieron X/Y" (X conectados de Y que trabajan hoy). NN: solo el número.
+      let num = String(n);
+      // Un turno que aún no ha empezado no tiene a nadie "sin salir": no le toca a
+      // nadie todavía. Decir "0/61" ahí invita a llamar a 61 personas a las 9 de la
+      // mañana; se dice que está pendiente y ya.
+      const vent = (DATOS && DATOS.ventanas && DATOS.ventanas[t.id]) || null;
+      const sinEmpezar = vent && !vent.empezada;
+      // Sin actividad del núcleo no hay veredicto: "?" y no "0/61".
+      const sinDato = DATOS && DATOS.hayActividad === false;
+      if (t.id !== 'nn') num = sinDato ? '?/' + n : sinEmpezar ? String(n) : (arr.filter(salio).length + '/' + n);
+      return '<button data-turno="' + t.id + '" class="px-3 py-2 rounded-xl border text-sm flex items-center gap-2 ' +
+        (activo ? 'border-telecab-gold bg-telecab-gold/10 text-telecab-text'
+                : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text') + '">' +
+        '<i class="fa-solid ' + t.icono + (rojo ? ' text-amber-500' : '') + '"></i> ' + t.etq +
+        ' <b class="tabular-nums ' + (rojo ? 'text-amber-500' : 'text-telecab-text') + '">' + num + '</b></button>';
+    }).join('');
+    $('#d-tabs').querySelectorAll('[data-turno]').forEach(b =>
+      b.addEventListener('click', () => { turnoActivo = b.dataset.turno; pintarTabs(); pintarResumen(); pintar(); }));
+  }
+  // ── El vocabulario visual del estado, en un solo sitio ──────────────────────
+  // Cada estado tiene SIEMPRE el mismo color, en la barra de la izquierda, en el
+  // chip y en el resumen de arriba. Así el ojo aprende el código una vez.
+  const ESTADO = {
+    no_salio:     { barra: 'bg-red-500',        etq: 'NO HA SALIDO',   tono: 'error', fila: 'bg-red-500/[0.05]' },
+    no_saldra:    { barra: 'bg-telecab-border', etq: 'NO SALDRÁ',      tono: 'muted', fila: '' },
+    pendiente:    { barra: 'bg-transparent',    etq: 'Aún no le toca', tono: 'muted', fila: '' },
+    desconectado: { barra: 'bg-telecab-border', etq: 'Desconectado',   tono: 'muted', fila: '' },
+    descanso:     { barra: 'bg-amber-500',      etq: 'En descanso',    tono: 'aviso', fila: '' },
+    espera:       { barra: 'bg-telecab-gold',   etq: 'En espera',      tono: 'aviso', fila: '' },
+    viaje:        { barra: 'bg-emerald-500',    etq: 'En viaje',       tono: 'ok',    fila: '' },
+  };
+
+  // EL GRUPO DE CADA FILA. El servidor dice si salió o no (salidaDe); aquí se
+  // afina con lo que está haciendo AHORA MISMO (viaje / espera / descanso), que
+  // es lo que Tráfico necesita separar: no es lo mismo uno parado esperando
+  // pedido que uno con pasajero dentro.
+  function grupoDe(f) {
+    // «NO SALDRÁ» (db/170): no ha salido —o su turno aún no empieza— y ya se sabe
+    // por qué. Va aparte de los que hay que llamar. Si aun así sale, manda lo que
+    // esté haciendo: el chip del motivo se queda en su fila.
+    if (f.noSale && (f.salida === 'no_salio' || f.salida === 'pendiente')) return 'no_saldra';
+    if (f.salida === 'no_salio') return 'no_salio';
+    if (f.salida === 'pendiente') return 'pendiente';
+    // Lo que diga el ahora de cada 10 s (refrescarAhora), si ya ha llegado; si
+    // no, lo que vino con la carga entera.
+    const s = f.ahoraSit !== undefined ? f.ahoraSit : (f.actividad || {}).situacion;
+    if (f.salida === 'descanso' || s === 'descanso') return 'descanso';
+    if (f.salida === 'conectado') return s === 'espera' ? 'espera' : 'viaje';
+    return 'desconectado';           // trabajó en su turno y ahora no está conectado
+  }
+  // El orden de la lista, de lo que hay que mirar a lo que ya está rodando.
+  const GRUPOS = [
+    { id: 'no_salio',     etq: 'No han salido · hay que llamar', icono: 'fa-phone-volume' },
+    { id: 'no_saldra',    etq: 'No saldrán · con su motivo',     icono: 'fa-ban' },
+    { id: 'pendiente',    etq: 'Todavía no les toca',            icono: 'fa-hourglass-half' },
+    { id: 'desconectado', etq: 'Desconectados · ya no están',    icono: 'fa-plug-circle-xmark' },
+    { id: 'descanso',     etq: 'En descanso',                    icono: 'fa-mug-hot' },
+    { id: 'espera',       etq: 'En espera · disponibles',        icono: 'fa-clock' },
+    { id: 'viaje',        etq: 'En viaje · con pasajero',        icono: 'fa-car-side' },
+  ];
+  const est = f => ESTADO[grupoDe(f)] || ESTADO.pendiente;
+
+  // Un cero no es un dato: es ruido. Se pinta apagado y con raya, para que los
+  // números que SÍ dicen algo salten solos.
+  const cifra = (v, suf, clase) => (Number(v) > 0
+    ? '<span class="' + clase + '">' + v + (suf || '') + '</span>'
+    : '<span class="text-telecab-border">—</span>');
+
+  // ── KM POR GPS ──────────────────────────────────────────────────────────────
+  // Los km buenos son los del ODÓMETRO del coche, leído de su bus CAN. Unos
+  // pocos coches llevan un equipo que no lo lee, y de esos solo hay la
+  // estimación que hace Mapon uniendo los puntos del GPS: corta las curvas y,
+  // si pierde cobertura, pierde el trozo entero. El número vale, pero no está
+  // medido con la misma vara y la pantalla tiene que decirlo — si no, dos cifras
+  // iguales parecen igual de firmes y no lo son.
+  const marcaGps = f => (f && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta')
+    ? '<span class="ml-1 align-middle rounded px-1 py-[1px] text-[9px] font-bold ' +
+      'bg-amber-500/15 text-amber-500" title="' +
+      esc(f.fuenteKm === 'gps'
+        ? 'KM POR GPS: el equipo de este coche no da el odómetro. Es la estimación de Mapon con los puntos del GPS, que suele quedarse corta.'
+        : 'KM POR GPS EN PARTE: llevó más de un coche y alguno no da odómetro; ese trozo va estimado con el GPS.') +
+      '">GPS</span>'
+    : '');
+
+  // ── EL RENDIMIENTO: "10,4 h · S" al lado del nombre ─────────────────────────
+  // Para saber a quién se está llamando. Promedio del MES CORRIDO: BOLT + lo
+  // justificado, con los días que debía salir y no salió sin justificar como 0.
+  const REND_TONO = {
+    A: 'bg-emerald-500/20 text-emerald-400',
+    B: 'bg-telecab-gold/20 text-telecab-gold',
+    C: 'bg-amber-500/15 text-amber-500',
+    D: 'bg-red-500/15 text-red-500',
+    N: 'bg-sky-500/15 text-sky-400',
+  };
+  // LA LETRA ES LA CALIFICACIÓN A–D, no el promedio de horas.
+  //
+  // A partir del modelo ABCD, el chip pesa tres cosas: horas (50 %), utilización
+  // (30 %) y excesos de velocidad (20 %) sobre los últimos 14 días. El número que
+  // va delante sigue siendo las horas, porque es lo que se mira de un vistazo,
+  // pero la letra ya no sale solo de ahí.
+  function tituloRend(r) {
+    if (!r || !r.total && r.total !== 0) return 'Calificación ' + ((r && r.letra) || '');
+    const n = v => String(v == null ? '—' : v).replace('.', ',');
+    let t = 'Calificación ' + r.letra + ' · ' + n(r.total) + ' puntos'
+      + (r.desde ? ' (' + r.desde.slice(8, 10) + '/' + r.desde.slice(5, 7)
+                 + ' – ' + r.hasta.slice(8, 10) + '/' + r.hasta.slice(5, 7) + ')' : '')
+      // Los primeros días del mes es la letra del mes CERRADO (db/175): se dice.
+      + (window.FichaConductor && FichaConductor.mesCerrado(r.hasta) ? '\n' + FichaConductor.mesCerrado(r.hasta) : '')
+      + '\n· Horas ' + n(r.horas) + ' h/día en ' + r.dias + ' día(s) → ' + r.ptsHoras + ' pts (50 %)'
+      + '\n· Utilización ' + n(r.utilProm) + ' % → ' + r.ptsUtilizacion + ' pts (30 %)'
+      + '\n· Excesos de velocidad ' + n(r.excesos) + ' → ' + r.ptsVelocidad + ' pts (20 %)';
+    if (r.topeAplicado) t += '\nAviso: por puntos sería ' + r.letraPorPuntos + ': la baja el tope por velocidad.';
+    if (r.diasTelemetria != null && r.diasTelemetria < 14) {
+      t += '\nAviso: solo ' + r.diasTelemetria + ' día(s) de telemetría: faltan excesos por contar.';
+    }
+    return t;
+  }
+
+  function chipRend(r) {
+    if (!r) return '';
+    // Recién incorporado: no se promedia hasta el cuarto día.
+    if (r.nuevo) return '<span class="shrink-0 px-1.5 py-0 rounded text-[10px] font-bold leading-[1.4] ' +
+      REND_TONO.N + '" title="' + esc('Sin calificar: ' + (r.motivo || 'datos insuficientes')) + '">N/E</span>';
+    if (!r.dias) return '';
+    const h = String(r.horas).replace('.', ',');
+    return '<span class="shrink-0 px-1.5 py-0 rounded text-[10px] font-bold leading-[1.4] ' +
+      (REND_TONO[r.letra] || REND_TONO.D) + '" title="' + esc(tituloRend(r)) + '">' +
+      h + ' h·' + esc(r.letra) + (r.topeAplicado ? '<i class="fa-solid fa-triangle-exclamation text-[8px] ml-0.5 align-middle"></i>' : '') + '</span>';
+  }
+
+  // LOS AVISOS DE LA COLUMNA. Los arma el servidor (directo.js avisosDe) y aquí
+  // solo se pintan: cada uno con su tono y su explicación al pasar el ratón.
+  // Sustituyen a las alertas de Flota Viva, que eran del COCHE; estas son de la
+  // PERSONA y de su jornada, que es lo que se llama por teléfono.
+  // El AZUL es el tono de lo PRESUNTO: cuenta, pero todavía no es firme porque
+  // depende de que alguien apruebe la justificación.
+  const AV_TONO = {
+    error: 'bg-red-500/15 text-red-500',
+    aviso: 'bg-amber-500/15 text-amber-500',
+    presunto: 'bg-sky-500/15 text-sky-400',
+  };
+
+  // UNA ALERTA SIN ATENDER PALPITA HASTA QUE ALGUIEN LA TOCA. La carta se queda
+  // en rojo y latiendo mientras esa persona tenga un problema en su jornada y
+  // nadie haya hecho nada: en cuanto se apunta la llamada ("no va a salir") o se
+  // justifican las horas, deja de latir y se queda en rojo tranquilo. Así el
+  // controlador ve de un vistazo lo que le falta por atender, y una alerta no se
+  // queda ahí tres horas porque ya la había visto.
+  const alertaDe = f => (f.avisos || []).filter(a => a.tono === 'error');
+  // ── CUÁNDO DEJA DE LATIR UNA FILA ───────────────────────────────────────────
+  // Antes bastaba CUALQUIER llamada o justificante del día: se apuntaba una
+  // llamada por lo primero y la fila se quedaba quieta con las otras dos alertas
+  // sin preguntar. Ahora hace falta una respuesta apuntada POR CADA alerta —y
+  // con comentario, que sin él no es una respuesta—, que es exactamente lo que
+  // se pidió: no deja de parpadear hasta que cada una tenga la suya.
+  //
+  // El justificante sigue valiendo para las alertas de HORAS: si a alguien se le
+  // justifican las dos horas de taller que le faltaban, ya no hay nada que
+  // preguntarle sobre que no llega a la jornada.
+  const ALERTAS_DE_HORAS = ['no_llego', 'no_llegara', 'se_fue_pronto'];
+  function alertasSinRespuesta(f) {
+    if (!f.conductorId) return alertaDe(f);
+    const k = String(f.conductorId);
+    const dichas = ((DATOS.llamadas || {})[k] || {}).alertas || {};
+    const justificado = !!(DATOS.justificados || {})[k];
+    return alertaDe(f).filter(a =>
+      !dichas[a.codigo] && !(justificado && ALERTAS_DE_HORAS.includes(a.codigo)));
+  }
+  const atendida = f => alertaSinRespuestaCache(f).length === 0;
+  // El nivel se pregunta varias veces por fila en cada pintado (clase, orden,
+  // resumen): se calcula una vez y se recuerda mientras dure este juego de datos.
+  let _cacheAlertas = new WeakMap();
+  function alertaSinRespuestaCache(f) {
+    if (!_cacheAlertas.has(f)) _cacheAlertas.set(f, alertasSinRespuesta(f));
+    return _cacheAlertas.get(f);
+  }
+  // 0 = sin alerta · 1 = todas contestadas (rojo quieto) · 2 = queda alguna (late).
+  function nivelAlerta(f) {
+    if (!alertaDe(f).length) return 0;
+    return atendida(f) ? 1 : 2;
+  }
+  // ── % DE VIAJES ACEPTADOS, por la VENTANA DE SU TURNO (día 00→24, noche 12→12) ─
+  // Hasta ahora este número solo existía escondido en el tooltip del aviso de
+  // rechazos, así que solo se veía cuando ya iba mal. Es al revés: es la cifra
+  // con la que se mira a alguien ANTES de que vaya mal.
+  //
+  // El denominador son las ofertas que dependían de ÉL: lo que cancela el
+  // cliente no cuenta (no es suyo), y lo que acepta y luego suelta sí resta.
+  // Un guion no es un cero: a quien no le han ofrecido nada todavía no se le
+  // puede medir la aceptación.
+  const ACEPT_ROJO = 50, ACEPT_AMBAR = 75;
+  function aceptacionHTML(r) {
+    if (!r || !r.ofertas) return '<span class="text-xs text-telecab-border">—</span>';
+    const t = r.tasa;
+    const color = t < ACEPT_ROJO ? 'text-red-500' : t < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500';
+    const tip = r.aceptados + ' de ' + r.ofertas + ' ofertas de su jornada'
+      + (r.rechazados ? ' · ' + r.rechazados + ' rechazadas' : '')
+      + (r.sinResponder ? ' · ' + r.sinResponder + ' sin contestar' : '')
+      + (r.cancelados ? ' · ' + r.cancelados + ' soltadas tras aceptar' : '');
+    return '<span class="text-xs font-semibold tabular-nums ' + color + '" title="' + esc(tip) + '">'
+      + t + ' %</span>';
+  }
+
+  // ── LAS HORAS PRESUNTAS, EN AZUL ────────────────────────────────────────────
+  // Una J pendiente tapa el agujero PERO NO ES UNA HORA todavía: si la rechazan,
+  // vuelve a faltar. El azul dice exactamente eso —"esto cuenta, pero aún no es
+  // firme"— y evita las dos equivocaciones: dar por bueno lo que nadie ha
+  // aprobado, y volver a llamar a quien ya contestó.
+  function horasHTML(f) {
+    const a = f.actividad || {};
+    const j = f.justificante || {};
+    // `horas()` devuelve TEXTO ('4.7'), que es lo que se pinta; para sumarle la
+    // J hace falta el número, o "4.7" + 6,1 acaba siendo NaN.
+    const bolt = (Number(a.minutos) || 0) / 60;
+    const efectiva = j.estado === 'aprobada' ? (j.horas || 0) : 0;
+    const presunta = j.estado === 'pendiente' ? (j.horas || 0) : 0;
+    if (!efectiva && !presunta) {
+      return '<span class="text-right text-xs tabular-nums" title="Horas EFECTIVAS: viaje + espera. El descanso no cuenta.">'
+        + cifra(horas(a.minutos), ' h', 'text-telecab-text font-medium') + '</span>';
+    }
+    const total = Math.round((bolt + efectiva + presunta) * 10) / 10;
+    const tip = n1(bolt) + ' h en BOLT'
+      + (efectiva ? ' + ' + n1(efectiva) + ' h justificadas y APROBADAS' : '')
+      + (presunta ? ' + ' + n1(presunta) + ' h justificadas PENDIENTES de aprobar (presuntas)' : '')
+      + ' = ' + n1(total) + ' h';
+    return '<span class="text-right text-xs tabular-nums" title="' + esc(tip) + '">'
+      + '<span class="' + (presunta ? 'text-sky-400' : 'text-telecab-text') + ' font-medium">' + n1(total) + ' h</span>'
+      + (presunta ? '<span class="block text-[10px] text-sky-400/80 leading-tight">' + n1(presunta) + ' h presuntas</span>' : '')
+      + '</span>';
+  }
+  const n1 = v => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
+
+  function avisosHTML(f) {
+    const av = f.avisos || [];
+    const nInc = (f.incidencias || []).length;
+    // «No saldrá» va el primero: es la respuesta, y por eso ya no hay «No llegará».
+    const ns = f.noSale ? chipNoSale(f.noSale) : '';
+    if (!av.length && !nInc) return ns
+      ? '<span class="flex flex-wrap justify-end gap-1">' + ns + '</span>'
+      : '<span class="text-telecab-border text-xs">—</span>';
+    const chips = (ns ? [ns] : []).concat(av.map(a =>
+      '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
+      (AV_TONO[a.tono] || AV_TONO.aviso) + '" title="' + esc(a.detalle || '') + '">' + esc(a.etq) + '</span>'));
+    // Ya se llamó o ya se justificó: la alerta sigue ahí, pero atendida. El chip
+    // dice QUÉ pasó (el resultado de la llamada, o las horas justificadas), y al
+    // pasar el ratón, QUIÉN lo hizo, a qué hora y la nota que dejó. Sin eso el
+    // segundo controlador vuelve a llamar para preguntar lo mismo.
+    if (av.some(a => a.tono === 'error') && atendida(f)) {
+      const ll = (DATOS.llamadas || {})[String(f.conductorId)];
+      const j = (DATOS.justificados || {})[String(f.conductorId)];
+      if (j) {
+        chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-sky-500/15 text-sky-400" ' +
+          'title="' + esc('Justificado por ' + (j.quien || 'alguien') +
+            (j.horas != null ? ' · justifica ' + j.horas + ' h' : '') + (j.obs ? ' · ' + j.obs : '')) + '">' +
+          '<i class="fa-solid fa-check"></i> J' + (j.horas != null ? ' ' + String(j.horas).replace('.', ',') + 'h' : '') + '</span>');
+      }
+      if (ll) {
+        const u = ll.ultima || {};
+        chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-emerald-500/15 text-emerald-500" ' +
+          'title="' + esc(ll.n + ' llamada(s) esta jornada · última a las ' + hora(u.at) +
+            (u.quien ? ' por ' + u.quien : '') + (u.resultado ? ' · ' + u.resultado : '') +
+            (u.nota ? ' · «' + u.nota + '»' : '')) + '">' +
+          '<i class="fa-solid fa-check"></i> ' + esc(u.resultado || 'llamado') +
+          (ll.n > 1 ? ' ×' + ll.n : '') + '</span>');
+      }
+    }
+    // Las incidencias abiertas del coche siguen saliendo mientras queden vivas.
+    if (nInc) chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
+      AV_TONO.error + '" title="Avisos del coche">' + nInc + '</span>');
+    return '<span class="flex flex-wrap justify-end gap-1">' + chips.join('') + '</span>';
+  }
+
+  /** «Cumple hoy», al lado del nombre (modules/Cumpleanos). */
+  const chipCumple = f => (f.cumple
+    ? '<span class="dcumple-chip shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold" ' +
+      'title="Hoy es su cumpleaños: si le llamas, felicítale de parte de Telecab">' +
+      '<i class="fa-solid fa-cake-candles mr-1"></i>Cumple hoy</span>'
+    : '');
+
+  function filaConductor(f) {
+    const a = f.actividad || {};
+    const nInc = (f.incidencias || []).length;
+    const e = est(f);
+    // El coche del que hay TRAZA. Si el plan decía otro se marca, pero sin gastar
+    // media fila: la matrícula de verdad y un "≠" que al pasar el ratón lo explica.
+    const vivas = (a.matriculas || []);
+    const plan = (f.matriculas || []).join(', ');
+    const mat = vivas.join(', ') || plan || '—';
+    const nivel = nivelAlerta(f);
+    return '<div class="dfila border-b border-telecab-border/70 ' +
+        (f.cumple ? (nivel === 2 ? 'dcumple-alerta' : 'dcumple')
+          : nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : e.fila) +
+        '" data-mat="' + esc(f.clave) + '" data-cid="' + esc(f.conductorId || '') + '">' +
+      '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
+        '<span class="dbarra ' + e.barra + '"></span>' +
+        '<span class="min-w-0">' +
+          '<span class="flex items-center gap-2 min-w-0">' +
+            '<span class="truncate text-telecab-text font-medium" title="' + esc(f.conductor) + '">' +
+              esc(f.conductor) + '</span>' +
+            // COPIAR EL NOMBRE, EL TELÉFONO Y LA MATRÍCULA (15/10/2026): la fila
+            // se abre al pulsarla y no deja seleccionar el texto, y hay que
+            // pegarlos en otras partes. El cuadrito es un botón: no abre la fila.
+            Copiar.boton(f.conductor, 'Copiar el nombre') +
+            chipCumple(f) +
+            // Sale con SU nombre, pero rodando con la cuenta de otro. Hay que
+            // decirlo aquí: quien lo busque en BOLT no encontrará este nombre, y
+            // quien vea el de la cuenta creerá que es otra persona.
+            (f.fantasma ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
+              'bg-telecab-gold/20 text-telecab-gold" title="En BOLT sale como «' + esc(f.fantasma) +
+              '»: es una cuenta fantasma, sus horas ya se le cuentan a él">' +
+              '<i class="fa-solid fa-user-secret mr-1"></i>FANTASMA</span>' : '') +
+            (f.rol ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
+              (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
+              '">' + esc(f.rol) + '</span>' : '') +
+            chipRend(f.rendimiento) +
+            // Dos personas en el mismo coche, turno y día: el cuadrante tiene un solape.
+            (f.conflicto ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-500" ' +
+              'title="Dos personas en el mismo coche, turno y día: hay un solape en el cuadrante">Solape</span>' : '') +
+            // ENTRÓ A LA FUERZA: hoy este coche no lo lleva el del cuadrante.
+            // Sin esto, quien llama ve un nombre que no es el del papel y no
+            // sabe si el bueno es este o el otro.
+            ((f.relevos || []).length
+              ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-telecab-gold/20 text-telecab-gold" ' +
+                'title="' + esc('Conduce él, no el del cuadrante:\n' + f.relevos.map(r =>
+                  '· ' + r.matricula + ': en lugar de ' + r.sale + ' — «' + r.motivo + '»').join('\n')) + '">' +
+                'En lugar de ' + esc(String(f.relevos[0].sale).split(' ')[0]) + '</span>'
+              : '') +
+          '</span>' +
+          '<span class="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' +
+            enlaceTel(f.telefono) + Copiar.boton(tel9(f.telefono), 'Copiar el teléfono') + accionesConductor(f) + '</span>' +
+        '</span>' +
+        '<span class="dopc min-w-0 flex items-center gap-1.5">' +
+          '<span class="min-w-0">' +
+            '<span class="block font-mono text-xs text-telecab-muted truncate">' + esc(mat) + '</span>' +
+            // El cuadrante ya no es la cabecera del grupo: se dice aquí, pequeño.
+            (f.cuadrante ? '<span class="block text-[10px] text-telecab-muted/70 truncate" title="Cuadrante">' + esc(f.cuadrante) + '</span>' : '') +
+          '</span>' +
+          (mat !== '—' ? Copiar.boton(mat, 'Copiar la matrícula') : '') +
+          (f.cocheCambiado
+            ? '<span class="shrink-0 text-[10px] font-bold text-amber-500" title="No es el coche del plan (' +
+              esc(plan) + ')">&ne;</span>' : '') +
+        '</span>' +
+        '<span>' + chip(e.etq, e.tono) + '</span>' +
+        '<span class="dopc text-right text-xs text-telecab-muted tabular-nums" ' +
+          'title="Primera conexión de su turno">' + (a.primera ? hora(a.primera) : '<span class="text-telecab-border">—</span>') + '</span>' +
+        horasHTML(f) +
+        '<span class="dopc text-right text-xs tabular-nums" title="Km rodados trabajando">' +
+          cifra(a.km, ' km', 'text-emerald-500') + marcaGps(a) + '</span>' +
+        // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No son
+        // trabajo y son justo lo que hay que preguntar.
+        '<span class="dopc text-right text-xs tabular-nums" ' +
+          'title="' + esc('Km rodados FUERA de BOLT (en descanso o desconectado) en toda su jornada. No cuentan como trabajo.'
+            + (f.kmFranja ? '\nDe ellos, ' + n1(f.kmFranja.km) + ' km desde las '
+                + String(f.kmFranja.franja.ini).padStart(2, '0') + ':00, que es lo que hay que preguntar: '
+                + 'antes de esa hora está el relevo, donde rodar fuera de la app es normal.' : '')) + '">' +
+          cifra(a.kmFuera, ' km', 'text-amber-500') +
+          // La parte que cae DENTRO de la franja de vigilancia, que es la que se
+          // llama: los del relevo (05:00→08:00) no se preguntan.
+          (f.kmFranja ? '<span class="block text-[10px] leading-tight ' +
+            (f.kmFranja.km >= 20 ? 'text-red-500 font-semibold' : 'text-telecab-muted') + '">' +
+            n1(f.kmFranja.km) + ' desde las ' + String(f.kmFranja.franja.ini).padStart(2, '0') + 'h</span>' : '') +
+          '</span>' +
+        '<span class="dopc text-right">' + aceptacionHTML(f.rechazos) + '</span>' +
+        '<span class="text-right">' + avisosHTML(f) + '</span>' +
+        '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
+      '</div>' +
+      detalleConductor(f) +
+      '</div>';
+  }
+
+  // ── El resumen de arriba: lo que se ve sin leer nada ────────────────────────
+  // Cuatro números. El primero es el que importa —a cuánta gente hay que llamar— y
+  // al pincharlo la lista se queda solo con ellos.
+  function pintarResumen() {
+    const p = (DATOS && DATOS.porTurno) || {};
+    const arr = (turnoActivo === 'nn' ? (p.nn || []) : (p[turnoActivo] || []));
+    const vent = ((DATOS && DATOS.ventanas) || {})[turnoActivo] || null;
+    const sinEmpezar = !!(vent && !vent.empezada);
+    const n = e => arr.filter(f => f.salida === e).length;
+    const avisos = arr.reduce((s, f) => s + ((f.incidencias || []).length), 0);
+
+    const tarjeta = (valor, etq, color, extra) =>
+      '<div class="' + (extra || '') + ' rounded-xl border border-telecab-border bg-telecab-dark/40 px-3 py-2">' +
+        '<div class="text-2xl font-bold tabular-nums leading-none ' + color + '">' + valor + '</div>' +
+        '<div class="text-[11px] text-telecab-muted mt-1">' + etq + '</div>' +
+      '</div>';
+
+    const sinDato = DATOS && DATOS.hayActividad === false;
+    // LAS CUATRO CIFRAS QUE IMPORTAN, CON SU DESGLOSE POR TURNO. La flota
+    // trabaja en dos turnos a la vez y el número global no dice nada: "8 en
+    // espera" puede ser el día entero parado o la noche arrancando.
+    const cuentaEn = (lista, g) => (lista || []).filter(f => grupoDe(f) === g).length;
+    const porTurnos = g => ({
+      dia: cuentaEn(p.dia, g), noche: cuentaEn(p.noche, g), todo: cuentaEn(p.todoturno, g),
+    });
+    const tarjetaTurnos = (g, etq, color, extra) => {
+      const c = porTurnos(g);
+      const total = c.dia + c.noche + c.todo;
+      return '<div class="' + (extra || '') + ' rounded-xl border border-telecab-border bg-telecab-dark/40 px-3 py-2">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none ' + color + '">' + total + '</div>' +
+          '<div class="text-[11px] text-telecab-muted">' + etq + '</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Turno de día"><i class="fa-solid fa-sun text-telecab-gold/70"></i> ' + c.dia + '</span>' +
+          '<span title="Turno de noche"><i class="fa-solid fa-moon text-sky-400/70"></i> ' + c.noche + '</span>' +
+          (c.todo ? '<span title="TodoTurno: doblan día y noche"><i class="fa-solid fa-clock-rotate-left"></i> ' + c.todo + '</span>' : '') +
+        '</div></div>';
+    };
+
+    const cajas = turnoActivo === 'nn'
+      ? [tarjeta(arr.length, 'Salieron FUERA del plan · vacaciones, bajas, sin ficha…', 'text-amber-500')]
+      : sinDato
+        ? [tarjeta('?', 'Sin datos de actividad: no se sabe quién ha salido', 'text-red-500')]
+        : [
+            tarjetaTurnos('viaje', 'En viaje', 'text-emerald-500'),
+            tarjetaTurnos('espera', 'En espera', 'text-telecab-gold'),
+            tarjetaTurnos('descanso', 'En descanso', 'text-amber-500'),
+            tarjetaTurnos('no_salio', 'Sin salir · a llamar', 'text-red-500',
+              'cursor-pointer transition ' + (soloNoSalieron ? 'ring-2 ring-red-500/60' : 'hover:border-red-500/50')),
+          ];
+    // Y, aparte, los que NO van a llegar a su jornada: da igual en qué grupo
+    // estén, es la lista de llamadas del turno.
+    const noLlega = t => (p[t] || []).filter(f => nivelAlerta(f) === 2).length;
+    const nlDia = noLlega('dia'), nlNoche = noLlega('noche'), nlTodo = noLlega('todoturno');
+    const total = ['dia', 'noche', 'todoturno'].reduce((s, t) => s + (p[t] || []).filter(f => alertaDe(f).length).length, 0);
+    if (turnoActivo !== 'nn' && !sinDato && total > 0) {
+      const sinAtender = nlDia + nlNoche + nlTodo;
+      cajas.push('<div class="rounded-xl border border-red-500/40 bg-red-500/[0.06] px-3 py-2' +
+          (sinAtender ? ' dlate' : '') + '">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none text-red-500">' + sinAtender + '</div>' +
+          '<div class="text-[11px] text-telecab-muted">Alertas sin atender' +
+            (total > sinAtender ? ' <span class="text-telecab-muted/70">· ' + (total - sinAtender) + ' ya vistas</span>' : '') + '</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Turno de día"><i class="fa-solid fa-sun text-telecab-gold/70"></i> ' + nlDia + '</span>' +
+          '<span title="Turno de noche"><i class="fa-solid fa-moon text-sky-400/70"></i> ' + nlNoche + '</span>' +
+          (nlTodo ? '<span title="TodoTurno"><i class="fa-solid fa-clock-rotate-left"></i> ' + nlTodo + '</span>' : '') +
+        '</div></div>');
+    }
+    // LA ACEPTACIÓN DE LA FLOTA en la jornada. Va al final y NO cambia con la
+    // pestaña: es de toda la jornada, no del turno que se esté mirando, y
+    // mezclarla con las otras cuatro (que sí son del turno) haría creer que el
+    // 62 % es "del turno de día".
+    const ac = (DATOS && DATOS.resumen && DATOS.resumen.aceptacion) || null;
+    if (turnoActivo !== 'nn' && ac && ac.ofertas) {
+      const col = ac.tasa < ACEPT_ROJO ? 'text-red-500' : ac.tasa < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500';
+      cajas.push('<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 px-3 py-2" ' +
+        'title="Viajes aceptados sobre lo que BOLT ha ofrecido a la flota en la jornada (05:00 → 05:00). ' +
+        'Lo que cancela el cliente no cuenta; lo que se acepta y luego se suelta, sí resta.">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none ' + col + '">' + ac.tasa + ' %</div>' +
+          '<div class="text-[11px] text-telecab-muted">Viajes aceptados</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Viajes hechos"><i class="fa-solid fa-check text-emerald-500/70"></i> ' + ac.aceptados + '</span>' +
+          '<span title="Rechazados por el conductor"><i class="fa-solid fa-ban text-red-500/70"></i> ' + ac.rechazados + '</span>' +
+          '<span title="Sin contestar"><i class="fa-solid fa-phone-slash text-amber-500/70"></i> ' + ac.sinResponder + '</span>' +
+          (ac.cancelados ? '<span title="Soltados tras aceptar"><i class="fa-solid fa-rotate-left text-red-500/70"></i> ' + ac.cancelados + '</span>' : '') +
+        '</div></div>');
+    }
+    // LAS JUSTIFICACIONES DE LA JORNADA, por estado. Las aprobadas ya son horas;
+    // las pendientes son una promesa que alguien tiene que mirar (y hasta que la
+    // mire, las horas de esa gente son presuntas); las rechazadas son llamadas
+    // por hacer. Los tres números juntos, porque las tres cosas se gestionan.
+    const js = (DATOS && DATOS.resumen && DATOS.resumen.justificantes) || null;
+    if (turnoActivo !== 'nn' && js && (js.aprobadas || js.pendientes || js.rechazadas)) {
+      cajas.push('<div class="rounded-xl border ' +
+        (js.rechazadas ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-telecab-border bg-telecab-dark/40') +
+        ' px-3 py-2" title="Justificaciones de esta jornada. Solo las APROBADAS cuentan como horas en la bitácora.">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none text-telecab-text">' + (js.aprobadas + js.pendientes) + '</div>' +
+          '<div class="text-[11px] text-telecab-muted">Justificaciones</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Aprobadas: ya son horas"><i class="fa-solid fa-check text-emerald-500/70"></i> ' + js.aprobadas + '</span>' +
+          '<span class="' + (js.pendientes ? 'text-sky-400' : '') + '" title="Pendientes de aprobar: sus horas son PRESUNTAS">' +
+            '<i class="fa-regular fa-clock"></i> ' + js.pendientes + '</span>' +
+          (js.rechazadas ? '<span class="text-red-500" title="Rechazadas: hay que volver a llamar">' +
+            '<i class="fa-solid fa-xmark"></i> ' + js.rechazadas + '</span>' : '') +
+        '</div></div>');
+    }
+    $('#d-resumen').innerHTML = cajas.join('');
+    $('#d-cabecera').classList.toggle('hidden', !arr.length);
+
+    const cajasDom = $('#d-resumen').children;
+    const caja = cajasDom[cajasDom.length - 1];   // la de "sin salir · a llamar"
+    if (caja && !sinDato && turnoActivo !== 'nn') {
+      caja.addEventListener('click', () => ponerFiltro(!soloNoSalieron));
+    }
+  }
+
+  // UN solo mando para "solo los que no han salido": la tarjeta roja y el botón
+  // de arriba lo cambian los dos y se ven los dos igual. Antes cada uno tocaba
+  // el estado por su cuenta y el botón se quedaba pintado al revés.
+  function ponerFiltro(v) {
+    soloNoSalieron = !!v;
+    // Los filtros de llamadas se excluyen: a la vez darían siempre una lista
+    // vacía (quien no ha salido no puede «no terminar» ni estar en riesgo).
+    if (soloNoSalieron) soloNoTerminara = soloEnRiesgo = false;
+    pintarFiltros();
+    pintarResumen(); pintar(); pintarSinDuenio();
+  }
+
+  function ponerFiltroNoTerminara(v) {
+    soloNoTerminara = !!v;
+    if (soloNoTerminara) soloNoSalieron = soloEnRiesgo = false;
+    pintarFiltros();
+    pintarResumen(); pintar(); pintarSinDuenio();
+  }
+
+  function ponerFiltroEnRiesgo(v) {
+    soloEnRiesgo = !!v;
+    if (soloEnRiesgo) soloNoSalieron = soloNoTerminara = false;
+    pintarFiltros();
+    pintarResumen(); pintar(); pintarSinDuenio();
+  }
+
+  /** Los botones de filtro, pintados según lo que está puesto. «En riesgo» en
+   *  ámbar: no es una alerta, es un aviso de que puede llegar a serlo. */
+  function pintarFiltros() {
+    const estilo = (on, encendido) => 'px-3 py-1.5 rounded-lg border text-xs ' + (on
+      ? (encendido || 'border-telecab-red bg-telecab-red/10 text-telecab-red')
+      : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
+    $('#d-solo-nosalieron').className = estilo(soloNoSalieron);
+    $('#d-solo-noterminara').className = estilo(soloNoTerminara);
+    $('#d-solo-enriesgo').className = estilo(soloEnRiesgo, 'border-amber-500/40 bg-amber-500/10 text-amber-600');
+    $('#d-solo-nosalieron').setAttribute('aria-pressed', String(soloNoSalieron));
+    $('#d-solo-noterminara').setAttribute('aria-pressed', String(soloNoTerminara));
+    $('#d-solo-enriesgo').setAttribute('aria-pressed', String(soloEnRiesgo));
+  }
+
+  function incidenciaHTML(i) {
+    return '<div class="rounded-lg border border-telecab-border p-2">' +
+      '<div class="flex flex-wrap items-center gap-2">' +
+        '<span class="text-sm ' + (i.gravedad >= 3 ? 'text-red-500 font-medium' : 'text-telecab-text') + '">' +
+          esc(i.etiqueta) + (i.veces > 1 ? ' (x' + i.veces + ')' : '') + '</span>' +
+        '<span class="text-sm text-telecab-muted flex-1 min-w-[8rem]">' + esc(i.detalle) + '</span>' +
+        (i.telefono ? '<a href="tel:' + esc(i.telefono) + '" aria-label="Llamar" class="px-2 py-1 rounded-lg border border-telecab-border ' +
+          'text-sm text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-phone-volume" aria-hidden="true"></i></a>' : '') +
+        GestionIncidencia.botonLlamar(i.id, i.seguimientos) +
+        GestionIncidencia.botones(i.id) +
+      '</div>' +
+      (i.ultimoSeguimiento
+        ? '<div class="text-xs text-telecab-muted mt-1"><i class="fa-solid fa-phone mr-1"></i>' +
+          i.seguimientos + ' intento(s) · último ' + esc(i.ultimoSeguimiento.quien || 'sin nombre') +
+          ' · ' + hora(i.ultimoSeguimiento.at) + '</div>'
+        : '') +
+      '</div>';
+  }
+
+  function detalleConductor(f) {
+    // La aceptación, con todo el desglose. En la fila va el porcentaje a secas
+    // (y en el móvil ni eso, que la columna se esconde); aquí se ve de qué está
+    // hecho, que es lo que hace falta para llamarle sabiendo lo que le pasa.
+    const rr = f.rechazos;
+    const acept = (rr && rr.ofertas)
+      ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 p-2 mb-3">' +
+          '<div class="text-xs text-telecab-muted mb-1">Viajes de su turno (' + (f.turno === 'noche' ? 'de 12:00 a 12:00' : f.turno === 'dia' ? 'de 00:00 a 24:00' : '05:00 → 05:00') + ')</div>' +
+          '<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">' +
+            '<span class="text-base font-bold tabular-nums ' +
+              (rr.tasa < ACEPT_ROJO ? 'text-red-500' : rr.tasa < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500') +
+              '">' + rr.tasa + ' % aceptados</span>' +
+            '<span class="text-telecab-muted"><b class="text-emerald-500">' + rr.aceptados + '</b> hechos de ' + rr.ofertas + ' ofertas</span>' +
+            (rr.rechazados ? '<span class="text-telecab-muted"><b class="text-red-500">' + rr.rechazados + '</b> rechazados</span>' : '') +
+            (rr.sinResponder ? '<span class="text-telecab-muted"><b class="text-amber-500">' + rr.sinResponder + '</b> sin contestar</span>' : '') +
+            (rr.cancelados ? '<span class="text-telecab-muted"><b class="text-red-500">' + rr.cancelados + '</b> soltados tras aceptar</span>' : '') +
+          '</div></div>'
+      : '';
+    // Lo de la JORNADA primero (no llega a las horas, está rechazando viajes):
+    // es lo que se le pregunta por teléfono. Debajo, lo del coche.
+    // Cada aviso con SU respuesta si ya se preguntó. Es lo que contesta a la
+    // pregunta "¿y por qué sigue esto en rojo?": porque de esta no se ha dicho
+    // nada todavía.
+    // Lo primero del detalle, antes que nada: si esta rodando con la cuenta de
+    // otro, todo lo que venga debajo hay que leerlo sabiendolo.
+    const avisoF = f.fantasma
+      ? '<div class="rounded-lg border border-telecab-gold/40 bg-telecab-gold/[0.08] p-2 mb-3 text-xs">' +
+          '<i class="fa-solid fa-user-secret text-telecab-gold mr-1"></i>' +
+          'Está trabajando con la <b>cuenta fantasma</b> de <b>' + esc(f.fantasma) + '</b>. ' +
+          'En BOLT y en Mapon sale con ese nombre; aquí y en sus horas, con el suyo.' +
+        '</div>'
+      : '';
+
+    const dichas = contestadas(f);
+    const jor = (f.avisos || []).length
+      ? '<div class="space-y-1.5 mb-3">' + f.avisos.map(a => {
+          const d = dichas[a.codigo];
+          const marco = a.tono === 'error' ? 'border-red-500/40 bg-red-500/[0.06]'
+            : a.tono === 'presunto' ? 'border-sky-500/40 bg-sky-500/[0.06]'
+            : 'border-amber-500/40 bg-amber-500/[0.06]';
+          const texto = a.tono === 'error' ? 'text-red-500'
+            : a.tono === 'presunto' ? 'text-sky-400' : 'text-amber-500';
+          return '<div class="rounded-lg border p-2 ' + marco + '">' +
+            '<div class="text-sm font-medium ' + texto + '">' + esc(a.etq) +
+              (d ? ' <span class="text-emerald-500 font-normal"><i class="fa-solid fa-check"></i> contestada</span>' : '') + '</div>' +
+            (a.detalle ? '<div class="text-xs text-telecab-muted mt-0.5">' + esc(a.detalle) + '</div>' : '') +
+            (d ? '<div class="text-xs text-emerald-500/90 mt-1">«' + esc(d.comentario) + '»' +
+                 (d.at ? ' <span class="text-telecab-muted">· ' + hora(d.at) + '</span>' : '') + '</div>' : '') +
+          '</div>';
+        }).join('') + '</div>'
+      : '';
+    // LA TRAZA de lo que ya se hizo con esta persona hoy: quién llamó, cuándo,
+    // qué contestó y la nota. Es lo que evita la segunda llamada por lo mismo.
+    const ll = f.conductorId ? (DATOS.llamadas || {})[String(f.conductorId)] : null;
+    const jj = f.conductorId ? (DATOS.justificados || {})[String(f.conductorId)] : null;
+    const traza = (ll || jj)
+      ? '<div class="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-2 mb-3 space-y-1">' +
+          (ll ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-phone-flip text-emerald-500 mr-1"></i>' +
+              '<b>' + esc(ll.ultima.resultado || 'Llamado') + '</b>' +
+              ' · ' + hora(ll.ultima.at) +
+              (ll.ultima.quien ? ' · por ' + esc(ll.ultima.quien) : '') +
+              (ll.n > 1 ? ' · ' + ll.n + ' llamadas hoy' : '') +
+              (ll.ultima.nota ? '<div class="text-telecab-muted mt-0.5">«' + esc(ll.ultima.nota) + '»</div>' : '') +
+            '</div>' : '') +
+          (jj ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-file-circle-check text-sky-400 mr-1"></i>' +
+              '<b>Justificado' + (jj.horas != null ? ' ' + String(jj.horas).replace('.', ',') + ' h' : '') + '</b>' +
+              (jj.quien ? ' · por ' + esc(jj.quien) : '') +
+              (jj.obs ? '<div class="text-telecab-muted mt-0.5">«' + esc(jj.obs) + '»</div>' : '') +
+            '</div>' : '') +
+        '</div>'
+      : '';
+
+    // Y lo que se puede hacer con ello: llamar y dejar traza, o justificar las
+    // horas que faltan si el motivo es nuestro (dos horas de taller, p. ej.).
+    // «No saldrá» y «Traza por Slack» (db/170), con quién y cuándo.
+    const marcasHTML = (f.noSale || f.slack)
+      ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 p-2 mb-3 space-y-1">' +
+          (f.noSale && f.noSale.automatica ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-user-slash text-telecab-muted mr-1"></i>' +
+              '<b>' + esc(f.noSale.etiqueta) + '</b>' + (f.noSale.quien ? ' · la dio ' + esc(f.noSale.quien) + (f.noSale.hora ? ' el ' + esc(f.noSale.hora) : '') : '') +
+              '<div class="text-telecab-muted mt-0.5">' + esc(f.noSale.comentario) + '. Por eso no se le espera hoy, aunque siga en el cuadrante.</div></div>'
+            : f.noSale ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-ban text-telecab-muted mr-1"></i>' +
+              '<b>No saldrá · ' + esc(f.noSale.etiqueta) + '</b>' +
+              ' · ' + esc(f.noSale.hora || '') + (f.noSale.quien ? ' · por ' + esc(f.noSale.quien) : '') +
+              '<div class="text-telecab-muted mt-0.5">«' + esc(f.noSale.comentario) + '»</div></div>' : '') +
+          (f.slack ? '<div class="text-xs text-telecab-text"><i class="fa-brands fa-slack text-telecab-muted mr-1"></i>' +
+              'Traza por Slack en <b>' + esc(canalesTexto(f.slack)) + '</b>' +
+              ' · ' + esc(f.slack.hora || '') + (f.slack.quien ? ' · por ' + esc(f.slack.quien) : '') + '</div>' : '') +
+        '</div>'
+      : '';
+    const acciones = f.conductorId
+      ? marcasHTML + '<div class="flex flex-wrap items-center gap-2 mb-3">' +
+          '<button data-tellog="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-solid fa-phone-flip mr-1"></i> He llamado</button>' +
+          '<button data-justdir="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-sky-500 hover:text-sky-500">' +
+            '<i class="fa-solid fa-file-circle-check mr-1"></i> Justificar horas</button>' +
+          (f.noSale && f.noSale.automatica ? '' :
+          '<button data-nosale="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-solid fa-ban mr-1"></i> ' + (f.noSale ? 'Cambiar «No saldrá»' : 'No saldrá') + '</button>') +
+          '<button data-slack="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-brands fa-slack mr-1"></i> ' + (f.slack
+              ? 'Traza en ' + ((f.slack.canales || []).length === 1 ? esc(canalesTexto(f.slack)) : (f.slack.canales || []).length + ' canales')
+              : 'Traza por Slack') + '</button>' +
+          // Arriba se ve lo de HOY. Esto abre todo lo demás, y se abre en una
+          // ventana encima a propósito: la ficha del directo se mira para
+          // decidir en dos segundos si hay que llamar, y meterle aquí dentro
+          // veinte llamadas viejas la convierte en algo que hay que leer.
+          '<button data-histllam="' + esc(f.conductorId) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-solid fa-clock-rotate-left mr-1"></i> Historial de llamadas</button>' +
+        '</div>'
+      : '';
+    const inc = (f.incidencias || []).length
+      ? '<div class="space-y-2">' + f.incidencias.map(incidenciaHTML).join('') + '</div>'
+      : '<p class="text-sm text-telecab-muted">Sin avisos del coche.</p>';
+    return '<div class="ddet hidden px-4 pb-3">' +
+      '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
+        avisoF + acept + jor + traza + acciones +
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos del coche</div>' + inc + '</div>' +
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted">Trazos · últimas 24 h · ' +
+          esc(f.conductor) + '</div>' +
+          // Se dice una vez aquí y no en cada línea: un trayecto entra cuando el
+          // coche PARA, así que lo que está rodando ahora todavía marca 0 km.
+          '<div class="text-[10px] text-telecab-muted/70 mb-1">Los km de cada trazo salen de los trayectos de Mapon, ' +
+          'repartidos por tiempo. Un trayecto suma cuando el coche para: lo que se está rodando ahora aún marca 0.</div>' +
+          '<div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
+      '</div></div>';
+  }
+
+  // ── Fila NN (rueda sin estar en el cuadrante) ────────────────────────────────
+  // El PORQUÉ de que salga aquí y no en el plan: es lo que decide si hay que
+  // preguntar (¿trabajando de vacaciones?, ¿cuenta sin ficha?) o no.
+  const NN_TONO = { sin_ficha: 'text-red-500', baja_empresa: 'text-red-500', ausente: 'text-amber-500', sin_plaza: 'text-telecab-muted' };
+  // La fila NN va en LA MISMA rejilla que la cabecera: cada dato bajo su columna
+  // (antes era un flex por libre y las horas caían debajo de "KM").
+  function filaNN(s) {
+    const sit = s.situacion || {};
+    // A los NN también hay que llamarlos, así que su fila late y se despliega
+    // igual que las del plan: mismo nivel de alerta, mismo botón, misma traza.
+    const nivel = nivelAlerta(s);
+    return '<div class="dfila ' +
+        (s.cumple ? (nivel === 2 ? 'dcumple-alerta' : 'dcumple')
+          : nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : '') +
+        ' border-b border-telecab-border/70" data-mat="' + esc(s.clave || ('nn-' + s.conductorId + '-' + s.turno)) +
+        '" data-cid="' + esc(s.conductorId || '') + '">' +
+      '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
+      '<span class="dbarra ' + (s.conectadoAhora ? 'bg-emerald-500' : 'bg-telecab-border') + '"></span>' +
+      '<span class="min-w-0">' +
+        '<span class="flex items-center gap-1.5 min-w-0">' +
+          '<span class="truncate text-telecab-text font-medium" title="' + esc(s.conductor) + '">' + esc(s.conductor) + '</span>' +
+          Copiar.boton(s.conductor, 'Copiar el nombre') +
+          chipCumple(s) + chipRend(s.rendimiento) + '</span>' +
+        '<span class="flex items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) +
+          Copiar.boton(tel9(s.telefono), 'Copiar el teléfono') + '</span>' +
+        (sit.etiqueta ? '<span class="block text-[11px] font-medium ' + (NN_TONO[sit.codigo] || 'text-telecab-muted') + '">' + esc(sit.etiqueta) + '</span>' : '') +
+      '</span>' +
+      '<span class="dopc min-w-0 flex items-center gap-1.5 font-mono text-xs text-telecab-muted">' +
+        '<span class="truncate" title="Coche(s) usados en BOLT">' + esc((s.matriculas || []).join(', ') || '—') + '</span>' +
+        ((s.matriculas || []).length ? Copiar.boton(s.matriculas.join(', '), 'Copiar la matrícula') : '') + '</span>' +
+      '<span>' + (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Salió en el turno', 'muted')) + '</span>' +
+      '<span class="dopc text-right text-xs text-telecab-muted tabular-nums" title="Primera conexión de la jornada">' +
+        (s.primera ? hora(s.primera) : '<span class="text-telecab-border">—</span>') + '</span>' +
+      '<span class="text-right text-xs tabular-nums" title="Horas efectivas: viaje + espera. El descanso no cuenta.">' +
+        cifra(horas(s.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
+      '<span class="dopc text-right text-xs tabular-nums" title="Km en BOLT">' + cifra(s.enBolt, ' km', 'text-emerald-500') + marcaGps(s) + '</span>' +
+      '<span class="dopc text-right text-xs tabular-nums" title="Km desconectado">' + cifra(s.desconectado, ' km', 'text-amber-500') + '</span>' +
+      // La columna de aceptados, que faltaba: sin ella la fila tenía diez celdas
+      // para una rejilla de once y se descuadraba entera.
+      '<span class="dopc text-right">' + aceptacionHTML(s.rechazos) + '</span>' +
+      '<span class="text-right">' + avisosHTML(s) + '</span>' +
+      '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
+      '</div>' +
+      detalleConductor(s) +
+      '</div>';
+  }
+
+  // ── Trazos de un coche, bajo demanda (una vez por apertura) ──────────────────
+  async function cargarTrazos(fila) {
+    const caja = fila.querySelector('.dtrazos');
+    if (!caja || caja.dataset.cargado) return;
+    caja.dataset.cargado = '1';
+    const cid = (fila.dataset.cid || '').trim();
+    if (!cid) { caja.innerHTML = '<span class="text-telecab-muted">Conductor sin enlace a BOLT — sin trazos.</span>'; return; }
+    try {
+      const d = await (await fetch('/flota-viva/api/historial-conductor/' + encodeURIComponent(cid) + '?dias=1')).json();
+      const h = (d.historial || []);
+      caja.innerHTML = h.length
+        ? '<div class="space-y-1">' + h.map(t =>
+            '<div class="flex items-center gap-2 text-xs">' +
+              '<span class="tabular-nums text-telecab-muted w-24">' + hora(t.desde) + (t.hasta ? '–' + hora(t.hasta) : '–ahora') + '</span>' +
+              '<span class="font-mono text-telecab-muted w-20">' + esc(t.matricula || '') + '</span>' +
+              '<span class="text-telecab-text w-24">' + esc(t.etiqueta || t.situacion) + '</span>' +
+              '<span class="text-telecab-muted w-20">' + esc(t.duracion || '') + '</span>' +
+              // LOS KM DE ESE TRAZO. En ámbar cuando se rodaron FUERA de BOLT
+              // (descanso o desconectado): es la línea que hay que preguntar.
+              // Un 0 km también dice algo —el coche estuvo parado— así que se
+              // pinta siempre y no solo cuando hay kilómetros.
+              '<span class="tabular-nums ' + (t.fuera ? 'text-amber-500 font-semibold' : 'text-telecab-muted') + '" ' +
+                'title="' + (t.enCurso && !t.km
+                  ? 'El coche sigue rodando: Mapon no da los km del trayecto hasta que para'
+                  : t.fuera ? 'Rodados fuera de BOLT: no cuentan como trabajo' : 'Km rodados en este trazo') + '">' +
+                // Un 0 con un trayecto abierto encima NO es cero: es "todavía no".
+                (t.enCurso && !t.km
+                  ? '<span class="text-telecab-muted/60 italic">en curso</span>'
+                  : n1(t.km || 0) + ' km') + '</span>' +
+            '</div>').join('') + '</div>'
+        : '<span class="text-telecab-muted">Sin trazos en las últimas 24 h.</span>';
+    } catch (e) {
+      caja.innerHTML = '<span class="text-red-500">No se pudieron cargar los trazos.</span>';
+      caja.dataset.cargado = '';
+    }
+  }
+
+  function abrirFila(fila) {
+    fila.querySelector('.ddet').classList.remove('hidden');
+    fila.querySelector('.dchev').classList.add('rotate-180');
+    abiertos.add(fila.dataset.mat);
+    cargarTrazos(fila);
+  }
+  function cerrarFila(fila) {
+    fila.querySelector('.ddet').classList.add('hidden');
+    fila.querySelector('.dchev').classList.remove('rotate-180');
+    abiertos.delete(fila.dataset.mat);
+  }
+
+  // ── Pintar la lista del turno activo, agrupada POR CUADRANTE (planificador) ───
+  function pintar() {
+    if (!DATOS) return;
+    const q = ($('#d-filtro').value || '').trim().toLowerCase();
+    const p = DATOS.porTurno || {};
+
+    if (turnoActivo === 'nn') {
+      // Los que ruedan sin plan no tienen jornada que terminar: sin número.
+      $('#d-noterminara-n').textContent = '';
+      $('#d-enriesgo-n').textContent = '';
+      const todas = p.nn || [];
+      const filas = todas.filter(s => !q ||
+        (s.conductor || '').toLowerCase().includes(q) ||
+        (s.matriculas || []).join(' ').toLowerCase().includes(q));
+      // PARTIDOS POR TURNO, POR SU HORA DE INICIO (06/10/2026): quien empieza
+      // antes de las 12:00 es de día y quien empieza desde las 12:00, de noche.
+      // Solo sale en los dos quien hizo dos ratos, uno de cada. Antes el corte
+      // era el reloj de las 17:00, y antes aún iban todos en un montón.
+      const porT = [
+        { id: 'dia', etq: 'Día', icono: 'fa-sun', desc: 'Empezaron antes de las 12:00 · cuenta de 00:00 a 24:00' },
+        { id: 'noche', etq: 'Noche', icono: 'fa-moon', desc: 'Empezaron desde las 12:00 · cuenta de 12:00 a 12:00 del día siguiente' },
+      ];
+      $('#d-lista').innerHTML = filas.length
+        ? porT.map(t => {
+            const lista = filas.filter(f => (f.turno || 'dia') === t.id);
+            if (!lista.length) return '';
+            const hs = lista.reduce((n, f) => n + (f.minutos || 0), 0) / 60;
+            return '<div class="px-4 py-1.5 bg-telecab-dark/60 border-y border-telecab-border/70 ' +
+                'text-[11px] uppercase tracking-wide text-telecab-muted flex items-center gap-2" title="' + esc(t.desc) + '">' +
+                '<i class="fa-solid ' + t.icono + '"></i>' + t.etq +
+                '<span class="ml-auto tabular-nums normal-case">' + lista.length + ' conductor(es) · ' +
+                n1(hs) + ' h que suman al turno</span></div>' +
+              lista.map(filaNN).join('');
+          }).join('')
+        : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie rodando sin plan.</p>';
+      $('#d-cuenta').textContent = (q ? filas.length + ' de ' + todas.length : todas.length) + ' fila(s)';
+      // Los NN ya tienen botones (llamar, justificar) y se despliegan: hay que
+      // engancharlos igual que a los del plan. Antes esta rama salía sin pasar
+      // por aquí porque sus filas no tenían nada que pulsar.
+      wire();
+      return;
+    }
+
+    const todas = p[turnoActivo] || [];
+    // Cuántos no terminarán la jornada en este turno, al lado del botón.
+    const nNoTermina = todas.filter(noTerminara).length;
+    $('#d-noterminara-n').textContent = nNoTermina ? '· ' + nNoTermina : '';
+    const nEnRiesgo = todas.filter(enRiesgo).length;
+    $('#d-enriesgo-n').textContent = nEnRiesgo ? '· ' + nEnRiesgo : '';
+    const filas = todas.filter(f =>
+      (!soloNoSalieron || falta(f)) &&
+      (!soloNoTerminara || noTerminara(f)) &&
+      (!soloEnRiesgo || enRiesgo(f)) &&
+      (!q ||
+        (f.conductor || '').toLowerCase().includes(q) ||
+        (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
+        ((f.rendimiento && f.rendimiento.letra) || '').toLowerCase() === q ||
+        ((f.actividad && f.actividad.matriculas) || []).join(' ').toLowerCase().includes(q)));
+
+    if (!filas.length) {
+      // Una lista vacía tiene tres motivos muy distintos y hay que decir cuál es:
+      // "no hay nadie por llamar" es una buena noticia y "el turno no ha empezado"
+      // no es lo mismo que "no queda nadie".
+      const v0 = (DATOS.ventanas || {})[turnoActivo] || null;
+      const msg = v0 && !v0.empezada
+        ? 'Este turno todavía no ha empezado.'
+        : soloNoSalieron && todas.length
+          ? 'Nadie por llamar en este turno.'
+          : soloNoTerminara && todas.length
+            ? 'Nadie en este turno se va a quedar corto de jornada.'
+            : soloEnRiesgo && todas.length
+            ? 'Nadie parado sin sus horas en este turno.'
+            : q
+            ? 'Nadie con ese nombre o esa matrícula.'
+            : 'Nadie en este turno.';
+      $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' + msg + '</p>';
+      $('#d-cuenta').textContent = todas.length ? '0 de ' + todas.length + ' del turno' : '';
+      return;
+    }
+
+    // POR ESTADO, NO POR CUADRANTE. Quien mira esta pantalla no busca "el
+    // cuadrante 3": busca a quién llamar y quién está rodando. Arriba lo que
+    // exige acción (no han salido, todavía no les toca), abajo lo que ya está
+    // funcionando (en espera, en viaje). El cuadrante sigue en cada fila.
+    const grupos = new Map(GRUPOS.map(g => [g.id, []]));
+    filas.forEach(f => { const g = grupoDe(f); if (grupos.has(g)) grupos.get(g).push(f); });
+
+    $('#d-lista').innerHTML = GRUPOS.map(g => {
+      const lista = grupos.get(g.id) || [];
+      if (!lista.length) return '';
+      // Dentro de cada grupo: por cuadrante y luego por nombre, para que la gente
+      // del mismo correturno siga saliendo junta. En «En riesgo», antes que nada
+      // el margen: arriba a quien antes se le acaba el tiempo.
+      lista.sort((a, b) =>
+        (soloEnRiesgo ? margen(a) - margen(b) : 0) ||
+        (a.cuadrante || '').localeCompare(b.cuadrante || '', undefined, { numeric: true }) ||
+        (a.conductor || '').localeCompare(b.conductor || ''));
+      const e = ESTADO[g.id];
+      return '<div class="sticky top-0 z-10 px-4 py-1.5 bg-telecab-dark border-b border-telecab-border' +
+          ' text-xs uppercase tracking-wide text-telecab-muted flex items-center gap-2">' +
+          '<span class="w-1.5 h-1.5 rounded-full ' + (e ? e.barra : 'bg-telecab-border') + '"></span>' +
+          '<i class="fa-solid ' + g.icono + '"></i> ' + esc(g.etq) +
+          '<span class="ml-auto normal-case tabular-nums">' + lista.length + '</span></div>' +
+        lista.map(filaConductor).join('');
+    }).join('');
+
+    const salieron = filas.filter(salio).length;
+    const faltan = filas.filter(falta).length;
+    const vent = (DATOS.ventanas || {})[turnoActivo] || null;
+    // Con el filtro de "solo los que faltan" puesto, decir "salieron 0 de 15" no
+    // informa de nada: lo que se está viendo es la lista de llamadas.
+    const pie = vent && !vent.empezada
+      ? 'Turno sin empezar · ' + filas.length + ' planificados'
+      : soloNoSalieron
+        ? filas.length + ' por llamar'
+        : soloNoTerminara
+          ? filas.length + ' no terminará(n) la jornada'
+          : soloEnRiesgo
+            ? filas.length + ' en riesgo'
+            : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '');
+    $('#d-cuenta').textContent = pie + (q || soloNoSalieron || soloNoTerminara || soloEnRiesgo ? ' · de ' + todas.length + ' del turno' : '');
+
+    // Reabrir lo que estaba abierto + enganchar acordeón y botones.
+    $('#d-lista').querySelectorAll('.dfila').forEach(fila => { if (abiertos.has(fila.dataset.mat)) abrirFila(fila); });
+    wire();
+  }
+
+  // ── Las acciones de la carta: el telefonito y la J ──────────────────────────
+  // El TELEFONITO deja traza de cada llamada (quién, cuándo, con qué resultado):
+  // se ve al momento en la carta —para que el segundo operador no repita la
+  // llamada—, en el Histórico ("Llamadas de seguimiento") y en el call center.
+  // La J justifica la jornada EN CURSO: horas que se justifican + motivo, con el
+  // usuario que lo hizo; la carta pasa a enseñar "J · X h · quién".
+  function accionesConductor(f) {
+    if (!f.conductorId) return '';
+    const ll = (DATOS.llamadas || {})[String(f.conductorId)];
+    const j = (DATOS.justificados || {})[String(f.conductorId)];
+    // Cada botón dice qué hace y con quién: el title es la ayuda larga, y con
+    // solo un icono el lector de pantalla oía esa frase entera en cada fila.
+    const quien = f.conductor || '';
+    const btnTel = '<button data-tellog="' + esc(f.clave) + '" ' +
+      'aria-label="' + esc('Apuntar llamada a ' + quien + (ll ? ' (' + ll.n + ' esta jornada)' : '')) + '" ' +
+      'title="' + (ll
+        ? esc(ll.n + ' llamada(s) esta jornada · última ' + hora(ll.ultima.at) +
+              (ll.ultima.quien ? ' · ' + ll.ultima.quien : '') +
+              (ll.ultima.resultado ? ' · ' + ll.ultima.resultado : '') + '. Pulsa para apuntar otra.')
+        : 'Apuntar que le has llamado: queda la traza (quién y cuándo) para el reporte y el call center') + '" ' +
+      'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (ll
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
+        : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
+      '<i class="fa-solid fa-phone-flip" aria-hidden="true"></i>' + (ll ? ' ' + ll.n : '') + '</button>';
+    const btnJ = j
+      ? '<span title="' + esc('Justificado por ' + (j.quien || 'alguien') +
+            (j.horas != null ? ' · justifica ' + j.horas + ' h' : '') + (j.obs ? ' · ' + j.obs : '')) + '" ' +
+          'class="px-1.5 py-0.5 rounded-md text-[11px] leading-none font-semibold bg-sky-500/15 text-sky-500">J' +
+          (j.horas != null ? ' ' + j.horas + 'h' : '') + '</span>'
+      : '<button data-justdir="' + esc(f.clave) + '" aria-label="' + esc('J: justificar la jornada de ' + quien) + '" ' +
+          'title="Justificar la jornada: horas que se justifican + motivo. Queda registrado tu usuario." ' +
+          'class="px-1.5 py-0.5 rounded-md border border-telecab-border text-[11px] leading-none font-semibold ' +
+          'text-telecab-muted hover:border-sky-500 hover:text-sky-500">J</button>';
+    // «NO SALDRÁ»: gris lleno si ya está apuntado (con el motivo al pasar el ratón).
+    const ns = f.noSale;
+    const btnNo = '<button data-nosale="' + esc(f.clave) + '" aria-label="' + esc('No saldrá: ' + quien + (ns ? ' (apuntado)' : '')) + '" ' +
+      'title="' + esc(ns && ns.automatica
+        ? ns.etiqueta + ': ' + ns.comentario + '. Se cambia en Plantilla, no aquí.'
+        : ns
+        ? 'No saldrá · ' + ns.etiqueta + ': «' + ns.comentario + '» — ' + (ns.quien || '—') + ', ' + (ns.hora || '') + '. Pulsa para cambiarlo o quitarlo.'
+        : 'No saldrá: apunta por qué (motivo y comentario). Le quita la alerta de «No llegará» y las campañas dejan de llamarle.') + '" ' +
+      'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (ns
+        ? 'border-telecab-border bg-telecab-border/50 text-telecab-text'
+        : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
+      '<i class="fa-solid fa-ban" aria-hidden="true"></i></button>';
+    // «TRAZA POR SLACK»: el check. Verde con su canal al pasar el ratón.
+    const sl = f.slack;
+    const btnSlack = '<button data-slack="' + esc(f.clave) + '" aria-label="' + esc('Traza por Slack: ' + quien + (sl ? ' (hecha)' : '')) + '" ' +
+      'title="' + esc(sl
+        ? 'Traza por Slack en ' + canalesTexto(sl) + ' — ' + (sl.quien || '—') + ', ' + (sl.hora || '') + '. Pulsa para cambiar los canales o quitarla.'
+        : 'Traza por Slack: marca en qué canal de la empresa quedó constancia') + '" ' +
+      'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (sl
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
+        : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
+      '<i class="fa-brands fa-slack" aria-hidden="true"></i>' + (sl ? ' <i class="fa-solid fa-check" aria-hidden="true"></i>' : '') + '</button>';
+    // LA −J (db/227): constancia de un perjuicio a la empresa. Solo con ficha.
+    const btnMenos = f.conductorId
+      ? '<button data-menosj="' + esc(f.clave) + '" aria-label="' + esc('−J: perjuicio de ' + quien) + '" ' +
+          'title="Poner una −J: perjuicio a la empresa (por ejemplo, no le dio el coche a tiempo a un compañero). ' +
+          'No toca horas ni nómina; queda pendiente de aprobar en Justificantes." ' +
+          'class="px-1.5 py-0.5 rounded-md border border-telecab-border text-[11px] leading-none font-semibold ' +
+          'text-telecab-muted hover:border-telecab-red hover:text-telecab-red">−J</button>'
+      : '';
+    // Los dos nuevos van JUNTOS: en una pantalla estrecha, si no caben, bajan los
+    // dos a la vez en vez de dejar uno suelto debajo del teléfono.
+    return btnTel + btnJ + btnMenos + '<span class="inline-flex items-center gap-1">' + btnNo + btnSlack + '</span>';
+  }
+
+  function filaPorClave(clave) {
+    // 'nn' entra en la lista: a los que ruedan sin plan también se les llama y
+    // se les justifica, así que sus botones tienen que encontrar su fila.
+    for (const t of ['dia', 'noche', 'todoturno', 'nn']) {
+      const f = ((DATOS.porTurno || {})[t] || []).find(x => x.clave === clave);
+      if (f) return f;
+    }
+    return null;
+  }
+
+  // El buzón de resultados lo manda el servidor (repo/llamadas): la MISMA lista
+  // que usan las campañas, porque la etiqueta que se pone aquí decide la cola
+  // del conductor en la campaña siguiente. Dos listas se separan solas.
+  const RESULTADOS_LLAMADA = DEL_SERVIDOR.resultadosLlamada;
+  const CATALOGO_LLAMADA = DEL_SERVIDOR.catalogoLlamada;
+  const TIPOS_J = DEL_SERVIDOR.tiposJ;
+  const CASUISTICAS_MENOS_J = DEL_SERVIDOR.casuisticasMenosJ;
+  // «No saldrá» y «Traza por Slack» (db/170): los catálogos vienen del servidor
+  // (modules/Control/marcas.repo.js), como el buzón de resultados.
+  const MOTIVOS_NO_SALE = DEL_SERVIDOR.motivosNoSale;
+  const CANALES_SLACK = DEL_SERVIDOR.canalesSlack;
+
+  /** Los canales de una traza, como se escriben en Slack: «#9-rrhh, #4-bajas-medicas». */
+  const canalesTexto = sl => ((sl && sl.canales) || []).map(c => '#' + c).join(', ');
+
+  function chipNoSale(ns) {
+    // La de la baja es automática (marcas.repo, MOTIVO_BAJA): se dice tal cual.
+    if (ns.automatica) {
+      return '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-telecab-border/50 text-telecab-text" ' +
+        'title="' + esc(ns.comentario + (ns.quien ? ' — la dio ' + ns.quien + (ns.hora ? ' el ' + ns.hora : '') : '')) + '">' +
+        '<i class="fa-solid fa-user-slash"></i> ' + esc(ns.etiqueta) + '</span>';
+    }
+    return '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-telecab-border/50 text-telecab-text" ' +
+      'title="' + esc('«' + ns.comentario + '» — ' + (ns.quien || '—') + ', ' + (ns.hora || '')) + '">' +
+      '<i class="fa-solid fa-ban"></i> No saldrá · ' + esc(ns.etiqueta) + '</span>';
+  }
+
+  /** Manda una marca y repinta. Devuelve si salió bien. */
+  async function postMarca(url, cuerpo, tituloError) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo guardar');
+      cargar();
+      return true;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: tituloError, texto: e.message, tono: 'error' });
+      return false;
+    }
+  }
+
+  /**
+   * «NO SALDRÁ»: por qué no va a salir, con motivo y comentario obligatorio.
+   * Con eso la fila deja de tener «No llegará», se va al grupo de los que no
+   * saldrán y las campañas no le vuelven a llamar. Si ya estaba, se cambia o se
+   * quita.
+   */
+  async function noSaldra(f) {
+    const ya = f.noSale;
+    if (ya && ya.automatica) {
+      await Dialogo.aviso({ titulo: ya.etiqueta, tono: 'info',
+        texto: ya.comentario + (ya.quien ? ' (la dio ' + ya.quien + (ya.hora ? ' el ' + ya.hora : '') + ')' : '') +
+          '. Por eso Control no le espera hoy, aunque siga en el cuadrante. Si la baja está mal, se corrige en Plantilla.' });
+      return;
+    }
+    if (ya) {
+      const que = await Dialogo.elegir({
+        titulo: 'No saldrá · ' + ya.etiqueta,
+        html: '<p>«' + esc(ya.comentario) + '»</p>' +
+          '<p class="text-telecab-muted text-sm mt-1">Lo apuntó ' + esc(ya.quien || '—') + ' a las ' + esc(ya.hora || '') + '.</p>',
+        opciones: [
+          { texto: 'Quitar «No saldrá»', valor: 'quitar', tono: 'peligro' },
+          { texto: 'Cambiar el motivo', valor: 'cambiar', principal: true },
+        ],
+      });
+      if (!que) return;
+      if (que === 'quitar') {
+        await postMarca('/control/api/no-saldra/quitar',
+          { conductorId: f.conductorId, dia: DATOS && DATOS.dia }, 'No se pudo quitar «No saldrá»');
+        return;
+      }
+    }
+    let v = ya ? { motivo: ya.motivo, comentario: ya.comentario } : {};
+    for (;;) {
+      v = await Dialogo.formulario(f.conductor + ' no saldrá', [
+        { id: 'motivo', etiqueta: 'Por qué no saldrá', tipo: 'lista', obligatorio: true, valor: v.motivo || '',
+          opciones: MOTIVOS_NO_SALE.map(m => ({ valor: m.codigo, texto: m.etiqueta })) },
+        { id: 'comentario', etiqueta: 'Comentario', tipo: 'texto-largo', obligatorio: true, valor: v.comentario || '',
+          marcador: 'p. ej. tiene cita en el médico y trae el justificante mañana' },
+      ], { textoBoton: ya ? 'Guardar el cambio' : 'Apuntar «No saldrá»',
+           nota: 'Le quita la alerta de «No llegará» y las campañas dejan de llamarle. Queda tu usuario.' });
+      if (!v) return;
+      if (String(v.comentario || '').trim().length >= 5) break;
+      await Dialogo.aviso({ titulo: 'El comentario se queda corto',
+        texto: 'Cuéntalo en una frase (cinco letras como mínimo): es lo que leerá el siguiente controlador.', tono: 'aviso' });
+    }
+    await postMarca('/control/api/no-saldra', {
+      conductorId: f.conductorId, dia: DATOS && DATOS.dia, turno: f.turno,
+      motivo: v.motivo, comentario: v.comentario,
+      matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
+    }, 'No se pudo apuntar «No saldrá»');
+  }
+
+  /** «TRAZA POR SLACK»: en qué canales de la empresa quedó constancia (varios). Solo la marca. */
+  async function trazaSlack(f) {
+    const ya = f.slack;
+    if (ya) {
+      const que = await Dialogo.elegir({
+        titulo: 'Traza por Slack',
+        html: '<p>En <b>' + esc(canalesTexto(ya)) + '</b>.</p>' +
+          '<p class="text-telecab-muted text-sm mt-1">La marcó ' + esc(ya.quien || '—') + ' a las ' + esc(ya.hora || '') + '.</p>',
+        opciones: [
+          { texto: 'Quitar la marca', valor: 'quitar', tono: 'peligro' },
+          { texto: 'Cambiar los canales', valor: 'cambiar', principal: true },
+        ],
+      });
+      if (!que) return;
+      if (que === 'quitar') {
+        await postMarca('/control/api/traza-slack/quitar',
+          { conductorId: f.conductorId, dia: DATOS && DATOS.dia }, 'No se pudo quitar la traza');
+        return;
+      }
+    }
+    const v = await Dialogo.formulario('Traza por Slack · ' + f.conductor, [
+      // VARIOS A LA VEZ (01/10/2026): la misma traza puede estar en #9-rrhh y en
+      // #4-bajas-medicas. Cada pulsación marca o desmarca.
+      { id: 'canales', etiqueta: 'En qué canales', tipo: 'lista', multiple: true, obligatorio: true,
+        valor: ya ? (ya.canales || []) : [],
+        ayuda: 'Puedes marcar varios.',
+        buscador: { tope: 20, marcador: 'Busca el canal…' },
+        opciones: CANALES_SLACK.map(c => ({ valor: c, texto: '#' + c })) },
+    ], { textoBoton: 'Marcar', nota: 'Solo deja la marca de que quedó constancia en esos canales: el ERP no escribe en Slack.' });
+    if (!v) return;
+    await postMarca('/control/api/traza-slack',
+      { conductorId: f.conductorId, dia: DATOS && DATOS.dia, canales: v.canales }, 'No se pudo marcar la traza');
+  }
+
+  /**
+   * TODO lo que este conductor tiene abierto ahora mismo: los avisos de su
+   * jornada (no llega a las horas, rechaza viajes) y las alertas de su coche
+   * (rueda desconectado, lleva dos horas en descanso).
+   *
+   * Es la lista por la que hay que preguntarle, y por la que su fila late.
+   */
+  function alertasPendientes(f) {
+    const out = (f.avisos || []).map(a => ({
+      codigo: a.codigo, etiqueta: a.etq, detalle: a.detalle || '', tono: a.tono,
+    }));
+    (f.incidencias || []).forEach(i => {
+      if (out.some(x => x.codigo === i.codigo)) return;
+      out.push({ codigo: i.codigo, etiqueta: i.etiqueta || i.codigo, detalle: i.detalle || '', tono: 'error' });
+    });
+    return out;
+  }
+  // Las que YA tienen respuesta apuntada hoy (código → { comentario, at }).
+  const contestadas = f => ((DATOS.llamadas || {})[String(f.conductorId)] || {}).alertas || {};
+
+  async function apuntarLlamada(f) {
+    const pend = alertasPendientes(f);
+    const ya = contestadas(f);
+    // Las que faltan van marcadas de salida: lo normal es preguntar por todas, y
+    // que haya que acordarse de marcarlas es como se quedan a medias.
+    const sinContestar = pend.filter(a => !ya[a.codigo]);
+
+    const campos = [
+      // Obligatorio SALVO que ya haya contestado por alerta: marcar las alertas
+      // y escribir qué dijo de cada una es decir qué ha pasado, y no hay que
+      // hacerlo dos veces.
+      { id: 'caso', etiqueta: 'Qué ha pasado', tipo: 'opciones', obligatorio: true,
+        obligatorioSalvo: 'alertas',
+        grupos: CATALOGO_LLAMADA.map(g => ({
+          codigo: g.codigo, etiqueta: g.etiqueta, icono: g.icono,
+          // El tipo "Alerta" no tiene lista fija: sus casos son lo que ESTE
+          // conductor tiene abierto en este momento.
+          opciones: g.codigo === 'alerta'
+            ? pend.map(a => ({ valor: a.codigo, texto: a.etiqueta, detalle: a.detalle }))
+            : (g.casos || []),
+          vacio: g.codigo === 'alerta' ? 'Este conductor no tiene ninguna alerta abierta.' : undefined,
+        })) },
+    ];
+    if (pend.length) {
+      campos.push({
+        id: 'alertas', etiqueta: 'Y qué te ha dicho de cada alerta', tipo: 'items',
+        comentarioObligatorio: true,
+        // La etiqueta del item SE GUARDA tal cual en llamada_alerta, así que es
+        // el nombre de la alerta y nada más: el "ya contestada" es estado de
+        // este momento y va debajo, con lo que se contestó.
+        items: pend.map(a => ({
+          codigo: a.codigo, tono: a.tono,
+          etiqueta: a.etiqueta,
+          detalle: ya[a.codigo] ? 'Ya contestada: «' + ya[a.codigo].comentario + '»' : a.detalle,
+        })),
+        ayuda: sinContestar.length === 0
+          ? 'Todas contestadas. Puedes volver a preguntar por alguna si ha cambiado.'
+          : sinContestar.length === 1
+            ? 'Su fila seguirá parpadeando hasta que esta tenga respuesta.'
+            : 'Su fila seguirá parpadeando hasta que las ' + sinContestar.length + ' que faltan tengan respuesta.',
+      });
+    }
+    campos.push({ id: 'nota', etiqueta: 'Nota general (opcional)', tipo: 'texto' });
+
+    const v = await Dialogo.formulario('He llamado a ' + f.conductor, campos, {
+      textoBoton: 'Apuntar la llamada', ancho: 'max-w-lg',
+      nota: 'Queda la traza (tú, la hora y el resultado) en la carta, en el Histórico y en el call center.',
+    });
+    if (!v) return;
+    const contestadasAhora = v.alertas || [];
+    if (!v.caso && !contestadasAhora.length) return;
+    // Si no eligió caso pero contestó por alerta, el resultado de la llamada ES
+    // eso: de qué se le preguntó. Así la llamada nunca queda sin clasificar.
+    const tipo = v.caso ? v.caso.grupo : 'alerta';
+    const resultado = v.caso ? v.caso.texto
+      : contestadasAhora.map(a => a.etiqueta).join(' · ').slice(0, 60);
+    try {
+      const r = await fetch('/control/api/llamada', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conductorId: f.conductorId, conductor: f.conductor, telefono: f.telefono,
+          matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
+          turno: turnoActivo, tipo, resultado, nota: v.nota || '',
+          alertas: contestadasAhora,
+          dia: DATOS && DATOS.dia,   // la jornada que se está mirando
+        }) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo apuntar');
+      cargar();
+      // Ya no hay nada que avisar: la llamada se escribe en un solo sitio y el
+      // Call Center la lee de ahí. Antes se copiaba, y la copia podía fallar.
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo apuntar la llamada', texto: e.message, tono: 'error' });
+      return;
+    }
+    // «No asistirá» es justo cuando hay que decir POR QUÉ no saldrá: se pregunta
+    // aquí mismo, sin tener que buscar el botón. Se puede cancelar.
+    if (resultado === 'No asistirá' && !f.noSale) await noSaldra(f);
+  }
+
+  async function justificarDirecto(f) {
+    // Lo que lleva EN ESTE TURNO (efectivo: viaje + espera), que es la cuenta
+    // que decide si hay que seguir llamando: justificadas + BOLT = jornada.
+    // En minutos: la sugerencia va en horas y minutos, de 5 en 5.
+    const llevaMin = Math.round((f.actividad || {}).minutos || 0);
+    const sugeridaMin = Math.max(0, Math.round((8 * 60 - llevaMin) / 5) * 5);
+    // Si sigue rodando, lo que haga después de justificar NO se descuenta: la
+    // sugerencia vale para el que ya ha terminado, y hay que decirlo.
+    const rodando = ['conectado', 'descanso'].includes(f.salida);
+    const v = await Dialogo.formulario('Justificar a ' + f.conductor, [
+      // El TIPO agrupa (las campañas y los reportes cuentan las J por tipo);
+      // el motivo en texto libre sigue siendo obligatorio y explica.
+      { id: 'tipo', etiqueta: 'Tipo', tipo: 'lista', obligatorio: true,
+        valor: (TIPOS_J[0] || {}).codigo,
+        opciones: TIPOS_J.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
+      { id: 'horas', etiqueta: 'Horas que se justifican', tipo: 'horas', minutos: sugeridaMin,
+        ayuda: 'En BOLT lleva ' + (HorasMin.texto(llevaMin) || '0 min') + ' efectivas en este turno. Se SUMAN: con ' +
+          (HorasMin.texto(sugeridaMin) || '0 min') + ' justificadas, la jornada queda en 8 h.' +
+          (rodando ? ' OJO: sigue conectado; lo que haga a partir de ahora no se descuenta de lo justificado.' : '') },
+      { id: 'obs', etiqueta: 'Motivo (obligatorio)', tipo: 'texto', marcador: 'p. ej. coche en taller' },
+    ], { textoBoton: 'Justificar',
+         nota: 'Queda registrado tu usuario. La carta pasa a "J": el siguiente operador ya no le llama.' });
+    if (!v) return;
+    if (!String(v.obs || '').trim()) {
+      await Dialogo.aviso({ titulo: 'Falta el motivo', texto: 'El motivo es obligatorio para justificar.', tono: 'aviso' });
+      return;
+    }
+    // Las horas ya vienen en decimal y validadas por el campo de horas y minutos.
+    const h = v.horas || '';
+    try {
+      const r = await fetch('/control/api/justificar-directo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conductorId: f.conductorId, horas: h, observacion: v.obs, tipo: v.tipo, dia: DATOS && DATOS.dia }) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo justificar');
+      cargar();
+      // «Por compañero» es justo el caso de la −J: se ofrece en el mismo paso.
+      if (v.tipo === 'companero' && await Dialogo.confirmar({
+        titulo: '¿Le pones una −J a quien lo causó?',
+        texto: 'Si un compañero perjudicó a ' + f.conductor + ', puedes dejarle una −J (perjuicio a la empresa). ' +
+          'No toca horas ni nómina, y queda pendiente de aprobar en Justificantes.',
+        si: 'Poner la −J', no: 'Ahora no' })) {
+        await ponerMenosJ(null, {
+          perjudicado: { id: f.conductorId, nombre: f.conductor }, justificanteId: j.justificanteId,
+          minutos: h ? HorasMin.deHoras(Number(h)) : null, motivo: v.obs,
+          titulo: '−J a quien perjudicó a ' + f.conductor,
+        });
+      }
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo justificar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // LA −J (db/227). `f` = la fila de quien la recibe; sin ella, se elige en la
+  // lista (cuando nace de la J «Por compañero» del perjudicado).
+  let personasMenosJ = null;
+  async function ponerMenosJ(f, extra) {
+    if (!personasMenosJ) {
+      try {
+        const r = await fetch('/control/api/menos-j/personas').then(x => x.json());
+        if (r.status !== 'ok') throw new Error(r.msg);
+        personasMenosJ = r.personas || [];
+      } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo cargar la plantilla', texto: e.message, tono: 'error' }); }
+    }
+    const r = await MenosJ.poner(Object.assign({
+      url: '/control/api/menos-j', dia: DATOS && DATOS.dia,
+      conductor: f ? { id: f.conductorId, nombre: f.conductor } : null,
+      personas: personasMenosJ, casuisticas: CASUISTICAS_MENOS_J,
+    }, extra || {}));
+    if (r) Dialogo.hecho('−J puesta. Queda pendiente de aprobar en Justificantes.');
+  }
+
+  function wire() {
+    $('#d-lista').querySelectorAll('.dcab').forEach(cab =>
+      cab.addEventListener('click', e => {
+        if (e.target.closest('[data-just],[data-llamar],[data-tellog],[data-justdir],[data-menosj],a,button')) return;
+        const fila = cab.closest('.dfila');
+        if (fila.querySelector('.ddet').classList.contains('hidden')) abrirFila(fila);
+        else cerrarFila(fila);
+      }));
+    $('#d-lista').querySelectorAll('[data-tellog]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.tellog); if (f) apuntarLlamada(f); }));
+    $('#d-lista').querySelectorAll('[data-justdir]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.justdir); if (f) justificarDirecto(f); }));
+    $('#d-lista').querySelectorAll('[data-menosj]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.menosj); if (f) ponerMenosJ(f); }));
+    $('#d-lista').querySelectorAll('[data-nosale]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.nosale); if (f) noSaldra(f); }));
+    $('#d-lista').querySelectorAll('[data-slack]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.slack); if (f) trazaSlack(f); }));
+    $('#d-lista').querySelectorAll('[data-histllam]').forEach(b =>
+      b.addEventListener('click', () => HistorialLlamadas.abrir(b.dataset.histllam)));
+    GestionIncidencia.enganchar($('#d-lista'),
+      id => {
+        for (const t of ['dia', 'noche', 'todoturno']) {
+          for (const f of ((DATOS.porTurno || {})[t] || [])) {
+            const i = (f.incidencias || []).find(x => x.id === id);
+            if (i) return i;
+          }
+        }
+        return { id };
+      },
+      () => cargar());
+  }
+
+  /**
+   * COCHES QUE RUEDAN SIN QUE NADIE ESTÉ CONECTADO.
+   *
+   * Sale al final de la lista, aparte, porque no es una fila de conductor: no
+   * hay a quién llamar todavía. Lo que se enseña es el coche, los km que ha
+   * hecho sin dueño y quién fue el último que lo llevó — que es por donde se
+   * empieza a preguntar, no a quien se acusa.
+   */
+  /** Un número con un decimal, como el resto de kilómetros de la pantalla. */
+  const km1 = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function pintarSinDuenio() {
+    const caja = $('#d-sinduenio');
+    const lista = DATOS.sinDuenio || [];
+    if (!lista.length) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
+    const totalKm = lista.reduce((s, x) => s + x.kmSinDuenio, 0);
+    caja.classList.remove('hidden');
+    caja.innerHTML =
+      '<div class="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] overflow-hidden">' +
+        '<div class="px-4 py-3 border-b border-amber-500/20 flex flex-wrap items-baseline gap-2">' +
+          '<span class="font-semibold text-amber-300">' +
+            '<i class="fa-solid fa-car-burst mr-2"></i>Coches rodando sin nadie conectado</span>' +
+          '<span class="text-xs text-telecab-muted">' + lista.length + ' coche' + (lista.length > 1 ? 's' : '') +
+            ' · ' + km1(totalKm) + ' km que no son de nadie</span>' +
+          '<span class="ml-auto text-[11px] text-telecab-muted">' +
+            'Nadie ha fichado con ellos en BOLT, pero Mapon los ve moverse.</span>' +
+        '</div>' +
+        '<div class="divide-y divide-amber-500/10">' +
+        lista.map(x =>
+          '<div class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">' +
+            '<span class="font-mono font-semibold text-telecab-text w-24">' + esc(x.matricula) + '</span>' +
+            '<span class="tabular-nums font-semibold text-amber-300 w-24">' + km1(x.kmSinDuenio) + ' km</span>' +
+            '<span class="text-xs text-telecab-muted w-32">de ' + km1(x.km) + ' km del coche</span>' +
+            (x.desde
+              ? '<span class="text-xs text-telecab-muted">sin nadie desde <b class="text-telecab-text">' +
+                esc(cuandoCorto(x.desde)) + '</b></span>'
+              : '') +
+            (x.ultimoConductor
+              ? '<span class="text-xs text-telecab-muted ml-auto">último que lo llevó: ' +
+                '<b class="text-telecab-text">' + esc(x.ultimoConductor) + '</b></span>'
+              : '') +
+          '</div>').join('') +
+        '</div>' +
+      '</div>';
+  }
+
+  /** «16/09 06:41», que es lo que hace falta para saber cuánto lleva así. */
+  function cuandoCorto(v) {
+    const d = new Date(v);
+    if (isNaN(d)) return String(v);
+    const p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  async function cargar() {
+    const mio = ++seq;
+    try {
+      const d = await (await fetch('/control/api/directo')).json();
+      // Si mientras tanto se pidió otra carga, esta ya es vieja: no pisa a la nueva.
+      if (mio !== seq) return;
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo cargar');
+      DATOS = d;
+      // Datos nuevos, cuentas nuevas: las filas llegan recreadas, pero el mapa
+      // se vacía igual para no arrastrar nada de la carga anterior.
+      _cacheAlertas = new WeakMap();
+
+      const falta = [];
+      if (!d.hayCuadrante) falta.push('el cuadrante');
+      if (!d.hayFlotaViva) falta.push('la flota viva');
+      const av = $('#d-aviso');
+      if (d.hayActividad === false) {
+        // Sin el núcleo no hay veredicto de nadie: en rojo, no "0 por llamar".
+        av.className = 'mb-3 px-3 py-2 rounded-xl border border-red-500/40 bg-red-500/10 text-sm text-red-500';
+        av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> No responde la actividad del núcleo (horas y km): ' +
+          'no se puede saber quién ha salido' + (falta.length ? ' · tampoco ' + falta.join(' ni ') : '') + '.';
+      } else if (falta.length) {
+        av.className = 'mb-3 px-3 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-600';
+        av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> No responde ' + falta.join(' ni ') + '. Se muestra lo demás.';
+      } else { av.className = 'hidden'; }
+
+      pintarTabs();
+      pintarResumen();
+      pintar();
+      $('#d-actualizado').innerHTML = 'Flota hoy <b class="text-telecab-text tabular-nums">' +
+        ((d.resumen && d.resumen.kmHoy) || 0) + ' km</b> · ' +
+        '<b class="text-telecab-text tabular-nums">' + ((d.resumen && d.resumen.personasSalieron) || 0) + '</b> personas salieron · ' +
+        ((d.resumen && d.resumen.conectados) || 0) + ' conectados · ' +
+        '<span class="' + ((d.resumen && d.resumen.alertas) ? 'text-red-500' : '') + '">' +
+          ((d.resumen && d.resumen.alertas) || 0) + ' avisos' +
+          // Los que no caen en ninguna fila (coche sin plaza y sin conductor): se dicen.
+          ((d.resumen && d.resumen.alertasSinDueno) ? ' <span class="text-telecab-muted" title="Avisos de coches sin plaza en el cuadrante y sin conductor conocido: no hay a quién dárselos">(' +
+            d.resumen.alertasSinDueno + ' sin dueño)</span>' : '') + '</span> · ' +
+        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      if (mio !== seq) return;
+      $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
+    }
+  }
+
+  GestionIncidencia.cargar();
+  cargar();
+  $('#d-filtro').addEventListener('input', pintar);
+  $('#d-refrescar').addEventListener('click', cargar);
+  $('#d-solo-nosalieron').addEventListener('click', () => ponerFiltro(!soloNoSalieron));
+  $('#d-solo-noterminara').addEventListener('click', () => ponerFiltroNoTerminara(!soloNoTerminara));
+  $('#d-solo-enriesgo').addEventListener('click', () => ponerFiltroEnRiesgo(!soloEnRiesgo));
+
+  // Auto-refresco cada 45 s, salvo con una fila abierta EN PANTALLA (se estaría
+  // trabajando con ella). Se mira el DOM y no el Set de claves: al cambiar de
+  // pestaña la fila abierta desaparece pero su clave seguía en el Set, y el
+  // refresco se paraba para siempre sin que nada lo dijera.
+  setInterval(() => { if (!document.querySelector('#d-lista .ddet:not(.hidden)')) cargar(); }, 45000);
+
+  // ── EL AHORA, CADA 10 SEGUNDOS (25/09/2026) ─────────────────────────────────
+  // Lo que hace cada persona en BOLT AHORA MISMO sale de la MISMA foto que lee
+  // el mapa (services/flotaViva/ahora.js), y se pide al mismo ritmo que el mapa.
+  // Es un dato pequeño y ya hecho: se pone encima de lo cargado sin recalcular
+  // el turno entero, que sigue cada 45 s. Antes Control solo se enteraba cada
+  // 45 s y con su propia cuenta, y el mapa y Control decían cosas distintas del
+  // mismo conductor.
+  //
+  // Solo cambia lo que depende del ahora: si está conectado y en qué, y con eso
+  // su «salió». Si se ha desconectado, su «salió» es el que el servidor ya dejó
+  // calculado para ese caso (salidaSinConexion): la regla vive en un sitio.
+  const CONECTADO = new Set(['viaje', 'espera', 'descanso']);
+  function aplicarAhora(conductores) {
+    let cambios = 0;
+    // De varias cuentas de la misma persona, manda la que esté conectada.
+    const vivo = cuentas => {
+      for (const u of cuentas || []) { const x = conductores[u]; if (x && CONECTADO.has(x[0])) return x[0]; }
+      return null;
+    };
+    ['dia', 'noche', 'todoturno'].forEach(t => (((DATOS && DATOS.porTurno) || {})[t] || []).forEach(f => {
+      if (!f.vivoAplica || !(f.cuentas || []).length) return;
+      const sit = vivo(f.cuentas);
+      const salida = sit ? (sit === 'descanso' ? 'descanso' : 'conectado') : f.salidaSinConexion;
+      if (!salida) return;
+      // «Desconectado» y «nadie conectado» son lo mismo para la pantalla: si no
+      // se igualan, cada 10 s se repintaría todo por nada.
+      const previa = f.ahoraSit !== undefined ? f.ahoraSit : (f.actividad || {}).situacion;
+      const antes = CONECTADO.has(previa) ? previa : null;
+      if (salida !== f.salida || sit !== antes) cambios++;
+      f.salida = salida;
+      f.ahoraSit = sit;
+    }));
+    ((((DATOS && DATOS.porTurno) || {}).nn) || []).forEach(n => {
+      if (!n.vivoAplica || !(n.cuentas || []).length) return;
+      const con = !!vivo(n.cuentas);
+      if (con !== !!n.conectadoAhora) { n.conectadoAhora = con; cambios++; }
+    });
+    return cambios;
+  }
+
+  let pidiendoAhora = false;
+  async function refrescarAhora() {
+    if (!DATOS || pidiendoAhora || document.hidden) return;
+    pidiendoAhora = true;
+    const mio = seq;
+    try {
+      const r = await (await fetch('/control/api/directo/ahora')).json();
+      // Si mientras tanto ha empezado una carga entera, esta ya no aplica.
+      if (r.status !== 'ok' || mio !== seq) return;
+      if (aplicarAhora(r.conductores || {})) {
+        pintarTabs();
+        pintarResumen();
+        // Con una fila abierta no se repinta la lista (se está trabajando con
+        // ella); el cambio sale en cuanto se cierre.
+        if (!document.querySelector('#d-lista .ddet:not(.hidden)')) pintar();
+      }
+    } catch (_) { /* el siguiente lo vuelve a intentar */ }
+    finally { pidiendoAhora = false; }
+  }
+  setInterval(refrescarAhora, 10000);
+})();

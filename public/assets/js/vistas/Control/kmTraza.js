@@ -1,0 +1,79 @@
+// modules/Control/vistas/kmTraza.ejs — el JavaScript de esta pantalla, sacado de la vista tal cual
+// (FRO-4, 04/11/2026).
+
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = Casa.esc;
+  const km = n => (Number(n) || 0).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' km';
+
+  function tarjeta(t, n, tono) {
+    const col = tono === 'ok' ? 'text-emerald-500' : tono === 'aviso' ? 'text-amber-500' : 'text-telecab-text';
+    return '<div class="px-4 py-3 rounded-xl border border-telecab-border bg-telecab-card">' +
+      '<div class="text-[11px] uppercase tracking-wide text-telecab-muted">' + esc(t) + '</div>' +
+      '<div class="text-xl font-bold tabular-nums ' + col + '">' + km(n) + '</div></div>';
+  }
+
+  function fila(c, max) {
+    // Dos barras proporcionales al mayor total, para comparar de un vistazo.
+    const pc = max ? Math.round(c.enBolt / max * 100) : 0;
+    const pd = max ? Math.round(c.desconectado / max * 100) : 0;
+    const sinCond = c.conductor === '(sin conductor)';
+    return '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-x-4 gap-y-2">' +
+      '<span class="w-56 truncate ' + (sinCond ? 'text-telecab-muted italic' : 'text-telecab-text') + '">' +
+        esc(c.conductor) + '</span>' +
+      '<div class="flex-1 min-w-[16rem]">' +
+        '<div class="flex items-center gap-2">' +
+          '<div class="flex-1 h-2 rounded-full bg-telecab-border/40 overflow-hidden flex">' +
+            '<div class="h-full bg-emerald-500" style="width:' + pc + '%"></div>' +
+            '<div class="h-full bg-amber-500" style="width:' + pd + '%"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<span class="w-24 text-right tabular-nums text-emerald-500" title="En BOLT">' + km(c.enBolt) + '</span>' +
+      '<span class="w-24 text-right tabular-nums text-amber-500" title="Desconectado">' + km(c.desconectado) + '</span>' +
+      '<span class="w-24 text-right tabular-nums font-semibold text-telecab-text" title="Total">' + km(c.total) + '</span>' +
+      '</div>';
+  }
+
+  let seq = 0;   // la última carga pedida es la única que se pinta
+  async function cargar() {
+    const mio = ++seq;
+    const dia = $('#k-dia').value;
+    const turno = $('#k-turno').value;
+    $('#k-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
+    // Los totales del día anterior no se quedan al lado del error o del "Cargando".
+    $('#k-totales').innerHTML = '';
+    let d;
+    try {
+      d = await (await fetch('/control/api/km-traza?dia=' + encodeURIComponent(dia) +
+        '&turno=' + encodeURIComponent(turno))).json();
+      if (mio !== seq) return;
+      if (d.status !== 'ok') throw new Error(d.msg || 'Error');
+    } catch (e) {
+      if (mio !== seq) return;
+      $('#k-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
+      return;
+    }
+    $('#k-totales').innerHTML =
+      tarjeta('En BOLT', d.total.enBolt, 'ok') +
+      tarjeta('Desconectado', d.total.desconectado, 'aviso') +
+      tarjeta('Total flota', d.total.total, '');
+
+    const cs = d.conductores || [];
+    const max = cs.reduce((m, c) => Math.max(m, c.total), 0);
+    $('#k-lista').innerHTML = cs.length
+      ? '<div class="px-4 py-2 border-b border-telecab-border flex items-center gap-x-4 text-[11px] uppercase tracking-wide text-telecab-muted">' +
+          '<span class="w-56">Conductor</span><span class="flex-1 min-w-[16rem]"></span>' +
+          '<span class="w-24 text-right">En BOLT</span><span class="w-24 text-right">Descon.</span>' +
+          '<span class="w-24 text-right">Total</span></div>' +
+        cs.map(c => fila(c, max)).join('')
+      : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Sin km ese día. ' +
+        '¿Se ha alimentado el núcleo (backfill de rutas)?</p>';
+  }
+
+  const hoy = new Date();
+  $('#k-dia').value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+  $('#k-dia').addEventListener('change', cargar);
+  $('#k-turno').addEventListener('change', cargar);
+  cargar();
+})();

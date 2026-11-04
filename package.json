@@ -4,7 +4,9 @@
   "main": "app.js",
   "scripts": {
     "postinstall": "node services/tailwind.js",
-    "css": "node services/tailwind.js"
+    "css": "node services/tailwind.js",
+    "comprobar": "node scripts/comprobar-vistas.js",
+    "lint": "eslint public/assets/js"
   },
   "dependencies": {
     "compression": "^1.8.1",
@@ -20,5 +22,9 @@
     "pdf-lib": "^1.17.1",
     "pg": "^8.13.1",
     "tailwindcss": "3.4.17"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0"
   }
 }

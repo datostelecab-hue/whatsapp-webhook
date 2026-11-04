@@ -23,7 +23,9 @@ const KEY = process.env.MAPON_API_KEY || '';
 
 // Velocidad a partir de la cual una alerta se considera grave (la que en su día
 // disparará el aviso por WhatsApp). Ajustable sin tocar código.
-const UMBRAL = Number(process.env.MAPON_UMBRAL_VELOCIDAD || 150);
+// Un valor que no es un número positivo vuelve a 150: con NaN ninguna velocidad
+// lo superaría (no saldría ni un exceso), y por JSON viajaría como null.
+const UMBRAL = (n => (Number.isFinite(n) && n > 0 ? n : 150))(Number(process.env.MAPON_UMBRAL_VELOCIDAD));
 
 // Tipos de alerta que la cuenta tiene habilitados (alert/setup_types.json), con
 // su presentación. Si Mapon devuelve uno que no esté aquí se pinta igualmente

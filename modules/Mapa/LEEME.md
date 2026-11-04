@@ -95,8 +95,9 @@ Ni clave, ni cuenta, ni tarjeta, ni límite de vistas. Ningún proveedor cobra p
 mover marcadores: todos cobran por **inicializar** el mapa, una vez por carga de
 página. Con 15 usuarios son unas 300 al mes.
 
-La URL del estilo está en la vista, en una función de dos líneas
-(`estiloDelTema`): cambiar de proveedor es cambiar esa cadena.
+La URL del estilo está en el JavaScript de la pantalla
+(`public/assets/js/vistas/Mapa/mapa.js`, desde el FRO-4), en una función de dos
+líneas (`estiloDelTema`): cambiar de proveedor es cambiar esa cadena.
 
 **Hubo que tocar la CSP** (`app.js`): los mosaicos vectoriales se piden por
 `fetch` — caen en `connect-src` — y MapLibre los dibuja en un Worker creado
