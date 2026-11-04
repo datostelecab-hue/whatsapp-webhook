@@ -44,8 +44,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
-    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const esc = Casa.esc;
   const km = n => (Number(n) || 0).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' km';
 
   function tarjeta(t, n, tono) {

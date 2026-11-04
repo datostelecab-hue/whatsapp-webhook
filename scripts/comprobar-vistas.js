@@ -19,6 +19,7 @@
 //     ni en el HTML ni en el que se monta con cadenas: tampoco se ejecuta;
 //   · los datos del servidor en un <script> van con `<%- json(x) %>`, no con
 //     JSON.stringify (ver app.js).
+// Y desde el 04/11/2026, una cuarta: el `esc` de una vista es `Casa.esc`.
 // También mira las subcarpetas (partials/), que antes se le escapaban.
 
 const fs = require('fs');
@@ -97,6 +98,12 @@ for (const { nombre: f, ruta } of ficheros) {
   for (const m of html.matchAll(/<%-\s*JSON\.stringify\(/g)) {
     fallos++;
     console.log(`  x ${f} (linea ${lineaDe(html, m.index)}): <%- JSON.stringify(…) %> — usa <%- json(…) %>, que escapa «<»`);
+  }
+  // Desde el 04/11/2026 el `esc` de las vistas es uno (nucleo.js). Había 35
+  // copias, no todas iguales; una nueva volvería a separarlas.
+  for (const m of html.matchAll(/\b(?:(?:const|let|var)\s+esc\s*=(?!\s*(?:Casa|C)\.esc\b)|function\s+esc\s*\()/g)) {
+    fallos++;
+    console.log(`  x ${f} (linea ${lineaDe(html, m.index)}): un esc propio — usa const esc = Casa.esc; (nucleo.js), que escapa los cinco`);
   }
 
   for (const s of scriptsDe(html)) {

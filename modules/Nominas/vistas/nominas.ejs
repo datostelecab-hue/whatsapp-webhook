@@ -132,7 +132,7 @@
 const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
 const $ = s => document.querySelector(s);
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = Casa.esc;
 const eur = n => (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
 let RESULTADO = null, FUENTE = '', cargando = false;
 

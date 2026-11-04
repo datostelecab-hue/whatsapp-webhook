@@ -68,8 +68,7 @@ const DIAS_SEM = CFG.diasSem;
 
 let D = null;
 const $ = s => document.querySelector(s);
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const esc = Casa.esc;
 const icono = t => t === 'Día' ? '<i class="fa-solid fa-sun text-[11px] text-telecab-muted"></i>' : '<i class="fa-solid fa-moon text-[11px] text-telecab-muted"></i>';
 
 let SEMANA = 0;

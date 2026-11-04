@@ -390,7 +390,7 @@
   const $ = id => document.getElementById(id);
   const VER_WHATSAPP = <%- json(typeof verWhatsapp !== 'undefined' && !!verWhatsapp) %>;
   const ABRIR_CONDUCTOR = <%- json(typeof abrirConductor !== 'undefined' ? abrirConductor : '') %>;
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = Casa.esc;
 
   let CAT = [], UNIV = [], CONDUCTORES = [], DATOS = null, PORCOND = null, HISTORIA = null;
   let direccion = 'saliente', periodo = '7', tab = 'panel', resolviendo = null;

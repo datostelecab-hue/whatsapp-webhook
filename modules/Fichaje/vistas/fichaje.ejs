@@ -214,7 +214,7 @@
 (function () {
   'use strict';
   const $ = s => document.querySelector(s);
-  const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
   const PUEDE_REVISAR = <%= puedeRevisar ? 'true' : 'false' %>;
   // Corregir, confirmar y aprobar: solo quien tiene la llave de verdad. Los
   // roles de acceso total ven el registro, pero sin esos botones.

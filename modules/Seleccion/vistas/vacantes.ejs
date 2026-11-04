@@ -49,7 +49,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
   const fecha = iso => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
 
   // El estado se dice con la palabra que se usa hablando, no con el código.

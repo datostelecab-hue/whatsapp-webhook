@@ -262,7 +262,7 @@
   const lista = document.getElementById('u-lista');
   const msg = document.getElementById('u-msg');
   let YO = '';
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
   const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs mt-2 ' + cls; msg.classList.remove('hidden'); };
   // Pasa por Api (03/11/2026): sin el velo, el `boton` que se le da es lo que
   // impide crear o cambiar dos veces con un doble clic. Al fallar devuelve
@@ -464,8 +464,7 @@
 // puede hacer, pero quien dice que no es el servidor. `mando` viene de ahí.
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
 
   const fechaLarga = iso => !iso ? '—' : new Date(iso).toLocaleString('es-ES',
     { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

@@ -46,6 +46,8 @@
 
   <!-- Componentes compartidos. Se cargan aqui, ANTES del cuerpo, porque cada
        modulo los invoca desde su propio bloque de codigo en linea. -->
+  <%# Casa.esc y lo demás que todas las pantallas usan: el PRIMERO, que las vistas lo toman al arrancar. %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/nucleo.js') : '/assets/js/nucleo.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
   <%# Api.pedir/get/post: la forma de la casa de hablar con el servidor, y el aviso de los errores de JavaScript que nadie captura. Pronto, para oírlos desde el principio. %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/api.js') : '/assets/js/api.js' %>"></script>

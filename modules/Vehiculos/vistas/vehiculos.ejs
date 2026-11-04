@@ -1,9 +1,3 @@
-<%
-  // Colores de cada estado. El código va en la base ('O','R','T','X','S','B','P');
-  // esto es solo cómo se pinta. Policía (db/184), en azul.
-  const TONO_ESTADO = { O: 'green', R: 'gold', T: 'violet', X: 'warn', S: 'red', B: 'muted', P: 'azul' };
-%>
-
 <div id="modulo"></div>
 
 <!-- Formulario de alta y edición. Vive fuera del componente porque es propio de
@@ -136,7 +130,8 @@
 <script src="<%= typeof est === 'function' ? est('/assets/js/coche3d.js') : '/assets/js/coche3d.js' %>"></script>
 <script nonce="<%= nonce %>">
 (function () {
-  const TONO = <%- json(TONO_ESTADO) %>;
+  // El color de cada estado del coche es de la casa (nucleo.js), el mismo que en el Planificador.
+  const tonoEstado = Casa.tonoEstadoCoche;
   // Quién puede cambiar el estado de las piezas (el servidor lo comprueba igual).
   const PUEDE_PIEZAS = <%- json(!!(typeof puedePiezas !== 'undefined' && puedePiezas)) %>;
   const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
@@ -197,7 +192,7 @@
       { titulo: 'Modelo', campo: 'marca_modelo',
         pinta: (v, f) => esc(v || '') + (f.anio ? ` <span class="text-telecab-muted">${f.anio}</span>` : '') },
       { titulo: 'Estado', campo: 'estado_etiqueta',
-        pinta: (v, f) => etiqueta(v, TONO[f.estado_operativo] || 'muted') },
+        pinta: (v, f) => etiqueta(v, tonoEstado(f.estado_operativo)) },
       { titulo: 'ITV', campo: 'itv_caduca', clase: 'whitespace-nowrap',
         pinta: (v, f) => caduca(f.dias_itv, fecha(v)) },
       { titulo: 'Seguro', campo: 'seguro_caduca', clase: 'whitespace-nowrap',
@@ -238,7 +233,7 @@
           campos: [
             { etiqueta: 'Matrícula', valor: d => d.matricula, clase: 'font-semibold' },
             { etiqueta: 'Estado', html: true,
-              valor: d => etiqueta(d.estado_etiqueta, TONO[d.estado_operativo] || 'muted') },
+              valor: d => etiqueta(d.estado_etiqueta, tonoEstado(d.estado_operativo)) },
             { etiqueta: 'Zona', valor: d => d.zona },
             { etiqueta: 'Marca y modelo', valor: d => d.marca_modelo },
             { etiqueta: 'Año', valor: d => d.anio },
@@ -295,7 +290,7 @@
             vacio: 'Sin cambios registrados.',
             columnas: [
               { titulo: 'Estado', campo: 'etiqueta',
-                pinta: (v, f) => etiqueta(v || f.estado_codigo, TONO[f.estado_codigo] || 'muted') },
+                pinta: (v, f) => etiqueta(v || f.estado_codigo, tonoEstado(f.estado_codigo)) },
               { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
               { titulo: 'Hasta', campo: 'hasta',
                 pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Ahora</span>' },

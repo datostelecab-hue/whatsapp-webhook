@@ -223,8 +223,9 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   `JSON.stringify` no escapa «<», y un texto que lleve `</script>` (un nombre de
   vacante, de documento…) cerraría el bloque y dejaría la pantalla rota.
 - **Un texto que viene de datos se pinta como texto**: `textContent`, o `esc()`
-  si va dentro de una plantilla HTML. El `esc` de la casa escapa los cinco
-  (`& < > " '`); el de `Listado.fmt.esc` vale para todo.
+  si va dentro de una plantilla HTML. En una vista, `const esc = Casa.esc;`
+  (`nucleo.js`, 04/11/2026), que escapa los cinco (`& < > " '`); no se escribe
+  otro. Los componentes de `public/assets/js` llevan el suyo, que es el mismo.
 
 ## 8. Cómo se mueve un módulo sin romper nada
 

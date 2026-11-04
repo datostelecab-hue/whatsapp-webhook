@@ -45,8 +45,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = Casa.esc;
   const TIPOS = <%- json(tiposJ || []) %>;
   // La −J (db/227): su pestaña es este «tipo», que no es un tipo de J.
   const MENOS_J = 'menos_j';

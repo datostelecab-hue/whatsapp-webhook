@@ -45,7 +45,7 @@
 
 <script nonce="<%= nonce %>">
   const $ = s => document.querySelector(s);
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
   const MAX_FILES = 5, MAX_MB = 8;
 
   const badge = e => {

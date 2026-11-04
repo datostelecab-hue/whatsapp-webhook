@@ -145,8 +145,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = Casa.esc;
   const n1 = v => (v == null ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
   const dia = f => (f ? f.slice(8, 10) + '/' + f.slice(5, 7) + (f.length > 10 ? ' ' + f.slice(11, 16) : '') : '—');
   const hoyDdmm = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');

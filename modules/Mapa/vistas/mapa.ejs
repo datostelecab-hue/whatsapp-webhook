@@ -223,7 +223,7 @@
 (function () {
   'use strict';
   const $ = s => document.querySelector(s);
-  const esc = (window.Listado && Listado.fmt && Listado.fmt.esc) || (x => String(x == null ? '' : x));
+  const esc = Casa.esc;
 
   // ── Los colores salen de los TOKENS, no de una lista de hex ──────────────
   // Hay quince temas y el oro pasa de #F4963C a #C96C14 al cambiar a claro. Un

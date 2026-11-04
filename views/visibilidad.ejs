@@ -437,7 +437,7 @@
   }
   const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
   const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = Casa.esc;
   const sig = x => (x > 0 ? '+' : x < 0 ? '−' : '') + nf0.format(Math.abs(x));
   const sigPct = x => (x > 0 ? '+' : x < 0 ? '−' : '') + pct1.format(Math.abs(x)) + ' %';
 

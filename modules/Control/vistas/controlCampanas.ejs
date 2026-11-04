@@ -95,8 +95,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = Casa.esc;
   const hora = ts => (ts ? new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '');
 
   // El buzón y los tipos de J los manda el servidor: una sola lista para todo.

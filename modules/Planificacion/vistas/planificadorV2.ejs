@@ -379,13 +379,11 @@
   const DIAS_LETRA = <%- json(letrasDia) %>;              // ['L','M','X','J','V','S','D']
   const ESTADOS = <%- json(estadosVehiculo) %>;           // catálogo de estados del coche
   const ESTADO_ETQ = new Map(ESTADOS.map(e => [e.codigo, e.etiqueta]));
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = Casa.esc;
 
   // Tono del estado del coche. El operativo en verde; lo que sale de cobertura,
-  // en rojo/ámbar. Se lee del catálogo (es_operativo), no de una lista fija.
-  const TONO_ESTADO = { O: 'green', R: 'gold', T: 'violet', X: 'warn', S: 'red', E: 'gold', B: 'muted', P: 'azul' };
-  const tonoEstado = cod => TONO_ESTADO[cod] || 'muted';
+  // en rojo/ámbar. Es el de la casa (nucleo.js): el mismo color que en Vehículos.
+  const tonoEstado = Casa.tonoEstadoCoche;
 
   let T = null;                       // el tablero que llega del servidor
   let AV = null;                      // avisos de turnos de la semana mirada (semáforo por cuadrante)

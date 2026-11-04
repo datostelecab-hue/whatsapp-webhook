@@ -70,8 +70,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
-    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
   const BASE = <%- json(base) %>;
   // LA PARTE DE LA BANDEJA (?grupo=), si se ha llegado desde un cuadro partido
   // de la barra (RRHH en pantalla grande): «Casos de nómina», «Vacaciones»…

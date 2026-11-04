@@ -38,8 +38,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
-    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const esc = Casa.esc;
 
   let D = null, SEL = null;
 

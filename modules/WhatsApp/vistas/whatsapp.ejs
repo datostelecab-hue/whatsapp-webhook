@@ -73,7 +73,7 @@
   // Lo que se enseña al pasar por la marca «Sin WhatsApp» (pestaña «Sin Wsp»).
   const SIN_WSP_AYUDA = 'Meta avisó de que no pudo entregarle el último mensaje (error 131026): el número no tiene WhatsApp o no puede recibir mensajes de empresa. Si escribe o le llega algo, vuelve a la lista normal.';
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const esc = Casa.esc;
   // Las marcas de WhatsApp, como las pinta el móvil: *negrita* (el bot la usa
   // para las matrículas), _cursiva_, ~tachado~ y ```monoespaciado```. La marca
   // va pegada a la palabra y no a otra letra: «nombre_de_algo» no es cursiva.

@@ -149,7 +149,7 @@
   const $ = s => document.querySelector(s);
   let ticketActual = null;
   let autoAbierto = false;   // para abrir una sola vez la ficha que llega por ?tel=
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
 
   // Pasa por Api (03/11/2026): sin el velo, el `boton` que se le da es lo que
   // impide mandar dos veces lo mismo con un doble clic. Al fallar devuelve

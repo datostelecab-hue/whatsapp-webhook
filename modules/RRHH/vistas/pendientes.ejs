@@ -19,7 +19,7 @@
 
 <script nonce="<%= nonce %>">
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
 
   // Departamentos que ve cada rol (igual que el buzón de la barra superior).
   const DEPS = {

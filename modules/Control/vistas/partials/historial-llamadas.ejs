@@ -26,9 +26,7 @@ window.HistorialLlamadas = window.HistorialLlamadas || (function () {
 
   // Propio, y no el de la vista que incluya esto: este trozo tiene que
   // funcionar igual lo incluya quien lo incluya.
-  const esc = s => String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const esc = Casa.esc;
 
   /** Fecha y hora de un epoch en segundos, como se lee: «16/09 14:07». */
   const cuando = ts => {

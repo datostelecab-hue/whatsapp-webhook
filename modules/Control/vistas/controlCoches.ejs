@@ -27,8 +27,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = Casa.esc;
   const n1 = v => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
 
   // Las cuatro listas, con el tono que les toca. El rojo es para una sola cosa

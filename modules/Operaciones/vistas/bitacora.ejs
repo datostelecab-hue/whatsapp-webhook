@@ -147,7 +147,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = Casa.esc;
   const rol = '<%= rol || "" %>';
   // Lo decide el permiso '/bitacora/justificar' de la matriz de /usuarios, no
   // el rol: así se le puede dar a taller (que justifica sus averías) sin abrirlo

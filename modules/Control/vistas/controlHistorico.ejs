@@ -98,8 +98,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
-    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const esc = Casa.esc;
   const num = n => String(Math.round(Number(n || 0) * 10) / 10).replace('.', ',');
 
   // Los km buenos son los del ODÓMETRO del coche (bus CAN). Unos pocos equipos no

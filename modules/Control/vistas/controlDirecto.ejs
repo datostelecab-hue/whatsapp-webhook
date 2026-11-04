@@ -151,8 +151,7 @@
 <script nonce="<%= nonce %>">
 (function () {
   const $ = s => document.querySelector(s);
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
-    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const esc = Casa.esc;
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
   const horas = min => ((Number(min) || 0) / 60).toFixed(1);
   // El teléfono va SIEMPRE al lado del nombre: esta pantalla existe para llamar, y

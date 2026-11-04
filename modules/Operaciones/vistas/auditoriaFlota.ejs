@@ -325,7 +325,7 @@
 
 <script nonce="<%= nonce %>">
 const $ = s => document.querySelector(s);
-const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = Casa.esc;
 let DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [], segmentos: {}, etiquetas: {} };
 let tab = 'km', filtroEv = '', busqueda = '', cargando = false, error = null, gen = 0, poll = null;
 // Tramo que se está viendo: 'turnos' (los dos en paralelo), 'dia', 'noche' o 'completo'.

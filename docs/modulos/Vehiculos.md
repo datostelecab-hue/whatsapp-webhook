@@ -103,7 +103,7 @@ El estado y la zona **no se escriben a pelo**: pasan por `vigencia`, que cierra 
 | E | Emergencia (db/54) | no | no |
 | P | **Policía** (db/184, 07/10/2026: el coche lo tiene la policía) | no | no |
 
-Un estado nuevo es una fila del catálogo (una migración). Solo hay que tocar el código en los sitios donde está escrito **su color o su texto**: `TONO_ESTADO` en `vistas/vehiculos.ejs` y en el planificador, `ESTADO_VEH` en `cobertura.repo.js` y `MOTIVO_VEH` en `parrilla.excel.js`. Sin eso, el estado funciona igual pero sale en gris.
+Un estado nuevo es una fila del catálogo (una migración). Solo hay que tocar el código en los sitios donde está escrito **su color o su texto**: `TONO_ESTADO_COCHE` en `public/assets/js/nucleo.js` (uno para Vehículos y el Planificador desde el 04/11/2026; antes eran dos y en Vehículos faltaba Emergencia), `ESTADO_VEH` en `cobertura.repo.js` y `MOTIVO_VEH` en `parrilla.excel.js`. Sin eso, el estado funciona igual pero sale en gris.
 
 **Las 6 plazas se crean con el coche**, en la misma transacción del alta: un coche sin plazas no se puede planificar.
 
