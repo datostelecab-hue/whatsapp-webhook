@@ -1,11 +1,13 @@
 <%
   // LA MISMA PANTALLA PARA LAS DOS SEDES (04/11/2026). Madrid la abre en /taller
   // y Barcelona en /barcelona/mantenimientos (modules/Barcelona), que le pasa
-  // `base` (dónde preguntar), `sedeNombre` y `conCitas: false`: las citas del
-  // taller van con el planificador de Madrid. Sin ellos, es la de Madrid.
+  // `base` (dónde preguntar), `sedeNombre` y `citasAgenda`: sus citas del taller
+  // solo se apuntan, sin aviso, sin confirmación y sin estado. Sin ellos, es la
+  // de Madrid. `conCitas: false` quitaría la pestaña entera.
   const BASE = typeof base !== 'undefined' && base ? base : '/taller';
   const SEDE_NOMBRE = typeof sedeNombre !== 'undefined' && sedeNombre ? sedeNombre : '';
   const CON_CITAS = typeof conCitas === 'undefined' ? true : !!conCitas;
+  const CITAS_AGENDA = typeof citasAgenda !== 'undefined' && !!citasAgenda;
 %>
 <div class="p-4 lg:p-6 max-w-[1500px] mx-auto">
 
@@ -143,12 +145,19 @@
   <% if (CON_CITAS) { %>
   <div id="v-citas" class="hidden">
     <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+      <% if (CITAS_AGENDA) { %>
+      <p class="text-sm text-telecab-muted max-w-3xl">
+        Sube el Excel del taller o pon una cita a mano. Aquí las citas <b>solo se apuntan</b>: salen en esta lista
+        y en el estado de la flota, y el sistema no avisa ni pide confirmación a nadie.
+      </p>
+      <% } else { %>
       <p class="text-sm text-telecab-muted max-w-3xl">
         Sube el Excel del taller o pon una cita a mano, y cada cita sale con <b>quien lleva el coche ese día</b> según el
         planificador. <b><%= citasDiasAntes %> días antes</b> el sistema le avisa por WhatsApp (a las 10:00)
         y Control le llama para que la confirme. Las de mañana y hoy se avisan a mano: copia el
         mensaje y mándalo desde el chat.
       </p>
+      <% } %>
       <div class="flex flex-wrap items-center gap-2">
         <div id="ct-tramos" class="flex items-center gap-1 p-1 rounded-xl bg-telecab-card border border-telecab-border"></div>
         <% if (puedeApuntar) { %>
@@ -277,5 +286,5 @@
 </div>
 
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
-<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, puedeApuntar: !!puedeApuntar, tipos: tipos, intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
+<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, citasAgenda: CITAS_AGENDA, sedeNombre: SEDE_NOMBRE, puedeApuntar: !!puedeApuntar, tipos: tipos, intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
 <script src="<%= est('/assets/js/vistas/Vehiculos/taller.js') %>"></script>

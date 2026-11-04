@@ -15,6 +15,10 @@
 //
 // UNA CITA A MANO (21/10/2026) es una fila igual que las del Excel, pero SIN
 // `fichero`: así se sabe que la puso alguien (`creado_por`) y no el taller.
+//
+// LA SEDE (04/11/2026). Barcelona pone sus citas en la misma tabla: la sede es
+// la del coche (`vehiculo.sede`). Las listas, el cruce del Excel y las que toca
+// avisar llevan la sede, para que Madrid no vea ni avise las de Barcelona.
 
 const db = require('../../services/db');
 
@@ -58,14 +62,17 @@ async function cochesCitables(sede) {
 /**
  * Las citas que ya hay entre dos fechas: para saber qué es nuevo, qué cambia y
  * qué ya no viene. `a_mano`: sin fichero, la puso alguien y no el Excel.
+ * Con `sede`, solo las de los coches de esa sede.
  */
-async function entreFechas(desde, hasta) {
+async function entreFechas(desde, hasta, sede = null) {
   const r = await db.consulta(
     `SELECT c.id, c.vehiculo_id, c.matricula, to_char(c.fecha, 'YYYY-MM-DD') AS fecha,
             to_char(c.hora, 'HH24:MI') AS hora, c.marca, c.estado,
             (c.aviso_at IS NOT NULL) AS avisada, c.confirmacion, (c.fichero IS NULL) AS a_mano
        FROM taller_cita c
-      WHERE c.fecha BETWEEN $1::date AND $2::date`, [desde, hasta]);
+       JOIN vehiculo v ON v.id = c.vehiculo_id
+      WHERE c.fecha BETWEEN $1::date AND $2::date
+        AND ($3::text IS NULL OR v.sede = $3::text)`, [desde, hasta, sede]);
   return r.rows;
 }
 
@@ -157,8 +164,17 @@ async function guardarImportacion({ nuevas, cambios, fichero }, { usuarioId } = 
 /**
  * LAS CITAS entre dos fechas, con a quién se avisó, qué contestó y su última
  * llamada. El responsable de hoy lo añade el servicio con `cobertura`.
+ * Con `sede`, solo las de los coches de esa sede (no se aplica a una por `id`).
  */
-async function lista({ desde, hasta, id, vehiculoId } = {}) {
+async function lista({ desde, hasta, id, vehiculoId, sede } = {}) {
+  let params, donde;
+  if (id) { params = [id]; donde = 'c.id = $1'; }
+  else {
+    params = [desde, hasta];
+    donde = 'c.fecha BETWEEN $1::date AND $2::date';
+    if (vehiculoId) { params.push(vehiculoId); donde += ` AND c.vehiculo_id = $${params.length}`; }
+    if (sede) { params.push(sede); donde += ` AND v.sede = $${params.length}`; }
+  }
   const r = await db.consulta(
     `SELECT c.id, c.vehiculo_id, c.matricula, COALESCE(v.marca_modelo, c.marca) AS vehiculo, c.marca,
             v.sede, (v.baja_at IS NOT NULL) AS de_baja,
@@ -186,9 +202,8 @@ async function lista({ desde, hasta, id, vehiculoId } = {}) {
            LEFT JOIN usuario u ON u.id = s.usuario_id
           WHERE s.cita_id = c.id AND s.tipo = 'llamada'
           ORDER BY s.creado_at DESC LIMIT 1) ul ON TRUE
-      WHERE ${id ? 'c.id = $1' : 'c.fecha BETWEEN $1::date AND $2::date'}
-            ${!id && vehiculoId ? 'AND c.vehiculo_id = $3' : ''}
-      ORDER BY c.fecha, c.hora, c.matricula`, id ? [id] : vehiculoId ? [desde, hasta, vehiculoId] : [desde, hasta]);
+      WHERE ${donde}
+      ORDER BY c.fecha, c.hora, c.matricula`, params);
   return r.rows;
 }
 
@@ -230,13 +245,17 @@ async function conductor(id) {
 /**
  * Las que toca avisar ese día: pendientes, sin aviso y sin un intento en la
  * última hora (si falló, se vuelve a probar a la hora siguiente, no a cada rato).
+ * Solo las de los coches de `sede`: Barcelona no avisa a nadie (04/11/2026).
  */
-async function paraAvisar(fecha) {
+async function paraAvisar(fecha, sede) {
+  if (!sede) throw new Error('paraAvisar sin sede: el aviso es solo de una');
   const r = await db.consulta(
-    `SELECT id FROM taller_cita
-      WHERE fecha = $1::date AND estado = 'pendiente' AND aviso_at IS NULL
-        AND (aviso_intento_at IS NULL OR aviso_intento_at < now() - INTERVAL '50 minutes')
-      ORDER BY hora, matricula`, [fecha]);
+    `SELECT c.id FROM taller_cita c
+       JOIN vehiculo v ON v.id = c.vehiculo_id
+      WHERE c.fecha = $1::date AND c.estado = 'pendiente' AND c.aviso_at IS NULL
+        AND (c.aviso_intento_at IS NULL OR c.aviso_intento_at < now() - INTERVAL '50 minutes')
+        AND v.sede = $2
+      ORDER BY c.hora, c.matricula`, [fecha, sede]);
   return r.rows.map(x => Number(x.id));
 }
 

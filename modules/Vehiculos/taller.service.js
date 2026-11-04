@@ -83,12 +83,14 @@ async function sinTumbar(fn, que) {
  * EL ESTADO DE LA FLOTA: las filas (con el filtro de la pantalla), cada una con
  * su próxima cita, y las cifras de la cabecera. Las citas se buscan una vez.
  *
- * `conCitas: false` las deja fuera (Barcelona, 04/11/2026): quién lleva el
- * coche lo dice el planificador de Madrid, y el aviso por WhatsApp es suyo.
+ * Las citas son las de la sede de la pantalla (04/11/2026): con una sola en
+ * `sedes`, las de esa; si no, las de Madrid, como siempre. Las de Barcelona
+ * son de agenda: salen sin quién lo lleva (ver citas.service).
  */
 async function estadoDeLaFlota(filtros) {
-  const conCitas = !(filtros && filtros.conCitas === false);
-  const porCoche = conCitas ? await sinTumbar(() => citas.proximaPorCoche(), 'citas del estado de la flota') : null;
+  const sedes = (filtros || {}).sedes;
+  const sede = Array.isArray(sedes) && sedes.length === 1 ? sedes[0] : undefined;
+  const porCoche = await sinTumbar(() => citas.proximaPorCoche({ sede }), 'citas del estado de la flota');
   const [filas, resumen] = await Promise.all([
     repo.cuadro(filtros),
     // Las cifras, sobre los mismos coches que la tabla (sus sedes) pero sin la
@@ -98,10 +100,9 @@ async function estadoDeLaFlota(filtros) {
   return { filas: filas.map(f => ({ ...f, cita: (porCoche && porCoche.get(String(f.id))) || null })), resumen };
 }
 
-/** La ficha de un coche con sus citas pendientes del taller (sin ellas, con `conCitas: false`). */
-async function ficha(id, { sedes, conCitas = true } = {}) {
+/** La ficha de un coche con sus citas pendientes del taller (las de agenda, sin responsable). */
+async function ficha(id, { sedes } = {}) {
   const f = await repo.ficha(id, { sedes });
-  if (!conCitas) return { ...f, citas: [] };
   return { ...f, citas: (await sinTumbar(() => citas.deCoche(f.id), 'citas de la ficha')) || [] };
 }
 

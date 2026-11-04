@@ -8,9 +8,12 @@
   const TIPOS = DEL_SERVIDOR.tipos;
   const GENERAL = DEL_SERVIDOR.intervaloGeneral;
   // La misma pantalla para las dos sedes (04/11/2026): Madrid pregunta a /taller
-  // y Barcelona a /barcelona/mantenimientos, sin la pestaña de las citas.
+  // y Barcelona a /barcelona/mantenimientos. Las citas de Barcelona son de
+  // AGENDA: solo se apuntan, sin quién lo lleva, sin aviso y sin confirmación.
   const BASE = DEL_SERVIDOR.base || '/taller';
   const CON_CITAS = DEL_SERVIDOR.conCitas !== false;
+  const CITAS_AGENDA = DEL_SERVIDOR.citasAgenda === true;
+  const SEDE = DEL_SERVIDOR.sedeNombre || 'Madrid';
   // Lo que pintan igual Mantenimientos y Control de una cita (citasTaller.js).
   const CT = window.CitasTaller;
   const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
@@ -22,7 +25,8 @@
    */
   function celdaCita(c) {
     const dia = CT.cercania(c.fecha, hoyMadrid()) || CT.diaCorto(c.fecha);
-    const quien = !c.responsable
+    // De agenda (Barcelona) no se sabe ni se pregunta quién lo lleva.
+    const quien = c.agenda ? '' : !c.responsable
       ? '<span class="text-telecab-warn">Nadie lo lleva en ese turno</span>'
       : c.confirmacion === 'no_puede'
         ? '<span class="text-telecab-red">' + esc(c.responsable.nombre) + ' no puede ir</span>'
@@ -34,7 +38,7 @@
         'text-telecab-gold text-[11px] font-semibold whitespace-nowrap"><i class="fa-solid fa-calendar-check"></i>Cita puesta para revisión</span>' +
       '<span class="text-[11px] text-telecab-text whitespace-nowrap">' + esc(dia) + ' a las ' + esc(c.hora) +
         (c.otras ? ' <span class="text-telecab-muted">(+' + c.otras + ')</span>' : '') + '</span>' +
-      '<span class="text-[11px] text-telecab-muted max-w-[220px] text-right">' + quien + '</span>' +
+      (quien ? '<span class="text-[11px] text-telecab-muted max-w-[220px] text-right">' + quien + '</span>' : '') +
     '</div>';
   }
 
@@ -165,10 +169,12 @@
         f.citas.map(x =>
           '<div class="mt-2 text-sm">' +
             '<p class="font-semibold text-telecab-text">' + esc(CT.diaLargo(x.fecha)) + ' a las ' + esc(x.hora) + '</p>' +
+            // De agenda: solo el día y la hora; ni quién lo lleva, ni aviso, ni confirmación.
+            (x.agenda ? '' :
             '<div class="mt-1">' + CT.responsable(x) + '</div>' +
             '<div class="mt-1.5 flex flex-wrap items-start gap-x-6 gap-y-1 text-xs">' +
               '<div>' + CT.aviso(x, hoyMadrid()) + '</div><div>' + CT.confirmacion(x) + '</div>' +
-            '</div>' +
+            '</div>') +
           '</div>').join('<div class="border-t border-telecab-border/60 my-2"></div>') +
         '<button id="pf-ver-citas" class="mt-3 text-xs font-semibold text-telecab-gold underline underline-offset-2">Ver en Citas del taller</button>' +
       '</div>';
@@ -433,8 +439,11 @@
       cargarCitas().catch(e => Dialogo.aviso({ titulo: 'No se pudieron cargar las citas', texto: e.message, tono: 'error' }));
     }));
 
-    $('#ct-resumen').innerHTML = tramo === 'pasadas' ? '' :
-      tarjetaCitas('Pendientes', r.pendientes, 'muted', 'Citas por hacer desde hoy') +
+    // De agenda, solo lo que hay: ni avisos, ni respuestas, ni quién lo lleva.
+    $('#ct-resumen').innerHTML = tramo === 'pasadas' ? '' : CITAS_AGENDA
+      ? tarjetaCitas('Pendientes', r.pendientes, 'muted', 'Citas desde hoy') +
+        tarjetaCitas(`Próximos ${DIAS_ANTES + 1} días`, r.proximas, 'muted', 'Hoy, mañana y pasado mañana')
+      : tarjetaCitas('Pendientes', r.pendientes, 'muted', 'Citas por hacer desde hoy') +
       tarjetaCitas(`Próximos ${DIAS_ANTES + 1} días sin avisar`, r.sinAvisar, r.sinAvisar ? 'warn' : 'green', 'Hoy, mañana y pasado mañana: a quién no le ha llegado el aviso') +
       tarjetaCitas('No pueden ir', r.noPueden, r.noPueden ? 'red' : 'muted', 'Dijeron que no: hay que buscar quién lleva el coche') +
       tarjetaCitas('Sin conductor', r.sinResponsable, r.sinResponsable ? 'warn' : 'muted', 'A esa hora nadie lleva el coche según el planificador');
@@ -452,18 +461,19 @@
         </h2>
         <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
           <div class="overflow-x-auto">
-            <table class="w-full text-sm min-w-[980px]">
+            <table class="w-full text-sm ${CITAS_AGENDA ? 'min-w-[560px]' : 'min-w-[980px]'}">
               <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
                 <tr>
                   <th class="text-left px-4 py-2 w-16">Hora</th>
                   <th class="text-left px-3 py-2">Coche</th>
+                  ${CITAS_AGENDA ? '<th class="text-left px-3 py-2">De dónde sale</th>' : `
                   <th class="text-left px-3 py-2">Lo lleva</th>
                   <th class="text-left px-3 py-2">Aviso</th>
-                  <th class="text-left px-3 py-2">Confirmación</th>
+                  <th class="text-left px-3 py-2">Confirmación</th>`}
                   <th class="px-4 py-2"></th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-telecab-border">${g.citas.map(filaCita).join('')}</tbody>
+              <tbody class="divide-y divide-telecab-border">${g.citas.map(CITAS_AGENDA ? filaAgenda : filaCita).join('')}</tbody>
             </table>
           </div>
         </div>
@@ -475,6 +485,25 @@
     `<button data-accion="${accion}" data-id="${id}" title="${esc(titulo)}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold ${principal
       ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text'}">` +
     `<i class="${icono}${texto ? ' mr-1' : ''}"></i>${esc(texto)}</button>`;
+
+  /**
+   * UNA CITA DE AGENDA (Barcelona, 04/11/2026): la hora, el coche y de dónde
+   * sale (el Excel o quién la puso). Sin botones de aviso, confirmación ni
+   * estado; solo su seguimiento.
+   */
+  function filaAgenda(c) {
+    const origen = c.a_mano
+      ? `<i class="fa-solid fa-pen mr-1"></i>Puesta a mano${c.creado_por_nombre ? ' por ' + esc(c.creado_por_nombre) : ''}`
+      : `<i class="fa-solid fa-file-excel mr-1"></i>Excel «${esc(c.fichero || '—')}»`;
+    return `<tr class="${c.estado === 'pendiente' ? '' : 'opacity-70'} align-top">
+      <td class="px-4 py-3 font-semibold tabular-nums text-telecab-text">${esc(c.hora)}</td>
+      <td class="px-3 py-3"><span class="font-mono font-semibold text-telecab-text">${esc(c.matricula)}</span>
+        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div></td>
+      <td class="px-3 py-3 text-xs text-telecab-muted">${origen}<div class="text-[11px]">${esc(c.creado_at || '')}</div></td>
+      <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-1">${
+        botonCita('seguimiento', c.id, 'fa-solid fa-clock-rotate-left', '', 'Todo lo que ha pasado con esta cita', false)}</div></td>
+    </tr>`;
+  }
 
   function filaCita(c) {
     const pendiente = c.estado === 'pendiente';
@@ -562,10 +591,10 @@
           html: `<p class="text-sm">${r.filas} fila(s) leídas de «${esc(r.hoja)}»: <b>${r.nuevas}</b> cita(s) nueva(s), ${r.cambiadas.length} con otra hora, ${r.iguales} igual(es).</p>
             ${r.ignoradas.length ? `<p class="text-sm mt-3 font-semibold">No se citan (${r.ignoradas.length})</p>
               ${lista_(r.ignoradas.map(x => `<span class="font-mono">${esc(x.matricula)}</span> — ${esc(x.motivo)}${x.citas > 1 ? ` (${x.citas} citas)` : ''}`))}
-              <p class="text-xs text-telecab-muted mt-1">Aquí solo entran los coches de Madrid dados de alta en Vehículos.</p>` : ''}
+              <p class="text-xs text-telecab-muted mt-1">Aquí solo entran los coches de ${esc(SEDE)} dados de alta en Vehículos.</p>` : ''}
             ${r.cambiadas.length ? `<p class="text-sm mt-3 font-semibold">Cambian de hora</p>${lista_(r.cambiadas.map(esc))}` : ''}
             ${r.noVienen.length ? `<p class="text-sm mt-3 font-semibold">Estaban y no vienen en este Excel</p>${lista_(r.noVienen.map(esc))}
-              <p class="text-xs text-telecab-muted mt-1">No se anulan solas: si el taller las ha quitado, anúlalas con «Estado».</p>` : ''}
+              <p class="text-xs text-telecab-muted mt-1">${CITAS_AGENDA ? 'No se quitan solas.' : 'No se anulan solas: si el taller las ha quitado, anúlalas con «Estado».'}</p>` : ''}
             ${r.pasadas ? `<p class="text-sm mt-3 text-telecab-muted">${r.pasadas} cita(s) de días que ya pasaron: no se importan.</p>` : ''}
             ${(r.avisos || []).length ? `<p class="text-sm mt-3 font-semibold">Avisos</p>${lista_(r.avisos.map(esc))}` : ''}`,
         });
@@ -607,8 +636,10 @@
         { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', valor: previo.nota, max: 300,
           marcador: 'Qué se le hace, quién la pidió… (queda en el seguimiento)' },
       ], { textoBoton: 'Poner la cita',
-        nota: 'Sigue el mismo camino que las del Excel: quién lo lleva lo dice el planificador y, ' +
-          DIAS_ANTES + ' días antes, el sistema le avisa por WhatsApp.' });
+        nota: CITAS_AGENDA
+          ? 'Queda en la lista de citas y en el estado de la flota. El sistema no avisa a nadie.'
+          : 'Sigue el mismo camino que las del Excel: quién lo lleva lo dice el planificador y, ' +
+            DIAS_ANTES + ' días antes, el sistema le avisa por WhatsApp.' });
       if (!v) return false;
       previo = v;
       try {
@@ -616,7 +647,7 @@
         await Dialogo.aviso({ titulo: 'Cita puesta', tono: 'ok',
           html: `<p class="text-sm"><b class="font-mono">${esc(r.matricula)}</b>, ${esc(r.fechaLarga)} a las ${esc(r.hora)}.` +
             `${r.repuesta ? ' Tenía una anulada ese día: vuelve con esta hora.' : ''}</p>` +
-            `<p class="text-sm mt-2 text-telecab-muted">${esc(r.aviso)}</p>` });
+            (r.aviso ? `<p class="text-sm mt-2 text-telecab-muted">${esc(r.aviso)}</p>` : '') });
         tramo = 'proximas';
         await cargarCitas();
         return true;

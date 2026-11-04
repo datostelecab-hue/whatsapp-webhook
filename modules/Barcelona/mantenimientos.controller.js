@@ -9,13 +9,16 @@
 //   /barcelona/mantenimientos/api/ficha/:id   un coche, con su historial
 //   /barcelona/mantenimientos/informe.xlsx    el informe, en Excel y en PDF
 //   POST /barcelona/mantenimientos/api/...    apuntar, anular, anclar, intervalo
+//   /barcelona/mantenimientos/api/citas       las citas del taller: SOLO AGENDA
+//                                             (leer, una a mano, el Excel)
 //
 // MIRAR, como el resto de Barcelona, no tiene clave en el catálogo: lo usa
 // quien entra con esa sede (Camilo, 07/10/2026). APUNTAR sí: la misma llave que
 // en Madrid, '/taller/apuntar', comprobada aquí en cada escritura.
 //
 // La pantalla es la de Madrid (modules/Vehiculos/vistas/taller.ejs) con `base`
-// (dónde preguntar), `sedeNombre` y sin la pestaña de las citas.
+// (dónde preguntar), `sedeNombre` y `citasAgenda`: las citas sin aviso, sin
+// confirmación y sin estado. Aquí no hay rutas para nada de eso.
 
 const express = require('express');
 const router = express.Router();
@@ -54,14 +57,14 @@ router.get('/', async (req, res) => {
     layout: 'layout-gestion',
     base: BASE,
     sedeNombre: mant.SEDE_NOMBRE,
-    conCitas: false,
+    citasAgenda: true,
     tipos: mant.TIPOS,
     estados: mant.ESTADOS,
     intervaloGeneral: mant.INTERVALO,
     puedeApuntar: await puedeApuntar(req),
-    // La vista los pinta en la pestaña de las citas, que aquí no sale.
+    // Las citas de agenda no cambian de estado ni se avisan: la vista no los usa.
     citasEstados: [],
-    citasDiasAntes: 0,
+    citasDiasAntes: 2,
   });
 });
 
@@ -89,5 +92,18 @@ router.post('/api/mantenimiento', responde(exigeApuntar((req, quien) => mant.reg
 router.post('/api/anular', responde(exigeApuntar((req, quien) => mant.anular((req.body || {}).id, (req.body || {}).motivo, quien))));
 router.post('/api/ancla', responde(exigeApuntar((req, quien) => mant.anclar(req.body, quien))));
 router.post('/api/intervalo', responde(exigeApuntar(req => mant.intervalo(req.body))));
+
+// ── LAS CITAS DEL TALLER: SOLO AGENDA (04/11/2026) ─────────────────────────
+// Mirarlas, como la pantalla; añadirlas, con la llave de apuntar. Sin avisar,
+// sin confirmar y sin estado (Camilo: «solo agregar citas»).
+router.get('/api/citas', responde(req => mant.citas({ desde: req.query.desde, hasta: req.query.hasta })));
+// Antes que '/api/citas/:id', que si no se quedaría con «coches» como si fuera un id.
+router.get('/api/citas/coches', responde(() => mant.cochesParaCita()));
+router.get('/api/citas/:id', responde(async req => ({ cita: await mant.cita(req.params.id) })));
+router.post('/api/citas', responde(exigeApuntar((req, quien) => mant.crearCita(req.body || {}, quien))));
+// El Excel viaja en base64: esta ruta está en SUBEN_ARCHIVOS de app.js, se salta
+// el parser global de 2 MB y pone el suyo, como la de Madrid.
+router.post('/api/citas/importar', express.json({ limit: '15mb' }),
+  responde(exigeApuntar((req, quien) => mant.importarCitas(req.body || {}, quien))));
 
 module.exports = router;

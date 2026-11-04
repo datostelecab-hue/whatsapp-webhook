@@ -126,11 +126,14 @@ router.post('/api/intervalo', responde(exigeApuntar((req, quien) =>
 // Mirarlas es de '/taller'; subir el Excel, avisar y cambiar su estado, de
 // '/taller/apuntar'. Las llamadas para confirmarlas son de Control
 // (/control/citas-taller).
+//
+// Las de Madrid (el servicio lo hace así si no se dice otra sede): las de
+// Barcelona son de su Mantenimientos, solo agenda (04/11/2026).
 router.get('/api/citas', responde(req => citas.lista({ desde: req.query.desde, hasta: req.query.hasta })));
 // Los coches para poner una cita a mano. Antes que '/api/citas/:id', que si no
 // se quedaría con «coches» como si fuera el id de una cita.
 router.get('/api/citas/coches', responde(() => citas.cochesParaCita()));
-router.get('/api/citas/:id', responde(async req => ({ cita: await citas.ficha(req.params.id) })));
+router.get('/api/citas/:id', responde(async req => ({ cita: await citas.ficha(req.params.id, { sede: (await sedesDe(req))[0] }) })));
 
 // Una cita a mano (21/10/2026): lo mismo que una fila del Excel, de una en una.
 router.post('/api/citas', responde(exigeApuntar((req, { usuarioId }) =>
@@ -147,7 +150,7 @@ router.post('/api/citas/:id/avisar', responde(exigeApuntar((req, { usuarioId }) 
 router.post('/api/citas/:id/avisado', responde(exigeApuntar((req, { usuarioId }) =>
   citas.marcarAvisado(req.params.id, req.body || {}, { usuarioId }))));
 
-router.post('/api/citas/:id/estado', responde(exigeApuntar((req, { usuarioId }) =>
-  citas.cambiarEstado(req.params.id, req.body || {}, { usuarioId }))));
+router.post('/api/citas/:id/estado', responde(exigeApuntar((req, { usuarioId, sedes }) =>
+  citas.cambiarEstado(req.params.id, req.body || {}, { usuarioId }, { sede: sedes[0] }))));
 
 module.exports = router;

@@ -70,8 +70,12 @@
         : ' <span class="text-[11px] text-telecab-warn">sin teléfono</span>');
   }
 
-  /** QUIÉN LA LLEVA, según el planificador de ahora. */
+  /**
+   * QUIÉN LA LLEVA, según el planificador de ahora. Una cita de agenda
+   * (Barcelona, 04/11/2026) no tiene: no se pregunta, y no es un aviso.
+   */
   function responsable(c) {
+    if (c.agenda) return '';
     if (!c.responsable) {
       const otros = (c.otros || []).length
         ? `<div class="text-[11px] text-telecab-muted mt-1">Ese día lo llevan: ${c.otros.map(o => persona(o) + ` <span class="text-telecab-muted">(${o.turno === 'noche' ? 'noche' : 'día'})</span>`).join(' · ')}</div>`
@@ -157,10 +161,12 @@
         </li>`).join('');
       await Dialogo.aviso({
         titulo: `${c.matricula} · ${diaLargo(c.fecha)} a las ${c.hora}`, ancho: 'max-w-lg',
-        html: `<div class="text-sm mb-3">${responsable(c)}</div>
+        html: `${c.agenda ? '' : `<div class="text-sm mb-3">${responsable(c)}</div>`}
           <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Seguimiento</p>
           ${lineas ? `<ul>${lineas}</ul>` : '<p class="text-sm text-telecab-muted">Todavía no ha pasado nada con esta cita.</p>'}
-          <p class="text-[11px] text-telecab-muted mt-3">Del Excel «${esc(c.fichero || '—')}», subido el ${esc(c.creado_at || '')}.</p>`,
+          <p class="text-[11px] text-telecab-muted mt-3">${c.a_mano
+            ? `Puesta a mano${c.creado_por_nombre ? ' por ' + esc(c.creado_por_nombre) : ''} el ${esc(c.creado_at || '')}.`
+            : `Del Excel «${esc(c.fichero || '—')}», subido el ${esc(c.creado_at || '')}.`}</p>`,
       });
     } catch (e) {
       Dialogo.aviso({ titulo: 'No se pudo abrir la cita', texto: e.message, tono: 'error' });

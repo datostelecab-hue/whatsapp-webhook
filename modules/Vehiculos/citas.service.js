@@ -20,9 +20,35 @@
 // de taller a mano, no solamente por medio del excel». Las mismas reglas que una
 // fila del Excel, y desde ahí la cita sigue el mismo camino: responsable, aviso,
 // Control y el estado de la flota.
+//
+// LAS CITAS DE BARCELONA (04/11/2026): SOLO AGENDA. Camilo: «pon también las
+// citas del taller para Barcelona… pero sin envíos de WhatsApp… ni
+// confirmaciones, solo agregar citas». Se ponen igual (el Excel del taller o a
+// mano, con las mismas reglas) y salen en Mantenimientos de Barcelona, y nada
+// más: sin responsable (el planificador de aquí es el de Madrid), sin aviso,
+// sin confirmación y sin Control. Lo que decide es la SEDE DEL COCHE: una cita
+// de un coche que no es de Madrid es de agenda (`esAgenda`), venga de donde
+// venga, y lo que avisa, confirma o llama la rechaza.
 
 const repo = require('./citas.repo');
 const { SEDE_FLOTA, HORA_DIA, HORA_NOCHE, nombreDePila } = require('../../services/nucleo');
+
+const NOMBRE_SEDE = { madrid: 'Madrid', barcelona: 'Barcelona' };
+const nombreSede = s => NOMBRE_SEDE[s] || s || 'otra sede';
+
+/** ¿Es una cita de solo agenda? Las de los coches de otra sede (sin sede en la fila, Madrid). */
+const esAgenda = c => !!(c && c.sede && c.sede !== SEDE_FLOTA);
+
+/** Lo que la rechaza si es de agenda: ni aviso, ni confirmación, ni llamada. */
+function soloMadrid(c, que) {
+  if (esAgenda(c)) throw new Error(`Las citas de ${nombreSede(c.sede)} solo se apuntan: no se ${que}`);
+}
+
+/** Una cita de la sede pedida, o fuera. Sin sede, cualquiera (Madrid lo ha hecho siempre así). */
+function deLaSede(c, sede) {
+  if (!c || (sede && (c.sede || SEDE_FLOTA) !== sede)) throw new Error('No existe esa cita');
+  return c;
+}
 
 const PLANTILLA = (process.env.PLANTILLA_CITA_TALLER || 'cita_taller').trim();
 // Cuántos días antes avisa el sistema solo. El de la víspera y el del mismo día
@@ -193,11 +219,11 @@ async function leerExcel(bytes) {
   return { hoja: ws.name, filas, errores };
 }
 
-/** Por qué no se cita un coche. null = se cita. */
-function motivoIgnorada(v) {
+/** Por qué no se cita un coche en la pantalla de `sede`. null = se cita. */
+function motivoIgnorada(v, sede = SEDE_FLOTA) {
   if (!v) return 'No está en el sistema';
   if (v.de_baja) return 'Está dado de baja en Vehículos';
-  if (v.sede !== SEDE_FLOTA) return `No es de Madrid: es de ${v.sede === 'barcelona' ? 'Barcelona' : (v.sede || 'otra sede')}`;
+  if (v.sede !== sede) return `No es de ${nombreSede(sede)}: es de ${nombreSede(v.sede)}`;
   return null;
 }
 
@@ -210,8 +236,11 @@ function motivoIgnorada(v) {
  * Las citas de días que ya pasaron no se importan. Las que había entre las
  * fechas del Excel y ya no vienen NO se anulan solas: se listan, por si el
  * taller las ha quitado.
+ *
+ * `sede`, la de la pantalla que lo sube (04/11/2026): solo entran sus coches, y
+ * «estaban y no vienen» mira solo sus citas.
  */
-async function importar({ base64, nombre } = {}, quien = {}) {
+async function importar({ base64, nombre } = {}, quien = {}, { sede = SEDE_FLOTA } = {}) {
   const limpio = String(base64 || '').replace(/^data:[^,]*,/, '');
   if (!limpio) throw new Error('No ha llegado ningún archivo');
   const fichero = String(nombre || '').trim().slice(0, 200) || null;
@@ -239,7 +268,7 @@ async function importar({ base64, nombre } = {}, quien = {}) {
   const ignoradas = new Map(), pasadas = [], buenas = [];
   for (const f of porClave.values()) {
     const v = coches.get(f.matricula);
-    const motivo = motivoIgnorada(v);
+    const motivo = motivoIgnorada(v, sede);
     if (motivo) {
       if (!ignoradas.has(f.matricula)) ignoradas.set(f.matricula, { matricula: f.matricula, motivo, citas: 0 });
       ignoradas.get(f.matricula).citas++;
@@ -251,7 +280,7 @@ async function importar({ base64, nombre } = {}, quien = {}) {
 
   const nuevas = [], cambios = [], iguales = [];
   const fechas = buenas.map(f => f.fecha).sort();
-  const yaHay = fechas.length ? await repo.entreFechas(fechas[0], fechas[fechas.length - 1]) : [];
+  const yaHay = fechas.length ? await repo.entreFechas(fechas[0], fechas[fechas.length - 1], sede) : [];
   const porCocheDia = new Map(yaHay.map(c => [c.vehiculo_id + '|' + c.fecha, c]));
   const vistas = new Set();
   for (const f of buenas) {
@@ -270,7 +299,7 @@ async function importar({ base64, nombre } = {}, quien = {}) {
 
   await repo.guardarImportacion({ nuevas, cambios, fichero }, quien);
   const ign = [...ignoradas.values()].sort((a, b) => a.matricula.localeCompare(b.matricula));
-  console.log(`🔧 [Citas taller] Excel «${fichero || leido.hoja}»: ${nuevas.length} nueva(s), ${cambios.length} con otra hora, ` +
+  console.log(`🔧 [Citas taller${sede === SEDE_FLOTA ? '' : ' · ' + nombreSede(sede)}] Excel «${fichero || leido.hoja}»: ${nuevas.length} nueva(s), ${cambios.length} con otra hora, ` +
     `${iguales.length} igual(es), ${ign.length} matrícula(s) ignorada(s), ${pasadas.length} pasada(s)`);
   return {
     hoja: leido.hoja, filas: leido.filas.length,
@@ -282,9 +311,9 @@ async function importar({ base64, nombre } = {}, quien = {}) {
 
 // ── A mano ──────────────────────────────────────────────────────────────────
 
-/** Los coches que se pueden citar, para el desplegable: los de Madrid dados de alta. */
-async function cochesParaCita() {
-  return { coches: (await repo.cochesCitables(SEDE_FLOTA)).map(v => ({ id: String(v.id), matricula: v.matricula, modelo: v.marca_modelo || '' })) };
+/** Los coches que se pueden citar, para el desplegable: los de la sede dados de alta. */
+async function cochesParaCita({ sede = SEDE_FLOTA } = {}) {
+  return { coches: (await repo.cochesCitables(sede)).map(v => ({ id: String(v.id), matricula: v.matricula, modelo: v.marca_modelo || '' })) };
 }
 
 /**
@@ -311,11 +340,11 @@ function cuandoSeAvisa(fecha, hoy = hoyMadrid(), hora = Number(new Intl.DateTime
  * recupera con la hora nueva (es la forma de cambiarle la hora a una cita:
  * anularla y volver a ponerla).
  */
-async function crear({ vehiculoId, fecha, hora, nota } = {}, quien = {}) {
+async function crear({ vehiculoId, fecha, hora, nota } = {}, quien = {}, { sede = SEDE_FLOTA } = {}) {
   const idCoche = Number(vehiculoId && typeof vehiculoId === 'object' ? vehiculoId.valor : vehiculoId);
   if (!Number.isInteger(idCoche) || idCoche <= 0) throw new Error('Elige el coche');
   const v = await repo.vehiculoPorId(idCoche);
-  const motivo = motivoIgnorada(v);
+  const motivo = motivoIgnorada(v, sede);
   if (motivo) throw new Error(v ? `No se le puede poner cita al ${v.matricula}. ${motivo}.` : 'Ese coche no está en el sistema');
 
   if (!String(fecha || '').trim()) throw new Error('Elige el día de la cita');
@@ -339,8 +368,10 @@ async function crear({ vehiculoId, fecha, hora, nota } = {}, quien = {}) {
   } else {
     r = await repo.crearAMano({ vehiculoId: idCoche, matricula, fecha: dia, hora: h, nota: n }, quien);
   }
-  console.log(`🔧 [Citas taller] A mano: ${matricula} el ${dia} a las ${h}${repuesta ? ' (estaba anulada)' : ''} · usuario ${quien.usuarioId || '?'}`);
-  return { ok: true, id: r.id, matricula, fecha: dia, hora: h, fechaLarga: fechaLarga(dia), repuesta, aviso: cuandoSeAvisa(dia, hoy) };
+  const agenda = sede !== SEDE_FLOTA;
+  console.log(`🔧 [Citas taller${agenda ? ' · ' + nombreSede(sede) : ''}] A mano: ${matricula} el ${dia} a las ${h}${repuesta ? ' (estaba anulada)' : ''} · usuario ${quien.usuarioId || '?'}`);
+  // De agenda no hay aviso que anunciar: el sistema no avisa a nadie.
+  return { ok: true, id: r.id, matricula, fecha: dia, hora: h, fechaLarga: fechaLarga(dia), repuesta, aviso: agenda ? '' : cuandoSeAvisa(dia, hoy) };
 }
 
 // ── El responsable ──────────────────────────────────────────────────────────
@@ -368,7 +399,31 @@ const persona = x => x && {
  * más tiene el coche ese día, por si hay que llamar a otro. Una consulta para
  * todas.
  */
-async function conResponsable(citas) {
+async function conResponsable(todas) {
+  if (!todas.length) return todas;
+  // Las de agenda (otra sede) salen con su forma, sin responsable ni mensaje:
+  // aquí no hay nadie a quien avisar. Las demás, como siempre.
+  const deAgenda = new Map(todas.filter(esAgenda).map(c => [c, enAgenda(c)]));
+  const citas = todas.filter(c => !deAgenda.has(c));
+  const conR = await conResponsableMadrid(citas);
+  const madrid = new Map(citas.map((c, i) => [c, conR[i]]));
+  return todas.map(c => deAgenda.get(c) || madrid.get(c));
+}
+
+/** Una cita de solo agenda, con los mismos campos que las demás y vacíos los del aviso. */
+function enAgenda(c) {
+  const t = turnoDeLaCita(c.fecha, c.hora);
+  return {
+    ...c, agenda: true,
+    turno: t.turno, diaTurno: t.dia,
+    fechaLarga: fechaLarga(c.fecha),
+    estadoEtiqueta: ETQ_ESTADO[c.estado] || c.estado,
+    confirmacionEtiqueta: '',
+    responsable: null, otros: [], cambioDeConductor: false, mensaje: '',
+  };
+}
+
+async function conResponsableMadrid(citas) {
   if (!citas.length) return citas;
   const ids = [...new Set(citas.map(c => Number(c.vehiculo_id)))];
   const fechas = citas.map(c => c.fecha).sort();
@@ -411,14 +466,28 @@ function textoAviso(d) {
 /**
  * LAS CITAS de un tramo de días, con su responsable. Por defecto desde hoy y
  * un mes. `resumen` cuenta las de los próximos días que piden algo.
+ *
+ * Las de UNA sede (Madrid si no se dice): las de Barcelona no salen en Madrid
+ * ni en Control (04/11/2026). Las de agenda solo cuentan pendientes y próximas.
  */
-async function lista({ desde, hasta } = {}) {
+async function lista({ desde, hasta, sede = SEDE_FLOTA } = {}) {
   const hoy = hoyMadrid();
   const d = esIso(desde) ? desde : hoy;
   const h = esIso(hasta) ? hasta : sumarDias(d, 31);
   if (h < d) throw new Error('El «hasta» va antes que el «desde»');
-  const citas = await conResponsable(await repo.lista({ desde: d, hasta: h }));
+  const citas = await conResponsable(await repo.lista({ desde: d, hasta: h, sede }));
   const proximas = citas.filter(c => c.estado === 'pendiente' && c.fecha <= sumarDias(hoy, DIAS_ANTES));
+  if (sede !== SEDE_FLOTA) {
+    return {
+      desde: d, hasta: h, hoy, citas, agenda: true,
+      resumen: {
+        total: citas.length,
+        pendientes: citas.filter(c => c.estado === 'pendiente').length,
+        proximas: proximas.length,
+        sinAvisar: 0, sinConfirmar: 0, noPueden: 0, sinResponsable: 0,
+      },
+    };
+  }
   return {
     desde: d, hasta: h, hoy, citas,
     resumen: {
@@ -433,11 +502,11 @@ async function lista({ desde, hasta } = {}) {
   };
 }
 
-/** Las de hoy y los `dias` siguientes: lo que mira Control para llamar. */
+/** Las de hoy y los `dias` siguientes: lo que mira Control para llamar. Solo Madrid. */
 function proximas({ dias } = {}) {
   const n = Math.min(Math.max(Number.parseInt(dias, 10) || DIAS_ANTES, 0), 60);
   const hoy = hoyMadrid();
-  return lista({ desde: hoy, hasta: sumarDias(hoy, n) });
+  return lista({ desde: hoy, hasta: sumarDias(hoy, n), sede: SEDE_FLOTA });
 }
 
 // Hasta dónde se mira para decir «Cita puesta para revisión»: lo que manda el
@@ -449,10 +518,11 @@ const DIAS_CITA_ESTADO = 120;
  * (08/10/2026): la primera pendiente desde hoy, con quien lo lleva ese día.
  * Map vehiculoId (texto) → cita, con `otras` = cuántas más tiene detrás.
  * El responsable se busca solo para esas, en una consulta.
+ * Las de una sede (Madrid si no se dice), como su estado de la flota.
  */
-async function proximaPorCoche() {
+async function proximaPorCoche({ sede = SEDE_FLOTA } = {}) {
   const hoy = hoyMadrid();
-  const pendientes = (await repo.lista({ desde: hoy, hasta: sumarDias(hoy, DIAS_CITA_ESTADO) }))
+  const pendientes = (await repo.lista({ desde: hoy, hasta: sumarDias(hoy, DIAS_CITA_ESTADO), sede }))
     .filter(c => c.estado === 'pendiente');
   const primera = new Map();
   pendientes.forEach(c => {
@@ -474,10 +544,9 @@ async function deCoche(vehiculoId) {
   return conResponsable(citas);
 }
 
-/** Una cita con todo lo que ha pasado con ella. */
-async function ficha(id) {
-  const c = await repo.una(id);
-  if (!c) throw new Error('No existe esa cita');
+/** Una cita con todo lo que ha pasado con ella. Con `sede`, solo si es de sus coches. */
+async function ficha(id, { sede } = {}) {
+  const c = deLaSede(await repo.una(id), sede);
   const [conR] = await conResponsable([c]);
   return { ...conR, seguimiento: await repo.seguimiento(c.id) };
 }
@@ -492,6 +561,7 @@ async function ficha(id) {
 async function avisar(id, quien = {}) {
   const c = await repo.una(id);
   if (!c) throw new Error('No existe esa cita');
+  soloMadrid(c, 'avisan');
   if (c.estado !== 'pendiente') throw new Error(`La cita está «${ETQ_ESTADO[c.estado]}»: no se avisa`);
   const [x] = await conResponsable([c]);
   const r = x.responsable;
@@ -516,6 +586,7 @@ async function avisar(id, quien = {}) {
 async function marcarAvisado(id, { conductorId, nota } = {}, quien = {}) {
   const c = await repo.una(id);
   if (!c) throw new Error('No existe esa cita');
+  soloMadrid(c, 'avisan');
   let cid = Number(conductorId) || null;
   if (!cid) { const [x] = await conResponsable([c]); cid = x.responsable ? Number(x.responsable.conductorId) : null; }
   if (!cid) throw new Error('¿A quién se avisó? Nadie lleva el coche ese día en el planificador');
@@ -534,7 +605,8 @@ async function marcarAvisado(id, { conductorId, nota } = {}, quien = {}) {
  */
 async function avisarLasDeDentroDeDos() {
   const fecha = sumarDias(hoyMadrid(), DIAS_ANTES);
-  const ids = await repo.paraAvisar(fecha);
+  // Solo las de Madrid: las de Barcelona no se avisan (04/11/2026).
+  const ids = await repo.paraAvisar(fecha, SEDE_FLOTA);
   const r = { fecha, avisadas: 0, fallos: [] };
   for (const id of ids) {
     try {
@@ -566,6 +638,8 @@ async function respuestaDelConductor({ telefono, etiqueta, wamid }) {
   const id = await repo.deRespuesta({ telefono, wamid, hoy: hoyMadrid() });
   if (!id) return null;
   const c = await repo.una(id);
+  // Una de agenda nunca se avisa, así que no tiene botones que contestar.
+  if (!c || esAgenda(c)) return null;
   const confirma = boton === 'confirma';
   await repo.apuntarRespuesta(id, {
     tipo: 'respuesta', via: 'whatsapp', confirmacion: confirma ? 'confirmada' : 'no_puede',
@@ -590,6 +664,7 @@ async function respuestaDelConductor({ telefono, etiqueta, wamid }) {
 async function apuntarLlamada(id, b = {}, quien = {}) {
   const c = await repo.una(id);
   if (!c) throw new Error('No existe esa cita');
+  soloMadrid(c, 'confirman');
   const valor = String(b.resultado && typeof b.resultado === 'object' ? b.resultado.valor : (b.resultado || '')).trim();
   const res = RESULTADOS_LLAMADA.find(x => x.valor === valor);
   if (!res) throw new Error('Elige qué ha dicho');
@@ -615,8 +690,13 @@ async function apuntarLlamada(id, b = {}, quien = {}) {
   return { ok: true };
 }
 
-/** Hecha, no se presentó, anulada o de vuelta a pendiente. Anular pide motivo. */
-async function cambiarEstado(id, { estado, nota } = {}, quien = {}) {
+/**
+ * Hecha, no se presentó, anulada o de vuelta a pendiente. Anular pide motivo.
+ * Con `sede`, solo una cita de sus coches (Mantenimientos de Madrid no toca las
+ * de Barcelona, 04/11/2026).
+ */
+async function cambiarEstado(id, { estado, nota } = {}, quien = {}, { sede } = {}) {
+  if (sede) deLaSede(await repo.una(id), sede);
   const e = String(estado && typeof estado === 'object' ? estado.valor : (estado || '')).trim();
   if (!ETQ_ESTADO[e]) throw new Error('Estado desconocido');
   const n = String(nota || '').trim().slice(0, 300);
@@ -631,5 +711,5 @@ module.exports = {
   respuestaDelConductor, apuntarLlamada, cambiarEstado,
   // Sueltas para las pruebas.
   leerExcel, fechaDe, horaDe, turnoDeLaCita, motivoIgnorada, fechaLarga, textoAviso, valoresAviso,
-  botonDeCita, sumarDias, cuandoSeAvisa,
+  botonDeCita, sumarDias, cuandoSeAvisa, esAgenda,
 };

@@ -83,9 +83,21 @@ En la pestaña **Estado de la flota**, cada coche con una cita pendiente lleva, 
 - **«No contesta» no pisa una confirmación** que ya había por WhatsApp.
 - La llamada entra también en el **historial de llamadas del conductor**, tipo «Taller», con la matrícula y el turno. El Call Center la clasifica en *Vehículo › Taller y revisiones › Limpieza, ITV o revisión programada* (`callcenter.service.DESDE_CONTROL`). Los textos de esos casos («Cita de taller: confirma»…) no se renombran sin tocar los dos sitios.
 
+## Las de Barcelona: solo agenda (04/11/2026)
+
+Barcelona pone sus citas en la misma tabla, desde su Mantenimientos (`/barcelona/mantenimientos`, [[Barcelona#Las citas del taller: solo agenda (04/11/2026)]]). Camilo: *«sin envíos de WhatsApp… ni confirmaciones, solo agregar citas»*. Se añaden (el Excel o a mano) y se ven, y nada más.
+
+Lo que lo decide es la **sede del coche** (`esAgenda` en `citas.service`), así que vale venga de donde venga:
+
+- Las listas (Mantenimientos de Madrid, Control y la próxima de cada coche) piden **solo las de Madrid** si no se dice otra sede (`repo.lista({ sede })`).
+- **El aviso automático solo busca las de Madrid**: `repo.paraAvisar(fecha, sede)`, que sin sede se niega a buscar.
+- Avisar, «Avisado», la llamada de Control y la respuesta a un botón **rechazan** una de agenda («Las citas de Barcelona solo se apuntan…»). La ficha y el cambio de estado de Madrid y de Control no la abren («No existe esa cita»).
+- Una de agenda sale **sin responsable, sin mensaje y sin aviso** (`enAgenda`): no se pregunta al planificador de Madrid por un coche que no está en él.
+- El Excel y la cita a mano llevan la sede de la pantalla: desde Barcelona solo entran sus coches, y «estaban y no vienen» mira solo sus citas.
+
 ## Permisos
 
-- Mirar las citas en Mantenimientos: `/taller`.
+- Mirar las citas en Mantenimientos: `/taller`. Las de Barcelona, sin llave, como todo Barcelona; añadirlas, `/taller/apuntar`.
 - Subir el Excel, poner una a mano, avisar, «Avisado» y «Estado»: `/taller/apuntar` (el servidor lo comprueba en cada ruta, no solo escondiendo el botón).
 - La pantalla de Control y sus llamadas: `/control`.
 

@@ -144,8 +144,10 @@ router.get('/api/historial-llamadas/:conductorId', responde(req =>
 
 router.get('/api/coches', responde(req => cochesLibres.delDia(req.query.dia)));
 
+// Solo las de Madrid: las de Barcelona son de agenda, sin llamadas (04/11/2026).
 router.get('/api/citas-taller', responde(req => citasTaller.proximas({ dias: req.query.dias })));
-router.get('/api/citas-taller/:id', responde(async req => ({ cita: await citasTaller.ficha(req.params.id) })));
+router.get('/api/citas-taller/:id', responde(async req => ({
+  cita: await citasTaller.ficha(req.params.id, { sede: require('../../services/nucleo').SEDE_FLOTA }) })));
 
 router.get('/api/incorporaciones', responde(req => incorporaciones.lista({ ventana: req.query.ventana })));
 

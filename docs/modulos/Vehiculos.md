@@ -196,7 +196,7 @@ Funcionaba, pero **esa dependencia no la veía nadie**: ni un `grep`, ni `compro
 
 ### Una pantalla por sede (04/11/2026)
 
-Barcelona tiene su Mantenimientos en `/barcelona/mantenimientos` ([[Barcelona#Mantenimientos (`/barcelona/mantenimientos`)]]). Es **esta misma pantalla y este mismo servicio**, con la sede fijada en `modules/Barcelona/mantenimientos.service.js`. La vista recibe `base`, `sedeNombre` y `conCitas`, y sin ellos es la de Madrid.
+Barcelona tiene su Mantenimientos en `/barcelona/mantenimientos` ([[Barcelona#Mantenimientos (`/barcelona/mantenimientos`)]]). Es **esta misma pantalla y este mismo servicio**, con la sede fijada en `modules/Barcelona/mantenimientos.service.js`. La vista recibe `base`, `sedeNombre` y `citasAgenda` (las citas de Barcelona solo se apuntan, [[Citas del taller#Las de Barcelona: solo agenda (04/11/2026)]]), y sin ellos es la de Madrid.
 
 Al partirlo por sede cambiaron tres cosas en Madrid:
 

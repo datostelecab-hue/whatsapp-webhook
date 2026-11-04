@@ -117,12 +117,20 @@ Camilo, 04/11/2026: *«habilitar en mantenimientos los coches de Barcelona, repl
 **Es el módulo de Madrid con sus coches, no una copia**, como la Visibilidad. La regla de cuándo toca revisión (odómetro de hoy menos el km de la última revisión, el ritmo de los últimos 30 días y el semáforo) vive en `modules/Vehiculos/taller.*` ([[Vehiculos#Taller: el mantenimiento por km]]), y las tablas son las mismas (`mantenimiento`, `odometro_ancla`, `vehiculo_km_dia`). Un apunte es de un coche, y el coche ya dice su sede. Con dos copias habría dos semáforos que tarde o temprano dirían cosas distintas del mismo coche.
 
 - **Los coches** son los de Vehículos con **sede Barcelona** y sin baja: 20 el 04/11. 16 dan su odómetro por el CAN de Mapon (el cron diario los lee igual que los de Madrid). Los otros 4 salen «sin Mapon» y sin odómetro: 2127LZJ, 2928KGL, 8074LXG y 8477LTR. Un coche que se pase a Barcelona en Vehículos aparece aquí y deja de salir en el de Madrid.
-- **La pantalla es la de Madrid** (`modules/Vehiculos/vistas/taller.ejs`), que recibe `base` (dónde preguntar), `sedeNombre` y `conCitas: false`. Las tarjetas, la tabla, la ficha, apuntar, anular, anclar el odómetro y el intervalo son los mismos.
+- **La pantalla es la de Madrid** (`modules/Vehiculos/vistas/taller.ejs`), que recibe `base` (dónde preguntar), `sedeNombre` y `citasAgenda`. Las tarjetas, la tabla, la ficha, apuntar, anular, anclar el odómetro y el intervalo son los mismos.
 - **Mirar** no tiene llave, como el resto de Barcelona. **Apuntar** pide la misma que en Madrid, `/taller/apuntar` (Óscar y los roles que lo pueden todo). La regla está en `taller.service.puedeApuntar`, una sola para las dos sedes.
 - **La sede se fija en un solo sitio**, `mantenimientos.service.js`: todo lo que pasa por ahí lleva `sedes: ['barcelona']`, para leer y para escribir. El servicio del taller rechaza una escritura en un coche de otra sede («Ese coche es de otra sede…»), y la ficha no lo abre. El id va en el cuerpo de la petición, así que esconderlo de la lista no bastaba. Vale en los dos sentidos: desde Madrid tampoco se apunta en un coche de Barcelona.
 - **El informe** (Excel y PDF) lleva solo sus coches, «· Barcelona» en cada título y se llama `taller-barcelona-AAAA-MM-DD`.
 - **El estado «B»** (Baja) que llevan sus coches para que el planificador de Madrid no los ofrezca (db/173) **no se enseña**: en esta pantalla diría «Baja» de 20 coches que trabajan.
-- **Sin citas del taller.** En Madrid, quién lleva el coche el día de la cita lo dice su planificador, y el aviso por WhatsApp va a esa persona. Barcelona tiene su propio planificador con cuentas de BOLT, sin fichas. Si hacen falta, son otra tanda: el responsable saldría de `sede_asignacion`.
+### Las citas del taller: solo agenda (04/11/2026)
+
+Camilo: *«pon también las citas del taller para Barcelona… pero sin envíos de WhatsApp… ni confirmaciones, solo agregar citas»*.
+
+- **Se añaden** como en Madrid ([[Citas del taller]]): con el **Excel del taller** o con **«Nueva cita»** (también desde la ficha del coche, «Poner cita»). Las reglas son las mismas: un coche, una cita por día; solo coches de Barcelona dados de alta; el Excel dice qué matrículas no entran y por qué («No es de Barcelona: es de Madrid»).
+- **Se ven** en la pestaña «Citas del taller», con su día, su hora y de dónde salen (el Excel o quién la puso), y en el estado de la flota como «Cita puesta para revisión».
+- **Y nada más.** Sin quién lleva el coche (eso lo dice el planificador de Madrid), sin aviso por WhatsApp, sin confirmación, sin llamadas de Control y sin cambiar su estado. En Barcelona no hay rutas para eso: devuelven 404.
+- **Lo que lo decide es la sede del coche**, no la pantalla. Una cita de un coche que no es de Madrid es de agenda (`citas.service.esAgenda`), y avisar, marcarla avisada, la llamada de Control y la respuesta a un botón la rechazan aunque alguien mande su id a mano. El aviso automático de las 10:00 solo busca citas de Madrid (`repo.paraAvisar(fecha, sede)`, que sin sede se niega a buscar). Las listas de Madrid y de Control piden solo las de Madrid.
+- Van en la **misma tabla** (`taller_cita`, db/187): no hace falta migración.
 
 ## Las piezas
 

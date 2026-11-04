@@ -276,6 +276,45 @@ const dia = n => S.sumarDias(hoy, n);
   yaEseDia = [{ id: '151', vehiculo_id: '11', matricula: '0802MJY', fecha: dia(5), hora: '11:00', estado: 'pendiente' }];
   igual('La de otro coche ese día no estorba', (await S.crear({ vehiculoId: 10, fecha: dia(5), hora: '09:00' }, {})).ok && creadas.length, 2);
 
+  // ── BARCELONA: SOLO AGENDA (04/11/2026) ─────────────────────────────────
+  // «Sin envíos de WhatsApp… ni confirmaciones, solo agregar citas.»
+  yaEseDia = [];
+  igual('Desde Barcelona, uno de Madrid no se cita', S.motivoIgnorada(coches[10], 'barcelona'), 'No es de Barcelona: es de Madrid');
+  igual('Desde Barcelona, uno de Barcelona sí', S.motivoIgnorada(coches[13], 'barcelona'), null);
+  await lanza('Desde Barcelona, a mano, uno de Madrid', () => S.crear({ vehiculoId: 10, fecha: dia(5), hora: '10:00' }, {}, { sede: 'barcelona' }), 'No es de Barcelona: es de Madrid');
+  const bcn = await S.crear({ vehiculoId: 13, fecha: dia(2), hora: '10:00' }, { usuarioId: 7 }, { sede: 'barcelona' });
+  igual('Una de Barcelona se pone, y no anuncia ningún aviso', [bcn.ok, bcn.matricula, bcn.aviso], [true, '1888LTJ', '']);
+
+  const deBcn = { ...base, id: '300', vehiculo_id: '13', matricula: '1888LTJ', sede: 'barcelona', fecha: dia(2), hora: '10:00' };
+  const deMad = { ...base, id: '301', vehiculo_id: '10', matricula: '5736LGK', sede: 'madrid', fecha: dia(2), hora: '10:00' };
+  igual('La sede del coche dice si es de agenda', [S.esAgenda(deBcn), S.esAgenda(deMad), S.esAgenda({ id: 1 })], [true, false, false]);
+  let pedidaSede = null, coberturaPara = null;
+  repo.lista = async q => { pedidaSede = q.sede || null; return q.id ? [q.id === 300 ? deBcn : deMad] : [deBcn, deMad].filter(c => !q.sede || c.sede === q.sede); };
+  repo.cobertura = async ids => { coberturaPara = ids; return cob; };
+  const lb = await S.lista({ desde: hoy, hasta: dia(30), sede: 'barcelona' });
+  igual('La lista de Barcelona pide solo las suyas y no pregunta al planificador', [pedidaSede, lb.agenda, lb.citas.map(c => c.id), coberturaPara], ['barcelona', true, ['300'], null]);
+  igual('Sale sin responsable, sin mensaje y sin nada pendiente de aviso',
+    [lb.citas[0].agenda, lb.citas[0].responsable, lb.citas[0].mensaje, lb.resumen.sinResponsable, lb.resumen.pendientes], [true, null, '', 0, 1]);
+  const lm = await S.lista({ desde: hoy, hasta: dia(30) });
+  igual('Madrid, sin decir sede, pide las de Madrid', [pedidaSede, lm.citas.map(c => c.id)], ['madrid', ['301']]);
+  const mezcla = await S.proximaPorCoche({ sede: 'barcelona' });
+  igual('La próxima de cada coche de Barcelona, de agenda', [...mezcla.values()].map(c => [c.id, c.agenda]), [['300', true]]);
+
+  enviados.length = 0;
+  repo.una = async id => (String(id) === '300' ? deBcn : deMad);
+  await lanza('Una de Barcelona no se avisa', () => S.avisar('300', {}), 'solo se apuntan');
+  await lanza('Ni se marca avisada', () => S.marcarAvisado('300', {}, {}), 'solo se apuntan');
+  await lanza('Ni Control le apunta una llamada', () => S.apuntarLlamada('300', { conductorId: '96', resultado: 'confirma' }, {}), 'solo se apuntan');
+  igual('Y no sale ningún WhatsApp', enviados.length, 0);
+  repo.deRespuesta = async () => 300;
+  igual('Un botón que diera con una de Barcelona no la confirma', await S.respuestaDelConductor({ telefono: '600112233', etiqueta: 'Confirmo' }), null);
+  await lanza('Mantenimientos de Madrid no le cambia el estado', () => S.cambiarEstado('300', { estado: 'hecha' }, {}, { sede: 'madrid' }), 'No existe esa cita');
+  await lanza('Ni abre su ficha', () => S.ficha('300', { sede: 'madrid' }), 'No existe esa cita');
+  let paraAvisarSede = null;
+  repo.paraAvisar = async (f, sede) => { paraAvisarSede = sede; return []; };
+  await S.avisarLasDeDentroDeDos();
+  igual('El aviso automático busca solo las de Madrid', paraAvisarSede, 'madrid');
+
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);
 })().catch(e => { console.error(e.stack || e.message); process.exit(1); });
