@@ -1,15 +1,25 @@
+<%
+  // LA MISMA PANTALLA PARA LAS DOS SEDES (04/11/2026). Madrid la abre en /taller
+  // y Barcelona en /barcelona/mantenimientos (modules/Barcelona), que le pasa
+  // `base` (dónde preguntar), `sedeNombre` y `conCitas: false`: las citas del
+  // taller van con el planificador de Madrid. Sin ellos, es la de Madrid.
+  const BASE = typeof base !== 'undefined' && base ? base : '/taller';
+  const SEDE_NOMBRE = typeof sedeNombre !== 'undefined' && sedeNombre ? sedeNombre : '';
+  const CON_CITAS = typeof conCitas === 'undefined' ? true : !!conCitas;
+%>
 <div class="p-4 lg:p-6 max-w-[1500px] mx-auto">
 
   <!-- ── Cabecera ─────────────────────────────────────────────────────── -->
   <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-screwdriver-wrench text-telecab-gold"></i> Taller
+        <i class="fa-solid fa-screwdriver-wrench text-telecab-gold"></i> Taller<%= SEDE_NOMBRE ? ' · ' + SEDE_NOMBRE : '' %>
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
         Mantenimiento por kilómetros. Un coche entra a revisión cuando lleva
         <b><%= intervaloGeneral.toLocaleString('es-ES') %> km</b> desde la última,
         y eso son dos cifras: el <b>odómetro de hoy</b> y el <b>km de su última revisión</b>.
+        <% if (SEDE_NOMBRE) { %>Aquí, los coches con sede <b><%= SEDE_NOMBRE %></b> en Vehículos.<% } %>
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
@@ -18,11 +28,11 @@
         <i class="fa-solid fa-plus mr-1"></i> Apuntar mantenimiento
       </button>
       <% } %>
-      <a href="/taller/informe.xlsx" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text hover:text-telecab-gold"
+      <a href="<%= BASE %>/informe.xlsx" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text hover:text-telecab-gold"
          title="Tres hojas: la flota entera, lo que falta por resolver y el historial. Con filtros puestos y los km como números, para ordenar y mandar por correo. No depende del filtro de la pantalla.">
         <i class="fa-solid fa-file-excel mr-1 text-telecab-green"></i> Informe Excel
       </a>
-      <a href="/taller/informe.pdf" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+      <a href="<%= BASE %>/informe.pdf" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
          title="Lo mismo, para imprimir y llevar a la reunión.">
         <i class="fa-solid fa-file-pdf mr-1"></i> PDF
       </a>
@@ -33,6 +43,7 @@
   </div>
 
   <!-- ── Las dos vistas: el estado de la flota y las citas del taller ──── -->
+  <% if (CON_CITAS) { %>
   <div id="t-pestanas" class="flex flex-wrap items-center gap-2 mb-4">
     <button data-pestana="flota" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
       <i class="fa-solid fa-gauge-high"></i> Estado de la flota
@@ -42,6 +53,7 @@
       <span id="ct-cuenta" class="hidden"></span>
     </button>
   </div>
+  <% } %>
 
   <div id="v-flota">
   <!-- ── Los cuatro estados ───────────────────────────────────────────── -->
@@ -128,6 +140,7 @@
        El Excel del taller (MATRICULA · VEHICULO · CITA TALLER · HORA). Quién
        lleva cada coche lo dice el planificador; el sistema le avisa por WhatsApp
        dos días antes y Control le llama para confirmarla. -->
+  <% if (CON_CITAS) { %>
   <div id="v-citas" class="hidden">
     <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
       <p class="text-sm text-telecab-muted max-w-3xl">
@@ -154,6 +167,7 @@
       <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
     </div>
   </div>
+  <% } %>
 </div>
 
 <!-- ══ Panel de ficha ═══════════════════════════════════════════════════ -->
@@ -263,5 +277,5 @@
 </div>
 
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
-<script type="application/json" id="datos-servidor"><%- json({ puedeApuntar: !!puedeApuntar, tipos: tipos, intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
+<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, puedeApuntar: !!puedeApuntar, tipos: tipos, intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
 <script src="<%= est('/assets/js/vistas/Vehiculos/taller.js') %>"></script>

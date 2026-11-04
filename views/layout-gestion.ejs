@@ -150,7 +150,8 @@
       <% if (sedeSesion === 'barcelona') { %>
         <% [{ href: '/barcelona', icono: 'fa-table-cells-large', texto: 'Planificador', id: 'bcn-planificador' },
             { href: '/barcelona/reportes', icono: 'fa-file-excel', texto: 'Reporte de horas', id: 'bcn-reportes' },
-            { href: '/barcelona/visibilidad', icono: 'fa-chart-line', texto: 'Visibilidad', id: 'bcn-visibilidad' }]
+            { href: '/barcelona/visibilidad', icono: 'fa-chart-line', texto: 'Visibilidad', id: 'bcn-visibilidad' },
+            { href: '/barcelona/mantenimientos', icono: 'fa-screwdriver-wrench', texto: 'Mantenimientos', id: 'bcn-mantenimientos' }]
            .forEach(function (e) { const on = seccionActiva === e.id; %>
           <a href="<%= e.href %>" class="nav-item <%= on ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                     <%= on ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">

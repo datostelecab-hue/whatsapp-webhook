@@ -19,7 +19,6 @@ const router = express.Router();
 // Por el SERVICIO, que es la puerta. El repositorio no se toca desde aqui.
 const taller = require('./taller.service');
 const actor = require('../../services/repo/actor');
-const permisos = require('../../services/permisos');
 const facturas = require('./facturas.service');
 const citas = require('./citas.service');
 
@@ -36,8 +35,6 @@ async function sedesDe(req) { // eslint-disable-line no-unused-vars
   return [facturas.SEDE_POR_DEFECTO];
 }
 
-const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
-
 const responde = fn => async (req, res) => {
   try { res.json({ status: 'ok', ...(await fn(req)) }); }
   catch (e) {
@@ -48,20 +45,26 @@ const responde = fn => async (req, res) => {
 
 const quienEs = async req => (req.usuario && req.usuario.id) || await actor.idDe(req);
 
-/** ¿Puede este usuario tocar los números, no solo mirarlos? */
+/**
+ * ¿Puede este usuario tocar los números, no solo mirarlos? La regla es del
+ * servicio (la misma para Mantenimientos de Barcelona); aquí solo se saca de la
+ * sesión quién es.
+ */
 async function puedeApuntar(req) {
   const u = req.usuario || {};
-  if (ADMIN_TOTAL.includes(u.rol)) return true;
-  try {
-    const id = await quienEs(req);
-    return id ? (await permisos.clavesDe(id)).has('/taller/apuntar') : false;
-  } catch (_) { return false; }
+  let usuarioId = null;
+  try { usuarioId = await quienEs(req); } catch (_) { /* sin id, sin apuntar */ }
+  return taller.puedeApuntar({ rol: u.rol, usuarioId });
 }
 
-/** El candado de verdad. El botón escondido en la vista no es un candado. */
+/**
+ * El candado de verdad. El botón escondido en la vista no es un candado.
+ * Y cada escritura lleva las sedes de la pantalla: Madrid no apunta en un coche
+ * de Barcelona aunque alguien mande su id a mano (04/11/2026).
+ */
 const exigeApuntar = fn => async req => {
   if (!await puedeApuntar(req)) throw new Error('No tienes permiso para apuntar en el taller');
-  return fn(req, await quienEs(req));
+  return fn(req, { usuarioId: await quienEs(req), sedes: await sedesDe(req) });
 };
 
 router.get('/', async (req, res) => {
@@ -82,7 +85,7 @@ router.get('/', async (req, res) => {
 router.get('/api/cuadro', responde(async req =>
   taller.estadoDeLaFlota({ busca: req.query.busca, estado: req.query.estado, sedes: await sedesDe(req) })));
 
-router.get('/api/ficha/:id', responde(async req => ({ ficha: await taller.ficha(req.params.id) })));
+router.get('/api/ficha/:id', responde(async req => ({ ficha: await taller.ficha(req.params.id, { sedes: await sedesDe(req) }) })));
 
 // El informe, en Excel y en PDF. Quien decide QUE lleva y como se llama es el
 // servicio; aqui solo se ponen las cabeceras y se manda.
@@ -91,7 +94,8 @@ router.get('/api/ficha/:id', responde(async req => ({ ficha: await taller.ficha(
 // taller su trozo. El PDF es para imprimirlo y llevarlo a la reunion.
 const descarga = formato => async (req, res) => {
   try {
-    const r = await taller.informe(formato);
+    // Las mismas sedes que la pantalla (04/11/2026): antes llevaba también Barcelona.
+    const r = await taller.informe(formato, { sedes: await sedesDe(req) });
     console.log(`📄 [Taller] informe ${formato}: ${r.resumen.total} coches, ` +
       `${r.resumen.toca} tocan revisión, ${r.apuntes} apuntes`);
     res.setHeader('Content-Type', r.mime);
@@ -106,16 +110,17 @@ const descarga = formato => async (req, res) => {
 router.get('/informe.xlsx', descarga('xlsx'));
 router.get('/informe.pdf', descarga('pdf'));
 
-router.post('/api/mantenimiento', responde(exigeApuntar((req, usuarioId) =>
-  taller.registrar(req.body, { usuarioId }))));
+router.post('/api/mantenimiento', responde(exigeApuntar((req, quien) =>
+  taller.registrar(req.body, quien))));
 
-router.post('/api/anular', responde(exigeApuntar((req, usuarioId) =>
-  taller.anular(req.body.id, req.body.motivo, { usuarioId }))));
+router.post('/api/anular', responde(exigeApuntar((req, quien) =>
+  taller.anular(req.body.id, req.body.motivo, quien))));
 
-router.post('/api/ancla', responde(exigeApuntar((req, usuarioId) =>
-  taller.anclar(req.body, { usuarioId }))));
+router.post('/api/ancla', responde(exigeApuntar((req, quien) =>
+  taller.anclar(req.body, quien))));
 
-router.post('/api/intervalo', responde(exigeApuntar(req => taller.intervalo(req.body))));
+router.post('/api/intervalo', responde(exigeApuntar((req, quien) =>
+  taller.intervalo(req.body, { sedes: quien.sedes }))));
 
 // ── LAS CITAS DEL TALLER (db/187) ───────────────────────────────────────────
 // Mirarlas es de '/taller'; subir el Excel, avisar y cambiar su estado, de
@@ -128,21 +133,21 @@ router.get('/api/citas/coches', responde(() => citas.cochesParaCita()));
 router.get('/api/citas/:id', responde(async req => ({ cita: await citas.ficha(req.params.id) })));
 
 // Una cita a mano (21/10/2026): lo mismo que una fila del Excel, de una en una.
-router.post('/api/citas', responde(exigeApuntar((req, usuarioId) =>
+router.post('/api/citas', responde(exigeApuntar((req, { usuarioId }) =>
   citas.crear(req.body || {}, { usuarioId }))));
 
 // El Excel viaja en base64 dentro del JSON: esta ruta está en SUBEN_ARCHIVOS de
 // app.js, se salta el parser global de 2 MB y pone el suyo.
-router.post('/api/citas/importar', express.json({ limit: '15mb' }), responde(exigeApuntar((req, usuarioId) =>
+router.post('/api/citas/importar', express.json({ limit: '15mb' }), responde(exigeApuntar((req, { usuarioId }) =>
   citas.importar(req.body || {}, { usuarioId }))));
 
-router.post('/api/citas/:id/avisar', responde(exigeApuntar((req, usuarioId) =>
+router.post('/api/citas/:id/avisar', responde(exigeApuntar((req, { usuarioId }) =>
   citas.avisar(req.params.id, { usuarioId }))));
 
-router.post('/api/citas/:id/avisado', responde(exigeApuntar((req, usuarioId) =>
+router.post('/api/citas/:id/avisado', responde(exigeApuntar((req, { usuarioId }) =>
   citas.marcarAvisado(req.params.id, req.body || {}, { usuarioId }))));
 
-router.post('/api/citas/:id/estado', responde(exigeApuntar((req, usuarioId) =>
+router.post('/api/citas/:id/estado', responde(exigeApuntar((req, { usuarioId }) =>
   citas.cambiarEstado(req.params.id, req.body || {}, { usuarioId }))));
 
 module.exports = router;

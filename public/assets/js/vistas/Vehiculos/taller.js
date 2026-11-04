@@ -7,6 +7,10 @@
   const PUEDE = DEL_SERVIDOR.puedeApuntar;
   const TIPOS = DEL_SERVIDOR.tipos;
   const GENERAL = DEL_SERVIDOR.intervaloGeneral;
+  // La misma pantalla para las dos sedes (04/11/2026): Madrid pregunta a /taller
+  // y Barcelona a /barcelona/mantenimientos, sin la pestaña de las citas.
+  const BASE = DEL_SERVIDOR.base || '/taller';
+  const CON_CITAS = DEL_SERVIDOR.conCitas !== false;
   // Lo que pintan igual Mantenimientos y Control de una cita (citasTaller.js).
   const CT = window.CitasTaller;
   const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
@@ -62,7 +66,7 @@
     const q = new URLSearchParams();
     if ($('#f-busca').value.trim()) q.set('busca', $('#f-busca').value.trim());
     if ($('#f-estado').value) q.set('estado', $('#f-estado').value);
-    const j = await api('/taller/api/cuadro?' + q.toString());
+    const j = await api(BASE + '/api/cuadro?' + q.toString());
     FILAS = j.filas;
     TOTAL = j.resumen.total;      // el total de la flota, no el del filtro
     pintarResumen(j.resumen);
@@ -129,7 +133,7 @@
 
   // ── Ficha ────────────────────────────────────────────────────────────
   async function abrirFicha(id) {
-    const j = await api('/taller/api/ficha/' + id);
+    const j = await api(BASE + '/api/ficha/' + id);
     const f = j.ficha;
     const c = COLOR[f.estado] || COLOR.sin_dato;
     $('#pf-matricula').textContent = f.matricula;
@@ -187,9 +191,11 @@
         html += '<button id="pf-anclar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">' +
           '<i class="fa-solid fa-anchor mr-1"></i> Anclar odómetro</button>';
       }
-      html += '<button id="pf-cita" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text"' +
-        ' title="Ponerle una cita del taller a este coche: el día y la hora.">' +
-        '<i class="fa-solid fa-calendar-plus mr-1"></i> Poner cita</button>';
+      if (CON_CITAS) {
+        html += '<button id="pf-cita" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text"' +
+          ' title="Ponerle una cita del taller a este coche: el día y la hora.">' +
+          '<i class="fa-solid fa-calendar-plus mr-1"></i> Poner cita</button>';
+      }
       html += '<button id="pf-intervalo" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted">' +
         'Intervalo: ' + n(f.intervalo) + ' km' + (f.intervaloPropio ? ' (propio)' : '') + '</button>';
     }
@@ -243,7 +249,7 @@
       const motivo = prompt('¿Por qué se anula? Queda apuntado con tu nombre.');
       if (!motivo) return;
       try {
-        await api('/taller/api/anular', {
+        await api(BASE + '/api/anular', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: b.dataset.id, motivo }),
         });
@@ -258,7 +264,7 @@
       f.intervaloPropio ? f.intervalo : '');
     if (v === null) return;
     try {
-      await api('/taller/api/intervalo', {
+      await api(BASE + '/api/intervalo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vehiculoId: f.id, km: v.trim() }),
       });
@@ -330,7 +336,7 @@
     const err = $('#mm-error');
     err.classList.add('hidden');
     try {
-      await Api.post('/taller/api/mantenimiento', {
+      await Api.post(BASE + '/api/mantenimiento', {
         vehiculoId: $('#mm-vehiculo').value,
         tipo: $('#mm-tipo').value,
         fecha: $('#mm-fecha').value,
@@ -349,7 +355,7 @@
     const err = $('#ma-error');
     err.classList.add('hidden');
     try {
-      const j = await Api.post('/taller/api/ancla', {
+      const j = await Api.post(BASE + '/api/ancla', {
         vehiculoId: $('#m-ancla').dataset.vehiculo,
         km: $('#ma-km').value,
         nota: $('#ma-nota').value,
@@ -365,6 +371,10 @@
   });
 
   cargar().catch(e => alert('No se pudo cargar el taller: ' + e.message));
+
+  // Sin citas (Mantenimientos de Barcelona) la pantalla acaba aquí: la vista no
+  // pinta ni las pestañas ni la lista de citas.
+  if (!CON_CITAS) return;
 
   // ══════════ LAS CITAS DEL TALLER ══════════
   const C = window.CitasTaller;
@@ -396,7 +406,7 @@
     const q = tramo === 'pasadas'
       ? { desde: C.sumar(hoy, -30), hasta: C.sumar(hoy, -1) }
       : { desde: hoy, hasta: C.sumar(hoy, 60) };
-    CITAS = await api('/taller/api/citas?' + new URLSearchParams(q).toString());
+    CITAS = await api(BASE + '/api/citas?' + new URLSearchParams(q).toString());
     pintarCitas();
   }
 
@@ -497,7 +507,7 @@
     const c = CITAS.citas.find(x => String(x.id) === String(id));
     if (!c) return;
     try {
-      if (accion === 'seguimiento') return C.verSeguimiento('/taller/api/citas/' + c.id);
+      if (accion === 'seguimiento') return C.verSeguimiento(BASE + '/api/citas/' + c.id);
       if (accion === 'copiar') {
         await navigator.clipboard.writeText(c.mensaje);
         return Dialogo.hecho('Mensaje copiado: pégalo en su chat');
@@ -507,7 +517,7 @@
           texto: `Se le manda a ${c.responsable.nombre} el aviso de la cita del ${c.matricula} (${C.diaLargo(c.fecha).toLowerCase()} a las ${c.hora}), con los botones «Confirmo» y «No puedo ir».`,
           si: 'Mandar el aviso', no: 'Cancelar' });
         if (!ok) return;
-        const r = await postCita(`/taller/api/citas/${c.id}/avisar`);
+        const r = await postCita(`${BASE}/api/citas/${c.id}/avisar`);
         if (!r.ok) { await Dialogo.aviso({ titulo: 'No salió el aviso', texto: r.error, tono: 'error' }); return cargarCitas(); }
         Dialogo.hecho('Aviso mandado a ' + r.conductor);
       } else if (accion === 'avisado') {
@@ -515,7 +525,7 @@
           { id: 'nota', etiqueta: 'Cómo', tipo: 'texto-largo', marcador: 'Por el chat, por teléfono…' },
         ], { textoBoton: 'Apuntar el aviso', nota: `Queda apuntado que se avisó a ${c.responsable.nombre}, con tu nombre y la hora.` });
         if (!v) return;
-        await postCita(`/taller/api/citas/${c.id}/avisado`, { conductorId: c.responsable.conductorId, nota: v.nota });
+        await postCita(`${BASE}/api/citas/${c.id}/avisado`, { conductorId: c.responsable.conductorId, nota: v.nota });
         Dialogo.hecho('Aviso apuntado');
       } else if (accion === 'estado') {
         const v = await Dialogo.formulario(`Estado · ${c.matricula}, ${C.diaLargo(c.fecha).toLowerCase()}`, [
@@ -524,7 +534,7 @@
           { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', marcador: 'Obligatoria si se anula o no se presentó' },
         ], { textoBoton: 'Guardar' });
         if (!v) return;
-        await postCita(`/taller/api/citas/${c.id}/estado`, { estado: v.estado, nota: v.nota });
+        await postCita(`${BASE}/api/citas/${c.id}/estado`, { estado: v.estado, nota: v.nota });
         Dialogo.hecho('Estado guardado');
       }
       await cargarCitas();
@@ -545,7 +555,7 @@
       if (!f) return;
       const base64 = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
       try {
-        const r = await postCita('/taller/api/citas/importar', { base64, nombre: f.name });
+        const r = await postCita(BASE + '/api/citas/importar', { base64, nombre: f.name });
         const lista_ = xs => `<ul class="text-sm list-disc pl-5 mt-1">${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;
         await Dialogo.aviso({
           titulo: 'Citas importadas', tono: 'ok', ancho: 'max-w-xl',
@@ -581,7 +591,7 @@
   const aDdmm = iso => (iso ? iso.split('-').reverse().join('/') : '');
   async function nuevaCita({ vehiculoId } = {}) {
     try {
-      if (!COCHES) COCHES = (await api('/taller/api/citas/coches')).coches;
+      if (!COCHES) COCHES = (await api(BASE + '/api/citas/coches')).coches;
     } catch (e) {
       Dialogo.aviso({ titulo: 'No se pudieron cargar los coches', texto: e.message, tono: 'error' });
       return false;
@@ -602,7 +612,7 @@
       if (!v) return false;
       previo = v;
       try {
-        const r = await postCita('/taller/api/citas', { vehiculoId: v.coche, fecha: v.fecha, hora: v.hora, nota: v.nota });
+        const r = await postCita(BASE + '/api/citas', { vehiculoId: v.coche, fecha: v.fecha, hora: v.hora, nota: v.nota });
         await Dialogo.aviso({ titulo: 'Cita puesta', tono: 'ok',
           html: `<p class="text-sm"><b class="font-mono">${esc(r.matricula)}</b>, ${esc(r.fechaLarga)} a las ${esc(r.hora)}.` +
             `${r.repuesta ? ' Tenía una anulada ese día: vuelve con esta hora.' : ''}</p>` +

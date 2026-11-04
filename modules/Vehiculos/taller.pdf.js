@@ -78,9 +78,11 @@ function pega(f, intervalo) {
  * @param {Object} datos  lo que devuelve services/repo/taller.todo()
  * @returns {Promise<Buffer>}
  */
-async function generar({ filas, resumen, historial, intervalo }) {
+async function generar({ filas, resumen, historial, intervalo, sedeNombre }) {
+  // El de una sede que no es la de siempre lo dice en cada título (Barcelona, 04/11/2026).
+  const deSede = sedeNombre ? ` - ${sedeNombre}` : '';
   const doc = await PDFDocument.create();
-  doc.setTitle(`Taller - estado de la flota por km`);
+  doc.setTitle(`Taller - estado de la flota por km${deSede}`);
   doc.setCreator(EMPRESA);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -158,7 +160,7 @@ async function generar({ filas, resumen, historial, intervalo }) {
     (ORDEN[a.estado] - ORDEN[b.estado]) || ((b.desde ?? -1e9) - (a.desde ?? -1e9)) ||
     a.matricula.localeCompare(b.matricula));
 
-  tabla('Taller - estado de la flota por km', cabecera, [
+  tabla(`Taller - estado de la flota por km${deSede}`, cabecera, [
     { titulo: 'Nº', w: 24, al: 'c', bold: true, valor: numDe(orden) },
     { titulo: 'Matricula', w: 62, bold: true, valor: d => d.matricula },
     { titulo: 'Vehiculo', w: 116, size: 7.5, valor: d => d.vehiculo },
@@ -187,7 +189,7 @@ async function generar({ filas, resumen, historial, intervalo }) {
     .map(f => ({ ...f, pega: pega(f, intervalo) }))
     .sort((a, b) => (ORDEN[a.estado] - ORDEN[b.estado]) || a.matricula.localeCompare(b.matricula));
 
-  tabla('Lo que hay que resolver',
+  tabla(`Lo que hay que resolver${deSede}`,
     `${pendientes.length} coches sobre los que hoy no se puede decidir - ${sello()}`, [
       { titulo: 'Nº', w: 24, al: 'c', bold: true, valor: numDe(pendientes) },
       { titulo: 'Matricula', w: 62, bold: true, valor: d => d.matricula },
@@ -200,7 +202,7 @@ async function generar({ filas, resumen, historial, intervalo }) {
     ], pendientes, 'Nada pendiente: todos los coches tienen odometro y km de revision.');
 
   // ── 3. El historial ────────────────────────────────────────────────────────
-  tabla('Historial de mantenimientos',
+  tabla(`Historial de mantenimientos${deSede}`,
     `${historial.length} apuntes vigentes (los anulados no salen) - ${sello()}`, [
       { titulo: 'Nº', w: 24, al: 'c', bold: true, valor: numDe(historial) },
       { titulo: 'Matricula', w: 62, bold: true, valor: d => d.matricula },

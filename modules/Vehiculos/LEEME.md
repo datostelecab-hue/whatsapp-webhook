@@ -65,6 +65,12 @@ incoherencia: por esos dos también entran el cron de Mapon y el planificador, y
 a un coche de Barcelona hay que seguir apuntándole los kilómetros aunque Óscar
 no lo vea. Quien filtra es la pantalla.
 
+El taller tiene una pantalla por sede (04/11/2026): `/taller` (Madrid) y
+`/barcelona/mantenimientos`, que es la misma vista y el mismo servicio con la
+sede fijada en `modules/Barcelona/mantenimientos.service.js`. Cada escritura
+comprueba la sede del coche (`exigeSede` en `taller.service`) y el informe lleva
+la de la pantalla. Ver `docs/modulos/Vehiculos.md`, «Una pantalla por sede».
+
 ## La puerta
 
 Desde fuera del módulo se entra por `vehiculos.service`, **nunca** por

@@ -102,7 +102,9 @@ function hoja(wb, idLogo, nombre, titulo, subtitulo, cols, filas, vacio) {
  * @param {Object} datos  lo que devuelve services/repo/taller.todo()
  * @returns {Promise<Buffer>}
  */
-async function generar({ filas, resumen, historial, intervalo }) {
+async function generar({ filas, resumen, historial, intervalo, sedeNombre }) {
+  // El de una sede que no es la de siempre lo dice en cada título (Barcelona, 04/11/2026).
+  const deSede = sedeNombre ? ` · ${sedeNombre}` : '';
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Telecab';
   wb.created = new Date();
@@ -122,7 +124,7 @@ async function generar({ filas, resumen, historial, intervalo }) {
     a.matricula.localeCompare(b.matricula));
 
   hoja(wb, logo, 'Estado de la flota',
-    'Taller · mantenimiento por kilómetros',
+    `Taller · mantenimiento por kilómetros${deSede}`,
     `Revisión cada ${intervalo.toLocaleString('es-ES')} km · ${cifras} · ordenados por urgencia · ${pie}`,
     [
       { titulo: '#', ancho: 5, al: 'center', valor: numDe(orden) },
@@ -155,7 +157,7 @@ async function generar({ filas, resumen, historial, intervalo }) {
     .sort((a, b) => (ORDEN[a.estado] - ORDEN[b.estado]) || a.matricula.localeCompare(b.matricula));
 
   hoja(wb, logo, 'Por resolver',
-    'Lo que hay que resolver',
+    `Lo que hay que resolver${deSede}`,
     `${pendientes.length} coches sobre los que hoy no se puede decidir · esto no se arregla en el taller: ` +
     `se arregla leyendo un cuadro o pidiendo el km de la última revisión · ${pie}`,
     [
@@ -173,7 +175,7 @@ async function generar({ filas, resumen, historial, intervalo }) {
 
   // ── 3. El historial ────────────────────────────────────────────────────────
   hoja(wb, logo, 'Historial',
-    'Historial de mantenimientos',
+    `Historial de mantenimientos${deSede}`,
     `${historial.length} apuntes vigentes · los anulados no salen · ${pie}`,
     [
       { titulo: '#', ancho: 5, al: 'center', valor: numDe(historial) },

@@ -45,6 +45,7 @@ Camilo pidió dejar de una vez la traza de los coches de Barcelona: primero BOLT
 |---|---|---|
 | `/vehiculos` | El maestro: lista, ficha, alta, baja | `/vehiculos` |
 | `/taller` | El cuadro de mantenimiento por km | `/taller` |
+| `/barcelona/mantenimientos` | El mismo cuadro con los coches de Barcelona (04/11/2026, [[Barcelona]]) | sin llave, como todo Barcelona |
 | `/taller/tickets` | Bandeja de la Ticketera: averías que avisan los conductores | `/taller` |
 | `/facturas` | Las facturas de taller y el gasto por coche | `/facturas` |
 
@@ -52,7 +53,7 @@ Y tres llaves que **no abren pantalla, sino acciones**:
 
 | Permiso | Qué desbloquea |
 |---|---|
-| `/taller/apuntar` | Apuntar mantenimientos, anclar odómetros y cambiar intervalos |
+| `/taller/apuntar` | Apuntar mantenimientos, anclar odómetros y cambiar intervalos, **en las dos sedes** |
 | `/facturas/apuntar` | Dar de alta facturas y anularlas |
 | `/vehiculos/sedes` | Ver **también** Barcelona en la lista de Vehículos. En el resto de pantallas no cambia nada: ahí es Madrid para todos |
 
@@ -183,7 +184,7 @@ Solo los tipos marcados como `cuenta: true` valen como "última revisión" para 
 
 ### Los informes
 
-`/taller/informe.xlsx` y `/taller/informe.pdf`, **siempre de la flota entera, nunca de lo filtrado en pantalla**: el fichero acaba en un correo, y allí nadie sabe qué filtro estaba puesto al descargarlo. El Excel es el que se usa (se ordena, se filtra por zona y se le manda a cada taller su trozo); el PDF es para imprimirlo y llevarlo a la reunión.
+`/taller/informe.xlsx` y `/taller/informe.pdf`, **siempre de la flota entera de la sede, nunca de lo filtrado en pantalla**: el fichero acaba en un correo, y allí nadie sabe qué filtro estaba puesto al descargarlo. El Excel es el que se usa (se ordena, se filtra por zona y se le manda a cada taller su trozo); el PDF es para imprimirlo y llevarlo a la reunión.
 
 Los dos formatos están **declarados a mano** en `taller.service.js`. Antes el controlador hacía:
 
@@ -192,6 +193,20 @@ require(`../services/taller${formato}`)   //  'Excel' o 'Pdf'
 ```
 
 Funcionaba, pero **esa dependencia no la veía nadie**: ni un `grep`, ni `comprobar-modulos.js`, ni quien leyera el fichero. Un `require` construido con una plantilla se rompe **en silencio** al mover ficheros de carpeta y no da la cara hasta que alguien pulsa "descargar informe" — que además es de las cosas que se usan una vez por semana.
+
+### Una pantalla por sede (04/11/2026)
+
+Barcelona tiene su Mantenimientos en `/barcelona/mantenimientos` ([[Barcelona#Mantenimientos (`/barcelona/mantenimientos`)]]). Es **esta misma pantalla y este mismo servicio**, con la sede fijada en `modules/Barcelona/mantenimientos.service.js`. La vista recibe `base`, `sedeNombre` y `conCitas`, y sin ellos es la de Madrid.
+
+Al partirlo por sede cambiaron tres cosas en Madrid:
+
+- **El informe lleva solo Madrid.** `repo.todo()` no filtraba, así que el Excel y el PDF de `/taller` llevaban también los 20 coches de Barcelona que la pantalla no enseña (101 coches contra 81 en la copia local). Ahora `informe(formato, { sedes })` lleva las mismas sedes que la pantalla.
+- **Cada escritura comprueba la sede del coche** (`exigeSede` en `taller.service`, con `repo.sedeDe`). Desde la pantalla de una sede no se apunta, anula, ancla ni cambia el intervalo de un coche de la otra, aunque se mande su id a mano. Sin `sedes` (un script, un proceso) no se mira.
+- **La ficha solo abre coches de la sede** (`ficha(id, { sedes })`).
+
+Quién puede apuntar ya no está en el controlador, sino en `taller.service.puedeApuntar`: la misma llave (`/taller/apuntar`) para las dos sedes, sin una copia del candado en cada una.
+
+Un coche de otra sede lleva el estado «B» (Baja) para que el planificador de Madrid no lo ofrezca (db/173). Esta pantalla no lo enseña (`pintar`, en `taller.repo`): en Barcelona diría «Baja» de coches que trabajan.
 
 ## Facturas: una factura NO es de un coche
 

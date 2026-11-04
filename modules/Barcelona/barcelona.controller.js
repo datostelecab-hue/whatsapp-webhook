@@ -6,6 +6,7 @@
 //   /barcelona               el planificador (portada de la sede)
 //   /barcelona/reportes      el reporte de horas (descargable)
 //   /barcelona/visibilidad   las horas de la flota de Barcelona
+//   /barcelona/mantenimientos  el taller de sus coches (mantenimientos.controller.js)
 //
 // Sin clave en el catálogo de permisos a propósito: cualquiera que entre con la
 // sede de Barcelona lo usa (Camilo, 07/10/2026). Ver services/sesion.js (SEDES).
@@ -63,6 +64,10 @@ router.get('/visibilidad', (req, res) => {
     api: '/barcelona/api/visibilidad', sedeNombre: 'Barcelona',
   });
 });
+
+// MANTENIMIENTOS (04/11/2026): el taller de Madrid con los coches de Vehículos
+// que tienen sede Barcelona. Sus rutas, en su fichero.
+router.use('/mantenimientos', require('./mantenimientos.controller'));
 
 // ── El planificador ────────────────────────────────────────────────────────
 

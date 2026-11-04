@@ -43,16 +43,21 @@ const FORMATOS = {
  * Devuelve el fichero y cómo hay que servirlo, para que el controlador solo
  * tenga que poner cabeceras.
  */
-async function informe(formato) {
+//
+// `sedes` son las de la pantalla que lo pide (04/11/2026): el de Madrid lleva
+// Madrid y el de Barcelona, Barcelona. `sedeNombre` va en el título y en el
+// nombre del fichero; Madrid no lo pone, que su informe se ha llamado siempre igual.
+async function informe(formato, { sedes, sedeNombre } = {}) {
   const f = FORMATOS[formato];
   if (!f) throw new Error(`Formato de informe desconocido: ${formato}`);
-  const datos = await repo.todo();
+  const datos = { ...(await repo.todo({ sedes })), sedeNombre: sedeNombre || '' };
   const fichero = await f.generador().generar(datos);
   const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const sufijo = sedeNombre ? '-' + String(sedeNombre).toLowerCase() : '';
   return {
     fichero,
     mime: f.mime,
-    nombre: `taller-${hoy}.${formato}`,
+    nombre: `taller${sufijo}-${hoy}.${formato}`,
     // Para el registro: cuántos coches y cuántos tocan revisión.
     resumen: datos.resumen,
     apuntes: datos.historial.length,
@@ -77,9 +82,13 @@ async function sinTumbar(fn, que) {
 /**
  * EL ESTADO DE LA FLOTA: las filas (con el filtro de la pantalla), cada una con
  * su próxima cita, y las cifras de la cabecera. Las citas se buscan una vez.
+ *
+ * `conCitas: false` las deja fuera (Barcelona, 04/11/2026): quién lleva el
+ * coche lo dice el planificador de Madrid, y el aviso por WhatsApp es suyo.
  */
 async function estadoDeLaFlota(filtros) {
-  const porCoche = await sinTumbar(() => citas.proximaPorCoche(), 'citas del estado de la flota');
+  const conCitas = !(filtros && filtros.conCitas === false);
+  const porCoche = conCitas ? await sinTumbar(() => citas.proximaPorCoche(), 'citas del estado de la flota') : null;
   const [filas, resumen] = await Promise.all([
     repo.cuadro(filtros),
     // Las cifras, sobre los mismos coches que la tabla (sus sedes) pero sin la
@@ -89,23 +98,68 @@ async function estadoDeLaFlota(filtros) {
   return { filas: filas.map(f => ({ ...f, cita: (porCoche && porCoche.get(String(f.id))) || null })), resumen };
 }
 
-/** La ficha de un coche con sus citas pendientes del taller. */
-async function ficha(id) {
-  const f = await repo.ficha(id);
+/** La ficha de un coche con sus citas pendientes del taller (sin ellas, con `conCitas: false`). */
+async function ficha(id, { sedes, conCitas = true } = {}) {
+  const f = await repo.ficha(id, { sedes });
+  if (!conCitas) return { ...f, citas: [] };
   return { ...f, citas: (await sinTumbar(() => citas.deCoche(f.id), 'citas de la ficha')) || [] };
+}
+
+// ── CADA PANTALLA ESCRIBE EN LOS COCHES DE SU SEDE (04/11/2026) ────────────
+// Barcelona tiene su Mantenimientos y Madrid el suyo, con las mismas tablas.
+// Que la lista de una sede no enseñe los coches de la otra no basta: el id va
+// en el cuerpo de la petición, y por la API se podría apuntar en cualquiera.
+// Sin `sedes` (un proceso, un script) no se mira: es la flota entera.
+async function exigeSede(que, sedes) {
+  if (!Array.isArray(sedes) || !sedes.length) return;
+  const sede = await repo.sedeDe(que);
+  // Si no existe, lo dice el repositorio con su mensaje de siempre.
+  if (sede != null && !sedes.includes(sede)) {
+    throw new Error('Ese coche es de otra sede: se apunta desde Mantenimientos de su sede');
+  }
+}
+
+// `quien` lleva quién firma ({ usuarioId }) y, desde una pantalla, sus `sedes`.
+async function registrar(datos, { usuarioId, sedes } = {}) {
+  await exigeSede({ vehiculoId: (datos || {}).vehiculoId }, sedes);
+  return repo.registrar(datos, { usuarioId });
+}
+async function anular(id, motivo, { usuarioId, sedes } = {}) {
+  await exigeSede({ mantenimientoId: id }, sedes);
+  return repo.anular(id, motivo, { usuarioId });
+}
+async function anclar(datos, { usuarioId, sedes } = {}) {
+  await exigeSede({ vehiculoId: (datos || {}).vehiculoId }, sedes);
+  return repo.anclar(datos, { usuarioId });
+}
+async function intervalo(datos, { sedes } = {}) {
+  await exigeSede({ vehiculoId: (datos || {}).vehiculoId }, sedes);
+  return repo.intervalo(datos);
+}
+
+// ── QUIÉN PUEDE APUNTAR ────────────────────────────────────────────────────
+// La misma llave en las dos sedes: '/taller/apuntar' (o el rol que lo puede
+// todo). Vive aquí y no en un controlador para que Madrid y Barcelona no tengan
+// cada uno su copia del candado. Ante cualquier fallo, sin apuntar.
+const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
+const LLAVE_APUNTAR = '/taller/apuntar';
+
+async function puedeApuntar({ rol, usuarioId } = {}) {
+  if (ADMIN_TOTAL.includes(rol)) return true;
+  if (!usuarioId) return false;
+  try {
+    // Aquí dentro: `permisos` carga el catálogo y no hace falta para leer.
+    return (await require('../../services/permisos').clavesDe(usuarioId)).has(LLAVE_APUNTAR);
+  } catch (_) { return false; }
 }
 
 // ── LO QUE EL MÓDULO OFRECE ────────────────────────────────────────────────
 const cuadro = filtros => repo.cuadro(filtros);
 const resumen = () => repo.resumen();
-const registrar = (datos, quien) => repo.registrar(datos, quien);
-const anular = (id, motivo, quien) => repo.anular(id, motivo, quien);
-const anclar = (datos, quien) => repo.anclar(datos, quien);
-const intervalo = datos => repo.intervalo(datos);
 
 module.exports = {
   // Los catálogos que la pantalla necesita para pintarse.
   INTERVALO: repo.INTERVALO, TIPOS: repo.TIPOS, ESTADOS: repo.ESTADOS,
   cuadro, resumen, estadoDeLaFlota, ficha, registrar, anular, anclar, intervalo,
-  informe, FORMATOS_INFORME,
+  puedeApuntar, informe, FORMATOS_INFORME,
 };

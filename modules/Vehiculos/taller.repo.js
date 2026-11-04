@@ -21,6 +21,7 @@
 // tiene ritmo todavía: se dice que no se sabe, no se pone un cero.
 
 const db = require('../../services/db');
+const { SEDE_FLOTA } = require('../../services/nucleo');
 
 /** Cada cuántos km toca revisión, si el coche no dice otra cosa. */
 const INTERVALO = Number(process.env.TALLER_KM_REVISION) || 15000;
@@ -134,7 +135,7 @@ async function cuadro({ busca, estado, sedes } = {}) {
        GROUP BY vehiculo_id
       HAVING count(*) > 1 AND max(dia) > min(dia)
     )
-    SELECT v.id, v.matricula, v.marca_modelo, v.anio,
+    SELECT v.id, v.matricula, v.marca_modelo, v.anio, v.sede,
            v.estado_operativo, e.etiqueta AS estado_etiqueta, e.es_operativo,
            b.nombre AS zona,
            o.km AS odometro, o.fuente AS odometro_fuente,
@@ -196,7 +197,11 @@ function pintar(f) {
     conMapon: f.con_mapon === true,
     vehiculo: f.marca_modelo || '',
     anio: f.anio,
-    estadoOperativo: f.estado_etiqueta || f.estado_operativo,
+    // Un coche de otra sede lleva el estado «B» (Baja) para que el planificador
+    // de Madrid no lo ofrezca (db/173). No es su estado: en Mantenimientos de su
+    // sede diría «Baja» de un coche que trabaja (04/11/2026). Se calla.
+    estadoOperativo: f.sede && f.sede !== SEDE_FLOTA && f.estado_operativo === 'B'
+      ? null : (f.estado_etiqueta || f.estado_operativo),
     esOperativo: f.es_operativo,
     zona: f.zona,
     odometro,
@@ -244,12 +249,16 @@ async function resumen({ conCita, sedes } = {}) {
   };
 }
 
-/** La ficha de un coche: su fila del cuadro más todo su historial. */
-async function ficha(vehiculoId) {
+/**
+ * La ficha de un coche: su fila del cuadro más todo su historial.
+ * Con `sedes`, solo si el coche es de una de ellas (04/11/2026): la pantalla de
+ * una sede no abre los coches de la otra.
+ */
+async function ficha(vehiculoId, { sedes } = {}) {
   const id = ent(vehiculoId);
   if (!id) throw new Error('Falta el vehículo');
-  const [fila] = (await cuadro()).filter(f => f.id === id);
-  if (!fila) throw new Error('Ese vehículo no existe o está de baja');
+  const [fila] = (await cuadro({ sedes })).filter(f => f.id === id);
+  if (!fila) throw new Error('Ese vehículo no existe, está de baja o es de otra sede');
 
   const h = await db.consulta(`
     SELECT m.id, m.tipo, to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.km, m.taller,
@@ -393,13 +402,31 @@ async function intervalo(datos = {}) {
 }
 
 /**
+ * De qué sede es un coche, o el coche de un apunte (04/11/2026). Es lo que
+ * comprueba el servicio antes de escribir desde la pantalla de una sede.
+ * `null` si no existe: el «no existe» lo dice quien escribe, con su mensaje.
+ */
+async function sedeDe({ vehiculoId, mantenimientoId } = {}) {
+  const v = ent(vehiculoId), m = ent(mantenimientoId);
+  if (!v && !m) return null;
+  const r = await db.consulta(v
+    ? 'SELECT sede FROM vehiculo WHERE id = $1'
+    : 'SELECT v.sede FROM mantenimiento m JOIN vehiculo v ON v.id = m.vehiculo_id WHERE m.id = $1', [v || m]);
+  return r.rows.length ? r.rows[0].sede : null;
+}
+
+/**
  * TODO lo del módulo de una vez: el cuadro, las cifras y el historial entero.
  * Es lo que se lleva el informe en PDF, y se saca de aquí y no de la vista para
  * que el papel y la pantalla no puedan contar cosas distintas.
+ *
+ * `sedes`, las mismas que la pantalla (04/11/2026). Sin ellas el informe de
+ * Madrid llevaba también los coches de Barcelona, que la pantalla no enseña.
  */
-async function todo() {
-  const filas = await cuadro();
+async function todo({ sedes } = {}) {
+  const filas = await cuadro({ sedes });
   const cuenta = c => filas.filter(f => f.estado === c).length;
+  const conSedes = Array.isArray(sedes) && sedes.length;
   const h = await db.consulta(`
     SELECT v.matricula, m.tipo, to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.km,
            m.taller, m.coste_cent, m.descripcion,
@@ -408,7 +435,8 @@ async function todo() {
       JOIN vehiculo v ON v.id = m.vehiculo_id
       LEFT JOIN usuario u ON u.id = m.usuario_id
      WHERE m.anulado_at IS NULL AND v.baja_at IS NULL
-     ORDER BY v.matricula, m.km DESC NULLS LAST, m.id DESC`);
+       ${conSedes ? 'AND v.sede = ANY($1::varchar[])' : ''}
+     ORDER BY v.matricula, m.km DESC NULLS LAST, m.id DESC`, conSedes ? [sedes] : []);
 
   return {
     filas,
@@ -432,5 +460,5 @@ async function todo() {
 
 module.exports = {
   INTERVALO, TIPOS, ESTADOS, CODIGOS, CUENTAN, IMPOSIBLE,
-  cuadro, resumen, ficha, todo, registrar, anular, anclar, intervalo,
+  cuadro, resumen, ficha, todo, sedeDe, registrar, anular, anclar, intervalo,
 };

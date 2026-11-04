@@ -1,5 +1,5 @@
 ---
-tags: [modulo, barcelona, sedes, planificador, horas]
+tags: [modulo, barcelona, sedes, planificador, horas, taller]
 ruta: /barcelona
 codigo: modules/Barcelona
 fecha: 2026-10-07
@@ -11,7 +11,8 @@ Camilo, 07/10/2026: «en el login ahora va a aparecer Barcelona o Madrid». Barc
 
 - un **planificador**: cada conductor en una matrícula, de día o de noche;
 - un **reporte de horas** con la misma regla que Madrid, y «No salió» cuando no hizo horas;
-- su **Visibilidad**, con las mismas métricas que la de Madrid.
+- su **Visibilidad**, con las mismas métricas que la de Madrid;
+- y, desde el 04/11/2026, sus **Mantenimientos**: el taller por kilómetros de sus coches.
 
 Las piezas de datos (de dónde salen sus horas y sus coches, y por qué van en tablas suyas) están en [[Sedes]].
 
@@ -20,7 +21,7 @@ Las piezas de datos (de dónde salen sus horas y sus coches, y por qué van en t
 El login tiene un selector **Madrid / Barcelona** (se recuerda el último en ese navegador). La sede viaja en la cookie de sesión como el tema (`services/sesion.js`, `SEDES` y `sedeValida`), y se conserva al re-emitirla (cambiar el tema o la contraseña). Ver [[Usuarios y permisos]].
 
 - **Madrid** es el ERP de siempre.
-- **Barcelona** cae en `/barcelona` y su menú solo tiene sus tres pantallas.
+- **Barcelona** cae en `/barcelona` y su menú solo tiene sus pantallas: Planificador, Reporte de horas, Visibilidad y Mantenimientos.
 - En las dos, arriba del menú, **«Ir a Madrid» / «Ir a Barcelona»** cambia de sede sin volver a entrar (`POST /sede`).
 - **Cualquier usuario** puede elegir Barcelona (Camilo). Por eso `/barcelona` no tiene clave en el catálogo de permisos: lo que no está en el catálogo es libre para quien está dentro.
 
@@ -109,10 +110,26 @@ Lo que cambia es de dónde salen los datos (`modules/Barcelona/visibilidad.servi
 
 Con datos reales de BOLT (07/10, script `barcelona-visibilidad-prueba.js` de los análisis): el 06/10, 121,9 h efectivas, 78,2 % de utilización, 18 conductores, 2.810,98 € y 23,05 €/h.
 
+## Mantenimientos (`/barcelona/mantenimientos`)
+
+Camilo, 04/11/2026: *«habilitar en mantenimientos los coches de Barcelona, replica el módulo en el sistema de Barcelona, con los coches que estén en el ERP como sede Barcelona»*.
+
+**Es el módulo de Madrid con sus coches, no una copia**, como la Visibilidad. La regla de cuándo toca revisión (odómetro de hoy menos el km de la última revisión, el ritmo de los últimos 30 días y el semáforo) vive en `modules/Vehiculos/taller.*` ([[Vehiculos#Taller: el mantenimiento por km]]), y las tablas son las mismas (`mantenimiento`, `odometro_ancla`, `vehiculo_km_dia`). Un apunte es de un coche, y el coche ya dice su sede. Con dos copias habría dos semáforos que tarde o temprano dirían cosas distintas del mismo coche.
+
+- **Los coches** son los de Vehículos con **sede Barcelona** y sin baja: 20 el 04/11. 16 dan su odómetro por el CAN de Mapon (el cron diario los lee igual que los de Madrid). Los otros 4 salen «sin Mapon» y sin odómetro: 2127LZJ, 2928KGL, 8074LXG y 8477LTR. Un coche que se pase a Barcelona en Vehículos aparece aquí y deja de salir en el de Madrid.
+- **La pantalla es la de Madrid** (`modules/Vehiculos/vistas/taller.ejs`), que recibe `base` (dónde preguntar), `sedeNombre` y `conCitas: false`. Las tarjetas, la tabla, la ficha, apuntar, anular, anclar el odómetro y el intervalo son los mismos.
+- **Mirar** no tiene llave, como el resto de Barcelona. **Apuntar** pide la misma que en Madrid, `/taller/apuntar` (Óscar y los roles que lo pueden todo). La regla está en `taller.service.puedeApuntar`, una sola para las dos sedes.
+- **La sede se fija en un solo sitio**, `mantenimientos.service.js`: todo lo que pasa por ahí lleva `sedes: ['barcelona']`, para leer y para escribir. El servicio del taller rechaza una escritura en un coche de otra sede («Ese coche es de otra sede…»), y la ficha no lo abre. El id va en el cuerpo de la petición, así que esconderlo de la lista no bastaba. Vale en los dos sentidos: desde Madrid tampoco se apunta en un coche de Barcelona.
+- **El informe** (Excel y PDF) lleva solo sus coches, «· Barcelona» en cada título y se llama `taller-barcelona-AAAA-MM-DD`.
+- **El estado «B»** (Baja) que llevan sus coches para que el planificador de Madrid no los ofrezca (db/173) **no se enseña**: en esta pantalla diría «Baja» de 20 coches que trabajan.
+- **Sin citas del taller.** En Madrid, quién lleva el coche el día de la cita lo dice su planificador, y el aviso por WhatsApp va a esa persona. Barcelona tiene su propio planificador con cuentas de BOLT, sin fichas. Si hacen falta, son otra tanda: el responsable saldría de `sede_asignacion`.
+
 ## Las piezas
 
 ```
 barcelona.controller.js   las rutas (sin lógica)
+mantenimientos.controller.js · mantenimientos.service.js
+                          Mantenimientos: el taller de Madrid con la sede fijada en Barcelona
 visibilidad.service.js    la Visibilidad: los datos de Barcelona con las cuentas de Madrid
 barcelona.service.js      el planificador (el tablero de un día, las comprobaciones al asignar) y el reporte
 barcelona.horas.js        puro: de los apuntes de BOLT a los ratos de trabajo, y el reporte con el plan
@@ -125,4 +142,4 @@ Comprobador: `scripts/comprobar-barcelona.js` (sin base: el repositorio se susti
 
 ## Ver también
 
-[[Sedes]] · [[Planificacion]] · [[Ingesta]] · [[Jornada y turnos]] · [[Usuarios y permisos]]
+[[Sedes]] · [[Planificacion]] · [[Vehiculos]] · [[Ingesta]] · [[Jornada y turnos]] · [[Usuarios y permisos]]
