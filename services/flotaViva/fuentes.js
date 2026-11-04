@@ -202,11 +202,12 @@ async function flotaMapon() {
  * Medido el 21/09/2026: de 108 unidades, 14 no son coches del ERP y cinco de
  * ellas estaban en marcha.
  *
- * Sin `include[]`: el odometro CAN no hace falta para pintar un punto y encarece
- * la respuesta. Asi son 74 kB y 236 ms.
+ * Sin el odometro CAN: no hace falta para pintar un punto y encarece la
+ * respuesta. Asi eran 74 kB y 236 ms. Los RELÉS sí (04/11/2026): el mapa enseña
+ * qué coche parado está bloqueado y cuál no (ver `corteDe`).
  */
 async function posiciones() {
-  const j = await pedirMapon('unit/list.json');
+  const j = await pedirMapon('unit/list.json', 'include[]=relays');
   return ((j.data && j.data.units) || [])
     // Sin coordenadas no hay nada que pintar. Pasa con los equipos recien dados
     // de alta y con los que nunca han cogido GPS.
@@ -239,11 +240,28 @@ async function posiciones() {
       // sale "rodando desde hace 12 min" sin guardar ninguna historia.
       estadoDesde: fecha(u.state && u.state.start),
       senalAt: fecha(u.last_update),
+      ...corteDe(u),
     }))
     // Sin hora del equipo no se puede saber si el punto es de ahora o de
     // anteayer, y pintar un coche donde estuvo hace tres horas es peor que no
     // pintarlo.
     .filter(u => u.senalAt);
+}
+
+/**
+ * El corte de motor de un equipo: `{ releCorte, motorCortado }`.
+ *
+ * Solo el relé `engine_block` habilitado, como Bloqueo de motor. Y «cortado» con
+ * el mismo valor que usa el fichaje para bloquear (`RELE_BLOQUEADO`, que se puede
+ * cambiar si alguna instalación viniera invertida): una sola regla para decir
+ * que un coche está bloqueado. `null` cuando no se sabe, nunca un `false`.
+ */
+function corteDe(u) {
+  if (!Array.isArray(u.relays)) return { releCorte: null, motorCortado: null };
+  const r = u.relays.find(x => x && x.type === 'engine_block' && x.enabled);
+  if (!r) return { releCorte: false, motorCortado: null };
+  const { RELE_BLOQUEADO } = require('../fichaje');
+  return { releCorte: true, motorCortado: Number(r.relay_state) === RELE_BLOQUEADO };
 }
 
 /**

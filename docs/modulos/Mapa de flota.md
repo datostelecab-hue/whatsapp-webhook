@@ -39,12 +39,14 @@ el orden que pidió Camilo, que es también el de los filtros y el de la lista:
 | **En espera fuera de la M-30** | azul **que parpadea** | en espera en BOLT y fuera de la M-30 |
 | **Rodando en descanso** | amarillo | rueda con el conductor en descanso |
 | **Fichaje que no cuadra** | **rojo que parpadea** | **se usa y nadie lo tiene en el bot, o en BOLT va otra persona** (04/11/2026) |
+| **Parado sin bloquear** | **rojo que parpadea** | **parado, nadie en el bot y el motor libre** (04/11/2026) |
 | **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado**, con el turno del bot a nombre de quien lo llevaba en BOLT |
 | **Error de GPS** | morado | de viaje en BOLT y Mapon lo da por parado **10 min o más** |
 
-Y detrás, separados por una raya en la cinta y solo si hay alguno: **Parado**
-(no se mueve y no está trabajando), **GPS sin fijar** (`nogps`), **Sin señal**
-(`nodata`) y **Sin nada en Mapon**.
+Y detrás, separados por una raya en la cinta y solo si hay alguno: **Bloqueado**
+(parado, nadie en el bot y el motor cortado; con candado), **Parado** (no se mueve
+y no está trabajando), **GPS sin fijar** (`nogps`), **Sin señal** (`nodata`) y
+**Sin nada en Mapon**.
 
 ### El fichaje del bot manda (04/11/2026)
 
@@ -59,11 +61,12 @@ el rojo que parpadea gana a cualquier otro color salvo a «Sin nada en Mapon»
 | En el bot lo tiene uno y **en BOLT va otro** (conectado, o el último si rueda desconectado) | rojo que parpadea |
 | Rueda desconectado y **coinciden** el del bot y el de BOLT | rojo (el de siempre) |
 | Coinciden y está trabajando | su color de siempre (verde, azul…) |
-| Aparcado y sin nadie conectado, con o sin turno | lo de siempre (parado…) |
+| Aparcado y sin nadie conectado, con o sin turno | lo de siempre (parado…), o por su motor: ver «Los parados, por su motor» |
 
 - **«Se usa»** es que ruede según Mapon o que haya alguien conectado con él en
-  BOLT (viaje, espera o descanso). Un coche aparcado sin turno es un coche que no
-  usa nadie: si parpadeara, de noche parpadearía medio mapa.
+  BOLT (viaje, espera o descanso). Un coche aparcado sin turno no se usa, y por
+  el fichaje no parpadea. Desde la tarde del 04/11 lo que lo decide es el motor:
+  si sigue libre, parpadea igual (ver abajo).
 - **Se comparan personas, no nombres**: el conductor del turno contra la ficha
   enlazada a la cuenta de BOLT (`conductor_externo`). El nombre de BOLT lo
   escribe cada uno y casi nunca es el de su ficha. Solo si falta el enlace se
@@ -86,6 +89,48 @@ flota entera en pantalla, ochenta nombres se taparían. La ficha abre con la fil
 > BOLT—. Los 5 se comprobaron por ficha: en los cinco la del turno y la de la
 > cuenta de BOLT son personas distintas (turnos del día anterior sin cerrar con
 > otro conductor ya en el coche).
+
+### Los parados, por su motor (04/11/2026)
+
+Camilo: «necesito ver qué coches están parados y efectivamente bloqueados; los
+que están parados pero con fichaje de bot son los que están bien; si están
+parados sin nadie en el bot y sin bloquear, tienen que parpadear».
+
+El estado del relé de corte llega de Mapon en la misma vuelta de posiciones, cada
+30 s (`include[]=relays`), y se guarda en `fv_posicion.rele_corte` y
+`fv_posicion.motor_cortado`. Las dos columnas las crea el esquema de Flota viva
+al arrancar. «Cortado» es el mismo valor con el que bloquea el fichaje
+(`RELE_BLOQUEADO`). La regla está en `motorDe` y `tonoConMotor`, en
+`mapa.service.js`, y solo cambia un **Parado** que nadie tiene en el bot:
+
+| Lo que pasa | Color |
+|---|---|
+| Parado **con alguien en el bot** | Parado: está bien |
+| Parado, sin nadie en el bot y **motor cortado** | **Bloqueado** (oscuro, con candado) |
+| Parado, sin nadie en el bot y **motor libre** | **rojo que parpadea**, con la etiqueta «Sin bloquear» |
+| Parado, sin nadie en el bot y **sin relé de corte** (o Mapon no lo dice) | Parado |
+
+**No parpadea, aunque esté libre**, el coche al que no se le pide estar
+bloqueado. Lo mismo que ya da por bueno [[Ciclo de bloqueo de motor]]:
+- de **otra sede**, porque Barcelona no entra en el ciclo;
+- **fuera de servicio**: taller, siniestro…;
+- **soltado por Tráfico** hace menos de 30 días (el «fuera» de Bloqueo de motor).
+
+**El porqué va arriba de la ficha**, sacado de la última orden de motor del coche
+(`fichaje_orden_motor`):
+- se bloqueó al terminar y Mapon lo da libre, porque lo soltaron fuera del ERP;
+- al terminar no se pudo bloquear;
+- se soltó al empezar un turno y al cerrarlo no se volvió a bloquear;
+- nunca ha entrado en el ciclo.
+
+La ficha lleva además una fila **Motor**: cortado (y desde cuándo, si lo cortó el
+ciclo), libre o sin relé, con su porqué. Con alguien en el bot, solo se avisa si
+el motor sigue cortado, porque quien lo tiene no puede arrancar.
+
+> Probado el 04/11/2026 con 18 casos, uno por situación, y en el mapa de la
+> copia local con relés simulados (6 cortados, 4 libres y 1 sin relé): salieron
+> 6 «Bloqueado» y 4 «Parado sin bloquear». En producción, el estado real del relé
+> llega en la primera vuelta de posiciones después de desplegar.
 
 > [!note] Antes «Trabajando» juntaba viaje y espera, y solo si rodaba
 > Un coche esperando aparcado —que es como se espera— salía apagado, igual que

@@ -33,11 +33,13 @@ por estado de Mapon ni por estado de BOLT: por **los dos a la vez**. Renovado el
 | En espera fuera de la M-30 | azul que parpadea | en espera en BOLT, fuera de la M-30 |
 | Rodando en descanso | amarillo | rueda con el conductor en descanso |
 | **Fichaje que no cuadra** | **rojo que parpadea** | **se usa y nadie lo tiene en el bot, o en BOLT va otro** (04/11/2026, `fichajeDe`) |
+| **Parado sin bloquear** | **rojo que parpadea** | **parado, nadie en el bot y el motor libre** (04/11/2026, `tonoConMotor`) |
 | **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado**, con el bot a nombre de quien lo llevaba en BOLT |
 | Error de GPS | morado | de viaje en BOLT y Mapon lo da por parado 10 min o más |
 
-Detrás: parado, GPS sin fijar, sin señal y sin nada en Mapon. El detalle, en
-`docs/modulos/Mapa de flota.md`.
+Detrás: bloqueado (parado, nadie en el bot y el motor cortado), parado, GPS sin
+fijar, sin señal y sin nada en Mapon. El motor lo trae `fv_posicion`
+(`rele_corte`, `motor_cortado`). El detalle, en `docs/modulos/Mapa de flota.md`.
 
 El rojo junta dos casos a propósito: el coche que está en BOLT con el conductor
 desconectado, y el equipo que no casa con ningún coche de BOLT. Los dos son *se

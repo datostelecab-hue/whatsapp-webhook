@@ -728,6 +728,15 @@ CREATE TABLE IF NOT EXISTS fv_posicion (
 -- en memoria se perderia en cada reinicio.
 ALTER TABLE fv_posicion ADD COLUMN IF NOT EXISTS estado_desde TIMESTAMPTZ;
 
+-- EL CORTE DE MOTOR, según Mapon (04/11/2026). Camilo: «necesito ver qué coches
+-- están parados y efectivamente bloqueados». Viene en la misma llamada de cada
+-- vuelta (include[]=relays): se guarda con la posición y el mapa lo lee de aquí.
+--   rele_corte     el equipo tiene relé de corte (engine_block) habilitado;
+--                  NULL si Mapon no dijo nada de relés.
+--   motor_cortado  ese relé está en BLOQUEADO ahora; NULL si no hay relé.
+ALTER TABLE fv_posicion ADD COLUMN IF NOT EXISTS rele_corte BOOLEAN;
+ALTER TABLE fv_posicion ADD COLUMN IF NOT EXISTS motor_cortado BOOLEAN;
+
 CREATE INDEX IF NOT EXISTS idx_fv_posicion_matricula ON fv_posicion (matricula);
 
 COMMENT ON TABLE fv_posicion IS

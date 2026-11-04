@@ -35,6 +35,18 @@
 // que lo lleva: se sabe quién es, solo falta que se conecte. La regla, en
 // `fichajeDe`.
 //
+// ── Y LOS PARADOS, POR SU MOTOR (04/11/2026) ───────────────────────────────
+// Camilo: «necesito ver qué coches están parados y efectivamente bloqueados;
+// los que están parados pero con fichaje de bot son los que están bien; si
+// están parados sin nadie en el bot y sin bloquear, tienen que parpadear».
+//
+//   bloqueado    oscuro, con  parado, nadie en el bot y el motor cortado: como
+//                candado      tiene que estar.
+//   sinbloquear  ROJO QUE     parado, nadie en el bot y el motor LIBRE: se lo
+//                PARPADEA     lleva cualquiera sin fichar.
+//
+// El parado con alguien en el bot sigue `parado`. La regla, en `tonoConMotor`.
+//
 // Antes «trabajando» juntaba viaje y espera, y solo si el coche rodaba: un
 // coche esperando aparcado —que es como se espera— salía apagado, igual que
 // uno que nadie usa. La espera va ahora por su lado, se mueva o no, y lo que la
@@ -64,6 +76,7 @@ const repo = require('./mapa.repo');
 const ahora = require('../../services/flotaViva/ahora');
 const { normMat } = require('../../services/flotaViva/fuentes');
 const { dentroDeM30, kmHastaM30 } = require('./m30');
+const { SEDE_FLOTA } = require('../../services/nucleo');
 
 // EL «SIN SEÑAL» LO DICE MAPON, NO UN CRONÓMETRO NUESTRO.
 //
@@ -132,8 +145,9 @@ const CONECTADO = new Set(['viaje', 'espera', 'descanso']);
  *
  * «SE ESTÁ USANDO» es que ruede según Mapon o que haya alguien conectado con
  * él en BOLT (de viaje, en espera o en descanso). Un coche aparcado sin turno
- * es un coche que nadie usa, no una falta: si parpadeara, de noche parpadearía
- * medio mapa.
+ * es un coche que nadie usa, no una falta de fichaje: si parpadeara por esto, de
+ * noche parpadearía medio mapa. Lo que se le pide es estar bloqueado, y eso lo
+ * mira su motor (`tonoConMotor`).
  *
  * SE COMPARAN PERSONAS, NO NOMBRES: el conductor del turno contra la ficha
  * enlazada a la cuenta de BOLT (`conductor_externo`). El nombre de BOLT lo
@@ -204,6 +218,78 @@ function mismoNombre(a, b) {
 function tonoConFichaje(base, f) {
   if (base === 'sinmapon') return base;
   return f && (f.estado === 'sinfichar' || f.estado === 'otro') ? 'fichaje' : base;
+}
+
+// Lo que tarda en volver al ciclo un coche que soltó Tráfico: lo mismo que en
+// Bloqueo de motor (FUERA_DIAS), para que las dos pantallas digan lo mismo.
+const FUERA_DIAS = 30;
+
+/**
+ * EL MOTOR DE UN COCHE: `{ rele, cortado, desde, nota, exento }`.
+ *
+ *   rele     tiene relé de corte (true/false), o null si Mapon no lo dijo
+ *   cortado  el motor está cortado ahora (true/false), o null si no hay relé
+ *   desde    cuándo lo bloqueó el ciclo, si fue él (la última orden)
+ *   nota     qué pasó, dicho para quien mira: por qué está libre o cortado
+ *   exento   por qué NO tiene que estar bloqueado, o null. Un coche exento y
+ *            libre no parpadea: de otra sede (Barcelona no entra en el ciclo),
+ *            fuera de servicio (taller, siniestro…) o soltado por Tráfico hace
+ *            menos de 30 días, como el «fuera» de Bloqueo de motor.
+ */
+function motorDe(c) {
+  const m = {
+    rele: c.rele_corte == null ? null : !!c.rele_corte,
+    cortado: c.motor_cortado == null ? null : !!c.motor_cortado,
+    desde: null, nota: null, exento: null,
+  };
+  const o = c.om_accion ? {
+    accion: c.om_accion, hecho: !!c.om_hecho, trafico: !!c.om_trafico,
+    quien: c.om_usuario || 'Tráfico', motivo: c.om_motivo || '', respuesta: c.om_respuesta || '',
+    at: c.om_at ? new Date(c.om_at) : null,
+  } : null;
+  const reciente = o && o.at && Date.now() - o.at.getTime() < FUERA_DIAS * 864e5;
+
+  if (c.sede && c.sede !== SEDE_FLOTA) m.exento = 'De otra sede: no entra en el ciclo de bloqueo';
+  else if (c.coche_operativo === false) m.exento = `Fuera de servicio (${c.estado_vehiculo || 'sin estado'}): no se le pide estar bloqueado`;
+  else if (o && o.accion === 'soltar' && o.trafico && reciente) {
+    m.exento = `Lo soltó ${o.quien}${o.motivo ? ': ' + o.motivo : ''}. No vuelve al ciclo hasta que alguien empiece y termine un turno en él`;
+  }
+
+  // Con alguien en el bot, lo normal es que esté libre. Las notas de abajo son
+  // de los que nadie tiene: con turno solo se dice si sigue cortado.
+  if (c.ft_id != null) {
+    if (m.cortado === true) m.nota = 'Cortado con el turno abierto: quien lo tiene no puede arrancar';
+  } else if (m.cortado === true) {
+    if (o && o.accion === 'bloquear' && o.hecho) m.desde = o.at ? o.at.toISOString() : null;
+    else m.nota = 'Cortado por fuera del ciclo (desde Mapon o el repaso de antes), no al terminar un turno';
+  } else if (m.cortado === false) {
+    if (!o) m.nota = 'No ha entrado nunca en el ciclo de bloqueo';
+    else if (o.accion === 'bloquear' && o.hecho) m.nota = 'Se bloqueó al terminar y Mapon lo da libre: lo soltaron fuera del ERP';
+    else if (o.accion === 'bloquear') m.nota = `Al terminar no se pudo bloquear (${o.respuesta || 'sin respuesta'})`;
+    else if (o.trafico && !reciente) m.nota = `Lo soltó ${o.quien} hace más de ${FUERA_DIAS} días y no ha vuelto al ciclo`;
+    else if (!o.trafico) m.nota = 'Se soltó al empezar un turno y al cerrarlo no se volvió a bloquear';
+  } else if (m.rele === false) {
+    m.nota = 'No tiene relé de corte en Mapon: no se puede bloquear. Que lo mire el taller';
+  }
+  return m;
+}
+
+/**
+ * EL PARADO, POR SU MOTOR. Solo cambia un `parado` (no rueda, no trabaja en
+ * BOLT y el GPS es de ahora) que nadie tiene en el bot:
+ *
+ *   motor cortado          → bloqueado
+ *   motor libre            → sinbloquear, salvo que esté exento (`motorDe`)
+ *   sin relé, o no se sabe → parado: no hay qué pedirle
+ *
+ * Con alguien en el bot se queda en `parado`: es un coche en turno aparcado, y
+ * está bien. Lo de antes (fichaje, sinmapon) ya ha decidido si no era `parado`.
+ */
+function tonoConMotor(t, c, m) {
+  if (t !== 'parado' || c.ft_id != null) return t;
+  if (m.cortado === true) return 'bloqueado';
+  if (m.cortado === false && !m.exento) return 'sinbloquear';
+  return t;
 }
 
 /**
@@ -304,6 +390,10 @@ function porQue(c, t, boltHace) {
     const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
     return viejo ? base + ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min` : base;
   }
+  // Los parados por su motor: lo dicen Mapon y el bot, no depende de BOLT.
+  const nota = c.motor && c.motor.nota ? `. ${c.motor.nota}` : '';
+  if (t === 'bloqueado') return `Parado, sin nadie en el bot y con el motor cortado${nota}`;
+  if (t === 'sinbloquear') return `Parado, sin nadie en el bot y con el motor LIBRE: se lo puede llevar cualquiera sin fichar${nota}`;
   const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
   const ojo = viejo ? ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min` : '';
   const f = c.fichaje || {};
@@ -383,7 +473,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
     c.situacionEtiqueta = v.etiqueta;
     c.fichaje = fichajeDe(c, v, enlaces);
     c.tonoBase = tono(c, v.situacion);
-    const t = tonoConFichaje(c.tonoBase, c.fichaje);
+    c.motor = motorDe(c);
+    const t = tonoConMotor(tonoConFichaje(c.tonoBase, c.fichaje), c, c.motor);
     const dentro = dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng));
     const ud = ultimoDestino(c, dentro === true, v.desde);
     return {
@@ -448,6 +539,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
       fichaje: c.fichaje,
       // El color que tendría sin el fichaje: lo que dice BOLT con Mapon.
       tonoBase: c.tonoBase,
+      // EL MOTOR (04/11/2026): { rele, cortado, desde, nota, exento }. Ver motorDe.
+      motor: c.motor,
       // Un rojo sobre datos de BOLT viejos no es un rojo: es un "no se sabe".
       // La vista lo pinta distinto y el aviso no lo llama. Lo mismo el error de
       // GPS: si lo de BOLT es viejo, el «de viaje» puede haber acabado hace rato.
@@ -469,6 +562,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
     sueltos: coches.filter(ruedaSuelto).length,
     // Y cuántos no cuadran con el bot.
     sinFichar: cuenta.fichaje || 0,
+    // Y de los parados sin nadie en el bot, cuántos están bloqueados y cuántos no.
+    bloqueados: cuenta.bloqueado || 0,
+    sinBloquear: cuenta.sinbloquear || 0,
     // Y los de la flota de los que Mapon no sabe nada: la alerta de arriba.
     sinMapon: coches.filter(c => c.tono === 'sinmapon')
       .map(c => ({ matricula: c.matricula, estado: c.estadoVehiculo, motivo: c.motivo })),
@@ -648,6 +744,7 @@ async function noVuelven({ sedes = null, minMinutos = NO_VUELVE_MIN } = {}) {
 const olvidar = () => { cache.clear(); };
 
 module.exports = { frente, sueltos, noVuelven, olvidar, tono, fichajeDe, mismoNombre, tonoConFichaje,
+  motorDe, tonoConMotor,
   PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
   NO_VUELVE_MIN,
   // El anillo, para que la pantalla lo pinte sin tener que saber de dónde sale.

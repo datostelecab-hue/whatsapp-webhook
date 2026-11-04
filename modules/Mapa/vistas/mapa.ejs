@@ -122,15 +122,18 @@
      fuera, y más deprisa; no late como el rojo de siempre: de reojo se separa
      el «no se sabe quién lo lleva» del «se sabe, pero no se ha conectado». */
   .m-coche.m-fichaje, .m-parpadea-rojo { animation: m-parpadeo .8s ease-in-out infinite; }
+  /* Y EL PARADO SIN NADIE EN EL BOT Y CON EL MOTOR LIBRE (04/11/2026), igual:
+     es el mismo «aquí falta alguien», con el coche quieto. */
+  .m-coche.m-sinbloquear { animation: m-parpadeo .8s ease-in-out infinite; }
 
   /* Quien pidió menos movimiento en su sistema no quiere que una pantalla se
      lo salte. El rojo ya distingue; el latido solo ayuda a encontrarlo. La
      espera de fuera, sin parpadeo, lleva un anillo discontinuo: algo tiene que
-     separarla de la de dentro. El fichaje, lo mismo en rojo. */
+     separarla de la de dentro. El fichaje y el sin bloquear, lo mismo en rojo. */
   @media (prefers-reduced-motion: reduce) {
-    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea, .m-coche.m-fichaje, .m-parpadea-rojo { animation: none; }
+    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea, .m-coche.m-fichaje, .m-coche.m-sinbloquear, .m-parpadea-rojo { animation: none; }
     .m-coche.m-esperafuera { outline: 2px dashed rgb(var(--tc-mapa-espera)); outline-offset: 2px; }
-    .m-coche.m-fichaje { outline: 2px dashed rgb(var(--tc-red)); outline-offset: 2px; }
+    .m-coche.m-fichaje, .m-coche.m-sinbloquear { outline: 2px dashed rgb(var(--tc-red)); outline-offset: 2px; }
   }
 
   /* QUIÉN LO TIENE EN EL BOT (04/11/2026): su nombre pegado al punto. Desde el
@@ -142,8 +145,8 @@
     background: rgb(var(--tc-card)); color: rgb(var(--tc-text)); border: 1px solid rgb(var(--tc-border));
     box-shadow: 0 1px 3px rgb(0 0 0 / .45);
   }
-  #m-mapa.m-nombres .m-nombre, .m-coche.m-fichaje .m-nombre { display: block; }
-  .m-coche.m-fichaje .m-nombre { background: rgb(var(--tc-red)); color: rgb(var(--tc-dark)); border-color: transparent; }
+  #m-mapa.m-nombres .m-nombre, .m-coche.m-fichaje .m-nombre, .m-coche.m-sinbloquear .m-nombre { display: block; }
+  .m-coche.m-fichaje .m-nombre, .m-coche.m-sinbloquear .m-nombre { background: rgb(var(--tc-red)); color: rgb(var(--tc-dark)); border-color: transparent; }
 
   /* NO VUELVE A LA M-30 (29/09/2026): una etiqueta con los minutos pegada al
      punto. No cambia el color —el color dice qué hace en BOLT—: dice además
@@ -267,8 +270,11 @@
     descanso:    { tk: '--tc-mapa-descanso', icono: 'fa-mug-hot',              texto: 'Rodando en descanso' },
     // El fichaje del bot que no cuadra (04/11/2026): parpadea. Ver mapa.service (`fichajeDe`).
     fichaje:     { tk: '--tc-red',           icono: 'fa-user-xmark',           texto: 'Fichaje que no cuadra' },
+    // Los parados sin nadie en el bot, por su motor (04/11/2026). Ver mapa.service (`tonoConMotor`).
+    sinbloquear: { tk: '--tc-red',           icono: 'fa-lock-open',            texto: 'Parado sin bloquear' },
     suelto:      { tk: '--tc-red',           icono: 'fa-triangle-exclamation', texto: 'Rodando desconectado' },
     errorgps:    { tk: '--tc-violet',        icono: 'fa-location-crosshairs',  texto: 'Error de GPS' },
+    bloqueado:   { tk: '--tc-text',          icono: 'fa-lock',                 texto: 'Bloqueado' },
     parado:      { tk: '--tc-muted',         icono: 'fa-circle',               texto: 'Parado' },
     singps:      { tk: '--tc-muted',         icono: 'fa-satellite-dish',       texto: 'GPS sin fijar' },
     perdido:     { tk: '--tc-border',        icono: 'fa-question',             texto: 'Sin señal' },
@@ -276,9 +282,10 @@
     // van en la lista y en la franja roja de arriba.
     sinmapon:    { tk: '--tc-red',           icono: 'fa-satellite',            texto: 'Sin nada en Mapon' },
   };
-  // El del fichaje, junto al rojo de siempre: los dos rojos seguidos.
-  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'fichaje', 'suelto', 'errorgps'];
-  const ORDEN = PRINCIPALES.concat(['parado', 'singps', 'perdido', 'sinmapon']);
+  // El del fichaje y el parado sin bloquear, junto al rojo de siempre: los rojos
+  // seguidos. El bloqueado, delante del parado: es un parado que está bien.
+  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'fichaje', 'sinbloquear', 'suelto', 'errorgps'];
+  const ORDEN = PRINCIPALES.concat(['bloqueado', 'parado', 'singps', 'perdido', 'sinmapon']);
   const CLASES_TONO = ORDEN.map(k => 'm-' + k);
   // Explicación de cada filtro, para el globo del chip.
   const AYUDA = {
@@ -287,9 +294,11 @@
     esperafuera: 'En espera en BOLT, pero FUERA de la M-30.',
     descanso: 'Rodando con el conductor en descanso: conectado, pero sin dar servicio.',
     fichaje: 'Se está usando (rueda o hay alguien conectado en BOLT) y nadie lo tiene fichado en el bot, o en BOLT va otra persona que la del bot.',
+    sinbloquear: 'Parado, nadie lo tiene en el bot y el motor NO está cortado: se lo puede llevar cualquiera sin fichar.',
     suelto: 'Rodando sin nadie conectado en BOLT, con el coche fichado en el bot a nombre de quien lo lleva.',
     errorgps: 'De viaje en BOLT y Mapon lo da por parado desde hace 10 min o más: el GPS no está dando la posición real.',
-    parado: 'No se mueve y no está trabajando en BOLT.',
+    bloqueado: 'Parado, nadie lo tiene en el bot y el motor está cortado: como tiene que estar.',
+    parado: 'No se mueve y no está trabajando en BOLT. Con alguien en el bot, o sin relé de corte, o sin pedirle que esté bloqueado (taller, otra sede, soltado por Tráfico).',
     singps: 'El equipo habla pero no coge satélite: el punto es de hace unos minutos.',
     perdido: 'El equipo de Mapon no habla: el punto es de cuando se calló.',
     sinmapon: 'Coches de la flota de los que Mapon no da nada.',
@@ -758,6 +767,21 @@
       + (c.km != null ? ' ' + mut('· ' + String(c.km).replace('.', ',') + ' km en el tramo') : '')
       + '<span class="block text-telecab-muted">el GPS habló hace ' + hace(c.antiguedad) + '</span>'));
 
+    // EL MOTOR (04/11/2026): cortado o libre según Mapon, y por qué. En los dos
+    // tonos del motor el porqué ya va arriba (c.motivo): aquí no se repite.
+    const mo = c.motor;
+    if (mo && (mo.rele != null || mo.cortado != null)) {
+      const estadoMotor = mo.cortado === true
+        ? '<b>Cortado</b>' + (mo.desde ? ' ' + mut('· desde ' + esc(horaDe(mo.desde))) : '')
+        : mo.cortado === false
+          ? '<b' + (c.tono === 'sinbloquear' ? ' style="color:' + cv('--tc-red') + '"' : '') + '>Libre</b>'
+          : mut('Sin relé de corte');
+      const porqueMotor = mo.cortado === false && mo.exento ? mo.exento
+        : (c.tono !== 'bloqueado' && c.tono !== 'sinbloquear' ? mo.nota : null);
+      filas.push(fila('Motor', estadoMotor
+        + (porqueMotor ? '<span class="block text-telecab-muted">' + esc(porqueMotor) + '</span>' : '')));
+    }
+
     // EN QUÉ ESTADO ESTÁ EL COCHE PARA LA CASA. Es lo que deja leer un gris: uno
     // «En taller» lleva semanas callado y es normal; uno «Operativo» callado
     // tres meses es un equipo que hay que ir a mirar.
@@ -863,7 +887,8 @@
         + (c.noVuelve ? ' · ' + minTxt(c.noVuelve.desde) + ' sin volver a la M-30' : '');
       m.el.querySelector('i').className = 'fa-solid ' + t.icono;
       // El nombre de quien lo tiene en el bot, pegado al punto (ver .m-nombre).
-      const etqBot = sinFichar(c) ? 'Sin fichar' : delBot(c) ? corto(delBot(c)) : '';
+      const etqBot = sinFichar(c) ? 'Sin fichar' : c.tono === 'sinbloquear' ? 'Sin bloquear'
+        : delBot(c) ? corto(delBot(c)) : '';
       let nb = m.el.querySelector('.m-nombre');
       if (etqBot) {
         if (!nb) { nb = document.createElement('span'); nb.className = 'm-nombre'; nb.setAttribute('aria-hidden', 'true'); m.el.appendChild(nb); }
@@ -969,12 +994,15 @@
           ? (c.fichaje.estado === 'otro' && enBolt ? 'en BOLT: ' + enBolt
             : esAhora(c) ? (c.situacionEtiqueta || t.texto) : t.texto)
         : sinFichar(c) ? 'sin fichar' + (enBolt ? ' · BOLT: ' + enBolt : '')
+        // Los parados por su motor: lo que importa es eso, no quién lo tuvo.
+        : c.tono === 'bloqueado' || c.tono === 'sinbloquear' ? t.texto.toLowerCase()
         : esAhora(c) ? (c.situacionEtiqueta || t.texto)
         : quien ? 'último' + (c.ultimoHace != null ? ', hace ' + haceLargo(c.ultimoHace) : '')
         : 'nadie en BOLT';
       return '<button data-clave="' + esc(c.clave) + '"'
         + ' class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition flex items-center gap-2">'
-        + '<span class="w-2 h-2 rounded-full shrink-0' + (c.tono === 'esperafuera' ? ' m-parpadea' : c.tono === 'fichaje' ? ' m-parpadea-rojo' : '')
+        + '<span class="w-2 h-2 rounded-full shrink-0' + (c.tono === 'esperafuera' ? ' m-parpadea'
+          : c.tono === 'fichaje' || c.tono === 'sinbloquear' ? ' m-parpadea-rojo' : '')
         + '" style="background:' + cv(t.tk) + '"></span>'
         + '<span class="min-w-0 flex-1">'
         + '<span class="block text-xs font-semibold truncate' + (quien && !bot && !esAhora(c) ? ' text-telecab-muted' : '') + '">'

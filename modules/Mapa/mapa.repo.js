@@ -38,6 +38,10 @@ const db = require('../../services/db');
  */
 async function coches(sedes) {
   const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
+  // `rele_corte` y `motor_cortado` los crea el esquema de Flota viva al arrancar.
+  // Si el mapa se pide antes de que esté puesto, espera a que lo esté en vez de
+  // fallar; si no se puede poner, la consulta dirá por qué.
+  await require('../../services/flotaViva/db').preparar().catch(() => {});
   const r = await db.consulta(`
     SELECT p.mapon_unit, v.matricula, v.id AS vehiculo_id,
            -- Si Mapon conoce el equipo del coche aunque no de posicion. Es lo
@@ -88,7 +92,19 @@ async function coches(sedes) {
                     NULLIF(btrim(ft.nombre), ''))                    AS ft_nombre,
            NULLIF(btrim(ft.nombre), '')                              AS ft_nombre_bot,
            NULLIF(btrim(fc.nombre_bolt), '')                         AS ft_nombre_bolt,
-           ft.inicio                                                 AS ft_inicio
+           ft.inicio                                                 AS ft_inicio,
+           -- EL CORTE DE MOTOR (04/11/2026): lo que dice Mapon del relé en la
+           -- vuelta de posiciones, y la última orden del ciclo de bloqueo. Con
+           -- eso se sabe si un coche parado y sin nadie en el bot está bloqueado,
+           -- o suelto y por qué (mapa.service, motorDe).
+           p.rele_corte, p.motor_cortado,
+           om.accion                                                 AS om_accion,
+           om.hecho                                                  AS om_hecho,
+           om.respuesta                                              AS om_respuesta,
+           om.motivo                                                 AS om_motivo,
+           (om.usuario_id IS NOT NULL)                               AS om_trafico,
+           om.usuario                                                AS om_usuario,
+           om.creado_at                                              AS om_at
       -- SE PARTE DE NUESTRA FLOTA, NO DE MAPON (24/09/2026). Antes era al
       -- reves -de fv_posicion hacia vehiculo- y un coche que Mapon no conoce
       -- no salia en el mapa ni avisaba de nada: sencillamente no existia. Lo
@@ -146,6 +162,16 @@ async function coches(sedes) {
          LIMIT 1) ft ON TRUE
       LEFT JOIN conductor fc ON fc.id = ft.conductor_id
       LEFT JOIN usuario fu ON fu.id = ft.usuario_id
+      -- La última orden de motor del coche: quién lo bloqueó o lo soltó, y si
+      -- salió. La misma que lee Bloqueo de motor (idx_fom_coche).
+      LEFT JOIN LATERAL (
+        SELECT o.accion, o.hecho, o.respuesta, o.motivo, o.usuario_id, o.creado_at,
+               NULLIF(btrim(concat_ws(' ', u.nombre, u.apellidos)), '') AS usuario
+          FROM fichaje_orden_motor o
+          LEFT JOIN usuario u ON u.id = o.usuario_id
+         WHERE o.matricula = v.matricula_norm
+         ORDER BY o.creado_at DESC, o.id DESC
+         LIMIT 1) om ON TRUE
      WHERE v.baja_at IS NULL
        AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);

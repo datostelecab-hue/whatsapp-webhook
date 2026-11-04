@@ -70,16 +70,18 @@ async function refrescar() {
     // TODAS DE UNA VEZ. 108 filas en una sola sentencia y una sola transacción:
     // 108 sentencias sueltas serían 108 idas y vueltas a Frankfurt, y ahí el
     // viaje cuesta treinta veces más que el trabajo.
+    // Con el corte de motor (04/11/2026): si tiene relé y si está cortado.
     const v = [];
+    const N = 11;
     const huecos = uds.map((u, i) => {
       v.push(u.unitId, u.matricula, u.lat, u.lng, u.velocidad, u.rumbo,
-        u.estado, u.estadoDesde, u.senalAt);
-      return '(' + Array.from({ length: 9 }, (_, k) => '$' + (i * 9 + k + 1)).join(',') + ')';
+        u.estado, u.estadoDesde, u.senalAt, u.releCorte, u.motorCortado);
+      return '(' + Array.from({ length: N }, (_, k) => '$' + (i * N + k + 1)).join(',') + ')';
     });
     await db.consulta(
       `INSERT INTO fv_posicion
          (mapon_unit, matricula, lat, lng, velocidad, rumbo,
-          estado_mapon, estado_desde, visto_at)
+          estado_mapon, estado_desde, visto_at, rele_corte, motor_cortado)
        VALUES ${huecos.join(',')}
        ON CONFLICT (mapon_unit) DO UPDATE SET
          matricula     = EXCLUDED.matricula,
@@ -90,6 +92,8 @@ async function refrescar() {
          estado_mapon  = EXCLUDED.estado_mapon,
          estado_desde  = EXCLUDED.estado_desde,
          visto_at      = EXCLUDED.visto_at,
+         rele_corte    = EXCLUDED.rele_corte,
+         motor_cortado = EXCLUDED.motor_cortado,
          refrescado_at = now()`, v);
 
     const ms = Date.now() - t0;
