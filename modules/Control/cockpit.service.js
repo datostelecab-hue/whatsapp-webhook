@@ -64,6 +64,36 @@ function normNombre(s) {
     .trim().split(/\s+/).filter(Boolean).sort().join(' ');
 }
 
+/** Un plan vacío para `cubiertoPorElPlan`: los ids de ficha y los nombres (ya normalizados). */
+const planVacio = () => ({ ids: new Set(), nombres: new Set() });
+
+/**
+ * ¿LO CUBRE EL PLAN? — quién NO es NN en un turno de hoy (04/11/2026).
+ *
+ *   quien   { id, nombre }: la ficha de la cuenta (si la tiene) y su nombre de BOLT
+ *   turno   el del rato, por su HORA DE INICIO: 'dia' antes de las 12:00, 'noche'
+ *           desde las 12:00 (repartoTurnos.etiquetaNN)
+ *   plan    { hoy, nocheAyer }, cada uno { ids, nombres }: las plazas de hoy
+ *           (día y noche) y las de la noche de ayer
+ *
+ * Las plazas de HOY cubren cualquier rato de hoy. La NOCHE DE AYER va de 12:00 a
+ * 12:00 de hoy (la regla de los turnos), así que solo cubre lo que EMPEZÓ ANTES
+ * DE LAS 12:00: rematar la noche pasadas las 05:00, o volver a conectarse un rato
+ * de madrugada. Lo que empieza a partir de las 12:00 sin plaza esta noche es NN.
+ *
+ * Antes la noche de ayer cubría el día entero, y el fijo de noche que trabajaba
+ * el PRIMER día de su libranza no salía ni en Noche (no tiene plaza) ni en NN (lo
+ * daba por planificado): invisible. Le pasó a Haytam Ibn Taieb Zouitni el
+ * 04/11/2026, fijo de noche del 0756MMZ (que libra X y J), conectado esa noche
+ * con su coche: Inicio lo marcaba NN y Control no lo enseñaba en ninguna parte.
+ */
+function cubiertoPorElPlan({ id, nombre } = {}, turno, plan = {}) {
+  const k = normNombre(nombre);
+  const en = p => !!p && ((id != null && p.ids.has(Number(id))) || (!!k && p.nombres.has(k)));
+  if (en(plan.hoy)) return true;
+  return turno === 'dia' && en(plan.nocheAyer);
+}
+
 /**
  * El estado de un coche de un vistazo. Es lo que pinta el chip.
  *
@@ -665,29 +695,27 @@ async function enDirecto({ dia } = {}) {
   // la PLANTILLA (tab.conductores) y el de vacaciones que sí trabajó no salía
   // en NINGUNA pestaña: invisible. Se mira la jornada operativa entera (05→05)
   // porque un NN no tiene turno que mirar.
-  const idsPlan = new Set();
-  const meter = v => { const n = Number(v); if (n) idsPlan.add(n); };
-  const nombresPlan = new Set();
-  const anota = n => { const k = normNombre(n); if (k) nombresPlan.add(k); };
   // SOLO las celdas de HOY, más la NOCHE DE AYER (remata pasadas las 05:00 y
   // caería en NN sin ser nadie fuera del plan). Antes se recorría la semana
   // entera, y quien libraba hoy pero estaba pintado otro día —y salía a hacer
   // un doble— no aparecía en Día, ni en Noche, ni en NN: invisible.
-  const celdasPlan = co => {
-    const s = co.semana || [];
-    const cs = [s[idx * 2], s[idx * 2 + 1]];
-    // idx 0 = lunes: la noche de ayer es de la semana anterior, que el tablero de
-    // hoy no trae. Se acepta ese ruido una madrugada a la semana.
-    if (idx > 0) cs.push(s[(idx - 1) * 2 + 1]);
-    return cs.filter(Boolean);
+  //
+  // Van APARTE (04/11/2026): la noche de ayer solo cubre lo que empezó antes de
+  // las 12:00 de hoy. El porqué, en `cubiertoPorElPlan`.
+  const plan = { hoy: planVacio(), nocheAyer: planVacio() };
+  const apunta = (p, cell) => {
+    const n = Number(cell.id);
+    if (n) p.ids.add(n);
+    // En una celda con conflicto (dos personas en el mismo coche, turno y día)
+    // tablero() solo guarda el NOMBRE de los demás: que no caigan en NN.
+    [cell.nombre, ...(cell.otros || [])].forEach(x => { const k = normNombre(x); if (k) p.nombres.add(k); });
   };
   ((tab && tab.coches) || []).forEach(co => {
-    celdasPlan(co).forEach(cell => {
-      meter(cell.id); anota(cell.nombre);
-      // En una celda con conflicto (dos personas en el mismo coche, turno y día)
-      // tablero() solo guarda el NOMBRE de los demás: que no caigan en NN.
-      (cell.otros || []).forEach(anota);
-    });
+    const s = co.semana || [];
+    [s[idx * 2], s[idx * 2 + 1]].filter(Boolean).forEach(cell => apunta(plan.hoy, cell));
+    // idx 0 = lunes: la noche de ayer es de la semana anterior, que el tablero de
+    // hoy no trae. Se acepta ese ruido una madrugada a la semana.
+    if (idx > 0 && s[(idx - 1) * 2 + 1]) apunta(plan.nocheAyer, s[(idx - 1) * 2 + 1]);
   });
 
   const fundirRechazos = repoRech.fundir;
@@ -787,8 +815,10 @@ async function enDirecto({ dia } = {}) {
   // del turno (día 00→24, noche 12→12). Se cuenta por SESIONES —un rato de
   // trabajo seguido— con `repartoTurnos.js`, la misma regla que Visibilidad:
   // solo sale dos veces quien de verdad hizo dos ratos, uno de cada.
-  const esNN = a => !idsPlan.has(idDeUuid.get(a.uuid))
-    && !nombresPlan.has(normNombre(a.nombre))
+  //
+  // Si lo cubre el plan, CON SU TURNO (04/11/2026): la noche de ayer solo cubre
+  // el rato que empezó antes de las 12:00 (`cubiertoPorElPlan`).
+  const esNN = (a, turno) => !cubiertoPorElPlan({ id: idDeUuid.get(a.uuid), nombre: a.nombre }, turno, plan)
     && (a.minutos > 0 || a.km > 0 || a.conectadoAhora);
   // Los segundos de cada cuenta en cada turno de hoy, por su hora de inicio.
   // Sin plan a propósito: solo se leen los de quien ya es NN.
@@ -815,7 +845,7 @@ async function enDirecto({ dia } = {}) {
   ];
   const sinPlan = ventanasNN.flatMap(({ turno, etq, vent }) =>
     [...((vent && vent.porUuid) || new Map()).values()]
-      .filter(esNN)
+      .filter(a => esNN(a, turno))
       .map(a => ({ a, min: minutosNN(a, turno) }))
       .filter(x => x.min != null)
       // Las horas, las del reparto: la ventana del turno puede traer también un
@@ -1118,4 +1148,4 @@ async function enDirecto({ dia } = {}) {
   };
 }
 
-module.exports = { enDirecto, salidaDe };
+module.exports = { enDirecto, salidaDe, cubiertoPorElPlan };

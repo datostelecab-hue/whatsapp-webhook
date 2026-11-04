@@ -8,7 +8,7 @@
 //
 // No toca la base de datos: prueba la función pura.
 
-const { salidaDe } = require('../modules/Control/cockpit.service');
+const { salidaDe, cubiertoPorElPlan } = require('../modules/Control/cockpit.service');
 
 let fallos = 0;
 const eq = (a, b, msg) => {
@@ -91,6 +91,40 @@ eq(salidaDe(act({ minDescanso: 480, conectadoAhora: false }), corriendo), 'no_sa
 console.log('\n=== DESCANSO CON TRABAJO DETRÁS ===');
 eq(salidaDe(act({ minutos: 30, minDescanso: 120, kmFuera: 12 }), corriendo), 'salio',
   'salió media hora y luego se puso en descanso: salió (el aviso va aparte)');
+
+console.log('\n=== FUERA DEL PLAN (NN): LA NOCHE DE AYER SOLO CUBRE HASTA LAS 12:00 (04/11/2026) ===');
+// Haytam Ibn Taieb Zouitni (ficha 253), fijo de noche del 0756MMZ, que libra X y
+// J. El martes 03/11 trabajó su noche; el miércoles 04/11 libraba y se conectó
+// por la tarde con su coche. Inicio lo marcaba NN y Control no lo enseñaba en
+// ninguna parte: no tenía plaza esa noche y la noche de ayer lo daba por
+// planificado el día entero.
+const planDe = ({ hoy = [], nocheAyer = [] }) => {
+  const p = xs => ({ ids: new Set(xs.map(x => x.id).filter(Boolean)), nombres: new Set(xs.map(x => x.nombre)) });
+  return { hoy: p(hoy), nocheAyer: p(nocheAyer) };
+};
+// Los nombres del plan van como los guarda Control: minúsculas, sin acentos y
+// con las palabras ordenadas (normNombre).
+const haytam = { id: 253, nombre: 'Haytam Ibn Taieb Zouitni' };
+const haytamPlan = { id: 253, nombre: 'haytam ibn taieb zouitni' };
+const soloAyer = planDe({ nocheAyer: [haytamPlan] });
+eq(cubiertoPorElPlan(haytam, 'noche', soloAyer), false,
+  'el caso Haytam: libra hoy, tuvo la noche de ayer y empieza a las 18:00 → NN (no lo cubre nadie)');
+eq(cubiertoPorElPlan(haytam, 'dia', soloAyer), true,
+  'pero un rato que empezó antes de las 12:00 (remate de su noche) sí lo cubre la noche de ayer');
+eq(cubiertoPorElPlan({ nombre: 'Zouitni, Haytam Ibn Taieb' }, 'noche', soloAyer), false,
+  'tampoco lo cubre por el nombre (una cuenta de BOLT sin enlazar a su ficha)');
+eq(cubiertoPorElPlan({ nombre: 'Zouitni, Haytam Ibn Taieb' }, 'dia', soloAyer), true,
+  'y por el nombre, la noche de ayer sigue cubriendo su remate');
+
+const conPlazaHoy = planDe({ hoy: [haytamPlan], nocheAyer: [haytamPlan] });
+eq(cubiertoPorElPlan(haytam, 'noche', conPlazaHoy), true,
+  'con plaza esta noche, su rato de noche es del plan: no es NN');
+eq(cubiertoPorElPlan(haytam, 'dia', conPlazaHoy), true,
+  'con plaza hoy, cualquier rato de hoy es del plan (lo de antes, sin cambios)');
+eq(cubiertoPorElPlan({ id: 999, nombre: 'Otra Persona' }, 'dia', conPlazaHoy), false,
+  'quien no está en ninguna plaza es NN en cualquier turno');
+eq(cubiertoPorElPlan({ nombre: 'Otra Persona' }, 'noche', planDe({})), false,
+  'con el plan vacío (el tablero no llegó) todos los que ruedan son NN, como antes');
 
 console.log(fallos ? '\n❌ ' + fallos + ' fallo(s)' : '\n✅ Todo correcto');
 process.exit(fallos ? 1 : 0);
