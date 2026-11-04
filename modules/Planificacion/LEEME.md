@@ -33,7 +33,33 @@ turnos.service.js         el mensaje que lee el conductor en el bot (de hoy a 7 
 parrilla.excel.js         el ANEXO que se imprime
 hoja.repo.js              las filas de PLANIFICADOR_V2 y BASES, desde PostgreSQL
 vistas/planificadorV2.ejs · vistas/cobertura.ejs
+
+El JavaScript de la pantalla (FRO-4, 04/11/2026), en public/assets/js/vistas/Planificacion/:
+planificador/eventos.js      eventos, incorporaciones y relevos
+planificador/paneles.js      KPIs, semáforo de avisos, bajas, llegadas, laterales, fin de prueba
+planificador/bases.js        las tarjetas de base, elegir una y gestionar zonas y cuadrantes
+planificador/cuadrante.js    cargar el tablero, pintarlo por zona, repintar lo cambiado, horas
+planificador/rendimiento.js  «10,4 h · S» y la celda de cada puesto
+planificador/vertical.js     la vista vertical (una tarjeta por coche)
+planificador/acciones.js     asignar, cubrir, estado, coche, matrícula, barrio, descanso
+planificador/envios.js       los turnos de un cuadrante por WhatsApp
+planificador/elegir.js       los selectores de conductor y de coche
+planificador/fichaje.js      quién ficha con el bot (bloqueo de motor)
+planificadorV2.js            el estado, los ayudantes y el arranque — se carga el ÚLTIMO
 ```
+
+**El JavaScript del planificador son once ficheros que comparten ámbito**
+(FRO-4, 04/11/2026). Era una IIFE de 3.084 líneas; ahora no hay IIFE, porque
+los ficheros tienen que verse entre sí. Las áreas solo traen funciones y
+constantes que no ejecutan nada al cargar, y se cargan antes que
+`planificadorV2.js`, que tiene el estado (`T`, `ZONA`, `DIA`…) y el arranque en
+su orden de siempre. Una función nueva va en su área; algo que se ejecute al
+cargar, en el principal. **Para escribir al servidor, `fetchPlan`, no `fetch`**:
+es el candado de «solo lectura» (sin `/planificador/editar`, avisa y no escribe).
+Antes se llamaba `fetch` dentro de la IIFE; fuera de ella taparía el `fetch` de
+toda la página y los componentes compartidos volverían a recibir el 403 falso.
+`npm run lint` no deja usar `fetch` en estos ficheros, y sabe qué declara cada
+uno (lo lee del código), así que `no-undef` sigue cazando erratas entre ellos.
 
 Desde fuera del módulo se entra por `tablero.service` o por `cobertura.service`,
 nunca por un `.repo`.

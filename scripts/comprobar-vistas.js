@@ -25,8 +25,13 @@
 // Y desde el FRO-4 (04/11/2026): el JavaScript de las pantallas vive en
 // public/assets/js/vistas y layout (un <script> en línea de más de
 // MAX_EN_LINEA líneas es un fallo); lo que el script lee de Casa.datos() tiene
-// que estar en el bloque de datos de su vista; y dos scripts de una misma
-// página no pueden declarar el mismo nombre global.
+// que estar en el bloque de datos de su vista; en una PÁGINA (su layout, la
+// vista, sus partials y sus ficheros) ningún nombre global se declara dos veces
+// ni es uno del navegador (`function open` sustituiría a window.open); ningún
+// fichero de vistas/ o layout/ se queda sin vista que lo cargue; y las áreas de
+// una pantalla partida (el planificador) solo traen declaraciones y se cargan
+// antes que su principal. Lo fino lo hace con el analizador de ESLint
+// (devDependencies); sin él, solo los const/let repetidos.
 
 const MAX_EN_LINEA = 30;
 
@@ -161,6 +166,83 @@ function clavesLeidas(codigo) {
   return { usa: /Casa\.datos\(/.test(codigo), leidas };
 }
 
+// ── LA PÁGINA ENTERA (FRO-4, 04/11/2026) ─────────────────────────────────────
+// Con qué layout se pinta cada vista: el portal con el suyo, el acceso con
+// layout-auth (auth.controller) y lo demás con layout-gestion (app.js).
+const VIEWS = path.join(__dirname, '..', 'views');
+const DEL_ACCESO = new Set(['Usuarios/login.ejs', 'Usuarios/cambiar-password.ejs', 'Usuarios/olvide-password.ejs']);
+function layoutDe(nombre) {
+  if (/(^|\/)(layout-[^/]*|portalLayout)\.ejs$/.test(nombre)) return null;
+  if (nombre.startsWith('Portal/')) return path.join(MODULOS, 'Portal', 'vistas', 'portalLayout.ejs');
+  if (DEL_ACCESO.has(nombre)) return path.join(VIEWS, 'layout-auth.ejs');
+  return path.join(VIEWS, 'layout-gestion.ejs');
+}
+
+// El analizador de ESLint, si está (devDependencies). Sin él, la regla se queda
+// en lo que ve el compilador de Node: los const/let/class repetidos.
+let espree = null, NAVEGADOR = new Set();
+try { espree = require('espree'); } catch (_) { /* sin devDependencies */ }
+try { NAVEGADOR = new Set(Object.keys(require('globals').browser)); } catch (_) { /* ídem */ }
+const arbolCache = new Map();
+function arbolDe(codigo) {
+  if (!arbolCache.has(codigo)) {
+    let a = null;
+    try { a = espree.parse(codigo, { ecmaVersion: 'latest', sourceType: 'script' }); } catch (_) { /* la sintaxis ya se avisa aparte */ }
+    arbolCache.set(codigo, a);
+  }
+  return arbolCache.get(codigo);
+}
+const nombresDe = (p, out = []) => {
+  if (!p) return out;
+  if (p.type === 'Identifier') out.push(p.name);
+  else if (p.type === 'ObjectPattern') p.properties.forEach(x => nombresDe(x.type === 'RestElement' ? x.argument : x.value, out));
+  else if (p.type === 'ArrayPattern') p.elements.forEach(x => nombresDe(x, out));
+  else if (p.type === 'AssignmentPattern') nombresDe(p.left, out);
+  else if (p.type === 'RestElement') nombresDe(p.argument, out);
+  return out;
+};
+/** Lo que un script declara a primer nivel: [{ nombre, tipo }]. */
+function declarados(arbol) {
+  const out = [];
+  for (const s of (arbol ? arbol.body : [])) {
+    if (s.type === 'FunctionDeclaration' || s.type === 'ClassDeclaration') out.push({ nombre: s.id.name, tipo: s.type === 'ClassDeclaration' ? 'class' : 'function' });
+    else if (s.type === 'VariableDeclaration') s.declarations.forEach(d => nombresDe(d.id).forEach(n => out.push({ nombre: n, tipo: s.kind })));
+  }
+  return out;
+}
+
+function revisarPagina(f, trozos) {
+  if (trozos.length < 2) return;
+  if (!espree) {
+    // Sin analizador: lo que el compilador de Node ve al juntarlos (el `void 0;`
+    // de delante evita que un 'use strict' del primero valga para todos).
+    try { new vm.Script('void 0;\n' + trozos.map(t => t.codigo).join('\n;\n'), { filename: f }); } catch (e) {
+      if (/already been declared/.test(e.message)) { fallos++; console.log(`  x ${f}: dos scripts de la misma página declaran lo mismo (${e.message})`); }
+    }
+    return;
+  }
+  const donde = new Map();
+  for (const t of trozos) {
+    for (const d of declarados(arbolDe(t.codigo))) {
+      if (!donde.has(d.nombre)) donde.set(d.nombre, []);
+      donde.get(d.nombre).push({ ...d, origen: t.origen });
+      if (NAVEGADOR.has(d.nombre)) {
+        fallos++;
+        console.log(`  x ${f}: ${t.origen} declara «${d.nombre}» (${d.tipo}) a primer nivel, y es un nombre del navegador (window.${d.nombre}) — en toda la página lo sustituye o lo tapa; cámbialo o mételo en una IIFE`);
+      }
+    }
+  }
+  for (const [n, sitios] of donde) {
+    const origenes = [...new Set(sitios.map(s => s.origen))];
+    if (origenes.length < 2) continue;
+    fallos++;
+    console.log(`  x ${f}: «${n}» se declara a primer nivel en ${origenes.join(' y en ')} — el segundo ${sitios.some(s => ['const', 'let', 'class'].includes(s.tipo)) ? 'no llega a ejecutarse (already been declared)' : 'sustituye al primero en silencio'}`);
+  }
+}
+
+// Los ficheros de public/assets/js que alguna vista carga (para los huérfanos).
+const cargados = new Set();
+
 for (const { nombre: f, ruta } of ficheros) {
   const html = fs.readFileSync(ruta, 'utf8');
 
@@ -169,40 +251,50 @@ for (const { nombre: f, ruta } of ficheros) {
   // partials no: su bloque, si lo usan, está en la vista que los incluye.
   if (!/(^|\/)partials\//.test(f)) {
     let codigo = scriptsDe(html).map(s => s.codigo).join('\n');
-    // Los trozos de la PÁGINA: los scripts de la vista, los de sus ficheros y
-    // los de los partials que incluye. Para la regla de abajo.
-    const trozos = scriptsDe(html).map(s => sinEjs(s.codigo));
-    const deFicheros = texto => {
-      for (const m of texto.matchAll(/\/assets\/js\/((?:vistas|layout)\/[^'"?)\s]+\.js)/g)) {
-        const js = path.join(PUBLICO, 'assets', 'js', m[1]);
-        if (fs.existsSync(js)) { const c = fs.readFileSync(js, 'utf8'); codigo += '\n' + c; trozos.push(c); }
-        else { fallos++; console.log(`  x ${f}: carga /assets/js/${m[1]} y ese fichero no existe`); }
+    // Los trozos de la PÁGINA, cada uno con su origen: los scripts de su LAYOUT
+    // (los componentes de la casa y layout/*.js incluidos), los de la vista, los
+    // de sus ficheros y los de los partials que incluye. Para las reglas de abajo.
+    const trozos = [];
+    const vistos = new Set();
+    const deFicheros = (texto, deLaVista) => {
+      for (const m of texto.matchAll(/\/assets\/js\/([^'"?)\s]+\.js)/g)) {
+        if (vistos.has(m[1])) continue;            // el layout escribe cada ruta dos veces (est o no)
+        vistos.add(m[1]);
+        cargados.add(m[1]);
+        const js = path.join(PUBLICO, 'assets', 'js', ...m[1].split('/'));
+        if (!fs.existsSync(js)) { fallos++; console.log(`  x ${f}: carga /assets/js/${m[1]} y ese fichero no existe`); continue; }
+        const c = fs.readFileSync(js, 'utf8');
+        if (deLaVista && /^(vistas|layout)\//.test(m[1])) codigo += '\n' + c;
+        trozos.push({ origen: 'public/assets/js/' + m[1], codigo: c, propio: /^(vistas|layout)\//.test(m[1]) });
       }
     };
-    deFicheros(html);
+    const layout = layoutDe(f);
+    if (layout && fs.existsSync(layout)) {
+      const lh = fs.readFileSync(layout, 'utf8');
+      scriptsDe(lh).forEach((s, i) => trozos.push({ origen: path.basename(layout) + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
+      deFicheros(lh, false);
+    }
+    scriptsDe(html).forEach((s, i) => trozos.push({ origen: f + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
+    deFicheros(html, true);
     for (const m of html.matchAll(/include\(\s*['"]([^'"]+)['"]/g)) {
       const p = path.join(path.dirname(ruta), m[1].endsWith('.ejs') ? m[1] : m[1] + '.ejs');
       if (!fs.existsSync(p)) continue;
       const parcial = fs.readFileSync(p, 'utf8');
-      trozos.push(...scriptsDe(parcial).map(s => sinEjs(s.codigo)));
-      deFicheros(parcial);
+      scriptsDe(parcial).forEach((s, i) => trozos.push({ origen: m[1] + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
+      deFicheros(parcial, true);
     }
 
     // DOS SCRIPTS DE LA MISMA PÁGINA NO PUEDEN DECLARAR LO MISMO (FRO-4). Los
     // <script> clásicos de una página comparten el ámbito global: si dos
     // declaran `const X` (o `let`, `class`) a primer nivel, el segundo no llega
-    // a ejecutarse («Identifier 'X' has already been declared»). Con el código
-    // repartido entre la vista, sus partials y sus ficheros, esto ya no se ve
-    // leyendo un solo sitio. Se compilan juntos, como hace el navegador; el
-    // `void 0;` de delante evita que un 'use strict' del primero valga para todos.
-    if (trozos.length > 1) {
-      try { new vm.Script('void 0;\n' + trozos.join('\n;\n'), { filename: f }); } catch (e) {
-        if (/already been declared/.test(e.message)) {
-          fallos++;
-          console.log(`  x ${f}: dos scripts de la misma página declaran lo mismo (${e.message}) — mételo en una IIFE o cambia el nombre`);
-        }
-      }
-    }
+    // a ejecutarse («Identifier 'X' has already been declared»); si son `function`
+    // o `var`, el segundo sustituye al primero EN SILENCIO para todos. Con el
+    // código repartido entre el layout, la vista, sus partials y sus ficheros
+    // —el planificador son once—, esto ya no se ve leyendo un solo sitio.
+    //
+    // Y UN NOMBRE DEL NAVEGADOR TAMPOCO: una `function open()` o `close()` a
+    // primer nivel sustituye a window.open para toda la página.
+    revisarPagina(f, trozos);
     const { usa, leidas } = clavesLeidas(codigo);
     if (usa) {
       const bloque = clavesDelBloque(html);
@@ -313,6 +405,59 @@ for (const f of jsDe(COMPONENTES, '')) {
   for (const m of sinNombre(js)) {
     fallos++;
     console.log(`  x public/assets/js/${f} (linea ${lineaDe(js, m.i)}): ${m.que}`);
+  }
+}
+
+// ── HUÉRFANOS (FRO-4) ────────────────────────────────────────────────────────
+// Un fichero de vistas/ o layout/ que ninguna vista carga no existe en ninguna
+// página: o falta su <script src> o sobra.
+for (const js of jsDe(COMPONENTES, '').filter(x => /^(vistas|layout)\//.test(x))) {
+  if (cargados.has(js)) continue;
+  fallos++;
+  console.log(`  x public/assets/js/${js}: ninguna vista lo carga — o falta su <script src> o sobra`);
+}
+
+// ── PANTALLAS PARTIDAS EN ÁREAS (FRO-4) ──────────────────────────────────────
+// El planificador son once ficheros que comparten ámbito: las áreas solo traen
+// funciones y constantes que NO ejecutan nada al cargar, y se cargan ANTES que el
+// principal (estado y arranque). Una sentencia que se ejecute en un área podría
+// usar algo del principal que aún no existe; un área que se cargue después, dejar
+// al arranque sin una función.
+const PARTIDAS = [{ carpeta: 'vistas/Planificacion/planificador/', principal: 'vistas/Planificacion/planificadorV2.js' }];
+function puro(n) {
+  if (!n) return true;
+  switch (n.type) {
+    case 'ArrowFunctionExpression': case 'FunctionExpression': case 'Literal': return true;
+    case 'TemplateLiteral': return n.expressions.length === 0;
+    case 'ArrayExpression': return n.elements.every(e => e && e.type !== 'SpreadElement' && puro(e));
+    case 'ObjectExpression': return n.properties.every(p => p.type === 'Property' && !p.computed && puro(p.value));
+    case 'UnaryExpression': return ['-', '+', '!'].includes(n.operator) && puro(n.argument);
+    default: return false;
+  }
+}
+for (const { carpeta, principal } of PARTIDAS) {
+  const areas = jsDe(COMPONENTES, '').filter(x => x.startsWith(carpeta));
+  for (const { nombre: f, ruta } of ficheros) {
+    const orden = [...new Set([...fs.readFileSync(ruta, 'utf8').matchAll(/\/assets\/js\/([^'"?)\s]+\.js)/g)].map(m => m[1]))];
+    const iP = orden.indexOf(principal);
+    if (iP < 0) continue;
+    for (const a of areas) {
+      const iA = orden.indexOf(a);
+      if (iA >= 0 && iA < iP) continue;
+      fallos++;
+      console.log(`  x ${f}: ${iA < 0 ? 'no carga' : 'carga después de ' + principal.split('/').pop()} public/assets/js/${a} — las áreas van antes del principal`);
+    }
+  }
+  if (!espree) continue;
+  for (const a of areas) {
+    const arbol = arbolDe(fs.readFileSync(path.join(COMPONENTES, ...a.split('/')), 'utf8'));
+    for (const s of (arbol ? arbol.body : [])) {
+      const ok = s.type === 'FunctionDeclaration'
+        || (s.type === 'VariableDeclaration' && s.kind === 'const' && s.declarations.every(d => d.id.type === 'Identifier' && puro(d.init)));
+      if (ok) continue;
+      fallos++;
+      console.log(`  x public/assets/js/${a}: una sentencia que se ejecuta al cargar (${s.type}${s.kind ? ' ' + s.kind : ''}) — en un área solo van funciones y constantes que no ejecutan nada; lo demás, en ${principal.split('/').pop()}`);
+    }
   }
 }
 

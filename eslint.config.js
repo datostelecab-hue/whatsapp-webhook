@@ -36,6 +36,55 @@ function globalesDeLaCasa(dir = JS, out = {}) {
   return out;
 }
 
+// EL PLANIFICADOR, PARTIDO EN FICHEROS QUE COMPARTEN ÁMBITO (FRO-4, 04/11/2026):
+// lo que uno declara a primer nivel (el estado T, ZONA…, los ayudantes $, esc…,
+// las funciones de cada área) lo ven todos los demás. Se leen esas declaraciones
+// con el mismo analizador de ESLint para que no-undef siga cazando erratas, y
+// no-global-assign no deja pisar desde otro fichero lo que no es un `let`.
+//
+// LOS FICHEROS SON LOS QUE CARGA LA VISTA, no los que haya en la carpeta: uno
+// que la vista no cargue no existe en la página, y sus nombres tampoco.
+const PLAN = ['public/assets/js/vistas/Planificacion/planificadorV2.js',
+  'public/assets/js/vistas/Planificacion/planificador/*.js'];
+const PLAN_VISTA = path.join(__dirname, 'modules', 'Planificacion', 'vistas', 'planificadorV2.ejs');
+
+/** Los nombres de un patrón de declaración: a, { a, b: c }, [a, ...b], a = 1. */
+function nombresDe(p, out = []) {
+  if (!p) return out;
+  if (p.type === 'Identifier') out.push(p.name);
+  else if (p.type === 'ObjectPattern') p.properties.forEach(x => nombresDe(x.type === 'RestElement' ? x.argument : x.value, out));
+  else if (p.type === 'ArrayPattern') p.elements.forEach(x => nombresDe(x, out));
+  else if (p.type === 'AssignmentPattern') nombresDe(p.left, out);
+  else if (p.type === 'RestElement') nombresDe(p.argument, out);
+  return out;
+}
+
+function declaradosDelPlanificador() {
+  const espree = require('espree');
+  const out = {};
+  const vista = fs.existsSync(PLAN_VISTA) ? fs.readFileSync(PLAN_VISTA, 'utf8') : '';
+  const ficheros = [...vista.matchAll(/\/assets\/js\/(vistas\/Planificacion\/[^'"?\s)]+\.js)/g)]
+    .map(m => path.join(JS, ...m[1].split('/')));
+  for (const f of ficheros) {
+    if (!fs.existsSync(f)) continue;
+    let ast;
+    // Un fichero que no compila no tumba el lint entero: se salta aquí y ESLint
+    // lo señala con su línea al pasar por él.
+    try { ast = espree.parse(fs.readFileSync(f, 'utf8'), { ecmaVersion: 'latest', sourceType: 'script' }); }
+    catch (e) { console.warn(`eslint.config.js: no compila ${path.relative(__dirname, f)} (${e.message}); sus nombres no se comparten`); continue; }
+    for (const s of ast.body) {
+      if (s.type === 'FunctionDeclaration' || s.type === 'ClassDeclaration') out[s.id.name] = 'readonly';
+      if (s.type === 'VariableDeclaration') {
+        for (const d of s.declarations) for (const n of nombresDe(d.id)) out[n] = s.kind === 'let' ? 'writable' : 'readonly';
+      }
+    }
+  }
+  return out;
+}
+
+// Las salidas al servidor que se saltarían el candado de solo lectura.
+const POR_FETCHPLAN = 'En el planificador se escribe con fetchPlan (respeta el «solo lectura»).';
+
 module.exports = [
   {
     files: ['public/assets/js/**/*.js'],
@@ -57,6 +106,29 @@ module.exports = [
       // `vars: 'local'`: lo de primer nivel de un script clásico es global y lo
       // puede usar otro script de la página; eso no se cuenta como sin usar.
       'no-unused-vars': ['warn', { vars: 'local', args: 'none', caughtErrors: 'none' }],
+    },
+  },
+  {
+    files: PLAN,
+    languageOptions: { globals: declaradosDelPlanificador() },
+    rules: {
+      // Lo que no es un `let` no se reasigna desde otro fichero: `pintar = …`
+      // cambiaría la función para los once, y `fetchPlan = …` rompería al
+      // ejecutarse.
+      'no-global-assign': 'error',
+      // EL CANDADO DE SOLO LECTURA ES fetchPlan. Cualquier otra salida escribiría
+      // aunque quien mira no tenga '/planificador/editar' (el servidor lo para
+      // igual, pero la pantalla mentiría). Api.get, para leer, sí se puede.
+      'no-restricted-globals': ['error',
+        { name: 'fetch', message: POR_FETCHPLAN },
+        { name: 'XMLHttpRequest', message: POR_FETCHPLAN }],
+      'no-restricted-properties': ['error',
+        { object: 'window', property: 'fetch', message: POR_FETCHPLAN },
+        { object: 'globalThis', property: 'fetch', message: POR_FETCHPLAN },
+        { object: 'self', property: 'fetch', message: POR_FETCHPLAN },
+        { object: 'Api', property: 'post', message: POR_FETCHPLAN },
+        { object: 'Api', property: 'pedir', message: POR_FETCHPLAN },
+        { object: 'navigator', property: 'sendBeacon', message: POR_FETCHPLAN }],
     },
   },
 ];
