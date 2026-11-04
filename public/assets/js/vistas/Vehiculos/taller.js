@@ -488,20 +488,24 @@
 
   /**
    * UNA CITA DE AGENDA (Barcelona, 04/11/2026): la hora, el coche y de dónde
-   * sale (el Excel o quién la puso). Sin botones de aviso, confirmación ni
-   * estado; solo su seguimiento.
+   * sale (el Excel o quién la puso). Sin botones de aviso ni confirmación: solo
+   * anular una pendiente (con motivo) y su seguimiento.
    */
   function filaAgenda(c) {
+    const pendiente = c.estado === 'pendiente';
     const origen = c.a_mano
       ? `<i class="fa-solid fa-pen mr-1"></i>Puesta a mano${c.creado_por_nombre ? ' por ' + esc(c.creado_por_nombre) : ''}`
       : `<i class="fa-solid fa-file-excel mr-1"></i>Excel «${esc(c.fichero || '—')}»`;
-    return `<tr class="${c.estado === 'pendiente' ? '' : 'opacity-70'} align-top">
+    const acciones = [];
+    if (PUEDE && pendiente) acciones.push(botonCita('anular', c.id, 'fa-solid fa-ban', 'Anular', 'Quitar esta cita. Pide el motivo, que queda en su seguimiento', false));
+    acciones.push(botonCita('seguimiento', c.id, 'fa-solid fa-clock-rotate-left', '', 'Todo lo que ha pasado con esta cita', false));
+    return `<tr class="${pendiente ? '' : 'opacity-70'} align-top">
       <td class="px-4 py-3 font-semibold tabular-nums text-telecab-text">${esc(c.hora)}</td>
       <td class="px-3 py-3"><span class="font-mono font-semibold text-telecab-text">${esc(c.matricula)}</span>
-        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div></td>
+        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div>
+        ${pendiente ? '' : `<div class="mt-1">${C.confirmacion(c)}</div>`}</td>
       <td class="px-3 py-3 text-xs text-telecab-muted">${origen}<div class="text-[11px]">${esc(c.creado_at || '')}</div></td>
-      <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-1">${
-        botonCita('seguimiento', c.id, 'fa-solid fa-clock-rotate-left', '', 'Todo lo que ha pasado con esta cita', false)}</div></td>
+      <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-1">${acciones.join('')}</div></td>
     </tr>`;
   }
 
@@ -537,6 +541,19 @@
     if (!c) return;
     try {
       if (accion === 'seguimiento') return C.verSeguimiento(BASE + '/api/citas/' + c.id);
+      if (accion === 'anular') {
+        // Barcelona (04/11/2026): de su estado, solo anular, y con el porqué.
+        const v = await Dialogo.formulario(`Anular la cita · ${c.matricula}, ${C.diaLargo(c.fecha).toLowerCase()} a las ${c.hora}`, [
+          { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto-largo', obligatorio: true, max: 300,
+            marcador: 'El taller la ha cambiado, el coche no puede ir…' },
+        ], { textoBoton: 'Anular la cita', nota: 'Queda en su seguimiento con tu nombre. Para volver a ponerla, «Nueva cita» ese mismo día.' });
+        if (!v) return;
+        await postCita(`${BASE}/api/citas/${c.id}/anular`, { motivo: v.motivo });
+        Dialogo.hecho('Cita anulada');
+        await cargarCitas();
+        // La fila del coche deja de decir «Cita puesta para revisión».
+        return cargar().catch(() => { /* la flota se repinta en la próxima */ });
+      }
       if (accion === 'copiar') {
         await navigator.clipboard.writeText(c.mensaje);
         return Dialogo.hecho('Mensaje copiado: pégalo en su chat');
@@ -594,7 +611,7 @@
               <p class="text-xs text-telecab-muted mt-1">Aquí solo entran los coches de ${esc(SEDE)} dados de alta en Vehículos.</p>` : ''}
             ${r.cambiadas.length ? `<p class="text-sm mt-3 font-semibold">Cambian de hora</p>${lista_(r.cambiadas.map(esc))}` : ''}
             ${r.noVienen.length ? `<p class="text-sm mt-3 font-semibold">Estaban y no vienen en este Excel</p>${lista_(r.noVienen.map(esc))}
-              <p class="text-xs text-telecab-muted mt-1">${CITAS_AGENDA ? 'No se quitan solas.' : 'No se anulan solas: si el taller las ha quitado, anúlalas con «Estado».'}</p>` : ''}
+              <p class="text-xs text-telecab-muted mt-1">${CITAS_AGENDA ? 'No se quitan solas: si el taller las ha quitado, anúlalas con «Anular».' :'No se anulan solas: si el taller las ha quitado, anúlalas con «Estado».'}</p>` : ''}
             ${r.pasadas ? `<p class="text-sm mt-3 text-telecab-muted">${r.pasadas} cita(s) de días que ya pasaron: no se importan.</p>` : ''}
             ${(r.avisos || []).length ? `<p class="text-sm mt-3 font-semibold">Avisos</p>${lista_(r.avisos.map(esc))}` : ''}`,
         });

@@ -85,7 +85,7 @@ En la pestaña **Estado de la flota**, cada coche con una cita pendiente lleva, 
 
 ## Las de Barcelona: solo agenda (04/11/2026)
 
-Barcelona pone sus citas en la misma tabla, desde su Mantenimientos (`/barcelona/mantenimientos`, [[Barcelona#Las citas del taller: solo agenda (04/11/2026)]]). Camilo: *«sin envíos de WhatsApp… ni confirmaciones, solo agregar citas»*. Se añaden (el Excel o a mano) y se ven, y nada más.
+Barcelona pone sus citas en la misma tabla, desde su Mantenimientos (`/barcelona/mantenimientos`, [[Barcelona#Las citas del taller: solo agenda (04/11/2026)]]). Camilo: *«sin envíos de WhatsApp… ni confirmaciones, solo agregar citas»*, y después *«ponle también anular las citas»*. Se añaden (el Excel o a mano), se ven y se anulan con motivo, y nada más.
 
 Lo que lo decide es la **sede del coche** (`esAgenda` en `citas.service`), así que vale venga de donde venga:
 
@@ -97,7 +97,7 @@ Lo que lo decide es la **sede del coche** (`esAgenda` en `citas.service`), así 
 
 ## Permisos
 
-- Mirar las citas en Mantenimientos: `/taller`. Las de Barcelona, sin llave, como todo Barcelona; añadirlas, `/taller/apuntar`.
+- Mirar las citas en Mantenimientos: `/taller`. Las de Barcelona, sin llave, como todo Barcelona; añadirlas y anularlas, `/taller/apuntar`.
 - Subir el Excel, poner una a mano, avisar, «Avisado» y «Estado»: `/taller/apuntar` (el servidor lo comprueba en cada ruta, no solo escondiendo el botón).
 - La pantalla de Control y sus llamadas: `/control`.
 

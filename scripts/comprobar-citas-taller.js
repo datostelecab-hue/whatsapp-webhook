@@ -310,6 +310,19 @@ const dia = n => S.sumarDias(hoy, n);
   igual('Un botón que diera con una de Barcelona no la confirma', await S.respuestaDelConductor({ telefono: '600112233', etiqueta: 'Confirmo' }), null);
   await lanza('Mantenimientos de Madrid no le cambia el estado', () => S.cambiarEstado('300', { estado: 'hecha' }, {}, { sede: 'madrid' }), 'No existe esa cita');
   await lanza('Ni abre su ficha', () => S.ficha('300', { sede: 'madrid' }), 'No existe esa cita');
+  // Anular sí (04/11/2026: «ponle también anular las citas»), desde Barcelona y con motivo.
+  const M = require('../modules/Barcelona/mantenimientos.service');
+  const estados = [];
+  repo.cambiarEstado = async (id, x) => { estados.push([id, x.estado, x.nota]); };
+  repo.seguimiento = async () => [];
+  await lanza('Anular una de Barcelona pide el motivo', () => M.anularCita('300', '', { usuarioId: 7 }), 'Di por qué');
+  igual('Con motivo, se anula', (await M.anularCita('300', 'El taller la cambia', { usuarioId: 7 })).ok, true);
+  igual('Y queda como anulada, con el motivo', estados[estados.length - 1], [300, 'anulada', 'El taller la cambia']);
+  await lanza('Desde Barcelona no se anula una de Madrid', () => M.anularCita('301', 'por probar', { usuarioId: 7 }), 'No existe esa cita');
+  const yaAnulada = { ...deBcn, estado: 'anulada' };
+  repo.una = async () => yaAnulada;
+  await lanza('Una ya anulada no se vuelve a anular', () => M.anularCita('300', 'otra vez', { usuarioId: 7 }), 'solo se anula una pendiente');
+
   let paraAvisarSede = null;
   repo.paraAvisar = async (f, sede) => { paraAvisarSede = sede; return []; };
   await S.avisarLasDeDentroDeDos();
