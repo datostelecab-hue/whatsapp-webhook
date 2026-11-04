@@ -214,7 +214,16 @@ Lo que hace por su cuenta: se coloca **debajo si cabe y encima si no**, se recor
 **Se puede apagar**, y la decisión es de cada uno: `usuario.ayudas` (db/143), en Configuración → Apariencia. Viaja en el perfil como el tema, no en el navegador: quien las apaga en la oficina no se las vuelve a encontrar en casa. Apagadas, vuelven los globos del navegador de siempre. **Nace encendida**: quien no sepa que la opción existe se queda con la ayuda, no sin ella.
 
 > [!warning] El `title` se roba y se devuelve
-> Si el atributo se queda puesto, el navegador pinta **además** su propio globo al segundo y medio: dos cajas con el mismo texto, una con los colores de Windows. Se mueve a `data-ayuda` al entrar y **se devuelve siempre** al salir.
+> Si el atributo se queda puesto, el navegador pinta **además** su propio globo al segundo y medio: dos cajas con el mismo texto, una con los colores de Windows. Al entrar el texto se guarda en `data-ayuda` y el atributo se queda como `title=""`. Al salir **se devuelve siempre**.
+
+> [!warning] Se calla toda la cadena, no solo el elemento (04/11/2026)
+> Camilo: «algunos textos predeterminados tapan los mensajes guía». Quitar el `title` del elemento no bastaba: el navegador buscaba entonces el del **padre** y pintaba ese. En Inicio, la raya del ideal («El ideal a cierre de ayer») está dentro de la barra del mes, que tiene su propio `title` («… h de los días cerrados + … h de hoy»), y al pasar por la raya salían las dos cajas.
+>
+> Ahora se callan el elemento **y cada antepasado con ayuda**. El hueco queda como `title=""`, que es como el navegador entiende «aquí no hay nada que explicar» y deja de subir.
+>
+> Hay otros dos caminos que llevaban al globo del navegador, y se tratan igual:
+> - **Los `<title>` de los SVG**: las barras del mes en Inicio, las cintas de la auditoría de flota y las piezas del coche. Se leen como un `title` y se vacían mientras el cursor está encima.
+> - **Una pantalla que reescribe el `title` con el cursor encima**: Inicio lo hace en cada refresco. Un `MutationObserver` lo guarda al momento y, si es el globo que se ve, cambia también su texto. Antes, al salir se devolvía el texto viejo encima del nuevo.
 
 > [!warning] Moverse a un hijo NO es salir
 > `mouseout` salta también al cruzar de un elemento a otro **dentro del mismo**: la celda del calendario lleva el `title` y dentro tiene el número. Sin comprobar `relatedTarget`, pasar el ratón del borde de la celda a la cifra se leía como una salida — se devolvía el `title`, el navegador se ponía a contar y pintaba **su** globo encima. De ahí que al mover el cursor unos centímetros cambiara de aspecto sin salir de la casilla.
