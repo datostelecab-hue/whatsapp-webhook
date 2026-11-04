@@ -32,7 +32,8 @@ por estado de Mapon ni por estado de BOLT: por **los dos a la vez**. Renovado el
 | En espera en la M-30 | azul | en espera en BOLT, dentro de la M-30 (`m30.js`) |
 | En espera fuera de la M-30 | azul que parpadea | en espera en BOLT, fuera de la M-30 |
 | Rodando en descanso | amarillo | rueda con el conductor en descanso |
-| **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado** |
+| **Fichaje que no cuadra** | **rojo que parpadea** | **se usa y nadie lo tiene en el bot, o en BOLT va otro** (04/11/2026, `fichajeDe`) |
+| **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado**, con el bot a nombre de quien lo llevaba en BOLT |
 | Error de GPS | morado | de viaje en BOLT y Mapon lo da por parado 10 min o más |
 
 Detrás: parado, GPS sin fijar, sin señal y sin nada en Mapon. El detalle, en

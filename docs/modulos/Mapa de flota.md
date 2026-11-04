@@ -38,12 +38,54 @@ el orden que pidió Camilo, que es también el de los filtros y el de la lista:
 | **En espera en la M-30** | azul | en espera en BOLT y dentro de la M-30, se mueva o no |
 | **En espera fuera de la M-30** | azul **que parpadea** | en espera en BOLT y fuera de la M-30 |
 | **Rodando en descanso** | amarillo | rueda con el conductor en descanso |
-| **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado** |
+| **Fichaje que no cuadra** | **rojo que parpadea** | **se usa y nadie lo tiene en el bot, o en BOLT va otra persona** (04/11/2026) |
+| **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado**, con el turno del bot a nombre de quien lo llevaba en BOLT |
 | **Error de GPS** | morado | de viaje en BOLT y Mapon lo da por parado **10 min o más** |
 
 Y detrás, separados por una raya en la cinta y solo si hay alguno: **Parado**
 (no se mueve y no está trabajando), **GPS sin fijar** (`nogps`), **Sin señal**
 (`nodata`) y **Sin nada en Mapon**.
+
+### El fichaje del bot manda (04/11/2026)
+
+Camilo: «de ahora en adelante el fichaje del bot es clave». Cada coche lleva el
+nombre de **quien lo tiene en el bot** (su turno abierto en `fichaje_turno`), y
+el rojo que parpadea gana a cualquier otro color salvo a «Sin nada en Mapon»
+(sin posición no hay punto). La regla es `fichajeDe` en `mapa.service.js`:
+
+| Lo que pasa | Color |
+|---|---|
+| Se usa y **nadie lo tiene fichado** en el bot | rojo que parpadea |
+| En el bot lo tiene uno y **en BOLT va otro** (conectado, o el último si rueda desconectado) | rojo que parpadea |
+| Rueda desconectado y **coinciden** el del bot y el de BOLT | rojo (el de siempre) |
+| Coinciden y está trabajando | su color de siempre (verde, azul…) |
+| Aparcado y sin nadie conectado, con o sin turno | lo de siempre (parado…) |
+
+- **«Se usa»** es que ruede según Mapon o que haya alguien conectado con él en
+  BOLT (viaje, espera o descanso). Un coche aparcado sin turno es un coche que no
+  usa nadie: si parpadeara, de noche parpadearía medio mapa.
+- **Se comparan personas, no nombres**: el conductor del turno contra la ficha
+  enlazada a la cuenta de BOLT (`conductor_externo`). El nombre de BOLT lo
+  escribe cada uno y casi nunca es el de su ficha. Solo si falta el enlace se
+  compara el nombre (`mismoNombre`), y con manga ancha —todas las palabras del
+  más corto en el otro—: un «otro» falso manda a alguien a llamar a un conductor
+  que no ha hecho nada.
+- **El viaje de oficina** (alguien de oficina lleva el coche al taller) no está
+  en BOLT: con BOLT desconectado no se compara con nadie y queda en el rojo de
+  siempre. Si alguien está CONECTADO en BOLT con ese coche, sí parpadea.
+- **Dudoso**: si lo que no cuadra depende de BOLT y lo de BOLT es viejo, el punto
+  sale hueco, como los demás rojos.
+
+**El nombre junto al punto**: el corto («Ana L.») desde el zoom de barrio (13);
+en los que parpadean, siempre, en rojo, y «Sin fichar» si nadie lo tiene. Con la
+flota entera en pantalla, ochenta nombres se taparían. La ficha abre con la fila
+**Bot** (quién y desde cuándo) y la persona de BOLT pasa a **En BOLT**.
+
+> Medido con la copia de producción del 27/10/2026 a las 14:44: de 83 coches,
+> **24 parpadearían** —19 en uso sin nadie en el bot y 5 con otra persona en
+> BOLT—. Los 5 se comprobaron por ficha: en los cinco la del turno y la de la
+> cuenta de BOLT son personas distintas (turnos del día anterior sin cerrar con
+> otro conductor ya en el coche).
 
 > [!note] Antes «Trabajando» juntaba viaje y espera, y solo si rodaba
 > Un coche esperando aparcado —que es como se espera— salía apagado, igual que
@@ -136,8 +178,11 @@ Medido el 29/09 a las 13:06: 4 coches (Deisy dando vueltas 36 min, Juan Guillerm
 ## La lista y el buscador
 
 **La lista enseña a la persona, no la matrícula** (la matrícula va debajo, en
-pequeño). La de ahora si está conectada; si no, **el último que llevó el coche en
-BOLT**, en gris y con «último, hace 3 h». Sale del último apunte con conductor en
+pequeño). Desde el 04/11/2026, **quien lo tiene en el bot**; debajo, si en BOLT
+va otro, «en BOLT: …», y si nadie lo tiene, «sin fichar · BOLT: …». Sin turno,
+lo de antes: la de ahora si está conectada; si no, **el último que llevó el coche en
+BOLT**, en gris y con «último, hace 3 h». El buscador encuentra también por el
+nombre del bot. Sale del último apunte con conductor en
 `bolt_state_log`, **sin ventana de tiempo** (~8 ms para toda la flota con el
 índice `idx_bsl_vehiculo_dia`). La ficha del coche dice lo mismo.
 
@@ -371,7 +416,9 @@ grado de la mediana; los de fuera siguen en el mapa y en la lista.
 ## El aviso al momento
 
 Cuando un coche lleva **3 minutos seguidos rodando** sin nadie conectado, sale
-un WhatsApp a los controladores. Tipo `rueda_suelto` en [[Control Alertas]], así
+un WhatsApp a los controladores. Desde el 04/11/2026 cuentan también los que
+parpadean por el fichaje si ruedan desconectados (`ruedaSuelto`): si no, el aviso
+habría dejado de saltar justo con los peores, los que nadie tiene en el bot. Tipo `rueda_suelto` en [[Control Alertas]], así
 que hereda destinatarios, registro, modo test/live, tope por franja y la
 pantalla de /alertas — no hay una segunda máquina de avisar.
 

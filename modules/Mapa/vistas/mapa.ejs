@@ -117,14 +117,33 @@
   .m-coche.m-esperafuera, .m-parpadea { animation: m-parpadeo 1.1s ease-in-out infinite; }
   @keyframes m-parpadeo { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
 
+  /* EL FICHAJE QUE NO CUADRA PARPADEA EN ROJO (04/11/2026). Se usa y nadie lo
+     tiene en el bot, o en BOLT va otro. Se apaga entero, como la espera de
+     fuera, y más deprisa; no late como el rojo de siempre: de reojo se separa
+     el «no se sabe quién lo lleva» del «se sabe, pero no se ha conectado». */
+  .m-coche.m-fichaje, .m-parpadea-rojo { animation: m-parpadeo .8s ease-in-out infinite; }
+
   /* Quien pidió menos movimiento en su sistema no quiere que una pantalla se
      lo salte. El rojo ya distingue; el latido solo ayuda a encontrarlo. La
      espera de fuera, sin parpadeo, lleva un anillo discontinuo: algo tiene que
-     separarla de la de dentro. */
+     separarla de la de dentro. El fichaje, lo mismo en rojo. */
   @media (prefers-reduced-motion: reduce) {
-    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea { animation: none; }
+    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea, .m-coche.m-fichaje, .m-parpadea-rojo { animation: none; }
     .m-coche.m-esperafuera { outline: 2px dashed rgb(var(--tc-mapa-espera)); outline-offset: 2px; }
+    .m-coche.m-fichaje { outline: 2px dashed rgb(var(--tc-red)); outline-offset: 2px; }
   }
+
+  /* QUIÉN LO TIENE EN EL BOT (04/11/2026): su nombre pegado al punto. Desde el
+     zoom de barrio (#m-mapa.m-nombres) y SIEMPRE en los que parpadean: con la
+     flota entera en pantalla, ochenta nombres se taparían unos a otros. */
+  .m-nombre {
+    position: absolute; left: 20px; top: 9px; pointer-events: none; white-space: nowrap; display: none;
+    padding: 0 4px; border-radius: 6px; font-size: 9px; font-weight: 600; line-height: 14px;
+    background: rgb(var(--tc-card)); color: rgb(var(--tc-text)); border: 1px solid rgb(var(--tc-border));
+    box-shadow: 0 1px 3px rgb(0 0 0 / .45);
+  }
+  #m-mapa.m-nombres .m-nombre, .m-coche.m-fichaje .m-nombre { display: block; }
+  .m-coche.m-fichaje .m-nombre { background: rgb(var(--tc-red)); color: rgb(var(--tc-dark)); border-color: transparent; }
 
   /* NO VUELVE A LA M-30 (29/09/2026): una etiqueta con los minutos pegada al
      punto. No cambia el color —el color dice qué hace en BOLT—: dice además
@@ -175,6 +194,7 @@
   #m-mapa.m-cerca .m-coche.m-elegido { box-shadow: none; }
   #m-mapa.m-cerca .m-coche.m-elegido .m-auto { filter: drop-shadow(0 0 3px rgb(var(--tc-gold))) drop-shadow(0 0 3px rgb(var(--tc-gold))); }
   #m-mapa.m-cerca .m-sinvolver { left: 18px; top: -4px; }
+  #m-mapa.m-cerca .m-nombre { left: 18px; top: 12px; }
   @media (prefers-reduced-motion: reduce) {
     #m-mapa.m-cerca .m-coche.m-suelto .m-auto { animation: none; }
     #m-mapa.m-cerca .m-auto { transition: none; }
@@ -245,6 +265,8 @@
     espera:      { tk: '--tc-mapa-espera',   icono: 'fa-hourglass-half',       texto: 'En espera en la M-30' },
     esperafuera: { tk: '--tc-mapa-espera',   icono: 'fa-hourglass-end',        texto: 'En espera fuera de la M-30' },
     descanso:    { tk: '--tc-mapa-descanso', icono: 'fa-mug-hot',              texto: 'Rodando en descanso' },
+    // El fichaje del bot que no cuadra (04/11/2026): parpadea. Ver mapa.service (`fichajeDe`).
+    fichaje:     { tk: '--tc-red',           icono: 'fa-user-xmark',           texto: 'Fichaje que no cuadra' },
     suelto:      { tk: '--tc-red',           icono: 'fa-triangle-exclamation', texto: 'Rodando desconectado' },
     errorgps:    { tk: '--tc-violet',        icono: 'fa-location-crosshairs',  texto: 'Error de GPS' },
     parado:      { tk: '--tc-muted',         icono: 'fa-circle',               texto: 'Parado' },
@@ -254,7 +276,8 @@
     // van en la lista y en la franja roja de arriba.
     sinmapon:    { tk: '--tc-red',           icono: 'fa-satellite',            texto: 'Sin nada en Mapon' },
   };
-  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'suelto', 'errorgps'];
+  // El del fichaje, junto al rojo de siempre: los dos rojos seguidos.
+  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'fichaje', 'suelto', 'errorgps'];
   const ORDEN = PRINCIPALES.concat(['parado', 'singps', 'perdido', 'sinmapon']);
   const CLASES_TONO = ORDEN.map(k => 'm-' + k);
   // Explicación de cada filtro, para el globo del chip.
@@ -263,7 +286,8 @@
     espera: 'En espera en BOLT y dentro de la M-30 (la línea azul discontinua del mapa).',
     esperafuera: 'En espera en BOLT, pero FUERA de la M-30.',
     descanso: 'Rodando con el conductor en descanso: conectado, pero sin dar servicio.',
-    suelto: 'Rodando sin nadie conectado en BOLT.',
+    fichaje: 'Se está usando (rueda o hay alguien conectado en BOLT) y nadie lo tiene fichado en el bot, o en BOLT va otra persona que la del bot.',
+    suelto: 'Rodando sin nadie conectado en BOLT, con el coche fichado en el bot a nombre de quien lo lleva.',
     errorgps: 'De viaje en BOLT y Mapon lo da por parado desde hace 10 min o más: el GPS no está dando la posición real.',
     parado: 'No se mueve y no está trabajando en BOLT.',
     singps: 'El equipo habla pero no coge satélite: el punto es de hace unos minutos.',
@@ -305,6 +329,23 @@
   // que lo lleva ahora si está conectado; si no, el último que lo llevó en BOLT.
   const esAhora = c => !!(c.conectado && c.conductor);
   const nombreDe = c => (esAhora(c) ? c.conductor : (c.ultimoConductor || c.conductor || null));
+  // QUIÉN LO TIENE EN EL BOT (04/11/2026). Desde hoy es el nombre que manda: la
+  // lista y la etiqueta del punto lo enseñan a él, y BOLT queda debajo.
+  const delBot = c => (c.fichaje && c.fichaje.nombre) || null;
+  const sinFichar = c => !!(c.fichaje && c.fichaje.estado === 'sinfichar');
+  const quienDe = c => delBot(c) || nombreDe(c);
+  // «Ana María López» → «Ana L.»: lo que cabe junto a un punto.
+  const corto = n => {
+    const p = String(n || '').trim().split(/\s+/);
+    return p.length > 1 ? p[0] + ' ' + p[1].charAt(0) + '.' : p[0];
+  };
+  // La hora a la que empezó el turno; con el día delante si no es de hoy.
+  const horaDe = iso => {
+    const d = new Date(iso);
+    const hoy = d.toDateString() === new Date().toDateString();
+    return (hoy ? '' : d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ' ')
+      + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  };
 
   // ── El buscador ──────────────────────────────────────────────────────────
   // Sin acentos ni mayúsculas, y la matrícula sin espacios ni guiones: «1234 abc»
@@ -315,7 +356,7 @@
     if (!busca) return true;
     const b = norm(busca), bm = b.replace(/[\s-]/g, '');
     return norm(c.matricula).replace(/[\s-]/g, '').includes(bm)
-      || norm(c.conductor).includes(b) || norm(c.ultimoConductor).includes(b);
+      || norm(c.conductor).includes(b) || norm(c.ultimoConductor).includes(b) || norm(delBot(c)).includes(b);
   };
   // Lo que se ve, en el mapa y en la lista: el chip elegido y lo buscado.
   const visible = c => (!filtro || (filtro === 'novuelve' ? !!c.noVuelve : c.tono === filtro)) && coincide(c);
@@ -380,6 +421,8 @@
   // desde arriba, girado hacia donde va. Antes, con cien puntos, un coche de
   // dibujo no se leería; de cerca, el sentido de la marcha es justo lo que falta.
   const ZOOM_COCHE = 15;
+  // Desde aquí, el nombre del bot junto a cada punto (los que parpadean, siempre).
+  const ZOOM_NOMBRES = 13;
   // El coche, mirando al norte; se gira con su rumbo. Lleva el color de lo que
   // hace en BOLT (currentColor) y el borde del fondo de la casa para despegarse
   // del mapa en cualquier tema.
@@ -638,10 +681,22 @@
     const fila = (etq, html) => '<div class="m-ficha-fila"><span class="m-ficha-etq">' + etq + '</span><div class="min-w-0">' + html + '</div></div>';
     const filas = [];
 
-    // Quién: el de ahora, o el último que lo llevó en BOLT, dicho como tal.
+    // QUIÉN LO TIENE EN EL BOT, lo primero (04/11/2026): desde hoy es lo que manda.
+    const f = c.fichaje || {};
+    if (f.nombre) {
+      filas.push(fila('Bot', '<b class="break-words">' + esc(f.nombre) + '</b>'
+        + (f.tipo === 'viaje' ? ' ' + mut('· viaje de oficina') : '')
+        + (f.desde ? ' ' + mut('· desde ' + esc(horaDe(f.desde))) : '')));
+    } else {
+      filas.push(fila('Bot', sinFichar(c)
+        ? '<b style="color:' + cv('--tc-red') + '">Nadie lo tiene fichado</b>'
+        : mut('nadie lo tiene fichado')));
+    }
+
+    // Quién en BOLT: el de ahora, o el último que lo llevó, dicho como tal.
     const quien = nombreDe(c);
     if (quien) {
-      filas.push(fila(esAhora(c) ? 'Conductor' : 'Último',
+      filas.push(fila(esAhora(c) ? 'En BOLT' : 'Último',
         '<b class="break-words">' + esc(quien) + '</b>'
         + (!esAhora(c) && c.ultimoHace != null ? ' ' + mut('· hace ' + haceLargo(c.ultimoHace)) : '')
         + (c.telefono ? '<a href="tel:' + esc(c.telefono) + '" class="block text-telecab-gold mt-0.5 tabular-nums">'
@@ -745,6 +800,7 @@
   /** El minicoche, desde el zoom de calle. */
   function ajustarZoom() {
     if (mapa) $('#m-mapa').classList.toggle('m-cerca', mapa.getZoom() >= ZOOM_COCHE);
+    if (mapa) $('#m-mapa').classList.toggle('m-nombres', mapa.getZoom() >= ZOOM_NOMBRES);
   }
 
   // ── Pintar: mover lo que ya está, no rehacerlo ───────────────────────────
@@ -801,9 +857,20 @@
       // El rojo levantado sobre datos de BOLT viejos se pinta hueco: sigue
       // estando ahi, pero no acusa a nadie.
       if (c.dudoso) m.el.classList.add('m-dudoso');
-      m.el.title = (c.matricula || '#' + c.unidad) + (nombreDe(c) ? ' · ' + nombreDe(c) : '') + ' · ' + t.texto
+      m.el.title = (c.matricula || '#' + c.unidad)
+        + (delBot(c) ? ' · bot: ' + delBot(c) : sinFichar(c) ? ' · sin fichar en el bot' : '')
+        + (nombreDe(c) && nombreDe(c) !== delBot(c) ? ' · BOLT: ' + nombreDe(c) : '') + ' · ' + t.texto
         + (c.noVuelve ? ' · ' + minTxt(c.noVuelve.desde) + ' sin volver a la M-30' : '');
       m.el.querySelector('i').className = 'fa-solid ' + t.icono;
+      // El nombre de quien lo tiene en el bot, pegado al punto (ver .m-nombre).
+      const etqBot = sinFichar(c) ? 'Sin fichar' : delBot(c) ? corto(delBot(c)) : '';
+      let nb = m.el.querySelector('.m-nombre');
+      if (etqBot) {
+        if (!nb) { nb = document.createElement('span'); nb.className = 'm-nombre'; nb.setAttribute('aria-hidden', 'true'); m.el.appendChild(nb); }
+        nb.textContent = etqBot;
+      } else if (nb) {
+        nb.remove();
+      }
       // La etiqueta de los minutos sin volver: se pone, se mueve o se quita.
       let et = m.el.querySelector('.m-sinvolver');
       if (c.noVuelve) {
@@ -881,7 +948,7 @@
     // En el orden de los filtros, y dentro de cada uno por persona.
     const vis = DATOS.filter(visible)
       .sort((a, b) => ORDEN.indexOf(a.tono) - ORDEN.indexOf(b.tono)
-        || String(nombreDe(a) || a.matricula || '').localeCompare(String(nombreDe(b) || b.matricula || ''), 'es'));
+        || String(quienDe(a) || a.matricula || '').localeCompare(String(quienDe(b) || b.matricula || ''), 'es'));
     if (!vis.length) {
       $('#m-lista').innerHTML = '<p class="text-xs text-telecab-muted p-2">'
         + (busca ? 'Nadie con «' + esc(busca) + '».' : 'Ninguno.') + '</p>';
@@ -891,19 +958,26 @@
     // por su nombre; la matrícula sigue ahí, en pequeño, para quien la tenga.
     $('#m-lista').innerHTML = vis.map(c => {
       const t = TONOS[c.tono] || TONOS.parado;
-      const quien = nombreDe(c);
+      // Arriba, quien lo tiene en el bot; si nadie, el de BOLT como antes.
+      const bot = delBot(c);
+      const quien = bot || nombreDe(c);
       const mat = c.matricula || '#' + c.unidad;
+      const enBolt = nombreDe(c);
       const estado = c.tono === 'sinmapon'
         ? (c.estadoVehiculo || 'sin estado') + ' · sin Mapon'
+        : bot
+          ? (c.fichaje.estado === 'otro' && enBolt ? 'en BOLT: ' + enBolt
+            : esAhora(c) ? (c.situacionEtiqueta || t.texto) : t.texto)
+        : sinFichar(c) ? 'sin fichar' + (enBolt ? ' · BOLT: ' + enBolt : '')
         : esAhora(c) ? (c.situacionEtiqueta || t.texto)
         : quien ? 'último' + (c.ultimoHace != null ? ', hace ' + haceLargo(c.ultimoHace) : '')
         : 'nadie en BOLT';
       return '<button data-clave="' + esc(c.clave) + '"'
         + ' class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition flex items-center gap-2">'
-        + '<span class="w-2 h-2 rounded-full shrink-0' + (c.tono === 'esperafuera' ? ' m-parpadea' : '')
+        + '<span class="w-2 h-2 rounded-full shrink-0' + (c.tono === 'esperafuera' ? ' m-parpadea' : c.tono === 'fichaje' ? ' m-parpadea-rojo' : '')
         + '" style="background:' + cv(t.tk) + '"></span>'
         + '<span class="min-w-0 flex-1">'
-        + '<span class="block text-xs font-semibold truncate' + (quien && !esAhora(c) ? ' text-telecab-muted' : '') + '">'
+        + '<span class="block text-xs font-semibold truncate' + (quien && !bot && !esAhora(c) ? ' text-telecab-muted' : '') + '">'
         + esc(quien || mat) + '</span>'
         + '<span class="block text-[10px] text-telecab-muted truncate">'
         + (quien ? '<span class="tabular-nums">' + esc(mat) + '</span> · ' : '') + esc(estado) + '</span></span>'

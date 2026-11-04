@@ -74,7 +74,21 @@ async function coches(sedes) {
               SELECT 1 FROM bolt_order b2
                WHERE b2.matricula_norm = v.matricula_norm
                  AND b2.creado_ts BETWEEN ho.t - interval '5 minutes' AND ho.t + interval '2 minutes'
-                 AND b2.estado NOT IN ('driver_did_not_respond', 'driver_rejected')))  AS viaje_sin_llegar
+                 AND b2.estado NOT IN ('driver_did_not_respond', 'driver_rejected')))  AS viaje_sin_llegar,
+           -- QUIÉN TIENE EL COCHE EN EL BOT (04/11/2026): su turno abierto en
+           -- fichaje_turno. El nombre, el de su ficha; si no tiene (un usuario
+           -- de oficina en un viaje, una cuenta de BOLT de Barcelona), el que
+           -- guardó el bot al abrir. nombre_bolt y conductor_id son para
+           -- compararlo con quien sale en BOLT (mapa.service, fichajeDe).
+           ft.id                                                     AS ft_id,
+           ft.tipo                                                   AS ft_tipo,
+           ft.conductor_id                                           AS ft_conductor_id,
+           COALESCE(NULLIF(btrim(concat_ws(' ', fc.nombre, fc.apellidos)), ''),
+                    NULLIF(btrim(concat_ws(' ', fu.nombre, fu.apellidos)), ''),
+                    NULLIF(btrim(ft.nombre), ''))                    AS ft_nombre,
+           NULLIF(btrim(ft.nombre), '')                              AS ft_nombre_bot,
+           NULLIF(btrim(fc.nombre_bolt), '')                         AS ft_nombre_bolt,
+           ft.inicio                                                 AS ft_inicio
       -- SE PARTE DE NUESTRA FLOTA, NO DE MAPON (24/09/2026). Antes era al
       -- reves -de fv_posicion hacia vehiculo- y un coche que Mapon no conoce
       -- no salia en el mapa ni avisaba de nada: sencillamente no existia. Lo
@@ -118,6 +132,20 @@ async function coches(sedes) {
           FROM fv_odometro o
          WHERE o.unit_id = p.mapon_unit AND o.inicio >= ud.dejado_ts
         HAVING count(*) > 0) kd ON ud.dejado_ts IS NOT NULL
+      -- El turno abierto del coche. Por su vehículo y, si el bot no lo enlazó,
+      -- por la matrícula normalizada (el bot guarda la que resolvió Mapon). La
+      -- base no deja dos abiertos para un coche (uq_ft_coche_abierto); el LIMIT
+      -- es por si uno casa por id y otro por matrícula.
+      LEFT JOIN LATERAL (
+        SELECT t.id, t.tipo, t.conductor_id, t.usuario_id, t.nombre, t.inicio
+          FROM fichaje_turno t
+         WHERE t.estado = 'abierto'
+           AND (t.vehiculo_id = v.id
+                OR upper(regexp_replace(t.matricula, '[^A-Za-z0-9]', '', 'g')) = v.matricula_norm)
+         ORDER BY t.inicio DESC
+         LIMIT 1) ft ON TRUE
+      LEFT JOIN conductor fc ON fc.id = ft.conductor_id
+      LEFT JOIN usuario fu ON fu.id = ft.usuario_id
      WHERE v.baja_at IS NULL
        AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);
@@ -164,4 +192,22 @@ async function frescura(sedes) {
   return r.rows[0] || { refrescado_at: null, hace: null, bolt_hace: null, dentro: 0, sin_ficha: 0, otra_sede: 0 };
 }
 
-module.exports = { coches, frescura };
+/**
+ * De quién es cada cuenta de BOLT en el ERP: uuid → conductor_id.
+ *
+ * Es lo que deja comparar PERSONAS y no nombres al cruzar el bot con BOLT: el
+ * nombre de BOLT lo escribe el conductor al darse de alta allí y casi nunca es
+ * el de su ficha. Solo las cuentas que salen ahora en el mapa (un `= ANY`).
+ * Las que dejaron de verse (`visto_hasta`) cuentan igual: siguen siendo suyas.
+ */
+async function personasDeBolt(uuids) {
+  const lista = [...new Set((uuids || []).filter(Boolean))];
+  if (!lista.length) return new Map();
+  const r = await db.consulta(`
+    SELECT externo_id, conductor_id
+      FROM conductor_externo
+     WHERE sistema = 'bolt' AND externo_id = ANY($1::varchar[])`, [lista]);
+  return new Map(r.rows.map(x => [x.externo_id, Number(x.conductor_id)]));
+}
+
+module.exports = { coches, frescura, personasDeBolt };

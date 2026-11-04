@@ -23,6 +23,18 @@
 // trabajando), `singps` y `perdido` (el equipo no fija o no habla) y
 // `sinmapon` (de Mapon no hay nada).
 //
+// ── Y POR ENCIMA DE TODOS, EL FICHAJE DEL BOT (04/11/2026) ─────────────────
+// Camilo: «de ahora en adelante el fichaje del bot es clave».
+//
+//   fichaje      ROJO QUE     se está usando y NADIE lo tiene fichado en el
+//                PARPADEA     bot, o en BOLT sale otra persona que la del bot.
+//
+// Gana a cualquier otro color salvo `sinmapon` (sin posición no hay punto que
+// pintar). Y el rojo de siempre, `suelto`, queda para el que rueda
+// desconectado de BOLT pero con el turno del bot a nombre de quien BOLT dice
+// que lo lleva: se sabe quién es, solo falta que se conecte. La regla, en
+// `fichajeDe`.
+//
 // Antes «trabajando» juntaba viaje y espera, y solo si el coche rodaba: un
 // coche esperando aparcado —que es como se espera— salía apagado, igual que
 // uno que nadie usa. La espera va ahora por su lado, se mueva o no, y lo que la
@@ -104,6 +116,95 @@ const GPS_PARADO_S = 600;
 // partir de ahí un "rueda sin nadie" no es un hecho, es una foto vieja, y el
 // mapa tiene que decirlo en vez de acusar.
 const BOLT_FIABLE_S = 1500;
+
+// Las situaciones de BOLT en las que hay alguien conectado con el coche.
+const CONECTADO = new Set(['viaje', 'espera', 'descanso']);
+
+/**
+ * EL FICHAJE DEL BOT CONTRA BOLT. Quién tiene el coche en el bot y si cuadra
+ * con lo que dice BOLT:
+ *
+ *   ok         lo tiene la misma persona que sale en BOLT, o en BOLT no sale
+ *              nadie con quien comparar
+ *   sinfichar  se está usando y nadie lo tiene en el bot
+ *   otro       en el bot lo tiene uno y en BOLT sale otro
+ *   null       no se usa y nadie lo tiene: nada que decir
+ *
+ * «SE ESTÁ USANDO» es que ruede según Mapon o que haya alguien conectado con
+ * él en BOLT (de viaje, en espera o en descanso). Un coche aparcado sin turno
+ * es un coche que nadie usa, no una falta: si parpadeara, de noche parpadearía
+ * medio mapa.
+ *
+ * SE COMPARAN PERSONAS, NO NOMBRES: el conductor del turno contra la ficha
+ * enlazada a la cuenta de BOLT (`conductor_externo`). El nombre de BOLT lo
+ * escribe cada uno al darse de alta allí y casi nunca es el de su ficha. Solo si
+ * alguna de las dos cuentas no está enlazada se mira el nombre, y con manga
+ * ancha (`mismoNombre`): un «otro» falso manda a alguien a llamar a un
+ * conductor que no ha hecho nada.
+ *
+ * EL VIAJE DE OFICINA (un usuario que lleva el coche al taller) no está en
+ * BOLT. Con BOLT desconectado no se compara con nadie: el último que lo llevó en
+ * BOLT no es quien lo mueve ahora, y está bien. Si en BOLT sale alguien
+ * CONECTADO con el coche mientras lo tiene alguien de oficina, eso sí es «otro».
+ */
+function fichajeDe(c, v, enlaces) {
+  const turno = c.ft_id != null;
+  const f = {
+    nombre: turno ? (c.ft_nombre || c.ft_nombre_bot || null) : null,
+    tipo: turno ? (c.ft_tipo || 'turno') : null,
+    desde: turno && c.ft_inicio ? new Date(c.ft_inicio).toISOString() : null,
+    estado: null,
+  };
+  const conectado = CONECTADO.has(v.situacion);
+  const enUso = c.estado_mapon === 'driving' || conectado;
+  if (!turno) { f.estado = enUso ? 'sinfichar' : null; return f; }
+  if (!enUso || (f.tipo === 'viaje' && !conectado)) { f.estado = 'ok'; return f; }
+  f.estado = mismaPersona(c, v, enlaces) === false ? 'otro' : 'ok';
+  return f;
+}
+
+/**
+ * ¿Es la misma persona la del turno y la de BOLT? `true`, `false`, o `null`
+ * si no hay con qué decirlo (y entonces no se acusa a nadie).
+ */
+function mismaPersona(c, v, enlaces) {
+  if (!v.uuid && !v.conductor) return null;
+  const idBolt = v.uuid && enlaces ? enlaces.get(v.uuid) : undefined;
+  if (c.ft_conductor_id != null && idBolt != null) return Number(c.ft_conductor_id) === idBolt;
+  if (!v.conductor) return null;
+  // Sin enlace, por nombre: el de BOLT contra todo lo que se sabe de quien fichó
+  // (su nombre en BOLT apuntado en la ficha, el de la ficha y el del bot).
+  const suyos = [c.ft_nombre_bolt, c.ft_nombre, c.ft_nombre_bot].filter(Boolean);
+  if (!suyos.length) return null;
+  const veredictos = suyos.map(n => mismoNombre(n, v.conductor));
+  if (veredictos.includes(true)) return true;
+  return veredictos.includes(false) ? false : null;
+}
+
+// Las palabras de un nombre que sirven para comparar: sin tildes, en
+// minúscula, sin «de», «la», «y»… ni iniciales sueltas.
+const SOBRAN = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
+const palabras = s => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  .replace(/[^a-z ]/g, ' ').split(/\s+/).filter(p => p.length > 1 && !SOBRAN.has(p));
+
+/**
+ * ¿Dos nombres escritos de forma distinta son la misma persona? Con manga
+ * ancha: basta con que todas las palabras del más corto estén en el otro.
+ * «Juan Pérez» y «Juan Carlos Pérez Gómez» son el mismo; «Juan Pérez» y «Juan
+ * Gómez», no. `null` si alguno no trae ni una palabra.
+ */
+function mismoNombre(a, b) {
+  const A = palabras(a), B = palabras(b);
+  if (!A.length || !B.length) return null;
+  const [corto, largo] = A.length <= B.length ? [A, new Set(B)] : [B, new Set(A)];
+  return corto.every(p => largo.has(p));
+}
+
+/** El tono con el fichaje encima: el rojo que parpadea gana a todo salvo a `sinmapon`. */
+function tonoConFichaje(base, f) {
+  if (base === 'sinmapon') return base;
+  return f && (f.estado === 'sinfichar' || f.estado === 'otro') ? 'fichaje' : base;
+}
 
 /**
  * La situación de BOLT de un coche, tal como la dice la foto del ahora.
@@ -203,14 +304,40 @@ function porQue(c, t, boltHace) {
     const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
     return viejo ? base + ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min` : base;
   }
-  if (t !== 'suelto') return null;
   const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
+  const ojo = viejo ? ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min` : '';
+  const f = c.fichaje || {};
+  if (t === 'fichaje') {
+    const enBolt = c.conductor;
+    const conectado = CONECTADO.has(c.situacion);
+    const como = (c.situacionEtiqueta || '').toLowerCase();
+    let texto;
+    if (f.estado === 'sinfichar') {
+      texto = conectado
+        ? `${enBolt || 'Alguien'} está ${como ? como + ' ' : ''}en BOLT con este coche y nadie lo tiene fichado en el bot`
+        : 'Rueda y nadie lo tiene fichado en el bot' + (enBolt ? ` (en BOLT, el último fue ${enBolt}, desconectado)` : '');
+    } else {
+      texto = conectado
+        ? `En el bot lo tiene ${f.nombre || '¿?'} y en BOLT va ${enBolt || 'otra persona'}${como ? ' (' + como + ')' : ''}`
+        : `Rueda: en el bot lo tiene ${f.nombre || '¿?'} y el último en BOLT fue ${enBolt || 'otra persona'}, desconectado`;
+    }
+    if (c.tonoBase === 'errorgps') texto += '. Además Mapon lo da por parado: el GPS no da la posición real';
+    // «Sin fichar» con el coche rodando lo dicen el bot y Mapon: no depende de
+    // BOLT, y no lleva el OJO aunque BOLT vaya con retraso.
+    const dependeDeBolt = f.estado === 'otro' || conectado;
+    return dependeDeBolt ? texto + ojo : texto;
+  }
+  if (t !== 'suelto') return null;
   const quien = c.conductor;
-  const base = quien
-    ? `Rueda y ${quien} no está conectado en BOLT`
-    : 'Rueda y no hay nadie fichado en BOLT con este coche';
+  // El rojo de siempre, ahora con el bot: quién lo tiene fichado y no se ha
+  // conectado. Si es un viaje de oficina, se dice: no se le busca en BOLT.
+  let base;
+  if (f.tipo === 'viaje' && f.nombre) base = `Rueda con ${f.nombre} (viaje de oficina en el bot) y nadie conectado en BOLT`;
+  else if (f.nombre) base = `Rueda: lo tiene ${f.nombre} en el bot y no está conectado en BOLT`;
+  else if (quien) base = `Rueda y ${quien} no está conectado en BOLT`;
+  else base = 'Rueda y no hay nadie fichado en BOLT con este coche';
   return viejo
-    ? base + ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min, puede estar conectado y no haberse enterado el sistema`
+    ? base + ojo + ', puede estar conectado y no haberse enterado el sistema'
     : base;
 }
 
@@ -238,12 +365,25 @@ async function frente({ forzar = false, sedes = null } = {}) {
     : (frescura.bolt_hace == null ? null : Number(frescura.bolt_hace));
   const boltFiable = boltHace != null && boltHace <= BOLT_FIABLE_S;
 
-  const coches = filas.map(c => {
-    const v = situacionDe((c.matricula && foto.porMatricula.get(normMat(c.matricula)))
-      || (c.mapon_unit != null ? foto.porUnidad.get(Number(c.mapon_unit)) : null));
+  // Lo de BOLT de cada coche, y luego de quién es cada cuenta de BOLT que sale:
+  // una consulta para todas, no una por coche. Si falla, el mapa sigue: sin
+  // enlaces se compara por nombre (mismaPersona), no se deja de pintar.
+  const deBolt = filas.map(c => situacionDe((c.matricula && foto.porMatricula.get(normMat(c.matricula)))
+    || (c.mapon_unit != null ? foto.porUnidad.get(Number(c.mapon_unit)) : null)));
+  const enlaces = await repo.personasDeBolt(deBolt.map(v => v.uuid)).catch(e => {
+    console.warn('⚠️ [MAPA] Sin enlaces de BOLT, comparo por nombre:', e.message);
+    return new Map();
+  });
+
+  const coches = filas.map((c, i) => {
+    const v = deBolt[i];
     // Quién lo lleva AHORA, para el porqué de un rojo.
     c.conductor = v.conductor;
-    const t = tono(c, v.situacion);
+    c.situacion = v.situacion;
+    c.situacionEtiqueta = v.etiqueta;
+    c.fichaje = fichajeDe(c, v, enlaces);
+    c.tonoBase = tono(c, v.situacion);
+    const t = tonoConFichaje(c.tonoBase, c.fichaje);
     const dentro = dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng));
     const ud = ultimoDestino(c, dentro === true, v.desde);
     return {
@@ -293,7 +433,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
       // lleva ahora, de la API v2 de BOLT. Con la v2 caída no hay (null).
       viaje: v.viaje,
       // Dejó al pasajero fuera de la M-30 hace 15 min o más y no vuelve. Ver sinVolver.
-      noVuelve: sinVolver(ud, v.situacion, t),
+      // Con el tono de BASE: el del fichaje taparía un `perdido` (punto viejo).
+      noVuelve: sinVolver(ud, v.situacion, c.tonoBase),
       // De cuál de las dos tuberías salió esto. No se pinta, pero contesta
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
@@ -302,10 +443,18 @@ async function frente({ forzar = false, sedes = null } = {}) {
       km: v.km,
       sede: c.sede || null,
       tono: t,
+      // QUIÉN LO TIENE EN EL BOT (04/11/2026): { nombre, tipo, desde, estado }.
+      // `estado` es ok / sinfichar / otro, o null si no se usa y nadie lo tiene.
+      fichaje: c.fichaje,
+      // El color que tendría sin el fichaje: lo que dice BOLT con Mapon.
+      tonoBase: c.tonoBase,
       // Un rojo sobre datos de BOLT viejos no es un rojo: es un "no se sabe".
       // La vista lo pinta distinto y el aviso no lo llama. Lo mismo el error de
       // GPS: si lo de BOLT es viejo, el «de viaje» puede haber acabado hace rato.
-      dudoso: (t === 'suelto' || t === 'errorgps') && !boltFiable,
+      // Y el del fichaje cuando lo que no cuadra es lo de BOLT: «otro», o «sin
+      // fichar» de alguien que solo se sabe que usa el coche porque BOLT lo dice.
+      dudoso: ((t === 'suelto' || t === 'errorgps')
+        || (t === 'fichaje' && (c.fichaje.estado === 'otro' || CONECTADO.has(v.situacion)))) && !boltFiable,
       motivo: porQue(c, t, boltHace),
     };
   });
@@ -314,8 +463,12 @@ async function frente({ forzar = false, sedes = null } = {}) {
   const datos = {
     coches,
     cuenta,
-    // Lo que de verdad importa del resumen: cuántos hay ahora mismo sueltos.
-    sueltos: cuenta.suelto || 0,
+    // Lo que de verdad importa del resumen: cuántos hay ahora mismo sueltos —
+    // rodando sin nadie conectado—, también los que ahora parpadean por el
+    // fichaje: siguen rodando sueltos.
+    sueltos: coches.filter(ruedaSuelto).length,
+    // Y cuántos no cuadran con el bot.
+    sinFichar: cuenta.fichaje || 0,
     // Y los de la flota de los que Mapon no sabe nada: la alerta de arriba.
     sinMapon: coches.filter(c => c.tono === 'sinmapon')
       .map(c => ({ matricula: c.matricula, estado: c.estadoVehiculo, motivo: c.motivo })),
@@ -357,8 +510,18 @@ async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
       d.frescura.boltHace == null ? '¿?' : Math.round(d.frescura.boltHace / 60) + ' min'}`);
     return [];
   }
-  return d.coches.filter(c => c.tono === 'suelto'
+  return d.coches.filter(c => ruedaSuelto(c)
     && c.llevaAsi != null && c.llevaAsi >= minSegundos);
+}
+
+/**
+ * Rueda sin nadie conectado en BOLT: el rojo de siempre, y también el que ahora
+ * parpadea por el fichaje si rueda desconectado. Sin esto, el aviso de coche
+ * suelto dejaba de saltar justo con los peores: los que nadie tiene en el bot.
+ */
+function ruedaSuelto(c) {
+  return c.tono === 'suelto'
+    || (c.tono === 'fichaje' && c.rueda && !c.conectado && c.tonoBase === 'suelto');
 }
 
 // ── EL ÚLTIMO DESTINO: ¿VUELVE A LA M-30 O DA VUELTAS? ─────────────────────
@@ -484,7 +647,8 @@ async function noVuelven({ sedes = null, minMinutos = NO_VUELVE_MIN } = {}) {
 /** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */
 const olvidar = () => { cache.clear(); };
 
-module.exports = { frente, sueltos, noVuelven, olvidar, tono, PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
+module.exports = { frente, sueltos, noVuelven, olvidar, tono, fichajeDe, mismoNombre, tonoConFichaje,
+  PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
   NO_VUELVE_MIN,
   // El anillo, para que la pantalla lo pinte sin tener que saber de dónde sale.
   M30: require('./m30').POLIGONO };
