@@ -28,7 +28,7 @@
             de resultados y no hace falta explicarla.
           </p>
           <div class="flex flex-wrap items-center gap-2 mt-3">
-            <select id="r-horas-dia" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <select id="r-horas-dia" aria-label="Día del reporte de horas" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
               <option value="1">Ayer</option>
               <option value="2">Hace 2 días</option>
               <option value="3">Hace 3 días</option>
@@ -55,7 +55,7 @@
           <div class="font-semibold text-telecab-text">Reporte por turnos</div>
           <p class="text-sm text-telecab-muted mt-0.5">Quién rodó en el turno de <b>día</b> (de 00:00 a 24:00) y en el de <b>noche</b> (de 12:00 a 12:00), cada uno por el turno de su cuadrante, con horas, matrícula y los <b>NN</b> incluidos (por su hora de inicio: antes de las 12:00, día).</p>
           <div class="flex items-center gap-2 mt-3">
-            <input id="rt-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <input id="rt-dia" type="date" aria-label="Día del reporte por turnos" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
             <a id="rt-excel" href="/control/reporte-turnos/excel"
                class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
               <i class="fa-solid fa-download mr-1"></i> Excel
@@ -84,7 +84,7 @@
             (taller, reserva, emergencia) con su estado.
           </p>
           <div class="flex items-center gap-2 mt-3">
-            <select id="r-turnos-dias" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <select id="r-turnos-dias" aria-label="Días de turnos para imprimir" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
               <option value="2">Hoy + 2 días</option>
               <option value="1">Hoy + mañana</option>
               <option value="6">Toda la semana</option>
@@ -106,7 +106,7 @@
           <div class="font-semibold text-telecab-text">Parrilla del planificador</div>
           <p class="text-sm text-telecab-muted mt-0.5">El anexo completo por correturno: cada coche con su descanso, matrícula y las 4 plazas (fijo/CT · día/noche) con teléfono y zona.</p>
           <div class="flex items-center gap-2 mt-3">
-            <input id="pl-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <input id="pl-dia" type="date" aria-label="Día de la parrilla" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
             <a id="pl-excel" href="/control/planificador/excel"
                class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
               <i class="fa-solid fa-download mr-1"></i> Excel
@@ -135,10 +135,10 @@
             se da por librado el miércoles pasado. Y quien no tiene cuenta de BOLT enlazada va al final:
             su 0 no significa que faltara, significa que no se puede leer.
           </p>
-          <div class="flex flex-wrap items-center gap-2 mt-3">
-            <label class="text-xs text-telecab-muted">Del</label>
+          <div class="flex flex-wrap items-center gap-2 mt-3" role="group" aria-label="Periodo de asistencia">
+            <label for="as-desde" class="text-xs text-telecab-muted">Del</label>
             <input id="as-desde" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
-            <label class="text-xs text-telecab-muted">al</label>
+            <label for="as-hasta" class="text-xs text-telecab-muted">al</label>
             <input id="as-hasta" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
             <a id="as-excel" href="/control/asistencia/excel"
                class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
@@ -172,7 +172,7 @@
             las vacaciones (V) y los permisos (P).
           </p>
           <div class="flex flex-wrap items-center gap-2 mt-3">
-            <select id="js-semana" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <select id="js-semana" aria-label="Semana" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
               <% (typeof semanas !== 'undefined' ? semanas : []).forEach(function (s) { %>
                 <option value="<%= s.lunes %>" <%= s.porDefecto ? 'selected' : '' %>><%= s.etiqueta %></option>
               <% }) %>

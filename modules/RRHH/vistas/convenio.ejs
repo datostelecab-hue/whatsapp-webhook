@@ -108,10 +108,10 @@
     },
 
     filtros: [
-      { id: 'grupo', campo: 'grupo', textoTodos: 'Todos los grupos',
+      { id: 'grupo', etiqueta: 'Grupo', campo: 'grupo', textoTodos: 'Todos los grupos',
         opciones: filas => [...new Set(filas.map(f => f.grupo).filter(Boolean))].sort()
           .map(g => ({ valor: g, texto: g })) },
-      { id: 'alerta', textoTodos: 'Sin filtro de alerta',
+      { id: 'alerta', etiqueta: 'Alerta', textoTodos: 'Sin filtro de alerta',
         opciones: [
           { valor: 'defecto', texto: 'Con defecto' },
           { valor: 'exceso', texto: 'Con exceso (extra)' },

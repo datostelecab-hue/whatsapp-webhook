@@ -131,7 +131,7 @@
     el.setAttribute('role', 'region');
     el.setAttribute('aria-label', 'Efectivo activo sin entregar');
     el.innerHTML = `
-      <button type="button" class="efec-x" aria-label="Cerrar hasta mañana" title="Cerrar hasta mañana"><i class="fa-solid fa-xmark"></i></button>
+      <button type="button" class="efec-x" aria-label="Cerrar hasta mañana" title="Cerrar hasta mañana"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
       <p class="efec-tipo"><i class="fa-solid fa-money-bill-wave"></i>Efectivo activo sin entregar</p>
       <p class="efec-titulo">${n === 1 ? '1 persona tiene' : `${n} personas tienen`} el efectivo activo y nunca ${n === 1 ? 'ha' : 'han'} entregado</p>
       <p class="efec-texto">BOLT les deja cobrar en mano y no han pasado ni una vez por Recaudación.</p>

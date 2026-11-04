@@ -12,7 +12,7 @@
       </p>
     </div>
     <div class="flex items-center gap-2">
-      <select id="b-export" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted" title="Descargar una tabla en CSV (Excel la abre directo)">
+      <select id="b-export" aria-label="Exportar una tabla en CSV" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted" title="Descargar una tabla en CSV (Excel la abre directo)">
         <option value="">Exportar CSV…</option>
       </select>
       <button id="b-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text" title="Recalcular los hechos (horas, ingresos, km) con lo de hoy. Solos se recalculan cada madrugada, a las 04:30.&#10;Tarda cerca de un minuto y carga la base: úsalo cuando haga falta lo de hoy.">
@@ -29,16 +29,16 @@
       <% }) %>
     </div>
     <div class="flex items-center gap-1 text-xs text-telecab-muted">
-      <input id="b-desde" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+      <input id="b-desde" type="date" aria-label="Desde" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
       <span>→</span>
-      <input id="b-hasta" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+      <input id="b-hasta" type="date" aria-label="Hasta" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
     </div>
     <div class="flex-1"></div>
-    <select id="b-zona"  class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text"><option value="">Todas las zonas</option></select>
-    <select id="b-tipo"  class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+    <select id="b-zona"  aria-label="Zona" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text"><option value="">Todas las zonas</option></select>
+    <select id="b-tipo"  aria-label="Tipo de contrato" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
       <option value="">Propia + ETT</option><option value="propia">Solo propia</option><option value="ett">Solo ETT</option>
     </select>
-    <select id="b-turno" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text"><option value="">Todos los turnos</option></select>
+    <select id="b-turno" aria-label="Turno" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text"><option value="">Todos los turnos</option></select>
     <span id="b-rango" class="text-xs text-telecab-muted tabular-nums ml-1"></span>
   </div>
 
@@ -160,11 +160,11 @@
           <p class="text-xs text-telecab-muted">Los ratios exigen un mínimo de horas en el periodo (<span id="p-min">—</span> h) para que una tarde suelta no encabece la lista.</p>
         </div>
         <div class="flex items-center gap-2">
-          <select id="p-orden" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+          <select id="p-orden" aria-label="Orden del ranking" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
             <option value="neto">Más neto</option><option value="horas">Más horas</option><option value="euros_hora">Mejor €/hora</option>
             <option value="utilizacion">Mejor utilización</option><option value="perdidas">Más ofertas perdidas</option><option value="menos_horas">Menos horas</option>
           </select>
-          <select id="p-limite" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+          <select id="p-limite" aria-label="Conductores a mostrar" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
             <option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="500">Todos</option>
           </select>
         </div>

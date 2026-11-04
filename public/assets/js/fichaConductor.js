@@ -53,9 +53,10 @@
        <span class="text-[10px] uppercase tracking-[0.12em] font-bold text-telecab-muted whitespace-nowrap">${esc(t)}</span>
        <span class="flex-1 h-px bg-telecab-border/70"></span>
        ${editarGrupo
-      ? `<button data-editar="${esc(editarGrupo)}" title="Editar ${esc(editarGrupo)}"
+      ? `<button data-editar="${esc(editarGrupo)}" title="Editar ${esc(String(t).toLowerCase())}"
+                 aria-label="Editar ${esc(String(t).toLowerCase())}"
                  class="shrink-0 text-telecab-muted hover:text-telecab-gold transition px-1">
-           <i class="fa-solid fa-pen text-[10px]"></i></button>`
+           <i class="fa-solid fa-pen text-[10px]" aria-hidden="true"></i></button>`
       : ''}
      </div>`;
 

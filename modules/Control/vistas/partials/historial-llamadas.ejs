@@ -77,11 +77,11 @@ window.HistorialLlamadas = window.HistorialLlamadas || (function () {
     const desde = vista.pagina * POR_PAGINA;
     const trozo = L.slice(desde, desde + POR_PAGINA);
 
-    const boton = (accion, icono, activo) =>
-      '<button data-hl-pag="' + accion + '" ' + (activo ? '' : 'disabled ') +
+    const boton = (accion, icono, activo, nombre) =>
+      '<button data-hl-pag="' + accion + '" aria-label="' + esc(nombre) + '" ' + (activo ? '' : 'disabled ') +
         'class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted ' +
         (activo ? 'hover:border-telecab-gold hover:text-telecab-gold' : 'opacity-30 cursor-not-allowed') +
-        ' transition"><i class="fa-solid ' + icono + '"></i></button>';
+        ' transition"><i class="fa-solid ' + icono + '" aria-hidden="true"></i></button>';
 
     // El pie solo aparece cuando hay más de una página: con cuatro llamadas,
     // unas flechas apagadas son ruido.
@@ -90,12 +90,12 @@ window.HistorialLlamadas = window.HistorialLlamadas || (function () {
           '<span class="text-[11px] text-telecab-muted tabular-nums">' +
             (desde + 1) + '–' + (desde + trozo.length) + ' de ' + L.length + '</span>' +
           '<div class="flex items-center gap-1">' +
-            boton('primera', 'fa-angles-left', vista.pagina > 0) +
-            boton('anterior', 'fa-angle-left', vista.pagina > 0) +
+            boton('primera', 'fa-angles-left', vista.pagina > 0, 'Primera página') +
+            boton('anterior', 'fa-angle-left', vista.pagina > 0, 'Página anterior') +
             '<span class="px-2 text-xs text-telecab-text tabular-nums">' +
               (vista.pagina + 1) + ' / ' + paginas + '</span>' +
-            boton('siguiente', 'fa-angle-right', vista.pagina < paginas - 1) +
-            boton('ultima', 'fa-angles-right', vista.pagina < paginas - 1) +
+            boton('siguiente', 'fa-angle-right', vista.pagina < paginas - 1, 'Página siguiente') +
+            boton('ultima', 'fa-angles-right', vista.pagina < paginas - 1, 'Última página') +
           '</div>' +
         '</div>'
       : '';

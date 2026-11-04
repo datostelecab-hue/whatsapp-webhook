@@ -424,11 +424,11 @@
         + (doc
           ? (doc.caducado ? '<span class="text-telecab-red text-xs">caducado</span>' : '')
             + '<a href="' + esc(doc.enlace || '#') + '" target="_blank" rel="noopener" '
-            + 'class="text-telecab-gold text-xs underline">ver</a>'
-            + '<button data-quitar="' + doc.id + '" class="text-telecab-red text-xs">quitar</button>'
+            + 'aria-label="' + esc('ver ' + def.label) + '" class="text-telecab-gold text-xs underline">ver</a>'
+            + '<button data-quitar="' + doc.id + '" aria-label="' + esc('quitar ' + def.label) + '" class="text-telecab-red text-xs">quitar</button>'
           : '<span class="text-telecab-muted text-[11px]" data-pista>o pega aquí</span>'
             + '<label class="text-telecab-gold text-xs cursor-pointer">subir'
-            + '<input type="file" class="hidden" data-subir="' + esc(def.key) + '"></label>')
+            + '<input type="file" class="hidden" data-subir="' + esc(def.key) + '" aria-label="' + esc('subir ' + def.label) + '"></label>')
         + '</div>';
     }).join('')
       // LA FICHA DE ALTA, al final. No se sube: se genera con el botón, y queda

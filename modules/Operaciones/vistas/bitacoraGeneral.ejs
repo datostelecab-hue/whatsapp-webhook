@@ -49,8 +49,8 @@
 
 <!-- ── Los mandos ─────────────────────────────────────────────────────────── -->
 <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
-  <div class="flex items-center gap-1">
-    <span class="text-[11px] uppercase tracking-wider text-telecab-muted mr-1">Ver</span>
+  <div class="flex items-center gap-1" role="group" aria-labelledby="bg-ver-et">
+    <span id="bg-ver-et" class="text-[11px] uppercase tracking-wider text-telecab-muted mr-1">Ver</span>
     <button class="bg-chip" data-rango="dia">Día</button>
     <button class="bg-chip" data-rango="semana">Semana</button>
     <button class="bg-chip on" data-rango="mes">Mes</button>
@@ -65,8 +65,8 @@
     <button id="bg-hoy" class="bg-chip">Hoy</button>
   </div>
 
-  <div class="flex items-center gap-1">
-    <span class="text-[11px] uppercase tracking-wider text-telecab-muted mr-1">Orden</span>
+  <div class="flex items-center gap-1" role="group" aria-labelledby="bg-orden-et">
+    <span id="bg-orden-et" class="text-[11px] uppercase tracking-wider text-telecab-muted mr-1">Orden</span>
     <button class="bg-chip on" data-orden="nombre">Nombre</button>
     <button class="bg-chip" data-orden="rojos">Más rojos</button>
     <button class="bg-chip" data-orden="horas">Menos horas</button>
@@ -77,12 +77,12 @@
     Incluir bajas
   </label>
 
-  <input id="bg-busca" type="search" placeholder="Buscar por nombre…" autocomplete="off"
+  <input id="bg-busca" type="search" placeholder="Buscar por nombre…" aria-label="Buscar por nombre" autocomplete="off"
          class="px-3 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text w-48 focus:outline-none focus:border-telecab-gold">
 
   <div class="flex items-center gap-1 ml-auto">
     <button id="bg-menos" class="bg-chip" title="Alejar"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
-    <input id="bg-zoom" type="range" min="3" max="34" value="16" class="w-28 accent-telecab-gold">
+    <input id="bg-zoom" type="range" min="3" max="34" value="16" aria-label="Zoom" class="w-28 accent-telecab-gold">
     <button id="bg-mas" class="bg-chip" title="Acercar"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
   </div>
 </div>

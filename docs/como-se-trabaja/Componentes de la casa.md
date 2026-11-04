@@ -34,6 +34,7 @@ actualizado: 2026-10-23
 | **Ver una foto en grande** | `VisorFoto.abrir({ src, titulo, pie, original })` (`visorFoto.js`) | abrirla en otra pestaña |
 | **La marca de Telecab** | `<%- include('partials/marca', { tam, anima }) %>` (SVG con los colores del tema) | el PNG del logo o un vídeo |
 | Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |
+| **Que un control tenga nombre** (para el lector de pantalla) | `<label for>`, `aria-label` en los botones de solo icono, el nombre de la fila en lo que se repite; Listado, Dialogo y Selector se nombran solos → [[#Nombres para el lector de pantalla]] | un `placeholder` como única etiqueta; N botones «Borrar» iguales |
 | Que un icono diga algo al lector de pantalla (un color, un estado) | `role="img" aria-label="Rojo"` en el propio `<i>`; si ya va escrito al lado, `aria-hidden="true"` | un `<span class="sr-only">` dentro de la rejilla del Listado: es absoluto, se escapa de lo que se desplaza y le pone barra a la página entera ([[Trampas conocidas]], 23/10/2026) |
 | Un color | los tokens (`text-telecab-gold`, `bg-telecab-red/15`) | un hex a pelo |
 | **Un gráfico** | Chart.js 4.4.1 (cdnjs) + **`graficos.js`** (`Graficos.paleta`, `cruceta`, `globo`, `ejeEscalado`, `leyenda`, `cifra`, `tablaVista`, `botonesTabla`) | colores de serie a mano, dos ejes Y, la leyenda de Chart.js |
@@ -216,6 +217,11 @@ Lo que hace por su cuenta: se coloca **debajo si cabe y encima si no**, se recor
 > [!warning] El `title` se roba y se devuelve
 > Si el atributo se queda puesto, el navegador pinta **además** su propio globo al segundo y medio: dos cajas con el mismo texto, una con los colores de Windows. Al entrar el texto se guarda en `data-ayuda` y el atributo se queda como `title=""`. Al salir **se devuelve siempre**.
 
+> [!warning] Pero el nombre no se va con él (04/11/2026)
+> Para un lector de pantalla, el `title` es el **nombre** de lo que no tiene otro (un botón con solo un icono) y la **descripción** de lo demás. Al robarlo, ese botón se quedaba sin nombre justo al llegar a él con el tabulador, que es cuando el lector lo anuncia. Ahora, mientras está robado, el texto pasa a `aria-label` (si era el nombre) o a `aria-description` (si no), que el navegador no pinta, y al devolver el `title` se quita lo puesto (`data-ayuda-aria` dice qué fue).
+>
+> Lo mismo hacía el calendario de la casa por otro camino: `marcarValidez` ponía su aviso de «fecha fuera de rango» en el `title` y, con la fecha buena, **borraba el `title` sin más**, también el que había escrito la pantalla. Ahora guarda el bueno en `data-titulo-propio` y lo devuelve.
+
 > [!warning] Se calla toda la cadena, no solo el elemento (04/11/2026)
 > Camilo: «algunos textos predeterminados tapan los mensajes guía». Quitar el `title` del elemento no bastaba: el navegador buscaba entonces el del **padre** y pintaba ese. En Inicio, la raya del ideal («El ideal a cierre de ayer») está dentro de la barra del mes, que tiene su propio `title` («… h de los días cerrados + … h de hoy»), y al pasar por la raya salían las dos cajas.
 >
@@ -255,6 +261,28 @@ El **21/09/2026** se pasó de **227 ayudas en 36 pantallas** a **310 en todas la
 | `layout.ejs`, `layout-auth.ejs` | Son plantillas, no pantallas. |
 
 **La regla para lo que venga:** cuando una pantalla enseñe un número que no se explique solo —un porcentaje, un color, una cifra recortada por una ventana de tiempo— lleva su `title`. Una frase de qué es, y otra de qué hacer.
+
+## Nombres para el lector de pantalla
+
+Cada control tiene que poder decir **qué es** a quien no ve la pantalla (y a una prueba automática, que busca los campos por su etiqueta). Hasta el 04/11/2026 había **316 controles sin nombre, 98 etiquetas sueltas y 89 campos con solo un `placeholder`** en las 60 pantallas de la gestión; ahora, **cero** en las tres cosas (FRO-9). `node scripts/comprobar-vistas.js` avisa de un botón de solo icono sin nombre y de una `<label>` suelta.
+
+| Lo que hay | Cómo se nombra |
+|---|---|
+| Una etiqueta junto a su campo | `<label for="f-busca">` y el campo con ese `id` (un id que no exista ya en la vista ni en el layout). Pinchar la etiqueta enfoca el campo; en un `js-fecha`, abre el calendario. |
+| Un título para varios controles (dos fechas, un grupo de botones) | `id` en el título y `role="group" aria-labelledby="<id>"` en el contenedor; si el título no se ve, `role="group" aria-label="Periodo"`. |
+| Un campo sin texto al lado | `aria-label` corto que diga qué es («Día», «Buscar conductor»). El `placeholder` no es un nombre: se queda, pero aparte. |
+| Un botón o enlace con solo un icono | `aria-label` con **la acción** («Cerrar», «Mes anterior», «Ver la factura 123 en PDF») y `aria-hidden="true"` en el `<i>`. Con un `title` también vale: `ayuda.js` ya no se lo lleva. |
+| Lo que se repite por fila | El nombre lleva la fila: «Marcar Juan Pérez», «Aprobar la J de Juan Pérez», «Matrícula de la línea 2». N botones «Borrar» iguales no se distinguen. |
+| Un nombre con texto visible | El `aria-label` **contiene** lo que se ve («−J: perjuicio de…», «Miércoles (X)»): quien maneja la pantalla por voz dice lo que lee. |
+
+**Lo que ya se nombra solo**, sin hacer nada en la vista:
+
+- **Listado**: el buscador, los filtros (con `etiqueta` en la definición; sin ella usa `textoTodos`, que dice menos), la paginación («Página anterior», la actual con `aria-current`), las casillas («Marcar <primera columna>»), el Excel, Volver y las acciones por fila de una tabla de la ficha («Borrar: 04/11/2026»). Una **acción de cabecera con solo icono** necesita su `ayuda`, que es su nombre.
+- **`Dialogo.formulario`**: cada etiqueta va unida a su campo; las listas, casillas, días y horas son un grupo con el nombre de su etiqueta, y la `ayuda` de debajo se lee con el campo (`aria-describedby`). Los días de la semana dicen el día entero y si están marcados (`aria-pressed`).
+- **`.tc-selector`**: el grupo toma el nombre de la `<label for>` de su input oculto; si la vista ya le puso `aria-label`, se le añade el `role="group"` que le falta.
+- **El layout**: el menú del móvil (con `aria-expanded`), la campana («Pendientes: 3»), los grupos del menú y el calendario («5 de noviembre de 2026»). **Mientras tapa el velo de carga, el `<main>` lleva `aria-busy`**: en el `<body>` callaría el «Cargando» del propio velo.
+
+Lo que **no** entró en FRO-9 y queda apuntado: cosas que se pinchan y no se alcanzan con el teclado (filas y celdas que son `div` con un clic, cabeceras que ordenan), los modales hechos a mano sin `role="dialog"` ni foco atrapado, y el Planificador, que al repintar los días de un descanso pierde el foco. Son de comportamiento, no de nombre.
 
 ## Los colores
 

@@ -1335,7 +1335,7 @@
       {
         // Lo primero que se decide al mirar la plantilla: ¿gente de ahora, o
         // también la que ya se fue?
-        id: 'empleo', textoTodos: 'Toda la plantilla',
+        id: 'empleo', etiqueta: 'De alta o de baja', textoTodos: 'Toda la plantilla',
         pasa: (f, v) => v === 'alta' ? f.empleo_vigente !== false
           : v === 'entran' ? Boolean(f.aun_no_empieza)
             : f.empleo_vigente === false,
@@ -1352,7 +1352,7 @@
       {
         // Con qué letra está cada uno. Es la pregunta que se hace de verdad al
         // abrir la plantilla: "a quién tengo en D".
-        id: 'letra', campo: 'calificacion', textoTodos: 'Todas las letras',
+        id: 'letra', etiqueta: 'Letra', campo: 'calificacion', textoTodos: 'Todas las letras',
         opciones: (filas) => LETRAS
           .map(l => ({ valor: l, texto: l === 'N/E' ? 'Sin calificar' : 'Letra ' + l,
             cuenta: filas.filter(f => f.calificacion === l).length }))
@@ -1360,27 +1360,27 @@
           .filter(o => o.cuenta),
       },
       {
-        id: 'situacion', campo: 'situacion', textoTodos: 'Todas las situaciones',
+        id: 'situacion', etiqueta: 'Situación', campo: 'situacion', textoTodos: 'Todas las situaciones',
         opciones: (filas, extra) => (extra.resumen && extra.resumen.porSituacion || [])
           .map(s => ({ valor: s.codigo, texto: s.etiqueta, cuenta: s.personas })),
       },
       {
-        id: 'tipo', campo: 'empleo_tipo', textoTodos: 'Propia y ETT',
+        id: 'tipo', etiqueta: 'Contrato', campo: 'empleo_tipo', textoTodos: 'Propia y ETT',
         opciones: (filas, extra) => (extra.resumen && extra.resumen.porTipo || [])
           .map(t => ({ valor: t.tipo, texto: t.tipo === 'ett' ? 'ETT' : 'Propia', cuenta: t.personas })),
       },
       {
-        id: 'turno', campo: 'turno_id', textoTodos: 'Todos los turnos',
+        id: 'turno', etiqueta: 'Turno', campo: 'turno_id', textoTodos: 'Todos los turnos',
         opciones: () => (CAT.turnos || []).map(t => ({ valor: t.id, texto: t.etiqueta })),
       },
       {
         // Estos dos no filtran por una columna: filtran por una condición.
-        id: 'coche', textoTodos: 'Con y sin coche',
+        id: 'coche', etiqueta: 'Coche', textoTodos: 'Con y sin coche',
         pasa: (f, v) => v === 'sin' ? !f.matricula : !!f.matricula,
         opciones: () => [{ valor: 'sin', texto: 'Sin coche' }, { valor: 'con', texto: 'Con coche' }],
       },
       {
-        id: 'ficha', textoTodos: 'Completas e incompletas',
+        id: 'ficha', etiqueta: 'Ficha', textoTodos: 'Completas e incompletas',
         pasa: (f, v) => v === 'incompleta' ? f.faltan.length > 0 : f.faltan.length === 0,
         opciones: () => [{ valor: 'incompleta', texto: 'Ficha incompleta' }],
       },

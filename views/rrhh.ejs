@@ -61,13 +61,13 @@
     <!-- Fechas del alta -->
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Fecha de alta en Seguridad Social</label>
-        <input class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
+        <label for="f-alta" class="block text-xs text-telecab-muted mb-1">Fecha de alta en Seguridad Social</label>
+        <input id="f-alta" class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
                data-campo="fecha_alta" readonly placeholder="dd/mm/aaaa" data-min="today">
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Habilitado para trabajar desde <span class="text-telecab-muted/70">(la usa el planificador)</span></label>
-        <input class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
+        <label for="f-habilitado" class="block text-xs text-telecab-muted mb-1">Habilitado para trabajar desde <span class="text-telecab-muted/70">(la usa el planificador)</span></label>
+        <input id="f-habilitado" class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
                data-campo="fecha_habilitado" readonly placeholder="dd/mm/aaaa" data-min="today" data-min-field="fecha_alta">
       </div>
     </div>
@@ -109,8 +109,8 @@
     </div>
     <div class="flex flex-wrap items-end gap-3 mb-3 pb-3 border-b border-telecab-border/50">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas ETT</label>
-        <input class="fecha-altas js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
+        <label for="f-grupo-ett" class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas ETT</label>
+        <input id="f-grupo-ett" class="fecha-altas js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
       </div>
       <button class="btn-excel px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
         <i class="fa-solid fa-file-excel mr-1"></i> Generar Excel ETT
@@ -131,8 +131,8 @@
     </div>
     <div class="flex flex-wrap items-end gap-3 mb-3 pb-3 border-b border-telecab-border/50">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas</label>
-        <input class="fecha-altas js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
+        <label for="f-grupo-general" class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas</label>
+        <input id="f-grupo-general" class="fecha-altas js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
       </div>
       <button class="btn-excel px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
         <i class="fa-solid fa-file-excel mr-1"></i> Generar Excel de Altas
@@ -200,11 +200,22 @@
   const SOLO_LECTURA = new Set(['id']);   // el teléfono es la clave; no se edita
   const INP = 'w-full text-xs text-right bg-transparent border border-transparent rounded px-1 py-0.5 text-telecab-text hover:border-telecab-border focus:border-telecab-gold focus:bg-telecab-dark focus:outline-none transition';
 
-  function control(k, val) {
+  // `etq` es el rótulo que se ve al lado: el control lo lleva como nombre. Los
+  // abreviados, con la forma larga detrás (el lector deletrea «C.P.»).
+  const NOMBRE_LARGO = {
+    fecha_nacimiento: 'F. nacimiento (fecha de nacimiento)',
+    num_hijos: 'Nº hijos (número de hijos)',
+    codigo_postal: 'C.P. (código postal)',
+    num_seg_social: 'Nº Seg. Social (número de la Seguridad Social)',
+    carnet_expedicion: 'Carnet exped. (expedición del carnet)',
+    carnet_caducidad: 'Carnet cad. (caducidad del carnet)',
+  };
+  function control(k, val, etq) {
     const v = esc(val || '');
-    if (FECHAS[k]) return `<input data-edit="${k}" value="${v}" placeholder="dd/mm/aaaa" readonly ${FECHAS[k]} class="js-fecha ${INP}">`;
-    if (SELECTS[k]) return `<select data-edit="${k}" class="${INP} cursor-pointer">${SELECTS[k].map(o => `<option value="${esc(o)}" ${String(val || '') === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}</select>`;
-    return `<input data-edit="${k}" value="${v}" placeholder="— falta" class="${INP}">`;
+    const nombre = `aria-label="${esc(NOMBRE_LARGO[k] || etq || k)}"`;
+    if (FECHAS[k]) return `<input data-edit="${k}" ${nombre} value="${v}" placeholder="dd/mm/aaaa" readonly ${FECHAS[k]} class="js-fecha ${INP}">`;
+    if (SELECTS[k]) return `<select data-edit="${k}" ${nombre} class="${INP} cursor-pointer">${SELECTS[k].map(o => `<option value="${esc(o)}" ${String(val || '') === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}</select>`;
+    return `<input data-edit="${k}" ${nombre} value="${v}" placeholder="— falta" class="${INP}">`;
   }
 
   function pintarDatos(t) {
@@ -215,7 +226,7 @@
            const editable = !fn && !SOLO_LECTURA.has(k);   // los computados (fn) y el teléfono no se editan
            let valorHtml;
            if (editable) {
-             valorHtml = control(k, t[k]);
+             valorHtml = control(k, t[k], label);
            } else {
              const val = fn ? fn(t) : t[k];
              const vacio = !val || !String(val).trim();
@@ -257,7 +268,7 @@
       const esImg = /^image\//.test(d.mime || '');
       const cuerpo = esImg
         ? `<a href="${url}" target="_blank" rel="noopener" class="block"><img src="${url}" loading="lazy" class="w-full h-24 object-cover rounded-lg border border-telecab-border bg-telecab-dark" alt="${esc(d.label)}"></a>`
-        : `<a href="${url}" target="_blank" rel="noopener" class="flex flex-col items-center justify-center gap-1 h-24 rounded-lg border border-telecab-border bg-telecab-dark/40 text-telecab-gold text-xs"><i class="fa-solid fa-file-pdf text-lg"></i> Abrir</a>`;
+        : `<a href="${url}" target="_blank" rel="noopener" class="flex flex-col items-center justify-center gap-1 h-24 rounded-lg border border-telecab-border bg-telecab-dark/40 text-telecab-gold text-xs" aria-label="Abrir ${esc(d.label)}"><i class="fa-solid fa-file-pdf text-lg" aria-hidden="true"></i> Abrir</a>`;
       return `<div class="rounded-xl border border-telecab-border bg-telecab-dark/30 p-2 flex flex-col gap-1.5">
           <span class="text-[10px] text-telecab-muted leading-tight">${esc(d.label)}</span>
           ${cuerpo}
@@ -388,7 +399,7 @@
     const nom = `${t.nombre || '(sin nombre)'}${t.apellidos ? ' ' + t.apellidos : ''}`;
     const enExcel = (t.excel_alta || '').toString().trim();
     el.innerHTML =
-      `<input type="checkbox" class="chk-alta accent-telecab-gold shrink-0 w-4 h-4" data-tel="${t.id}">
+      `<input type="checkbox" class="chk-alta accent-telecab-gold shrink-0 w-4 h-4" data-tel="${t.id}" aria-label="Marcar ${esc(nom)}">
        <button type="button" class="min-w-0 flex-1 text-left flex items-center gap-3">
          <span class="w-8 h-8 rounded-lg bg-telecab-green/15 text-telecab-green flex items-center justify-center shrink-0"><i class="fa-solid fa-user-check"></i></span>
          <span class="min-w-0 flex-1">

@@ -25,7 +25,7 @@
       'aria-label="' + esc(titulo || 'Copiar') + '" ' +
       'class="tc-copiar shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-telecab-muted ' +
       'hover:text-telecab-gold focus-visible:outline focus-visible:outline-1 focus-visible:outline-telecab-gold">' +
-      '<i class="fa-regular fa-copy text-[11px]"></i></button>';
+      '<i class="fa-regular fa-copy text-[11px]" aria-hidden="true"></i></button>';
   }
 
   // El portapapeles moderno pide https (o localhost); si no, el de siempre.

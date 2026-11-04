@@ -97,10 +97,42 @@
     return null;
   }
 
+  // EL NOMBRE NO SE VA CON EL `title` (04/11/2026). Para un lector de pantalla
+  // el `title` es el NOMBRE de lo que no tiene otro (un botón con solo un icono)
+  // y la DESCRIPCIÓN de lo demás. Al callarlo, el control se quedaba sin nombre
+  // justo cuando el lector lo anuncia, que es al enfocarlo. Mientras está
+  // callado, el texto va a donde el lector lo busca y el navegador no pinta
+  // nada: `aria-label` si era el nombre, `aria-description` si no. Al devolver
+  // el `title` se quita lo puesto (`data-ayuda-aria` dice qué fue).
+  const tieneNombre = n =>
+    n.hasAttribute('aria-label') || n.hasAttribute('aria-labelledby')
+    || (n.labels && n.labels.length > 0)
+    || (n.tagName === 'IMG' && !!(n.getAttribute('alt') || '').trim())
+    || (n.textContent || '').trim() !== '';
+
+  function ponerNombre(n, texto, esSvg) {
+    let a = n.dataset.ayudaAria;
+    if (!a) {
+      if (n.hasAttribute('aria-label') || n.hasAttribute('aria-labelledby')) a = null;
+      else if (esSvg || !tieneNombre(n)) a = 'aria-label';
+      if (!a && !n.hasAttribute('aria-description') && !n.hasAttribute('aria-describedby')) a = 'aria-description';
+      if (!a) return;
+      n.dataset.ayudaAria = a;
+    }
+    n.setAttribute(a, texto);
+  }
+
+  function quitarNombre(n) {
+    const a = n.dataset.ayudaAria;
+    if (!a) return;
+    n.removeAttribute(a);
+    delete n.dataset.ayudaAria;
+  }
+
   function guardar(n) {
     const t = tituloSvg(n);
-    if (t) { n.dataset.ayuda = t.textContent; t.textContent = ''; }
-    else { n.dataset.ayuda = n.getAttribute('title'); n.setAttribute('title', ''); }
+    if (t) { n.dataset.ayuda = t.textContent; ponerNombre(n, t.textContent, true); t.textContent = ''; }
+    else { n.dataset.ayuda = n.getAttribute('title'); ponerNombre(n, n.dataset.ayuda, false); n.setAttribute('title', ''); }
   }
 
   function soltar(n) {
@@ -108,6 +140,7 @@
     const t = tituloSvg(n);
     if (t) t.textContent = n.dataset.ayuda; else n.setAttribute('title', n.dataset.ayuda);
     delete n.dataset.ayuda;
+    quitarNombre(n);
   }
 
   /** Calla el elemento y cada antepasado que el navegador podría pintar en su lugar. */

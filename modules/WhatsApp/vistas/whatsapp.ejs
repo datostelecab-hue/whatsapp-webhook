@@ -21,8 +21,8 @@
       <div class="p-3 border-b border-telecab-border space-y-2">
         <div class="flex items-center gap-2">
           <label class="relative block flex-1">
-            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-telecab-muted"></i>
-            <input id="w-buscar" type="search" autocomplete="off" placeholder="Busca por nombre o teléfono"
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-telecab-muted" aria-hidden="true"></i>
+            <input id="w-buscar" type="search" autocomplete="off" placeholder="Busca por nombre o teléfono" aria-label="Buscar conversación"
                    class="w-full pl-8 pr-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70">
           </label>
           <% if (puedeEscribir) { %>
@@ -33,7 +33,7 @@
           <% } %>
         </div>
         <input type="hidden" id="w-filtro" value="">
-        <div class="tc-selector w-filtros" data-para="w-filtro" aria-label="Qué conversaciones ver">
+        <div class="tc-selector w-filtros" data-para="w-filtro" role="group" aria-label="Qué conversaciones ver">
           <button type="button" data-v="">Todas <span data-cuenta="todas"></span></button>
           <button type="button" data-v="noleidas" title="Las que tienen mensajes sin leer">No leídas <span data-cuenta="noleidas"></span></button>
           <button type="button" data-v="mias" title="Las que llevas tú">Mías <span data-cuenta="mias"></span></button>
@@ -476,7 +476,7 @@
                 title="Respuestas rápidas (o escribe «/» al empezar)" aria-label="Respuestas rápidas"><i class="fa-solid fa-bolt"></i></button>
         ${VIDEOS.length ? `<button type="button" id="w-video" class="shrink-0 w-10 h-10 rounded-xl border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60"
                 title="Mandar un vídeo de la casa (el del bot del coche…)" aria-label="Mandar un vídeo"><i class="fa-solid fa-film"></i></button>` : ''}
-        <textarea id="w-texto" rows="1" maxlength="4096" placeholder="Escribe un mensaje"
+        <textarea id="w-texto" rows="1" maxlength="4096" placeholder="Escribe un mensaje" aria-label="Mensaje"
           class="flex-1 resize-none max-h-40 px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70"></textarea>
         <button type="submit" id="w-enviar" class="shrink-0 h-10 px-4 rounded-xl bg-telecab-gold text-sm font-semibold hover:brightness-95 disabled:opacity-60" style="color: rgb(var(--tc-on-gold))">
           <i class="fa-solid fa-paper-plane mr-1"></i> Enviar</button>

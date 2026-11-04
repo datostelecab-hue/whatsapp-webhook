@@ -10,17 +10,17 @@
     </div>
 
     <div class="ml-auto flex flex-wrap items-center gap-2">
-      <div class="flex items-center gap-1.5">
-        <label class="text-xs text-telecab-muted">Del</label>
+      <div class="flex items-center gap-1.5" role="group" aria-label="Periodo">
+        <label for="a-desde" class="text-xs text-telecab-muted">Del</label>
         <input id="a-desde" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm
                                    focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa" data-max="today">
-        <label class="text-xs text-telecab-muted">al</label>
+        <label for="a-hasta" class="text-xs text-telecab-muted">al</label>
         <input id="a-hasta" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm
                                    focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa" data-max="today">
       </div>
       <div class="relative">
         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
-        <input id="a-buscar" placeholder="Filtrar matrícula…"
+        <input id="a-buscar" placeholder="Filtrar matrícula…" aria-label="Filtrar por matrícula"
                class="pl-8 pr-3 py-2 w-36 sm:w-44 bg-telecab-card border border-telecab-border rounded-xl text-sm
                       focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
       </div>
@@ -613,7 +613,7 @@ function pintarEv() {
   $('#a-tbody-ev').innerHTML = lista.map(e => {
     const esRep = e.tipo === 'repostaje';
     const lugar = e.direccion ? esc(e.direccion) : (e.lat != null ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '—');
-    const mapa = e.lat != null ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline text-xs"><i class="fa-solid fa-map-location-dot"></i></a>` : '';
+    const mapa = e.lat != null ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline text-xs" aria-label="Ver en el mapa"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i></a>` : '';
     return `<tr class="hover:bg-telecab-card2/50 transition ${esRep ? '' : 'bg-telecab-red/[0.04]'}">
       <td class="px-4 py-3 whitespace-nowrap">${ddmm(e.dia)}</td>
       <td class="px-4 py-3 font-medium whitespace-nowrap">${esc(e.hora)}</td>

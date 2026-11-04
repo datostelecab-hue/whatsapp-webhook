@@ -226,6 +226,11 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   si va dentro de una plantilla HTML. En una vista, `const esc = Casa.esc;`
   (`nucleo.js`, 04/11/2026), que escapa los cinco (`& < > " '`); no se escribe
   otro. Los componentes de `public/assets/js` llevan el suyo, que es el mismo.
+- **Cada control tiene nombre** (04/11/2026, FRO-9): la etiqueta unida con
+  `for`, `aria-label` con la acción en un botón de solo icono, y la fila en lo
+  que se repite («Aprobar la J de Juan Pérez»). Un `placeholder` no es un
+  nombre. `comprobar-vistas` avisa de un botón de icono sin nombre y de una
+  `<label>` suelta. → [[Componentes de la casa#Nombres para el lector de pantalla]]
 
 ## 8. Cómo se mueve un módulo sin romper nada
 

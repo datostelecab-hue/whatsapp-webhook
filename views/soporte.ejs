@@ -6,24 +6,24 @@
 
     <div class="grid sm:grid-cols-2 gap-3">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1" title="Qué clase de problema es. Decide a qué bandeja va y quién lo ve.&#10;Si te equivocas no pasa nada: desde la ticketera se mueve de bandeja en un clic.">Tipo</label>
+        <label class="block text-xs text-telecab-muted mb-1" for="t-tipo" title="Qué clase de problema es. Decide a qué bandeja va y quién lo ve.&#10;Si te equivocas no pasa nada: desde la ticketera se mueve de bandeja en un clic.">Tipo</label>
         <select id="t-tipo" class="inp w-full"></select>
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1" title="Cuánto corre. Ordena la bandeja, no salta ninguna alarma:&#10;si algo está parando el trabajo ahora mismo, dilo también en la descripción.">Prioridad</label>
+        <label class="block text-xs text-telecab-muted mb-1" for="t-prioridad" title="Cuánto corre. Ordena la bandeja, no salta ninguna alarma:&#10;si algo está parando el trabajo ahora mismo, dilo también en la descripción.">Prioridad</label>
         <select id="t-prioridad" class="inp w-full"></select>
       </div>
     </div>
     <div class="mt-3">
-      <label class="block text-xs text-telecab-muted mb-1">Título</label>
+      <label class="block text-xs text-telecab-muted mb-1" for="t-titulo">Título</label>
       <input id="t-titulo" class="inp w-full" placeholder="Resumen corto (p. ej. «No carga el planificador en móvil»)" maxlength="120">
     </div>
     <div class="mt-3">
-      <label class="block text-xs text-telecab-muted mb-1" title="Qué hacías, qué esperabas y qué pasó. Lo que más ayuda es la pantalla y la hora:&#10;con eso se puede ir a buscar el rastro; con «no funciona» no.">Descripción</label>
+      <label class="block text-xs text-telecab-muted mb-1" for="t-descripcion" title="Qué hacías, qué esperabas y qué pasó. Lo que más ayuda es la pantalla y la hora:&#10;con eso se puede ir a buscar el rastro; con «no funciona» no.">Descripción</label>
       <textarea id="t-descripcion" rows="5" class="inp w-full" placeholder="¿Qué pasa? ¿Qué esperabas? ¿Cómo lo reproduzco? Pega aquí lo que haga falta."></textarea>
     </div>
     <div class="mt-3">
-      <label class="block text-xs text-telecab-muted mb-1" title="Una captura de pantalla suele explicar el problema mejor que un párrafo.&#10;Se guardan en Drive y quedan colgadas del ticket.">Adjuntos (opcional) — imágenes o documentos</label>
+      <label class="block text-xs text-telecab-muted mb-1" for="t-archivos" title="Una captura de pantalla suele explicar el problema mejor que un párrafo.&#10;Se guardan en Drive y quedan colgadas del ticket.">Adjuntos (opcional) — imágenes o documentos</label>
       <input id="t-archivos" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
              class="block w-full text-sm text-telecab-muted file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-telecab-gold/15 file:text-telecab-gold file:text-sm file:font-medium hover:file:bg-telecab-gold/25 file:cursor-pointer">
       <div id="t-lista-archivos" class="mt-2 flex flex-wrap gap-2"></div>
@@ -62,7 +62,7 @@
     $('#t-lista-archivos').innerHTML = archivos.map((a, i) =>
       `<span class="inline-flex items-center gap-1.5 text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1">
         <i class="fa-solid ${/^image\//.test(a.mime) ? 'fa-image' : 'fa-file'} text-telecab-muted"></i>${esc(a.nombre)}
-        <button data-i="${i}" class="quita text-telecab-red hover:text-telecab-red/80">✕</button></span>`).join('');
+        <button data-i="${i}" class="quita text-telecab-red hover:text-telecab-red/80" aria-label="Quitar ${esc(a.nombre)}">✕</button></span>`).join('');
     $('#t-lista-archivos').querySelectorAll('.quita').forEach(b => b.addEventListener('click', () => { archivos.splice(+b.dataset.i, 1); pintarArchivos(); }));
   }
   const leerBase64 = file => new Promise((ok, err) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = err; r.readAsDataURL(file); });

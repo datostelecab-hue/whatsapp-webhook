@@ -3,8 +3,8 @@
   <!-- Controles -->
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
     <div class="mb-4">
-      <label class="block text-xs text-telecab-muted mb-1">Tipo de vacante</label>
-      <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden" id="tg-tipo">
+      <label id="lbl-tipo" class="block text-xs text-telecab-muted mb-1">Tipo de vacante</label>
+      <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden" id="tg-tipo" role="group" aria-labelledby="lbl-tipo">
         <button type="button" data-val="CT" class="px-4 py-2 text-sm">Correturno (varias matrículas)</button>
         <button type="button" data-val="Fijo" class="px-4 py-2 text-sm border-l border-telecab-border">Fijo (una matrícula)</button>
         <button type="button" data-val="Recambio" class="px-4 py-2 text-sm border-l border-telecab-border">Buscar recambio</button>
@@ -14,25 +14,25 @@
     <div id="modo-hueco">
     <div class="grid md:grid-cols-4 gap-4">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Zona</label>
+        <label for="sel-zona" class="block text-xs text-telecab-muted mb-1">Zona</label>
         <select id="sel-zona" class="inp"><option value=""></option></select>
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Turno</label>
-        <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" id="tg-turno">
+        <label id="lbl-turno" class="block text-xs text-telecab-muted mb-1">Turno</label>
+        <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" id="tg-turno" role="group" aria-labelledby="lbl-turno">
           <button type="button" data-val="Día" class="flex-1 px-3 py-2 text-sm"><i class="fa-solid fa-sun mr-1.5 text-[11px] opacity-70"></i>Día</button>
           <button type="button" data-val="Noche" class="flex-1 px-3 py-2 text-sm border-l border-telecab-border"><i class="fa-solid fa-moon mr-1.5 text-[11px] opacity-70"></i>Noche</button>
         </div>
       </div>
       <div id="wrap-dias">
-        <label class="block text-xs text-telecab-muted mb-1">Contrato</label>
-        <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" id="tg-dias">
+        <label id="lbl-dias" class="block text-xs text-telecab-muted mb-1">Contrato</label>
+        <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" id="tg-dias" role="group" aria-labelledby="lbl-dias">
           <button type="button" data-val="32" class="flex-1 px-3 py-2 text-sm">32 h · 4 días</button>
           <button type="button" data-val="40" class="flex-1 px-3 py-2 text-sm border-l border-telecab-border">40 h · 6 días</button>
         </div>
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1" id="lbl-matricula">Matrícula de partida</label>
+        <label for="sel-matricula" class="block text-xs text-telecab-muted mb-1" id="lbl-matricula">Matrícula de partida</label>
         <select id="sel-matricula" class="inp"><option value="">—</option></select>
       </div>
     </div>
@@ -46,7 +46,7 @@
 
     <!-- BUSCAR RECAMBIO: se elige a la persona, no al hueco -->
     <div id="modo-recambio" class="hidden">
-      <label class="block text-xs text-telecab-muted mb-1">¿A quién hay que sustituir?</label>
+      <label for="rc-busca" class="block text-xs text-telecab-muted mb-1">¿A quién hay que sustituir?</label>
       <div class="relative">
         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
         <input id="rc-busca" type="search" autocomplete="off" placeholder="Nombre, matrícula o teléfono…"
@@ -122,11 +122,11 @@
 
       <div class="grid sm:grid-cols-3 gap-3 mt-4">
         <div>
-          <label class="block text-xs text-telecab-muted mb-1">Último día que trabaja (opcional)</label>
+          <label for="rc-salida" class="block text-xs text-telecab-muted mb-1">Último día que trabaja (opcional)</label>
           <input id="rc-salida" type="date" class="inp w-full">
         </div>
         <div class="sm:col-span-2">
-          <label class="block text-xs text-telecab-muted mb-1">Nota para Selección (opcional)</label>
+          <label for="rc-notas" class="block text-xs text-telecab-muted mb-1">Nota para Selección (opcional)</label>
           <input id="rc-notas" type="text" class="inp w-full" placeholder="Por qué se le sustituye, urgencia…">
         </div>
       </div>
@@ -305,8 +305,8 @@
       ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 whitespace-nowrap">${b.zona} · ${b.km} km</span>`
       : `<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-gold/15 text-telecab-gold whitespace-nowrap">${b.zona}</span>`;
     const btn = modo === 'sel'
-      ? `<button data-quitar="${m}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-red hover:bg-telecab-red/10 border border-telecab-red/30 text-xs transition">Quitar</button>`
-      : `<button data-agregar="${m}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-green hover:bg-telecab-green/10 border border-telecab-green/30 text-xs transition">Agregar</button>`;
+      ? `<button data-quitar="${m}" aria-label="Quitar ${Casa.esc(m)}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-red hover:bg-telecab-red/10 border border-telecab-red/30 text-xs transition">Quitar</button>`
+      : `<button data-agregar="${m}" aria-label="Agregar ${Casa.esc(m)}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-green hover:bg-telecab-green/10 border border-telecab-green/30 text-xs transition">Agregar</button>`;
     return `<div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40">
         <span class="w-8 h-8 rounded-lg bg-telecab-card2 text-telecab-text flex items-center justify-center shrink-0"><i class="fa-solid fa-car-side text-xs"></i></span>
         <span class="flex-1 min-w-0">

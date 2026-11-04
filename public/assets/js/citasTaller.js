@@ -66,7 +66,7 @@
                title="Abrir su ficha en Plantilla">${esc(p.nombre)}</a>` +
       (p.telefono
         ? ` <span class="whitespace-nowrap"><a href="tel:${esc(p.telefono)}" class="tabular-nums text-telecab-muted hover:text-telecab-gold" title="Llamar">${esc(telefono(p.telefono))}</a>` +
-          ` <a href="/whatsapp?conductor=${encodeURIComponent(p.conductorId)}" class="text-telecab-muted hover:text-telecab-gold ml-1" title="Abrir su chat de WhatsApp"><i class="fa-brands fa-whatsapp"></i></a></span>`
+          ` <a href="/whatsapp?conductor=${encodeURIComponent(p.conductorId)}" class="text-telecab-muted hover:text-telecab-gold ml-1" title="Abrir su chat de WhatsApp" aria-label="Abrir el chat de WhatsApp de ${esc(p.nombre)}"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a></span>`
         : ' <span class="text-[11px] text-telecab-warn">sin teléfono</span>');
   }
 

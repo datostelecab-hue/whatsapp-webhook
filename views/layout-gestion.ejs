@@ -109,8 +109,17 @@
   let activos = 0, inicial = true;
 
   // La animación es CSS: oculto no se pinta, así que no hay nada que pausar.
-  const mostrar = () => { overlay.classList.remove('hidden'); };
-  const ocultar = () => { overlay.classList.add('hidden'); };
+  // Mientras tapa, el contenido va marcado como ocupado (`aria-busy` en el
+  // <main>, no en el <body>: en un antepasado del velo callaría su «Cargando»).
+  // El <main> va después de este script: al principio aún no existe, y se marca
+  // en cuanto lo hay (DOMContentLoaded, abajo).
+  const ocupado = si => {
+    const m = document.querySelector('main');
+    if (m) { if (si) m.setAttribute('aria-busy', 'true'); else m.removeAttribute('aria-busy'); }
+  };
+  const mostrar = () => { overlay.classList.remove('hidden'); ocupado(true); };
+  const ocultar = () => { overlay.classList.add('hidden'); ocupado(false); };
+  document.addEventListener('DOMContentLoaded', () => ocupado(!overlay.classList.contains('hidden')));
   const ocultarSiLibre = () => { if (activos <= 0) { activos = 0; ocultar(); } };
 
   // CARGA INICIAL: la marca tapa desde el primer pintado, en lugar de los textos
@@ -353,7 +362,7 @@
 
       <% gruposVisibles.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
         <div class="nav-grupo" data-rol="<%= g.rol || '' %>">
-          <button type="button" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
+          <button type="button" aria-expanded="<%= abierto ? 'true' : 'false' %>" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
             <i class="fa-solid <%= g.icono %> w-5 text-center text-telecab-muted"></i>
             <span class="text-sm font-semibold flex-1 text-left"><%= g.nombre %></span>
             <i class="fa-solid fa-chevron-down text-[10px] text-telecab-muted grupo-chev transition <%= abierto ? 'rotate-180' : '' %>"></i>
@@ -409,13 +418,14 @@
         cuadros de tickets (no caben al lado y ya no están en el menú). %>
     <header class="sticky top-0 z-20 flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-2 px-4 lg:px-6 py-2.5 md:py-0 md:h-14
                    bg-telecab-dark/70 backdrop-blur-lg border-b border-telecab-border">
-      <button id="menu-abrir" class="lg:hidden w-9 h-9 rounded-lg hover:bg-telecab-card2 transition">
-        <i class="fa-solid fa-bars"></i>
+      <button id="menu-abrir" type="button" aria-label="Abrir el menú" aria-controls="menu" aria-expanded="false"
+              class="lg:hidden w-9 h-9 rounded-lg hover:bg-telecab-card2 transition">
+        <i class="fa-solid fa-bars" aria-hidden="true"></i>
       </button>
       <button id="menu-corto" type="button"
               class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition items-center justify-center text-telecab-muted"
               aria-label="Contraer el menú" title="Contraer el menú (Ctrl+B)">
-        <i class="fa-solid fa-angles-left"></i>
+        <i class="fa-solid fa-angles-left" aria-hidden="true"></i>
       </button>
       <h1 class="font-semibold text-telecab-text shrink-0"><%= titulo || 'Gestión' %></h1>
 
@@ -492,8 +502,9 @@
 
         <!-- Buzón de pendientes -->
         <div class="relative">
-          <button id="notif-btn" title="Pendientes" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
-            <i class="fa-solid fa-bell text-telecab-text"></i>
+          <%# aria-label además del title: ayuda.js se lleva el title al enfocar, y sin él la campana se quedaba sin nombre. %>
+          <button id="notif-btn" title="Pendientes" aria-label="Pendientes" aria-controls="notif-panel" aria-expanded="false" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
+            <i class="fa-solid fa-bell text-telecab-text" aria-hidden="true"></i>
             <span id="notif-badge" class="hidden absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center">0</span>
           </button>
           <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto bg-telecab-card border border-telecab-border rounded-xl shadow-soft z-50 p-2">
@@ -513,8 +524,8 @@
             <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
             <span class="block text-[10px] uppercase tracking-wide text-telecab-muted"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
           </div>
-          <a href="/logout" title="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
-            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          <a href="/logout" title="Salir" aria-label="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
+            <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
           </a>
         </div>
       </div>
@@ -532,9 +543,10 @@
 (function () {
   const menu = document.getElementById('menu');
   const fondo = document.getElementById('menu-fondo');
-  const abrir = () => { menu.classList.remove('-translate-x-full'); fondo.classList.remove('hidden'); };
-  const cerrar = () => { menu.classList.add('-translate-x-full'); fondo.classList.add('hidden'); };
-  document.getElementById('menu-abrir').addEventListener('click', abrir);
+  const btnAbrir = document.getElementById('menu-abrir');
+  const abrir = () => { menu.classList.remove('-translate-x-full'); fondo.classList.remove('hidden'); btnAbrir.setAttribute('aria-expanded', 'true'); };
+  const cerrar = () => { menu.classList.add('-translate-x-full'); fondo.classList.add('hidden'); btnAbrir.setAttribute('aria-expanded', 'false'); };
+  btnAbrir.addEventListener('click', abrir);
   fondo.addEventListener('click', cerrar);
   menu.querySelectorAll('a').forEach(a => a.addEventListener('click', cerrar));
 
@@ -601,7 +613,8 @@
   // Desplegables de departamento en el menú.
   document.querySelectorAll('.grupo-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      btn.nextElementSibling.classList.toggle('hidden');
+      const oculto = btn.nextElementSibling.classList.toggle('hidden');
+      btn.setAttribute('aria-expanded', String(!oculto));
       btn.querySelector('.grupo-chev').classList.toggle('rotate-180');
     });
   });
@@ -665,6 +678,8 @@
       if (!b) return;
       if (total > 0) { b.textContent = txt; b.classList.remove('hidden'); } else b.classList.add('hidden');
     });
+    // El número también en el nombre de la campana: su aria-label tapa el del globo rojo.
+    if (btn) btn.setAttribute('aria-label', total > 0 ? 'Pendientes: ' + txt : 'Pendientes');
   }
 
   async function cargar() {
@@ -672,8 +687,14 @@
   }
 
   if (btn) {
-    btn.addEventListener('click', e => { e.stopPropagation(); panel.classList.toggle('hidden'); });
-    document.addEventListener('click', e => { if (panel && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.add('hidden'); });
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const oculto = panel.classList.toggle('hidden');
+      btn.setAttribute('aria-expanded', String(!oculto));
+    });
+    document.addEventListener('click', e => {
+      if (panel && !panel.contains(e.target) && !btn.contains(e.target)) { panel.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false'); }
+    });
   }
 
   aplicarRolNav();
@@ -892,8 +913,20 @@
     inp.classList.toggle('!border-telecab-red', !!mal);
     inp.classList.toggle('ring-1', !!mal);
     inp.classList.toggle('ring-telecab-red', !!mal);
-    if (mal) { const r = rango(inp); inp.title = 'Fecha fuera de rango' + (r.min ? ' · desde ' + fmt(r.min) : '') + (r.max ? ' · hasta ' + fmt(r.max) : ''); }
-    else inp.removeAttribute('title');
+    // El aviso va en el `title` y al corregir la fecha se devuelve el que había
+    // (04/11/2026). Antes se borraba el `title` sin más y el campo perdía su
+    // ayuda y, si no tenía etiqueta, su nombre. Si ayuda.js lo tiene guardado
+    // en ese momento, el bueno es el suyo.
+    if (mal) {
+      if (inp.dataset.tituloPropio == null) {
+        inp.dataset.tituloPropio = (inp.dataset.ayuda != null ? inp.dataset.ayuda : inp.getAttribute('title')) || '';
+      }
+      const r = rango(inp);
+      inp.title = 'Fecha fuera de rango' + (r.min ? ' · desde ' + fmt(r.min) : '') + (r.max ? ' · hasta ' + fmt(r.max) : '');
+    } else if (inp.dataset.tituloPropio != null) {
+      if (inp.dataset.tituloPropio) inp.title = inp.dataset.tituloPropio; else inp.removeAttribute('title');
+      delete inp.dataset.tituloPropio;
+    }
   }
 
   const pop = document.createElement('div');
@@ -901,7 +934,11 @@
   document.body.appendChild(pop);
   let target = null, vista = null, modo = 'dias';   // 'dias' | 'meses' | 'anios'
 
-  const flecha = n => '<button type="button" data-nav="' + n + '" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">' + (n < 0 ? '‹' : '›') + '</button>';
+  // El nombre de la flecha según la rejilla: mes, año o tanda de doce años.
+  const nombreFlecha = n => modo === 'anios' ? (n < 0 ? 'Años anteriores' : 'Años siguientes')
+    : modo === 'meses' ? (n < 0 ? 'Año anterior' : 'Año siguiente')
+    : (n < 0 ? 'Mes anterior' : 'Mes siguiente');
+  const flecha = n => '<button type="button" data-nav="' + n + '" aria-label="' + nombreFlecha(n) + '" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">' + (n < 0 ? '‹' : '›') + '</button>';
   const pie =
     '<div class="flex items-center justify-between mt-3 pt-2 border-t border-telecab-border text-xs">' +
       '<button type="button" data-hoy class="px-2.5 py-1 rounded-lg text-telecab-gold hover:bg-telecab-gold/10 transition">Hoy</button>' +
@@ -933,7 +970,7 @@
       let celdas = '';
       MESES.forEach((m, i) => {
         const cls = i === mo ? 'bg-telecab-gold text-telecab-dark font-semibold' : 'text-telecab-text hover:bg-telecab-card';
-        celdas += `<button type="button" data-mes="${i}" class="h-10 rounded-lg text-sm transition ${cls}">${m.slice(0, 3)}</button>`;
+        celdas += `<button type="button" data-mes="${i}" aria-label="${m}" class="h-10 rounded-lg text-sm transition ${cls}">${m.slice(0, 3)}</button>`;
       });
       pop.innerHTML =
         '<div class="flex items-center justify-between mb-2">' + flecha(-1) +
@@ -957,7 +994,9 @@
       const cls = esSel ? 'bg-telecab-gold text-telecab-dark font-semibold shadow-gold'
         : esHoy ? 'ring-1 ring-telecab-gold/60 text-telecab-gold'
         : 'text-telecab-text hover:bg-telecab-card';
-      celdas += `<button type="button" data-d="${d}" class="h-9 rounded-lg text-sm transition ${cls}">${d}</button>`;
+      // El día con su mes y su año: el número solo no dice de cuándo es.
+      const nombreDia = `${d} de ${MESES[mo].toLowerCase()} de ${y}` + (esHoy ? ', hoy' : '');
+      celdas += `<button type="button" data-d="${d}" aria-label="${nombreDia}"${esSel ? ' aria-current="date"' : ''} class="h-9 rounded-lg text-sm transition ${cls}">${d}</button>`;
     }
     pop.innerHTML =
       '<div class="flex items-center justify-between mb-2">' + flecha(-1) +

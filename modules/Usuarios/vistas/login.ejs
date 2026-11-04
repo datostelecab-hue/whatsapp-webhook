@@ -37,7 +37,7 @@
     <label class="etiqueta" for="password">Contraseña</label>
     <input class="entrada" id="password" name="password" type="password" required autocomplete="current-password">
     <button type="button" class="ojo" id="ver-pass" aria-label="Mostrar la contraseña" title="Mostrar la contraseña">
-      <i class="fa-solid fa-eye"></i>
+      <i class="fa-solid fa-eye" aria-hidden="true"></i>
     </button>
   </div>
 
@@ -83,7 +83,7 @@
       ojo.addEventListener('click', () => {
         const ver = pass.type === 'password';
         pass.type = ver ? 'text' : 'password';
-        ojo.innerHTML = '<i class="fa-solid fa-eye' + (ver ? '-slash' : '') + '"></i>';
+        ojo.innerHTML = '<i class="fa-solid fa-eye' + (ver ? '-slash' : '') + '" aria-hidden="true"></i>';
         ojo.setAttribute('aria-label', ver ? 'Ocultar la contraseña' : 'Mostrar la contraseña');
         ojo.title = ver ? 'Ocultar la contraseña' : 'Mostrar la contraseña';
         pass.focus();

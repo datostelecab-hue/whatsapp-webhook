@@ -29,8 +29,28 @@
 
   const destino = sel => document.getElementById(sel.dataset.para || '');
 
+  // EL GRUPO SE LLAMA COMO SU ETIQUETA (04/11/2026). El `<label for>` apunta al
+  // input oculto, que no se puede etiquetar, y sin esto un lector de pantalla
+  // oye «Madrid, Barcelona» sin saber de qué. Va en `pintar` porque es lo que
+  // corre siempre: al montar, al elegir y cuando el formulario pone un valor.
+  function nombrar(sel) {
+    // Con el nombre ya puesto en la vista, falta el rol: en un <div> sin él, el
+    // aria-label no lo lee nadie.
+    if (sel.hasAttribute('aria-labelledby') || sel.hasAttribute('aria-label')) {
+      if (!sel.hasAttribute('role')) sel.setAttribute('role', 'group');
+      return;
+    }
+    if (!sel.dataset.para) return;
+    const et = document.querySelector(`label[for="${CSS.escape(sel.dataset.para)}"]`);
+    if (!et) return;
+    if (!et.id) et.id = 'et-' + sel.dataset.para;
+    sel.setAttribute('role', 'group');
+    sel.setAttribute('aria-labelledby', et.id);
+  }
+
   /** Deja marcado el botón que toca. Sin valor, ninguno. */
   function pintar(sel) {
+    nombrar(sel);
     const inp = destino(sel);
     const v = inp ? String(inp.value == null ? '' : inp.value) : '';
     sel.querySelectorAll('button[data-v]').forEach(b => {

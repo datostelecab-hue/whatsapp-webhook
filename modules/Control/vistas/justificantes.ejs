@@ -14,10 +14,10 @@
       </p>
     </div>
     <div class="flex items-center gap-2">
-      <input id="j-desde" type="date" title="Desde"
+      <input id="j-desde" type="date" title="Desde" aria-label="Desde"
         class="px-2.5 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <span class="text-telecab-muted text-xs">a</span>
-      <input id="j-hasta" type="date" title="Hasta"
+      <input id="j-hasta" type="date" title="Hasta" aria-label="Hasta"
         class="px-2.5 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <button id="j-limpiar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">Todo</button>
     </div>
@@ -28,7 +28,7 @@
        atender. Ahora se ven las tres con su cuenta, y las rechazadas llevan
        encima cuántas siguen pidiendo una llamada. -->
   <div id="j-estados" class="flex flex-wrap gap-2 mb-3"></div>
-  <select id="j-estado" class="hidden">
+  <select id="j-estado" class="hidden" aria-label="Estado">
     <option value="pendiente">Pendientes</option>
     <option value="aprobada">Aprobadas</option>
     <option value="rechazada">Rechazadas</option>
@@ -170,8 +170,8 @@
                 'title="Poner una −J a quien lo causó: constancia de un perjuicio a la empresa">−J a quien lo causó</button>'
             : '') +
           (j.estado === 'pendiente'
-            ? '<button data-ok class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1"></i>Aprobar</button>' +
-              '<button data-no class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1"></i>Rechazar</button>'
+            ? '<button data-ok aria-label="' + esc('Aprobar la J de ' + (j.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1" aria-hidden="true"></i>Aprobar</button>' +
+              '<button data-no aria-label="' + esc('Rechazar la J de ' + (j.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1" aria-hidden="true"></i>Rechazar</button>'
             : '') +
           (j.estado === 'rechazada' && !j.rehechaEn
             ? '<button data-rehacer class="px-3 h-8 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold text-xs font-semibold" ' +
@@ -227,8 +227,8 @@
             'title="Cada cambio de esta −J: quién, cuándo, desde dónde y qué cambió"><i class="fa-solid fa-clock-rotate-left"></i></button>' +
         (m.estado === 'pendiente'
           ? 
-              '<button data-ok class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1"></i>Aprobar</button>' +
-              '<button data-no class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1"></i>Rechazar</button>'
+              '<button data-ok aria-label="' + esc('Aprobar la −J de ' + (m.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1" aria-hidden="true"></i>Aprobar</button>' +
+              '<button data-no aria-label="' + esc('Rechazar la −J de ' + (m.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1" aria-hidden="true"></i>Rechazar</button>'
           : '') +
         '</div>' +
       '</div>').join('');

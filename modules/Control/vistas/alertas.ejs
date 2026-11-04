@@ -39,7 +39,7 @@
       <h2 class="text-sm font-semibold uppercase tracking-wide text-telecab-muted">
         <i class="fa-solid fa-bell text-telecab-gold mr-1"></i> Alertas enviadas
       </h2>
-      <input id="a-dia" type="date" class="px-2 py-1 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-xs">
+      <input id="a-dia" type="date" aria-label="Día" class="px-2 py-1 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-xs">
       <span id="a-resumen" class="text-xs text-telecab-muted"></span>
     </div>
     <div class="overflow-x-auto border border-telecab-border rounded-2xl">
@@ -67,7 +67,7 @@
   <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-2xl my-8">
     <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
       <h3 class="font-bold">Ajustes de las alertas</h3>
-      <button id="a-config-x" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
+      <button id="a-config-x" aria-label="Cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </div>
     <div class="p-5 space-y-6 max-h-[75vh] overflow-y-auto">
 
@@ -294,12 +294,14 @@
           <div class="flex items-center gap-1.5">
             <span class="text-xs text-telecab-muted">avisar a partir de</span>
             <input type="number" min="1" step="1" data-umbral="${esc(t.codigo)}" value="${esc(t.umbral)}"
+                   aria-label="Avisar a partir de (${esc(t.unidad)}): ${esc(t.etiqueta)}"
                    class="w-20 px-2 py-1 bg-telecab-card border border-telecab-border rounded-lg text-sm text-center tabular-nums">
             <span class="text-xs text-telecab-muted">${esc(t.unidad)}</span>
           </div>
           <label class="flex items-center gap-1.5 w-full">
             <span class="text-xs text-telecab-muted whitespace-nowrap">plantilla propia</span>
             <input data-plantilla="${esc(t.codigo)}" value="${esc((c.plantillasPorTipo || {})[t.codigo] || '')}"
+                   aria-label="Plantilla propia: ${esc(t.etiqueta)}"
                    placeholder="vacío = usa la general"
                    class="flex-1 min-w-[160px] px-2 py-1 bg-telecab-card border border-telecab-border rounded-lg text-xs">
           </label>

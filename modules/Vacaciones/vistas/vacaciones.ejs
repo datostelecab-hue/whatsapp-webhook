@@ -93,12 +93,12 @@
         `Los asuntos propios, aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco.` }),
 
     filtros: [
-      { id: 'situacion', textoTodos: 'De alta y de baja', opciones: [
+      { id: 'situacion', etiqueta: 'Situación', textoTodos: 'De alta y de baja', opciones: [
           { valor: 'alta', texto: 'De alta' },
           { valor: 'baja', texto: 'De baja' },
         ],
         pasa: (x, v) => (v === 'baja' ? x.deBaja : !x.deBaja) },
-      { id: 'saldo', textoTodos: 'Cualquier saldo', opciones: [
+      { id: 'saldo', etiqueta: 'Saldo', textoTodos: 'Cualquier saldo', opciones: [
           { valor: 'negativo', texto: 'En negativo' },
           { valor: 'mas30', texto: 'Más de 30 días' },
           { valor: 'hoy', texto: 'De vacaciones hoy' },

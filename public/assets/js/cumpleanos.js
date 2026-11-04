@@ -233,7 +233,7 @@
 
   function htmlDe(t, total, pos) {
     const cuenta = total > 1 ? `<p class="cumple-cuenta">${pos} de ${total} · al cerrar esta sale la siguiente</p>` : '';
-    const x = '<button type="button" class="cumple-x" aria-label="Cerrar" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>';
+    const x = '<button type="button" class="cumple-x" aria-label="Cerrar" title="Cerrar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>';
     if (t.tipo === 'felicitaciones') {
       const varias = t.lista.length > 1;
       const otraVez = sinMovimiento() ? '' : `<div class="cumple-acciones">

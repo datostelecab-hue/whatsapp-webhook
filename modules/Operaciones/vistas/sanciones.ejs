@@ -13,10 +13,10 @@
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <input id="v-desde" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm text-telecab-text"
-             readonly placeholder="dd/mm/aaaa" data-max="today">
+             readonly placeholder="dd/mm/aaaa" aria-label="Desde" data-max="today">
       <span class="text-telecab-muted text-sm">a</span>
       <input id="v-hasta" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm text-telecab-text"
-             readonly placeholder="dd/mm/aaaa" data-max="today">
+             readonly placeholder="dd/mm/aaaa" aria-label="Hasta" data-max="today">
       <button id="v-consultar" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark text-sm font-semibold">
         <i class="fa-solid fa-magnifying-glass mr-1"></i> Consultar
       </button>
@@ -104,14 +104,14 @@
   <!-- ══ Histórico ══ -->
   <section data-panel="hist" class="hidden">
     <div class="flex flex-wrap items-center gap-2 mb-3">
-      <select id="v-estado" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+      <select id="v-estado" aria-label="Estado del exceso" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
         <option value="">Todos los excesos</option>
         <option value="avisado">Solo los avisados</option>
         <option value="revisar">Los que hay que mirar a mano</option>
         <option value="simulado">Simulados (modo pruebas)</option>
         <option value="agrupado">Con el aviso anterior (menos de 5 min)</option>
       </select>
-      <input id="v-busca" type="search" placeholder="Conductor o matrícula…"
+      <input id="v-busca" type="search" placeholder="Conductor o matrícula…" aria-label="Buscar conductor o matrícula"
              class="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
       <span id="v-cuenta" class="text-xs text-telecab-muted"></span>
     </div>

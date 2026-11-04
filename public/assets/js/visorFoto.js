@@ -40,10 +40,10 @@
     capa.innerHTML = `
       <button type="button" data-cerrar aria-label="Cerrar"
               class="absolute top-3 right-3 w-10 h-10 rounded-xl bg-telecab-card/80 border border-telecab-border text-telecab-text hover:border-telecab-gold/60">
-        <i class="fa-solid fa-xmark"></i></button>
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
       <div class="visor-caja relative flex items-center justify-center max-w-[92vw] max-h-[80vh]">
         <span data-cargando class="text-sm text-white/70"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Cargando…</span>
-        <img alt="${esc(titulo)}" class="hidden max-w-[92vw] max-h-[80vh] rounded-2xl object-contain shadow-2xl bg-telecab-card">
+        <img alt="${esc(titulo || 'Foto')}" class="hidden max-w-[92vw] max-h-[80vh] rounded-2xl object-contain shadow-2xl bg-telecab-card">
       </div>
       ${titulo || pie || original ? `<div class="text-center max-w-[92vw]">
         ${titulo ? `<div class="text-sm font-semibold text-white">${esc(titulo)}</div>` : ''}

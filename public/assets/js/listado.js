@@ -49,6 +49,16 @@
     return t.content.firstElementChild;
   }
 
+  /**
+   * El dato con el que se nombra una fila en los controles que se repiten
+   * («Marcar Juan Pérez», «Borrar: 04/11/2026»): texto, y las fechas como aquí.
+   */
+  function nombreDeFila(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fecha(v);
+    return (typeof v === 'object') ? '' : String(v);
+  }
+
   /** dd/mm/aaaa, que es como se escriben las fechas aquí. Vacío si no hay. */
   function fecha(v) {
     if (!v) return '';
@@ -236,6 +246,7 @@
                   <div class="relative">
                     <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
                     <input data-parte="busca" placeholder="${esc((c.buscar && c.buscar.texto) || 'Buscar…')}"
+                           aria-label="${esc((c.buscar && (c.buscar.etiqueta || c.buscar.texto)) || 'Buscar')}"
                            class="pl-8 pr-3 py-2 w-48 sm:w-64 bg-telecab-card border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
                   </div>`}
                 <div data-parte="acciones" class="flex flex-wrap items-center justify-end gap-2"></div>
@@ -288,7 +299,7 @@
       this.sel = new Set();
       const casillaCab = c.seleccion
         ? `<th class="w-9 px-3 py-2.5 border-b-2 border-telecab-border">
-             <input type="checkbox" data-parte="sel-todos" title="Marcar lo que se ve"
+             <input type="checkbox" data-parte="sel-todos" title="Marcar lo que se ve" aria-label="Marcar lo que se ve"
                     class="w-3.5 h-3.5 accent-telecab-gold cursor-pointer"></th>`
         : '';
 
@@ -324,8 +335,8 @@
       if (c.exportar !== false) {
         const b = nodo(`<button class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold
             transition bg-telecab-card border border-telecab-border hover:bg-telecab-card2"
-            title="Descargar lo que se está viendo, en Excel">
-            <i class="fa-solid fa-file-excel"></i></button>`);
+            title="Descargar lo que se está viendo, en Excel" aria-label="Descargar en Excel">
+            <i class="fa-solid fa-file-excel" aria-hidden="true"></i></button>`);
         // Apagado mientras se genera (03/11/2026): sin el velo, un doble clic
         // pedía y descargaba el Excel dos veces.
         b.addEventListener('click', async () => {
@@ -567,7 +578,8 @@
 
         const caja = nodo(`
           <div class="relative inline-flex items-center">
-            <select class="appearance-none pl-3 pr-8 py-1.5 rounded-xl text-xs font-medium border
+            <select aria-label="${esc(def.etiqueta || def.textoTodos || 'Filtrar')}"
+                class="appearance-none pl-3 pr-8 py-1.5 rounded-xl text-xs font-medium border
                 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 ${
               activo
                 ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
@@ -631,6 +643,8 @@
       this.el.vacio.classList.toggle('hidden', todas.length > 0);
       this.el.rejilla.classList.toggle('hidden', todas.length === 0);
       this.pintarPaginador(todas.length, paginas, desde, filas.length);
+      const primeraCol = c.seleccion ? c.columnas.filter(enTabla)[0] : null;
+      const refNombre = primeraCol ? (primeraCol.valor !== undefined ? primeraCol.valor : primeraCol.campo) : undefined;
       this.el.cuerpo.innerHTML = filas.map(f => {
         const celdas = c.columnas.filter(enTabla).map(col => {
           // `valor` y `campo` son lo mismo. Los bloques de la ficha usan `valor` y
@@ -643,8 +657,13 @@
           return `<td class="px-3 py-2 align-middle ${esc(col.clase || '')}">${html === undefined || html === null ? '' : html}</td>`;
         }).join('');
         const clave = f[this.clave];
+        // La casilla se nombra con la primera columna («Marcar Juan Pérez»): sin
+        // nombre, un lector de pantalla dice «casilla» cincuenta veces seguidas.
+        // Solo se calcula si la lista tiene casillas.
+        const quien = refNombre !== undefined ? nombreDeFila(valorDe(f, refNombre)) : '';
         const casilla = c.seleccion
           ? `<td class="px-3 align-middle"><input type="checkbox" data-sel="${esc(clave)}"
+               aria-label="Marcar ${esc(quien || clave)}"
                class="w-3.5 h-3.5 accent-telecab-gold cursor-pointer"
                ${this.sel.has(String(clave)) ? 'checked' : ''}></td>`
           : '';
@@ -770,8 +789,10 @@
       p.appendChild(nodo(`<span class="text-xs text-telecab-muted mr-auto">
         ${desde + 1}–${desde + enPagina} de ${total}</span>`));
 
-      const boton = (contenido, destino, activo) => {
-        const b = nodo(`<button class="min-w-[2rem] h-8 px-2 rounded-lg text-xs font-semibold border transition ${
+      // `etiqueta`: el nombre de las flechas, que no tienen texto.
+      const boton = (contenido, destino, activo, etiqueta) => {
+        const b = nodo(`<button type="button"${etiqueta ? ` aria-label="${esc(etiqueta)}"` : ''}${
+          activo ? ' aria-current="page"' : ''} class="min-w-[2rem] h-8 px-2 rounded-lg text-xs font-semibold border transition ${
           activo
             ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
             : destino === null
@@ -783,8 +804,8 @@
         return b;
       };
 
-      p.appendChild(boton('<i class="fa-solid fa-chevron-left text-[10px]"></i>',
-        this.pagina > 0 ? this.pagina - 1 : null));
+      p.appendChild(boton('<i class="fa-solid fa-chevron-left text-[10px]" aria-hidden="true"></i>',
+        this.pagina > 0 ? this.pagina - 1 : null, false, 'Página anterior'));
 
       // Ventana de numeros alrededor de la actual, con la primera y la ultima
       // siempre a la vista. Con 200 conductores son 5 paginas, pero con 5.000
@@ -797,8 +818,8 @@
         p.appendChild(boton(String(n + 1), n, n === this.pagina));
       });
 
-      p.appendChild(boton('<i class="fa-solid fa-chevron-right text-[10px]"></i>',
-        this.pagina < paginas - 1 ? this.pagina + 1 : null));
+      p.appendChild(boton('<i class="fa-solid fa-chevron-right text-[10px]" aria-hidden="true"></i>',
+        this.pagina < paginas - 1 ? this.pagina + 1 : null, false, 'Página siguiente'));
     }
 
     // --- navegación ---
@@ -964,8 +985,8 @@
       const cab = nodo(`
         <div>
           <div class="flex flex-wrap items-center gap-3 mb-5">
-            <button data-volver class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition flex items-center justify-center" title="Volver (Esc)">
-              <i class="fa-solid fa-arrow-left"></i>
+            <button data-volver class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition flex items-center justify-center" title="Volver (Esc)" aria-label="Volver">
+              <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
             </button>
             ${cfg.avatar ? '<div data-avatar class="shrink-0"></div>' : ''}
             <div>
@@ -1081,6 +1102,10 @@
         // título, que es donde se buscan, y solo aparecen en las filas que las
         // admiten —`visible(fila)`—, porque no todo es editable.
         const acc = (b.tabla.acciones || []).length ? b.tabla.acciones : null;
+        // Cada botón dice de qué fila es («Borrar: 04/11/2026»): si no, son N
+        // botones «Borrar» iguales para un lector de pantalla.
+        const col0 = acc ? b.tabla.columnas[0] : null;
+        const deFila = f => (col0 && col0.campo !== undefined ? nombreDeFila(valorDe(f, col0.campo)) : '');
         const cuerpo = filas.map((f, i) => `<tr>${b.tabla.columnas.map(c => {
           const bruto = c.campo !== undefined ? valorDe(f, c.campo) : undefined;
           const html = c.pinta ? c.pinta(bruto, f, d) : esc(bruto);
@@ -1088,9 +1113,10 @@
         }).join('') + (acc ? `<td class="px-5 py-2.5 text-right whitespace-nowrap">${
           acc.filter(a => !a.visible || a.visible(f, d)).map((a, j) => `
             <button data-fila="${i}" data-acc="${j}" title="${esc(a.titulo || '')}"
+              aria-label="${esc((a.titulo || 'Editar') + (deFila(f) ? ': ' + deFila(f) : ''))}"
               class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted
                      hover:border-telecab-gold/50 hover:text-telecab-gold transition ml-1">
-              <i class="fa-solid ${esc(a.icono || 'fa-pen')} text-xs"></i></button>`).join('')
+              <i class="fa-solid ${esc(a.icono || 'fa-pen')} text-xs" aria-hidden="true"></i></button>`).join('')
         }</td>` : '')}</tr>`).join('');
         hueco.innerHTML = `
           <table class="w-full text-sm">

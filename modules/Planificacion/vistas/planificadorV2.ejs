@@ -31,7 +31,7 @@
       <button id="sem-prev" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Semana anterior">
         <i class="fa-solid fa-chevron-left text-xs"></i>
       </button>
-      <input id="f-dia" class="js-fecha w-32 text-center px-2 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm cursor-pointer" readonly>
+      <input id="f-dia" class="js-fecha w-32 text-center px-2 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm cursor-pointer" readonly aria-label="Día">
       <button id="sem-next" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Semana siguiente">
         <i class="fa-solid fa-chevron-right text-xs"></i>
       </button>
@@ -180,7 +180,7 @@
     <div class="relative">
       <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
       <input id="f-busca" type="search" placeholder="Buscar conductor o matrícula…"
-             title="Sin base abierta, busca en todas."
+             aria-label="Buscar conductor o matrícula" title="Sin base abierta, busca en todas."
              class="pl-8 pr-3 py-2 w-56 bg-telecab-card border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
     </div>
     <%# DOS VISTAS. Horizontal: una fila por coche y las plazas en columnas, con
@@ -277,7 +277,7 @@
           <i class="fa-solid fa-users text-telecab-muted"></i>Banquillo
           <span id="banq-n" class="ml-auto text-xs text-telecab-muted"></span>
         </h3>
-        <input id="banq-busca" type="search" placeholder="Buscar…"
+        <input id="banq-busca" type="search" placeholder="Buscar…" aria-label="Buscar en el banquillo"
                class="w-full mb-2 px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
         <div class="flex items-center gap-1.5 mb-2">
           <button data-banq-tab="todos" class="banq-tab px-2.5 py-1 rounded-lg text-xs font-semibold border transition">Todos</button>
@@ -2911,7 +2911,7 @@
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-sm my-16">
           <div class="flex items-center justify-between px-4 py-3 border-b border-telecab-border">
             <h3 class="font-semibold">¿Qué días/bloques cubre?</h3>
-            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
+            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted" aria-label="Cerrar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           </div>
           <div class="p-4">
             <p class="text-xs text-telecab-muted mb-3">Los bloques que cubre el correturnos. Los demás días serán su libranza.</p>
@@ -2928,8 +2928,8 @@
         cont.innerHTML = (lista || []).map(c => {
           const on = sel.has(String(c.vehiculoId));
           const dias = (c.descanso && c.descanso.length) ? diasTexto(c.descanso) : '—';
-          return `<button data-v="${esc(c.vehiculoId)}" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition ${on ? 'bg-telecab-gold/10 border-telecab-gold/40' : 'border-telecab-border hover:bg-telecab-card2'}">
-            <i class="fa-${on ? 'solid fa-square-check text-telecab-gold' : 'regular fa-square text-telecab-muted'}"></i>
+          return `<button data-v="${esc(c.vehiculoId)}" aria-pressed="${on}" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition ${on ? 'bg-telecab-gold/10 border-telecab-gold/40' : 'border-telecab-border hover:bg-telecab-card2'}">
+            <i class="fa-${on ? 'solid fa-square-check text-telecab-gold' : 'regular fa-square text-telecab-muted'}" aria-hidden="true"></i>
             <span class="text-sm font-medium">${esc(c.matricula)}</span><span class="text-xs text-telecab-muted ml-auto">${esc(dias)}</span></button>`;
         }).join('') || '<p class="text-xs text-telecab-muted text-center py-3">El cuadrante no tiene bloques.</p>';
         cont.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
@@ -2966,6 +2966,9 @@
     } catch (e) { alert(e.message); }
   }
 
+  // El nombre entero de cada día, para el lector de pantalla (el botón enseña la
+  // letra, y el nombre la lleva dentro: quien maneja la pantalla por voz dice «X»).
+  const NOMBRE_DIA = ['Lunes', 'Martes', 'Miércoles (X)', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   function editarDescanso({ titulo, actual, nota }) {
     return new Promise(resolve => {
       const sel = new Set(actual || []);
@@ -2975,11 +2978,11 @@
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-sm my-16">
           <div class="flex items-center justify-between px-4 py-3 border-b border-telecab-border">
             <h3 class="font-semibold">${esc(titulo)}</h3>
-            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
+            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted" aria-label="Cerrar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           </div>
           <div class="p-4">
             <p class="text-xs text-telecab-muted mb-3">${esc(nota || 'Los días que libran los fijos (día y noche a la vez). El correturnos cubre justo esos días.')}</p>
-            <div class="flex flex-wrap gap-1.5 justify-center" data-dias></div>
+            <div class="flex flex-wrap gap-1.5 justify-center" data-dias role="group" aria-label="Días que libra"></div>
             <div class="flex gap-2 mt-4">
               <button data-guardar class="flex-1 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">Guardar</button>
               <button data-cancelar class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">Cancelar</button>
@@ -2991,7 +2994,7 @@
       const pinta = () => {
         cont.innerHTML = DIAS_LETRA.map((l, i) => {
           const d = i + 1, on = sel.has(d);
-          return `<button data-d="${d}" class="w-10 h-10 rounded-xl border text-sm font-semibold transition ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/40'}">${l}</button>`;
+          return `<button data-d="${d}" aria-label="${NOMBRE_DIA[i]}" aria-pressed="${on}" class="w-10 h-10 rounded-xl border text-sm font-semibold transition ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/40'}">${l}</button>`;
         }).join('');
         cont.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => {
           const d = Number(b.dataset.d); if (sel.has(d)) sel.delete(d); else sel.add(d); pinta();
@@ -3023,7 +3026,7 @@
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-md my-8">
           <div class="flex items-center justify-between px-4 py-3 border-b border-telecab-border">
             <h3 class="font-semibold">${esc(titulo)}</h3>
-            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
+            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted" aria-label="Cerrar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           </div>
           <div class="p-3">
             ${ficha && ficha.id ? `
@@ -3037,7 +3040,7 @@
                  class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-telecab-gold/40 text-telecab-gold text-sm font-semibold hover:bg-telecab-gold/10 transition-colors">
                 <i class="fa-solid fa-id-card text-xs"></i>Ver su ficha</a>` : ''}
             </div>` : ''}
-            <input data-busca type="search" placeholder="Buscar nombre, DNI, teléfono…" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
+            <input data-busca type="search" placeholder="Buscar nombre, DNI, teléfono…" aria-label="Buscar conductor" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
             ${actual ? '<button data-quitar class="w-full mb-2 px-3 py-2 rounded-lg border border-telecab-red/40 text-telecab-red text-sm hover:bg-telecab-red/10"><i class="fa-solid fa-user-minus"></i> Dejar la plaza vacía</button>' : ''}
             <div data-lista class="space-y-1 max-h-[50vh] overflow-y-auto"></div>
           </div>
@@ -3085,10 +3088,10 @@
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-md my-8">
           <div class="flex items-center justify-between px-4 py-3 border-b border-telecab-border">
             <h3 class="font-semibold">${esc(titulo)}</h3>
-            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
+            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted" aria-label="Cerrar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           </div>
           <div class="p-3">
-            <input data-busca type="search" placeholder="Buscar matrícula, zona…" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
+            <input data-busca type="search" placeholder="Buscar matrícula, zona…" aria-label="Buscar coche" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
             <div data-lista class="space-y-1 max-h-[50vh] overflow-y-auto"></div>
           </div>
         </div>`;
@@ -3237,7 +3240,7 @@
             <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">Con bloqueo de motor · ${activos.length}</h3>
             <div class="space-y-0.5 max-h-80 overflow-y-auto">${activos.length ? activos.map(filaConductor).join('')
               : '<p class="text-xs text-telecab-muted px-2 py-3">Nadie todavía. Búscalo abajo y márcalo.</p>'}</div>
-            <input data-fj-busca value="${esc(fjBusca)}" placeholder="Buscar a alguien para activarle el bloqueo…"
+            <input data-fj-busca value="${esc(fjBusca)}" placeholder="Buscar a alguien para activarle el bloqueo…" aria-label="Buscar conductor para activarle el bloqueo"
                    class="mt-2 w-full px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm">
             ${candidatos.length ? `<div class="mt-1 space-y-0.5">${candidatos.map(filaConductor).join('')}</div>`
               : (q.length >= 2 ? '<p class="text-xs text-telecab-muted px-2 py-2">Nadie más con ese nombre en la plantilla.</p>' : '')}

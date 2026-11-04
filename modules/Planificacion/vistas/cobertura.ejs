@@ -11,9 +11,9 @@
   </div>
 
   <div class="flex flex-wrap items-center gap-3 mb-5">
-    <button id="sem-prev" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card disabled:opacity-40" title="Semana anterior">◀</button>
+    <button id="sem-prev" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card disabled:opacity-40" title="Semana anterior" aria-label="Semana anterior">◀</button>
     <span id="sem-label" class="text-sm text-telecab-text font-medium min-w-[240px] text-center">—</span>
-    <button id="sem-next" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card" title="Semana siguiente">▶</button>
+    <button id="sem-next" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card" title="Semana siguiente" aria-label="Semana siguiente">▶</button>
     <button id="sem-hoy" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:bg-telecab-card text-sm">Esta semana</button>
     <span class="text-xs text-telecab-muted">Adelanta semanas para ver quién saldrá según altas, bajas y sustituciones.</span>
   </div>
@@ -45,7 +45,7 @@
   <!-- ══ POR CONDUCTOR ══ -->
   <section id="panel-personas" class="hidden">
     <div class="flex flex-wrap items-center gap-3 mb-4">
-      <input id="f-persona" type="search" placeholder="Nombre, ID o matrícula…"
+      <input id="f-persona" type="search" placeholder="Nombre, ID o matrícula…" aria-label="Buscar conductor"
              class="flex-1 min-w-[220px] max-w-md px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
                     text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
       <button id="btn-turnos-todos" class="px-4 py-2 rounded-lg bg-green-600/15 text-green-400 text-sm font-medium hover:bg-green-600/25">
@@ -165,7 +165,7 @@ function pintarInformeAvisos() {
       <div class="flex flex-wrap items-center gap-3 text-sm">
         <span class="font-semibold text-telecab-text"><i class="fa-solid fa-clipboard-check text-telecab-gold mr-1"></i>
           Avisos ${hoy ? 'de hoy' : 'del día'}</span>
-        <input id="inf-dia" type="date" value="${esc(INF_DIA)}"
+        <input id="inf-dia" type="date" value="${esc(INF_DIA)}" aria-label="Día de los avisos"
                class="px-2 py-1 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text text-xs">
         <span class="text-telecab-text"><b>${INF.personas || 0}</b> persona(s) avisadas · <b>${INF.envios || 0}</b> envío(s)</span>
         ${usuarios ? `<span class="text-telecab-muted">—</span> <span class="text-telecab-muted">${usuarios}</span>` : ''}

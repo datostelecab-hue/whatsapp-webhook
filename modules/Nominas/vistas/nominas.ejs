@@ -10,8 +10,8 @@
       </p>
     </div>
     <div class="flex items-center gap-2">
-      <select id="mes" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text"></select>
-      <input id="ano" type="number" min="2024" max="2100" class="w-24 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+      <select id="mes" aria-label="Mes de la nómina" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text"></select>
+      <input id="ano" type="number" min="2024" max="2100" aria-label="Año de la nómina" class="w-24 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
     </div>
   </div>
 
@@ -72,8 +72,8 @@
           <b class="text-telecab-warn">Va por mes trabajado</b>, no a mes vencido.
         </p>
       </div>
-      <select id="ett-mes" class="px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm"></select>
-      <input id="ett-ano" type="number" min="2024" max="2100" class="w-24 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm">
+      <select id="ett-mes" aria-label="Mes trabajado del parte de la ETT" class="px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm"></select>
+      <input id="ett-ano" type="number" min="2024" max="2100" aria-label="Año del parte de la ETT" class="w-24 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm">
       <button id="btn-ett" class="px-4 py-2 rounded-lg bg-telecab-violet/15 text-telecab-violet text-sm font-medium hover:bg-telecab-violet/25">
         <i class="fa-solid fa-file-excel mr-1"></i> Excel de la ETT
       </button>
@@ -86,7 +86,7 @@
   <!-- ══ Tabla ══ -->
   <div id="tabla-wrap" class="hidden rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
     <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-telecab-border">
-      <input id="filtro" type="search" placeholder="Nombre (ficha o BOLT) o DNI…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm w-56 max-w-full">
+      <input id="filtro" type="search" aria-label="Buscar conductor" placeholder="Nombre (ficha o BOLT) o DNI…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm w-56 max-w-full">
       <!-- Solo plantilla propia (16/10/2026): los de ETT van en su parte, el
            Excel de arriba. Por eso ya no hay columna «Tipo» ni filtro. -->
       <span id="fuente" class="text-xs"></span>

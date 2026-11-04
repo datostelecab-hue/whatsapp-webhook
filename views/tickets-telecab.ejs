@@ -44,7 +44,7 @@
     { key: 'solicitante_nombre', label: 'Solicitante', tipo: 'text' },
     { key: 'solicitante_rol', label: 'Rol', tipo: 'select' },
     { key: 'estado', label: 'Estado', tipo: 'select', render: t => badgeEstado(t.estado) },
-    { key: 'adjuntos', label: 'Adj.', tipo: 'text', fmt: (v, t) => String((t.adjuntos || []).length || ''), render: t => (t.adjuntos || []).length ? `<span class="text-telecab-muted"><i class="fa-solid fa-paperclip"></i> ${t.adjuntos.length}</span>` : '' }
+    { key: 'adjuntos', label: 'Adj.', nombre: 'Adjuntos', tipo: 'text', fmt: (v, t) => String((t.adjuntos || []).length || ''), render: t => (t.adjuntos || []).length ? `<span class="text-telecab-muted"><i class="fa-solid fa-paperclip"></i> ${t.adjuntos.length}</span>` : '' }
   ];
 
   function construirTabla(paneSel, cols, filas) {
@@ -55,9 +55,10 @@
     const pasa = f => cols.every(c => { const val = String(filtros[c.key] || '').trim().toLowerCase(); if (!val) return true; const cell = celda(f, c.key).toLowerCase(); return c.tipo === 'select' ? cell === val : cell.includes(val); });
 
     const ths = cols.map(c => `<th class="px-4 py-3 text-left text-[11px] uppercase tracking-wide text-telecab-muted font-semibold whitespace-nowrap bg-telecab-card border-b border-telecab-border">${esc(c.label)}</th>`).join('');
+    // El nombre de cada filtro es el de su columna (`nombre` si la cabecera va abreviada).
     const filtroCells = cols.map(c => c.tipo === 'select'
-      ? `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><select data-filtro="${c.key}" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text"><option value="">Todos</option>${unicos(c.key).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></th>`
-      : `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><input data-filtro="${c.key}" placeholder="filtrar…" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text"></th>`).join('');
+      ? `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><select data-filtro="${c.key}" aria-label="Filtrar por ${esc(c.nombre || c.label)}" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text"><option value="">Todos</option>${unicos(c.key).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></th>`
+      : `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><input data-filtro="${c.key}" placeholder="filtrar…" aria-label="Filtrar por ${esc(c.nombre || c.label)}" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text"></th>`).join('');
 
     pane.innerHTML =
       `<div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -150,12 +151,12 @@
          <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 space-y-4">
            <h3 class="text-xs font-semibold uppercase tracking-wide text-telecab-gold">Gestión</h3>
            <div class="flex flex-wrap items-center gap-2">
-             <label class="text-xs text-telecab-muted">Estado:</label>
+             <label class="text-xs text-telecab-muted" for="d-estado">Estado:</label>
              <select id="d-estado" class="text-sm bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text">${estados.map(e => `<option ${e === t.estado ? 'selected' : ''}>${e}</option>`).join('')}</select>
              <button id="d-estado-btn" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm">Cambiar</button>
            </div>
            <div>
-             <label class="text-[11px] uppercase tracking-wide text-telecab-muted">Respuesta / notas (la ve el solicitante)</label>
+             <label class="text-[11px] uppercase tracking-wide text-telecab-muted" for="d-notas">Respuesta / notas (la ve el solicitante)</label>
              <textarea id="d-notas" rows="3" class="${INP}" placeholder="Qué se hizo, cuándo estará, etc.">${esc(t.notas_dev || '')}</textarea>
              <button id="d-notas-btn" class="mt-2 px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition text-sm font-medium"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar respuesta</button>
            </div>

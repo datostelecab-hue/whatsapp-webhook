@@ -68,9 +68,9 @@
       </div>
 
       <div>
-        <h4 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mb-2">Resultado final</h4>
+        <h4 id="ins-resultado-et" class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mb-2">Resultado final</h4>
         <input type="hidden" id="ins-resultado" value="">
-        <div class="tc-selector" data-para="ins-resultado" id="ins-resultados"></div>
+        <div class="tc-selector" data-para="ins-resultado" id="ins-resultados" role="group" aria-labelledby="ins-resultado-et"></div>
       </div>
 
       <label class="block">
@@ -191,7 +191,7 @@
     },
 
     filtros: [
-      { id: 'estado', textoTodos: 'Cualquier estado', opciones: [
+      { id: 'estado', etiqueta: 'Estado', textoTodos: 'Cualquier estado', opciones: [
           { valor: 'pendiente', texto: 'Pendientes de inspeccionar' },
           { valor: 'faltas', texto: 'Con algo que falta' },
           { valor: 'deteriorado', texto: 'Con algo deteriorado' },
@@ -206,19 +206,19 @@
           if (v === 'bien') return !fallos(f).length;
           return true;
         } },
-      { id: 'elemento', textoTodos: 'Cualquier elemento',
+      { id: 'elemento', etiqueta: 'Elemento', textoTodos: 'Cualquier elemento',
         opciones: () => CAT.elementos.map(e => ({ valor: e.codigo, texto: e.etiqueta + ' con problema' })),
         pasa: (f, v) => !todoEnFalta(f) && fallos(f).some(x => x.elemento === v) },
-      { id: 'resultado', textoTodos: 'Cualquier resultado',
+      { id: 'resultado', etiqueta: 'Resultado', textoTodos: 'Cualquier resultado',
         opciones: () => CAT.resultados.map(r => ({ valor: r.codigo, texto: r.etiqueta })).concat([{ valor: '-', texto: 'Sin resultado' }]),
         pasa: (f, v) => (v === '-' ? !f.resultado : f.resultado === v) },
-      { id: 'itv', textoTodos: 'ITV: todas', opciones: [
+      { id: 'itv', etiqueta: 'ITV', textoTodos: 'ITV: todas', opciones: [
           { valor: 'caducada', texto: 'ITV caducada' }, { valor: 'pronto', texto: `ITV en ${AVISO_DIAS} días` }],
         pasa: (f, v) => (v === 'caducada' ? caducada(vItv(f)) : pronto(vItv(f)) && !caducada(vItv(f))) },
-      { id: 'vtc', textoTodos: 'Pegatinas VTC: todas', opciones: [
+      { id: 'vtc', etiqueta: 'Pegatinas VTC', textoTodos: 'Pegatinas VTC: todas', opciones: [
           { valor: 'caducada', texto: 'Alguna caducada' }, { valor: 'pronto', texto: `Alguna en ${AVISO_DIAS} días` }],
         pasa: (f, v) => [vVtcD(f), vVtcT(f)].some(x => (v === 'caducada' ? caducada(x) : pronto(x) && !caducada(x))) },
-      { id: 'sede', campo: 'sede', textoTodos: 'Todas las sedes', opciones: [
+      { id: 'sede', etiqueta: 'Sede', campo: 'sede', textoTodos: 'Todas las sedes', opciones: [
           { valor: 'madrid', texto: 'Madrid' }, { valor: 'barcelona', texto: 'Barcelona' }] },
     ],
 
@@ -401,9 +401,9 @@
         <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">${esc(g.nombre)}</p>
         <div class="space-y-2">${g.items.map(e => `
           <div class="grid sm:grid-cols-[minmax(0,15rem)_1fr] items-center gap-x-3 gap-y-1">
-            <span class="text-sm">${esc(e.etiqueta)}</span>
+            <span id="ins-el-et-${esc(e.codigo)}" class="text-sm">${esc(e.etiqueta)}</span>
             <input type="hidden" id="ins-el-${esc(e.codigo)}" data-elemento="${esc(e.codigo)}" value="${esc(puesto.get(e.codigo) || '')}">
-            <div class="tc-selector" data-para="ins-el-${esc(e.codigo)}">
+            <div class="tc-selector" data-para="ins-el-${esc(e.codigo)}" role="group" aria-labelledby="ins-el-et-${esc(e.codigo)}">
               ${OPCIONES().map(o => `<button type="button" data-v="${esc(o.v)}">${esc(o.t)}</button>`).join('')}
             </div>
           </div>`).join('')}</div>

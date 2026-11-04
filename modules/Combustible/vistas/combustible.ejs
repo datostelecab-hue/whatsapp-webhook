@@ -24,10 +24,10 @@
   <div class="flex flex-wrap items-center gap-2">
     <span class="text-sm text-telecab-muted">Repostajes del</span>
     <input id="f-desde" class="js-fecha w-[7.5rem] px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-xl text-sm"
-           placeholder="dd/mm/aaaa" readonly title="Primer día que se enseña (hora de Madrid)">
+           placeholder="dd/mm/aaaa" readonly title="Primer día que se enseña (hora de Madrid)" aria-label="Repostajes del">
     <span class="text-sm text-telecab-muted">al</span>
     <input id="f-hasta" class="js-fecha w-[7.5rem] px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-xl text-sm"
-           placeholder="dd/mm/aaaa" readonly title="Último día que se enseña, incluido">
+           placeholder="dd/mm/aaaa" readonly title="Último día que se enseña, incluido" aria-label="Repostajes al">
     <div class="flex flex-wrap gap-1" id="atajos">
       <button type="button" data-dias="0"  class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">Hoy</button>
       <button type="button" data-dias="6"  class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-telecab-border bg-telecab-card text-telecab-muted hover:border-telecab-gold/40 transition">7 días</button>
@@ -950,31 +950,31 @@
     },
 
     filtros: [
-      { id: 'sede', textoTodos: 'Todas las sedes',
+      { id: 'sede', etiqueta: 'Sede', textoTodos: 'Todas las sedes',
         pasa: (f, v) => (v === 'sin' ? !f.sede : f.sede === v),
         opciones: filas => [
           ...Object.keys(SEDES).map(s => ({ valor: s, texto: SEDES[s], cuenta: filas.filter(f => f.sede === s).length })),
           ...(filas.some(f => !f.sede) ? [{ valor: 'sin', texto: 'Sin sede', cuenta: filas.filter(f => !f.sede).length }] : []),
         ] },
       // Por el color de la auditoría.
-      { id: 'color', textoTodos: 'Todos los colores',
+      { id: 'color', etiqueta: 'Color de la auditoría', textoTodos: 'Todos los colores',
         pasa: (f, v) => (v === 'sin' ? !f.color : f.color === v),
         opciones: filas => [
           ...['rojo', 'amarillo', 'verde'].map(c => ({ valor: c, texto: COLORES[c].texto, cuenta: filas.filter(f => f.color === c).length })),
           { valor: 'sin', texto: 'Sin color', cuenta: filas.filter(f => !f.color).length },
         ].filter(o => o.cuenta) },
-      { id: 'bolt', textoTodos: 'BOLT: todos',
+      { id: 'bolt', etiqueta: 'BOLT', textoTodos: 'BOLT: todos',
         pasa: (f, v) => boltClave(f) === v,
         opciones: filas => BOLT_FILTRO.filter(([k]) => filas.some(f => boltClave(f) === k))
           .map(([k, t]) => ({ valor: k, texto: t, cuenta: filas.filter(f => boltClave(f) === k).length })) },
       // BOLT y el bot de WhatsApp (db/215): si dicen la misma persona, otra, o solo uno.
-      { id: 'quien', textoTodos: 'BOLT y bot: todos',
+      { id: 'quien', etiqueta: 'BOLT y bot', textoTodos: 'BOLT y bot: todos',
         pasa: (f, v) => (v === 'distinto' ? ['distinto', 'sin_comparar'].includes(f.quien_caso) : f.quien_caso === v),
         // «El bot, ya cerrado» va aparte de «distintos»: un turno del bot ya
         // cerrado a esa hora no contradice a BOLT (combustible.casar.boltYBot).
         opciones: filas => QUIEN_FILTRO.map(k => ({ valor: k, texto: QUIEN_OPCION[k],
           cuenta: filas.filter(f => (k === 'distinto' ? ['distinto', 'sin_comparar'].includes(f.quien_caso) : f.quien_caso === k)).length })).filter(o => o.cuenta) },
-      { id: 'proveedor', campo: 'proveedor', textoTodos: 'Todos los proveedores',
+      { id: 'proveedor', etiqueta: 'Proveedor', campo: 'proveedor', textoTodos: 'Todos los proveedores',
         opciones: filas => [...new Set(filas.map(f => f.proveedor))].map(p => ({ valor: p, texto: PROVEEDORES[p] || p })) },
     ],
 

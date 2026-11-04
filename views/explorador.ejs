@@ -21,7 +21,7 @@
     <!-- Lista de tablas -->
     <aside class="w-60 shrink-0 flex flex-col bg-telecab-card border border-telecab-border rounded-xl overflow-hidden">
       <div class="p-2 border-b border-telecab-border">
-        <input id="filtro-tabla" placeholder="Buscar tabla…" autocomplete="off"
+        <input id="filtro-tabla" placeholder="Buscar tabla…" aria-label="Buscar tabla" autocomplete="off"
                class="w-full px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text">
       </div>
       <div id="lista-tablas" class="flex-1 overflow-y-auto p-1.5 space-y-0.5"></div>
@@ -38,7 +38,7 @@
           <h2 id="titulo" class="font-semibold text-telecab-text"></h2>
           <span id="cuenta" class="text-xs text-telecab-muted"></span>
           <div class="ml-auto flex items-center gap-2">
-            <input id="busca" placeholder="Buscar en la tabla…" autocomplete="off"
+            <input id="busca" placeholder="Buscar en la tabla…" aria-label="Buscar en la tabla" autocomplete="off"
                    class="px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text w-48">
             <div class="flex rounded-lg overflow-hidden border border-telecab-border text-xs">
               <button data-p="datos"       class="tab px-3 py-1.5">Datos</button>
@@ -50,9 +50,9 @@
         <div id="cuerpo" class="flex-1 overflow-auto"></div>
 
         <div id="pie" class="hidden items-center gap-2 px-3 py-2 border-t border-telecab-border text-xs">
-          <button id="ant" class="px-2.5 py-1 rounded bg-telecab-card2 text-telecab-text disabled:opacity-40">‹</button>
+          <button id="ant" aria-label="Página anterior" class="px-2.5 py-1 rounded bg-telecab-card2 text-telecab-text disabled:opacity-40">‹</button>
           <span id="pag" class="text-telecab-muted"></span>
-          <button id="sig" class="px-2.5 py-1 rounded bg-telecab-card2 text-telecab-text disabled:opacity-40">›</button>
+          <button id="sig" aria-label="Página siguiente" class="px-2.5 py-1 rounded bg-telecab-card2 text-telecab-text disabled:opacity-40">›</button>
           <span id="tiempo" class="ml-auto text-telecab-muted"></span>
         </div>
       </div>
@@ -69,10 +69,10 @@
             class="text-[10px] px-2 py-0.5 rounded bg-telecab-green/15 text-telecab-green font-semibold">
         transacción de solo lectura
       </span>
-      <button id="sql-cerrar" class="ml-auto text-telecab-muted hover:text-telecab-text px-2">✕</button>
+      <button id="sql-cerrar" aria-label="Cerrar" class="ml-auto text-telecab-muted hover:text-telecab-text px-2">✕</button>
     </div>
     <div class="p-4 space-y-2">
-      <textarea id="sql" rows="5" spellcheck="false" placeholder="SELECT * FROM conductor WHERE empleo_vigente LIMIT 20"
+      <textarea id="sql" rows="5" spellcheck="false" aria-label="Sentencia SQL" placeholder="SELECT * FROM conductor WHERE empleo_vigente LIMIT 20"
         class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text font-mono"></textarea>
       <div class="flex items-center gap-2 flex-wrap">
         <button id="sql-ir" class="px-4 py-2 rounded-lg bg-telecab-gold text-black text-sm font-semibold">

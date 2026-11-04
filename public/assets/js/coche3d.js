@@ -124,13 +124,13 @@
     const el = document.createElement('div');
     el.className = 'c3-visor';
     el.innerHTML = `
-      <canvas class="c3-lienzo" aria-label="El coche en 3D con las piezas en mal estado marcadas"></canvas>
+      <canvas class="c3-lienzo" role="img" aria-label="El coche en 3D con las piezas en mal estado marcadas"></canvas>
       <div class="c3-etiquetas"></div>
       <div class="c3-botones">
         <button type="button" data-c3="dentro" aria-pressed="false" title="Aclarar la carrocería para ver el interior y la mecánica">
           <i class="fa-solid fa-eye"></i><span>Ver por dentro</span></button>
         <button type="button" data-c3="centrar" title="Volver a la vista de inicio" aria-label="Volver a la vista de inicio">
-          <i class="fa-solid fa-rotate-left"></i></button>
+          <i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
       </div>
       <p class="c3-ayuda">Arrastra para girar · rueda o pellizco para acercar</p>`;
     const canvas = el.querySelector('canvas');

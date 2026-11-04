@@ -19,7 +19,8 @@
 //     ni en el HTML ni en el que se monta con cadenas: tampoco se ejecuta;
 //   · los datos del servidor en un <script> van con `<%- json(x) %>`, no con
 //     JSON.stringify (ver app.js).
-// Y desde el 04/11/2026, una cuarta: el `esc` de una vista es `Casa.esc`.
+// Y desde el 04/11/2026, una cuarta: el `esc` de una vista es `Casa.esc`; y una
+// quinta: ni botones de solo icono sin nombre ni <label> sueltas (FRO-9).
 // También mira las subcarpetas (partials/), que antes se le escapaban.
 
 const fs = require('fs');
@@ -78,6 +79,28 @@ if (fs.existsSync(MODULOS)) {
 let fallos = 0, revisados = 0;
 const lineaDe = (html, i) => html.slice(0, i).split('\n').length;
 
+// LO QUE UN LECTOR DE PANTALLA NO PUEDE NOMBRAR (FRO-9, 04/11/2026): un botón
+// con solo un icono y sin aria-label, aria-labelledby ni title, y una <label>
+// que no está unida a nada (ni for, ni un control dentro, ni la usa un
+// aria-labelledby). Lo que pinta EJS (<%= %>) o JS (${…}) cuenta como texto.
+const ATRIBUTOS = '((?:<%[\\s\\S]*?%>|\\$\\{[^}]*\\}|[^>])*)';
+function sinNombre(texto) {
+  const malos = [];
+  for (const m of texto.matchAll(new RegExp('<button\\b' + ATRIBUTOS + '>([\\s\\S]*?)<\\/button>', 'gi'))) {
+    const dentro = m[2].replace(/<i\b[^>]*>\s*<\/i>/gi, '').replace(/<%[=-][\s\S]*?%>/g, 'X')
+      .replace(/<%[\s\S]*?%>/g, '').trim();
+    if (dentro || /\baria-label(ledby)?\s*=|\btitle\s*=/.test(m[1])) continue;
+    malos.push({ i: m.index, que: 'un botón con solo un icono y sin nombre — ponle aria-label con lo que hace' });
+  }
+  for (const m of texto.matchAll(new RegExp('<label\\b' + ATRIBUTOS + '>([\\s\\S]*?)<\\/label>', 'gi'))) {
+    if (/\bfor\s*=/.test(m[1]) || /<(input|select|textarea)\b/i.test(m[2])) continue;
+    const id = (m[1].match(/\bid\s*=\s*"([^"]+)"/) || [])[1];
+    if (id && texto.includes('aria-labelledby="' + id + '"')) continue;
+    malos.push({ i: m.index, que: 'una <label> suelta — for="<id del campo>", o id y aria-labelledby si titula un grupo' });
+  }
+  return malos;
+}
+
 for (const { nombre: f, ruta } of ficheros) {
   const html = fs.readFileSync(ruta, 'utf8');
 
@@ -105,6 +128,10 @@ for (const { nombre: f, ruta } of ficheros) {
     fallos++;
     console.log(`  x ${f} (linea ${lineaDe(html, m.index)}): un esc propio — usa const esc = Casa.esc; (nucleo.js), que escapa los cinco`);
   }
+  for (const m of sinNombre(html)) {
+    fallos++;
+    console.log(`  x ${f} (linea ${lineaDe(html, m.i)}): ${m.que}`);
+  }
 
   for (const s of scriptsDe(html)) {
     const codigo = sinEjs(s.codigo);
@@ -129,6 +156,10 @@ for (const f of fs.readdirSync(COMPONENTES).filter(x => x.endsWith('.js')).sort(
   for (const m of js.matchAll(/\son[a-z]+\s*=\s*["'\\]/gi)) {
     fallos++;
     console.log(`  x public/assets/js/${f} (linea ${lineaDe(js, m.index)}): manejador en un atributo (${m[0].trim()}…) — con la CSP no se ejecuta. Usa addEventListener`);
+  }
+  for (const m of sinNombre(js)) {
+    fallos++;
+    console.log(`  x public/assets/js/${f} (linea ${lineaDe(js, m.i)}): ${m.que}`);
   }
 }
 

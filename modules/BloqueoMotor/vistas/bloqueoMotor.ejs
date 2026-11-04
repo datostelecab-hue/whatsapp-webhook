@@ -135,7 +135,7 @@
     },
 
     filtros: [{
-      id: 'estado', textoTodos: 'Todos los estados',
+      id: 'estado', etiqueta: 'Estado', textoTodos: 'Todos los estados',
       pasa: (f, v) => (v === 'avisos' ? AVISOS.includes(f.estado)
         : v === 'pendientes' ? pendiente(f) : v === 'arreglar' ? hayQueArreglar(f) : f.estado === v),
       opciones: filas => [

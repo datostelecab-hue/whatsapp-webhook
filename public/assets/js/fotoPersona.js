@@ -40,7 +40,7 @@
   const SILUETA = '<svg viewBox="0 0 64 64" class="w-full h-full" aria-hidden="true">'
     + '<circle cx="32" cy="25" r="12" fill="currentColor"/>'
     + '<path d="M9 64c1.5-14 11.5-22 23-22s21.5 8 23 22z" fill="currentColor"/></svg>';
-  const hueco_silueta = titulo => '<div class="w-full h-full px-2 pt-3" title="' + esc(titulo) + '">' + SILUETA + '</div>';
+  const hueco_silueta = titulo => '<div class="w-full h-full px-2 pt-3" role="img" aria-label="' + esc(titulo) + '" title="' + esc(titulo) + '">' + SILUETA + '</div>';
 
   /**
    * La foto, reducida ANTES de subirla. Devuelve el base64 sin la cabecera
@@ -133,7 +133,7 @@
                           border-2 border-telecab-card shadow-soft flex items-center justify-center text-sm
                           hover:scale-105 transition"
                    title="${titulo}" aria-label="${titulo}">
-                 <i class="fa-solid fa-camera"></i></button>` : ''}
+                 <i class="fa-solid fa-camera" aria-hidden="true"></i></button>` : ''}
       </div>`;
 
     const img = hueco.querySelector('[data-foto]');
@@ -154,7 +154,7 @@
       if (!archivo || guardando) return;
       guardando = true;
       boton.disabled = true;
-      boton.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+      boton.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>';
       try {
         const r = await mandar(opc.url, await reducir(archivo, 640));
         opc.fotoId = r.fotoId;

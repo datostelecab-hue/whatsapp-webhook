@@ -12,9 +12,9 @@
     <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-id-card text-telecab-gold"></i> Mi perfil</h2>
     <p class="text-xs text-telecab-muted mb-4">Tu nombre, apellidos y teléfono se usan como <b>firma</b> en las acciones que registras. Tu correo (<b><%= (typeof usuario !== 'undefined' && usuario && usuario.email) || '' %></b>) y tu rol los gestiona el administrador.</p>
     <div class="grid sm:grid-cols-3 gap-3">
-      <div><label class="block text-xs text-telecab-muted mb-1">Nombre</label><input id="p-nombre" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) || '' %>"></div>
-      <div><label class="block text-xs text-telecab-muted mb-1">Apellidos</label><input id="p-apellidos" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.apellidos) || '' %>"></div>
-      <div><label class="block text-xs text-telecab-muted mb-1">Teléfono</label><input id="p-telefono" class="inp" inputmode="tel" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.telefono) || '' %>"></div>
+      <div><label class="block text-xs text-telecab-muted mb-1" for="p-nombre">Nombre</label><input id="p-nombre" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) || '' %>"></div>
+      <div><label class="block text-xs text-telecab-muted mb-1" for="p-apellidos">Apellidos</label><input id="p-apellidos" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.apellidos) || '' %>"></div>
+      <div><label class="block text-xs text-telecab-muted mb-1" for="p-telefono">Teléfono</label><input id="p-telefono" class="inp" inputmode="tel" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.telefono) || '' %>"></div>
     </div>
     <%# La fecha de nacimiento (db/204): para felicitarle el cumpleaños. dd/mm/aaaa en pantalla. %>
     <% const fnac = (typeof fechaNacimiento !== 'undefined' && fechaNacimiento) ? fechaNacimiento.split('-').reverse().join('/') : ''; %>
@@ -38,7 +38,7 @@
       </p>
       <div class="flex flex-wrap items-end gap-2">
         <div>
-          <label class="block text-xs text-telecab-muted mb-1">Contraseña de correo</label>
+          <label class="block text-xs text-telecab-muted mb-1" for="p-pass-correo">Contraseña de correo</label>
           <input id="p-pass-correo" type="password" class="inp !w-56" placeholder="••••••••" autocomplete="new-password">
         </div>
         <button id="p-probar-correo" class="px-3 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Probar mi correo</button>
@@ -98,11 +98,11 @@
     <p class="text-xs text-telecab-muted mb-4">Crea accesos y asigna roles. Al crear un usuario se le envía una contraseña provisional a su correo; en su primer acceso elige la suya.</p>
 
     <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-      <input id="u-nombre" class="inp" placeholder="Nombre">
-      <input id="u-apellidos" class="inp" placeholder="Apellidos">
-      <input id="u-telefono" class="inp" placeholder="Teléfono" inputmode="tel">
-      <input id="u-email" type="email" class="inp lg:col-span-2" placeholder="correo@telecab.es" autocomplete="off">
-      <select id="u-rol" class="inp">
+      <input id="u-nombre" class="inp" placeholder="Nombre" aria-label="Nombre">
+      <input id="u-apellidos" class="inp" placeholder="Apellidos" aria-label="Apellidos">
+      <input id="u-telefono" class="inp" placeholder="Teléfono" inputmode="tel" aria-label="Teléfono">
+      <input id="u-email" type="email" class="inp lg:col-span-2" placeholder="correo@telecab.es" autocomplete="off" aria-label="Correo">
+      <select id="u-rol" class="inp" aria-label="Rol">
         <option value="oficina">Oficina</option>
         <option value="trafico">Tráfico</option>
         <option value="superadmin">Superadmin</option>
@@ -127,30 +127,30 @@
     <p class="text-xs text-telecab-muted mb-4">Cuenta desde la que la plataforma envía los correos (accesos, avisos, auditoría). La contraseña se guarda <b>cifrada</b>. Para telecab.es (DonDominio): servidor <b>smtp.dondominio.com</b>, puerto <b>587</b>, usuario = tu correo completo. El <b>«De:» debe ser una dirección @telecab.es</b> (puedes enviar a cualquier destinatario, pero no <i>como</i> un gmail ajeno).</p>
     <div class="grid sm:grid-cols-2 gap-3">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Servidor SMTP</label>
+        <label class="block text-xs text-telecab-muted mb-1" for="c-host">Servidor SMTP</label>
         <input id="c-host" class="inp" placeholder="smtp.dondominio.com" autocomplete="off">
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Puerto</label>
+        <label class="block text-xs text-telecab-muted mb-1" for="c-port">Puerto</label>
         <input id="c-port" class="inp" placeholder="587" inputmode="numeric">
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Usuario — buzón que envía <span class="text-telecab-muted/70">(@telecab.es, no un gmail)</span></label>
+        <label class="block text-xs text-telecab-muted mb-1" for="c-user">Usuario — buzón que envía <span class="text-telecab-muted/70">(@telecab.es, no un gmail)</span></label>
         <input id="c-user" class="inp" placeholder="datos@telecab.es" autocomplete="off">
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Remitente «De:» <span class="text-telecab-muted/70">(@telecab.es)</span></label>
+        <label class="block text-xs text-telecab-muted mb-1" for="c-from">Remitente «De:» <span class="text-telecab-muted/70">(@telecab.es)</span></label>
         <input id="c-from" class="inp" placeholder="noreply@telecab.es">
       </div>
       <div class="sm:col-span-2">
-        <label class="block text-xs text-telecab-muted mb-1">Contraseña <span id="c-pass-nota" class="text-telecab-muted/70"></span></label>
+        <label class="block text-xs text-telecab-muted mb-1" for="c-pass">Contraseña <span id="c-pass-nota" class="text-telecab-muted/70"></span></label>
         <input id="c-pass" type="password" class="inp" placeholder="••••••••" autocomplete="new-password">
       </div>
     </div>
     <div class="flex flex-wrap items-end gap-2 mt-3">
       <button id="c-guardar" class="px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold text-sm"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar</button>
       <div>
-        <label class="block text-[11px] text-telecab-muted mb-0.5">Enviar prueba a</label>
+        <label class="block text-[11px] text-telecab-muted mb-0.5" for="c-prueba-to">Enviar prueba a</label>
         <input id="c-prueba-to" class="inp !w-52 text-sm" placeholder="tu@correo.com" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.email) || '' %>">
       </div>
       <button id="c-prueba" class="px-4 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Enviar prueba</button>
@@ -282,7 +282,7 @@
          <span class="block text-sm text-telecab-text truncate">${esc(u.nombre)} ${esc(u.apellidos || '')} ${yo ? '<span class="text-[10px] text-telecab-gold">(tú)</span>' : ''} ${u.debe_cambiar ? '<span class="text-[10px] text-telecab-muted">· provisional</span>' : ''}</span>
          <span class="block text-[11px] text-telecab-muted font-mono truncate">${esc(u.email)}${u.telefono ? ' · ' + esc(u.telefono) : ''}${u.ultimo_acceso ? ' · último: ' + esc(u.ultimo_acceso) : ' · nunca ha entrado'}</span>
        </span>
-       <select class="u-rol inp !w-32 text-xs !py-1" data-email="${esc(u.email)}">
+       <select class="u-rol inp !w-32 text-xs !py-1" data-email="${esc(u.email)}" aria-label="Rol de ${esc(((u.nombre || '') + ' ' + (u.apellidos || '')).trim() || u.email)}">
          ${['superadmin', 'oficina', 'trafico'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROLN[r]}</option>`).join('')}
        </select>
        <button class="u-estado text-xs px-2 py-1 rounded-lg border ${bloqueado ? 'border-telecab-red/40 text-telecab-red' : 'border-telecab-green/40 text-telecab-green'}" data-email="${esc(u.email)}" data-estado="${bloqueado ? 'activo' : 'bloqueado'}">${bloqueado ? 'Activar' : 'Desactivar'}</button>

@@ -117,7 +117,7 @@
             <div class="rounded-xl border border-telecab-border/70 bg-telecab-dark/30 p-3">
               <div class="flex items-center gap-2 mb-2">
                 <span class="text-xs font-semibold uppercase tracking-wide text-telecab-gold">${esc(g.grupo)}</span>
-                <button data-grupo="${esc(g.grupo)}" class="ml-auto text-[11px] text-telecab-muted hover:text-telecab-gold">todo</button>
+                <button data-grupo="${esc(g.grupo)}" aria-label="Marcar todo: ${esc(g.grupo)}" class="ml-auto text-[11px] text-telecab-muted hover:text-telecab-gold">todo</button>
               </div>
               <div class="space-y-1">
               ${g.items.map(i => `
@@ -156,7 +156,7 @@
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <select data-rol class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+          <select data-rol aria-label="Rol" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
             ${D.roles.map(r => `<option value="${esc(r.codigo)}" ${u.rol === r.codigo ? 'selected' : ''}>${esc(r.etiqueta)}</option>`).join('')}
           </select>
           <button data-estado class="px-3 py-1.5 rounded-lg border text-xs ${u.estado === 'bloqueado'

@@ -183,7 +183,7 @@
 
         <div class="p-5 space-y-4">
           <div>
-            <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Conductor</label>
+            <label for="f-conductor" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Conductor</label>
             <input id="f-conductor" list="lista-conductores" required autocomplete="off" placeholder="Empieza a escribir el nombre…"
                    class="inp w-full px-3 py-2.5 rounded-xl text-sm">
             <datalist id="lista-conductores"></datalist>
@@ -191,15 +191,15 @@
 
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Teléfono</label>
+              <label for="f-telefono" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Teléfono</label>
               <input id="f-telefono" class="inp w-full px-3 py-2.5 rounded-xl text-sm tabular-nums">
             </div>
             <div>
-              <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Matrícula</label>
+              <label for="f-matricula" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Matrícula</label>
               <input id="f-matricula" class="inp w-full px-3 py-2.5 rounded-xl text-sm uppercase">
             </div>
             <div>
-              <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Turno</label>
+              <label for="f-turno" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Turno</label>
               <select id="f-turno" class="inp w-full px-3 py-2.5 rounded-xl text-sm">
                 <option value="">—</option><option>Día</option><option>Noche</option>
               </select>
@@ -215,30 +215,30 @@
             <div id="chips-cluster" class="flex flex-wrap gap-1.5"></div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-telecab-muted mb-1.5">Subcluster</label>
+                <label for="f-subcluster" class="block text-xs text-telecab-muted mb-1.5">Subcluster</label>
                 <select id="f-subcluster" required class="inp w-full px-3 py-2.5 rounded-xl text-sm"></select>
               </div>
               <div>
-                <label class="block text-xs text-telecab-muted mb-1.5">Motivo</label>
+                <label for="f-motivo" class="block text-xs text-telecab-muted mb-1.5">Motivo</label>
                 <select id="f-motivo" required class="inp w-full px-3 py-2.5 rounded-xl text-sm"></select>
               </div>
             </div>
             <div>
-              <label class="block text-xs text-telecab-muted mb-1.5">Resultado</label>
+              <label for="f-resultado" class="block text-xs text-telecab-muted mb-1.5">Resultado</label>
               <select id="f-resultado" required class="inp w-full px-3 py-2.5 rounded-xl text-sm"></select>
             </div>
             <input type="hidden" id="f-cluster">
           </div>
 
           <div>
-            <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Acción tomada</label>
+            <label for="f-accion" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Acción tomada</label>
             <input id="f-accion" list="lista-acciones" autocomplete="off" placeholder="Opcional"
                    class="inp w-full px-3 py-2.5 rounded-xl text-sm">
             <datalist id="lista-acciones"></datalist>
           </div>
 
           <div>
-            <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
+            <label for="f-notas" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
               Notas <span class="normal-case opacity-70">(tipo de siniestro, detalle de la avería…)</span>
             </label>
             <textarea id="f-notas" rows="3" class="inp w-full px-3 py-2.5 rounded-xl text-sm"></textarea>
@@ -285,8 +285,8 @@
         <h2 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Conductores llamados</h2>
         <span id="cond-rango" class="text-[11px] text-telecab-muted"></span>
         <div class="ml-auto flex items-center gap-2">
-          <input id="cond-busca" placeholder="Buscar…" class="px-3 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">
-          <select id="cond-orden" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-44">
+          <input id="cond-busca" placeholder="Buscar…" aria-label="Buscar conductor" class="px-3 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">
+          <select id="cond-orden" aria-label="Ordenar" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-44">
             <option value="n">Más llamadas</option>
             <option value="ultima">Más reciente</option>
             <option value="reincide">Más reincidencia</option>
@@ -329,14 +329,14 @@
         <i class="fa-solid fa-list text-telecab-gold text-sm"></i>
         <h2 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Llamadas del periodo</h2>
         <div class="ml-auto flex items-center gap-2 flex-wrap">
-          <input id="fil-texto" placeholder="Buscar…" class="px-3 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">
-          <select id="fil-fuente" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">
+          <input id="fil-texto" placeholder="Buscar…" aria-label="Buscar llamada" class="px-3 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">
+          <select id="fil-fuente" aria-label="Fuente" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">
             <option value="">Las dos fuentes</option>
             <option value="control">Solo Control</option>
             <option value="callcenter">Solo Call Center</option>
           </select>
-          <select id="fil-cluster" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-44"><option value="">Todos los clusters</option></select>
-          <select id="fil-estado" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-36">
+          <select id="fil-cluster" aria-label="Cluster" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-44"><option value="">Todos los clusters</option></select>
+          <select id="fil-estado" aria-label="Estado" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-36">
             <option value="">Todas</option><option value="resuelta">Resueltas</option><option value="pendiente">Pendientes</option>
           </select>
         </div>
@@ -367,11 +367,11 @@
   <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-md p-5">
     <h3 class="font-semibold text-telecab-text mb-1">Resolver seguimiento</h3>
     <p id="m-resumen" class="text-xs text-telecab-muted mb-4"></p>
-    <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
+    <label for="m-resultado" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
       Resultado final <span class="normal-case opacity-70">(opcional, sustituye al inicial)</span>
     </label>
     <select id="m-resultado" class="inp w-full mb-3 px-3 py-2.5 rounded-xl text-sm"></select>
-    <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
+    <label for="m-nota" class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
       ¿Cómo se resolvió? <b class="text-telecab-red">*</b>
     </label>
     <textarea id="m-nota" rows="3" class="inp w-full mb-4 px-3 py-2.5 rounded-xl text-sm"></textarea>

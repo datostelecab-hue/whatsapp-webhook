@@ -99,10 +99,10 @@
   <div class="flex flex-wrap items-center gap-2 mb-3">
     <div class="relative flex-1 min-w-[220px]">
       <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
-      <input id="f-busca" type="search" placeholder="Buscar conductor…"
+      <input id="f-busca" type="search" aria-label="Buscar conductor" placeholder="Buscar conductor…"
         class="w-full pl-9 pr-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
     </div>
-    <select id="f-estado" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+    <select id="f-estado" aria-label="Estado de la cuenta" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <option value="deuda">Solo los que deben</option>
       <option value="">Todos</option>
       <option value="dia">Al día</option>
@@ -111,7 +111,7 @@
       <option value="efectivo">Con el efectivo activado en BOLT</option>
       <option value="efectivofuera">Efectivo activado y ya no trabaja aquí</option>
     </select>
-    <select id="f-dias" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"
+    <select id="f-dias" aria-label="Días sin pasar por ventanilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"
       title="Cuánto hace que no pasa por ventanilla. Solo mira a quien debe algo: el que está al día y no viene es que no tiene nada que traer">
       <option value="">Venga cuando venga</option>
       <option value="3">+3 días sin entregar</option>
@@ -120,7 +120,7 @@
       <option value="30">+30 días sin entregar</option>
       <option value="nunca">No ha entregado nunca</option>
     </select>
-    <select id="f-plantilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+    <select id="f-plantilla" aria-label="En plantilla o fuera" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <option value="">En plantilla y fuera</option>
       <option value="si">Solo en plantilla</option>
       <option value="no">Solo los que ya no están</option>
@@ -193,9 +193,9 @@
    * Guarda el id en un campo oculto, así que quien lo lee lo lee igual que
    * antes: `[data-cond].value`.
    */
-  function comboConductor(id, ini) {
+  function comboConductor(id, ini, etiqueta) {
     return '<div class="relative" data-combo>' +
-      '<input data-combo-txt type="text" autocomplete="off" placeholder="Escribe un nombre…" ' +
+      '<input data-combo-txt type="text" autocomplete="off" aria-label="' + esc(etiqueta || 'Conductor') + '" placeholder="Escribe un nombre…" ' +
         'class="w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text">' +
       '<input type="hidden" ' + id + '>' +
       '<div data-combo-lista class="hidden absolute z-30 left-0 right-0 mt-1 max-h-60 overflow-auto ' +
@@ -633,12 +633,12 @@
           '<h2 class="font-bold text-telecab-text tracking-wide"><i class="fa-solid ' +
             (esCambio ? 'fa-hand-holding-dollar text-telecab-warn' : 'fa-receipt text-telecab-gold') + ' mr-2"></i>' +
             (esCambio ? 'CAMBIO ENTREGADO' : 'RECIBO DE EFECTIVO') + '</h2>' +
-          '<button data-cerrar class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>' +
+          '<button data-cerrar aria-label="Cerrar" class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>' +
         '</div>' +
         '<div class="p-4 space-y-4">' +
           '<div class="grid sm:grid-cols-[2fr,1fr,1fr] gap-3">' +
             '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">' + (esCambio ? 'Entregado a' : 'Recibí de') +
-              '<div class="mt-1">' + comboConductor('data-cond') + '</div></div>' +
+              '<div class="mt-1">' + comboConductor('data-cond', null, esCambio ? 'Entregado a' : 'Recibí de') + '</div></div>' +
             '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Fecha' +
               '<input data-fecha class="js-fecha mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text" ' +
                 'value="' + hoyDdmm() + '" data-max="today" readonly placeholder="dd/mm/aaaa"></label>' +
@@ -659,6 +659,7 @@
                 '<tr class="border-t border-telecab-border">' +
                   '<td class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted">Cantidad</td>' +
                   DEN.map(d => '<td class="p-0.5"><input data-den="' + d.centimos + '" type="number" min="0" step="1" inputmode="numeric" ' +
+                    'aria-label="Cantidad de ' + esc(d.etiqueta) + ' €" ' +
                     'class="w-full min-w-[44px] bg-telecab-dark border border-telecab-border rounded px-1 py-1.5 text-center text-sm text-telecab-text tabular-nums"></td>').join('') +
                   '<td class="px-2 py-1.5 text-telecab-muted tabular-nums" data-uds>0</td></tr>' +
                 '<tr class="border-t border-telecab-border bg-telecab-card2/30">' +
@@ -974,7 +975,7 @@
                 'title="Lo ha pagado por transferencia: el importe y el ID de la transferencia"><i class="fa-solid fa-building-columns mr-1"></i>Transferencia</button>') +
               '<button data-cambio-ficha class="px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-warn hover:text-telecab-warn text-sm whitespace-nowrap transition" ' +
                 'title="Darle cambio para trabajar"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>Cambio</button>' +
-              '<button data-cerrar-ficha class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>' +
+              '<button data-cerrar-ficha aria-label="Cerrar la ficha" class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>' +
             '</div>' +
           '</div>' +
           (f.quincenas.length

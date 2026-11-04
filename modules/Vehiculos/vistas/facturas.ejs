@@ -12,8 +12,8 @@
   <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-4xl my-8">
     <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
       <h3 class="font-bold text-lg">Nueva factura de taller</h3>
-      <button type="button" id="fm-cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition">
-        <i class="fa-solid fa-xmark"></i>
+      <button type="button" id="fm-cerrar" aria-label="Cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -151,7 +151,7 @@
     },
 
     filtros: [{
-      id: 'taller', campo: 'proveedor', textoTodos: 'Todos los talleres',
+      id: 'taller', etiqueta: 'Taller', campo: 'proveedor', textoTodos: 'Todos los talleres',
       opciones: filas => [...new Set(filas.map(f => f.proveedor))].sort()
         .map(p => ({ valor: p, texto: p, cuenta: filas.filter(f => f.proveedor === p).length })),
     }],
@@ -176,7 +176,7 @@
         pinta: v => etiqueta(v === 'barcelona' ? 'Barcelona' : 'Madrid', v === 'barcelona' ? 'violet' : 'muted') }] : []),
       { titulo: 'PDF', campo: 'archivo',
         pinta: (v, f) => (f.enlace
-          ? `<a href="${esc(f.enlace)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline"><i class="fa-solid fa-file-pdf"></i></a>`
+          ? `<a href="${esc(f.enlace)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline" aria-label="Ver la factura ${esc(f.numero)} en PDF"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i></a>`
           : '<span class="text-telecab-muted">—</span>') },
     ],
 
@@ -289,14 +289,14 @@
   const MINI = 'bg-telecab-card2 border border-telecab-border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40';
   const filaHTML = () => `
     <tr class="border-t border-telecab-border">
-      <td class="py-1 pr-2"><input name="matricula" placeholder="vacío = NN"
+      <td class="py-1 pr-2"><input name="matricula" placeholder="vacío = NN" aria-label="Matrícula"
           class="w-32 uppercase ${MINI}" autocomplete="off"></td>
-      <td class="py-1 pr-2"><input name="albaran" class="w-24 ${MINI}"></td>
-      <td class="py-1 pr-2"><input name="fecha" class="js-fecha w-28 ${MINI}" placeholder="dd/mm/aaaa" autocomplete="off"></td>
-      <td class="py-1 pr-2"><input name="km" inputmode="numeric" class="w-24 tabular-nums ${MINI}"></td>
-      <td class="py-1 pr-2"><input name="concepto" class="w-full ${MINI}"></td>
-      <td class="py-1 pr-2"><input name="importe" inputmode="decimal" class="w-24 tabular-nums ${MINI}"></td>
-      <td class="py-1"><button type="button" class="quitar w-7 h-7 rounded text-telecab-muted hover:text-telecab-red transition" title="Quitar la línea"><i class="fa-solid fa-trash"></i></button></td>
+      <td class="py-1 pr-2"><input name="albaran" aria-label="Albarán" class="w-24 ${MINI}"></td>
+      <td class="py-1 pr-2"><input name="fecha" aria-label="Fecha de la línea" class="js-fecha w-28 ${MINI}" placeholder="dd/mm/aaaa" autocomplete="off"></td>
+      <td class="py-1 pr-2"><input name="km" inputmode="numeric" aria-label="Km" class="w-24 tabular-nums ${MINI}"></td>
+      <td class="py-1 pr-2"><input name="concepto" aria-label="Concepto" class="w-full ${MINI}"></td>
+      <td class="py-1 pr-2"><input name="importe" inputmode="decimal" aria-label="Importe (€)" class="w-24 tabular-nums ${MINI}"></td>
+      <td class="py-1"><button type="button" class="quitar w-7 h-7 rounded text-telecab-muted hover:text-telecab-red transition" title="Quitar la línea" aria-label="Quitar la línea"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></td>
     </tr>`;
 
   // ── UN SELECTOR EN LÍNEA CON LA CARA DE LA CASA ────────────────────────────
@@ -390,10 +390,26 @@
           : ' · <span class="text-telecab-green">cuadra</span>') : '');
   }
 
+  // Cada casilla dice de qué línea es («Matrícula, línea 2»): con tres líneas
+  // había tres «Matrícula» iguales. Se rehace al añadir y al quitar una.
+  const NOMBRE_CASILLA = { matricula: 'Matrícula', albaran: 'Albarán', fecha: 'Fecha de la línea',
+    km: 'Km', concepto: 'Concepto', importe: 'Importe (€)' };
+  function renumerar() {
+    [...$('#fm-lineas').children].forEach((tr, i) => {
+      const n = ' de la línea ' + (i + 1);
+      tr.querySelectorAll('input[name]').forEach(inp => {
+        if (NOMBRE_CASILLA[inp.name]) inp.setAttribute('aria-label', NOMBRE_CASILLA[inp.name] + n);
+      });
+      const q = tr.querySelector('.quitar');
+      if (q) q.setAttribute('aria-label', 'Quitar la línea ' + (i + 1));
+    });
+  }
+
   function anadirFila() {
     $('#fm-lineas').insertAdjacentHTML('beforeend', filaHTML());
     const tr = $('#fm-lineas').lastElementChild;
-    tr.querySelector('.quitar').addEventListener('click', () => { tr.remove(); recalcular(); });
+    renumerar();
+    tr.querySelector('.quitar').addEventListener('click', () => { tr.remove(); renumerar(); recalcular(); });
     tr.querySelector('[name=importe]').addEventListener('input', recalcular);
 
     // La fecha de la linea, la de la factura mientras no se diga otra cosa: casi

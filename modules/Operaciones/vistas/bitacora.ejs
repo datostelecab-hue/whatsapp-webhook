@@ -15,7 +15,7 @@
   <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-14rem)]">
     <aside class="lg:w-[22rem] shrink-0 bg-telecab-card border border-telecab-border rounded-2xl flex flex-col lg:h-full overflow-hidden">
       <div class="p-3 border-b border-telecab-border space-y-2">
-        <input id="b-buscar" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text" placeholder="Nombre o teléfono…" autocomplete="off">
+        <input id="b-buscar" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text" placeholder="Nombre o teléfono…" aria-label="Buscar por nombre o teléfono" autocomplete="off">
         <div id="b-filtros" class="flex flex-wrap gap-1"></div>
         <p id="b-count" class="text-[11px] text-telecab-muted"></p>
       </div>
@@ -683,9 +683,9 @@
            ${['año', 'mes', 'semana'].map(l => `<button data-lv="${l}" class="b-seg px-3 py-1.5 text-sm capitalize">${l}</button>`).join('')}
          </div>
          <div class="flex items-center gap-2 ml-auto">
-           <button id="b-prev" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-chevron-left"></i></button>
+           <button id="b-prev" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition" aria-label="Periodo anterior"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
            <span id="b-period" class="text-sm font-semibold text-telecab-text min-w-[150px] text-center capitalize"></span>
-           <button id="b-next" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-chevron-right"></i></button>
+           <button id="b-next" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition" aria-label="Periodo siguiente"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
          </div>
        </div>
        <div id="b-kpis" class="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4"></div>

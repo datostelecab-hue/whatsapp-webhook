@@ -194,6 +194,12 @@
   // Devuelve los valores, o null si se cancela.
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  // El nombre de cada botón: el día entero, y siempre con la letra que se ve
+  // dentro (quien maneja la pantalla por voz dice «pulsa X»).
+  const DIA_LARGO = ['', 'Lunes', 'Martes', 'Miércoles (X)', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  // Los tipos de campo que son varios controles juntos: su etiqueta no puede
+  // llevar `for` y nombra al grupo entero.
+  const COMPUESTOS = ['lista', 'opciones', 'items', 'semana', 'horas'];
 
   /** dd/mm/aaaa → aaaa-mm-dd, que es lo que entiende la base. */
   const aISO = v => {
@@ -278,6 +284,7 @@
                 const busca = buscador
                   ? `<input data-buscar type="search" autocomplete="off"
                        placeholder="${esc(buscador.marcador || 'Escribe para filtrar…')}"
+                       aria-label="Filtrar: ${esc(c.etiqueta)}"
                        class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl
                               text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">`
                   : '';
@@ -308,13 +315,14 @@
                       </span>
                     </label>
                     <input data-comentario disabled placeholder="Qué te ha dicho sobre esto…"
+                      aria-label="Comentario: ${esc(it.etiqueta)}"
                       class="hidden w-full mt-1.5 px-2.5 py-1.5 bg-telecab-card border border-telecab-border rounded-lg text-sm
                              focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
                   </div>`).join('') || '<p class="text-xs text-telecab-muted">Nada pendiente.</p>'}</div>`;
               } else if (c.tipo === 'semana') {
                 const puestos = c.valor || [];
                 campo = `<div class="flex gap-1" id="pd-${c.id}">${[1,2,3,4,5,6,7].map(n =>
-                  `<button type="button" data-dia="${n}"
+                  `<button type="button" data-dia="${n}" aria-label="${DIA_LARGO[n]}" aria-pressed="${puestos.includes(n)}"
                      class="w-9 h-9 rounded-lg text-sm font-semibold transition border
                        ${puestos.includes(n)
                          ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
@@ -340,10 +348,13 @@
               // apilan A SU LADO en vez de dejar un hueco en blanco. Solo con
               // dos columnas: con una, no hay "al lado".
               const alto = c.filas > 1 && columnas === 2 ? ' style="grid-row: span ' + Number(c.filas) + '"' : '';
+              // La etiqueta va unida a su campo (`for`) cuando el campo es uno
+              // solo; los compuestos la toman como nombre de grupo (más abajo).
               return cabecera + `<div class="${c.tipo === 'texto-largo' ? 'col-span-full' : ''}"${alto}>
-                <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(c.etiqueta)}</label>
+                <label id="pd-${c.id}-et"${COMPUESTOS.includes(c.tipo) ? '' : ` for="pd-${c.id}"`}
+                       class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(c.etiqueta)}</label>
                 ${campo}
-                ${c.ayuda ? `<p class="text-[11px] text-telecab-muted mt-1">${esc(c.ayuda)}</p>` : ''}
+                ${c.ayuda ? `<p id="pd-${c.id}-ayuda" class="text-[11px] text-telecab-muted mt-1">${esc(c.ayuda)}</p>` : ''}
               </div>`;
             }).join('')}
             <p class="hidden text-sm text-telecab-red col-span-full" data-error></p>
@@ -359,6 +370,20 @@
           </form>
         </div>`;
       document.body.appendChild(fondo);
+
+      // ── Cada campo con su nombre (04/11/2026) ───────────────────────────
+      // Los compuestos (una lista de botones, las casillas, los días, horas y
+      // minutos) no son un control que una etiqueta pueda señalar: son un grupo
+      // que se llama como ella. La ayuda de debajo se lee al llegar al campo.
+      campos.forEach(c => {
+        const caja = fondo.querySelector('#pd-' + c.id);
+        if (!caja) return;
+        if (COMPUESTOS.includes(c.tipo)) {
+          caja.setAttribute('role', 'group');
+          caja.setAttribute('aria-labelledby', 'pd-' + c.id + '-et');
+        }
+        if (c.ayuda) caja.setAttribute('aria-describedby', 'pd-' + c.id + '-ayuda');
+      });
 
       // ── El selector de la casa: grupo arriba, casos debajo ──────────────
       campos.filter(c => c.tipo === 'opciones' || c.tipo === 'lista').forEach(c => {
@@ -512,6 +537,7 @@
       fondo.querySelectorAll('[id^="pd-"] [data-dia]').forEach(b => {
         b.addEventListener('click', () => {
           const on = b.classList.toggle('bg-telecab-gold');
+          b.setAttribute('aria-pressed', String(on));
           b.classList.toggle('text-telecab-dark', on);
           b.classList.toggle('border-telecab-gold', on);
           b.classList.toggle('bg-telecab-card2', !on);
