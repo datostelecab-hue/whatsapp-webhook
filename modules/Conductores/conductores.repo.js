@@ -1596,6 +1596,141 @@ async function cambiarAlta(id, { alta }, { usuarioId } = {}) {
   });
 }
 
+// ── ANULAR EL ALTA DE QUIEN NO HA LLEGADO A TRABAJAR (05/11/2026) ─────────────
+//
+// Camilo: «Habilita un botón para los nuevos, solo para la gente en plantilla en
+// la cual el sistema sepa si ha hecho horas o no: si Jordan Stiven Mojica Moreno
+// se dio de alta ayer el 4 y no tiene horas ni el 4 ni el 5, entonces se le
+// anula el alta con ese botón».
+//
+// ANULAR NO ES DAR DE BAJA. Una baja deja un contrato de uno o dos días en su
+// historial, en la nómina y en lo que se le manda a la gestoría. Anular es que
+// el alta no llegó a existir: se borra su contrato y lo que colgaba de él
+// (plazas del planificador, turno, situación, libranzas y el contrato del
+// convenio), como ya hacía `darDeBaja` con un alta futura. La persona, su
+// documentación y sus cuentas de BOLT se quedan. Queda en el historial de la
+// ficha quién la anuló, cuándo y por qué.
+//
+// Por eso SOLO a quien seguro que no ha trabajado:
+//   · el sistema tiene que poder saberlo: una cuenta de BOLT suya o prestada
+//     (sin cuenta, sus horas no se ven) —salvo un alta que aún no ha empezado—;
+//   · cero segundos de trabajo efectivo (viaje o espera, como la nómina) desde
+//     su alta, con sus cuentas y con las prestadas en sus días;
+//   · un alta de hace 30 días como mucho (la ventana de «Corregir contrato»):
+//     más vieja ya no es un alta por error;
+//   · que no venga de otro contrato seguido (el paso de la ETT a propia): ahí sí
+//     trabajó, con el contrato de antes;
+//   · y que su contrato del convenio no tenga nada de la nómina apuntado.
+// Que las horas de BOLT estén al día lo mira el servicio (services/ingesta).
+
+const DIAS_PARA_ANULAR = 30;
+
+// El trabajo efectivo desde el alta: con sus cuentas, y con las prestadas
+// (cuenta_fantasma) en los días del préstamo. { dia: dd/mm/aaaa, seg }.
+const SQL_TRABAJO_DESDE_ALTA = `
+  WITH ini AS (SELECT ($2::date)::timestamp AT TIME ZONE 'Europe/Madrid' AS t)
+  SELECT to_char(min(greatest(t.desde, ini.t)) AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY') AS dia,
+         COALESCE(round(sum(extract(epoch FROM (COALESCE(t.hasta, now()) - greatest(t.desde, ini.t))))), 0)::int AS seg
+    FROM fv_tramo t
+    JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
+    CROSS JOIN ini
+   WHERE COALESCE(t.hasta, now()) > ini.t
+     AND (t.conductor_uuid IN (SELECT externo_id FROM conductor_externo WHERE conductor_id = $1 AND sistema = 'bolt')
+          OR EXISTS (
+            SELECT 1 FROM cuenta_fantasma f JOIN conductor_externo ce ON ce.id = f.cuenta_id
+             WHERE f.conductor_id = $1 AND f.anulado_at IS NULL AND ce.externo_id = t.conductor_uuid
+               AND t.desde < ((COALESCE(f.hasta, 'infinity'::date) + 1)::timestamp AT TIME ZONE 'Europe/Madrid')
+               AND COALESCE(t.hasta, now()) > (f.desde::timestamp AT TIME ZONE 'Europe/Madrid')))`;
+
+// Lo de la nómina que cuelga del contrato del convenio: si hay algo, no se anula.
+const NOMINA_DEL_CONTRATO = ['liquidacion', 'incidencia_economica', 'variable_nomina', 'regularizacion',
+  'ejecucion_bonus', 'cierre_conciliacion'];
+
+/**
+ * Lo que hace falta para decidir si su alta se puede anular. null si no hay
+ * nada que anular (sin contrato abierto, o ya no es un alta nueva).
+ */
+async function estadoParaAnular(id, { cli } = {}) {
+  const q = (s, p) => (cli ? cli.query(s, p) : db.consulta(s, p));
+  const e = (await q(
+    `SELECT id, tipo, ett_nombre, to_char(alta, 'YYYY-MM-DD') AS alta,
+            ((now() AT TIME ZONE 'Europe/Madrid')::date - alta) AS dias
+       FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
+  if (!e || Number(e.dias) > DIAS_PARA_ANULAR) return null;
+  const seguido = (await q(
+    `SELECT 1 FROM conductor_periodo_empleo
+      WHERE conductor_id = $1 AND id <> $2 AND baja = $3::date - 1`, [id, e.id, e.alta])).rows.length > 0;
+  const cuentas = Number((await q(
+    `SELECT (SELECT count(*) FROM conductor_externo WHERE conductor_id = $1 AND sistema = 'bolt')
+          + (SELECT count(*) FROM cuenta_fantasma WHERE conductor_id = $1 AND anulado_at IS NULL
+              AND COALESCE(hasta, 'infinity'::date) >= $2::date) AS n`, [id, e.alta])).rows[0].n);
+  const futura = Number(e.dias) < 0;
+  const trabajo = futura ? { dia: null, seg: 0 } : (await q(SQL_TRABAJO_DESDE_ALTA, [id, e.alta])).rows[0];
+  // Las tablas de la nómina que existan (una base sin el convenio no las tiene todas).
+  const hay = (await q(`SELECT t FROM unnest($1::text[]) t WHERE to_regclass(t) IS NOT NULL`, [NOMINA_DEL_CONTRATO])).rows.map(r => r.t);
+  const nomina = hay.length ? Number((await q(
+    `SELECT ${hay.map(t => `(SELECT count(*) FROM ${t} WHERE contrato_id IN (SELECT id FROM contrato WHERE periodo_empleo_id = $1))`).join(' + ')} AS n`,
+    [e.id])).rows[0].n) : 0;
+  return { periodoId: Number(e.id), tipo: e.tipo, ettNombre: e.ett_nombre || null, alta: e.alta, dias: Number(e.dias),
+    futura, seguido, cuentas, trabajoDia: trabajo.dia || null, trabajoSeg: Number(trabajo.seg) || 0, nomina };
+}
+
+/** Por qué NO se puede anular, o null si se puede. Una sola redacción para la ficha y para el servidor. */
+function porQueNoSeAnula(x) {
+  if (!x) return 'Solo se puede anular el alta de un contrato abierto de hace 30 días como mucho.';
+  if (x.seguido) return 'Viene de su contrato anterior sin un día de corte (el paso de la ETT a propia): ese ya trabajó. Si se va, dale de baja.';
+  if (!x.futura && !x.cuentas) return 'No tiene ninguna cuenta de BOLT enlazada: el sistema no puede saber si ha trabajado. Enlázale su cuenta primero.';
+  if (x.trabajoSeg > 0) {
+    const min = Math.max(1, Math.round(x.trabajoSeg / 60));
+    return `Ya ha trabajado: ${min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`} desde su alta, el primero el ${x.trabajoDia}. Si se va, dale de baja.`;
+  }
+  if (x.nomina) return 'Su contrato ya tiene apuntes de la nómina: no se puede anular. Dale de baja.';
+  return null;
+}
+
+/**
+ * ANULA SU ALTA: borra su contrato abierto y lo que colgaba de él, como si no
+ * se le hubiera dado de alta. Vuelve a comprobarlo todo dentro de la
+ * transacción, con el contrato bloqueado. { anulada: 'AAAA-MM-DD', tipo, quitado: [{ que, n }] }.
+ */
+async function anularAlta(id, { motivo } = {}, { usuarioId } = {}) {
+  motivo = String(motivo || '').trim();
+  if (!motivo) throw new Error('Falta el motivo: queda en su historial por qué se anuló el alta.');
+  if (motivo.length > 255) throw new Error(`El motivo admite como mucho 255 caracteres y tiene ${motivo.length}: abrévialo.`);
+  return db.transaccion(async cli => {
+    const abierto = (await cli.query(
+      'SELECT id FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL FOR UPDATE', [id])).rows[0];
+    if (!abierto) throw new Error('Esta persona no está de alta');
+    const x = await estadoParaAnular(id, { cli });
+    const no = porQueNoSeAnula(x);
+    if (no) throw new Error(no);
+
+    const NOMBRES = { asignacion: 'plazas del planificador', conductor_turno_hist: 'turno',
+      conductor_estado_hist: 'situación', patron_libranza: 'patrón de libranza' };
+    const quitado = [];
+    for (const [tabla, que] of Object.entries(NOMBRES)) {
+      // Lo que empieza en su alta o después nunca existió; lo que la cruza
+      // (no debería haber nada) acaba el día antes.
+      const b = await cli.query(`DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde >= $2::date`, [id, x.alta]);
+      const u = await cli.query(
+        `UPDATE ${tabla} SET hasta = $2::date - 1
+          WHERE conductor_id = $1 AND desde < $2::date AND (hasta IS NULL OR hasta >= $2::date)`, [id, x.alta]);
+      if (b.rowCount + u.rowCount) quitado.push({ que, n: b.rowCount + u.rowCount });
+    }
+    const k = await cli.query('DELETE FROM contrato WHERE periodo_empleo_id = $1', [x.periodoId]);
+    if (k.rowCount) quitado.push({ que: 'contrato del convenio', n: k.rowCount });
+    // Su baja programada, si la tenía, se va con él (ON DELETE CASCADE).
+    await cli.query('DELETE FROM conductor_periodo_empleo WHERE id = $1', [x.periodoId]);
+
+    const contrato = x.tipo === 'ett' ? `ETT${x.ettNombre ? ' · ' + x.ettNombre : ''}` : 'plantilla propia';
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'alta', antes: `${contrato} · ${aEs(x.alta)}`, ahora: `anulada, no llegó a trabajar · ${motivo}` }],
+    });
+    return { anulada: x.alta, tipo: x.tipo, quitado };
+  });
+}
+
 /**
  * Mueve con el alta lo que empezaba en ella. Devuelve [{ que, n }] de lo movido.
  *
@@ -2076,6 +2211,7 @@ module.exports = {
   ibanEnmascarado, guardarIban,
   JORNADAS, TOPE_JORNADA, OPCIONES_JORNADA: jornada.OPCIONES_JORNADA,
   cambiarJornada, contratoAbierto, corregirTipoContrato, cambiarAlta,
+  estadoParaAnular, porQueNoSeAnula, anularAlta, DIAS_PARA_ANULAR,
   campos,
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,

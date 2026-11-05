@@ -174,6 +174,8 @@ Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre l
 
 **Un botón de la cabecera solo con su icono** (23/10/2026). Una `accion` sin `texto` se pinta del ancho del de exportar, y su **`ayuda`** es el `title` (y el `aria-label`) que dice qué hace. En [[Combustible]], el historial: a 1280×593, con «Importar Excel» al lado, el buscador y los botones bajaban a otra línea y la página ganaba barra. Y una **cifra** (`cifras`) acepta también `ayuda`, como las tarjetas de KPI.
 
+**Un botón de la ficha apagado según la ficha** (05/11/2026). En `detalle.acciones`, `activa` puede ser una función de la ficha (`activa: d => …`) y no solo `false` fijo; apagada, el botón sale gris y no se pulsa. Con **`ayuda(d)`** (o un texto) dice por qué en el `title` y el `aria-label`: un botón gris sin explicación no se entiende. Lo estrenó «Anular el alta» en [[Conductores]], encendido solo si el sistema sabe que el nuevo no ha trabajado.
+
 **Teñir una fila: `claseFila(f)`** (23/10/2026). Devuelve unas clases para la fila (en [[Combustible]], el color de su auditoría: `bg-telecab-red/10`…). Si devuelve algo, **sustituye a la cebra**: el fondo de las filas pares ganaría por especificidad y media lista saldría sin teñir. Sin `claseFila`, nada cambia.
 
 **La nota puede ser varias, y con enlaces** (23/10/2026). `nota` puede devolver una o un array (las vacías se saltan), una debajo de otra; cada una con `texto` (se escapa) o con `html`, que el módulo ya escribe escapado. Combustible pone la última lectura del buzón y, aparte, los correos que no se pudieron leer, cada uno con el enlace a su ficha (`#id`: la ficha se abre aunque esa fila no esté en la lista).

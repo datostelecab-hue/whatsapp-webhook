@@ -99,6 +99,12 @@ async function ficha(id, { momento } = {}) {
   f.carnet_caducidad = carne.caducidad || null;
   f.iban_guardado = con.ibanEnmascarado(f.iban_cifrado);
   delete f.iban_cifrado;
+  // ¿Se le puede anular el alta? Solo a los nuevos (05/11/2026). Si falla, la
+  // ficha sale igual, sin el botón.
+  f.anular_alta = momento ? null : await anulacionDeAlta(id).catch(e => {
+    console.error('⚠️  [PLANTILLA] anular alta:', e.message);
+    return null;
+  });
   return f;
 }
 
@@ -514,6 +520,47 @@ async function corregirContrato(id, datos = {}, quien = {}) {
   return { cambiado: true, tipo, alta: c.alta };
 }
 
+/**
+ * ANULAR EL ALTA DE QUIEN NO HA LLEGADO A TRABAJAR (05/11/2026). La regla vive
+ * en el repositorio (`con.estadoParaAnular`, `con.porQueNoSeAnula`); aquí se le
+ * añade lo que el repositorio no puede saber: si las horas de BOLT están al día.
+ * Con la lectura de estados parada, «no tiene horas» puede ser «no han llegado».
+ *
+ * Para la ficha: null si no es un alta nueva (no sale el botón); si lo es,
+ * { puede, porque } (el botón sale apagado, con el porqué al pasar por encima).
+ */
+async function horasDeBoltAlDia() {
+  const est = await require('../../services/ingesta').estado();
+  const t = (est.tareas || []).find(x => x.tarea === 'state_logs_bolt');
+  if (!t) return { alDia: false, texto: 'No se sabe cuándo se leyeron por última vez las horas de BOLT' };
+  if (t.alDia) return { alDia: true };
+  const min = t.ultimoAcierto ? Math.round((Date.now() - new Date(t.ultimoAcierto).getTime()) / 60000) : null;
+  return { alDia: false, texto: `Las horas de BOLT no están al día${min != null ? ` (última lectura buena hace ${min} min)` : ''}: `
+    + 'puede haber trabajado y no verse todavía. Prueba en unos minutos.' };
+}
+
+async function anulacionDeAlta(id) {
+  const x = await con.estadoParaAnular(Number(id));
+  if (!x || x.seguido) return null;
+  const no = con.porQueNoSeAnula(x);
+  if (no) return { puede: false, porque: no, alta: x.alta };
+  if (!x.futura) {
+    const f = await horasDeBoltAlDia();
+    if (!f.alDia) return { puede: false, porque: f.texto, alta: x.alta };
+  }
+  return { puede: true, porque: x.futura ? 'Su contrato aún no ha empezado.' : 'No ha trabajado ni un minuto desde su alta.', alta: x.alta };
+}
+
+async function anularAlta(id, datos = {}, quien = {}) {
+  if (quien.rol === 'trafico') throw new Error('Anular un alta es cosa de RRHH');
+  const x = await con.estadoParaAnular(Number(id));
+  if (x && !x.futura) {
+    const f = await horasDeBoltAlDia();
+    if (!f.alDia) throw new Error(f.texto);
+  }
+  return con.anularAlta(Number(id), { motivo: (datos || {}).motivo }, quien);
+}
+
 /** Quién tocó qué y cuándo en una ficha. */
 const cambios = async id => ({ cambios: await audit.historial('conductor', Number(id)) });
 
@@ -567,6 +614,7 @@ module.exports = {
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
+  anulacionDeAlta, anularAlta,
   videoBloqueo,
   excelGestoria,
   tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,

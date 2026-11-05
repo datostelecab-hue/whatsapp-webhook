@@ -1017,8 +1017,13 @@
         }"${a.id ? ` data-accion="${esc(a.id)}"` : ''}>${
           a.icono ? `<i class="fa-solid ${esc(a.icono)}"></i>` : ''}<span>${esc(a.texto || '')}</span></button>`);
         // Una accion puede nacer apagada (`activa: false`) y encenderla quien
-        // sepa cuando toca — por ejemplo, al marcar la primera casilla.
-        if (a.activa === false) b.disabled = true;
+        // sepa cuando toca — por ejemplo, al marcar la primera casilla. O
+        // decidirlo la propia ficha (`activa(d)`), y entonces `ayuda(d)` dice
+        // por qué al pasar por encima: un botón gris sin explicación no se entiende.
+        const activa = typeof a.activa === 'function' ? a.activa(d) : a.activa;
+        const ayuda = typeof a.ayuda === 'function' ? a.ayuda(d) : a.ayuda;
+        if (activa === false) { b.disabled = true; b.classList.add('opacity-50', 'cursor-not-allowed'); }
+        if (ayuda) { b.title = ayuda; b.setAttribute('aria-label', `${a.texto || ''}: ${ayuda}`); }
         b.addEventListener('click', sinRepetir(() => a.onClick(d, this)));
         cab.querySelector('[data-acciones]').appendChild(b);
       });

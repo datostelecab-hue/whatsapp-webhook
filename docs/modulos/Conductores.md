@@ -368,6 +368,26 @@ Ahora está **«Corregir contrato»** en las acciones de la ficha (`plantilla.co
 
 Comprobador: `scripts/comprobar-corregir-contrato.js`.
 
+### «Anular el alta»: el nuevo que no llegó a trabajar (05/11/2026)
+
+Camilo: *«Habilita un botón para los nuevos, solo para la gente en plantilla en la cual el sistema sepa si ha hecho horas o no: si Jordan Stiven Mojica Moreno se dio de alta ayer el 4 y no tiene horas ni el 4 ni el 5, entonces se le anula el alta con ese botón»*.
+
+**Anular no es dar de baja.** Una baja deja un contrato de uno o dos días en su historial, en la nómina y en lo que va a la gestoría. Anular es que el alta no existió: se **borra** su contrato abierto y lo que colgaba de él (plazas del planificador con sus días, turno, situación, libranzas y el contrato del convenio), como ya hacía «Dar de baja» con un alta futura. La persona, sus documentos y sus cuentas de BOLT se quedan, y se le puede volver a dar de alta. En el historial de la ficha queda «plantilla propia · 04/11/2026 → anulada, no llegó a trabajar · <motivo>», con quién y cuándo. El motivo es obligatorio.
+
+**El botón** (`plantilla.js`, acción «Anular el alta», al lado de «Dar de baja») sale solo a los **nuevos**: contrato abierto de **hace 30 días como mucho** (la ventana de «Corregir contrato») o que aún no ha empezado, y **no** al que viene de otro contrato sin un día de corte (el paso de la ETT a propia: ese sí trabajó). Está **encendido** solo si el sistema sabe que no ha trabajado; si no, sale **apagado y dice por qué** al pasar por encima. La regla vive en `conductores.repo` (`estadoParaAnular`, `porQueNoSeAnula`), y `anularAlta` la vuelve a comprobar dentro de la transacción, con el contrato bloqueado:
+
+- **Que el sistema pueda saberlo**: una cuenta de BOLT suya o una prestada (cuenta fantasma) desde su alta. Sin cuenta no se ven sus horas, y sale apagado: «Enlázale su cuenta primero». Un alta que aún no ha empezado no lo necesita.
+- **Cero segundos de trabajo efectivo** (viaje o espera, `fv_cat_situacion.efectivo`, como la nómina) desde las 00:00 de su alta, con sus cuentas y con las prestadas en sus días. Con un minuto ya no: «Ya ha trabajado: 32 h 22 min desde su alta, el primero el 24/10/2026. Si se va, dale de baja».
+- **Las horas de BOLT al día** (`plantilla.service.horasDeBoltAlDia`: la tarea `state_logs_bolt` de la ingesta). Con la lectura parada, «no tiene horas» puede ser «no han llegado».
+- **Nada de la nómina** en su contrato del convenio (liquidación, incidencias económicas, variables, regularizaciones, bonus, cierres de conciliación).
+- **Tráfico no lo toca**: es de RRHH.
+
+El componente `Listado` aprendió para esto que una acción de la ficha puede decidir **ella** si está encendida (`activa(d)`) y explicar por qué no (`ayuda(d)`, en el `title`). Antes solo admitía `activa: false` fijo.
+
+Lo que **no** hace: no toca su candidatura de Selección (sigue donde la dejó el alta) ni avisa a la Seguridad Social, a la gestoría ni a la ETT; el diálogo lo recuerda. Una persona sin ningún contrato se ve en la lista como «Baja en la empresa», igual que tras cancelar un alta futura.
+
+Comprobador: `scripts/comprobar-anular-alta.js` (las reglas, sin base). Probado además contra la copia local de la base: un alta de ayer con cuenta y sin horas se anula y se lleva turno, situación y plaza; sin cuenta, con horas (ficha 515) o pasada de la ETT a propia (ficha 104), no.
+
 ### Lo que pide la ficha, también en «Datos»
 
 Para que la ficha se pueda completar desde Plantilla, el formulario de **Datos** trae lo que pide y no era una columna de la persona (`plantilla.service.campos`):

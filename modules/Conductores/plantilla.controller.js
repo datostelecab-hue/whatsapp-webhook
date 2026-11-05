@@ -206,6 +206,11 @@ router.post('/api/conductor/:id/baja', responde(async req =>
 router.post('/api/conductor/:id/cancelar-baja', responde(async req =>
   plantilla.cancelarBaja(req.params.id, req.body || {}, await quien(req))));
 
+// Anula el alta de un nuevo que no ha llegado a trabajar (05/11/2026): el
+// contrato se borra, no se cierra. Con motivo obligatorio, que queda en su historial.
+router.post('/api/conductor/:id/anular-alta', responde(async req =>
+  plantilla.anularAlta(req.params.id, req.body || {}, await quien(req))));
+
 router.post('/api/conductor/:id/a-propia', responde(async req =>
   plantilla.aPropia(req.params.id, req.body || {}, await quien(req))));
 

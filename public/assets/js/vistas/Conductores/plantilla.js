@@ -1081,6 +1081,32 @@
     if (r && r.cambiado && window.Dialogo && Dialogo.hecho) Dialogo.hecho(`Contrato corregido: ${despues}`);
   }
 
+  /**
+   * ANULA EL ALTA de un nuevo que no ha llegado a trabajar (05/11/2026). No es
+   * una baja: su contrato se borra, como si no se le hubiera dado de alta. El
+   * servidor vuelve a mirar sus horas de BOLT antes de hacerlo.
+   */
+  async function accionAnularAlta(d) {
+    const contrato = d.empleo_tipo === 'ett' ? `de la ETT${d.ett_nombre ? ' (' + d.ett_nombre + ')' : ''}` : 'de plantilla propia';
+    const v = await pedirDatos(`Anular el alta de ${d.nombre_completo}`, [
+      { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Por ejemplo: no se presentó, o se le dio de alta por error. Queda en su historial.' },
+    ], { textoBoton: 'Seguir', textoCancelar: 'Volver',
+         nota: `Su contrato ${contrato} del ${fecha(d.alta)} se borra, como si no se le hubiera dado de alta: `
+             + 'no queda como baja. Con él se quitan su turno, sus libranzas y sus plazas del planificador. '
+             + 'La persona, sus documentos y su cuenta de BOLT se quedan, y se le puede volver a dar de alta.' });
+    if (!v || !String(v.motivo || '').trim()) return;
+    const ok = await Dialogo.confirmar({
+      titulo: `Anular el alta de ${d.nombre_completo}`, tono: 'peligro', si: 'Anular el alta', no: 'Volver',
+      html: `<p>Se borra su contrato ${esc(contrato)} del <b>${esc(fecha(d.alta))}</b>.</p>
+             <p class="mt-2 text-telecab-muted">Si ya se comunicó el alta a la Seguridad Social, a la gestoría o a la ETT,
+             hay que avisarles: esto solo cambia el ERP.</p>`,
+    });
+    if (!ok) return;
+    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/anular-alta`, 'POST', { motivo: v.motivo }));
+    if (r && r.anulada && window.Dialogo && Dialogo.hecho) Dialogo.hecho('Alta anulada');
+  }
+
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
       { id: 'fecha', etiqueta: 'Fecha de baja (su último día)', tipo: 'fecha',
@@ -1511,6 +1537,14 @@
           onClick: d => videoBloqueo({ id: d.id, nombre: d.nombre_completo }) },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
+        // ANULAR EL ALTA (05/11/2026): solo a los nuevos (hasta 30 días), y
+        // encendido solo si el sistema sabe que no ha trabajado ni un minuto. Si
+        // no se puede, sale apagado y dice por qué (lo decide el servidor).
+        { texto: 'Anular el alta', icono: 'fa-user-xmark', peligro: true,
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.anular_alta,
+          activa: d => !!(d.anular_alta && d.anular_alta.puede),
+          ayuda: d => (d.anular_alta ? d.anular_alta.porque : ''),
+          onClick: accionAnularAlta },
         // Con la baja programada para una fecha futura (db/191). Deja expediente (db/193).
         { texto: 'Cancelar la baja', icono: 'fa-rotate-left',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.baja_prevista, onClick: accionCancelarBaja },
