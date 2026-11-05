@@ -235,9 +235,30 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   las dos a mano. Antes de commitear, las dos tienen que pasar aquí: lo que
   sube ya va aprobado. `eslint`, `espree` y `globals` van en `dependencies` con
   la versión exacta (no hay package-lock): subir una es un cambio a propósito,
-  probado en local. Lo que no ven: ESLint da por definido en todas las páginas
-  lo que cualquier componente cuelga de window (cargue la página ese fichero o
-  no), y no mira los arranques en línea de los layouts.
+  probado en local.
+- **Cada nombre que usa una página tiene que existir en ESA página** (05/11/2026):
+  `comprobar-vistas` junta lo que la página carga de verdad —su layout, la vista,
+  sus partials (también los anidados y los del layout) y sus ficheros; lo
+  comentado con `<!-- -->` o `<%# %>` no cuenta— y falla si un script usa algo que
+  ninguno declara ni cuelga de window: un `Graficos` en una pantalla sin
+  `graficos.js`, un `Chart` sin su `<script>`, o leer `window.CitasTaller.esc`
+  donde no se carga `citasTaller.js`. Lo de fuera solo existe si la página carga
+  su `<script>` de cdnjs (lista `EXTERNOS`; de otro host, la CSP no lo ejecuta y
+  también es un fallo).
+  **Lo que puede faltar se pregunta, y la pregunta protege lo que queda dentro de
+  su guarda:** `if (!window.Chart) return;` protege el resto de esa función
+  (también con `else` o una cadena de `else if` que salen);
+  `if (window.X) { … }`, `window.X && X.y`, `typeof X !== 'undefined' ? … : …`,
+  `if (!window.X?.y) return;` y `while (window.X && …)`, su lado; y un alias
+  cuenta como el original (`const G = window.X; if (!G) return; G.y()`). Un
+  `new Chart()` en otra función, sin su guarda, falla; una función declarada
+  después de la guarda, también (se eleva: existe antes de que la guarda se
+  cumpla). Un `try { X.y() } catch {}` no es una guarda: se tragaría el error de
+  una carga que falta. Un `/* global X */` no vale: en una página no lo decide un
+  fichero. Un `include()` dentro de `<!-- -->` EJS lo ejecuta igual: tiene que
+  existir, aunque lo suyo no cargue en la página. No ve un `<script>` dentro de
+  un `<% if %>` (cuenta como cargado), lo que se carga en tiempo de ejecución, ni
+  el ORDEN de carga.
 - **Un fichero se renombra con `git mv -f`, también si solo cambian
   mayúsculas** (`listado.js` → `Listado.js`). Windows no distingue mayúsculas y
   git (`core.ignorecase`) se queda con el nombre viejo; Render, en Linux, sí

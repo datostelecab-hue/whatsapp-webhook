@@ -23,11 +23,16 @@
 // Se lanzan las dos aunque la primera falle: en el log salen todos los
 // problemas de una vez, no uno por intento.
 //
-// LO QUE NO VE: ESLint da por definido en TODAS las páginas lo que cualquier
-// componente cuelga de window, cargue la página ese fichero o no (Graficos solo
-// existe donde se carga graficos.js); y los arranques que siguen en línea en los
-// layouts no pasan por ESLint (sí por comprobar-vistas). Un ReferenceError de
-// ese tipo pasaría el build.
+// ESLint mira cada fichero suelto y da por definido en todos lo que cualquier
+// componente cuelga de window. Lo que cada PÁGINA trae de verdad lo mira
+// comprobar-vistas (desde el 05/11/2026, revisarNombres): un `Graficos` en una
+// pantalla que no carga graficos.js, o un nombre que no existe en los arranques
+// en línea de los layouts, también paran el build.
+//
+// LO QUE NO VE: un <script> dentro de un `<% if %>` de EJS cuenta como cargado
+// siempre; lo que se carga o se crea en tiempo de ejecución (un import(), un
+// `window[nombre] =`) no lo conoce; y no mira el ORDEN de carga (usar al cargar
+// algo que define un script posterior).
 //
 // LAS HERRAMIENTAS (eslint, espree, globals) VAN EN `dependencies` Y CON LA
 // VERSIÓN EXACTA, como tailwindcss. En dependencies, porque se instalan siempre,

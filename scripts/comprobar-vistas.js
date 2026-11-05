@@ -33,6 +33,10 @@
 // antes que su principal. Lo fino lo hace con el analizador de ESLint (espree,
 // en dependencies); si falta, es un fallo.
 //
+// Y desde el 05/11/2026, que cada nombre que usa el JavaScript de una página
+// exista EN ESA PÁGINA (revisarNombres): lo declara uno de sus scripts, lo
+// cuelga de window uno de sus ficheros o llega de una CDN que la página carga.
+//
 // Corre solo en cada `npm install` sin argumentos —también el build de Render,
 // que no despliega si falla— junto con ESLint: scripts/comprobar-al-instalar.js.
 
@@ -61,9 +65,25 @@ function scriptsDe(html) {
 
 // `<%- x %>` y `<%= x %>` se van a convertir en un valor cualquiera. Lo que se
 // comprueba es el codigo escrito a mano, que es donde esta el error humano.
-const sinEjs = s => s
-  .replace(/<%[-=]([\s\S]*?)%>/g, '(0)')
-  .replace(/<%([\s\S]*?)%>/g, '');
+// Los saltos de línea de la etiqueta se conservan, para que la línea de un aviso
+// siga siendo la del fichero, pero se dejan para el siguiente salto de línea del
+// código: puestos en el sitio de la etiqueta romperían una cadena
+// ('<%= a ? b\n : c %>' daría un falso error de sintaxis).
+const susLineas = s => s.replace(/[^\n]/g, '');
+const sinEjs = s => {
+  let debe = '';
+  return s.replace(/<%([-=]?)[\s\S]*?%>|\n/g, (m, imprime) => {
+    if (m === '\n') { const r = '\n' + debe; debe = ''; return r; }
+    debe += susLineas(m);
+    return imprime ? '(0)' : '';
+  }) + debe;
+};
+// Lo comentado no se carga en el navegador: ni un <!-- <script src> --> ni un
+// <%# include() %>. Ojo: un include() dentro de <!-- --> EJS SÍ lo ejecuta (el
+// comentario solo esconde su salida): se comprueba que exista, pero sus
+// scripts no cuentan. Por eso aquí solo se quitan los <!-- --> cuando se pide.
+const sinComentariosEjs = t => t.replace(/<%#[\s\S]*?%>/g, susLineas);
+const sinComentarios = t => sinComentariosEjs(t).replace(/<!--[\s\S]*?-->/g, susLineas);
 
 // Las vistas viven en DOS sitios mientras dura la Fase 2: views/ y la carpeta
 // `vistas/` de cada modulo ya mudado. Una vista que se escape de aqui es una
@@ -81,12 +101,16 @@ function ejsDe(dir, prefijo) {
   return out;
 }
 const ficheros = ejsDe(DIR, '');
+// Las raíces de las vistas, las mismas que app.js da a Express (RAICES_VISTAS):
+// EJS busca un include primero junto al que incluye y luego en ellas.
+const RAICES = [DIR];
 
 if (fs.existsSync(MODULOS)) {
   for (const m of fs.readdirSync(MODULOS, { withFileTypes: true })) {
     if (!m.isDirectory()) continue;
     const dv = path.join(MODULOS, m.name, 'vistas');
     if (!fs.existsSync(dv)) continue;
+    RAICES.push(dv);
     ficheros.push(...ejsDe(dv, m.name + '/'));
   }
 }
@@ -222,7 +246,7 @@ const arbolCache = new Map();
 function arbolDe(codigo) {
   if (!arbolCache.has(codigo)) {
     let a = null;
-    try { a = espree.parse(codigo, { ecmaVersion: 'latest', sourceType: 'script' }); } catch (_) { /* la sintaxis ya se avisa aparte */ }
+    try { a = espree.parse(codigo, { ecmaVersion: 'latest', sourceType: 'script', loc: true }); } catch (_) { /* la sintaxis ya se avisa aparte */ }
     arbolCache.set(codigo, a);
   }
   return arbolCache.get(codigo);
@@ -275,8 +299,358 @@ function revisarPagina(f, trozos) {
   }
 }
 
+// UN NOMBRE QUE NO EXISTE EN SU PÁGINA (no-undef por página, 05/11/2026).
+// `npm run lint` mira cada fichero suelto y da por definido en todos lo que
+// cualquier componente cuelga de window: un `Graficos.pintar()` en una pantalla
+// que no carga graficos.js pasaba, y al llegar ahí daba un ReferenceError. Aquí
+// se mira cada PÁGINA con lo que esa página trae de verdad:
+//   · lo del navegador y lo del propio lenguaje;
+//   · lo que declaran a primer nivel sus scripts (comparten el ámbito global:
+//     así se ven entre sí las áreas del planificador) y lo que cuelgan de
+//     window (`global.X =`, `window.X =`);
+//   · lo de fuera, solo si la página carga su <script> de cdnjs (EXTERNOS).
+// Cuenta como USO el nombre suelto (`CitasTaller.esc`) y también leer por window
+// algo que cuelga la casa (`const C = window.CitasTaller`, `global.Api.post()`):
+// los dos revientan si la página no lo carga. Lo que PREGUNTA no cuenta
+// (`typeof X`, `if (!window.X)`, `window.X && …`, `window.X?.…`,
+// `'X' in window`), y protege ese nombre DENTRO DE SU GUARDA (ver siVerdad más
+// abajo), no en todo el fichero. Mira todos los trozos, también los componentes
+// y los arranques en línea de los layouts, que ESLint no ve.
+//
+// LO QUE NO MIRA: el ORDEN de carga (usar al cargar algo que define un script
+// posterior); hoy no pasa en ninguna página.
+const CDN = 'https://cdnjs.cloudflare.com/';   // el único host de scripts que deja la CSP (app.js, script-src)
+const EXTERNOS = [
+  // De Chart.js, solo el UMD: el chart.js de la v4 es ESM y como script clásico no compila.
+  { re: /\/chart\.umd(?:\.min)?\.js(?:[?#]|$)/i, nombres: ['Chart'] },
+  { re: /\/chartjs-plugin-datalabels(?:\.min)?\.js(?:[?#]|$)/i, nombres: ['ChartDataLabels'] },
+  { re: /\/maplibre-gl(?:-csp|-dev)?(?:\.min)?\.js(?:[?#]|$)/i, nombres: ['maplibregl'] },
+];
+const NOMBRES_EXTERNOS = new Set(EXTERNOS.flatMap(e => e.nombres));
+/** Cada <script src> de un texto: su URL, dónde está y si lleva nonce (los atributos pueden llevar EJS). */
+function srcsDe(texto) {
+  const out = [];
+  for (const m of texto.matchAll(/<script\b((?:<%[\s\S]*?%>|[^>])*)>/gi)) {
+    const s = /\bsrc\s*=\s*["']([^"']*)["']/i.exec(m[1]);
+    // `//cdnjs…` en una página https es https://cdnjs…
+    if (s) out.push({ src: s[1].startsWith('//') ? 'https:' + s[1] : s[1], i: m.index, nonce: /\bnonce\s*=/i.test(m[1]) });
+  }
+  return out;
+}
+/** ¿Lo ejecuta el navegador? Con la CSP, de cdnjs o con el nonce de la página. */
+const seEjecuta = s => s.src.startsWith(CDN) || s.nonce;
+
+// Lo que un trozo cuelga de window, lo que pregunta y lo que lee por window,
+// sacado de su árbol (no del texto: un `window.X =` en un comentario o en una
+// cadena no carga nada). `global` es el nombre de la casa para window
+// (`(function (global) { … })(window)`); `self` solo cuenta si el trozo no
+// tiene un `self` propio (`const self = this`).
+const OBJ_GLOBAL = new Set(['window', 'global', 'globalThis', 'self']);
+let objetosGlobales = OBJ_GLOBAL;                  // los de este trozo (analizar)
+/** `window.N`, `global.N`, `window['N']`… → N; si no, null. */
+function deVentana(n) {
+  if (!n || n.type !== 'MemberExpression' || n.object.type !== 'Identifier' || !objetosGlobales.has(n.object.name)) return null;
+  if (!n.computed && n.property.type === 'Identifier') return n.property.name;
+  if (n.computed && n.property.type === 'Literal' && typeof n.property.value === 'string') return n.property.value;
+  return null;
+}
+/** Lo de window que nombra `n`: `window.X`, o un alias suyo (`const G = window.X` → G). */
+const deVentanaO = (n, al) => deVentana(n) || (n && n.type === 'Identifier' && al.get(n.name)) || null;
+/** La raíz por window de una cadena: `window.X.y`, `window.X?.y?.()`, `G.y` → X; si no, null. */
+function raizVentana(n, al) {
+  if (n && n.type === 'ChainExpression') n = n.expression;
+  while (n) {
+    const N = deVentanaO(n, al);
+    if (N) return N;
+    if (n.type === 'MemberExpression') n = n.object;
+    else if (n.type === 'CallExpression') n = n.callee;
+    else return null;
+  }
+  return null;
+}
+const esBoolean = (p, n) => p.type === 'CallExpression' && p.callee.type === 'Identifier' && p.callee.name === 'Boolean' && p.arguments[0] === n;
+/** ¿`n` (un window.N o un alias) está preguntando si existe? */
+function pregunta(n, p) {
+  switch (p && p.type) {
+    case 'IfStatement': case 'ConditionalExpression': case 'WhileStatement': case 'DoWhileStatement': case 'ForStatement': return p.test === n;
+    case 'LogicalExpression': return true;                                   // window.X && …, window.X || {}
+    case 'UnaryExpression': return p.operator === '!' || p.operator === 'typeof';
+    case 'BinaryExpression': return ['==', '!=', '===', '!=='].includes(p.operator);
+    case 'MemberExpression': return p.optional && p.object === n;            // window.X?.y
+    case 'CallExpression': return (p.optional && p.callee === n) || esBoolean(p, n);   // window.X?.(), Boolean(window.X)
+    default: return false;
+  }
+}
+/** ¿`n` (un window.N o un alias) se usa dando por hecho que existe? */
+function seUsa(n, p) {
+  switch (p && p.type) {
+    // `const G = window.X` es un alias: lo que cuenta son los usos de G. Una
+    // desestructuración (`const { a } = window.X`) sí revienta ahí mismo.
+    case 'VariableDeclarator': return p.init === n && p.id.type !== 'Identifier';
+    case 'MemberExpression': return !p.optional && p.object === n;           // window.X.y
+    case 'CallExpression': return !p.optional && p.callee === n;             // window.X()
+    case 'NewExpression': return p.callee === n;                             // new window.X()
+    case 'ForOfStatement': return p.right === n;                             // for (… of window.X)
+    case 'TaggedTemplateExpression': return p.tag === n;
+    default: return false;
+  }
+}
+
+// UNA PREGUNTA PROTEGE SOLO LO QUE QUEDA DENTRO DE SU GUARDA. En
+// `if (window.Chart) { Chart.x }` el Chart de dentro está a salvo; un
+// `new Chart()` en otra función del mismo fichero, no: si la página no carga
+// Chart, revienta al llegar ahí. Lo que sabe que existe cada sitio:
+//   · `if (P) A else B`: en A, lo que P asegura si es verdad; en B, si es falso;
+//     y si una rama sale (return, throw…), lo que sigue en el bloque sabe lo de
+//     la otra (`if (!window.X) return;` protege el resto de la función; también
+//     con `else` y con cadenas de `else if` que salen);
+//   · `P ? A : B` igual; `P && A`, lo de verdad; `P || A`, lo de falso;
+//   · `while (P) A` y `for (…; P; …) A`: en A, lo de verdad.
+// Las funciones declaradas en un bloque existen desde el principio del bloque
+// (se elevan): no heredan lo que asegura una guarda anterior a ellas.
+// Un try/catch NO es una guarda: se tragaría el ReferenceError de una carga que
+// falta.
+const NOMBRE_SUELTO = n => n && n.type === 'Identifier' ? n.name : null;
+const esIndefinido = b => (b.type === 'Identifier' && b.name === 'undefined') || (b.type === 'UnaryExpression' && b.operator === 'void');
+/** `typeof X === 'v'` (o con window.X, un alias o al revés): { nombre, valor, igual } o null. */
+function typeofDe(t, al) {
+  if (!t || t.type !== 'BinaryExpression' || !['==', '!=', '===', '!=='].includes(t.operator)) return null;
+  const [a, b] = t.left.type === 'UnaryExpression' && t.left.operator === 'typeof' ? [t.left, t.right] : [t.right, t.left];
+  if (a.type !== 'UnaryExpression' || a.operator !== 'typeof' || b.type !== 'Literal' || typeof b.value !== 'string') return null;
+  const arg = a.argument;
+  const nombre = (arg.type === 'Identifier' && al.get(arg.name)) || NOMBRE_SUELTO(arg) || raizVentana(arg, al);
+  return nombre ? { nombre, valor: b.value, igual: t.operator.startsWith('=') } : null;
+}
+/** `window.X == null`, `G === undefined`, `window.X?.y !== void 0`…: { nombre, igual } o null. */
+function nuloDe(t, al) {
+  if (!t || t.type !== 'BinaryExpression' || !['==', '!=', '===', '!=='].includes(t.operator)) return null;
+  const [a, b] = raizVentana(t.left, al) ? [t.left, t.right] : [t.right, t.left];
+  const nombre = raizVentana(a, al);
+  const esNull = b.type === 'Literal' && b.value === null;
+  if (!nombre || !(esIndefinido(b) || (esNull && t.operator.length === 2))) return null;   // `!== null` no descarta undefined
+  return { nombre, igual: t.operator.startsWith('=') };
+}
+/** Lo que existe seguro si `t` es verdad. */
+function siVerdad(t, al, s = new Set()) {
+  if (!t) return s;
+  const N = raizVentana(t, al); if (N) s.add(N);   // si `window.X.y` (o `?.y`) es verdad, X existe
+  if (t.type === 'LogicalExpression' && t.operator === '&&') { siVerdad(t.left, al, s); siVerdad(t.right, al, s); }
+  if (t.type === 'UnaryExpression' && t.operator === '!') siFalso(t.argument, al, s);
+  if (t.type === 'CallExpression' && esBoolean(t, t.arguments[0])) siVerdad(t.arguments[0], al, s);
+  if (t.type === 'BinaryExpression' && t.operator === 'in' && t.left.type === 'Literal' && typeof t.left.value === 'string'
+    && t.right.type === 'Identifier' && objetosGlobales.has(t.right.name)) s.add(t.left.value);
+  const tp = typeofDe(t, al); if (tp && tp.igual !== (tp.valor === 'undefined')) s.add(tp.nombre);
+  const nu = nuloDe(t, al); if (nu && !nu.igual) s.add(nu.nombre);
+  return s;
+}
+/** Lo que existe seguro si `t` es falso. */
+function siFalso(t, al, s = new Set()) {
+  if (!t) return s;
+  if (t.type === 'UnaryExpression' && t.operator === '!') siVerdad(t.argument, al, s);
+  if (t.type === 'LogicalExpression' && t.operator === '||') { siFalso(t.left, al, s); siFalso(t.right, al, s); }
+  if (t.type === 'CallExpression' && esBoolean(t, t.arguments[0])) siFalso(t.arguments[0], al, s);
+  const tp = typeofDe(t, al); if (tp && tp.igual === (tp.valor === 'undefined')) s.add(tp.nombre);
+  const nu = nuloDe(t, al); if (nu && nu.igual) s.add(nu.nombre);
+  return s;
+}
+/** ¿Esta sentencia sale siempre (return, throw, break, continue)? */
+function sale(st) {
+  if (!st) return false;
+  if (['ReturnStatement', 'ThrowStatement', 'BreakStatement', 'ContinueStatement'].includes(st.type)) return true;
+  if (st.type === 'BlockStatement') return st.body.length > 0 && sale(st.body[st.body.length - 1]);
+  if (st.type === 'IfStatement') return sale(st.consequent) && sale(st.alternate);
+  return false;
+}
+const mas = (a, b) => (b.size ? new Set([...a, ...b]) : a);
+/** Lo que se sabe después de un `if` (o de una cadena de else if) con una rama que sale. */
+function despues(st, al) {
+  if (!st || st.type !== 'IfStatement') return new Set();
+  if (sale(st.consequent)) return mas(siFalso(st.test, al), despues(st.alternate, al));
+  if (st.alternate && sale(st.alternate)) return siVerdad(st.test, al);
+  return new Set();
+}
+const ES_FUNCION = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
+/** Recorre los hijos de un nodo (sin loc ni range). */
+function hijos(n, fn) {
+  for (const k of Object.keys(n)) {
+    if (k === 'loc' || k === 'range') continue;
+    const v = n[k];
+    if (Array.isArray(v)) { for (const x of v) if (x && typeof x.type === 'string') fn(x); }
+    else if (v && typeof v.type === 'string') fn(v);
+  }
+}
+
+const analisisCache = new Map();
+/**
+ * Lo que un trozo cuelga de window (`cuelga`), lo que lee por window (o por un
+ * alias) dando por hecho que existe (`usos`) y dónde un nombre suelto está
+ * protegido por su guarda (`protegidos`, «línea:columna» de espree).
+ */
+function analizar(codigo) {
+  if (analisisCache.has(codigo)) return analisisCache.get(codigo);
+  const r = { cuelga: new Set(), usos: [], protegidos: new Set() };
+  const arbol = arbolDe(codigo);
+  if (!arbol) {
+    // No compila (ya se avisa aparte): lo que cuelga, por el texto, para no
+    // sembrar avisos falsos en las páginas que lo cargan.
+    for (const m of codigo.matchAll(/\b(?:global|window|globalThis|self)\.([A-Za-z_$][\w$]*)\s*(?:\|\||\?\?|&&)?=(?!=)/g)) r.cuelga.add(m[1]);
+    analisisCache.set(codigo, r);
+    return r;
+  }
+  // Primera pasada: ¿tiene un `self` propio?, y los alias de cada función
+  // (`const G = window.X`, `G = window.X`).
+  let selfPropio = false;
+  const aliasDe = new Map();                       // función o Program → [[nombre, X]]
+  objetosGlobales = OBJ_GLOBAL;
+  const buscar = (n, ambito) => {
+    if (ES_FUNCION.has(n.type) || n.type === 'Program') ambito = n;
+    if ((n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.id.name === 'self')
+      || (ES_FUNCION.has(n.type) && n.params.some(x => x.type === 'Identifier' && x.name === 'self'))) selfPropio = true;
+    hijos(n, x => buscar(x, ambito));
+  };
+  buscar(arbol, arbol);
+  if (selfPropio) objetosGlobales = new Set([...OBJ_GLOBAL].filter(x => x !== 'self'));
+  const apuntarAlias = (n, ambito) => {
+    if (ES_FUNCION.has(n.type) || n.type === 'Program') ambito = n;
+    const par = n.type === 'VariableDeclarator' && n.id.type === 'Identifier' ? [n.id.name, deVentana(n.init)]
+      : n.type === 'AssignmentExpression' && n.operator === '=' && n.left.type === 'Identifier' ? [n.left.name, deVentana(n.right)] : null;
+    if (par && par[1]) { if (!aliasDe.has(ambito)) aliasDe.set(ambito, []); aliasDe.get(ambito).push(par); }
+    hijos(n, x => apuntarAlias(x, ambito));
+  };
+  apuntarAlias(arbol, arbol);
+
+  const secuencia = (lista, padre, seguros, al) => {
+    let s = seguros;
+    for (const st of lista) {
+      visitar(st, padre, st.type === 'FunctionDeclaration' ? seguros : s, al);
+      s = mas(s, despues(st, al));
+    }
+  };
+  const visitar = (n, p, seguros, al) => {
+    if (ES_FUNCION.has(n.type) || n.type === 'Program') {
+      // Los alias de esta función, y fuera los que tapa un parámetro suyo.
+      const propios = aliasDe.get(n) || [];
+      const tapa = ES_FUNCION.has(n.type) ? n.params.filter(x => x.type === 'Identifier').map(x => x.name) : [];
+      if (propios.length || tapa.some(x => al.has(x))) { al = new Map(al); tapa.forEach(x => al.delete(x)); propios.forEach(([a, x]) => al.set(a, x)); }
+    }
+    if (n.type === 'Identifier' && seguros.has(n.name)) r.protegidos.add(`${n.loc.start.line}:${n.loc.start.column}`);
+    if (n.type === 'AssignmentExpression') { const N = deVentana(n.left); if (N) r.cuelga.add(N); }
+    const N = deVentanaO(n, al);
+    if (N && !(p && p.type === 'AssignmentExpression' && p.left === n)
+      && !pregunta(n, p) && seUsa(n, p) && !seguros.has(N)) r.usos.push({ nombre: N, linea: n.loc.start.line });
+    switch (n.type) {
+      case 'IfStatement': case 'ConditionalExpression':
+        visitar(n.test, n, seguros, al);
+        visitar(n.consequent, n, mas(seguros, siVerdad(n.test, al)), al);
+        if (n.alternate) visitar(n.alternate, n, mas(seguros, siFalso(n.test, al)), al);
+        return;
+      case 'LogicalExpression':
+        visitar(n.left, n, seguros, al);
+        visitar(n.right, n, n.operator === '&&' ? mas(seguros, siVerdad(n.left, al)) : n.operator === '||' ? mas(seguros, siFalso(n.left, al)) : seguros, al);
+        return;
+      case 'WhileStatement': case 'ForStatement':
+        for (const k of ['init', 'test', 'update']) if (n[k]) visitar(n[k], n, seguros, al);
+        visitar(n.body, n, mas(seguros, siVerdad(n.test, al)), al);
+        return;
+      case 'Program': case 'BlockStatement': case 'StaticBlock':
+        secuencia(n.body, n, seguros, al);
+        return;
+      case 'SwitchCase':
+        if (n.test) visitar(n.test, n, seguros, al);
+        secuencia(n.consequent, n, seguros, al);
+        return;
+    }
+    hijos(n, x => visitar(x, n, seguros, al));
+  };
+  visitar(arbol, null, new Set(), new Map());
+  objetosGlobales = OBJ_GLOBAL;
+  analisisCache.set(codigo, r);
+  return r;
+}
+
+let linter = null;
+try { const { Linter } = require('eslint'); linter = new Linter({ configType: 'flat' }); } catch (_) { /* se cuenta justo abajo */ }
+if (!linter || !NAVEGADOR.size) {
+  fallos++;
+  console.log('  x falta eslint o globals (npm install): sin ellos no se mira qué nombres no existen en cada página');
+}
+// Sin configuración en comentarios: un `/* global X */` o un `eslint-disable`
+// de un fichero no pueden decidir qué existe en la página.
+const CONFIG_LIBRES = [{
+  languageOptions: { ecmaVersion: 'latest', sourceType: 'script', globals: NAVEGADOR.size ? require('globals').browser : {} },
+  linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: 'off' },
+  rules: { 'no-undef': 'error' },
+}];
+const libresCache = new Map();
+/** Lo que un trozo usa sin declararlo él (ni ser del navegador): [{ nombre, linea, columna }]. */
+function libresDe(codigo) {
+  if (!libresCache.has(codigo)) {
+    const out = [];
+    for (const m of linter.verify(codigo, CONFIG_LIBRES)) {
+      if (m.fatal || m.ruleId !== 'no-undef') continue;   // la sintaxis ya se avisa aparte
+      const n = /^'(.+)' is not defined\.$/.exec(m.message);
+      // Un mensaje con otra forma (otra versión de ESLint) es un fallo, no un
+      // silencio: sin el nombre, la regla no sabría qué buscar.
+      out.push(n ? { nombre: n[1], linea: m.line, columna: m.column } : { nombre: null, linea: m.line, raro: m.message });
+    }
+    libresCache.set(codigo, out);
+  }
+  return libresCache.get(codigo);
+}
+// Cada página guarda lo que trae (`hay`); se comprueba al final, cuando ya se
+// sabe todo lo que cuelga la casa (para las lecturas por window).
+const paginasNombres = [];
+function revisarNombres(f, trozos, textos) {
+  if (!linter || !NAVEGADOR.size) return;            // ya contado como fallo arriba
+  const hay = new Set();
+  for (const t of textos) {
+    for (const s of srcsDe(t)) {
+      if (!seEjecuta(s)) continue;                   // de otro host y sin nonce, la CSP no lo ejecuta
+      for (const e of EXTERNOS) if (e.re.test(s.src)) e.nombres.forEach(n => hay.add(n));
+    }
+  }
+  for (const t of trozos) {
+    for (const d of declarados(arbolDe(t.codigo))) hay.add(d.nombre);
+    for (const n of analizar(t.codigo).cuelga) hay.add(n);
+  }
+  paginasNombres.push({ f, trozos, hay });
+}
+// Un nombre que falta sale una vez por fichero, con sus líneas y sus páginas
+// (en un componente, pueden ser muchas).
+const sinDefinir = new Map();
+function cerrarNombres() {
+  // Lo que cuelga la casa: TODOS sus ficheros (también uno nuevo que aún no
+  // carga ninguna página) y los scripts en línea de las vistas.
+  const CASA = new Set();
+  for (const js of jsDe(COMPONENTES, '')) for (const n of analizar(fs.readFileSync(path.join(COMPONENTES, ...js.split('/')), 'utf8')).cuelga) CASA.add(n);
+  for (const { trozos } of paginasNombres) for (const t of trozos) for (const n of analizar(t.codigo).cuelga) CASA.add(n);
+  const apuntar = (t, f, nombre, lineaTrozo, comoVentana, raro) => {
+    const linea = (t.desde || 1) + lineaTrozo - 1;
+    const clave = `${t.origen}\u0000${comoVentana ? 'window.' : ''}${nombre || raro}`;
+    if (!sinDefinir.has(clave)) sinDefinir.set(clave, { origen: t.origen, nombre, comoVentana, raro, lineas: new Set(), paginas: new Set() });
+    sinDefinir.get(clave).lineas.add(linea);
+    sinDefinir.get(clave).paginas.add(f);
+  };
+  for (const { f, trozos, hay } of paginasNombres) {
+    for (const t of trozos) {
+      const a = analizar(t.codigo);
+      for (const l of libresDe(t.codigo)) {
+        // ESLint cuenta la columna desde 1; espree, desde 0.
+        if (l.nombre && (hay.has(l.nombre) || a.protegidos.has(`${l.linea}:${l.columna - 1}`))) continue;
+        apuntar(t, f, l.nombre, l.linea, false, l.raro);
+      }
+      for (const u of a.usos) {
+        if (NAVEGADOR.has(u.nombre) || !(CASA.has(u.nombre) || NOMBRES_EXTERNOS.has(u.nombre))) continue;
+        if (!hay.has(u.nombre)) apuntar(t, f, u.nombre, u.linea, true);
+      }
+    }
+  }
+}
+
 // Los ficheros de public/assets/js que alguna vista carga (para los huérfanos).
 const cargados = new Set();
+// Un include roto del layout saldría en cada página: se avisa una vez.
+const includesRotos = new Set();
 
 for (const { nombre: f, ruta } of ficheros) {
   const html = fs.readFileSync(ruta, 'utf8');
@@ -290,6 +664,7 @@ for (const { nombre: f, ruta } of ficheros) {
     // (los componentes de la casa y layout/*.js incluidos), los de la vista, los
     // de sus ficheros y los de los partials que incluye. Para las reglas de abajo.
     const trozos = [];
+    const textos = [];                             // para los <script> de la CDN
     const vistos = new Set();
     const deFicheros = (texto, deLaVista) => {
       for (const m of texto.matchAll(/\/assets\/js\/([^'"?)\s]+\.js)/g)) {
@@ -303,24 +678,56 @@ for (const { nombre: f, ruta } of ficheros) {
         trozos.push({ origen: 'public/assets/js/' + m[1], codigo: c, propio: /^(vistas|layout)\//.test(m[1]) });
       }
     };
+    // Los include se siguen desde la vista, desde el layout y desde los propios
+    // partials, resueltos como EJS: junto al que incluye y, si no, en las
+    // raíces de las vistas (RAICES); cada parcial, una vez. Antes, uno que no se
+    // encontraba se saltaba en silencio: en Linux, con otras mayúsculas, el
+    // build pasaba y la página daba error. Uno dentro de <!-- --> EJS lo
+    // ejecuta igual: se exige que exista, pero lo suyo no carga en la página.
+    const parciales = new Set();
+    const deIncludes = (crudo, dir, deLaVista, quien, comentado = false) => {
+      const t = sinComentariosEjs(crudo);
+      const enHtml = [...t.matchAll(/<!--[\s\S]*?-->/g)].map(c => [c.index, c.index + c[0].length]);
+      for (const m of t.matchAll(/include\(\s*['"]([^'"]+)['"]/g)) {
+        const rel = m[1].endsWith('.ejs') ? m[1] : m[1] + '.ejs';
+        const base = existeTal(dir, rel) ? dir : RAICES.find(r => existeTal(r, rel));
+        if (!base) {
+          const clave = `${quien}\u0000${m[1]}`;
+          if (!includesRotos.has(clave)) {
+            includesRotos.add(clave);
+            fallos++;
+            console.log(`  x ${path.relative(path.join(__dirname, '..'), quien).split(path.sep).join('/')} (linea ${lineaDe(t, m.index)}): include('${m[1]}') y ese fichero no existe (con esas mayúsculas)`);
+          }
+          continue;
+        }
+        const p = path.join(base, rel);
+        const oculto = comentado || enHtml.some(([a, b]) => m.index > a && m.index < b);
+        if (parciales.has(p + (oculto ? '#oculto' : ''))) continue;
+        parciales.add(p + (oculto ? '#oculto' : ''));
+        const crudoP = fs.readFileSync(p, 'utf8');
+        if (!oculto) {
+          const parcial = sinComentarios(crudoP);
+          textos.push(parcial);
+          scriptsDe(parcial).forEach((s, i) => trozos.push({ origen: m[1] + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true, desde: s.desde }));
+          deFicheros(parcial, deLaVista);
+        }
+        deIncludes(crudoP, path.dirname(p), deLaVista, p, oculto);
+      }
+    };
     const layout = layoutDe(f);
     if (layout && fs.existsSync(layout)) {
-      const lh = fs.readFileSync(layout, 'utf8');
-      scriptsDe(lh).forEach((s, i) => trozos.push({ origen: path.basename(layout) + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
+      const crudoL = fs.readFileSync(layout, 'utf8');
+      const lh = sinComentarios(crudoL);
+      textos.push(lh);
+      scriptsDe(lh).forEach((s, i) => trozos.push({ origen: path.basename(layout) + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true, desde: s.desde }));
       deFicheros(lh, false);
+      deIncludes(crudoL, path.dirname(layout), false, layout);
     }
-    scriptsDe(html).forEach((s, i) => trozos.push({ origen: f + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
-    deFicheros(html, true);
-    for (const m of html.matchAll(/include\(\s*['"]([^'"]+)['"]/g)) {
-      const rel = m[1].endsWith('.ejs') ? m[1] : m[1] + '.ejs';
-      const p = path.join(path.dirname(ruta), rel);
-      // Antes un include que no se encontraba se saltaba en silencio: en Linux,
-      // con otras mayúsculas, el build pasaba y la página daba error al pintarse.
-      if (!existeTal(path.dirname(ruta), rel)) { fallos++; console.log(`  x ${f}: include('${m[1]}') y ese fichero no existe (con esas mayúsculas)`); continue; }
-      const parcial = fs.readFileSync(p, 'utf8');
-      scriptsDe(parcial).forEach((s, i) => trozos.push({ origen: m[1] + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
-      deFicheros(parcial, true);
-    }
+    const vista = sinComentarios(html);
+    textos.push(vista);
+    scriptsDe(vista).forEach((s, i) => trozos.push({ origen: f + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true, desde: s.desde }));
+    deFicheros(vista, true);
+    deIncludes(html, path.dirname(ruta), true, ruta);
 
     // DOS SCRIPTS DE LA MISMA PÁGINA NO PUEDEN DECLARAR LO MISMO (FRO-4). Los
     // <script> clásicos de una página comparten el ámbito global: si dos
@@ -333,6 +740,7 @@ for (const { nombre: f, ruta } of ficheros) {
     // Y UN NOMBRE DEL NAVEGADOR TAMPOCO: una `function open()` o `close()` a
     // primer nivel sustituye a window.open para toda la página.
     revisarPagina(f, trozos);
+    revisarNombres(f, trozos, textos);
     const { usa, leidas } = clavesLeidas(codigo);
     if (usa) {
       const bloque = clavesDelBloque(html);
@@ -349,7 +757,14 @@ for (const { nombre: f, ruta } of ficheros) {
     }
   }
 
-  // Las tres reglas de la CSP (ver arriba).
+  // Las tres reglas de la CSP (ver arriba). Y una cuarta (05/11/2026): un
+  // <script src> de otro host que no sea cdnjs, y sin el nonce, no se ejecuta.
+  const sinComentar = sinComentarios(html);
+  for (const s of srcsDe(sinComentar)) {
+    if (!/^https?:\/\//i.test(s.src) || seEjecuta(s)) continue;
+    fallos++;
+    console.log(`  x ${f} (linea ${lineaDe(sinComentar, s.i)}): <script src="${s.src}"> — con la CSP (app.js, script-src) solo se ejecutan los de ${CDN} (o los que llevan el nonce); cárgalo de ahí o súbelo a /assets`);
+  }
   for (const m of html.matchAll(/<script\b((?:<%[\s\S]*?%>|[^>])*)>/gi)) {
     const attrs = m[1];
     if (/\bsrc\s*=/i.test(attrs)) continue;
@@ -497,6 +912,19 @@ for (const { carpeta, principal } of PARTIDAS) {
       console.log(`  x public/assets/js/${a}: una sentencia que se ejecuta al cargar (${s.type}${s.kind ? ' ' + s.kind : ''}) — en un área solo van funciones y constantes que no ejecutan nada; lo demás, en ${principal.split('/').pop()}`);
     }
   }
+}
+
+// Los nombres que no existen en su página (revisarNombres): uno por fichero y nombre.
+cerrarNombres();
+for (const s of sinDefinir.values()) {
+  fallos++;
+  const paginas = [...s.paginas], lineas = [...s.lineas];
+  const en = paginas.length > 3 ? `${paginas.slice(0, 3).join(', ')} y ${paginas.length - 3} más` : paginas.join(', ');
+  const donde = `${lineas.length > 1 ? 'líneas' : 'línea'} ${lineas.slice(0, 6).join(', ')}${lineas.length > 6 ? '…' : ''}`;
+  const que = s.comoVentana ? `lee window.${s.nombre} sin preguntar si está` : `usa «${s.nombre}»`;
+  console.log(s.nombre
+    ? `  x ${s.origen} (${donde}): ${que}, y en ${en} no existe — o la página no carga lo que lo define, o es una errata. Si viene de cdnjs, añádelo a EXTERNOS; si puede faltar, pregunta antes: if (!window.${s.nombre}) return; (o typeof ${s.nombre}, o window.${s.nombre}?.…)`
+    : `  x ${s.origen} (${donde}): ESLint avisa con una forma que no se entiende («${s.raro}»): revisa libresDe`);
 }
 
 console.log(`\n${revisados} bloque(s) de JavaScript en ${ficheros.length} vistas`);

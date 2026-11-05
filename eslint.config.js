@@ -9,14 +9,17 @@
 //
 // Lo que importa es `no-undef`: un nombre que no existe —una errata, una
 // función que se quitó de otro sitio— no avisa en ninguna parte hasta que
-// alguien pulsa justo ese botón. `scripts/comprobar-vistas.js` solo mira la
-// sintaxis. Lo que no se usa (`no-unused-vars`) va en aviso: limpiarlo es otra
-// tanda, y no debe impedir nada.
+// alguien pulsa justo ese botón. Aquí se mira fichero a fichero; lo de cada
+// página (sintaxis de lo que queda en las vistas, nombres repetidos, y que cada
+// nombre exista en la página que lo usa) lo mira `scripts/comprobar-vistas.js`.
+// Lo que no se usa (`no-unused-vars`) va en aviso: limpiarlo es otra tanda, y no
+// debe impedir nada.
 //
 // LOS GLOBALES DE LA CASA SE LEEN DEL CÓDIGO, no de una lista escrita aquí: cada
 // componente se cuelga de window (`global.Listado = …`, `window.X = …`), y lo que
 // se cuelga en un fichero existe para todos los demás. Un componente nuevo entra
-// solo.
+// solo. Aquí no se sabe qué carga cada página: eso lo mira
+// scripts/comprobar-vistas.js (revisarNombres), página a página.
 
 const fs = require('fs');
 const path = require('path');
