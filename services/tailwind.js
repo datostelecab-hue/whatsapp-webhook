@@ -6,7 +6,8 @@
 // misma versión que servía la CDN (3.4.17), a public/assets/css/tailwind.css:
 //
 //   · En Render, al instalar: `npm install` lanza el postinstall
-//     (`node services/tailwind.js`). Si por lo que sea no hubiera fichero al
+//     (`node services/tailwind.js`, y detrás las comprobaciones del JavaScript
+//     del navegador: scripts/comprobar-al-instalar.js). Si por lo que sea no hubiera fichero al
 //     arrancar, se compila entonces: sin CSS, el ERP sale sin estilos.
 //   · En local, al arrancar SIEMPRE y otra vez con cada cambio de una vista o un
 //     script: una clase nueva tiene que aparecer sin acordarse de nada, igual

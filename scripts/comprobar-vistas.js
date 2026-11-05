@@ -30,8 +30,11 @@
 // ni es uno del navegador (`function open` sustituiría a window.open); ningún
 // fichero de vistas/ o layout/ se queda sin vista que lo cargue; y las áreas de
 // una pantalla partida (el planificador) solo traen declaraciones y se cargan
-// antes que su principal. Lo fino lo hace con el analizador de ESLint
-// (devDependencies); sin él, solo los const/let repetidos.
+// antes que su principal. Lo fino lo hace con el analizador de ESLint (espree,
+// en dependencies); si falta, es un fallo.
+//
+// Corre solo en cada `npm install` sin argumentos —también el build de Render,
+// que no despliega si falla— junto con ESLint: scripts/comprobar-al-instalar.js.
 
 const MAX_EN_LINEA = 30;
 
@@ -122,6 +125,29 @@ function sinNombre(texto) {
 // comparan las dos listas.
 const PUBLICO = path.join(__dirname, '..', 'public');
 
+// ¿EXISTE CON ESTAS MAYÚSCULAS? En Windows (NTFS) fs.existsSync no las distingue
+// y en Render (Linux) sí: un `/assets/js/Listado.js` que en disco es listado.js
+// pasaría aquí y allí daría 404 (o tumbaría el build sin que en local se viera).
+// Se recorre la ruta tramo a tramo contra los nombres reales del directorio.
+// Lo que no cubre: un renombrado que solo cambia mayúsculas sin `git mv -f`,
+// porque git (core.ignorecase) se queda con el nombre viejo y el disco no.
+const nombresCache = new Map();
+function existeTal(base, rel) {
+  let d = base;
+  for (const s of rel.split(/[\\/]/)) {
+    if (!s || s === '.') continue;
+    if (s === '..') { d = path.dirname(d); continue; }
+    if (!nombresCache.has(d)) {
+      let n = [];
+      try { n = fs.readdirSync(d); } catch (_) { /* no es un directorio */ }
+      nombresCache.set(d, new Set(n));
+    }
+    if (!nombresCache.get(d).has(s)) return false;
+    d = path.join(d, s);
+  }
+  return true;
+}
+
 /** Las claves de primer nivel del json({ … }) del bloque de datos. null = no hay bloque. */
 function clavesDelBloque(html) {
   const b = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
@@ -178,11 +204,20 @@ function layoutDe(nombre) {
   return path.join(VIEWS, 'layout-gestion.ejs');
 }
 
-// El analizador de ESLint, si está (devDependencies). Sin él, la regla se queda
-// en lo que ve el compilador de Node: los const/let/class repetidos.
+// El analizador de ESLint (espree) y los nombres del navegador (globals). Desde
+// el 04/11/2026 son `dependencies` y esto corre en el build de Render
+// (scripts/comprobar-al-instalar.js): si faltan, es un FALLO, no un aviso, porque
+// lo fino (nombres repetidos entre ficheros, nombres del navegador, áreas del
+// planificador) se quedaría sin mirar y el build daría por buena una página que
+// no ha revisado. Lo que se ve sin ellos —los const/let/class repetidos que
+// encuentra el compilador de Node— se sigue comprobando, para avisar de todo.
 let espree = null, NAVEGADOR = new Set();
-try { espree = require('espree'); } catch (_) { /* sin devDependencies */ }
+try { espree = require('espree'); } catch (_) { /* se cuenta justo abajo */ }
 try { NAVEGADOR = new Set(Object.keys(require('globals').browser)); } catch (_) { /* ídem */ }
+if (!espree || !NAVEGADOR.size) {
+  fallos++;
+  console.log('  x falta espree o globals (npm install): sin ellos no se miran los nombres globales de cada página');
+}
 const arbolCache = new Map();
 function arbolDe(codigo) {
   if (!arbolCache.has(codigo)) {
@@ -262,7 +297,7 @@ for (const { nombre: f, ruta } of ficheros) {
         vistos.add(m[1]);
         cargados.add(m[1]);
         const js = path.join(PUBLICO, 'assets', 'js', ...m[1].split('/'));
-        if (!fs.existsSync(js)) { fallos++; console.log(`  x ${f}: carga /assets/js/${m[1]} y ese fichero no existe`); continue; }
+        if (!existeTal(path.join(PUBLICO, 'assets', 'js'), m[1])) { fallos++; console.log(`  x ${f}: carga /assets/js/${m[1]} y ese fichero no existe (con esas mayúsculas)`); continue; }
         const c = fs.readFileSync(js, 'utf8');
         if (deLaVista && /^(vistas|layout)\//.test(m[1])) codigo += '\n' + c;
         trozos.push({ origen: 'public/assets/js/' + m[1], codigo: c, propio: /^(vistas|layout)\//.test(m[1]) });
@@ -277,8 +312,11 @@ for (const { nombre: f, ruta } of ficheros) {
     scriptsDe(html).forEach((s, i) => trozos.push({ origen: f + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
     deFicheros(html, true);
     for (const m of html.matchAll(/include\(\s*['"]([^'"]+)['"]/g)) {
-      const p = path.join(path.dirname(ruta), m[1].endsWith('.ejs') ? m[1] : m[1] + '.ejs');
-      if (!fs.existsSync(p)) continue;
+      const rel = m[1].endsWith('.ejs') ? m[1] : m[1] + '.ejs';
+      const p = path.join(path.dirname(ruta), rel);
+      // Antes un include que no se encontraba se saltaba en silencio: en Linux,
+      // con otras mayúsculas, el build pasaba y la página daba error al pintarse.
+      if (!existeTal(path.dirname(ruta), rel)) { fallos++; console.log(`  x ${f}: include('${m[1]}') y ese fichero no existe (con esas mayúsculas)`); continue; }
       const parcial = fs.readFileSync(p, 'utf8');
       scriptsDe(parcial).forEach((s, i) => trozos.push({ origen: m[1] + ' #' + (i + 1), codigo: sinEjs(s.codigo), propio: true }));
       deFicheros(parcial, true);

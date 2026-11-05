@@ -226,6 +226,24 @@ desde el 03/11/2026). **Ninguna vista lleva colores propios.**
   arranques cortos que corren antes de pintar (el tema de la cabecera de los
   layouts); `comprobar-vistas` falla con un `<script>` en línea de más de 30
   líneas.
+- **Si `comprobar` o `lint` fallan, no se despliega** (04/11/2026): cada
+  `npm install` sin argumentos —el build de Render lo es— pasa
+  `npm run comprobar` y `npm run lint` (solo errores) en el `postinstall`
+  (`scripts/comprobar-al-instalar.js`). Si uno falla, el build falla y Render
+  sigue con la versión anterior; en local, el `npm install` acaba en error con el
+  fichero y la línea. `npm install <paquete>` no lanza el postinstall: después,
+  las dos a mano. Antes de commitear, las dos tienen que pasar aquí: lo que
+  sube ya va aprobado. `eslint`, `espree` y `globals` van en `dependencies` con
+  la versión exacta (no hay package-lock): subir una es un cambio a propósito,
+  probado en local. Lo que no ven: ESLint da por definido en todas las páginas
+  lo que cualquier componente cuelga de window (cargue la página ese fichero o
+  no), y no mira los arranques en línea de los layouts.
+- **Un fichero se renombra con `git mv -f`, también si solo cambian
+  mayúsculas** (`listado.js` → `Listado.js`). Windows no distingue mayúsculas y
+  git (`core.ignorecase`) se queda con el nombre viejo; Render, en Linux, sí
+  distingue: la ruta daría 404. `comprobar-vistas` mira las rutas de los
+  `<script src>` y los `include()` con sus mayúsculas exactas, pero contra el
+  disco, no contra git.
 - **Los datos del servidor van en el bloque de la vista y se leen con `Casa.datos()`**
   (04/11/2026, FRO-4), porque un `.js` no pasa por EJS:
   `<script type="application/json" id="datos-servidor"><%- json({ a, b }) %></script>`

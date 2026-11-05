@@ -7,7 +7,7 @@
 // layouts (y ya no coincidían). Ahora se compila una vez con la MISMA versión
 // (3.4.17) y se sirve como un .css que el navegador cachea.
 //
-// Lo genera scripts/compilar-css.js: en Render al instalar (postinstall) y, si
+// Lo genera services/tailwind.js: en Render al instalar (postinstall) y, si
 // faltara, al arrancar; en local, al arrancar y con cada cambio de una vista.
 // El resultado (public/assets/css/tailwind.css) NO se versiona: sale siempre
 // del código que hay, así que no puede quedarse viejo.

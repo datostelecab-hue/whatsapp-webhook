@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "postinstall": "node services/tailwind.js",
+    "postinstall": "node services/tailwind.js && node scripts/comprobar-al-instalar.js",
     "css": "node services/tailwind.js",
     "comprobar": "node scripts/comprobar-vistas.js",
     "lint": "eslint public/assets/js"
@@ -11,9 +11,12 @@
   "dependencies": {
     "compression": "^1.8.1",
     "ejs": "^3.1.9",
+    "eslint": "9.39.5",
+    "espree": "10.4.0",
     "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "express-ejs-layouts": "^2.5.1",
+    "globals": "15.15.0",
     "googleapis": "^140.0.0",
     "imapflow": "^1.6.5",
     "multer": "^2.2.0",
@@ -22,10 +25,5 @@
     "pdf-lib": "^1.17.1",
     "pg": "^8.13.1",
     "tailwindcss": "3.4.17"
-  },
-  "devDependencies": {
-    "eslint": "^9.39.5",
-    "espree": "^10.4.0",
-    "globals": "^15.15.0"
   }
 }
