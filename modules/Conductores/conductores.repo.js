@@ -168,7 +168,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- DUPLICADA, las dos filas como "Activo". Quien ya se fue (sin periodo vivo) cae a
     -- e = NULL y lo recoge el LATERAL ultimo (contrato cerrado) de abajo.
     LEFT JOIN LATERAL (
-      SELECT tipo, ett_nombre, alta, baja, fecha_antiguedad, jornada_horas
+      SELECT tipo, ett_nombre, alta, baja, fecha_antiguedad, jornada_horas, jornada_dias
         FROM conductor_periodo_empleo
        WHERE conductor_id = c.id
          AND (baja IS NULL OR baja >= ref.dia)
