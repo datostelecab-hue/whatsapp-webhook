@@ -392,6 +392,13 @@ const TAREAS = {
       for (const f of CONFIG_BOLT.flotasOtrasSedes || []) {
         const ultimo = await repo.ultimoPedido(f.sede);
         let desde = ultimo ? Math.max(Math.min(ultimo, ahora) - VENTANA, ahora - PRIMERA_VEZ) : ahora - PRIMERA_VEZ;
+        // EL PAGO DE LO DE ANTES (db/230, 05/11/2026). Los pedidos que entraron
+        // sin su método de pago se le vuelven a pedir a BOLT desde el primero que
+        // falte (desde el 1 de noviembre en Barcelona), para que su recaudación
+        // tenga el efectivo de esos días. Se cura solo: releídos todos, no queda
+        // ninguno y la ventana vuelve a ser la de siempre.
+        const sinPago = await repo.primerPedidoSinPago(f.sede);
+        if (sinPago != null) desde = Math.min(desde, sinPago);
         let traidos = 0, deEsta = 0, sinTablas = false;
         while (desde < ahora && !sinTablas) {
           const hasta = Math.min(desde + DIA, ahora);
@@ -405,7 +412,7 @@ const TAREAS = {
         }
         if (sinTablas) throw new Error(`Falta aplicar db/182 (${f.sede}): sus pedidos no tienen dónde guardarse.`);
         tocados += deEsta;
-        detalle[f.sede] = { traidos, tocados: deEsta };
+        detalle[f.sede] = { traidos, tocados: deEsta, ...(sinPago != null ? { releePago: true } : {}) };
       }
       return { registros: tocados, detalle };
     },

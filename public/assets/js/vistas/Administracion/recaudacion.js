@@ -12,6 +12,15 @@
   const SALIDAS = DEL_SERVIDOR.salidasCaja;
   const SALIDAS_TODAS = DEL_SERVIDOR.etiquetasSalida;
   const PUEDE_NOMINA = DEL_SERVIDOR.puedeNomina;
+  // UNA PANTALLA POR SEDE (05/11/2026): Madrid en /recaudacion y Barcelona en
+  // /barcelona/recaudacion, con la misma pantalla. En Barcelona no hay fichas:
+  // cada persona es su cuenta de BOLT (SOLO_CUENTAS), así que una fila «sin
+  // ficha» es lo normal y no se pinta en rojo, y «en plantilla» quiere decir que
+  // la cuenta no está desactivada.
+  const BASE = DEL_SERVIDOR.base || '/recaudacion';
+  const SOLO_CUENTAS = !!DEL_SERVIDOR.soloCuentas;
+  const sinFichaDe = x => !!(x && x.sinFicha) && !SOLO_CUENTAS;
+  const TXT_FUERA = SOLO_CUENTAS ? 'cuenta desactivada' : 'ya no está';
 
   const nf = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const eur = n => nf.format(Number(n) || 0) + ' €';
@@ -44,7 +53,7 @@
   const fallo = e => Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' });
 
   async function padron() {
-    if (!conductores) conductores = (await pedir('/recaudacion/api/candidatos')).conductores;
+    if (!conductores) conductores = (await pedir(BASE + '/api/candidatos')).conductores;
     return conductores;
   }
   /**
@@ -85,7 +94,7 @@
             '<button type="button" data-i="' + i + '" class="w-full text-left px-3 py-2 text-sm ' +
               (i === marcado ? 'bg-telecab-gold/15 text-telecab-text' : 'text-telecab-text hover:bg-telecab-card2') + '">' +
               esc(c.nombre) +
-              (c.enPlantilla ? '' : '<span class="ml-1 text-[10px] text-telecab-muted">ya no está</span>') +
+              (c.enPlantilla ? '' : '<span class="ml-1 text-[10px] text-telecab-muted">' + TXT_FUERA + '</span>') +
             '</button>').join('') +
           (visibles.length > 80 ? '<p class="px-3 py-2 text-[11px] text-telecab-muted">… y ' + (visibles.length - 80) + ' más. Afina la búsqueda.</p>' : '')
         : '<p class="px-3 py-2 text-sm text-telecab-muted">Nadie con ese nombre.</p>';
@@ -199,12 +208,12 @@
       if (q && !llaveTxt(f.conductor).includes(q)) return false;
       // Los sin ficha no son "en plantilla" ni "ya no está": se quedan siempre,
       // que es justo lo que no puede volver a perderse de vista.
-      if (pl === 'si' && !f.enPlantilla && !f.sinFicha) return false;
-      if (pl === 'no' && (f.enPlantilla || f.sinFicha)) return false;
+      if (pl === 'si' && !f.enPlantilla && !sinFichaDe(f)) return false;
+      if (pl === 'no' && (f.enPlantilla || sinFichaDe(f))) return false;
       if (est === 'deuda' && !(f.aRecaudar > 0.005)) return false;
       if (est === 'dia' && Math.abs(f.aRecaudar) >= 0.005) return false;
       if (est === 'favor' && !(f.aRecaudar < -0.005)) return false;
-      if (est === 'sinficha' && !f.sinFicha) return false;
+      if (est === 'sinficha' && !sinFichaDe(f)) return false;
       if (est === 'efectivo' && !f.efectivoActivo) return false;
       if (est === 'efectivofuera' && !(f.efectivoActivo && !f.enPlantilla)) return false;
       return true;
@@ -265,7 +274,8 @@
       (c.cambio > 0.005 ? ' + ' + eur(c.cambio) + ' de cambio prestado' : '') +
       ' · ' + eur(c.nomina) + ' recuperados por nómina' +
       (c.transferencia > 0.005 ? ' · ' + eur(c.transferencia) + ' por transferencia' : '') +
-      (c.deudaSinFicha > 0.005
+      // En Barcelona toda la deuda es de cuentas de BOLT: no es un aviso.
+      (!SOLO_CUENTAS && c.deudaSinFicha > 0.005
         ? ' · <span class="text-telecab-red font-semibold">' + eur(c.deudaSinFicha) + ' de gente sin ficha</span>'
         : '');
   }
@@ -314,7 +324,7 @@
     ], { nota: 'Baja el efectivo del cajón. NO cambia lo que los conductores deben.' });
     if (!v || !v.importe || !v.observacion) return;
     try {
-      await pedir('/recaudacion/api/movimiento', {
+      await pedir(BASE + '/api/movimiento', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(v),
       });
@@ -335,7 +345,8 @@
       t.transferencia > 0.005 ? eur(t.transferencia) + ' por transferencia' : ''].filter(Boolean);
     $('#t-enmano-det').textContent = fuera.length ? 'y ' + fuera.join(' y ') : '';
     $('#t-bolt').textContent = eur(t.bolt);
-    $('#t-bolt-det').textContent = D.corte ? 'Excel hasta el corte · BOLT desde ' + D.corte : '';
+    $('#t-bolt-det').textContent = !D.corte ? ''
+      : SOLO_CUENTAS ? 'BOLT desde ' + D.corte : 'Excel hasta el corte · BOLT desde ' + D.corte;
     $('#t-arecaudar').textContent = eur(t.aRecaudar);
     $('#t-condeuda').textContent = t.conDeuda ? t.conDeuda + (t.conDeuda === 1 ? ' persona' : ' personas') : '';
     // Quien puede cobrar en mano y ya no trabaja aquí es un grifo abierto: se
@@ -344,7 +355,8 @@
       ? '<span class="text-telecab-green">' + t.conEfectivo + ' con el efectivo activado en BOLT</span>' +
         (t.efectivoFuera
           ? ' · <button id="t-fuera" class="text-telecab-red font-semibold underline decoration-dotted">' +
-            t.efectivoFuera + (t.efectivoFuera === 1 ? ' de ellos ya no trabaja aquí' : ' de ellos ya no trabajan aquí') + '</button>'
+            t.efectivoFuera + (SOLO_CUENTAS ? ' de ellos con la cuenta desactivada'
+              : (t.efectivoFuera === 1 ? ' de ellos ya no trabaja aquí' : ' de ellos ya no trabajan aquí')) + '</button>'
           : '')
       : '';
     const bf = document.getElementById('t-fuera');
@@ -394,19 +406,19 @@
         '<th class="px-2 2xl:px-3 py-2.5"></th></tr></thead><tbody>' +
       filas.map(f =>
         '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition' +
-          (f.sinFicha ? ' bg-telecab-red/5' : '') + '" data-cid="' + esc(f.conductorId) + '">' +
+          (sinFichaDe(f) ? ' bg-telecab-red/5' : '') + '" data-cid="' + esc(f.conductorId) + '">' +
           '<td class="px-2 2xl:px-3 py-2.5"><button data-ficha class="text-left font-medium transition ' +
-            (f.sinFicha ? 'text-telecab-red hover:underline' : 'hover:text-telecab-gold') + '">' +
+            (sinFichaDe(f) ? 'text-telecab-red hover:underline' : 'hover:text-telecab-gold') + '">' +
             esc(f.conductor) + '</button>' +
             // Tres estados distintos, no dos: de alta, de baja, y SIN FICHA
             // —rodó y cobró en BOLT y nunca se le dio de alta aquí—. Ese
             // tercero no es una baja: a un baja se le puede llamar.
-            (f.sinFicha
+            (sinFichaDe(f)
               ? '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 text-telecab-red font-bold border border-telecab-red/40" ' +
                 'title="Rodó y cobró en efectivo con su cuenta de BOLT, pero no está en la plantilla: no tiene ficha, ni de alta ni de baja">' +
                 'SIN FICHA</span>'
               : f.enPlantilla ? ''
-              : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
+              : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">' + TXT_FUERA + '</span>') + '</td>' +
           // Tres estados, no dos: lo tiene, no lo tiene, o el padrón todavía
           // no lo ha dicho de esa cuenta. El tercero no se pinta como un "no".
           '<td class="px-2 2xl:px-3 py-2.5 text-center">' + (f.efectivoActivo === null
@@ -444,7 +456,8 @@
             '<button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition">' +
               '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
             // Sin ficha no hay a quién apuntársela: primero se le da de alta.
-            (f.sinFicha ? '' :
+            // (En Barcelona la cuenta ES la persona, y sí se le apunta.)
+            (sinFichaDe(f) ? '' :
             '<button data-transferencia class="ml-1 text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition" ' +
               'title="Lo ha pagado por transferencia: el importe y el ID de la transferencia. Baja lo que debe y no entra en la caja">' +
               '<i class="fa-solid fa-building-columns mr-1"></i>Transferencia</button>') +
@@ -602,7 +615,7 @@
       const btn = p.querySelector('[data-guardar]');
       btn.disabled = true; btn.classList.add('opacity-60');
       try {
-        const r = await pedir('/recaudacion/api/movimiento', {
+        const r = await pedir(BASE + '/api/movimiento', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conductorId: p.querySelector('[data-cond]').value,
@@ -651,7 +664,7 @@
            nota: 'Baja lo que debe, pero no entra en la caja: el dinero está en el banco.' + debe });
       if (!v) return;
       try {
-        const r = await pedir('/recaudacion/api/movimiento', {
+        const r = await pedir(BASE + '/api/movimiento', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...v, conductorId, tipo: 'transferencia' }),
         });
@@ -680,7 +693,7 @@
     ], { nota: 'Queda apuntado con tu nombre y cuenta como recaudado, igual que si lo hubiera traído en mano.' });
     if (!v || !v.importe) return;
     try {
-      await pedir('/recaudacion/api/movimiento', {
+      await pedir(BASE + '/api/movimiento', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...v, tipo: 'nomina' }),
       });
@@ -700,7 +713,7 @@
     });
     if (!previo) return;
     try {
-      const r = await pedir('/recaudacion/api/cierre/calcular', { method: 'POST' });
+      const r = await pedir(BASE + '/api/cierre/calcular', { method: 'POST' });
       await cargar();
       const lista = (t, arr, tono) => (arr.length
         ? '<p class="mt-2 ' + tono + '">' + t + ':</p><ul class="mt-1 text-xs space-y-0.5 max-h-40 overflow-auto">' +
@@ -733,7 +746,7 @@
   // sola después de un recálculo y no tiene sentido felicitarse cada vez.
   async function cuadra({ callado = false, boton } = {}) {
     try {
-      const c = await Api.get('/recaudacion/api/comprobar', { boton });
+      const c = await Api.get(BASE + '/api/comprobar', { boton });
       if (callado && c.ok && !c.revisar) return;
       const icono = p => (p.ok ? (p.revisar ? '⚑' : '✓') : '✕');
       const tono = p => (p.ok ? (p.revisar ? 'text-telecab-warn' : 'text-telecab-green') : 'text-telecab-red');
@@ -775,7 +788,7 @@
     if (!m) return Dialogo.aviso({ titulo: 'El periodo no vale', tono: 'aviso',
       html: '<p>Se escribe <code>aaaa-mm-Q</code>, por ejemplo <code>2026-07-2</code>.</p>' });
     try {
-      const r = await pedir('/recaudacion/api/cierre/importar', {
+      const r = await pedir(BASE + '/api/cierre/importar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anio: +m[1], mes: +m[2], quincena: +m[3], texto: v.texto }),
       });
@@ -796,7 +809,7 @@
   // ── La ficha de un conductor: su histórico ───────────────────────────
   async function abrirFicha(conductorId) {
     try {
-      const f = await pedir('/recaudacion/api/conductor/' + encodeURIComponent(conductorId));
+      const f = await pedir(BASE + '/api/conductor/' + encodeURIComponent(conductorId));
       fichaAbierta = conductorId;
       const etqTipo = t => (TIPOS.find(x => x.codigo === t) || {}).etiqueta || t;
       // El cambio en ámbar, como en la tabla: no es un ingreso ni una devolución,
@@ -817,12 +830,13 @@
       $('#r-ficha').innerHTML =
         '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
           '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center justify-between gap-2">' +
-            '<div><h2 class="font-bold ' + (f.conductor.sinFicha ? 'text-telecab-red' : 'text-telecab-text') + '">' +
+            '<div><h2 class="font-bold ' + (sinFichaDe(f.conductor) ? 'text-telecab-red' : 'text-telecab-text') + '">' +
               esc(f.conductor.nombre) +
-              (f.conductor.sinFicha ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 border border-telecab-red/40 align-middle">SIN FICHA</span>' : '') + '</h2>' +
-              '<p class="text-[11px] text-telecab-muted font-mono tabular-nums">' + (esc(f.conductor.telefono) || 'sin teléfono') +
-              (f.conductor.sinFicha ? ' · cuenta de BOLT sin ficha en la plantilla'
-                : f.conductor.enPlantilla ? '' : ' · ya no está en plantilla') + '</p></div>' +
+              (sinFichaDe(f.conductor) ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 border border-telecab-red/40 align-middle">SIN FICHA</span>' : '') + '</h2>' +
+              '<p class="text-[11px] text-telecab-muted font-mono tabular-nums">' +
+              (SOLO_CUENTAS ? 'cuenta de BOLT' : (esc(f.conductor.telefono) || 'sin teléfono')) +
+              (sinFichaDe(f.conductor) ? ' · cuenta de BOLT sin ficha en la plantilla'
+                : (SOLO_CUENTAS || f.conductor.enPlantilla) ? '' : ' · ya no está en plantilla') + '</p></div>' +
             '<div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-right">' +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Efectivo</p><p class="font-bold tabular-nums">' + eur(f.total.deuda) + '</p></div>' +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Entregado</p><p class="font-bold text-telecab-green tabular-nums">' + eur(f.total.recaudado) + '</p></div>' +
@@ -833,7 +847,7 @@
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Pendiente</p>' +
                 '<p class="font-bold tabular-nums ' + (f.total.pendiente > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(f.total.pendiente) + '</p></div>' +
               '<button data-cobrar-ficha class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold whitespace-nowrap"><i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
-              (f.conductor.sinFicha ? '' :
+              (sinFichaDe(f.conductor) ? '' :
               '<button data-transferencia-ficha class="px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold text-sm whitespace-nowrap transition" ' +
                 'title="Lo ha pagado por transferencia: el importe y el ID de la transferencia"><i class="fa-solid fa-building-columns mr-1"></i>Transferencia</button>') +
               '<button data-cambio-ficha class="px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-warn hover:text-telecab-warn text-sm whitespace-nowrap transition" ' +
@@ -897,7 +911,7 @@
     ], { tono: 'peligro', nota: 'El apunte no se borra: queda tachado, con tu nombre y con el motivo. Es dinero.' });
     if (!v || !v.motivo) return;
     try {
-      await pedir('/recaudacion/api/movimiento/' + encodeURIComponent(movimientoId) + '/anular', {
+      await pedir(BASE + '/api/movimiento/' + encodeURIComponent(movimientoId) + '/anular', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ motivo: v.motivo }),
       });
@@ -909,7 +923,7 @@
   // ── Carga ────────────────────────────────────────────────────────────
   async function cargar() {
     try {
-      D = await pedir('/recaudacion/api/cuadro');
+      D = await pedir(BASE + '/api/cuadro');
       pintarCaja();
       pintarCuadro();
       pintarSalidas();
@@ -928,7 +942,8 @@
   $('#r-salida').addEventListener('click', salidaCaja);
   $('#r-calcular').addEventListener('click', recalcular);
   $('#r-cuadra').addEventListener('click', ev => cuadra({ boton: ev.currentTarget }));
-  $('#r-cierre').addEventListener('click', cargarCierre);
+  // En Barcelona no hay histórico anterior al corte que pegar: no hay botón.
+  if ($('#r-cierre')) $('#r-cierre').addEventListener('click', cargarCierre);
   if (PUEDE_NOMINA && $('#r-nomina')) $('#r-nomina').addEventListener('click', descuentoNomina);
 
   cargar();

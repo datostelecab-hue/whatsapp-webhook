@@ -24,7 +24,7 @@
 // no puede moverse sola porque BOLT corrija un viaje tres semanas después. Se
 // recalcula cuando alguien lo pide, y se ve que cambió.
 
-const db = require('../../services/db');
+const dbModulo = require('../../services/db');
 
 // Los billetes y monedas del recibo, de mayor a menor. En CÉNTIMOS: con euros
 // en coma flotante, 0.1 + 0.2 no da 0.3 y el recibo no cuadraría con su total.
@@ -107,1176 +107,1301 @@ const cortaQuincena = q => `Q${q.quincena} ${MESES[q.mes - 1]} ${String(q.anio).
  * daría cero y borraría de un plumazo el histórico que nos pasaron. El guardia
  * de calcularDesdeBolt() está para que eso no pueda ocurrir ni por accidente.
  */
-const CORTE = { anio: 2026, mes: 8, quincena: 1 };
+const CORTE_MADRID = { anio: 2026, mes: 8, quincena: 1 };
 
-const nQuincena = q => (q.anio * 12 + (q.mes - 1)) * 2 + (q.quincena - 1);
-const antesDelCorte = q => nQuincena(q) < nQuincena(CORTE);
-
-/** La quincena de hoy, y moverse por ellas sin pelearse con los meses. */
-const quincenaHoy = () => quincenaDe(new Date());
-function mueveQuincena(q, pasos) {
-  let n = (q.anio * 12 + (q.mes - 1)) * 2 + (q.quincena - 1) + pasos;
-  const quincena = (n % 2) + 1;
-  n = Math.floor(n / 2);
-  return { anio: Math.floor(n / 12), mes: (n % 12) + 1, quincena };
-}
-
-/**
- * Desde el corte, el importe lo pone BOLT y nadie lo teclea. Lo que sí se puede
- * es AJUSTARLO: el ajuste va aparte, obliga a escribir un motivo y ningún
- * recálculo lo toca. Escribir a mano el importe de una quincena que BOLT va a
- * recalcular sería trabajo que se borra solo en la siguiente pasada.
- */
-function exigeAntesDelCorte(q, que) {
-  if (!antesDelCorte(q)) {
-    throw new Error(
-      `${etiquetaQuincena(q)} va desde el corte (${etiquetaQuincena(CORTE)}): ahí el importe lo pone BOLT. ` +
-      `Para ${que} tendría que ser una quincena anterior; si lo que quieres es corregir esa cifra, ` +
-      `usa un ajuste, que lleva su motivo y no se pierde en el siguiente recálculo.`);
+// ── UNA RECAUDACIÓN POR SEDE (05/11/2026) ──────────────────────────────────
+// Barcelona lleva su recaudación con la MISMA lógica pero en sus tablas
+// (sede_recaudacion_cierre y sede_recaudacion_movimiento, db/230) y con su
+// efectivo de sus pedidos (sede_bolt_order). Todo lo que depende del corte, de
+// las tablas o de cómo se identifica a la gente vive dentro de `crear(cfg)`;
+// Madrid es `crear(MADRID)` y exporta lo mismo de siempre.
+//
+//   cfg.sede          'madrid' | 'barcelona'
+//   cfg.corte         la primera quincena que manda BOLT
+//   cfg.tablas        { cierre, mov }
+//   cfg.ordenes       { tabla, filtro }: de dónde sale el efectivo de BOLT
+//   cfg.soloCuentas   true en Barcelona: no hay fichas, cada persona es su
+//                     cuenta de BOLT (bolt_uuid) y solo las de su empresa
+function crear(cfg) {
+  const CORTE = cfg.corte;
+  const TC = cfg.tablas.cierre;
+  const TM = cfg.tablas.mov;
+  const ORDENES = cfg.ordenes;
+  const SOLO_CUENTAS = !!cfg.soloCuentas;
+  // La base: la de siempre, o una de prueba (scripts/comprobar-recaudacion-sedes.js).
+  const db = cfg.db || dbModulo;
+  // La sede va DENTRO del SQL (es una constante del código, no algo que llegue de
+  // una petición), así que se exige que sea una palabra y nada más.
+  if (!/^[a-z]+$/.test(String(cfg.sede || ''))) throw new Error('Recaudación: sede no válida');
+  // Las cuentas de BOLT de la sede: las de las empresas de BOLT que son suyas.
+  const CUENTAS_SEDE = `SELECT e.externo_id, e.externo_nombre, e.efectivo_activo, e.efectivo_at, e.estado_externo
+       FROM conductor_externo e
+       JOIN flota f ON f.company_id = e.bolt_company_id
+      WHERE e.sistema = 'bolt' AND f.sede = '${cfg.sede}'`;
+  // Barcelona no tiene histórico anterior al corte —ni Excel ni nada que
+  // traspasar—: su deuda la pone BOLT desde el primer día. Lo que en Madrid
+  // sirve para volcar el Excel de antes, aquí no tiene nada que volcar.
+  function sinHistoricoAMano(que) {
+    if (SOLO_CUENTAS) {
+      throw new Error(`Aquí la deuda la pone BOLT desde el ${etiquetaQuincena(CORTE)}, y no hay histórico ` +
+        `anterior que cargar: no se puede ${que}. Para corregir una cifra, usa un ajuste.`);
+    }
   }
-}
 
-/** Todas las quincenas del corte a hoy, que son las que manda BOLT. */
-function quincenasDesdeCorte() {
-  const fin = nQuincena(quincenaHoy());
-  const out = [];
-  for (let n = nQuincena(CORTE); n <= fin; n++) {
-    out.push(mueveQuincena(CORTE, n - nQuincena(CORTE)));
+
+  const nQuincena = q => (q.anio * 12 + (q.mes - 1)) * 2 + (q.quincena - 1);
+  const antesDelCorte = q => nQuincena(q) < nQuincena(CORTE);
+
+  /** La quincena de hoy, y moverse por ellas sin pelearse con los meses. */
+  const quincenaHoy = () => quincenaDe(new Date());
+  function mueveQuincena(q, pasos) {
+    let n = (q.anio * 12 + (q.mes - 1)) * 2 + (q.quincena - 1) + pasos;
+    const quincena = (n % 2) + 1;
+    n = Math.floor(n / 2);
+    return { anio: Math.floor(n / 12), mes: (n % 12) + 1, quincena };
   }
-  return out;
-}
 
-/** Normaliza lo que llega por la URL; si no vale, la quincena de hoy. */
-function quincenaValida(x) {
-  const anio = Number((x || {}).anio), mes = Number((x || {}).mes), quincena = Number((x || {}).quincena);
-  if (!Number.isInteger(anio) || anio < 2020 || anio > 2100) return quincenaHoy();
-  if (!Number.isInteger(mes) || mes < 1 || mes > 12) return quincenaHoy();
-  if (quincena !== 1 && quincena !== 2) return quincenaHoy();
-  return { anio, mes, quincena };
-}
-
-// ── EL RECIBO ──────────────────────────────────────────────────────────────
-/**
- * Cuenta el desglose de billetes y monedas y devuelve el total EN CÉNTIMOS.
- * Devuelve también el desglose limpio (solo lo que tiene cantidad), que es lo
- * que se guarda: un recibo con quince ceros no dice nada que no diga el total.
- */
-function cuentaDesglose(desglose) {
-  const limpio = {};
-  let centimos = 0;
-  for (const c of DENOMINACIONES) {
-    // SOLO por céntimos. Antes había un apaño que aceptaba además la etiqueta
-    // en euros —`desglose['500']` para los billetes de 500— y esa etiqueta es
-    // LA MISMA CLAVE que 500 céntimos, o sea la moneda de 5 €. Resultado: los
-    // billetes de 5 se contaban como billetes de 500, y un recibo de 250 €
-    // sumaba 2250. Lo mismo con los de 2 € ('200') y los de 1 € ('100').
-    //
-    // La pantalla manda céntimos y en céntimos se guarda: no hay dos formas de
-    // nombrar esto, así que tampoco puede haber dos lecturas.
-    const n = Number((desglose || {})[String(c)] || 0);
-    if (!Number.isInteger(n) || n < 0) throw new Error(`La cantidad de ${ETIQUETA_DEN(c)} € tiene que ser un número entero de billetes o monedas`);
-    if (n > 100000) throw new Error(`¿${n} unidades de ${ETIQUETA_DEN(c)} €? Revisa el recuento`);
-    if (n > 0) { limpio[String(c)] = n; centimos += c * n; }
+  /**
+   * Desde el corte, el importe lo pone BOLT y nadie lo teclea. Lo que sí se puede
+   * es AJUSTARLO: el ajuste va aparte, obliga a escribir un motivo y ningún
+   * recálculo lo toca. Escribir a mano el importe de una quincena que BOLT va a
+   * recalcular sería trabajo que se borra solo en la siguiente pasada.
+   */
+  function exigeAntesDelCorte(q, que) {
+    if (!antesDelCorte(q)) {
+      throw new Error(
+        `${etiquetaQuincena(q)} va desde el corte (${etiquetaQuincena(CORTE)}): ahí el importe lo pone BOLT. ` +
+        `Para ${que} tendría que ser una quincena anterior; si lo que quieres es corregir esa cifra, ` +
+        `usa un ajuste, que lleva su motivo y no se pierde en el siguiente recálculo.`);
+    }
   }
-  return { centimos, desglose: Object.keys(limpio).length ? limpio : null };
-}
 
-/** Euros (texto del formulario o número) a céntimos, sin sustos de coma flotante. */
-function aCentimos(v) {
-  const s = String(v == null ? '' : v).trim().replace(',', '.');
-  if (!/^\d+(\.\d{1,2})?$/.test(s)) throw new Error('El importe tiene que ser un número de euros, con dos decimales como mucho');
-  return Math.round(Number(s) * 100);
-}
+  /** Todas las quincenas del corte a hoy, que son las que manda BOLT. */
+  function quincenasDesdeCorte() {
+    const fin = nQuincena(quincenaHoy());
+    const out = [];
+    for (let n = nQuincena(CORTE); n <= fin; n++) {
+      out.push(mueveQuincena(CORTE, n - nQuincena(CORTE)));
+    }
+    return out;
+  }
 
-// ── LECTURA ────────────────────────────────────────────────────────────────
-/**
- * El cuadro de una quincena: cada conductor con su deuda, lo entregado y lo
- * que le queda, más el ARRASTRE de todo lo anterior.
- *
- * Sale un conductor si tiene deuda en la quincena, movimiento en ella, o
- * arrastre distinto de cero: los que no deben nada ni han traído nada no
- * ensucian la lista.
- */
-/**
- * EL CUADRO: una línea por conductor, con el ACUMULADO de todo lo habido.
- *
- * Ya no va por quincenas. La quincena sigue existiendo por dentro —es la caja
- * donde se guarda cada cierre de BOLT— pero aquí no se mira: lo que hace falta
- * saber de alguien es cuánto ha generado en total, cuánto ha entregado en total
- * y cuánto le queda. Que eso venga de seis quincenas o de una no cambia lo que
- * hay que pedirle.
- *
- * Las cinco columnas y de dónde sale cada una:
- *
- *   Conductor          su nombre de BOLT si lo tiene, que es el operativo
- *   Efectivo activado  del padrón de BOLT, que la ingesta refresca cada hora
- *   Total en mano      lo que ha entregado en ventanilla, menos lo devuelto
- *   Total en BOLT      todo lo que cobró en efectivo: el Excel hasta el corte
- *                      y BOLT desde el corte
- *   Total a recaudar   lo de BOLT menos lo entregado (en mano y por nómina)
- *
- * La nómina no tiene columna propia porque casi nadie la usa, pero SÍ resta en
- * "a recaudar": si no, la cuenta no cerraría y alguien pediría dos veces el
- * mismo dinero. Va como dato aparte en cada fila para poder enseñarla al lado.
- * La transferencia, igual (db/208).
- */
-async function cuadro() {
-  // Las dos consultas son la misma cuenta sobre dos formas de identificar a
-  // alguien: por ficha (conductor_id) o por cuenta de BOLT (bolt_uuid), para
-  // quien cobró en efectivo y nunca tuvo ficha. `quien` es la clave común.
-  const cuentas = clave => `
-     WITH cierre AS (
-       SELECT ${clave} AS quien, sum(importe + ajuste) AS bolt
-         FROM recaudacion_cierre WHERE ${clave} IS NOT NULL GROUP BY 1),
-     mov AS (
-       SELECT ${clave} AS quien,
-              COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
-              COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
-              COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0) AS transferencia,
-              COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega,
-              COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)     AS cambio,
-              -- La última vez que ESTE dinero bajó de verdad. 'entrega' es lo
-              -- contrario —dinero que se le devolvió— así que no cuenta: si
-              -- contara, devolverle 20 € parecería que acaba de pagar.
-              max(fecha) FILTER (WHERE tipo IN ('presencial', 'nomina', 'transferencia')) AS ultima_entrega
-         FROM recaudacion_movimiento
-        WHERE anulado_at IS NULL AND ${clave} IS NOT NULL
-        GROUP BY 1)`;
+  /** Normaliza lo que llega por la URL; si no vale, la quincena de hoy. */
+  function quincenaValida(x) {
+    const anio = Number((x || {}).anio), mes = Number((x || {}).mes), quincena = Number((x || {}).quincena);
+    if (!Number.isInteger(anio) || anio < 2020 || anio > 2100) return quincenaHoy();
+    if (!Number.isInteger(mes) || mes < 1 || mes > 12) return quincenaHoy();
+    if (quincena !== 1 && quincena !== 2) return quincenaHoy();
+    return { anio, mes, quincena };
+  }
 
-  const [r, rb] = await Promise.all([
-    db.consulta(`${cuentas('conductor_id')},
-     -- ¿Le deja BOLT cobrar en mano? Sale del padrón, que la ingesta refresca
-     -- cada hora. Un conductor puede tener varias cuentas: basta que UNA lo
-     -- tenga activado para que pueda cobrar en efectivo.
-     efectivo AS (
-       SELECT conductor_id, bool_or(efectivo_activo) AS activo, max(efectivo_at) AS visto
-         FROM conductor_externo
-        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
-        GROUP BY 1)
-     SELECT c.id::text AS quien, NULL::text AS bolt_uuid,
-            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor,
-            c.empleo_vigente,
-            ef.activo AS efectivo_activo, ef.visto AS efectivo_at,
-            COALESCE(ci.bolt, 0)      AS bolt,
-            COALESCE(m.presencial, 0) AS presencial,
-            COALESCE(m.nomina, 0)     AS nomina,
-            COALESCE(m.transferencia, 0) AS transferencia,
-            COALESCE(m.entrega, 0)    AS entrega,
-            COALESCE(m.cambio, 0)     AS cambio,
-            m.ultima_entrega
-       FROM conductor c
-       LEFT JOIN cierre   ci ON ci.quien = c.id
-       LEFT JOIN mov      m  ON m.quien  = c.id
-       LEFT JOIN efectivo ef ON ef.conductor_id = c.id
-      WHERE NOT c.es_centinela
-        AND (ci.quien IS NOT NULL OR m.quien IS NOT NULL
-             -- Y TAMBIÉN quien tiene el efectivo activado y es (o fue) de la
-             -- casa, aunque hoy no deba nada: si puede cobrar en mano, mañana
-             -- deberá, y a quien ya no trabaja aquí hay que quitárselo.
-             OR (ef.activo AND EXISTS (
-                   SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)))`),
+  // ── EL RECIBO ──────────────────────────────────────────────────────────────
+  /**
+   * Cuenta el desglose de billetes y monedas y devuelve el total EN CÉNTIMOS.
+   * Devuelve también el desglose limpio (solo lo que tiene cantidad), que es lo
+   * que se guarda: un recibo con quince ceros no dice nada que no diga el total.
+   */
+  function cuentaDesglose(desglose) {
+    const limpio = {};
+    let centimos = 0;
+    for (const c of DENOMINACIONES) {
+      // SOLO por céntimos. Antes había un apaño que aceptaba además la etiqueta
+      // en euros —`desglose['500']` para los billetes de 500— y esa etiqueta es
+      // LA MISMA CLAVE que 500 céntimos, o sea la moneda de 5 €. Resultado: los
+      // billetes de 5 se contaban como billetes de 500, y un recibo de 250 €
+      // sumaba 2250. Lo mismo con los de 2 € ('200') y los de 1 € ('100').
+      //
+      // La pantalla manda céntimos y en céntimos se guarda: no hay dos formas de
+      // nombrar esto, así que tampoco puede haber dos lecturas.
+      const n = Number((desglose || {})[String(c)] || 0);
+      if (!Number.isInteger(n) || n < 0) throw new Error(`La cantidad de ${ETIQUETA_DEN(c)} € tiene que ser un número entero de billetes o monedas`);
+      if (n > 100000) throw new Error(`¿${n} unidades de ${ETIQUETA_DEN(c)} €? Revisa el recuento`);
+      if (n > 0) { limpio[String(c)] = n; centimos += c * n; }
+    }
+    return { centimos, desglose: Object.keys(limpio).length ? limpio : null };
+  }
 
-    // Los que no tienen ficha. El nombre sale del padrón de BOLT.
-    db.consulta(`${cuentas('bolt_uuid')},
-     gente AS (SELECT quien FROM cierre UNION SELECT quien FROM mov)
-     SELECT g.quien, g.quien AS bolt_uuid,
-            COALESCE(e.externo_nombre, 'Cuenta de BOLT ' || left(g.quien, 8)) AS conductor,
-            NULL::boolean AS empleo_vigente,
-            e.efectivo_activo, e.efectivo_at,
-            COALESCE(ci.bolt, 0)      AS bolt,
-            COALESCE(m.presencial, 0) AS presencial,
-            COALESCE(m.nomina, 0)     AS nomina,
-            COALESCE(m.transferencia, 0) AS transferencia,
-            COALESCE(m.entrega, 0)    AS entrega,
-            COALESCE(m.cambio, 0)     AS cambio,
-            m.ultima_entrega
-       FROM gente g
-       LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = g.quien
-       LEFT JOIN cierre ci ON ci.quien = g.quien
-       LEFT JOIN mov    m  ON m.quien  = g.quien`),
-  ]);
-  r.rows = r.rows.concat(rb.rows).sort((a, b) => a.conductor.localeCompare(b.conductor));
+  /** Euros (texto del formulario o número) a céntimos, sin sustos de coma flotante. */
+  function aCentimos(v) {
+    const s = String(v == null ? '' : v).trim().replace(',', '.');
+    if (!/^\d+(\.\d{1,2})?$/.test(s)) throw new Error('El importe tiene que ser un número de euros, con dos decimales como mucho');
+    return Math.round(Number(s) * 100);
+  }
 
-  const hoy = hoyIso();
-  const filas = r.rows.map(x => {
-    const bolt = Number(x.bolt);
-    const presencial = Number(x.presencial), nomina = Number(x.nomina), entrega = Number(x.entrega);
-    // Lo que pagó por transferencia: como la nómina, baja lo que debe sin pasar
-    // por la ventanilla, así que tampoco va dentro de «en mano».
-    const transferencia = Number(x.transferencia);
-    // El cambio que se le dio y aún no ha vuelto. SUMA a lo que debe, encima de
-    // lo que diga BOLT: BOLT no sabe nada de este dinero —lo ponemos nosotros—.
-    const cambio = Number(x.cambio);
-    // Lo devuelto sale de la caja y deshace una entrega: resta de lo entregado
-    // en mano, no suma a la deuda.
-    const enMano = +(presencial - entrega).toFixed(2);
-    const ultimaEntrega = diaIso(x.ultima_entrega);
+  // ── LECTURA ────────────────────────────────────────────────────────────────
+  /**
+   * El cuadro de una quincena: cada conductor con su deuda, lo entregado y lo
+   * que le queda, más el ARRASTRE de todo lo anterior.
+   *
+   * Sale un conductor si tiene deuda en la quincena, movimiento en ella, o
+   * arrastre distinto de cero: los que no deben nada ni han traído nada no
+   * ensucian la lista.
+   */
+  /**
+   * EL CUADRO: una línea por conductor, con el ACUMULADO de todo lo habido.
+   *
+   * Ya no va por quincenas. La quincena sigue existiendo por dentro —es la caja
+   * donde se guarda cada cierre de BOLT— pero aquí no se mira: lo que hace falta
+   * saber de alguien es cuánto ha generado en total, cuánto ha entregado en total
+   * y cuánto le queda. Que eso venga de seis quincenas o de una no cambia lo que
+   * hay que pedirle.
+   *
+   * Las cinco columnas y de dónde sale cada una:
+   *
+   *   Conductor          su nombre de BOLT si lo tiene, que es el operativo
+   *   Efectivo activado  del padrón de BOLT, que la ingesta refresca cada hora
+   *   Total en mano      lo que ha entregado en ventanilla, menos lo devuelto
+   *   Total en BOLT      todo lo que cobró en efectivo: el Excel hasta el corte
+   *                      y BOLT desde el corte
+   *   Total a recaudar   lo de BOLT menos lo entregado (en mano y por nómina)
+   *
+   * La nómina no tiene columna propia porque casi nadie la usa, pero SÍ resta en
+   * "a recaudar": si no, la cuenta no cerraría y alguien pediría dos veces el
+   * mismo dinero. Va como dato aparte en cada fila para poder enseñarla al lado.
+   * La transferencia, igual (db/208).
+   */
+  async function cuadro() {
+    // Las dos consultas son la misma cuenta sobre dos formas de identificar a
+    // alguien: por ficha (conductor_id) o por cuenta de BOLT (bolt_uuid), para
+    // quien cobró en efectivo y nunca tuvo ficha. `quien` es la clave común.
+    const cuentas = clave => `
+       WITH cierre AS (
+         SELECT ${clave} AS quien, sum(importe + ajuste) AS bolt
+           FROM ${TC} WHERE ${clave} IS NOT NULL GROUP BY 1),
+       mov AS (
+         SELECT ${clave} AS quien,
+                COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
+                COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
+                COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0) AS transferencia,
+                COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega,
+                COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)     AS cambio,
+                -- La última vez que ESTE dinero bajó de verdad. 'entrega' es lo
+                -- contrario —dinero que se le devolvió— así que no cuenta: si
+                -- contara, devolverle 20 € parecería que acaba de pagar.
+                max(fecha) FILTER (WHERE tipo IN ('presencial', 'nomina', 'transferencia')) AS ultima_entrega
+           FROM ${TM}
+          WHERE anulado_at IS NULL AND ${clave} IS NOT NULL
+          GROUP BY 1)`;
+
+    // En una sede sin fichas (Barcelona) no hay primera consulta: cada persona es
+    // su cuenta de BOLT, y la de las fichas sacaría a la plantilla de Madrid.
+    const [r, rb] = await Promise.all([
+      SOLO_CUENTAS ? Promise.resolve({ rows: [] }) : db.consulta(`${cuentas('conductor_id')},
+       -- ¿Le deja BOLT cobrar en mano? Sale del padrón, que la ingesta refresca
+       -- cada hora. Un conductor puede tener varias cuentas: basta que UNA lo
+       -- tenga activado para que pueda cobrar en efectivo.
+       efectivo AS (
+         SELECT conductor_id, bool_or(efectivo_activo) AS activo, max(efectivo_at) AS visto
+           FROM conductor_externo
+          WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
+          GROUP BY 1)
+       SELECT c.id::text AS quien, NULL::text AS bolt_uuid,
+              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor,
+              c.empleo_vigente,
+              ef.activo AS efectivo_activo, ef.visto AS efectivo_at,
+              COALESCE(ci.bolt, 0)      AS bolt,
+              COALESCE(m.presencial, 0) AS presencial,
+              COALESCE(m.nomina, 0)     AS nomina,
+              COALESCE(m.transferencia, 0) AS transferencia,
+              COALESCE(m.entrega, 0)    AS entrega,
+              COALESCE(m.cambio, 0)     AS cambio,
+              m.ultima_entrega
+         FROM conductor c
+         LEFT JOIN cierre   ci ON ci.quien = c.id
+         LEFT JOIN mov      m  ON m.quien  = c.id
+         LEFT JOIN efectivo ef ON ef.conductor_id = c.id
+        WHERE NOT c.es_centinela
+          AND (ci.quien IS NOT NULL OR m.quien IS NOT NULL
+               -- Y TAMBIÉN quien tiene el efectivo activado y es (o fue) de la
+               -- casa, aunque hoy no deba nada: si puede cobrar en mano, mañana
+               -- deberá, y a quien ya no trabaja aquí hay que quitárselo.
+               OR (ef.activo AND EXISTS (
+                     SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)))`),
+
+      // Los que no tienen ficha. El nombre sale del padrón de BOLT.
+      // En Barcelona entran también las cuentas de su empresa con el efectivo
+      // activado aunque hoy no deban nada (como en Madrid quien tiene ficha), y
+      // «en plantilla» es que la cuenta no esté desactivada en BOLT.
+      db.consulta(`${cuentas('bolt_uuid')},
+       gente AS (SELECT quien FROM cierre UNION SELECT quien FROM mov${SOLO_CUENTAS ? `
+                 UNION SELECT s.externo_id FROM (${CUENTAS_SEDE}) s
+                  WHERE s.efectivo_activo AND s.estado_externo IS DISTINCT FROM 'deactivated'` : ''})
+       SELECT g.quien, g.quien AS bolt_uuid,
+              COALESCE(e.externo_nombre, 'Cuenta de BOLT ' || left(g.quien, 8)) AS conductor,
+              ${SOLO_CUENTAS ? "(e.estado_externo IS DISTINCT FROM 'deactivated')" : 'NULL::boolean'} AS empleo_vigente,
+              e.efectivo_activo, e.efectivo_at,
+              COALESCE(ci.bolt, 0)      AS bolt,
+              COALESCE(m.presencial, 0) AS presencial,
+              COALESCE(m.nomina, 0)     AS nomina,
+              COALESCE(m.transferencia, 0) AS transferencia,
+              COALESCE(m.entrega, 0)    AS entrega,
+              COALESCE(m.cambio, 0)     AS cambio,
+              m.ultima_entrega
+         FROM gente g
+         LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = g.quien
+         LEFT JOIN cierre ci ON ci.quien = g.quien
+         LEFT JOIN mov    m  ON m.quien  = g.quien`),
+    ]);
+    r.rows = r.rows.concat(rb.rows).sort((a, b) => a.conductor.localeCompare(b.conductor));
+
+    const hoy = hoyIso();
+    const filas = r.rows.map(x => {
+      const bolt = Number(x.bolt);
+      const presencial = Number(x.presencial), nomina = Number(x.nomina), entrega = Number(x.entrega);
+      // Lo que pagó por transferencia: como la nómina, baja lo que debe sin pasar
+      // por la ventanilla, así que tampoco va dentro de «en mano».
+      const transferencia = Number(x.transferencia);
+      // El cambio que se le dio y aún no ha vuelto. SUMA a lo que debe, encima de
+      // lo que diga BOLT: BOLT no sabe nada de este dinero —lo ponemos nosotros—.
+      const cambio = Number(x.cambio);
+      // Lo devuelto sale de la caja y deshace una entrega: resta de lo entregado
+      // en mano, no suma a la deuda.
+      const enMano = +(presencial - entrega).toFixed(2);
+      const ultimaEntrega = diaIso(x.ultima_entrega);
+      return {
+        ultimaEntrega,
+        // Cuántos días lleva sin pasar por ventanilla. `null` = no ha entregado
+        // NUNCA, que no es lo mismo que cero y de hecho es lo más urgente: la
+        // pantalla lo pinta como "nunca" y lo ordena por delante de todos.
+        diasSinEntregar: ultimaEntrega ? diasEntre(ultimaEntrega, hoy) : null,
+        // `conductorId` sigue siendo la clave con la que trabaja la pantalla; en
+        // los de BOLT es su uuid, y `sinFicha` es lo que la pinta en rojo.
+        conductorId: String(x.quien), conductor: x.conductor,
+        sinFicha: !!x.bolt_uuid,
+        enPlantilla: !!x.empleo_vigente,
+        // null = el padrón aún no lo ha dicho de esa cuenta; no es lo mismo que
+        // "no lo tiene".
+        efectivoActivo: x.efectivo_activo == null ? null : !!x.efectivo_activo,
+        efectivoAt: x.efectivo_at || null,
+        bolt: +bolt.toFixed(2),
+        enMano, nomina: +nomina.toFixed(2), entrega: +entrega.toFixed(2),
+        transferencia: +transferencia.toFixed(2),
+        cambio: +cambio.toFixed(2),
+        aRecaudar: +(bolt + cambio - enMano - nomina - transferencia).toFixed(2),
+      };
+    });
+
+    const suma = campo => +filas.reduce((a, f) => a + f[campo], 0).toFixed(2);
     return {
-      ultimaEntrega,
-      // Cuántos días lleva sin pasar por ventanilla. `null` = no ha entregado
-      // NUNCA, que no es lo mismo que cero y de hecho es lo más urgente: la
-      // pantalla lo pinta como "nunca" y lo ordena por delante de todos.
-      diasSinEntregar: ultimaEntrega ? diasEntre(ultimaEntrega, hoy) : null,
-      // `conductorId` sigue siendo la clave con la que trabaja la pantalla; en
-      // los de BOLT es su uuid, y `sinFicha` es lo que la pinta en rojo.
-      conductorId: String(x.quien), conductor: x.conductor,
-      sinFicha: !!x.bolt_uuid,
-      enPlantilla: !!x.empleo_vigente,
-      // null = el padrón aún no lo ha dicho de esa cuenta; no es lo mismo que
-      // "no lo tiene".
-      efectivoActivo: x.efectivo_activo == null ? null : !!x.efectivo_activo,
-      efectivoAt: x.efectivo_at || null,
-      bolt: +bolt.toFixed(2),
-      enMano, nomina: +nomina.toFixed(2), entrega: +entrega.toFixed(2),
-      transferencia: +transferencia.toFixed(2),
-      cambio: +cambio.toFixed(2),
-      aRecaudar: +(bolt + cambio - enMano - nomina - transferencia).toFixed(2),
+      filas,
+      total: {
+        gente: filas.length,
+        bolt: suma('bolt'), enMano: suma('enMano'), nomina: suma('nomina'),
+        transferencia: suma('transferencia'),
+        cambio: suma('cambio'),
+        aRecaudar: suma('aRecaudar'),
+        // A cuántos les falta algo: es el número por el que preguntan.
+        conDeuda: filas.filter(f => f.aRecaudar > 0.005).length,
+        // Y de esos, a cuántos hace más de una semana que no se les ve. Debe
+        // dinero mucha gente todos los días; el que lleva diez días sin aparecer
+        // es otra cosa. Solo cuenta a quien DEBE: quien está al día y no viene es
+        // que no tiene nada que traer.
+        rezagados: filas.filter(f => f.aRecaudar > 0.005 &&
+          (f.diasSinEntregar === null || f.diasSinEntregar > DIAS_REZAGADO)).length,
+        // Cuántos pueden cobrar en efectivo ahora mismo, y de esos cuántos ya no
+        // trabajan aquí: eso último es un grifo abierto.
+        conEfectivo: filas.filter(f => f.efectivoActivo).length,
+        efectivoFuera: filas.filter(f => f.efectivoActivo && !f.enPlantilla).length,
+      },
     };
-  });
+  }
 
-  const suma = campo => +filas.reduce((a, f) => a + f[campo], 0).toFixed(2);
-  return {
-    filas,
-    total: {
-      gente: filas.length,
-      bolt: suma('bolt'), enMano: suma('enMano'), nomina: suma('nomina'),
-      transferencia: suma('transferencia'),
-      cambio: suma('cambio'),
-      aRecaudar: suma('aRecaudar'),
-      // A cuántos les falta algo: es el número por el que preguntan.
-      conDeuda: filas.filter(f => f.aRecaudar > 0.005).length,
-      // Y de esos, a cuántos hace más de una semana que no se les ve. Debe
-      // dinero mucha gente todos los días; el que lleva diez días sin aparecer
-      // es otra cosa. Solo cuenta a quien DEBE: quien está al día y no viene es
-      // que no tiene nada que traer.
-      rezagados: filas.filter(f => f.aRecaudar > 0.005 &&
-        (f.diasSinEntregar === null || f.diasSinEntregar > DIAS_REZAGADO)).length,
-      // Cuántos pueden cobrar en efectivo ahora mismo, y de esos cuántos ya no
-      // trabajan aquí: eso último es un grifo abierto.
-      conEfectivo: filas.filter(f => f.efectivoActivo).length,
-      efectivoFuera: filas.filter(f => f.efectivoActivo && !f.enPlantilla).length,
-    },
-  };
-}
+  /**
+   * EFECTIVO ACTIVO Y NUNCA UNA ENTREGA (27/10/2026), para el aviso de Víctor y
+   * Daiane (modules/Administracion/avisoEfectivo.service.js). Camilo: «salgan
+   * las personas con efectivo activo, desestima a los que ya entregaron efectivo
+   * así sea una vez en recaudación».
+   *
+   * Las personas con ficha que son o fueron de la casa (como el cuadro de arriba)
+   * y que tienen el efectivo activado en alguna cuenta de BOLT, sin UNA SOLA
+   * entrega en ventanilla ('presencial', sin anular). La entrega cuenta esté
+   * apuntada a la ficha o a cualquiera de sus cuentas de BOLT: lo que se apuntó a
+   * la cuenta antes de tener ficha también es suyo. Pagar por nómina o por
+   * transferencia no es «entregar efectivo en recaudación».
+   *
+   * Las cuentas de BOLT sin ficha no entran: no son una persona a la que llamar
+   * (el 23/10/2026 eran 83 con el efectivo activado, y taparían lo demás).
+   *
+   * NI LAS CUENTAS DESACTIVADAS EN BOLT (27/10/2026, Camilo: «a los perfiles
+   * desactivados también desestímalos»): con la cuenta desactivada no se cobra
+   * nada, aunque el efectivo siga marcado. El efectivo solo cuenta en una cuenta
+   * que no esté 'deactivated' (la suspendida sí: puede volver). Las ENTREGAS, en
+   * cambio, cuentan en todas sus cuentas, también en las ya desactivadas. Ese día
+   * dejó la tarjeta en 1 persona de 9: las otras 8 ya no trabajaban aquí y tenían
+   * la cuenta desactivada.
+   */
+  async function conEfectivoSinEntregar() {
+    const r = await db.consulta(
+      `WITH ef AS (
+         SELECT conductor_id,
+                bool_or(efectivo_activo AND estado_externo IS DISTINCT FROM 'deactivated') AS activo,
+                array_agg(externo_id) AS cuentas
+           FROM conductor_externo
+          WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
+          GROUP BY 1)
+       SELECT c.id::text AS id,
+              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+              c.empleo_vigente AS en_plantilla,
+              (SELECT t.e164 FROM conductor_telefono t
+                WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
+                ORDER BY t.principal DESC, t.vigente_desde DESC LIMIT 1) AS telefono,
+              (SELECT pe.tipo FROM conductor_periodo_empleo pe
+                WHERE pe.conductor_id = c.id ORDER BY pe.alta DESC LIMIT 1) AS tipo,
+              (SELECT to_char(max(pe.baja), 'YYYY-MM-DD') FROM conductor_periodo_empleo pe
+                WHERE pe.conductor_id = c.id) AS baja
+         FROM conductor c
+         JOIN ef ON ef.conductor_id = c.id
+        WHERE ef.activo AND NOT c.es_centinela
+          AND EXISTS (SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)
+          AND NOT EXISTS (
+                SELECT 1 FROM ${TM} m
+                 WHERE m.anulado_at IS NULL AND m.tipo = 'presencial'
+                   AND (m.conductor_id = c.id OR m.bolt_uuid = ANY (ef.cuentas)))`);
+    return r.rows.map(x => ({
+      id: x.id, nombre: x.nombre, enPlantilla: !!x.en_plantilla, telefono: x.telefono || null,
+      ett: x.tipo === 'ett',
+      // La baja solo dice algo de quien ya no está: el que sigue tiene su
+      // contrato abierto y la de antes sería de otro periodo.
+      baja: x.en_plantilla ? null : (x.baja || null),
+    }));
+  }
 
-/**
- * EFECTIVO ACTIVO Y NUNCA UNA ENTREGA (27/10/2026), para el aviso de Víctor y
- * Daiane (modules/Administracion/avisoEfectivo.service.js). Camilo: «salgan
- * las personas con efectivo activo, desestima a los que ya entregaron efectivo
- * así sea una vez en recaudación».
- *
- * Las personas con ficha que son o fueron de la casa (como el cuadro de arriba)
- * y que tienen el efectivo activado en alguna cuenta de BOLT, sin UNA SOLA
- * entrega en ventanilla ('presencial', sin anular). La entrega cuenta esté
- * apuntada a la ficha o a cualquiera de sus cuentas de BOLT: lo que se apuntó a
- * la cuenta antes de tener ficha también es suyo. Pagar por nómina o por
- * transferencia no es «entregar efectivo en recaudación».
- *
- * Las cuentas de BOLT sin ficha no entran: no son una persona a la que llamar
- * (el 23/10/2026 eran 83 con el efectivo activado, y taparían lo demás).
- *
- * NI LAS CUENTAS DESACTIVADAS EN BOLT (27/10/2026, Camilo: «a los perfiles
- * desactivados también desestímalos»): con la cuenta desactivada no se cobra
- * nada, aunque el efectivo siga marcado. El efectivo solo cuenta en una cuenta
- * que no esté 'deactivated' (la suspendida sí: puede volver). Las ENTREGAS, en
- * cambio, cuentan en todas sus cuentas, también en las ya desactivadas. Ese día
- * dejó la tarjeta en 1 persona de 9: las otras 8 ya no trabajaban aquí y tenían
- * la cuenta desactivada.
- */
-async function conEfectivoSinEntregar() {
-  const r = await db.consulta(
-    `WITH ef AS (
-       SELECT conductor_id,
-              bool_or(efectivo_activo AND estado_externo IS DISTINCT FROM 'deactivated') AS activo,
-              array_agg(externo_id) AS cuentas
-         FROM conductor_externo
-        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
-        GROUP BY 1)
-     SELECT c.id::text AS id,
-            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
-            c.empleo_vigente AS en_plantilla,
-            (SELECT t.e164 FROM conductor_telefono t
-              WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
-              ORDER BY t.principal DESC, t.vigente_desde DESC LIMIT 1) AS telefono,
-            (SELECT pe.tipo FROM conductor_periodo_empleo pe
-              WHERE pe.conductor_id = c.id ORDER BY pe.alta DESC LIMIT 1) AS tipo,
-            (SELECT to_char(max(pe.baja), 'YYYY-MM-DD') FROM conductor_periodo_empleo pe
-              WHERE pe.conductor_id = c.id) AS baja
-       FROM conductor c
-       JOIN ef ON ef.conductor_id = c.id
-      WHERE ef.activo AND NOT c.es_centinela
-        AND EXISTS (SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)
-        AND NOT EXISTS (
-              SELECT 1 FROM recaudacion_movimiento m
-               WHERE m.anulado_at IS NULL AND m.tipo = 'presencial'
-                 AND (m.conductor_id = c.id OR m.bolt_uuid = ANY (ef.cuentas)))`);
-  return r.rows.map(x => ({
-    id: x.id, nombre: x.nombre, enPlantilla: !!x.en_plantilla, telefono: x.telefono || null,
-    ett: x.tipo === 'ett',
-    // La baja solo dice algo de quien ya no está: el que sigue tiene su
-    // contrato abierto y la de antes sería de otro periodo.
-    baja: x.en_plantilla ? null : (x.baja || null),
-  }));
-}
+  /**
+   * EL CUADRE DE CAJA, de todo lo habido hasta hoy. Son las dos cifras que se
+   * miran al abrir:
+   *
+   *   EFECTIVO ACTUAL     lo que tiene que haber físicamente en el cajón:
+   *                       lo cobrado en mano, menos lo devuelto, menos lo que
+   *                       salió al banco, a gastos, a caja chica o a nóminas.
+   *   PENDIENTE DE COBRO  lo que los conductores deben en total: toda la deuda
+   *                       de BOLT menos todo lo recaudado, por la vía que sea.
+   *
+   * Van juntas y no se suman: una es dinero que está, la otra dinero que falta.
+   */
+  async function cuadre() {
+    const r = await db.consulta(
+      `SELECT
+         (SELECT COALESCE(sum(importe + ajuste), 0) FROM ${TC}) AS deuda,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0)        AS presencial,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)            AS nomina,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0)     AS transferencia,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)           AS entrega,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)            AS cambio,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_banco'), 0)      AS banco,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_gastos'), 0)     AS gastos,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_caja_chica'), 0) AS caja_chica,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_nomina'), 0)     AS nominas_pagadas,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_apertura'), 0)   AS apertura,
+         -- Lo que deben los que no tienen ficha, aparte: es la cifra que hay que
+         -- mirar aunque no se le pueda reclamar a una nómina.
+         (SELECT COALESCE(sum(importe + ajuste), 0) FROM ${TC} WHERE bolt_uuid IS NOT NULL) AS deuda_sin_ficha
+       FROM ${TM} WHERE anulado_at IS NULL`);
+    const x = r.rows[0];
+    const n = k => Number(x[k]) || 0;
+    const salidas = n('banco') + n('gastos') + n('caja_chica') + n('nominas_pagadas') + n('apertura');
+    const dosDec = v => +v.toFixed(2);
+    return {
+      // Lo que debe haber en el cajón ahora mismo.
+      // El cambio también salió del cajón: si no se resta, la caja dice que tiene
+      // un dinero que está en el bolsillo de un conductor.
+      efectivo: dosDec(n('presencial') - n('entrega') - n('cambio') - salidas),
+      // Lo que queda por cobrarle a la gente, incluido el cambio que se le prestó.
+      // La transferencia lo baja y, como la nómina, no toca el cajón: el efectivo
+      // de arriba no la lleva.
+      pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') + n('transferencia') - n('entrega'))),
+      deuda: dosDec(n('deuda')),
+      entradas: dosDec(n('presencial')),
+      nomina: dosDec(n('nomina')),
+      transferencia: dosDec(n('transferencia')),
+      devuelto: dosDec(n('entrega')),
+      // Cuánto cambio nuestro hay ahora mismo en la calle.
+      cambio: dosDec(n('cambio')),
+      salidas: dosDec(salidas),
+      deudaSinFicha: dosDec(n('deuda_sin_ficha')),
+      porSalida: {
+        salida_banco: dosDec(n('banco')), salida_gastos: dosDec(n('gastos')),
+        salida_caja_chica: dosDec(n('caja_chica')), salida_nomina: dosDec(n('nominas_pagadas')),
+        salida_apertura: dosDec(n('apertura')),
+      },
+    };
+  }
 
-/**
- * EL CUADRE DE CAJA, de todo lo habido hasta hoy. Son las dos cifras que se
- * miran al abrir:
- *
- *   EFECTIVO ACTUAL     lo que tiene que haber físicamente en el cajón:
- *                       lo cobrado en mano, menos lo devuelto, menos lo que
- *                       salió al banco, a gastos, a caja chica o a nóminas.
- *   PENDIENTE DE COBRO  lo que los conductores deben en total: toda la deuda
- *                       de BOLT menos todo lo recaudado, por la vía que sea.
- *
- * Van juntas y no se suman: una es dinero que está, la otra dinero que falta.
- */
-async function cuadre() {
-  const r = await db.consulta(
-    `SELECT
-       (SELECT COALESCE(sum(importe + ajuste), 0) FROM recaudacion_cierre) AS deuda,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0)        AS presencial,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)            AS nomina,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0)     AS transferencia,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)           AS entrega,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)            AS cambio,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_banco'), 0)      AS banco,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_gastos'), 0)     AS gastos,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_caja_chica'), 0) AS caja_chica,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_nomina'), 0)     AS nominas_pagadas,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_apertura'), 0)   AS apertura,
-       -- Lo que deben los que no tienen ficha, aparte: es la cifra que hay que
-       -- mirar aunque no se le pueda reclamar a una nómina.
-       (SELECT COALESCE(sum(importe + ajuste), 0) FROM recaudacion_cierre WHERE bolt_uuid IS NOT NULL) AS deuda_sin_ficha
-     FROM recaudacion_movimiento WHERE anulado_at IS NULL`);
-  const x = r.rows[0];
-  const n = k => Number(x[k]) || 0;
-  const salidas = n('banco') + n('gastos') + n('caja_chica') + n('nominas_pagadas') + n('apertura');
-  const dosDec = v => +v.toFixed(2);
-  return {
-    // Lo que debe haber en el cajón ahora mismo.
-    // El cambio también salió del cajón: si no se resta, la caja dice que tiene
-    // un dinero que está en el bolsillo de un conductor.
-    efectivo: dosDec(n('presencial') - n('entrega') - n('cambio') - salidas),
-    // Lo que queda por cobrarle a la gente, incluido el cambio que se le prestó.
-    // La transferencia lo baja y, como la nómina, no toca el cajón: el efectivo
-    // de arriba no la lleva.
-    pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') + n('transferencia') - n('entrega'))),
-    deuda: dosDec(n('deuda')),
-    entradas: dosDec(n('presencial')),
-    nomina: dosDec(n('nomina')),
-    transferencia: dosDec(n('transferencia')),
-    devuelto: dosDec(n('entrega')),
-    // Cuánto cambio nuestro hay ahora mismo en la calle.
-    cambio: dosDec(n('cambio')),
-    salidas: dosDec(salidas),
-    deudaSinFicha: dosDec(n('deuda_sin_ficha')),
-    porSalida: {
-      salida_banco: dosDec(n('banco')), salida_gastos: dosDec(n('gastos')),
-      salida_caja_chica: dosDec(n('caja_chica')), salida_nomina: dosDec(n('nominas_pagadas')),
-      salida_apertura: dosDec(n('apertura')),
-    },
-  };
-}
-
-/**
- * Las salidas de caja, las últimas primero. Ya no se cortan por quincena: el
- * dinero del cajón no se reinicia el día 16, y la pregunta que se hace mirando
- * esta lista —"¿de dónde ha salido lo que falta?"— tampoco.
- */
-async function salidas({ limite = 60 } = {}) {
-  const r = await db.consulta(
-    `SELECT m.id, m.fecha, m.tipo, m.importe, m.observacion, m.anulado_at, m.anulado_motivo,
-            u.nombre AS quien, a.nombre AS anulo
-       FROM recaudacion_movimiento m
-       LEFT JOIN usuario u ON u.id = m.usuario_id
-       LEFT JOIN usuario a ON a.id = m.anulado_por
-      WHERE m.conductor_id IS NULL
-      ORDER BY m.fecha DESC, m.id DESC
-      LIMIT $1`, [Math.min(Number(limite) || 60, 500)]);
-  return r.rows.map(m => ({
-    id: String(m.id), fecha: diaIso(m.fecha), tipo: m.tipo, importe: Number(m.importe),
-    observacion: m.observacion || '', quien: m.quien || '¿?',
-    anulado: !!m.anulado_at, anuladoMotivo: m.anulado_motivo || '', anuladoPor: m.anulo || '',
-  }));
-}
-
-/**
- * La ficha de un conductor: su histórico entero, quincena a quincena, con los
- * movimientos de cada una. Es lo que se mira antes de cobrarle.
- */
-async function ficha(conductorId) {
-  // La clave puede ser un id de la plantilla o el uuid de una cuenta de BOLT
-  // sin ficha. Un uuid trae guiones, así que distinguirlos es mirar si es un
-  // número.
-  const esUuid = !/^\d+$/.test(String(conductorId || '').trim());
-  const id = esUuid ? String(conductorId).trim() : Number(conductorId);
-  if (!esUuid && (!Number.isInteger(id) || id <= 0)) throw new Error('Falta el conductor');
-  const col = esUuid ? 'bolt_uuid' : 'conductor_id';
-
-  const [c, cierres, movs] = await Promise.all([
-    esUuid
-      ? db.consulta(
-        `SELECT externo_id AS id, externo_nombre AS conductor, NULL::boolean AS empleo_vigente,
-                NULL::text AS telefono
-           FROM conductor_externo WHERE sistema = 'bolt' AND externo_id = $1`, [id])
-      : db.consulta(
-        `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), trim(nombre || ' ' || COALESCE(apellidos, ''))) AS conductor, empleo_vigente,
-                (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id
-                  AND t.vigente_hasta IS NULL
-                  ORDER BY principal DESC NULLS LAST, id LIMIT 1) AS telefono
-           FROM conductor c WHERE id = $1`, [id]),
-    db.consulta(
-      `SELECT anio, mes, quincena, importe, ajuste, ajuste_motivo, origen
-         FROM recaudacion_cierre
-        WHERE ${col} = $1 ORDER BY anio, mes, quincena`, [id]),
-    db.consulta(
-      `SELECT m.id, m.fecha, m.tipo, m.importe, m.desglose, m.observacion, m.creado_at,
-              m.anulado_at, m.anulado_motivo,
-              -- Por la fila entera y no por la columna: así la ficha se sigue
-              -- abriendo antes de aplicar db/208, cuando aún no existe.
-              to_jsonb(m) ->> 'referencia' AS referencia,
+  /**
+   * Las salidas de caja, las últimas primero. Ya no se cortan por quincena: el
+   * dinero del cajón no se reinicia el día 16, y la pregunta que se hace mirando
+   * esta lista —"¿de dónde ha salido lo que falta?"— tampoco.
+   */
+  async function salidas({ limite = 60 } = {}) {
+    const r = await db.consulta(
+      `SELECT m.id, m.fecha, m.tipo, m.importe, m.observacion, m.anulado_at, m.anulado_motivo,
               u.nombre AS quien, a.nombre AS anulo
-         FROM recaudacion_movimiento m
+         FROM ${TM} m
          LEFT JOIN usuario u ON u.id = m.usuario_id
          LEFT JOIN usuario a ON a.id = m.anulado_por
-        WHERE m.${col} = $1 ORDER BY m.fecha DESC, m.id DESC`, [id]),
-  ]);
-  if (!c.rows[0]) throw new Error('Ese conductor no existe');
-
-  const movimientos = movs.rows.map(m => ({
-    id: String(m.id), fecha: String(m.fecha).slice(0, 10) === 'Invalid' ? null : diaIso(m.fecha),
-    tipo: m.tipo, importe: Number(m.importe), desglose: m.desglose || null,
-    observacion: m.observacion || '', referencia: m.referencia || '', quien: m.quien || '¿?',
-    creadoAt: m.creado_at,
-    anulado: !!m.anulado_at, anuladoMotivo: m.anulado_motivo || '', anuladoPor: m.anulo || '',
-  }));
-
-  // Todas las quincenas que tienen algo, de la más nueva a la más vieja, con su
-  // deuda y sus movimientos dentro.
-  const clave = q => `${q.anio}-${q.mes}-${q.quincena}`;
-  const mapa = new Map();
-  const meter = q => {
-    const k = clave(q);
-    if (!mapa.has(k)) mapa.set(k, { ...q, etiqueta: etiquetaQuincena(q), corta: cortaQuincena(q),
-      deuda: 0, bolt: 0, ajuste: 0, ajusteMotivo: '', movimientos: [] });
-    return mapa.get(k);
-  };
-  cierres.rows.forEach(x => {
-    const q = { anio: x.anio, mes: x.mes, quincena: x.quincena };
-    const f = meter(q);
-    f.deuda = Number(x.importe) + (Number(x.ajuste) || 0);
-    f.bolt = Number(x.importe);
-    f.ajuste = Number(x.ajuste) || 0;
-    f.ajusteMotivo = x.ajuste_motivo || '';
-  });
-  movimientos.forEach(m => { if (m.fecha) meter(quincenaDe(m.fecha)).movimientos.push(m); });
-
-  const lista = [...mapa.values()].sort((a, b) =>
-    (b.anio - a.anio) || (b.mes - a.mes) || (b.quincena - a.quincena));
-
-  // El saldo se acumula de lo VIEJO a lo nuevo, así que se recorre al revés y
-  // luego se le da la vuelta: cada quincena enseña el saldo con el que se cierra.
-  let acumulado = 0;
-  [...lista].reverse().forEach(q => {
-    const vivos = q.movimientos.filter(m => !m.anulado);
-    q.presencial = +vivos.filter(m => m.tipo === 'presencial').reduce((a, m) => a + m.importe, 0).toFixed(2);
-    q.nomina = +vivos.filter(m => m.tipo === 'nomina').reduce((a, m) => a + m.importe, 0).toFixed(2);
-    q.transferencia = +vivos.filter(m => m.tipo === 'transferencia').reduce((a, m) => a + m.importe, 0).toFixed(2);
-    q.entrega = +vivos.filter(m => m.tipo === 'entrega').reduce((a, m) => a + m.importe, 0).toFixed(2);
-    // El cambio va APARTE de lo entregado, no restandolo. Es dinero nuestro que
-    // se le presta: sube lo que debe sin tocar lo que ha traido. Metido dentro
-    // de `recaudado` la ficha ensenaria "entregado 300" a quien entrego 500 y se
-    // llevo 200 de suelto, que es mentira por los dos lados.
-    q.cambio = +vivos.filter(m => m.tipo === 'cambio').reduce((a, m) => a + m.importe, 0).toFixed(2);
-    q.recaudado = +(q.presencial + q.nomina + q.transferencia - q.entrega).toFixed(2);
-    acumulado = +(acumulado + q.deuda + q.cambio - q.recaudado).toFixed(2);
-    q.saldo = acumulado;
-  });
-
-  return {
-    conductor: { id: String(c.rows[0].id), nombre: c.rows[0].conductor,
-      telefono: c.rows[0].telefono || '', enPlantilla: !!c.rows[0].empleo_vigente,
-      sinFicha: esUuid },
-    quincenas: lista,
-    total: {
-      deuda: +lista.reduce((a, q) => a + q.deuda, 0).toFixed(2),
-      recaudado: +lista.reduce((a, q) => a + q.recaudado, 0).toFixed(2),
-      cambio: +lista.reduce((a, q) => a + q.cambio, 0).toFixed(2),
-      pendiente: acumulado,
-    },
-  };
-}
-
-// Más de una semana sin pasar por ventanilla es lo que se considera ir con
-// retraso. Sale de cómo se entrega de verdad: los recibos van de semana en
-// semana, así que ocho días ya es haberse saltado una vuelta.
-const DIAS_REZAGADO = 7;
-
-/** Hoy en Madrid, "AAAA-MM-DD". */
-const hoyIso = () => new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
-}).format(new Date());
-
-/**
- * Días enteros entre dos "AAAA-MM-DD".
- *
- * Con Date.UTC a propósito: restar dos fechas locales cruza dos cambios de hora
- * al año y devuelve 6,958 días donde hay 7. En UTC todos los días miden lo
- * mismo y la resta es exacta.
- */
-function diasEntre(desdeIso, hastaIso) {
-  const t = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
-    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
-  const a = t(desdeIso), b = t(hastaIso);
-  if (a == null || b == null) return null;
-  return Math.round((b - a) / 86400000);
-}
-
-/** Las fechas de PostgreSQL a "AAAA-MM-DD" por sus componentes locales. */
-function diaIso(v) {
-  if (!v) return null;
-  const dd = n => String(n).padStart(2, '0');
-  if (v instanceof Date) {
-    return Number.isNaN(v.getTime()) ? null
-      : `${v.getFullYear()}-${dd(v.getMonth() + 1)}-${dd(v.getDate())}`;
+        -- Una salida de caja no es de nadie: ni ficha NI cuenta de BOLT. Con
+        -- solo la ficha entraba aquí lo de las cuentas sin ficha (un descuento
+        -- de nómina de 145 € en Madrid; en Barcelona, todo).
+        WHERE m.conductor_id IS NULL AND m.bolt_uuid IS NULL
+        ORDER BY m.fecha DESC, m.id DESC
+        LIMIT $1`, [Math.min(Number(limite) || 60, 500)]);
+    return r.rows.map(m => ({
+      id: String(m.id), fecha: diaIso(m.fecha), tipo: m.tipo, importe: Number(m.importe),
+      observacion: m.observacion || '', quien: m.quien || '¿?',
+      anulado: !!m.anulado_at, anuladoMotivo: m.anulado_motivo || '', anuladoPor: m.anulo || '',
+    }));
   }
-  // Una cadena se lee POR COMPONENTES, nunca con new Date(). Dos motivos:
-  //   · "10/09/2026" es el 10 de septiembre aquí y el 9 de octubre para
-  //     new Date(), que la lee a la inglesa. El calendario de la casa escribe
-  //     justo en ese formato, así que sin esto un recibo del día 10 entraría
-  //     con fecha de octubre y caería en otra quincena.
-  //   · new Date('2026-09-10') es medianoche UTC, que en Madrid es el día 9.
-  const s = String(v).trim();
-  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);          // dd/mm/aaaa
-  if (m) return `${m[3]}-${dd(+m[2])}-${dd(+m[1])}`;
-  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);                             // aaaa-mm-dd
-  if (m) return `${m[1]}-${dd(+m[2])}-${dd(+m[3])}`;
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null
-    : `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
-}
 
-/** Los conductores a los que se les puede cobrar, para el desplegable. */
-async function candidatos() {
-  const r = await db.consulta(
-    `SELECT c.id, COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor, c.empleo_vigente
-       FROM conductor c WHERE NOT c.es_centinela
-        AND (c.empleo_vigente OR EXISTS (SELECT 1 FROM recaudacion_cierre r WHERE r.conductor_id = c.id)
-             OR EXISTS (SELECT 1 FROM recaudacion_movimiento m WHERE m.conductor_id = c.id))
-      ORDER BY 2`);
-  return r.rows.map(x => ({ id: String(x.id), nombre: x.conductor, enPlantilla: !!x.empleo_vigente }));
-}
+  /**
+   * La ficha de un conductor: su histórico entero, quincena a quincena, con los
+   * movimientos de cada una. Es lo que se mira antes de cobrarle.
+   */
+  async function ficha(conductorId) {
+    // La clave puede ser un id de la plantilla o el uuid de una cuenta de BOLT
+    // sin ficha. Un uuid trae guiones, así que distinguirlos es mirar si es un
+    // número.
+    const esUuid = !/^\d+$/.test(String(conductorId || '').trim());
+    const id = esUuid ? String(conductorId).trim() : Number(conductorId);
+    if (!esUuid && (!Number.isInteger(id) || id <= 0)) throw new Error('Falta el conductor');
+    if (SOLO_CUENTAS && (!esUuid || !id)) throw new Error('Falta la cuenta de BOLT');
+    const col = esUuid ? 'bolt_uuid' : 'conductor_id';
 
-// ── ESCRITURA ──────────────────────────────────────────────────────────────
-/**
- * ¿Ya hay una transferencia VIVA con ese ID? Se compara sin mayúsculas ni
- * espacios, como el índice único de db/208: «ES12 34» y «es1234» son la misma.
- */
-const sinEspacios = s => String(s || '').replace(/\s+/g, '').toUpperCase();
-async function transferenciaConId(referencia) {
-  const r = await db.consulta(
-    `SELECT m.id, m.fecha, m.importe,
-            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor
-       FROM recaudacion_movimiento m
-       LEFT JOIN conductor c ON c.id = m.conductor_id
-      WHERE m.tipo = 'transferencia' AND m.anulado_at IS NULL
-        AND upper(regexp_replace(m.referencia, '[[:space:]]', '', 'g')) = $1
-      LIMIT 1`, [sinEspacios(referencia)]);
-  return r.rows[0] || null;
-}
+    const [c, cierres, movs] = await Promise.all([
+      esUuid
+        ? db.consulta(
+          `SELECT externo_id AS id, externo_nombre AS conductor, NULL::boolean AS empleo_vigente,
+                  NULL::text AS telefono
+             FROM conductor_externo WHERE sistema = 'bolt' AND externo_id = $1`, [id])
+        : db.consulta(
+          `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), trim(nombre || ' ' || COALESCE(apellidos, ''))) AS conductor, empleo_vigente,
+                  (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id
+                    AND t.vigente_hasta IS NULL
+                    ORDER BY principal DESC NULLS LAST, id LIMIT 1) AS telefono
+             FROM conductor c WHERE id = $1`, [id]),
+      db.consulta(
+        `SELECT anio, mes, quincena, importe, ajuste, ajuste_motivo, origen
+           FROM ${TC}
+          WHERE ${col} = $1 ORDER BY anio, mes, quincena`, [id]),
+      db.consulta(
+        `SELECT m.id, m.fecha, m.tipo, m.importe, m.desglose, m.observacion, m.creado_at,
+                m.anulado_at, m.anulado_motivo,
+                -- Por la fila entera y no por la columna: así la ficha se sigue
+                -- abriendo antes de aplicar db/208, cuando aún no existe.
+                to_jsonb(m) ->> 'referencia' AS referencia,
+                u.nombre AS quien, a.nombre AS anulo
+           FROM ${TM} m
+           LEFT JOIN usuario u ON u.id = m.usuario_id
+           LEFT JOIN usuario a ON a.id = m.anulado_por
+          WHERE m.${col} = $1 ORDER BY m.fecha DESC, m.id DESC`, [id]),
+    ]);
+    if (!c.rows[0]) throw new Error('Ese conductor no existe');
 
-/** ¿Está aplicada db/208? Sin su columna no se puede guardar el ID. */
-async function hayReferencia() {
-  const r = await db.consulta(
-    `SELECT 1 FROM pg_attribute
-      WHERE attrelid = to_regclass('recaudacion_movimiento') AND attname = 'referencia' AND NOT attisdropped`);
-  return r.rows.length > 0;
-}
+    const movimientos = movs.rows.map(m => ({
+      id: String(m.id), fecha: String(m.fecha).slice(0, 10) === 'Invalid' ? null : diaIso(m.fecha),
+      tipo: m.tipo, importe: Number(m.importe), desglose: m.desglose || null,
+      observacion: m.observacion || '', referencia: m.referencia || '', quien: m.quien || '¿?',
+      creadoAt: m.creado_at,
+      anulado: !!m.anulado_at, anuladoMotivo: m.anulado_motivo || '', anuladoPor: m.anulo || '',
+    }));
 
-/**
- * Apunta una entrega de dinero. `desglose` solo en lo presencial, y su recuento
- * tiene que CUADRAR con el importe: un recibo cuyo total no sale de sus billetes
- * es un recibo que alguien tendrá que explicar.
- *
- * Una TRANSFERENCIA lleva `referencia`, el ID de la transferencia: obligatorio,
- * y una transferencia viva con ese mismo ID no deja apuntar otra. Lo vuelve a
- * mirar la base (db/208), por si dos personas la apuntan a la vez.
- */
-async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion, referencia, usuarioId } = {}) {
-  const def = TIPO(tipo);
-  if (!def) throw new Error('Ese tipo de movimiento no existe');
+    // Todas las quincenas que tienen algo, de la más nueva a la más vieja, con su
+    // deuda y sus movimientos dentro.
+    const clave = q => `${q.anio}-${q.mes}-${q.quincena}`;
+    const mapa = new Map();
+    const meter = q => {
+      const k = clave(q);
+      if (!mapa.has(k)) mapa.set(k, { ...q, etiqueta: etiquetaQuincena(q), corta: cortaQuincena(q),
+        deuda: 0, bolt: 0, ajuste: 0, ajusteMotivo: '', movimientos: [] });
+      return mapa.get(k);
+    };
+    cierres.rows.forEach(x => {
+      const q = { anio: x.anio, mes: x.mes, quincena: x.quincena };
+      const f = meter(q);
+      f.deuda = Number(x.importe) + (Number(x.ajuste) || 0);
+      f.bolt = Number(x.importe);
+      f.ajuste = Number(x.ajuste) || 0;
+      f.ajusteMotivo = x.ajuste_motivo || '';
+    });
+    movimientos.forEach(m => { if (m.fecha) meter(quincenaDe(m.fecha)).movimientos.push(m); });
 
-  // Lo de un conductor lleva conductor; una salida de caja, no.
-  let id = null;
-  if (def.conductor) {
-    id = Number(conductorId);
-    if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+    const lista = [...mapa.values()].sort((a, b) =>
+      (b.anio - a.anio) || (b.mes - a.mes) || (b.quincena - a.quincena));
+
+    // El saldo se acumula de lo VIEJO a lo nuevo, así que se recorre al revés y
+    // luego se le da la vuelta: cada quincena enseña el saldo con el que se cierra.
+    let acumulado = 0;
+    [...lista].reverse().forEach(q => {
+      const vivos = q.movimientos.filter(m => !m.anulado);
+      q.presencial = +vivos.filter(m => m.tipo === 'presencial').reduce((a, m) => a + m.importe, 0).toFixed(2);
+      q.nomina = +vivos.filter(m => m.tipo === 'nomina').reduce((a, m) => a + m.importe, 0).toFixed(2);
+      q.transferencia = +vivos.filter(m => m.tipo === 'transferencia').reduce((a, m) => a + m.importe, 0).toFixed(2);
+      q.entrega = +vivos.filter(m => m.tipo === 'entrega').reduce((a, m) => a + m.importe, 0).toFixed(2);
+      // El cambio va APARTE de lo entregado, no restandolo. Es dinero nuestro que
+      // se le presta: sube lo que debe sin tocar lo que ha traido. Metido dentro
+      // de `recaudado` la ficha ensenaria "entregado 300" a quien entrego 500 y se
+      // llevo 200 de suelto, que es mentira por los dos lados.
+      q.cambio = +vivos.filter(m => m.tipo === 'cambio').reduce((a, m) => a + m.importe, 0).toFixed(2);
+      q.recaudado = +(q.presencial + q.nomina + q.transferencia - q.entrega).toFixed(2);
+      acumulado = +(acumulado + q.deuda + q.cambio - q.recaudado).toFixed(2);
+      q.saldo = acumulado;
+    });
+
+    return {
+      conductor: { id: String(c.rows[0].id), nombre: c.rows[0].conductor,
+        telefono: c.rows[0].telefono || '', enPlantilla: !!c.rows[0].empleo_vigente,
+        sinFicha: esUuid },
+      quincenas: lista,
+      total: {
+        deuda: +lista.reduce((a, q) => a + q.deuda, 0).toFixed(2),
+        recaudado: +lista.reduce((a, q) => a + q.recaudado, 0).toFixed(2),
+        cambio: +lista.reduce((a, q) => a + q.cambio, 0).toFixed(2),
+        pendiente: acumulado,
+      },
+    };
   }
-  const obs = (observacion || '').trim();
-  if (!def.conductor && !obs) {
-    throw new Error('Di a qué va ese dinero: una salida de caja sin explicación no vale.');
-  }
-  const dia = diaIso(fecha) || diaIso(new Date());
-  if (dia > diaIso(new Date())) throw new Error('No se puede apuntar dinero con fecha futura');
 
-  let ref = null;
-  if (def.referencia) {
-    ref = String(referencia || '').trim().replace(/\s+/g, ' ');
-    if (!ref) throw new Error('Falta el ID de la transferencia: es obligatorio, y es lo que se busca en el extracto del banco.');
-    if (ref.length > 100) throw new Error('El ID de la transferencia es demasiado largo (100 caracteres como mucho).');
-    if (!(await hayReferencia())) {
-      throw new Error('Para apuntar transferencias falta aplicar la migración db/208 en /migraciones.');
+  // Más de una semana sin pasar por ventanilla es lo que se considera ir con
+  // retraso. Sale de cómo se entrega de verdad: los recibos van de semana en
+  // semana, así que ocho días ya es haberse saltado una vuelta.
+  const DIAS_REZAGADO = 7;
+
+  /** Hoy en Madrid, "AAAA-MM-DD". */
+  const hoyIso = () => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+
+  /**
+   * Días enteros entre dos "AAAA-MM-DD".
+   *
+   * Con Date.UTC a propósito: restar dos fechas locales cruza dos cambios de hora
+   * al año y devuelve 6,958 días donde hay 7. En UTC todos los días miden lo
+   * mismo y la resta es exacta.
+   */
+  function diasEntre(desdeIso, hastaIso) {
+    const t = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+      return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
+    const a = t(desdeIso), b = t(hastaIso);
+    if (a == null || b == null) return null;
+    return Math.round((b - a) / 86400000);
+  }
+
+  /** Las fechas de PostgreSQL a "AAAA-MM-DD" por sus componentes locales. */
+  function diaIso(v) {
+    if (!v) return null;
+    const dd = n => String(n).padStart(2, '0');
+    if (v instanceof Date) {
+      return Number.isNaN(v.getTime()) ? null
+        : `${v.getFullYear()}-${dd(v.getMonth() + 1)}-${dd(v.getDate())}`;
     }
-    const ya = await transferenciaConId(ref);
-    if (ya) {
-      throw new Error(`Esa transferencia (ID ${ref}) ya está apuntada: ${(Number(ya.importe)).toFixed(2).replace('.', ',')} € ` +
-        `a ${ya.conductor || 'otro conductor'} el ${String(diaIso(ya.fecha) || '').split('-').reverse().join('/')}. ` +
-        'Si aquella estaba mal, anúlala primero.');
+    // Una cadena se lee POR COMPONENTES, nunca con new Date(). Dos motivos:
+    //   · "10/09/2026" es el 10 de septiembre aquí y el 9 de octubre para
+    //     new Date(), que la lee a la inglesa. El calendario de la casa escribe
+    //     justo en ese formato, así que sin esto un recibo del día 10 entraría
+    //     con fecha de octubre y caería en otra quincena.
+    //   · new Date('2026-09-10') es medianoche UTC, que en Madrid es el día 9.
+    const s = String(v).trim();
+    let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);          // dd/mm/aaaa
+    if (m) return `${m[3]}-${dd(+m[2])}-${dd(+m[1])}`;
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);                             // aaaa-mm-dd
+    if (m) return `${m[1]}-${dd(+m[2])}-${dd(+m[3])}`;
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null
+      : `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
+  }
+
+  /** Los conductores a los que se les puede cobrar, para el desplegable. */
+  async function candidatos() {
+    // Barcelona: las cuentas de BOLT de su empresa. Las desactivadas solo si ya
+    // tienen algo apuntado (para poder cobrarles lo que se dejaron).
+    if (SOLO_CUENTAS) {
+      const s = await db.consulta(
+        `SELECT s.externo_id AS id,
+                COALESCE(s.externo_nombre, 'Cuenta de BOLT ' || left(s.externo_id, 8)) AS conductor,
+                (s.estado_externo IS DISTINCT FROM 'deactivated') AS activa
+           FROM (${CUENTAS_SEDE}) s
+          WHERE s.estado_externo IS DISTINCT FROM 'deactivated'
+             OR EXISTS (SELECT 1 FROM ${TC} r WHERE r.bolt_uuid = s.externo_id)
+             OR EXISTS (SELECT 1 FROM ${TM} m WHERE m.bolt_uuid = s.externo_id)
+          ORDER BY 2`);
+      return s.rows.map(x => ({ id: String(x.id), nombre: x.conductor, enPlantilla: !!x.activa }));
     }
+    const r = await db.consulta(
+      `SELECT c.id, COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor, c.empleo_vigente
+         FROM conductor c WHERE NOT c.es_centinela
+          AND (c.empleo_vigente OR EXISTS (SELECT 1 FROM ${TC} r WHERE r.conductor_id = c.id)
+               OR EXISTS (SELECT 1 FROM ${TM} m WHERE m.conductor_id = c.id))
+        ORDER BY 2`);
+    return r.rows.map(x => ({ id: String(x.id), nombre: x.conductor, enPlantilla: !!x.empleo_vigente }));
   }
 
-  let centimos, limpio = null;
-  if (def.cuenta) {
-    const cuenta = cuentaDesglose(desglose);
-    limpio = cuenta.desglose;
-    // Si vino el desglose, MANDA él: es lo que se contó encima de la mesa.
-    // Si no vino (un ingreso viejo que se apunta sin recibo), vale el importe.
-    centimos = cuenta.centimos > 0 ? cuenta.centimos : aCentimos(importe);
-    if (cuenta.centimos > 0 && importe != null && String(importe).trim() !== '' &&
-        aCentimos(importe) !== cuenta.centimos) {
-      throw new Error(`El recuento suma ${(cuenta.centimos / 100).toFixed(2)} € y el importe dice ` +
-        `${(aCentimos(importe) / 100).toFixed(2)} €. Cuadra los billetes antes de guardar.`);
+  // ── ESCRITURA ──────────────────────────────────────────────────────────────
+  /**
+   * ¿Ya hay una transferencia VIVA con ese ID? Se compara sin mayúsculas ni
+   * espacios, como el índice único de db/208: «ES12 34» y «es1234» son la misma.
+   */
+  const sinEspacios = s => String(s || '').replace(/\s+/g, '').toUpperCase();
+  async function transferenciaConId(referencia) {
+    const r = await db.consulta(
+      `SELECT m.id, m.fecha, m.importe,
+              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, '')),
+                       e.externo_nombre) AS conductor
+         FROM ${TM} m
+         LEFT JOIN conductor c ON c.id = m.conductor_id
+         LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = m.bolt_uuid
+        WHERE m.tipo = 'transferencia' AND m.anulado_at IS NULL
+          AND upper(regexp_replace(m.referencia, '[[:space:]]', '', 'g')) = $1
+        LIMIT 1`, [sinEspacios(referencia)]);
+    return r.rows[0] || null;
+  }
+
+  /** ¿Está aplicada db/208? Sin su columna no se puede guardar el ID. */
+  async function hayReferencia() {
+    const r = await db.consulta(
+      `SELECT 1 FROM pg_attribute
+        WHERE attrelid = to_regclass('${TM}') AND attname = 'referencia' AND NOT attisdropped`);
+    return r.rows.length > 0;
+  }
+
+  /**
+   * Apunta una entrega de dinero. `desglose` solo en lo presencial, y su recuento
+   * tiene que CUADRAR con el importe: un recibo cuyo total no sale de sus billetes
+   * es un recibo que alguien tendrá que explicar.
+   *
+   * Una TRANSFERENCIA lleva `referencia`, el ID de la transferencia: obligatorio,
+   * y una transferencia viva con ese mismo ID no deja apuntar otra. Lo vuelve a
+   * mirar la base (db/208), por si dos personas la apuntan a la vez.
+   */
+  async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion, referencia, usuarioId } = {}) {
+    const def = TIPO(tipo);
+    if (!def) throw new Error('Ese tipo de movimiento no existe');
+
+    // Lo de un conductor lleva conductor; una salida de caja, no. En Barcelona el
+    // conductor es su cuenta de BOLT, y tiene que ser de la empresa de la sede.
+    let id = null;
+    if (def.conductor) {
+      if (SOLO_CUENTAS) {
+        id = String(conductorId || '').trim();
+        if (!id) throw new Error('Falta la cuenta de BOLT');
+        const ok = await db.consulta(`SELECT 1 FROM (${CUENTAS_SEDE}) s WHERE s.externo_id = $1`, [id]);
+        if (!ok.rows.length) throw new Error('Esa cuenta de BOLT no es de esta sede');
+      } else {
+        id = Number(conductorId);
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+      }
     }
-  } else {
-    centimos = aCentimos(importe);
-  }
-  if (centimos <= 0) throw new Error('El importe tiene que ser mayor que cero');
+    // A qué columna va la persona: la ficha en Madrid, la cuenta en Barcelona.
+    const colPersona = SOLO_CUENTAS ? 'bolt_uuid' : 'conductor_id';
+    const obs = (observacion || '').trim();
+    if (!def.conductor && !obs) {
+      throw new Error('Di a qué va ese dinero: una salida de caja sin explicación no vale.');
+    }
+    const dia = diaIso(fecha) || diaIso(new Date());
+    if (dia > diaIso(new Date())) throw new Error('No se puede apuntar dinero con fecha futura');
 
-  const valores = [id, dia, tipo, (centimos / 100).toFixed(2), limpio ? JSON.stringify(limpio) : null,
-    obs.slice(0, 255) || null, usuarioId || null];
-  let r;
-  try {
-    // La columna `referencia` solo se nombra si hay transferencia: así lo demás
-    // se sigue apuntando igual antes de aplicar db/208.
-    r = ref
-      ? await db.consulta(
-        `INSERT INTO recaudacion_movimiento (conductor_id, fecha, tipo, importe, desglose, observacion, usuario_id, referencia)
-         VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8) RETURNING id`, [...valores, ref])
-      : await db.consulta(
-        `INSERT INTO recaudacion_movimiento (conductor_id, fecha, tipo, importe, desglose, observacion, usuario_id)
-         VALUES ($1, $2::date, $3, $4, $5, $6, $7) RETURNING id`, valores);
-  } catch (e) {
-    // Dos personas apuntando la misma transferencia a la vez: la segunda la
-    // para el índice único de db/208.
-    if (e.code === '23505' && ref) throw new Error(`Esa transferencia (ID ${ref}) ya está apuntada.`);
-    throw e;
-  }
-  return { id: String(r.rows[0].id), importe: +(centimos / 100).toFixed(2), fecha: dia, tipo, referencia: ref };
-}
+    let ref = null;
+    if (def.referencia) {
+      ref = String(referencia || '').trim().replace(/\s+/g, ' ');
+      if (!ref) throw new Error('Falta el ID de la transferencia: es obligatorio, y es lo que se busca en el extracto del banco.');
+      if (ref.length > 100) throw new Error('El ID de la transferencia es demasiado largo (100 caracteres como mucho).');
+      if (!(await hayReferencia())) {
+        throw new Error('Para apuntar transferencias falta aplicar la migración db/208 en /migraciones.');
+      }
+      const ya = await transferenciaConId(ref);
+      if (ya) {
+        throw new Error(`Esa transferencia (ID ${ref}) ya está apuntada: ${(Number(ya.importe)).toFixed(2).replace('.', ',')} € ` +
+          `a ${ya.conductor || 'otro conductor'} el ${String(diaIso(ya.fecha) || '').split('-').reverse().join('/')}. ` +
+          'Si aquella estaba mal, anúlala primero.');
+      }
+    }
 
-/** Anula un movimiento. No se borra: el dinero deja rastro o no vale de nada. */
-async function anular(movimientoId, { usuarioId, motivo } = {}) {
-  const m = (motivo || '').trim();
-  if (!m) throw new Error('Hace falta decir por qué se anula: es dinero.');
-  const r = await db.consulta(
-    `UPDATE recaudacion_movimiento
-        SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
-      WHERE id = $1 AND anulado_at IS NULL RETURNING id`,
-    [Number(movimientoId), usuarioId || null, m.slice(0, 255)]);
-  if (!r.rows[0]) throw new Error('Ese movimiento no existe o ya estaba anulado');
-  return { anulado: String(r.rows[0].id) };
-}
-
-/**
- * Pone (o corrige) la deuda de una quincena. Se PISA la cifra anterior en vez
- * de sumarla: el cierre de BOLT se vuelve a cargar a menudo y sumar dos cargas
- * duplicaría la deuda de todo el mundo en silencio.
- */
-async function guardarCierre({ conductorId, anio, mes, quincena, importe, origen, usuarioId } = {}) {
-  const id = Number(conductorId);
-  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
-  const q = quincenaValida({ anio, mes, quincena });
-  if (q.anio !== Number(anio) || q.mes !== Number(mes) || q.quincena !== Number(quincena)) {
-    throw new Error('Esa quincena no es válida');
-  }
-  exigeAntesDelCorte(q, 'teclear un importe a mano');
-  const centimos = aCentimos(importe);
-  const r = await db.consulta(
-    `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
-     -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
-     -- entera falla con "no unique or exclusion constraint matching".
-     ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
-        SET importe = EXCLUDED.importe, origen = EXCLUDED.origen,
-            usuario_id = EXCLUDED.usuario_id, actualizado_at = now()
-     RETURNING id, importe`,
-    [id, q.anio, q.mes, q.quincena, (centimos / 100).toFixed(2),
-      origen === 'importado' ? 'importado' : 'manual', usuarioId || null]);
-  return { id: String(r.rows[0].id), importe: Number(r.rows[0].importe) };
-}
-
-/**
- * EL EFECTIVO DE UNA QUINCENA SEGÚN BOLT, sin tocar nada: cuánto dinero en mano
- * cobró cada conductor. Es lo que se propone congelar como deuda.
- *
- * Va por `creado_ts` como la ingesta, y en hora de Madrid: una carrera de las
- * 00:30 del día 16 es de la segunda quincena, no de la primera.
- */
-async function efectivoBolt(q) {
-  const { desde, hasta } = rangoQuincena(q);
-  // Se agrupa por CUENTA de BOLT y no por conductor: hay cuentas que rodaron y
-  // cobraron en efectivo sin estar enlazadas con nadie de la plantilla, y esas
-  // eran justo las que se perdían en silencio. Cada una trae su conductor si lo
-  // tiene, y si no, su nombre de BOLT.
-  const r = await db.consulta(
-    `SELECT o.driver_uuid::text AS uuid, e.conductor_id, e.externo_nombre,
-            count(*)::int AS viajes,
-            sum(COALESCE(o.precio, 0) - COALESCE(o.dto_efectivo, 0)
-                + COALESCE(o.tarifa_reserva, 0))::numeric(12,2) AS efectivo
-       FROM bolt_order o
-       LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = o.driver_uuid::text
-      WHERE o.metodo_pago = 'cash'
-        AND o.estado = 'finished'
-        AND (o.creado_ts AT TIME ZONE 'Europe/Madrid')::date BETWEEN $1::date AND $2::date
-      GROUP BY 1, 2, 3
-      HAVING sum(COALESCE(o.precio, 0) - COALESCE(o.dto_efectivo, 0) + COALESCE(o.tarifa_reserva, 0)) > 0`,
-    [desde, hasta]);
-
-  // Varias cuentas del mismo conductor se suman en una sola línea suya.
-  const porConductor = new Map();
-  const sinFicha = [];
-  r.rows.forEach(x => {
-    const importe = Number(x.efectivo);
-    if (x.conductor_id) {
-      const k = String(x.conductor_id);
-      const a = porConductor.get(k) || { conductorId: k, viajes: 0, importe: 0 };
-      a.viajes += x.viajes; a.importe = +(a.importe + importe).toFixed(2);
-      porConductor.set(k, a);
+    let centimos, limpio = null;
+    if (def.cuenta) {
+      const cuenta = cuentaDesglose(desglose);
+      limpio = cuenta.desglose;
+      // Si vino el desglose, MANDA él: es lo que se contó encima de la mesa.
+      // Si no vino (un ingreso viejo que se apunta sin recibo), vale el importe.
+      centimos = cuenta.centimos > 0 ? cuenta.centimos : aCentimos(importe);
+      if (cuenta.centimos > 0 && importe != null && String(importe).trim() !== '' &&
+          aCentimos(importe) !== cuenta.centimos) {
+        throw new Error(`El recuento suma ${(cuenta.centimos / 100).toFixed(2)} € y el importe dice ` +
+          `${(aCentimos(importe) / 100).toFixed(2)} €. Cuadra los billetes antes de guardar.`);
+      }
     } else {
-      sinFicha.push({ boltUuid: x.uuid, nombre: x.externo_nombre || ('Cuenta ' + x.uuid.slice(0, 8)),
-        viajes: x.viajes, importe });
+      centimos = aCentimos(importe);
     }
-  });
-  return [...porConductor.values(), ...sinFicha];
-}
+    if (centimos <= 0) throw new Error('El importe tiene que ser mayor que cero');
 
-/**
- * Congela en `recaudacion_cierre` lo que dice BOLT de esa quincena.
- *
- * Devuelve lo que CAMBIÓ respecto a lo que había, no solo lo que hay: si una
- * cifra contra la que ya se cobró se mueve, eso hay que verlo, no enterarse
- * cuando no cuadre la caja.
- */
-async function calcularDesdeBolt(q, { usuarioId } = {}) {
-  // Antes del corte la verdad es el Excel, no BOLT. Recalcular julio desde una
-  // API que no tiene esos datos pondría ceros donde hay dinero cobrado.
-  if (antesDelCorte(q)) {
-    throw new Error(
-      `${etiquetaQuincena(q)} es anterior al ${etiquetaQuincena(CORTE)}: eso lo manda el Excel, no BOLT.`);
-  }
-  const calculado = await efectivoBolt(q);
-  const previos = new Map((await db.consulta(
-    `SELECT COALESCE(conductor_id::text, bolt_uuid) AS quien, importe, origen
-       FROM recaudacion_cierre WHERE anio = $1 AND mes = $2 AND quincena = $3`,
-    [q.anio, q.mes, q.quincena]))
-    .rows.map(x => [String(x.quien), { importe: Number(x.importe), origen: x.origen }]));
-
-  const conductores = (await db.consulta(
-    `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), trim(nombre || ' ' || COALESCE(apellidos, ''))) AS n FROM conductor`)).rows;
-  const nombres = new Map(conductores.map(x => [String(x.id), x.n]));
-
-  // RED DE SEGURIDAD. Una cuenta sin enlazar cuyo nombre es EL MISMO que el de
-  // alguien de la plantilla casi siempre es esa persona con el enlace sin
-  // hacer; darla de alta por su cuenta le apuntaría la deuda DOS VECES, una
-  // por su ficha y otra por su cuenta. Se deja fuera y se avisa para que
-  // alguien enlace la cuenta, que es el arreglo de verdad.
-  const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  const porNombre = new Map();
-  conductores.forEach(c => { const k = llave(c.n); porNombre.set(k, porNombre.has(k) ? null : c); });
-  const sospechosas = [];
-
-  // DESDE EL CORTE, EL IMPORTE ES EL DE BOLT Y NO SE NEGOCIA.
-  //
-  // Antes esta función respetaba cualquier fila puesta a mano. Tenía sentido
-  // cuando el importe era el único sitio donde apuntar una corrección, pero
-  // dejaba el módulo diciendo una cosa y haciendo otra: de 108 cierres desde
-  // agosto, 103 eran 'manual' y BOLT no llegaba a tocarlos, así que faltaban
-  // 1.060,85 € que los conductores sí habían cobrado.
-  //
-  // Ahora el reparto es limpio: el IMPORTE es lo que midió BOLT, y toda
-  // corrección humana vive en el AJUSTE, que esta función no toca jamás y que
-  // además obliga a escribir un motivo. Antes del corte no se llega aquí: el
-  // guardia de arriba lo impide.
-  const cambios = [], nuevos = [];
-  // La clave de cada línea: la ficha si la tiene, y si no su cuenta de BOLT.
-  calculado.forEach(c => { c.clave = c.conductorId || c.boltUuid; });
-
-  // Las cuentas sin ficha que se parecen a alguien de la plantilla, fuera.
-  const seguras = calculado.filter(c => {
-    if (!c.boltUuid) return true;
-    const p = porNombre.get(llave(c.nombre));
-    if (p) { sospechosas.push({ ...c, pareceA: p.n, conductorId: String(p.id) }); return false; }
-    return true;
-  });
-
-  for (const c of seguras) {
-    const antes = previos.get(c.clave);
-    if (!antes) nuevos.push({ ...c, conductor: nombreDe(c, nombres) });
-    else if (Math.abs(antes.importe - c.importe) > 0.005) {
-      cambios.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe, origen: antes.origen });
+    const valores = [id, dia, tipo, (centimos / 100).toFixed(2), limpio ? JSON.stringify(limpio) : null,
+      obs.slice(0, 255) || null, usuarioId || null];
+    let r;
+    try {
+      // La columna `referencia` solo se nombra si hay transferencia: así lo demás
+      // se sigue apuntando igual antes de aplicar db/208.
+      r = ref
+        ? await db.consulta(
+          `INSERT INTO ${TM} (${colPersona}, fecha, tipo, importe, desglose, observacion, usuario_id, referencia)
+           VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8) RETURNING id`, [...valores, ref])
+        : await db.consulta(
+          `INSERT INTO ${TM} (${colPersona}, fecha, tipo, importe, desglose, observacion, usuario_id)
+           VALUES ($1, $2::date, $3, $4, $5, $6, $7) RETURNING id`, valores);
+    } catch (e) {
+      // Dos personas apuntando la misma transferencia a la vez: la segunda la
+      // para el índice único de db/208.
+      if (e.code === '23505' && ref) throw new Error(`Esa transferencia (ID ${ref}) ya está apuntada.`);
+      throw e;
     }
+    return { id: String(r.rows[0].id), importe: +(centimos / 100).toFixed(2), fecha: dia, tipo, referencia: ref };
   }
 
-  const aGuardar = seguras;
-  if (aGuardar.length) {
-    await db.transaccion(async cli => {
-      for (const c of aGuardar) {
-        // Dos índices únicos, uno por ficha y otro por cuenta: el ON CONFLICT
-        // tiene que apuntar al que toca en cada caso.
-        if (c.conductorId) {
-          await cli.query(
-            `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
-             VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
-             ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL
-             DO UPDATE SET importe = EXCLUDED.importe, origen = 'bolt',
-                           usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
-            [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
-        } else {
-          await cli.query(
-            `INSERT INTO recaudacion_cierre (bolt_uuid, anio, mes, quincena, importe, origen, usuario_id)
-             VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
-             ON CONFLICT (bolt_uuid, anio, mes, quincena) WHERE bolt_uuid IS NOT NULL
-             DO UPDATE SET importe = EXCLUDED.importe, origen = 'bolt',
-                           usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
-            [c.boltUuid, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+  /** Anula un movimiento. No se borra: el dinero deja rastro o no vale de nada. */
+  async function anular(movimientoId, { usuarioId, motivo } = {}) {
+    const m = (motivo || '').trim();
+    if (!m) throw new Error('Hace falta decir por qué se anula: es dinero.');
+    const r = await db.consulta(
+      `UPDATE ${TM}
+          SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
+        WHERE id = $1 AND anulado_at IS NULL RETURNING id`,
+      [Number(movimientoId), usuarioId || null, m.slice(0, 255)]);
+    if (!r.rows[0]) throw new Error('Ese movimiento no existe o ya estaba anulado');
+    return { anulado: String(r.rows[0].id) };
+  }
+
+  /**
+   * Pone (o corrige) la deuda de una quincena. Se PISA la cifra anterior en vez
+   * de sumarla: el cierre de BOLT se vuelve a cargar a menudo y sumar dos cargas
+   * duplicaría la deuda de todo el mundo en silencio.
+   */
+  async function guardarCierre({ conductorId, anio, mes, quincena, importe, origen, usuarioId } = {}) {
+    sinHistoricoAMano('teclear un cierre a mano');
+    const id = Number(conductorId);
+    if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+    const q = quincenaValida({ anio, mes, quincena });
+    if (q.anio !== Number(anio) || q.mes !== Number(mes) || q.quincena !== Number(quincena)) {
+      throw new Error('Esa quincena no es válida');
+    }
+    exigeAntesDelCorte(q, 'teclear un importe a mano');
+    const centimos = aCentimos(importe);
+    const r = await db.consulta(
+      `INSERT INTO ${TC} (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
+       -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
+       -- entera falla con "no unique or exclusion constraint matching".
+       ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
+          SET importe = EXCLUDED.importe, origen = EXCLUDED.origen,
+              usuario_id = EXCLUDED.usuario_id, actualizado_at = now()
+       RETURNING id, importe`,
+      [id, q.anio, q.mes, q.quincena, (centimos / 100).toFixed(2),
+        origen === 'importado' ? 'importado' : 'manual', usuarioId || null]);
+    return { id: String(r.rows[0].id), importe: Number(r.rows[0].importe) };
+  }
+
+  /**
+   * EL EFECTIVO DE UNA QUINCENA SEGÚN BOLT, sin tocar nada: cuánto dinero en mano
+   * cobró cada conductor. Es lo que se propone congelar como deuda.
+   *
+   * Va por `creado_ts` como la ingesta, y en hora de Madrid: una carrera de las
+   * 00:30 del día 16 es de la segunda quincena, no de la primera.
+   */
+  async function efectivoBolt(q) {
+    const { desde, hasta } = rangoQuincena(q);
+    // Se agrupa por CUENTA de BOLT y no por conductor: hay cuentas que rodaron y
+    // cobraron en efectivo sin estar enlazadas con nadie de la plantilla, y esas
+    // eran justo las que se perdían en silencio. Cada una trae su conductor si lo
+    // tiene, y si no, su nombre de BOLT.
+    const r = await db.consulta(
+      `SELECT o.driver_uuid::text AS uuid, e.conductor_id, e.externo_nombre,
+              count(*)::int AS viajes,
+              sum(COALESCE(o.precio, 0) - COALESCE(o.dto_efectivo, 0)
+                  + COALESCE(o.tarifa_reserva, 0))::numeric(12,2) AS efectivo
+         FROM ${ORDENES.tabla} o
+         LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = o.driver_uuid::text
+        WHERE o.metodo_pago = 'cash'
+          AND o.estado = 'finished'
+          AND (o.creado_ts AT TIME ZONE 'Europe/Madrid')::date BETWEEN $1::date AND $2::date
+          ${ORDENES.filtro}
+        GROUP BY 1, 2, 3
+        HAVING sum(COALESCE(o.precio, 0) - COALESCE(o.dto_efectivo, 0) + COALESCE(o.tarifa_reserva, 0)) > 0`,
+      [desde, hasta]);
+
+    // Varias cuentas del mismo conductor se suman en una sola línea suya.
+    const porConductor = new Map();
+    const sinFicha = [];
+    r.rows.forEach(x => {
+      const importe = Number(x.efectivo);
+      // Sin fichas (Barcelona), cada línea es su cuenta aunque esté enlazada.
+      if (x.conductor_id && !SOLO_CUENTAS) {
+        const k = String(x.conductor_id);
+        const a = porConductor.get(k) || { conductorId: k, viajes: 0, importe: 0 };
+        a.viajes += x.viajes; a.importe = +(a.importe + importe).toFixed(2);
+        porConductor.set(k, a);
+      } else {
+        sinFicha.push({ boltUuid: x.uuid, nombre: x.externo_nombre || ('Cuenta ' + x.uuid.slice(0, 8)),
+          viajes: x.viajes, importe });
+      }
+    });
+    return [...porConductor.values(), ...sinFicha];
+  }
+
+  /**
+   * Congela en `recaudacion_cierre` lo que dice BOLT de esa quincena.
+   *
+   * Devuelve lo que CAMBIÓ respecto a lo que había, no solo lo que hay: si una
+   * cifra contra la que ya se cobró se mueve, eso hay que verlo, no enterarse
+   * cuando no cuadre la caja.
+   */
+  async function calcularDesdeBolt(q, { usuarioId } = {}) {
+    // Antes del corte la verdad es el Excel, no BOLT. Recalcular julio desde una
+    // API que no tiene esos datos pondría ceros donde hay dinero cobrado.
+    if (antesDelCorte(q)) {
+      throw new Error(
+        `${etiquetaQuincena(q)} es anterior al ${etiquetaQuincena(CORTE)}: eso lo manda el Excel, no BOLT.`);
+    }
+    const calculado = await efectivoBolt(q);
+    const previos = new Map((await db.consulta(
+      `SELECT COALESCE(conductor_id::text, bolt_uuid) AS quien, importe, origen
+         FROM ${TC} WHERE anio = $1 AND mes = $2 AND quincena = $3`,
+      [q.anio, q.mes, q.quincena]))
+      .rows.map(x => [String(x.quien), { importe: Number(x.importe), origen: x.origen }]));
+
+    // La plantilla, para los nombres y para la red de seguridad de abajo. Sin
+    // fichas (Barcelona) no hay a quién parecerse: la de Madrid sacaría como
+    // «sospechosa» a cualquier cuenta de Barcelona con un nombre igual.
+    const conductores = SOLO_CUENTAS ? [] : (await db.consulta(
+      `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), trim(nombre || ' ' || COALESCE(apellidos, ''))) AS n FROM conductor`)).rows;
+    const nombres = new Map(conductores.map(x => [String(x.id), x.n]));
+
+    // RED DE SEGURIDAD. Una cuenta sin enlazar cuyo nombre es EL MISMO que el de
+    // alguien de la plantilla casi siempre es esa persona con el enlace sin
+    // hacer; darla de alta por su cuenta le apuntaría la deuda DOS VECES, una
+    // por su ficha y otra por su cuenta. Se deja fuera y se avisa para que
+    // alguien enlace la cuenta, que es el arreglo de verdad.
+    const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const porNombre = new Map();
+    conductores.forEach(c => { const k = llave(c.n); porNombre.set(k, porNombre.has(k) ? null : c); });
+    const sospechosas = [];
+
+    // DESDE EL CORTE, EL IMPORTE ES EL DE BOLT Y NO SE NEGOCIA.
+    //
+    // Antes esta función respetaba cualquier fila puesta a mano. Tenía sentido
+    // cuando el importe era el único sitio donde apuntar una corrección, pero
+    // dejaba el módulo diciendo una cosa y haciendo otra: de 108 cierres desde
+    // agosto, 103 eran 'manual' y BOLT no llegaba a tocarlos, así que faltaban
+    // 1.060,85 € que los conductores sí habían cobrado.
+    //
+    // Ahora el reparto es limpio: el IMPORTE es lo que midió BOLT, y toda
+    // corrección humana vive en el AJUSTE, que esta función no toca jamás y que
+    // además obliga a escribir un motivo. Antes del corte no se llega aquí: el
+    // guardia de arriba lo impide.
+    const cambios = [], nuevos = [];
+    // La clave de cada línea: la ficha si la tiene, y si no su cuenta de BOLT.
+    calculado.forEach(c => { c.clave = c.conductorId || c.boltUuid; });
+
+    // Las cuentas sin ficha que se parecen a alguien de la plantilla, fuera.
+    const seguras = calculado.filter(c => {
+      if (!c.boltUuid) return true;
+      const p = porNombre.get(llave(c.nombre));
+      if (p) { sospechosas.push({ ...c, pareceA: p.n, conductorId: String(p.id) }); return false; }
+      return true;
+    });
+
+    for (const c of seguras) {
+      const antes = previos.get(c.clave);
+      if (!antes) nuevos.push({ ...c, conductor: nombreDe(c, nombres) });
+      else if (Math.abs(antes.importe - c.importe) > 0.005) {
+        cambios.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe, origen: antes.origen });
+      }
+    }
+
+    const aGuardar = seguras;
+    if (aGuardar.length) {
+      await db.transaccion(async cli => {
+        for (const c of aGuardar) {
+          // Dos índices únicos, uno por ficha y otro por cuenta: el ON CONFLICT
+          // tiene que apuntar al que toca en cada caso.
+          if (c.conductorId) {
+            await cli.query(
+              `INSERT INTO ${TC} (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
+               VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
+               ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL
+               DO UPDATE SET importe = EXCLUDED.importe, origen = 'bolt',
+                             usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
+              [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+          } else {
+            await cli.query(
+              `INSERT INTO ${TC} (bolt_uuid, anio, mes, quincena, importe, origen, usuario_id)
+               VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
+               ON CONFLICT (bolt_uuid, anio, mes, quincena) WHERE bolt_uuid IS NOT NULL
+               DO UPDATE SET importe = EXCLUDED.importe, origen = 'bolt',
+                             usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
+              [c.boltUuid, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+          }
         }
-      }
+      });
+    }
+    return {
+      quincena: { ...q, etiqueta: etiquetaQuincena(q) },
+      conductores: seguras.length,
+      total: +seguras.reduce((a, c) => a + c.importe, 0).toFixed(2),
+      nuevos, cambios,
+      // Las que no se han tocado por parecerse a alguien de la plantilla.
+      sospechosas,
+      sinFicha: seguras.filter(c => c.boltUuid).length,
+    };
+  }
+
+  /**
+   * Recalcula DE UNA VEZ todas las quincenas desde el corte hasta hoy.
+   *
+   * Es lo que hace el botón de la pantalla ahora que la quincena no se ve: quien
+   * lo pulsa no está pensando "recalcúlame la segunda de septiembre", está
+   * pensando "ponme al día lo que dice BOLT". Los avisos de las quincenas se
+   * juntan en uno solo, con su etiqueta delante para saber de dónde sale cada uno.
+   */
+  async function recalcularTodo({ usuarioId } = {}) {
+    return recalcularEstas(quincenasDesdeCorte(), { usuarioId });
+  }
+
+  /**
+   * Las quincenas que TODAVIA PUEDEN CAMBIAR: la de hoy y la anterior.
+   *
+   * Es lo que corre el cron, y la anterior va dentro por dos motivos:
+   *   · Una orden de BOLT MADURA. Nace pendiente y su precio no se cierra hasta
+   *     el final; la ingesta la re-descarga hasta 48 h despues. Un viaje del dia
+   *     15 a las 23:50 puede cambiar de importe el 17.
+   *   · Los primeros dias de una quincena nueva, la anterior es justo la que se
+   *     esta cobrando en ventanilla.
+   *
+   * Una quincena mas vieja que esas dos ya no se mueve sola: sus ordenes estan
+   * cerradas. Si alguna vez hiciera falta rehacerla —un backfill de un mes
+   * antiguo— esta el boton de la pantalla, que sigue recorriendolas TODAS.
+   */
+  function quincenasVivas() {
+    const hoy = quincenaHoy();
+    return [mueveQuincena(hoy, -1), hoy].filter(q => !antesDelCorte(q));
+  }
+
+  /**
+   * Lo mismo que el boton, pero solo sobre lo que puede cambiar. Es lo que se
+   * deja corriendo solo, y por eso tiene que costar LO MISMO dentro de dos anos
+   * que hoy.
+   *
+   * `recalcularTodo` recorre todas las quincenas desde el corte, y esa lista
+   * crece para siempre: hoy son 3 y tarda 5 s, en un ano serian 24 y 42 s. A mano
+   * da igual —se pulsa una vez al dia— pero cada cinco minutos serian 3,3 horas
+   * diarias de base de datos haciendo una cuenta que ya estaba hecha.
+   */
+  async function recalcularReciente({ usuarioId } = {}) {
+    return recalcularEstas(quincenasVivas(), { usuarioId });
+  }
+
+  /** El motor de los dos: recorre las quincenas que se le den y junta los avisos. */
+  async function recalcularEstas(quincenas, { usuarioId } = {}) {
+    const junta = { nuevos: [], cambios: [], sospechosas: [] };
+    let total = 0, conductores = 0;
+    for (const q of quincenas) {
+      const r = await calcularDesdeBolt(q, { usuarioId });
+      total += r.total;
+      conductores = Math.max(conductores, r.conductores);
+      ['nuevos', 'cambios', 'sospechosas'].forEach(k =>
+        junta[k].push(...(r[k] || []).map(x => ({ ...x, quincena: etiquetaQuincena(q) }))));
+    }
+    return {
+      ...junta,
+      desde: quincenas.length ? etiquetaQuincena(quincenas[0]) : etiquetaQuincena(CORTE),
+      quincenas: quincenas.length,
+      conductores,
+      total: +total.toFixed(2),
+    };
+  }
+
+  /**
+   * ¿CUADRA TODO? Diez comprobaciones que pueden fallar de verdad.
+   *
+   * No repite la misma cuenta dos veces para darse la razón: cada una compara
+   * dos caminos independientes hasta el mismo número. Si los dos coinciden es
+   * porque el dato está bien, no porque la fórmula sea la misma.
+   *
+   * Se puede llamar cuando se quiera y no escribe nada.
+   */
+  async function comprobar() {
+    const dosDec = v => +Number(v).toFixed(2);
+    const casi = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
+    const pruebas = [];
+    const mete = (titulo, ok, detalle, gente) =>
+      pruebas.push({ titulo, ok, detalle, gente: gente && gente.length ? gente : undefined });
+
+    const [tabla, caja] = await Promise.all([cuadro(), cuadre()]);
+    const suma = c => dosDec(tabla.filas.reduce((a, f) => a + f[c], 0));
+
+    // 1. La TABLA contra la CAJA. Son dos consultas distintas sobre las mismas
+    //    tablas: la tabla agrupa por persona y la caja suma en bloque. Si una
+    //    fila se queda fuera del listado —un centinela, un cierre huérfano— los
+    //    dos números dejan de coincidir y aquí se ve.
+    mete('La deuda de la tabla es la misma que la de la caja',
+      casi(suma('bolt'), caja.deuda),
+      `tabla ${suma('bolt')} € · caja ${caja.deuda} €`);
+    mete('Lo entregado en mano cuadra entre tabla y caja',
+      casi(suma('enMano'), dosDec(caja.entradas - caja.devuelto)),
+      `tabla ${suma('enMano')} € · caja ${dosDec(caja.entradas - caja.devuelto)} €`);
+    mete('El cambio en la calle cuadra entre tabla y caja',
+      casi(suma('cambio'), caja.cambio),
+      `tabla ${suma('cambio')} € · caja ${caja.cambio} €`);
+    mete('Lo pagado por transferencia cuadra entre tabla y caja',
+      casi(suma('transferencia'), caja.transferencia),
+      `tabla ${suma('transferencia')} € · caja ${caja.transferencia} €`);
+    mete('Lo que queda por recaudar cuadra entre tabla y caja',
+      casi(suma('aRecaudar'), caja.pendiente),
+      `tabla ${suma('aRecaudar')} € · caja ${caja.pendiente} €`);
+
+    // 2. Desde el corte, el importe TIENE que ser el de BOLT. Si alguien lo
+    //    tecleó por otra vía, o un recálculo se quedó a medias, aquí sale.
+    const desviados = [];
+    for (const q of quincenasDesdeCorte()) {
+      const api = new Map((await efectivoBolt(q)).map(c => [String(c.conductorId || c.boltUuid), c.importe]));
+      const guard = (await db.consulta(
+        `SELECT COALESCE(conductor_id::text, bolt_uuid) AS k, importe
+           FROM ${TC} WHERE anio = $1 AND mes = $2 AND quincena = $3`,
+        [q.anio, q.mes, q.quincena])).rows;
+      guard.forEach(g => {
+        const dice = api.get(String(g.k)) || 0;
+        if (!casi(dice, g.importe)) {
+          desviados.push(`${etiquetaQuincena(q)} · ${g.k}: guardado ${dosDec(g.importe)} € y BOLT dice ${dosDec(dice)} €`);
+        }
+        api.delete(String(g.k));
+      });
+      api.forEach((v, k) => desviados.push(`${etiquetaQuincena(q)} · ${k}: BOLT dice ${dosDec(v)} € y no hay cierre`));
+    }
+    mete('Desde el corte, cada importe es el que dice BOLT', !desviados.length,
+      desviados.length ? `${desviados.length} fila(s) desviadas` : 'todas coinciden', desviados);
+
+    // 3. Antes del corte manda el Excel: ahí no puede haber nada venido de BOLT.
+    const intrusos = (await db.consulta(
+      `SELECT count(*)::int n FROM ${TC}
+        WHERE (anio, mes, quincena) < ($1, $2, $3) AND origen = 'bolt'`,
+      [CORTE.anio, CORTE.mes, CORTE.quincena])).rows[0].n;
+    mete('Antes del corte no hay nada calculado desde BOLT', intrusos === 0,
+      intrusos ? `${intrusos} fila(s) de BOLT en periodos que manda el Excel` : 'ninguna');
+
+    // 4. LA TRAMPA CARA: la misma persona cobrada dos veces en la misma quincena,
+    //    una por su ficha y otra por una cuenta de BOLT ya enlazada con ella.
+    const dobles = (await db.consulta(
+      `SELECT e.conductor_id, u.anio, u.mes, u.quincena, u.bolt_uuid, u.importe
+         FROM ${TC} u
+         JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = u.bolt_uuid
+                                 AND e.conductor_id IS NOT NULL
+         JOIN ${TC} c ON c.conductor_id = e.conductor_id
+                                 AND (c.anio, c.mes, c.quincena) = (u.anio, u.mes, u.quincena)
+        WHERE u.bolt_uuid IS NOT NULL`)).rows;
+    mete('Nadie está cobrado a la vez por su ficha y por su cuenta de BOLT', !dobles.length,
+      dobles.length ? `${dobles.length} caso(s)` : 'ninguno',
+      dobles.map(d => `conductor ${d.conductor_id} · ${etiquetaQuincena(d)} · cuenta ${String(d.bolt_uuid).slice(0, 8)} por ${dosDec(d.importe)} €`));
+
+    // 5. En la caja no puede haber salido más dinero del que entró.
+    mete('El efectivo de la caja no es negativo', caja.efectivo >= -0.005,
+      `${caja.efectivo} €`);
+
+    // 6. Un ajuste suele ser un ARRASTRE: lo que faltó en una quincena se cobra
+    //    en la siguiente, así que el par suma cero y el total sigue siendo el de
+    //    BOLT. Cuando los ajustes de alguien NO suman cero, se le está cobrando
+    //    (o perdonando) algo que BOLT no dice. Puede estar perfectamente
+    //    justificado, así que esto no es un fallo: es una lista que hay que
+    //    repasar, sobre todo después de un recálculo, porque un arrastre puede
+    //    quedarse obsoleto justo cuando su quincena de origen se corrige.
+    const descuadres = (await db.consulta(
+      `SELECT COALESCE(c.conductor_id::text, c.bolt_uuid) AS k,
+              COALESCE(NULLIF(btrim(co.nombre_bolt), ''),
+                       trim(co.nombre || ' ' || COALESCE(co.apellidos, ''))) AS nombre,
+              sum(c.ajuste)::numeric(12,2) AS ajuste,
+              string_agg(DISTINCT c.ajuste_motivo, ' | ') AS motivos
+         FROM ${TC} c
+         LEFT JOIN conductor co ON co.id = c.conductor_id
+        GROUP BY 1, 2 HAVING sum(c.ajuste) <> 0 ORDER BY 2`)).rows;
+    pruebas.push({
+      titulo: 'Los ajustes de cada persona se compensan entre sí',
+      ok: true,
+      revisar: descuadres.length > 0,
+      detalle: descuadres.length
+        ? `${descuadres.length} persona(s) con un saldo de ajustes distinto de cero`
+        : 'todos suman cero',
+      gente: descuadres.length
+        ? descuadres.map(d => `${d.nombre || d.k}: ${dosDec(d.ajuste)} € — ${d.motivos || 'sin motivo'}`)
+        : undefined,
     });
+
+    return {
+      ok: pruebas.every(p => p.ok),
+      revisar: pruebas.some(p => p.revisar),
+      pruebas,
+      cifras: {
+        deuda: caja.deuda, enMano: suma('enMano'), aRecaudar: caja.pendiente,
+        efectivo: caja.efectivo, gente: tabla.filas.length,
+      },
+    };
   }
-  return {
-    quincena: { ...q, etiqueta: etiquetaQuincena(q) },
-    conductores: seguras.length,
-    total: +seguras.reduce((a, c) => a + c.importe, 0).toFixed(2),
-    nuevos, cambios,
-    // Las que no se han tocado por parecerse a alguien de la plantilla.
-    sospechosas,
-    sinFicha: seguras.filter(c => c.boltUuid).length,
-  };
-}
 
-/**
- * Recalcula DE UNA VEZ todas las quincenas desde el corte hasta hoy.
- *
- * Es lo que hace el botón de la pantalla ahora que la quincena no se ve: quien
- * lo pulsa no está pensando "recalcúlame la segunda de septiembre", está
- * pensando "ponme al día lo que dice BOLT". Los avisos de las quincenas se
- * juntan en uno solo, con su etiqueta delante para saber de dónde sale cada uno.
- */
-async function recalcularTodo({ usuarioId } = {}) {
-  return recalcularEstas(quincenasDesdeCorte(), { usuarioId });
-}
-
-/**
- * Las quincenas que TODAVIA PUEDEN CAMBIAR: la de hoy y la anterior.
- *
- * Es lo que corre el cron, y la anterior va dentro por dos motivos:
- *   · Una orden de BOLT MADURA. Nace pendiente y su precio no se cierra hasta
- *     el final; la ingesta la re-descarga hasta 48 h despues. Un viaje del dia
- *     15 a las 23:50 puede cambiar de importe el 17.
- *   · Los primeros dias de una quincena nueva, la anterior es justo la que se
- *     esta cobrando en ventanilla.
- *
- * Una quincena mas vieja que esas dos ya no se mueve sola: sus ordenes estan
- * cerradas. Si alguna vez hiciera falta rehacerla —un backfill de un mes
- * antiguo— esta el boton de la pantalla, que sigue recorriendolas TODAS.
- */
-function quincenasVivas() {
-  const hoy = quincenaHoy();
-  return [mueveQuincena(hoy, -1), hoy].filter(q => !antesDelCorte(q));
-}
-
-/**
- * Lo mismo que el boton, pero solo sobre lo que puede cambiar. Es lo que se
- * deja corriendo solo, y por eso tiene que costar LO MISMO dentro de dos anos
- * que hoy.
- *
- * `recalcularTodo` recorre todas las quincenas desde el corte, y esa lista
- * crece para siempre: hoy son 3 y tarda 5 s, en un ano serian 24 y 42 s. A mano
- * da igual —se pulsa una vez al dia— pero cada cinco minutos serian 3,3 horas
- * diarias de base de datos haciendo una cuenta que ya estaba hecha.
- */
-async function recalcularReciente({ usuarioId } = {}) {
-  return recalcularEstas(quincenasVivas(), { usuarioId });
-}
-
-/** El motor de los dos: recorre las quincenas que se le den y junta los avisos. */
-async function recalcularEstas(quincenas, { usuarioId } = {}) {
-  const junta = { nuevos: [], cambios: [], sospechosas: [] };
-  let total = 0, conductores = 0;
-  for (const q of quincenas) {
-    const r = await calcularDesdeBolt(q, { usuarioId });
-    total += r.total;
-    conductores = Math.max(conductores, r.conductores);
-    ['nuevos', 'cambios', 'sospechosas'].forEach(k =>
-      junta[k].push(...(r[k] || []).map(x => ({ ...x, quincena: etiquetaQuincena(q) }))));
+  /** El nombre de una línea: el de su ficha, o el que da BOLT si no la tiene. */
+  function nombreDe(c, nombres) {
+    return c.conductorId ? (nombres.get(c.conductorId) || '?') : (c.nombre || '?');
   }
-  return {
-    ...junta,
-    desde: quincenas.length ? etiquetaQuincena(quincenas[0]) : etiquetaQuincena(CORTE),
-    quincenas: quincenas.length,
-    conductores,
-    total: +total.toFixed(2),
-  };
-}
 
-/**
- * ¿CUADRA TODO? Diez comprobaciones que pueden fallar de verdad.
- *
- * No repite la misma cuenta dos veces para darse la razón: cada una compara
- * dos caminos independientes hasta el mismo número. Si los dos coinciden es
- * porque el dato está bien, no porque la fórmula sea la misma.
- *
- * Se puede llamar cuando se quiera y no escribe nada.
- */
-async function comprobar() {
-  const dosDec = v => +Number(v).toFixed(2);
-  const casi = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
-  const pruebas = [];
-  const mete = (titulo, ok, detalle, gente) =>
-    pruebas.push({ titulo, ok, detalle, gente: gente && gente.length ? gente : undefined });
+  /**
+   * Suma (o resta) un ajuste a una quincena, con su motivo.
+   *
+   * Es lo que se usa para arrastrar lo que se cerró mal en la quincena anterior:
+   * el importe de BOLT se queda como está —que es la verdad de esos viajes— y el
+   * arrastre va aparte, explicado. Un recálculo desde BOLT no lo toca.
+   *
+   * `ajuste` reemplaza al que hubiera, no se acumula: llamar dos veces por el
+   * mismo motivo no puede cobrar dos veces.
+   */
+  async function ajustarCierre({ conductorId, anio, mes, quincena, ajuste, motivo, usuarioId } = {}) {
+    // En Barcelona la persona es su cuenta de BOLT, y va a su columna y su índice.
+    const id = SOLO_CUENTAS ? String(conductorId || '').trim() : Number(conductorId);
+    if (SOLO_CUENTAS ? !id : (!Number.isInteger(id) || id <= 0)) throw new Error('Falta el conductor');
+    const col = SOLO_CUENTAS ? 'bolt_uuid' : 'conductor_id';
+    const q = quincenaValida({ anio, mes, quincena });
+    const m = (motivo || '').trim();
+    const signo = String(ajuste).trim().startsWith('-') ? -1 : 1;
+    const centimos = signo * aCentimos(String(ajuste).replace('-', ''));
+    if (centimos !== 0 && !m) throw new Error('Di por qué se ajusta: un número sin explicación no vale.');
 
-  const [tabla, caja] = await Promise.all([cuadro(), cuadre()]);
-  const suma = c => dosDec(tabla.filas.reduce((a, f) => a + f[c], 0));
+    const r = await db.consulta(
+      `INSERT INTO ${TC} (${col}, anio, mes, quincena, importe, ajuste, ajuste_motivo, origen, usuario_id)
+       VALUES ($1, $2, $3, $4, 0, $5, $6, 'manual', $7)
+       -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
+       -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
+       -- entera falla con "no unique or exclusion constraint matching".
+       ON CONFLICT (${col}, anio, mes, quincena) WHERE ${col} IS NOT NULL DO UPDATE
+          SET ajuste = EXCLUDED.ajuste, ajuste_motivo = EXCLUDED.ajuste_motivo,
+              actualizado_at = now()
+       RETURNING importe, ajuste`,
+      [id, q.anio, q.mes, q.quincena, (centimos / 100).toFixed(2),
+        // Un ajuste que se pone a CERO conserva su motivo si se da uno. Es dinero:
+        // que una corrección desaparezca sin dejar dicho por qué es justo lo que
+        // no puede pasar. Un cero con motivo se lee como "aquí hubo un ajuste y
+        // esta es la razón de que ya no esté".
+        m ? m.slice(0, 255) : null, usuarioId || null]);
+    return { importe: Number(r.rows[0].importe), ajuste: Number(r.rows[0].ajuste),
+      quincena: { ...q, etiqueta: etiquetaQuincena(q) } };
+  }
 
-  // 1. La TABLA contra la CAJA. Son dos consultas distintas sobre las mismas
-  //    tablas: la tabla agrupa por persona y la caja suma en bloque. Si una
-  //    fila se queda fuera del listado —un centinela, un cierre huérfano— los
-  //    dos números dejan de coincidir y aquí se ve.
-  mete('La deuda de la tabla es la misma que la de la caja',
-    casi(suma('bolt'), caja.deuda),
-    `tabla ${suma('bolt')} € · caja ${caja.deuda} €`);
-  mete('Lo entregado en mano cuadra entre tabla y caja',
-    casi(suma('enMano'), dosDec(caja.entradas - caja.devuelto)),
-    `tabla ${suma('enMano')} € · caja ${dosDec(caja.entradas - caja.devuelto)} €`);
-  mete('El cambio en la calle cuadra entre tabla y caja',
-    casi(suma('cambio'), caja.cambio),
-    `tabla ${suma('cambio')} € · caja ${caja.cambio} €`);
-  mete('Lo pagado por transferencia cuadra entre tabla y caja',
-    casi(suma('transferencia'), caja.transferencia),
-    `tabla ${suma('transferencia')} € · caja ${caja.transferencia} €`);
-  mete('Lo que queda por recaudar cuadra entre tabla y caja',
-    casi(suma('aRecaudar'), caja.pendiente),
-    `tabla ${suma('aRecaudar')} € · caja ${caja.pendiente} €`);
+  /**
+   * Carga el cierre de BOLT de una quincena pegando el Excel tal cual: una línea
+   * por conductor, "nombre <tab> importe". Se deja por si un mes hay que meterlo
+   * a mano —un histórico viejo, una hoja que mandan de fuera—, pero lo normal es
+   * `calcularDesdeBolt`, que no se equivoca escribiendo.
+   */
+  async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
+    sinHistoricoAMano('pegar un cierre del Excel');
+    const q = quincenaValida({ anio, mes, quincena });
+    exigeAntesDelCorte(q, 'pegar un cierre del Excel');
+    const lineas = String(texto || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lineas.length) throw new Error('No has pegado nada');
+    if (lineas.length > 2000) throw new Error('Demasiadas líneas de golpe (máximo 2000)');
 
-  // 2. Desde el corte, el importe TIENE que ser el de BOLT. Si alguien lo
-  //    tecleó por otra vía, o un recálculo se quedó a medias, aquí sale.
-  const desviados = [];
-  for (const q of quincenasDesdeCorte()) {
-    const api = new Map((await efectivoBolt(q)).map(c => [String(c.conductorId || c.boltUuid), c.importe]));
-    const guard = (await db.consulta(
-      `SELECT COALESCE(conductor_id::text, bolt_uuid) AS k, importe
-         FROM recaudacion_cierre WHERE anio = $1 AND mes = $2 AND quincena = $3`,
-      [q.anio, q.mes, q.quincena])).rows;
-    guard.forEach(g => {
-      const dice = api.get(String(g.k)) || 0;
-      if (!casi(dice, g.importe)) {
-        desviados.push(`${etiquetaQuincena(q)} · ${g.k}: guardado ${dosDec(g.importe)} € y BOLT dice ${dosDec(dice)} €`);
-      }
-      api.delete(String(g.k));
+    const padron = (await db.consulta(
+      `SELECT c.id, COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
+         FROM conductor c WHERE NOT c.es_centinela`)).rows;
+    // Se compara sin tildes, sin dobles espacios y en minúsculas: el cierre de
+    // BOLT escribe los nombres a su manera y así casan igual.
+    const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const porNombre = new Map();
+    padron.forEach(c => {
+      const k = llave(c.nombre);
+      // Un nombre repetido no se adivina: se deja fuera y se avisa.
+      porNombre.set(k, porNombre.has(k) ? null : c);
     });
-    api.forEach((v, k) => desviados.push(`${etiquetaQuincena(q)} · ${k}: BOLT dice ${dosDec(v)} € y no hay cierre`));
+
+    const casados = [], sinCasar = [], ambiguos = [];
+    for (const linea of lineas) {
+      // "Nombre <tab|;|,| 2+ espacios> importe". El importe es lo último.
+      const m = linea.match(/^(.*?)[\t;]\s*([-\d.,]+)\s*€?$/) || linea.match(/^(.*?)\s{2,}([-\d.,]+)\s*€?$/)
+             || linea.match(/^(.*?)\s+([-\d.,]+)\s*€?$/);
+      if (!m) { sinCasar.push({ linea, porque: 'no se ve el importe' }); continue; }
+      const nombre = m[1].trim();
+      let importe;
+      try { importe = aCentimos(m[2].replace(/\.(?=\d{3}\b)/g, '').replace(',', '.')); }
+      catch (_) { sinCasar.push({ linea, porque: 'el importe no se entiende' }); continue; }
+      const c = porNombre.get(llave(nombre));
+      if (c === null) { ambiguos.push({ linea, porque: 'hay dos conductores con ese nombre' }); continue; }
+      if (!c) { sinCasar.push({ linea, porque: 'ese nombre no está en la plantilla' }); continue; }
+      casados.push({ conductorId: c.id, nombre: c.nombre, importe: +(importe / 100).toFixed(2) });
+    }
+
+    // Se guarda TODO junto o nada: media carga es peor que ninguna, porque nadie
+    // sabría por dónde se quedó.
+    if (casados.length) {
+      await db.transaccion(async cli => {
+        for (const c of casados) {
+          await cli.query(
+            `INSERT INTO ${TC} (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
+             VALUES ($1, $2, $3, $4, $5, 'importado', $6)
+             -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
+       -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
+       -- entera falla con "no unique or exclusion constraint matching".
+       ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
+                SET importe = EXCLUDED.importe, origen = 'importado',
+                    usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
+            [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+        }
+      });
+    }
+    return {
+      quincena: { ...q, etiqueta: etiquetaQuincena(q) },
+      guardados: casados.length,
+      total: +casados.reduce((a, c) => a + c.importe, 0).toFixed(2),
+      sinCasar: [...sinCasar, ...ambiguos],
+    };
   }
-  mete('Desde el corte, cada importe es el que dice BOLT', !desviados.length,
-    desviados.length ? `${desviados.length} fila(s) desviadas` : 'todas coinciden', desviados);
-
-  // 3. Antes del corte manda el Excel: ahí no puede haber nada venido de BOLT.
-  const intrusos = (await db.consulta(
-    `SELECT count(*)::int n FROM recaudacion_cierre
-      WHERE (anio, mes, quincena) < ($1, $2, $3) AND origen = 'bolt'`,
-    [CORTE.anio, CORTE.mes, CORTE.quincena])).rows[0].n;
-  mete('Antes del corte no hay nada calculado desde BOLT', intrusos === 0,
-    intrusos ? `${intrusos} fila(s) de BOLT en periodos que manda el Excel` : 'ninguna');
-
-  // 4. LA TRAMPA CARA: la misma persona cobrada dos veces en la misma quincena,
-  //    una por su ficha y otra por una cuenta de BOLT ya enlazada con ella.
-  const dobles = (await db.consulta(
-    `SELECT e.conductor_id, u.anio, u.mes, u.quincena, u.bolt_uuid, u.importe
-       FROM recaudacion_cierre u
-       JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = u.bolt_uuid
-                               AND e.conductor_id IS NOT NULL
-       JOIN recaudacion_cierre c ON c.conductor_id = e.conductor_id
-                               AND (c.anio, c.mes, c.quincena) = (u.anio, u.mes, u.quincena)
-      WHERE u.bolt_uuid IS NOT NULL`)).rows;
-  mete('Nadie está cobrado a la vez por su ficha y por su cuenta de BOLT', !dobles.length,
-    dobles.length ? `${dobles.length} caso(s)` : 'ninguno',
-    dobles.map(d => `conductor ${d.conductor_id} · ${etiquetaQuincena(d)} · cuenta ${String(d.bolt_uuid).slice(0, 8)} por ${dosDec(d.importe)} €`));
-
-  // 5. En la caja no puede haber salido más dinero del que entró.
-  mete('El efectivo de la caja no es negativo', caja.efectivo >= -0.005,
-    `${caja.efectivo} €`);
-
-  // 6. Un ajuste suele ser un ARRASTRE: lo que faltó en una quincena se cobra
-  //    en la siguiente, así que el par suma cero y el total sigue siendo el de
-  //    BOLT. Cuando los ajustes de alguien NO suman cero, se le está cobrando
-  //    (o perdonando) algo que BOLT no dice. Puede estar perfectamente
-  //    justificado, así que esto no es un fallo: es una lista que hay que
-  //    repasar, sobre todo después de un recálculo, porque un arrastre puede
-  //    quedarse obsoleto justo cuando su quincena de origen se corrige.
-  const descuadres = (await db.consulta(
-    `SELECT COALESCE(c.conductor_id::text, c.bolt_uuid) AS k,
-            COALESCE(NULLIF(btrim(co.nombre_bolt), ''),
-                     trim(co.nombre || ' ' || COALESCE(co.apellidos, ''))) AS nombre,
-            sum(c.ajuste)::numeric(12,2) AS ajuste,
-            string_agg(DISTINCT c.ajuste_motivo, ' | ') AS motivos
-       FROM recaudacion_cierre c
-       LEFT JOIN conductor co ON co.id = c.conductor_id
-      GROUP BY 1, 2 HAVING sum(c.ajuste) <> 0 ORDER BY 2`)).rows;
-  pruebas.push({
-    titulo: 'Los ajustes de cada persona se compensan entre sí',
-    ok: true,
-    revisar: descuadres.length > 0,
-    detalle: descuadres.length
-      ? `${descuadres.length} persona(s) con un saldo de ajustes distinto de cero`
-      : 'todos suman cero',
-    gente: descuadres.length
-      ? descuadres.map(d => `${d.nombre || d.k}: ${dosDec(d.ajuste)} € — ${d.motivos || 'sin motivo'}`)
-      : undefined,
-  });
 
   return {
-    ok: pruebas.every(p => p.ok),
-    revisar: pruebas.some(p => p.revisar),
-    pruebas,
-    cifras: {
-      deuda: caja.deuda, enMano: suma('enMano'), aRecaudar: caja.pendiente,
-      efectivo: caja.efectivo, gente: tabla.filas.length,
-    },
+    DIAS_REZAGADO,
+    recalcularReciente,
+    quincenasVivas,
+    DENOMINACIONES,
+    ETIQUETA_DEN,
+    TIPOS,
+    TIPO,
+    SALIDAS,
+    TODAS_SALIDAS,
+    CORTE,
+    cuadre,
+    salidas,
+    quincenaDe,
+    quincenaHoy,
+    quincenaValida,
+    rangoQuincena,
+    mueveQuincena,
+    etiquetaQuincena,
+    cortaQuincena,
+    quincenasDesdeCorte,
+    antesDelCorte,
+    cuadro,
+    conEfectivoSinEntregar,
+    ficha,
+    candidatos,
+    comprobar,
+    anotar,
+    anular,
+    guardarCierre,
+    importarCierre,
+    efectivoBolt,
+    calcularDesdeBolt,
+    recalcularTodo,
+    ajustarCierre,
+    SEDE: cfg.sede, SOLO_CUENTAS,
   };
 }
 
-/** El nombre de una línea: el de su ficha, o el que da BOLT si no la tiene. */
-function nombreDe(c, nombres) {
-  return c.conductorId ? (nombres.get(c.conductorId) || '?') : (c.nombre || '?');
-}
-
-/**
- * Suma (o resta) un ajuste a una quincena, con su motivo.
- *
- * Es lo que se usa para arrastrar lo que se cerró mal en la quincena anterior:
- * el importe de BOLT se queda como está —que es la verdad de esos viajes— y el
- * arrastre va aparte, explicado. Un recálculo desde BOLT no lo toca.
- *
- * `ajuste` reemplaza al que hubiera, no se acumula: llamar dos veces por el
- * mismo motivo no puede cobrar dos veces.
- */
-async function ajustarCierre({ conductorId, anio, mes, quincena, ajuste, motivo, usuarioId } = {}) {
-  const id = Number(conductorId);
-  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
-  const q = quincenaValida({ anio, mes, quincena });
-  const m = (motivo || '').trim();
-  const signo = String(ajuste).trim().startsWith('-') ? -1 : 1;
-  const centimos = signo * aCentimos(String(ajuste).replace('-', ''));
-  if (centimos !== 0 && !m) throw new Error('Di por qué se ajusta: un número sin explicación no vale.');
-
-  const r = await db.consulta(
-    `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, ajuste, ajuste_motivo, origen, usuario_id)
-     VALUES ($1, $2, $3, $4, 0, $5, $6, 'manual', $7)
-     -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
-     -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
-     -- entera falla con "no unique or exclusion constraint matching".
-     ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
-        SET ajuste = EXCLUDED.ajuste, ajuste_motivo = EXCLUDED.ajuste_motivo,
-            actualizado_at = now()
-     RETURNING importe, ajuste`,
-    [id, q.anio, q.mes, q.quincena, (centimos / 100).toFixed(2),
-      // Un ajuste que se pone a CERO conserva su motivo si se da uno. Es dinero:
-      // que una corrección desaparezca sin dejar dicho por qué es justo lo que
-      // no puede pasar. Un cero con motivo se lee como "aquí hubo un ajuste y
-      // esta es la razón de que ya no esté".
-      m ? m.slice(0, 255) : null, usuarioId || null]);
-  return { importe: Number(r.rows[0].importe), ajuste: Number(r.rows[0].ajuste),
-    quincena: { ...q, etiqueta: etiquetaQuincena(q) } };
-}
-
-/**
- * Carga el cierre de BOLT de una quincena pegando el Excel tal cual: una línea
- * por conductor, "nombre <tab> importe". Se deja por si un mes hay que meterlo
- * a mano —un histórico viejo, una hoja que mandan de fuera—, pero lo normal es
- * `calcularDesdeBolt`, que no se equivoca escribiendo.
- */
-async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
-  const q = quincenaValida({ anio, mes, quincena });
-  exigeAntesDelCorte(q, 'pegar un cierre del Excel');
-  const lineas = String(texto || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lineas.length) throw new Error('No has pegado nada');
-  if (lineas.length > 2000) throw new Error('Demasiadas líneas de golpe (máximo 2000)');
-
-  const padron = (await db.consulta(
-    `SELECT c.id, COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
-       FROM conductor c WHERE NOT c.es_centinela`)).rows;
-  // Se compara sin tildes, sin dobles espacios y en minúsculas: el cierre de
-  // BOLT escribe los nombres a su manera y así casan igual.
-  const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  const porNombre = new Map();
-  padron.forEach(c => {
-    const k = llave(c.nombre);
-    // Un nombre repetido no se adivina: se deja fuera y se avisa.
-    porNombre.set(k, porNombre.has(k) ? null : c);
-  });
-
-  const casados = [], sinCasar = [], ambiguos = [];
-  for (const linea of lineas) {
-    // "Nombre <tab|;|,| 2+ espacios> importe". El importe es lo último.
-    const m = linea.match(/^(.*?)[\t;]\s*([-\d.,]+)\s*€?$/) || linea.match(/^(.*?)\s{2,}([-\d.,]+)\s*€?$/)
-           || linea.match(/^(.*?)\s+([-\d.,]+)\s*€?$/);
-    if (!m) { sinCasar.push({ linea, porque: 'no se ve el importe' }); continue; }
-    const nombre = m[1].trim();
-    let importe;
-    try { importe = aCentimos(m[2].replace(/\.(?=\d{3}\b)/g, '').replace(',', '.')); }
-    catch (_) { sinCasar.push({ linea, porque: 'el importe no se entiende' }); continue; }
-    const c = porNombre.get(llave(nombre));
-    if (c === null) { ambiguos.push({ linea, porque: 'hay dos conductores con ese nombre' }); continue; }
-    if (!c) { sinCasar.push({ linea, porque: 'ese nombre no está en la plantilla' }); continue; }
-    casados.push({ conductorId: c.id, nombre: c.nombre, importe: +(importe / 100).toFixed(2) });
-  }
-
-  // Se guarda TODO junto o nada: media carga es peor que ninguna, porque nadie
-  // sabría por dónde se quedó.
-  if (casados.length) {
-    await db.transaccion(async cli => {
-      for (const c of casados) {
-        await cli.query(
-          `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
-           VALUES ($1, $2, $3, $4, $5, 'importado', $6)
-           -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
-     -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
-     -- entera falla con "no unique or exclusion constraint matching".
-     ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
-              SET importe = EXCLUDED.importe, origen = 'importado',
-                  usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
-          [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
-      }
-    });
-  }
-  return {
-    quincena: { ...q, etiqueta: etiquetaQuincena(q) },
-    guardados: casados.length,
-    total: +casados.reduce((a, c) => a + c.importe, 0).toFixed(2),
-    sinCasar: [...sinCasar, ...ambiguos],
-  };
-}
-
-module.exports = {
-  DIAS_REZAGADO,
-  recalcularReciente, quincenasVivas,
-  DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS,
-  CORTE, cuadre, salidas,
-  quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
-  etiquetaQuincena, cortaQuincena, quincenasDesdeCorte, antesDelCorte,
-  cuadro, conEfectivoSinEntregar, ficha, candidatos, comprobar, anotar, anular, guardarCierre, importarCierre,
-  efectivoBolt, calcularDesdeBolt, recalcularTodo, ajustarCierre,
+// Madrid, como siempre: sus tablas, el efectivo de bolt_order y el corte de agosto.
+const MADRID = {
+  sede: 'madrid',
+  corte: CORTE_MADRID,
+  tablas: { cierre: 'recaudacion_cierre', mov: 'recaudacion_movimiento' },
+  ordenes: { tabla: 'bolt_order', filtro: '' },
+  soloCuentas: false,
 };
+
+module.exports = { ...crear(MADRID), crear };

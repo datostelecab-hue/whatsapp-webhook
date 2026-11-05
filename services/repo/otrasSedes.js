@@ -14,7 +14,10 @@
 const db = require('../db');
 
 const FALTA_TABLA = '42P01';
+const FALTA_COLUMNA = '42703';   // la columna aún no existe: falta una migración (db/230)
 const sinTablas = e => e && e.code === FALTA_TABLA;
+// Un importe que BOLT puede no mandar: null, no cero (cero es un precio).
+const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
 
 /**
  * Guarda los cambios de estado de una empresa de otra sede. Idempotente: una
@@ -116,10 +119,52 @@ async function guardarPedidos(sede, companyId, pedidos) {
       estado: o.order_status ? String(o.order_status).slice(0, 24) : null,
       mat: String(o.vehicle_license_plate || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 16) || null,
       neto: Number(p.net_earnings) || 0, propina: Number(p.tip) || 0, peaje: Number(p.toll_fee) || 0,
+      // EL PAGO (db/230, 05/11/2026): lo que pide la recaudación de Barcelona,
+      // igual que bolt_order en Madrid. '' = leído y BOLT no lo dice; NULL (en la
+      // base) = un pedido de antes de db/230 que todavía no se ha releído.
+      pago: o.payment_method ? String(o.payment_method).slice(0, 16) : '',
+      precio: num(p.ride_price), dto: num(p.cash_discount), reserva: num(p.booking_fee),
     });
   }
   const filas = [...porClave.values()];
   if (!filas.length) return 0;
+  const base = [filas.map(x => x.ref), filas.map(x => x.driver), filas.map(x => x.mat), filas.map(x => x.estado),
+    filas.map(x => x.creado), filas.map(x => x.fin), filas.map(x => x.neto), filas.map(x => x.propina),
+    filas.map(x => x.peaje), sede, companyId];
+  try {
+    const r = await db.consulta(
+      `INSERT INTO sede_bolt_order
+         (sede, company_id, order_ref, driver_uuid, matricula, estado, creado_ts, finalizado_ts, neto, propina, peaje,
+          metodo_pago, precio, dto_efectivo, tarifa_reserva)
+       SELECT $10, $11, x.ref, x.driver, x.mat, x.estado, to_timestamp(x.creado),
+              CASE WHEN x.fin > 0 THEN to_timestamp(x.fin) END, x.neto, x.propina, x.peaje,
+              x.pago, x.precio, x.dto, x.reserva
+         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::bigint[], $6::bigint[],
+                     $7::numeric[], $8::numeric[], $9::numeric[],
+                     $12::text[], $13::numeric[], $14::numeric[], $15::numeric[])
+              AS x(ref, driver, mat, estado, creado, fin, neto, propina, peaje, pago, precio, dto, reserva)
+       ON CONFLICT (driver_uuid, creado_ts) DO UPDATE SET
+         estado = EXCLUDED.estado,
+         finalizado_ts = COALESCE(EXCLUDED.finalizado_ts, sede_bolt_order.finalizado_ts),
+         matricula = COALESCE(EXCLUDED.matricula, sede_bolt_order.matricula),
+         neto = EXCLUDED.neto, propina = EXCLUDED.propina, peaje = EXCLUDED.peaje,
+         -- Lo que BOLT diga ahora manda; si esta vez no lo dice, se queda lo que había.
+         metodo_pago = COALESCE(NULLIF(EXCLUDED.metodo_pago, ''), sede_bolt_order.metodo_pago, EXCLUDED.metodo_pago),
+         precio = COALESCE(EXCLUDED.precio, sede_bolt_order.precio),
+         dto_efectivo = COALESCE(EXCLUDED.dto_efectivo, sede_bolt_order.dto_efectivo),
+         tarifa_reserva = COALESCE(EXCLUDED.tarifa_reserva, sede_bolt_order.tarifa_reserva),
+         actualizado_at = now()
+       RETURNING id`,
+      [...base, filas.map(x => x.pago), filas.map(x => x.precio), filas.map(x => x.dto), filas.map(x => x.reserva)]);
+    return r.rowCount;
+  } catch (e) {
+    if (sinTablas(e)) return null;
+    // Sin db/230 todavía (el código llega a Render antes de que se aplique):
+    // se guarda como hasta hoy, sin el pago, para que la Visibilidad de
+    // Barcelona no se quede sin datos. Los pedidos se releerán con su pago
+    // cuando esté (ver `primerPedidoSinPago`).
+    if (!(e && e.code === FALTA_COLUMNA)) throw e;
+  }
   try {
     const r = await db.consulta(
       `INSERT INTO sede_bolt_order
@@ -135,13 +180,42 @@ async function guardarPedidos(sede, companyId, pedidos) {
          matricula = COALESCE(EXCLUDED.matricula, sede_bolt_order.matricula),
          neto = EXCLUDED.neto, propina = EXCLUDED.propina, peaje = EXCLUDED.peaje,
          actualizado_at = now()
-       RETURNING id`,
-      [filas.map(x => x.ref), filas.map(x => x.driver), filas.map(x => x.mat), filas.map(x => x.estado),
-       filas.map(x => x.creado), filas.map(x => x.fin), filas.map(x => x.neto), filas.map(x => x.propina),
-       filas.map(x => x.peaje), sede, companyId]);
+       RETURNING id`, base);
     return r.rowCount;
   } catch (e) {
     if (sinTablas(e)) return null;
+    throw e;
+  }
+}
+
+/**
+ * DESDE CUÁNDO SE COBRA EL EFECTIVO EN CADA SEDE (db/230). Barcelona: desde el
+ * 1 de noviembre de 2026 (lo eligió Camilo el 05/11/2026). Es también el corte
+ * de su recaudación (modules/Barcelona/recaudacion.service.js), así que esta es
+ * la única fecha que hay que mirar.
+ */
+const PAGO_DESDE = { barcelona: '2026-11-01' };
+
+/**
+ * El primer pedido TERMINADO de una sede que aún no se ha leído con su pago
+ * (metodo_pago NULL: entró antes de db/230), desde PAGO_DESDE y como mucho de
+ * los últimos 31 días. Es por donde tiene que empezar a releer la ingesta para
+ * que la recaudación tenga el efectivo de esos días. Epoch en segundos, o null
+ * si no queda ninguno o falta db/230.
+ */
+async function primerPedidoSinPago(sede) {
+  const desde = PAGO_DESDE[sede];
+  if (!desde) return null;
+  try {
+    const r = await db.consulta(
+      `SELECT extract(epoch FROM min(creado_ts))::bigint AS t
+         FROM sede_bolt_order
+        WHERE sede = $1 AND estado = 'finished' AND metodo_pago IS NULL
+          AND creado_ts >= ($2::date::timestamp AT TIME ZONE 'Europe/Madrid')
+          AND creado_ts >= now() - interval '31 days'`, [sede, desde]);
+    return r.rows[0] && r.rows[0].t != null ? Number(r.rows[0].t) : null;
+  } catch (e) {
+    if (sinTablas(e) || (e && e.code === FALTA_COLUMNA)) return null;
     throw e;
   }
 }
@@ -158,4 +232,5 @@ async function ultimoPedido(sede) {
   }
 }
 
-module.exports = { guardarStateLogs, ultimoLog, guardarVehiculos, guardarPedidos, ultimoPedido };
+module.exports = { guardarStateLogs, ultimoLog, guardarVehiculos, guardarPedidos, ultimoPedido,
+  PAGO_DESDE, primerPedidoSinPago };

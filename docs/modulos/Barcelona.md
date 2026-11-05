@@ -133,6 +133,21 @@ Camilo: *«pon también las citas del taller para Barcelona… pero sin envíos 
 - **Lo que lo decide es la sede del coche**, no la pantalla. Una cita de un coche que no es de Madrid es de agenda (`citas.service.esAgenda`), y avisar, marcarla avisada, la llamada de Control y la respuesta a un botón la rechazan aunque alguien mande su id a mano. El aviso automático de las 10:00 solo busca citas de Madrid (`repo.paraAvisar(fecha, sede)`, que sin sede se niega a buscar). Las listas de Madrid y de Control piden solo las de Madrid.
 - Van en la **misma tabla** (`taller_cita`, db/187): no hace falta migración.
 
+## La recaudación del efectivo (`/barcelona/recaudacion`, 05/11/2026, db/230)
+
+Camilo: *«Déjame listo la recaudación de efectivo en Barcelona, de la misma forma»*. Es **la misma recaudación de Madrid** ([[Administracion]]): la misma pantalla y el mismo código, con quincenas, el cierre de BOLT congelado, ajustes con motivo, caja, cambio, transferencias y «¿Cuadra?». Lo que cambia:
+
+- **Su caja y su deuda, aparte.** Van en sus tablas, `sede_recaudacion_cierre` y `sede_recaudacion_movimiento` (db/230: las de Madrid copiadas con `LIKE … INCLUDING ALL`, vacías). Nada de lo que se cobre aquí suma en Madrid, ni al revés.
+- **Su efectivo sale de sus pedidos** (`sede_bolt_order`), no de `bolt_order`. db/182 no guardaba el método de pago ni el desglose del precio; db/230 los añade, y la ingesta los guarda desde entonces (`otrasSedes.guardarPedidos`).
+- **Sin fichas: cada persona es su cuenta de BOLT** de la empresa de Barcelona (`soloCuentas`). Cobrar, la transferencia, el cambio, el ajuste y la ficha van por la cuenta (`bolt_uuid`), y una cuenta de Madrid se rechaza. En el cuadro salen las que deben algo, las que tienen movimientos y las que tienen el efectivo activado sin estar desactivadas. «En plantilla» quiere decir **cuenta activa en BOLT**.
+- **La deuda empieza el 1 de noviembre de 2026** (lo eligió Camilo, para no sacar como deuda lo de octubre). Es el corte, y sale de `PAGO_DESDE` en `services/repo/otrasSedes.js`, que es también desde cuándo se relee el pago. No hay «Pegar a mano»: antes del corte no hay histórico que volcar.
+- **Los pedidos de antes de db/230 se releen solos.** Del 1 de noviembre en adelante, los pedidos terminados sin método de pago se le vuelven a pedir a BOLT en la tarea de pedidos de otras sedes (`primerPedidoSinPago`, como mucho de los últimos 31 días). Releídos todos, la ventana vuelve a ser la de 48 h. Hasta entonces, la deuda de esos días sale baja.
+- **Antes de aplicar db/230**, los pedidos de Barcelona se siguen guardando como hasta hoy (sin el pago), para que su Visibilidad no se quede sin datos. La recaudación de Barcelona da error hasta que se aplique, y su cron se calla.
+- **Llaves propias** (lo eligió Camilo): `/barcelona/recaudacion` para entrar y cobrar, y `/barcelona/recaudacion/nomina` para los descuentos de nómina. Las dos nacen apagadas para todo el mundo, como las de Madrid, y se dan en `/usuarios`. El menú de Barcelona solo enseña «Recaudación» a quien tiene la llave.
+- **El cron** de cada media hora (`app.js`) pone al día Madrid y, aparte, Barcelona.
+
+Comprobador: `scripts/comprobar-recaudacion-sedes.js` (sin base: mira que cada sede solo nombre sus tablas y su efectivo).
+
 ## Las piezas
 
 ```
@@ -140,6 +155,8 @@ barcelona.controller.js   las rutas (sin lógica)
 mantenimientos.controller.js · mantenimientos.service.js
                           Mantenimientos: el taller de Madrid con la sede fijada en Barcelona
 visibilidad.service.js    la Visibilidad: los datos de Barcelona con las cuentas de Madrid
+recaudacion.controller.js · recaudacion.service.js
+                          la recaudación de Madrid armada con sus tablas, su efectivo y su llave
 barcelona.service.js      el planificador (el tablero de un día, las comprobaciones al asignar) y el reporte
 barcelona.horas.js        puro: de los apuntes de BOLT a los ratos de trabajo, y el reporte con el plan
 barcelona.excel.js        el Excel del reporte

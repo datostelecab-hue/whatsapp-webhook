@@ -23,7 +23,9 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const LOCAL = 'postgresql://telecab:pruebas@127.0.0.1:5433/telecab';
-const PUERTO = 3100;
+// El 3100, salvo que quien lo arranca dé otro en PORT: la vista previa del
+// escritorio lo hace cuando el 3100 ya lo tiene otra sesión abierta (05/11/2026).
+const PUERTO = Number(process.env.PORT) || 3100;
 
 if (process.env.NODE_ENV === 'production') {
   console.error('NODE_ENV=production: este arranque es solo para el entorno local.');

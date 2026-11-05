@@ -951,6 +951,21 @@ programar('7,37 * * * *', async () => {
   } catch (error) {
     console.error(`❌ [CRON Recaudación] No se pudo poner la deuda al día: ${error.message}`);
   }
+  // BARCELONA (db/230): lo mismo con su efectivo y sus tablas. Aparte, para que
+  // un fallo de una no deje sin poner al día a la otra. Sin db/230 sus tablas no
+  // existen y se calla: no es un fallo, es que falta aplicarla.
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./modules/Barcelona/recaudacion.service').recalcularReciente({});
+    const cambios = (r.cambios || []).length, nuevos = (r.nuevos || []).length;
+    if (cambios || nuevos) {
+      console.log(`💶 [CRON Recaudación Barcelona] Deuda al día: ${nuevos} nuevo(s), ${cambios} cambio(s)`);
+    }
+  } catch (error) {
+    if (error && (error.code === '42P01' || error.code === '42703')) return;
+    console.error(`❌ [CRON Recaudación Barcelona] No se pudo poner la deuda al día: ${error.message}`);
+  }
 }, { timezone: 'Europe/Madrid' });
 
 // Diagnóstico de plantillas de WhatsApp: nombre, IDIOMA y estado exactos tal como los

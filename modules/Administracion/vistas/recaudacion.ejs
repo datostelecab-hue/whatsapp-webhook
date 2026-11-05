@@ -1,10 +1,18 @@
+<%
+  // UNA PANTALLA POR SEDE (05/11/2026). Madrid no pasa nada de esto; Barcelona
+  // (modules/Barcelona/recaudacion.controller.js) pasa su base, su nombre y que
+  // la gente es su cuenta de BOLT (soloCuentas).
+  const BASE = (typeof base !== 'undefined' && base) ? base : '/recaudacion';
+  const SEDE_NOMBRE = (typeof sedeNombre !== 'undefined' && sedeNombre) ? sedeNombre : '';
+  const SOLO_CUENTAS = (typeof soloCuentas !== 'undefined') && !!soloCuentas;
+%>
 <div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
 
   <!-- ── Cabecera ─────────────────────────────────────────────────────── -->
   <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-money-bill-wave text-telecab-gold"></i> Recaudación
+        <i class="fa-solid fa-money-bill-wave text-telecab-gold"></i> Recaudación<%= SEDE_NOMBRE ? ' · ' + SEDE_NOMBRE : '' %>
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
         El efectivo que cobran en la calle, acumulado. <b>Total en BOLT</b> es todo lo que ha cobrado en mano;
@@ -34,9 +42,11 @@
       <button id="r-calcular" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-rotate mr-1"></i> Recalcular desde BOLT
       </button>
+      <% if (!SOLO_CUENTAS) { %>
       <button id="r-cierre" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text" title="Meter las cifras a mano, para un histórico viejo o una hoja de fuera">
         <i class="fa-solid fa-file-import mr-1"></i> Pegar a mano
       </button>
+      <% } %>
     </div>
   </div>
 
@@ -107,9 +117,9 @@
       <option value="">Todos</option>
       <option value="dia">Al día</option>
       <option value="favor">A su favor</option>
-      <option value="sinficha">Sin ficha en la plantilla</option>
+      <% if (!SOLO_CUENTAS) { %><option value="sinficha">Sin ficha en la plantilla</option><% } %>
       <option value="efectivo">Con el efectivo activado en BOLT</option>
-      <option value="efectivofuera">Efectivo activado y ya no trabaja aquí</option>
+      <option value="efectivofuera"><%= SOLO_CUENTAS ? 'Efectivo activado y la cuenta desactivada' : 'Efectivo activado y ya no trabaja aquí' %></option>
     </select>
     <select id="f-dias" aria-label="Días sin pasar por ventanilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"
       title="Cuánto hace que no pasa por ventanilla. Solo mira a quien debe algo: el que está al día y no viene es que no tiene nada que traer">
@@ -120,10 +130,16 @@
       <option value="30">+30 días sin entregar</option>
       <option value="nunca">No ha entregado nunca</option>
     </select>
-    <select id="f-plantilla" aria-label="En plantilla o fuera" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+    <select id="f-plantilla" aria-label="<%= SOLO_CUENTAS ? 'Cuenta activa o desactivada' : 'En plantilla o fuera' %>" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+      <% if (SOLO_CUENTAS) { %>
+      <option value="">Cuentas activas y desactivadas</option>
+      <option value="si">Solo cuentas activas</option>
+      <option value="no">Solo cuentas desactivadas</option>
+      <% } else { %>
       <option value="">En plantilla y fuera</option>
       <option value="si">Solo en plantilla</option>
       <option value="no">Solo los que ya no están</option>
+      <% } %>
     </select>
     <span id="f-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
   </div>
@@ -139,5 +155,5 @@
   <div id="r-salidas" class="mt-4"></div>
 </div>
 
-<script type="application/json" id="datos-servidor"><%- json({ denominaciones: denominaciones || [], tiposMovimiento: tiposMovimiento || [], salidasCaja: salidasCaja || [], etiquetasSalida: etiquetasSalida || salidasCaja || [], puedeNomina: !!(puedeNomina) }) %></script>
+<script type="application/json" id="datos-servidor"><%- json({ denominaciones: denominaciones || [], tiposMovimiento: tiposMovimiento || [], salidasCaja: salidasCaja || [], etiquetasSalida: etiquetasSalida || salidasCaja || [], puedeNomina: !!(puedeNomina), base: BASE, soloCuentas: SOLO_CUENTAS, sedeNombre: SEDE_NOMBRE }) %></script>
 <script src="<%= est('/assets/js/vistas/Administracion/recaudacion.js') %>"></script>

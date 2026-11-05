@@ -194,6 +194,11 @@ const CATALOGO = [
     // caja: quién puede tocarla no se decide por descarte.
     { clave: '/recaudacion',        etiqueta: 'Recaudación del efectivo', manual: true },
     { clave: '/recaudacion/nomina', etiqueta: 'Recaudación · descuentos de nómina (RRHH)', manual: true },
+    // LA CAJA DE BARCELONA (05/11/2026, db/230): aparte de la de Madrid y con
+    // llaves propias —lo eligió Camilo: quien lleva una caja no tiene por qué
+    // llevar la otra—. Las dos igual que las de Madrid, apagadas para todos.
+    { clave: '/barcelona/recaudacion',        etiqueta: 'Barcelona · Recaudación del efectivo', manual: true },
+    { clave: '/barcelona/recaudacion/nomina', etiqueta: 'Barcelona · Recaudación · descuentos de nómina', manual: true },
     // EL AVISO (27/10/2026): una tarjeta, como las de cumpleaños, con quien tiene
     // el efectivo activado en BOLT y nunca ha entregado en ventanilla. Solo para
     // Víctor y Daiane (db/220); ni el superadmin ni el desarrollador por su rol.

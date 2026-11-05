@@ -179,7 +179,15 @@ Comprobador: `scripts/comprobar-aviso-efectivo.js`.
 
 ## El cron
 
-Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia.
+Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia. Después hace lo mismo con la de Barcelona.
+
+## Una recaudación por sede (05/11/2026, db/230)
+
+El repositorio, el servicio y el controlador son **fábricas**: `crear(cfg)`. Madrid es `crear(MADRID)` y exporta lo mismo de siempre (comprobado contra una foto de la copia local: el mismo cuadro, la misma caja, las mismas fichas y comprobaciones). Barcelona se arma con sus tablas, su efectivo y su llave en `modules/Barcelona/recaudacion.service.js`. Ver [[Barcelona#La recaudación del efectivo (`/barcelona/recaudacion`, 05/11/2026, db/230)]].
+
+- `cfg.tablas` y `cfg.ordenes` son lo único que cambia del SQL. Una consulta nueva tiene que usar `${TC}`, `${TM}` y `${ORDENES.tabla}`, nunca el nombre de la tabla escrito: `scripts/comprobar-recaudacion-sedes.js` lo vigila.
+- `cfg.soloCuentas` es Barcelona: no hay fichas, y cada persona es su cuenta de BOLT.
+- **Arreglo de paso en Madrid:** la lista de salidas de caja filtraba por `conductor_id IS NULL`, así que metía como salida lo apuntado a una cuenta sin ficha. Era un descuento de nómina de 145 € del 25/09/2026. Ahora exige también `bolt_uuid IS NULL`.
 
 ## Lo que no se mudó, y por qué
 

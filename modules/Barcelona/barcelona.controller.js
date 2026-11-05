@@ -68,6 +68,8 @@ router.get('/visibilidad', (req, res) => {
 // MANTENIMIENTOS (04/11/2026): el taller de Madrid con los coches de Vehículos
 // que tienen sede Barcelona. Sus rutas, en su fichero.
 router.use('/mantenimientos', require('./mantenimientos.controller'));
+// Su recaudación del efectivo (db/230): la de Madrid con sus tablas y su llave.
+router.use('/recaudacion', require('./recaudacion.controller'));
 
 // ── El planificador ────────────────────────────────────────────────────────
 
