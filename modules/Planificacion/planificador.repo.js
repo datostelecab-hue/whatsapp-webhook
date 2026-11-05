@@ -20,6 +20,7 @@
 // que significa un correturnos, se cambia en un sitio.
 
 const db = require('../../services/db');
+const jornada = require('../Conductores/jornada');
 // El estado y la zona del coche se cambian con historial, como en Vehículos.
 const vig = require('../../services/repo/vigencia');
 
@@ -136,7 +137,7 @@ async function tablero({ dia } = {}) {
               -- El fin del periodo de prueba: lo apuntado o, si nadie lo apuntó,
               -- los 3 meses de convenio desde el alta.
               COALESCE(e.fin_periodo_prueba, (e.alta + interval '3 months'))::date AS fin_prueba,
-              e.alta, e.jornada_horas, e.tipo AS contrato_tipo, e.ett_nombre,
+              e.alta, e.jornada_horas, e.jornada_dias, e.tipo AS contrato_tipo, e.ett_nombre,
               j.dias_ct,
               th.turno_id, t.codigo AS turno_codigo, t.etiqueta AS turno,
               lib.dias                                   AS libra,
@@ -394,7 +395,10 @@ async function tablero({ dia } = {}) {
       turnoId: c.turno_id || null,
       alta: fechaDe(c.alta),
       jornadaHoras: c.jornada_horas == null ? null : Number(c.jornada_horas),
-      diasQueDebeCT: c.dias_ct == null ? null : Number(c.dias_ct),
+      // La modalidad de 40 horas (db/229): «40x5» o «40x4». Vacía si no es de 40.
+      modalidad: Number(c.jornada_horas) === jornada.TOPE_HORAS ? `40x${c.jornada_dias || 5}` : '',
+      // Un correturno de 40x4 trabaja 4 días; el resto, lo que diga el catálogo.
+      diasQueDebeCT: jornada.diasDeCt(c.jornada_horas, c.jornada_dias, c.dias_ct),
       contrato: c.jornada_horas ? `${Number(c.jornada_horas)}h${c.contrato_tipo === 'ett' ? ' ETT' : ''}` : '',
       esEtt: c.contrato_tipo === 'ett',
       ettNombre: c.ett_nombre || '',

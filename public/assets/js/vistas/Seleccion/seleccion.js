@@ -5,6 +5,10 @@
 (function () {
   const DEL_SERVIDOR = Casa.datos();
   const CAT = DEL_SERVIDOR.catalogos;
+  // La de 40 horas se reparte en 40x5 o 40x4 (db/229). El resto, las del catálogo.
+  const opcionesJornadaContratar = () => (CAT.jornadas || []).flatMap(x => Number(x.horas) === 40
+    ? [{ valor: '40x5', texto: '40x5' }, { valor: '40x4', texto: '40x4' }]
+    : [{ valor: String(Number(x.horas)), texto: x.etiqueta }]);
   const VACANTES = DEL_SERVIDOR.vacantes;
   const DOCS = DEL_SERVIDOR.documentos;
   const { fecha, hace, esc } = Listado.fmt;
@@ -284,7 +288,9 @@
     const v = await Dialogo.formulario('Contratar a ' + d.quien, [
       { id: 'alta', etiqueta: 'Fecha de inicio', tipo: 'fecha',
         valor: fecha(d.inicio_previsto), obligatorio: true },
-      { id: 'jornadaHoras', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
+      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', obligatorio: true,
+        valor: Number(d.jornada_horas) === 40 ? '40x5' : (d.jornada_horas ? String(Number(d.jornada_horas)) : ''),
+        opciones: opcionesJornadaContratar() },
       { id: 'tipo', etiqueta: 'Tipo de contrato', tipo: 'lista', obligatorio: true,
         valor: /ETT/i.test(d.tipo_contrato || '') ? 'ett' : 'propia',
         opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },

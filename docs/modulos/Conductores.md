@@ -444,3 +444,16 @@ Pero no se fueron de balde. Al mirarlas apareció un fallo que llevaba **desde q
 `modules/Conductores/conductores.repo.js` son ~1.236 líneas con reglas dentro que son de servicio: qué campos puede tocar cada rol, qué pasa al dar de baja. Se movió el módulo primero porque mover y partir a la vez es cómo se pierde una ruta sin enterarse.
 
 `services/repo/alta.js` sigue fuera del módulo, pero ya solo lee (`porTelefono`, `partirNombre`) y hace el paso a propia. **Dar de alta** se mudó a `conductores.service.realizarAlta` el 01/10/2026 —el mismo código—, y el paso a propia recibe de quien llama la comprobación de papeles de Selección (`faltaPara`) en vez de ir a buscarla a su repositorio. Ver [[ARQUITECTURA]].
+
+## La modalidad de 40 horas: 40x5 y 40x4 (05/11/2026, db/229)
+
+Un contrato de 40 horas se reparte en **5 días (40x5)**, que es la de por defecto, o en **4 días (40x4)**, 10 horas al día, para correturnos de 4 días. Al contratar (por ETT o propia), en la ficha y al pasar a plantilla propia, el desplegable de Jornada ofrece las dos.
+
+- **Dónde se guarda:** `jornada_dias` en `conductor_periodo_empleo` y en `candidatura` (db/229). Vale 4 o 5 solo con 40 horas; en el resto va vacío. Todo contrato abierto de 40 horas quedó en 5.
+- **Un solo sitio para leerla:** `modules/Conductores/jornada.js` (`parseJornada`, `valorJornada`, `OPCIONES_JORNADA`, `diasDeCt`). Ningún alta escribe la pareja a mano.
+- **Al contratar** se elige la modalidad en el desplegable. Si la candidatura ya tenía 40 horas, sale 40x5 por defecto: hay que cambiarla si es de 40x4.
+- **Planificador:** la tarjeta del cuadrante lleva el ítem **40x4** junto a «libra» o «días». El 40x5 sale como siempre, sin ítem. La vista vertical todavía no lo muestra.
+- **Días que exige un correturno de 40x4:** 4 (`diasDeCt`). Pendiente de decidir: un correturno de 40x5 cuenta hoy 6 días, porque lo lee el catálogo `cat_jornada.dias_ct`, y la modalidad dice 5. Mientras no se decida, se queda en 6.
+- **Límite:** el generador de vacantes sigue ofreciendo 32 y 40 por días cubiertos. La modalidad se elige al contratar, no desde la vacante.
+- **Ley:** 40x4 son 10 horas al día. El Estatuto fija 9 horas diarias salvo que el convenio diga otra cosa: hay que comprobarlo antes de ofrecerlo.
+- **Comprobador:** `node scripts/comprobar-jornada-modalidad.js`.

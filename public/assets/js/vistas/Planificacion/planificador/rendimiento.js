@@ -112,7 +112,8 @@
           ${tel ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(tel)}</span>`
                 : `<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>`}
           <span data-barrio class="block text-[11px] ${(persona && persona.barrio) ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition" title="La zona del conductor (Aluche, San Blas…): pincha para cambiarla"><i class="fa-solid fa-house text-[9px]"></i> ${(persona && persona.barrio) ? esc(persona.barrio) : 'poner zona'}</span>
-          <span class="block text-xs text-telecab-muted">${esc(sub)}</span>
+          <span class="block text-xs text-telecab-muted">${esc(sub)}${persona && persona.modalidad === '40x4'
+            ? ' <span class="ml-1 px-1 rounded bg-telecab-gold/15 text-telecab-gold text-[10px] font-semibold" title="Contrato de 40 horas repartido en 4 días">40x4</span>' : ''}</span>
           ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
           ${fut}
           ${vacHtml}

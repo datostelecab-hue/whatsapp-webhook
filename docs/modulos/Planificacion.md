@@ -422,3 +422,10 @@ Comprobado ese día con una prueba que, cada vez que reutilizaba una pieza, la r
 `modules/Planificacion/planificador.repo.js` son ~2.262 líneas con reglas dentro que son de servicio: qué pasa al cambiar un coche, cómo se encadena un relevo. Se movió el módulo primero — mover y partir a la vez es como se pierde una ruta sin enterarse.
 
 `agenda` y `matching` se **borraron** el 15/09/2026: la agenda de tráfico era un segundo sitio para mirar lo que ya está en Plantilla y además era la única pantalla que **escribía** en `AGENDA_V2`. Ver [[Flota viva]] y [[Glosario]].
+
+## Correturnos de 40x4 (05/11/2026)
+
+- La tarjeta de un correturno de **40x4** lleva el ítem «40x4» junto a sus días. El de 40x5 no lleva ítem.
+- Un correturno de 40x4 exige **4 días** (`diasDeCt` en `modules/Conductores/jornada.js`), con el suelo de 4 de siempre. Los demás siguen el catálogo.
+- La vista vertical todavía no muestra el ítem.
+- Lo que falta decidir (un correturno de 40x5 cuenta 6 días hoy, y la modalidad dice 5) está en [[Conductores]].

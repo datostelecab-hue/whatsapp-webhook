@@ -17,6 +17,7 @@
 const db = require('../../services/db');
 const vig = require('../../services/repo/vigencia');
 const audit = require('../../services/repo/auditoria');
+const jornada = require('./jornada');
 // Lo que cabe en cada columna de texto, para decirlo antes de que falle (09/10/2026).
 const largos = require('../../services/repo/largos');
 
@@ -75,7 +76,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
 
            -- Empleo vigente en la fecha: propia o ETT, desde cuándo, y con qué
            -- jornada (para poder cambiarla desde la ficha sin adivinarla).
-           e.tipo AS empleo_tipo, e.ett_nombre, e.alta, e.baja, e.jornada_horas,
+           e.tipo AS empleo_tipo, e.ett_nombre, e.alta, e.baja, e.jornada_horas, e.jornada_dias,
            COALESCE(e.fecha_antiguedad, e.alta) AS antiguedad,
            -- Años de casa, que es lo que se mira de un vistazo.
            round(EXTRACT(EPOCH FROM (age((SELECT dia FROM ref),
@@ -1355,6 +1356,7 @@ async function crear(datos, { usuarioId, rol } = {}) {
   if (!d.alta) throw new Error('Falta la fecha de alta');
   const tipo = d.tipo === 'ett' ? 'ett' : 'propia';
   if (tipo === 'ett' && !String(d.ettNombre || '').trim()) throw new Error('Falta el nombre de la ETT');
+  const jor = jornada.parseJornada(d.jornadaHoras);
 
   return db.transaccion(async cli => {
     const { id, nombre } = await crearPersona(datos, { usuarioId, rol, cli });
@@ -1365,11 +1367,11 @@ async function crear(datos, { usuarioId, rol } = {}) {
     // periodo por otra vía.
     await cli.query(
       `INSERT INTO conductor_periodo_empleo
-         (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas,
+         (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas, jornada_dias,
           fin_periodo_prueba, usuario_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [id, tipo, tipo === 'ett' ? String(d.ettNombre).trim() : null, d.alta,
-       d.antiguedad || null, d.jornadaHoras || null, d.finPrueba || null, usuarioId || null]);
+       d.antiguedad || null, jor.horas, jor.dias, d.finPrueba || null, usuarioId || null]);
     await encenderBloqueoAlEntrar(cli, id, usuarioId);
 
     if (d.turnoId) {
@@ -1399,16 +1401,17 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
                               jornadaHoras, finPrueba }, { usuarioId } = {}) {
   if (!alta) throw new Error('Falta la fecha de alta');
   if (tipo === 'ett' && !ettNombre) throw new Error('Falta el nombre de la ETT');
+  const jor = jornada.parseJornada(jornadaHoras);
   return db.transaccion(async cli => {
     const abierto = await vig.abierta('empleo', id);
     if (abierto) throw new Error('Esta persona ya está de alta');
     const r = await cli.query(
       `INSERT INTO conductor_periodo_empleo
-         (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas,
+         (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas, jornada_dias,
           fin_periodo_prueba, usuario_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [id, tipo, tipo === 'ett' ? ettNombre : null, alta, antiguedad || null,
-       jornadaHoras || null, finPrueba || null, usuarioId || null]);
+       jor.horas, jor.dias, finPrueba || null, usuarioId || null]);
     await encenderBloqueoAlEntrar(cli, id, usuarioId);
     return r.rows[0].id;
   });
@@ -1438,38 +1441,41 @@ const TOPE_JORNADA = 40;   // el maximo legal de la jornada ordinaria
  * que se preguntará el día que una nómina no cuadre.
  */
 async function cambiarJornada(id, { jornadaHoras }, { usuarioId } = {}) {
-  const h = Number(jornadaHoras);
-  // La que diga el contrato, no la que quepa en la lista: lo unico que tiene
-  // que ser cierto es que sea un numero entero de horas y no pase del tope.
-  if (!Number.isInteger(h) || h < 1 || h > TOPE_JORNADA) {
-    throw new Error(`Esa jornada no vale: tienen que ser horas enteras, de 1 a ${TOPE_JORNADA}.`);
-  }
+  // «40», «40x5», «40x4» o una jornada sin modalidad. Lo que vale lo dice jornada.js.
+  const jor = jornada.parseJornada(jornadaHoras);
+  if (!jor.horas) throw new Error('Elige la jornada');
+  const etiq = v => (/x/.test(v) ? v : v + ' h');   // «40x4» o «32 h», para el historial
   return db.transaccion(async cli => {
     const e = (await cli.query(
-      `SELECT id, jornada_horas FROM conductor_periodo_empleo
+      `SELECT id, jornada_horas, jornada_dias FROM conductor_periodo_empleo
         WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
     if (!e) throw new Error('Esta persona no tiene ningún contrato abierto');
-    if (Number(e.jornada_horas) === h) return { sinCambios: true, jornadaHoras: h };
+    const antes = e.jornada_horas == null ? null : jornada.valorJornada(e.jornada_horas, e.jornada_dias);
+    const ahora = jornada.valorJornada(jor.horas, jor.dias);
+    if (antes === ahora) return { sinCambios: true, jornadaHoras: jor.horas, jornadaDias: jor.dias };
 
     await cli.query(
-      'UPDATE conductor_periodo_empleo SET jornada_horas = $2 WHERE id = $1', [e.id, h]);
+      'UPDATE conductor_periodo_empleo SET jornada_horas = $2, jornada_dias = $3 WHERE id = $1',
+      [e.id, jor.horas, jor.dias]);
     await audit.registrar({
       tabla: 'conductor', id, usuarioId, cli,
       cambios: [{ campo: 'jornada_horas',
-        antes: e.jornada_horas == null ? null : String(e.jornada_horas) + ' h',
-        ahora: String(h) + ' h' }],
+        antes: antes == null ? null : etiq(antes),
+        ahora: etiq(ahora) }],
     });
-    return { jornadaHoras: h, antes: e.jornada_horas };
+    return { jornadaHoras: jor.horas, jornadaDias: jor.dias, antes: e.jornada_horas };
   });
 }
 
 /** El contrato abierto de una persona: { id, tipo, alta, jornadaHoras }, o null. */
 async function contratoAbierto(id) {
   const r = await db.consulta(
-    `SELECT id, tipo, ett_nombre, to_char(alta, 'YYYY-MM-DD') AS alta, jornada_horas
+    `SELECT id, tipo, ett_nombre, to_char(alta, 'YYYY-MM-DD') AS alta, jornada_horas, jornada_dias
        FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [Number(id)]);
   const e = r.rows[0];
-  return e ? { id: Number(e.id), tipo: e.tipo, ettNombre: e.ett_nombre || null, alta: e.alta, jornadaHoras: e.jornada_horas } : null;
+  return e ? { id: Number(e.id), tipo: e.tipo, ettNombre: e.ett_nombre || null, alta: e.alta,
+               jornadaHoras: e.jornada_horas, jornadaDias: e.jornada_dias,
+               jornadaValor: jornada.valorJornada(e.jornada_horas, e.jornada_dias) } : null;
 }
 
 /**
@@ -1957,7 +1963,7 @@ async function paraGestoria({ estado = 'alta' } = {}) {
            to_char(pe.alta, 'YYYY-MM-DD') AS alta,
            to_char(pe.baja, 'DD/MM/YYYY') AS baja,
            to_char(pe.fecha_antiguedad, 'DD/MM/YYYY') AS antiguedad,
-           pe.jornada_horas
+           pe.jornada_horas, pe.jornada_dias
       FROM conductor c
       JOIN conductor_periodo_empleo pe ON pe.conductor_id = c.id AND pe.tipo = 'propia'
       LEFT JOIN cat_centro_trabajo ct ON ct.codigo = c.centro_codigo
@@ -2068,7 +2074,8 @@ async function guardarIban(id, valor, { usuarioId } = {}) {
 module.exports = {
   paraGestoria, buscarPersona,
   ibanEnmascarado, guardarIban,
-  JORNADAS, TOPE_JORNADA, cambiarJornada, contratoAbierto, corregirTipoContrato, cambiarAlta,
+  JORNADAS, TOPE_JORNADA, OPCIONES_JORNADA: jornada.OPCIONES_JORNADA,
+  cambiarJornada, contratoAbierto, corregirTipoContrato, cambiarAlta,
   campos,
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,

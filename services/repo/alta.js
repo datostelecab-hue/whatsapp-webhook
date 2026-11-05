@@ -231,6 +231,8 @@ async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, m
   const dia = desde || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dia))) throw new Error('Falta el primer día de contrato propio (AAAA-MM-DD)');
   const audit = require('./auditoria');
+  const jornada = require('../../modules/Conductores/jornada');
+  const jor = jornada.parseJornada(jornadaHoras);
 
   return db.transaccion(async cli => {
     // LAS FECHAS, COMO TEXTO DESDE LA BASE (27/10/2026). Un DATE llega a Node
@@ -274,9 +276,9 @@ async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, m
 
     const r = await cli.query(
       `INSERT INTO conductor_periodo_empleo
-         (conductor_id, tipo, alta, fecha_antiguedad, jornada_horas, fin_periodo_prueba, usuario_id)
-       VALUES ($1,'propia',$2,$3,$4,$5,$6) RETURNING id`,
-      [id, dia, ett.fecha_antiguedad || ett.alta, jornadaHoras || null,
+         (conductor_id, tipo, alta, fecha_antiguedad, jornada_horas, jornada_dias, fin_periodo_prueba, usuario_id)
+       VALUES ($1,'propia',$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [id, dia, ett.fecha_antiguedad || ett.alta, jor.horas, jor.dias,
        finPrueba || null, usuarioId || null]);
 
     await audit.registrar({

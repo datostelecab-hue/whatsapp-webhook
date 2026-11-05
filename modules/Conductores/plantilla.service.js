@@ -34,7 +34,7 @@ const alta = require('../../services/repo/alta');
 async function paraLaPantalla() {
   const catalogos = await con.catalogos()
     .catch(e => { console.error('❌ [PLANTILLA] catálogos:', e.message); return { situaciones: [], turnos: [], tipos: [] }; });
-  return { catalogos, jornadas: con.JORNADAS };
+  return { catalogos, jornadas: con.OPCIONES_JORNADA };
 }
 
 /**

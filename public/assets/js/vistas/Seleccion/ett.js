@@ -5,6 +5,10 @@
 (function () {
   const DEL_SERVIDOR = Casa.datos();
   const CAT = DEL_SERVIDOR.catalogos;
+  // La de 40 horas se reparte en 40x5 o 40x4 (db/229). El resto, las del catálogo.
+  const opcionesJornadaContratar = () => (CAT.jornadas || []).flatMap(x => Number(x.horas) === 40
+    ? [{ valor: '40x5', texto: '40x5' }, { valor: '40x4', texto: '40x4' }]
+    : [{ valor: String(Number(x.horas)), texto: x.etiqueta }]);
   // Los contratos del alta rápida, en horas: los decide el servidor (ett.service).
   const CONTRATOS = DEL_SERVIDOR.contratos;
   const { fecha, fechaHora, esc } = Listado.fmt;
@@ -360,7 +364,7 @@
         opciones: (CAT.turnos || []).filter(x => x.asignable).map(x => ({ valor: x.id, texto: x.etiqueta })),
         ayuda: 'Se le pone sola en su ficha y en el planificador. Con vacante, si no la marcas, es la de la vacante.' },
       { id: 'jornadaHoras', etiqueta: 'Contrato', tipo: 'lista', obligatorio: true,
-        opciones: CONTRATOS.map(h => ({ valor: String(h), texto: h + ' horas' })) },
+        opciones: CONTRATOS },
       { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
         ayuda: 'Si eliges una, OCUPA esas plazas desde la fecha de arriba, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
       // LA DIRECCIÓN EXACTA (15/10/2026), en su propio bloque y despiezada como
@@ -509,8 +513,8 @@
       // Jornada y turno salen de la base, no de una lista escrita aquí: si
       // mañana se contrata a 20 horas, se añade una fila y ya está.
       { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', obligatorio: true,
-        valor: d.jornada_horas ? String(Number(d.jornada_horas)) : '',
-        opciones: (CAT.jornadas || []).map(x => ({ valor: String(Number(x.horas)), texto: x.etiqueta })) },
+        valor: Number(d.jornada_horas) === 40 ? '40x5' : (d.jornada_horas ? String(Number(d.jornada_horas)) : ''),
+        opciones: opcionesJornadaContratar() },
       { id: 'turnoId', etiqueta: 'Turno', tipo: 'lista', obligatorio: true,
         valor: d.turno_id || '',
         opciones: (CAT.turnos || []).filter(x => x.asignable)

@@ -36,6 +36,11 @@ const largos = require('../../services/repo/largos');
 //
 // Las columnas se quedan en la base por lo ya escrito; lo que desaparece es el
 // hueco donde teclearlas.
+// Columnas que se escriben por el camino del proceso sin ser casillas del formulario.
+const CAMPOS_INTERNOS = {
+  jornada_dias: { etiqueta: 'Modalidad de 40 horas', tipo: 'numero' },
+};
+
 const CAMPOS = {
   canal:             { etiqueta: 'Canal de origen' },
   experiencia:       { etiqueta: 'Experiencia', tipo: 'booleano' },
@@ -222,14 +227,16 @@ async function adelantarAListo(id, fechaAlta) {
 
 /** La candidatura de quien ya está contratado, abierta ya terminada. Devuelve el id. */
 async function insertarContratada(conductorId, datos = {}) {
+  // `jornadaHoras` y `jornadaDias` ya vienen separados (los parsea el servicio).
   const r = await db.consulta(
     `INSERT INTO candidatura
-       (conductor_id, estado, canal, inicio_previsto, jornada_horas, turno_id, tipo_contrato,
-        responsable, apto_at)
-     VALUES ($1, 'listo_rrhh', $2, $3, $4, $5, $6, $7, now())
+       (conductor_id, estado, canal, inicio_previsto, jornada_horas, jornada_dias, turno_id,
+        tipo_contrato, responsable, apto_at)
+     VALUES ($1, 'listo_rrhh', $2, $3, $4, $5, $6, $7, $8, now())
      RETURNING id`,
     [conductorId, datos.canal || null, datos.alta || null, datos.jornadaHoras || null,
-     datos.turnoId || null, datos.tipoContrato || null, datos.responsable || null]);
+     datos.jornadaDias || null, datos.turnoId || null, datos.tipoContrato || null,
+     datos.responsable || null]);
   return r.rows[0].id;
 }
 
@@ -266,9 +273,12 @@ async function guardarProceso(id, deProceso) {
   await largos.comprobar('candidatura', deProceso, k => (CAMPOS[k] && CAMPOS[k].etiqueta) || k);
   const cols = [], vals = [];
   for (const [k, v] of Object.entries(deProceso)) {
-    if (!CAMPOS[k]) throw new Error(`"${k}" no es un campo del proceso`);
+    // La modalidad de 40 horas (40x4 / 40x5) no es una casilla del formulario:
+    // la escribe Contratar junto con las horas (db/229). Por eso no va en CAMPOS.
+    const def = CAMPOS[k] || CAMPOS_INTERNOS[k];
+    if (!def) throw new Error(`"${k}" no es un campo del proceso`);
     cols.push(`${k} = $${cols.length + 1}`);
-    vals.push(valorDe(CAMPOS[k], v));
+    vals.push(valorDe(def, v));
   }
   vals.push(Number(id));
   await db.consulta(
@@ -431,7 +441,7 @@ async function paraContratar(id) {
 /** Lo pactado durante la selección: vale como contrato si no se dice otra cosa. */
 async function pactado(id) {
   return (await db.consulta(
-    'SELECT inicio_previsto, jornada_horas, tipo_contrato, canal, turno_id FROM candidatura WHERE id = $1',
+    'SELECT inicio_previsto, jornada_horas, jornada_dias, tipo_contrato, canal, turno_id FROM candidatura WHERE id = $1',
     [Number(id)])).rows[0];
 }
 

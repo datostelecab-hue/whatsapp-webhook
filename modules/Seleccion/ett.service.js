@@ -19,6 +19,7 @@ const vacantes = require('./vacantes.service');
 const excel = require('./ett.excel');
 const conductores = require('../Conductores/conductores.service');   // la puerta de Conductores
 const incorporaciones = require('./incorporaciones.repo');
+const modalidad = require('../Conductores/jornada');
 
 /** Las candidaturas que vienen de la agencia. */
 const CANAL = 'bolsa_ett';
@@ -49,7 +50,13 @@ const ettNombre = pedido =>
  * el cuadrante. Meter ahí las 20 horas cambiaría las dos cosas sin que nadie lo
  * haya pedido.
  */
+// Las horas que se ofrecen en el alta rápida. El 40 se reparte en 40x5 o 40x4.
 const CONTRATOS = [40, 32, 20];
+const CONTRATOS_OPCIONES = [
+  ...modalidad.DIAS_40.map(d => ({ valor: `40x${d}`, texto: `40x${d}` })),
+  { valor: '32', texto: '32 horas' },
+  { valor: '20', texto: '20 horas' },
+];
 
 // ── Lectura ────────────────────────────────────────────────────────────────
 
@@ -58,7 +65,7 @@ async function paraLaPantalla() {
   const vacio = { estados: [], canales: [], turnos: [], zonas: [], campos: [] };
   const catalogos = await cand.catalogos()
     .catch(e => { console.error('❌ [ETT] catálogos:', e.message); return vacio; });
-  return { catalogos, contratos: CONTRATOS };
+  return { catalogos, contratos: CONTRATOS_OPCIONES };
 }
 
 /**
@@ -257,9 +264,10 @@ async function pasarARRHH(id, datos, quien) {
  * Se decide ANTES de crear nada: un alta que se cae a medias deja una ficha.
  */
 async function jornadaDelAlta(b) {
-  const horas = Number(b.jornadaHoras);
+  const jor = modalidad.parseJornada(b.jornadaHoras);
+  const horas = jor.horas;
   if (!CONTRATOS.includes(horas)) {
-    throw new Error(`Elige el contrato: ${CONTRATOS.join(', ')} horas.`);
+    throw new Error('Elige el contrato: 40x5, 40x4, 32 o 20 horas.');
   }
 
   // Día o noche: los turnos que se eligen al contratar, de la base.
@@ -290,7 +298,8 @@ async function jornadaDelAlta(b) {
   if (vacante && vacante.jornadaHoras && Number(vacante.jornadaHoras) !== horas) {
     avisos.push(`La vacante ${vacante.codigo} es de ${vacante.jornadaHoras} h y el contrato queda de ${horas} h.`);
   }
-  return { horas, turno, deLaVacante: !elegida, avisos };
+  return { horas, dias: jor.dias, valor: modalidad.valorJornada(horas, jor.dias),
+           turno, deLaVacante: !elegida, avisos };
 }
 
 /**
@@ -345,7 +354,7 @@ async function altaRapida(datos, quien) {
   // banquillo, listo para colocarlo.
   const r = await conductores.realizarAlta({
     nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: alta_dia,
-    jornadaHoras: jornada.horas, turnoId: jornada.turno.id,
+    jornadaHoras: jornada.valor, turnoId: jornada.turno.id,
     barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
     ...direccion,
   }, quien);
@@ -365,7 +374,7 @@ async function altaRapida(datos, quien) {
   try {
     candidatura = await cand.abrirContratada(r.id, {
       canal: CANAL, alta: alta_dia, tipoContrato: 'ETT',
-      jornadaHoras: jornada.horas, turnoId: jornada.turno.id,
+      jornadaHoras: jornada.valor, turnoId: jornada.turno.id,
     }, quien);
   } catch (e) {
     console.error('⚠️ [ETT] no se pudo abrir la candidatura:', e.message);

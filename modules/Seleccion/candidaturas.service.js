@@ -23,6 +23,7 @@ const repo = require('./candidaturas.repo');
 const conductores = require('../Conductores/conductores.service');   // la puerta de Conductores
 const docs = require('../Documentos/documentos.service');
 const alta = require('../../services/repo/alta');
+const jornada = require('../Conductores/jornada');
 
 /** Los catálogos que la pantalla necesita para pintar sus desplegables. */
 async function catalogos() {
@@ -189,7 +190,11 @@ async function abrirContratada(conductorId, datos = {}, quien = {}) {
     // Lo que se decidio al darle de alta (jornada y turno, 14/10/2026) manda
     // sobre lo que dijera durante el proceso: es lo que se le contrato.
     const decidido = {};
-    if (datos.jornadaHoras) decidido.jornada_horas = datos.jornadaHoras;
+    if (datos.jornadaHoras) {
+      const jor = jornada.parseJornada(datos.jornadaHoras);
+      decidido.jornada_horas = jor.horas;
+      decidido.jornada_dias = jor.dias;
+    }
     if (datos.turnoId) decidido.turno_id = datos.turnoId;
     if (Object.keys(decidido).length) await guardar(Number(viva.id), decidido, quien);
     return { id: Number(viva.id), conductorId: id, yaExistia: true, adelantada };
@@ -200,7 +205,10 @@ async function abrirContratada(conductorId, datos = {}, quien = {}) {
   // por que aparecer en la bolsa de la agencia.
   if (datos.soloSiExiste) return { id: null, conductorId: id, yaExistia: false, creada: false };
 
-  const nueva = await repo.insertarContratada(id, datos);
+  const jor = jornada.parseJornada(datos.jornadaHoras);
+  const nueva = await repo.insertarContratada(id, {
+    ...datos, jornadaHoras: jor.horas, jornadaDias: jor.dias,
+  });
   return { id: Number(nueva), conductorId: id, yaExistia: false };
 }
 
@@ -322,6 +330,7 @@ async function guardar(id, datos = {}, quien = {}) {
   for (const [k, v] of Object.entries(d)) {
     if (conductores.CAMPOS[k]) dePersona[k] = v;
     else if (repo.CAMPOS[k]) deProceso[k] = v;
+    else if (k === 'jornada_dias') deProceso[k] = v;   // la escribe Contratar con las horas (db/229)
   }
 
   // Antes de escribir nada: que la candidatura no diga otro contrato que la ficha.
@@ -377,7 +386,11 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   // queda dicha aunque el alta falle mas adelante.
   const decidido = {};
   if (contrato.alta) decidido.inicio_previsto = contrato.alta;
-  if (contrato.jornadaHoras) decidido.jornada_horas = contrato.jornadaHoras;
+  if (contrato.jornadaHoras) {
+    const jor = jornada.parseJornada(contrato.jornadaHoras);
+    decidido.jornada_horas = jor.horas;
+    decidido.jornada_dias = jor.dias;
+  }
   if (contrato.turnoId) decidido.turno_id = contrato.turnoId;
   if (contrato.zonaId) decidido.base_zona_id = contrato.zonaId;
   if (Object.keys(decidido).length) await guardar(id, decidido, quien);
@@ -387,7 +400,8 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   const k = (await repo.pactado(id)) || {};
   contrato = {
     alta: contrato.alta || (k.inicio_previsto ? String(k.inicio_previsto).slice(0, 10) : null),
-    jornadaHoras: contrato.jornadaHoras || k.jornada_horas || null,
+    jornadaHoras: contrato.jornadaHoras
+      || (k.jornada_horas ? jornada.valorJornada(k.jornada_horas, k.jornada_dias) : null),
     tipo: contrato.tipo || (/ETT/i.test(k.tipo_contrato || '') ? 'ett' : 'propia'),
     ettNombre: contrato.ettNombre,
     finPrueba: contrato.finPrueba,

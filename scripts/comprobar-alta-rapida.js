@@ -71,9 +71,9 @@ const del = tipo => (hechos.find(h => h[0] === tipo) || [])[1];
     'error: Elige la jornada: día o noche.');
   igual('…y no se ha creado nada', hechos, []);
   igual('Sin contrato: no se da el alta', await intenta({ turnoId: '2' }),
-    'error: Elige el contrato: 40, 32, 20 horas.');
+    'error: Elige el contrato: 40x5, 40x4, 32 o 20 horas.');
   igual('Un contrato que no es de los tres (30 h): tampoco', await intenta({ turnoId: '2', jornadaHoras: '30' }),
-    'error: Elige el contrato: 40, 32, 20 horas.');
+    'error: Elige el contrato: 40x5, 40x4, 32 o 20 horas.');
   igual('TodoTurno no se elige al contratar', await intenta({ turnoId: '3', jornadaHoras: '40' }),
     'error: Esa jornada no vale: tiene que ser de día o de noche.');
   igual('La lista de contratos es la que pidió Camilo', ett.CONTRATOS, [40, 32, 20]);
@@ -81,12 +81,12 @@ const del = tipo => (hechos.find(h => h[0] === tipo) || [])[1];
   // ── 2. Lo que se guarda ────────────────────────────────────────────────────
   let r = await intenta({ turnoId: '2', jornadaHoras: '32' });
   igual('Noche y 32 h: el alta lleva el turno y las horas',
-    [del('alta').turnoId, del('alta').jornadaHoras, del('alta').tipo, del('alta').alta], [2, 32, 'ett', '2026-10-20']);
-  igual('…la candidatura también', [del('candidatura').turnoId, del('candidatura').jornadaHoras], [2, 32]);
+    [del('alta').turnoId, del('alta').jornadaHoras, del('alta').tipo, del('alta').alta], [2, '32', 'ett', '2026-10-20']);
+  igual('…la candidatura también', [del('candidatura').turnoId, del('candidatura').jornadaHoras], [2, '32']);
   igual('…y la pantalla lo puede decir', r.jornada, { turno: 'Noche', horas: 32, deLaVacante: false });
   igual('…sin avisos', r.avisos, []);
   r = await intenta({ turnoId: '1', jornadaHoras: '20' });
-  igual('Día y 20 h', [del('alta').turnoId, del('alta').jornadaHoras], [1, 20]);
+  igual('Día y 20 h', [del('alta').turnoId, del('alta').jornadaHoras], [1, '20']);
 
   // ── 3. Con vacante: la jornada sale sola ───────────────────────────────────
   r = await intenta({ jornadaHoras: '40', vacanteId: 'V-N40' });
@@ -99,7 +99,7 @@ const del = tipo => (hechos.find(h => h[0] === tipo) || [])[1];
   igual('…y no se ha creado nada', hechos, []);
   r = await intenta({ turnoId: '2', jornadaHoras: '20', vacanteId: 'V-N40' });
   igual('Vacante de 40 h con contrato de 20: se da el alta y se avisa',
-    [del('alta').jornadaHoras, r.avisos], [20, ['La vacante V-N40 es de 40 h y el contrato queda de 20 h.']]);
+    [del('alta').jornadaHoras, r.avisos], ['20', ['La vacante V-N40 es de 40 h y el contrato queda de 20 h.']]);
   r = await intenta({ turnoId: '1', jornadaHoras: '32', vacanteId: 'V-D32' });
   igual('Vacante de día, 32 h, jornada de día: sin avisos', [del('alta').turnoId, r.avisos], [1, []]);
   igual('Vacante sin un solo turno y jornada sin marcar: hay que elegirla',
@@ -185,7 +185,7 @@ const del = tipo => (hechos.find(h => h[0] === tipo) || [])[1];
   hechos.length = 0;
   await abrirContratadaDeVerdad(500, { alta: '2026-10-20', jornadaHoras: 32, turnoId: 2 }, quien);
   igual('Ya tenía candidatura: se le escriben la jornada y el turno del alta',
-    hechos, [['proceso', { jornada_horas: 32, turno_id: 2 }]]);
+    hechos, [['proceso', { jornada_horas: 32, jornada_dias: null, turno_id: 2 }]]);
   hechos.length = 0;
   await abrirContratadaDeVerdad(500, { alta: '2026-10-20' }, quien);
   igual('…y si no vienen (alta desde la ficha), no se toca nada', hechos, []);

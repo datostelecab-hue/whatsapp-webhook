@@ -12,7 +12,12 @@
   // cualquier entero de 1 a 40 (db/130): estas jornadas raras —18, 21, 24, 27,
   // 29— son contratos de verdad de la ETT, no erratas. La lista es la de
   // `conductores.repo` (JORNADAS): aquí no se escribe otra.
+  // Las opciones ya vienen con su texto (la 40 se reparte en 40x5 o 40x4: db/229).
   const JORNADAS = DEL_SERVIDOR.jornadas;
+  // La jornada que tiene hoy una persona, en el formato del desplegable. Un 40 sin
+  // modalidad es 40x5, que es la de por defecto.
+  const valorJornadaDe = d => (Number(d.jornada_horas) === 40
+    ? `40x${d.jornada_dias || 5}` : String(d.jornada_horas || 40));
   const ROL = DEL_SERVIDOR.rol;
   // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
   const SOLO_OPERATIVO = ROL === 'trafico';
@@ -583,7 +588,7 @@
       { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', tipo: 'fecha',
         ayuda: 'Si se le respeta la antigüedad de su etapa anterior, ponla aquí.' },
       { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista',
-        opciones: JORNADAS.map(h => ({ valor: h, texto: h + ' horas' })) },
+        opciones: JORNADAS },
       { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', tipo: 'fecha' },
     ], { textoBoton: 'Volver a dar de alta',
          nota: `Ya tiene ${previos} periodo(s) de empleo en su historial. Este se añade, no los sustituye.` });
@@ -648,7 +653,7 @@
       { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', grupo: 'Contrato', tipo: 'fecha',
         ayuda: 'Solo si arrastra antigüedad de antes, por una subrogación.' },
       { id: 'jornadaHoras', etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista',
-        opciones: JORNADAS.map(h => ({ valor: h, texto: h + ' horas' })) },
+        opciones: JORNADAS },
       { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', grupo: 'Contrato', tipo: 'fecha' },
 
       { id: 'turnoId', etiqueta: 'Turno', grupo: 'Cómo trabaja', tipo: 'lista',
@@ -826,13 +831,13 @@
     // ABIERTO, una novación con su propio historial, así que se guarda por su
     // camino (`/jornada`) y solo sale si hay contrato abierto.
     const JORNADA = '__jornada';
-    const jornadaAntes = String(d.jornada_horas || 40);
+    const jornadaAntes = valorJornadaDe(d);
     const conJornada = !SOLO_OPERATIVO && d.empleo_vigente
       && (!soloGrupo || soloGrupo === '*' || soloGrupo === 'Contrato');
     if (conJornada) {
       campos.push({
         id: JORNADA, etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista', valor: jornadaAntes, obligatorio: true,
-        opciones: JORNADAS.map(h => ({ valor: String(h), texto: h + ' horas' })),
+        opciones: JORNADAS,
         ayuda: 'Las horas del contrato que tiene abierto. Cambiarlas no abre uno nuevo ni le toca la '
              + 'antigüedad, y queda en su historial quién lo cambió y de cuánto a cuánto.',
       });
@@ -1013,8 +1018,8 @@
     const v = await pedirDatos(`${d.nombre_completo} pasa a plantilla propia`, [
       { id: 'desde', etiqueta: 'Primer día de contrato propio *', tipo: 'fecha', valor: fecha(new Date()),
         ayuda: 'El periodo de la ETT se cierra el día anterior. No puede ser antes de su alta en la ETT.' },
-      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', valor: String(d.jornada_horas || 40),
-        opciones: JORNADAS.map(h => ({ valor: String(h), texto: h + ' horas' })) },
+      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', valor: valorJornadaDe(d),
+        opciones: JORNADAS },
       { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', tipo: 'fecha' },
       { id: 'motivo', etiqueta: 'Motivo del cierre en la ETT', tipo: 'texto-largo' },
     ], { textoBoton: 'Pasar a plantilla propia',
