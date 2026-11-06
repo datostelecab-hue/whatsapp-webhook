@@ -364,6 +364,26 @@
 
   const tituloCuad = cu => `C${cu.numero}${cu.nombre ? ' · ' + cu.nombre : ''}`;
 
+  /**
+   * Un texto que en pantalla invita a pulsar («asignar», «poner zona») y en el
+   * papel dice lo que hay («—», «sin zona»): los dos van en el HTML y la hoja
+   * de impresión (la vista) enseña uno u otro. Son textos fijos: no se escapan.
+   */
+  const enPapel = (pantalla, papel) => `<span data-no-imprimir>${pantalla}</span><span data-solo-imprimir>${papel}</span>`;
+
+  /**
+   * En el papel, un cuadrante va entero en una hoja (break-inside: avoid)… salvo
+   * que no quepa en ninguna: entonces el navegador lo pasaba igual a la hoja
+   * siguiente y dejaba la de antes en blanco, para partirlo de todos modos. Una
+   * hoja A4 apaisada lleva unas ocho filas de coche con la cabecera de la tabla,
+   * y la primera, con la cabecera de la hoja, la de la zona y la del cuadrante,
+   * seis (medido imprimiendo, con las filas más altas: las de los CT). Con más
+   * de seis se marca `data-largo` y se deja partir, por filas enteras y
+   * repitiendo la cabecera de la tabla.
+   */
+  const FILAS_POR_HOJA = 6;
+  const largo = lista => (lista.length > FILAS_POR_HOJA ? ' data-largo' : '');
+
   /** Los coches de un cuadrante, en el orden que da el servidor. */
   function cochesDe(cu) {
     const orden = (cu.coches || []).map(String);
@@ -414,8 +434,8 @@
     if (ZONA && ZONA !== SIN) {
       return `<div class="px-6 py-10 text-center border border-dashed border-telecab-border rounded-2xl">
         <p class="text-sm font-semibold">${esc(nombreZona(ZONA))} todavía no tiene cuadrantes</p>
-        <p class="mt-1 text-xs text-telecab-muted">Crea uno y mete sus coches con «+ Coche».</p>
-        <button type="button" data-accion="nuevo-cua" class="tc-pulsable mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">
+        <p class="mt-1 text-xs text-telecab-muted" data-no-imprimir>Crea uno y mete sus coches con «+ Coche».</p>
+        <button type="button" data-accion="nuevo-cua" data-no-imprimir class="tc-pulsable mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">
           <i class="fa-solid fa-plus" aria-hidden="true"></i>Nuevo cuadrante en ${esc(nombreZona(ZONA))}</button>
       </div>`;
     }
@@ -424,8 +444,9 @@
       Todavía no hay coches de Barcelona: la ingesta los trae de BOLT cada seis horas, y los de Vehículos salen si tienen la sede Barcelona.</div>`;
   }
 
+  // Instrucciones de pantalla: en el papel no dicen nada.
   function comoEmpezar() {
-    return `<div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 text-sm">
+    return `<div data-no-imprimir class="rounded-2xl border border-telecab-border bg-telecab-card p-4 text-sm">
       <p class="font-semibold flex items-center gap-2"><i class="fa-solid fa-circle-info text-telecab-gold" aria-hidden="true"></i>Todavía no hay cuadrantes</p>
       <p class="text-telecab-muted mt-1">Como en Madrid: crea las zonas con «Zonas», un cuadrante con «+ Cuadrante» y mete sus coches con «+ Coche».
         Mientras, los coches están abajo, en «Coches sin cuadrante», y se planifican igual.</p>
@@ -436,11 +457,11 @@
   function cabeceraZona(clave) {
     const k = cuentaZona(clave);
     const falta = k.huecos ? `${plural(k.huecos, 'hueco')} ${cuando()}` : '';
-    return `<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-4 border-t border-telecab-border first:pt-0 first:border-t-0">
+    return `<div data-cab-zona class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-4 border-t border-telecab-border first:pt-0 first:border-t-0">
       <h3 class="text-base font-semibold whitespace-nowrap">${esc(nombreZona(clave))}</h3>
       <span class="text-xs text-telecab-muted tabular-nums">${plural(k.coches, 'coche')} · ${plural(k.cuadrantes, 'cuadrante')}</span>
       ${falta ? `<span class="text-xs font-semibold text-telecab-warn">${esc(falta)}</span>` : ''}
-      <button type="button" data-zona="${esc(clave)}" class="tc-pulsable ml-auto text-xs text-telecab-muted hover:text-telecab-gold">Ver solo ${clave === SIN ? 'estos' : esc(nombreZona(clave))} <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></button>
+      <button type="button" data-zona="${esc(clave)}" data-no-imprimir class="tc-pulsable ml-auto text-xs text-telecab-muted hover:text-telecab-gold">Ver solo ${clave === SIN ? 'estos' : esc(nombreZona(clave))} <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></button>
     </div>`;
   }
 
@@ -471,37 +492,39 @@
       return `<button type="button" data-accion="ct-cua" data-turno="${turno}" title="${esc(tit)}"
                 class="tc-pulsable inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border hover:border-telecab-gold/50
                        ${nombre ? 'bg-telecab-violet/10 text-telecab-violet border-telecab-violet/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
-                <i class="fa-solid fa-user-group" aria-hidden="true"></i>CT ${nombreTurno(turno)}: ${nombre ? esc(nombre) : 'asignar'}${libra ? ` <span class="text-telecab-muted">libra ${esc(libra)}</span>` : ''}</button>`;
+                <i class="fa-solid fa-user-group" aria-hidden="true"></i>CT ${nombreTurno(turno)}: ${nombre ? esc(nombre) : enPapel('asignar', '—')}${libra ? ` <span class="text-telecab-muted">libra ${esc(libra)}</span>` : ''}</button>`;
     };
-    return `<section data-cuadrante="${esc(cu.id)}" class="scroll-mt-24">
-      <div class="flex flex-wrap items-center gap-2 mb-2">
+    // En el papel, la cabecera se queda en lo que dice (número, nombre, zona, CT):
+    // el lápiz, «+ Coche» y «borrar cuadrante» son de pantalla.
+    return `<section data-cuadrante="${esc(cu.id)}"${largo(lista)} class="scroll-mt-24">
+      <div data-cab-cuadrante class="flex flex-wrap items-center gap-2 mb-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex flex-wrap items-center gap-x-2">
           ${esc(tituloCuad(cu))}
           <span class="text-telecab-muted font-normal normal-case">·
             <button type="button" data-accion="zona-cua" title="Cambiar la zona de este cuadrante: sus coches van con él"
                     class="tc-pulsable inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-telecab-gold">
-              <i class="fa-solid fa-location-dot text-[10px]" aria-hidden="true"></i>${cu.zona ? esc(cu.zona) : 'poner zona'}</button>
+              <i class="fa-solid fa-location-dot text-[10px]" aria-hidden="true"></i>${cu.zona ? esc(cu.zona) : enPapel('poner zona', 'sin zona')}</button>
             · ${plural(bloques.length, 'bloque')}${nSinCT ? ` · ${nSinCT} sin correturnos` : ''}</span>
         </h3>
-        <button type="button" data-accion="nombre-cua" aria-label="Cambiar el nombre del ${esc(tituloCuad(cu))}" title="Ponerle o cambiarle el nombre (el número no cambia)"
+        <button type="button" data-accion="nombre-cua" data-no-imprimir aria-label="Cambiar el nombre del ${esc(tituloCuad(cu))}" title="Ponerle o cambiarle el nombre (el número no cambia)"
                 class="tc-pulsable w-7 h-7 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold">
           <i class="fa-solid fa-pen text-[11px]" aria-hidden="true"></i></button>
-        <button type="button" data-accion="coche-cua" title="Meter en este cuadrante un coche que no esté en ninguno"
+        <button type="button" data-accion="coche-cua" data-no-imprimir title="Meter en este cuadrante un coche que no esté en ninguno"
                 class="tc-pulsable px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50">
           <i class="fa-solid fa-plus" aria-hidden="true"></i> Coche</button>
         ${bloques.length ? `<div class="flex flex-wrap items-center gap-2 ml-1">${chipCT('dia')}${chipCT('noche')}</div>` : ''}
         <span class="ml-auto"></span>
-        <button type="button" data-accion="borrar-cua" class="text-xs text-telecab-muted hover:text-telecab-red"
+        <button type="button" data-accion="borrar-cua" data-no-imprimir class="text-xs text-telecab-muted hover:text-telecab-red"
                 title="Dar de baja el cuadrante. Solo se puede vacío: antes hay que sacar sus coches.">
           <i class="fa-solid fa-trash" aria-hidden="true"></i> borrar cuadrante</button>
       </div>
       ${lista.length ? tablaCoches(lista, true)
-        : `<p class="text-xs text-telecab-muted px-3 py-4 border border-dashed border-telecab-border rounded-2xl text-center">Cuadrante vacío. Pulsa «+ Coche» para meter una matrícula.</p>`}
+        : `<p class="text-xs text-telecab-muted px-3 py-4 border border-dashed border-telecab-border rounded-2xl text-center">Cuadrante vacío.<span data-no-imprimir> Pulsa «+ Coche» para meter una matrícula.</span></p>`}
     </section>`;
   }
 
   function seccionSueltos(lista) {
-    return `<section data-sueltos class="scroll-mt-24 ${ZONA ? '' : 'pt-4 border-t border-telecab-border first:pt-0 first:border-t-0'}">
+    return `<section data-sueltos${largo(lista)} class="scroll-mt-24 ${ZONA ? '' : 'pt-4 border-t border-telecab-border first:pt-0 first:border-t-0'}">
       <div class="flex flex-wrap items-center gap-2 mb-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-muted flex items-center gap-2"
             title="Coches que no están en ningún cuadrante. Se planifican igual; para darles zona, mételos en un cuadrante.">
@@ -513,19 +536,21 @@
 
   // Las columnas: Fijo día/noche siempre; CT día/noche solo si algún coche de la
   // tabla lleva correturnos. Si ninguno (lo de por defecto), sobran (db/203).
+  // `data-col` dice de qué turno es cada columna: el papel la pinta con el color
+  // de ese turno, como Madrid. La de las acciones no se imprime.
   function tablaCoches(lista, enCuadrante) {
     const conColsCT = lista.some(c => c.conCT);
-    const th = (txt, tit) => `<th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap"${tit ? ` title="${esc(tit)}"` : ''}>${txt}</th>`;
-    return `<div class="overflow-x-auto border border-telecab-border rounded-2xl">
+    const th = (txt, tit, col) => `<th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap"${col ? ` data-col="${col}"` : ''}${tit ? ` title="${esc(tit)}"` : ''}>${txt}</th>`;
+    return `<div data-tabla class="overflow-x-auto border border-telecab-border rounded-2xl">
       <table class="w-full text-sm border-collapse">
         <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
           <tr>
             ${th('Matrícula')}
             ${th('Descanso', 'Con correturnos, el bloque del coche: los dos fijos libran a la vez y el correturnos lo cubre. Sin ellos, cada fijo libra sus días.')}
-            ${th('<i class="fa-solid fa-sun mr-1 text-telecab-gold" aria-hidden="true"></i>Fijo día', 'El turno de día: de 00:00 a 24:00.')}
-            ${th('<i class="fa-solid fa-moon mr-1 text-telecab-gold" aria-hidden="true"></i>Fijo noche', 'El turno de noche: de 12:00 a 12:00 del día siguiente.')}
-            ${conColsCT ? th('CT día', 'El correturnos de día: cubre los días que libra el fijo de día.') + th('CT noche', 'El correturnos de noche: cubre los días que libra el fijo de noche.') : ''}
-            <th class="w-20" aria-label="Acciones"></th>
+            ${th('<i class="fa-solid fa-sun mr-1 text-telecab-gold" aria-hidden="true"></i>Fijo día', 'El turno de día: de 00:00 a 24:00.', 'fijo-dia')}
+            ${th('<i class="fa-solid fa-moon mr-1 text-telecab-gold" aria-hidden="true"></i>Fijo noche', 'El turno de noche: de 12:00 a 12:00 del día siguiente.', 'fijo-noche')}
+            ${conColsCT ? th('CT día', 'El correturnos de día: cubre los días que libra el fijo de día.', 'ct-dia') + th('CT noche', 'El correturnos de noche: cubre los días que libra el fijo de noche.', 'ct-noche') : ''}
+            <th class="w-20" aria-label="Acciones" data-no-imprimir></th>
           </tr>
         </thead>
         <tbody>${lista.map(c => filaCoche(c, conColsCT, enCuadrante)).join('')}</tbody>
@@ -553,7 +578,7 @@
     let ct = '';
     if (conColsCT) {
       ct = c.conCT
-        ? `<td class="px-3 py-2.5">${celdaPlaza(c, 'dia', 'ct')}</td><td class="px-3 py-2.5">${celdaPlaza(c, 'noche', 'ct')}</td>`
+        ? `<td class="px-3 py-2.5" data-col="ct-dia">${celdaPlaza(c, 'dia', 'ct')}</td><td class="px-3 py-2.5" data-col="ct-noche">${celdaPlaza(c, 'noche', 'ct')}</td>`
         : `<td colspan="2" class="px-3 py-2.5 align-middle"><p class="text-xs text-telecab-muted flex items-center gap-2 max-w-md">
              <i class="fa-solid fa-user-slash shrink-0" aria-hidden="true"></i>${esc(AVISO_SIN_CT)}</p></td>`;
     }
@@ -567,10 +592,10 @@
         ${chipSinCT}${conCTDesde}
       </td>
       <td class="px-3 py-2.5 whitespace-nowrap">${celdaDescanso(c)}</td>
-      <td class="px-3 py-2.5">${celdaPlaza(c, 'dia', 'fijo')}</td>
-      <td class="px-3 py-2.5">${celdaPlaza(c, 'noche', 'fijo')}</td>
+      <td class="px-3 py-2.5" data-col="fijo-dia">${celdaPlaza(c, 'dia', 'fijo')}</td>
+      <td class="px-3 py-2.5" data-col="fijo-noche">${celdaPlaza(c, 'noche', 'fijo')}</td>
       ${ct}
-      <td class="px-2 py-2.5 text-right whitespace-nowrap">
+      <td class="px-2 py-2.5 text-right whitespace-nowrap" data-no-imprimir>
         <button type="button" data-accion="${enCuadrante ? 'sacar' : 'meter'}" aria-label="${enCuadrante ? 'Sacar del cuadrante' : 'Meter en un cuadrante'} ${esc(c.matricula)}"
                 title="${enCuadrante ? 'Sacar del cuadrante (queda en «Coches sin cuadrante»)' : 'Meter en un cuadrante'}"
                 class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition">
@@ -618,9 +643,10 @@
     const datos = `data-accion="plaza" data-turno="${turno}" data-rol="${rol}"`;
     let html;
     if (!p) {
-      html = `<button type="button" ${datos} title="Plaza libre. Pincha para poner a alguien."
+      // En el papel no hay nada que pulsar: dice «Sin conductor», sin el borde de botón.
+      html = `<button type="button" ${datos} data-plaza-libre title="Plaza libre. Pincha para poner a alguien."
                 class="tc-pulsable text-left w-full px-2 py-1 rounded-lg border border-dashed border-telecab-border text-telecab-muted text-sm hover:border-telecab-gold/60 hover:text-telecab-text">
-                <i class="fa-solid fa-plus text-xs mr-1" aria-hidden="true"></i>Asignar</button>`;
+                ${enPapel('<i class="fa-solid fa-plus text-xs mr-1" aria-hidden="true"></i>Asignar', 'Sin conductor')}</button>`;
     } else {
       const sub = rol === 'fijo'
         ? (() => { const d = diasTexto(c.conCT ? c.descanso : (c.descansoTurno || {})[turno]); return d ? 'libra ' + d : 'no libra'; })()
@@ -711,6 +737,59 @@
           ${p.telefono ? `<span class="text-telecab-muted font-mono tabular-nums">${esc(p.telefono)}</span>` : ''}
           ${chipPromedio(p.promedio)}</span>`).join('')
       : '<span class="text-xs text-telecab-muted">Todos tienen plaza.</span>';
+  }
+
+  // ── La hoja impresa ─────────────────────────────────────────────────────────
+  // Camilo, 06/11/2026: «en Barcelona permíteme imprimir el planificador con casi
+  // el mismo formato que se pinta el front». Se imprime la pantalla tal cual está
+  // (el día, la zona abierta y lo que deja el buscador); la hoja de estilos de
+  // impresión está en la vista. Aquí solo se rellena la cabecera del papel, que
+  // en pantalla no existe: un papel no se actualiza, así que dice de qué día es,
+  // de qué zona y cuándo se imprimió.
+
+  /**
+   * Las cifras de la hoja. Sin zona abierta, las del servidor (las de arriba en
+   * pantalla). Con una zona, las de sus coches, con la misma regla que el
+   * resumen del servidor (barcelona.service): solo los coches activos, «turnos»
+   * son los que tienen que salir (cubiertos + huecos) y los que libran van
+   * aparte. «Sin plaza» es de toda Barcelona: una persona no es de ninguna zona.
+   */
+  function cifrasHoja() {
+    const r = T.resumen || {};
+    if (!ZONA) return r;
+    const coches = (T.coches || []).filter(c => c.activo && zonaDeCoche(c) === ZONA);
+    const estados = coches.flatMap(c => [(c.turnos || {}).dia, (c.turnos || {}).noche]);
+    return {
+      coches: coches.length,
+      turnos: estados.filter(x => x !== 'libra').length,
+      cubiertos: estados.filter(x => x === 'trabaja').length,
+      huecos: estados.filter(x => x === 'hueco').length,
+      libran: estados.filter(x => x === 'libra').length,
+      sinPlaza: r.sinPlaza,
+    };
+  }
+
+  function prepararHoja() {
+    if (!T || !DIA) return;
+    const dia = DIAS_NOMBRE[isodow(DIA) - 1];
+    $('#bp-hoja-dia').textContent = `${dia.charAt(0).toUpperCase() + dia.slice(1)} ${isoAes(DIA)}`;
+    $('#bp-hoja-zona').textContent = !ZONA ? 'Todas las zonas'
+      : ZONA === SIN ? 'Sin zona y coches sin cuadrante' : `Zona ${nombreZona(ZONA)}`;
+    const n = v => Number(v || 0);
+    const k = cifrasHoja();
+    const q = $('#bp-busca').value.trim();
+    $('#bp-hoja-cifras').innerHTML = [
+      `<b>${plural(n(k.coches), 'coche')}</b>`,
+      `<b>${n(k.cubiertos)} / ${n(k.turnos)}</b> turnos cubiertos`,
+      `<b class="${n(k.huecos) ? 'bp-hoja-rojo' : ''}">${plural(n(k.huecos), 'hueco')}</b>`,
+      `<b>${n(k.libran)}</b> ${n(k.libran) === 1 ? 'libra' : 'libran'} (el coche no sale)`,
+      `<b>${n(k.sinPlaza)}</b> sin plaza${ZONA ? ' en Barcelona' : ''}`,
+      // Con el buscador puesto, el papel no tiene todo: se dice.
+      ...(q ? [`solo lo que coincide con «${esc(q)}»`] : []),
+    ].join(' · ');
+    const ahora = new Date();
+    $('#bp-hoja-impreso').textContent = `Impreso el ${pad(ahora.getDate())}/${pad(ahora.getMonth() + 1)}/${ahora.getFullYear()}` +
+      ` a las ${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`;
   }
 
   // ══════════ LAS ACCIONES ══════════
@@ -1226,6 +1305,10 @@
   const listo = () => !!T && !T.faltaMigracion;
   $('#bp-btn-zonas').addEventListener('click', () => { if (listo()) gestionarZonas(); });
   $('#bp-btn-cuadrante').addEventListener('click', () => { if (listo()) nuevoCuadrante(); });
+  // Imprimir: sin tablero todavía, el papel solo diría «Cargando…». La cabecera
+  // de la hoja se rellena justo antes, también si se imprime con Ctrl+P.
+  $('#bp-btn-imprimir').addEventListener('click', () => { if (!T) return; prepararHoja(); window.print(); });
+  window.addEventListener('beforeprint', prepararHoja);
 
   // La zona de la dirección (#zona=eixample) se abre en cuanto llegue el
   // tablero, que es quien sabe qué zonas hay. Sin fecha, el servidor da hoy.
