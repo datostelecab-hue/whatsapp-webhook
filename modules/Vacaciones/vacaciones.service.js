@@ -85,6 +85,11 @@ const UMBRAL_LABORADO = 4 * 3600;         // un día laborado: más de 4 horas
 // planificador) vale 5/7 de día: una semana de cinco (06/11/2026).
 const BAJA_SIN_PLAZA = 5 / 7;
 const UMBRAL_FESTIVO = 6 * 3600;          // más de 6 horas
+// Los festivos de septiembre para atrás NO suman (06/11/2026, Camilo: «quita las
+// vacaciones generadas por festivos de septiembre para atrás ya que esas sí
+// fueron pagas»): el festivo trabajado se pagó en la nómina. Siguen en la
+// ficha, como «pagado»; desde octubre de 2026 suman su día.
+const FESTIVOS_PAGADOS_HASTA = '2026-09-30';
 // Desde aquí las horas de un festivo salen de `fv_tramo` (las calcula el
 // sistema). Antes, de db/198 (historial de BOLT) o no hay datos.
 const NUCLEO_DESDE = '2026-07-01';
@@ -129,10 +134,14 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   const manana = mas(hoy, 1);
   const vacaciones = [], permisos = [], suspensiones = [], asuntos = [];
   let disfrutadas = 0, programadas = 0, diasSuspension = 0, apUsados = 0, apProgramados = 0;
-  // Los días de vacaciones de a…b que cuentan: los que le tocaba trabajar.
-  const deVacaciones = (a, b) => {
+  // Los días de vacaciones de a…b que cuentan: los que le tocaba trabajar. Si
+  // las vacaciones llevan sus dos días de libranza puestos a mano (db/233),
+  // mandan esos: esos días de la semana no cuentan y los demás sí. Las de antes
+  // no los tienen y cuentan con lo que dice el planificador.
+  const deVacaciones = (a, b, libra) => {
     const r = { cuentan: 0, libra: 0, sinCuadrante: 0 };
     for (let d = a; d <= b; d = mas(d, 1)) {
+      if (libra) { if (libranzas.cuentaConLibra(libra, d)) r.cuentan++; else r.libra++; continue; }
       const x = plan ? plan(d) : null;
       if (!libranzas.cuenta(x)) r.libra++;
       else { r.cuentan++; if (x && x.trabaja === null) r.sinCuadrante++; }
@@ -149,12 +158,14 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     const linea = { fila: t.fila, desde: t.desde, hasta: t.hasta, motivo: t.motivo || '', dias: t.hasta ? dias(t.desde, t.hasta) : null };
     if (t.estado === 'vacaciones') {
       if (!pasado && !futuro) continue;
-      // Solo los días que le tocaba trabajar: sus libranzas se mantienen.
-      const ya = pasado ? deVacaciones(t.desde > inicio ? t.desde : inicio, hasta < hoy ? hasta : hoy) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
-      const va = futuro ? deVacaciones(t.desde > manana ? t.desde : manana, t.hasta) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
+      // Solo los días que le tocaba trabajar: sus libranzas se mantienen (las
+      // dos puestas a mano, si las lleva; si no, las del planificador).
+      const libra = (t.libra_dias || []).length === 2 ? t.libra_dias.map(Number) : null;
+      const ya = pasado ? deVacaciones(t.desde > inicio ? t.desde : inicio, hasta < hoy ? hasta : hoy, libra) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
+      const va = futuro ? deVacaciones(t.desde > manana ? t.desde : manana, t.hasta, libra) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
       disfrutadas += ya.cuentan; programadas += va.cuentan;
       vacaciones.push({ ...linea, disfrutados: ya.cuentan, programados: va.cuentan,
-        libranzas: ya.libra + va.libra, sinCuadrante: ya.sinCuadrante + va.sinCuadrante,
+        libranzas: ya.libra + va.libra, sinCuadrante: ya.sinCuadrante + va.sinCuadrante, libraDias: libra,
         quien: t.quien || '', puesto: t.puesto || '',
         // El ticket del que salieron, si salieron de uno.
         ticket: t.ticket_id ? { id: t.ticket_id, codigo: t.ticket_codigo || '' } : null,
@@ -245,6 +256,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     const segundos = (horas && horas.get(f.fecha)) || 0;
     let estado;
     if (f.fecha === hoy) estado = 'hoy';
+    else if (f.fecha <= FESTIVOS_PAGADOS_HASTA) estado = 'pagado';
     else if (!f.horas_at) estado = f.fecha < NUCLEO_DESDE ? 'sin-datos' : 'pendiente';
     else estado = segundos > UMBRAL_FESTIVO ? 'suma' : 'no-suma';
     return { fecha: f.fecha, nombre: f.nombre, ambito: f.ambito, segundos, estado };
@@ -324,7 +336,7 @@ function saldoPara(p, x, festivos, hoy) {
 
 /** La lista: una fila por persona —de alta, o que se fue este año—, con su saldo. */
 // Las reglas, para que la pantalla las diga con los números de aquí y no con los suyos.
-const reglas = sinHistorico => ({ tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600,
+const reglas = sinHistorico => ({ tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, festivosPagadosHasta: FESTIVOS_PAGADOS_HASTA,
   umbralLaborado: UMBRAL_LABORADO / 3600, bajaSinPlaza: '5/7', nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO, sinHistorico: !!sinHistorico });
 
 async function lista({ hoy = hoyMadrid() } = {}) {
@@ -373,15 +385,21 @@ function aIso(v) {
 }
 
 /**
- * Del `desde` al `hasta` de una persona, día a día: si le tocaba trabajar (cuenta
- * como vacaciones) o libraba (no cuenta), por qué, si es festivo y si ya tiene
- * algo puesto. Con el saldo de hoy y el que le quedaría.
+ * Del `desde` al `hasta` de una persona, día a día: si cuenta como vacaciones o
+ * libra (no cuenta), si es festivo y si ya tiene algo puesto. Con el saldo de hoy
+ * y el que le quedaría.
+ *
+ * LOS DOS DÍAS QUE LIBRA, A MANO (06/11/2026, db/233; Camilo: «En el simulador
+ * debe de decir los días que libra pero A MANO … sí o sí tienen que ser dos
+ * días»): `libra` = '3,4'. Esos días de la semana no cuentan; los demás, sí. Lo
+ * que dice el planificador va al lado (`segunPlanificador`), para compararlo.
  */
-async function simular(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}) {
+async function simular(id, { desde, hasta, libra } = {}, { hoy = hoyMadrid() } = {}) {
   const a = aIso(desde), b = aIso(hasta);
   if (!a || !b) throw new Error('Faltan el primer y el último día');
   if (b < a) throw new Error('El último día va antes que el primero');
   if (dias(a, b) > 366) throw new Error('Como mucho un año de una vez');
+  const dosDias = libranzas.dosDiasLibra(libra);
   const f = await ficha(id, { hoy });            // la misma persona y el mismo saldo que la ficha
   const { porId } = await cargar({ id: Number(id) });
   const x = porId.get(String(f.id));
@@ -389,25 +407,49 @@ async function simular(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}) {
   const ya = d => (x.tramos || []).find(t => t.desde <= d && (t.hasta || FIN) >= d);
   const lista = [];
   for (let d = a; d <= b; d = mas(d, 1)) {
-    const q = x.plan ? x.plan(d) : null;
     const t = ya(d);
-    lista.push({ dia: d, dow: libranzas.isodow(d), trabaja: q ? q.trabaja : null, por: q ? q.por : 'sin-plaza',
-      cuenta: libranzas.cuenta(q), festivo: fest.get(d) || null, ya: t ? t.estado : null });
+    const cuenta = libranzas.cuentaConLibra(dosDias, d);
+    lista.push({ dia: d, dow: libranzas.isodow(d), trabaja: cuenta, por: 'a-mano',
+      cuenta, festivo: fest.get(d) || null, ya: t ? t.estado : null });
   }
   const cuentan = lista.filter(d => d.cuenta);
   // Lo que restaría de verdad: lo que ya son vacaciones ya está en su saldo.
   const nuevos = cuentan.filter(d => d.ya !== 'vacaciones').length;
-  const libra = [...new Set(lista.filter(d => !d.cuenta).map(d => d.dow))].sort().map(n => DIAS_SEMANA[n - 1]);
+  const segun = libranzas.libraSegunPlanificador(x.plan, a);
   return {
     id: f.id, nombre: f.nombre, desde: a, hasta: b, hoy,
     naturales: lista.length, cuentan: cuentan.length, libranzas: lista.length - cuentan.length, nuevos,
     yaDeVacaciones: lista.filter(d => d.ya === 'vacaciones').length,
     otraAusencia: lista.filter(d => d.ya && d.ya !== 'vacaciones').length,
-    sinCuadrante: cuentan.filter(d => d.trabaja === null).length,
-    diasQueLibra: libra,
+    sinCuadrante: 0,
+    libra: dosDias,
+    diasQueLibra: dosDias.map(n => DIAS_SEMANA[n - 1]),
+    segunPlanificador: segun,
     saldo: f.saldo, programadas: f.programadas, saldoTras: f.saldoTras, quedaria: r2(f.saldoTras - nuevos),
     deBaja: f.deBaja, dias: lista,
   };
+}
+
+/**
+ * LO QUE LIBRA SEGÚN EL PLANIFICADOR la semana que empieza `desde` (hoy si no se
+ * dice), para proponer a mano los dos días de unas vacaciones (db/233). Si son
+ * dos o menos se proponen marcados (a Angel Lopez Gomez le sale uno: falta
+ * elegir el otro); si son más —un CT que trabaja dos días—, no se marca nada.
+ * Quien las pone elige; esto solo ayuda.
+ */
+async function libranzasSugeridas(id, desde, { hoy = hoyMadrid() } = {}) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) throw new Error('Falta la persona');
+  const d = aIso(desde) || hoy;
+  const pl = await repo.planes([String(n)]);
+  const x = pl.porId.get(String(n));
+  const segun = x ? libranzas.libraSegunPlanificador(dia => libranzas.elDia(x, dia, pl.inicio), d) : [];
+  const texto = !segun.length
+    ? 'El planificador no dice qué libra (no tiene plaza, o es antes del 03/09/2026).'
+    : segun.length === 1 ? `Según el planificador libra solo el ${libranzas.nombresDias(segun)}: elige el segundo día.`
+      : segun.length === 2 ? `Según el planificador libra ${libranzas.nombresDias(segun)}.`
+        : `Según el planificador libra ${segun.length} días a la semana (${libranzas.nombresDias(segun)}): elige los dos de sus vacaciones.`;
+  return { desde: d, segunPlanificador: segun, propuestos: segun.length <= 2 ? segun : [], texto };
 }
 
 // ── Cambiar unas vacaciones ya aprobadas ────────────────────────────────────
@@ -431,21 +473,25 @@ async function cambiarVacaciones(conductorId, filaId, datos = {}, quien = {}, { 
   const nuevas = validarCambio(t, datos, hoy);
   const motivo = datos.motivo === undefined ? undefined : String(datos.motivo || '').trim();
   const cambiaMotivo = motivo !== undefined && motivo !== (t.motivo || '');
-  if (nuevas.desde === t.desde && nuevas.hasta === t.hasta && !cambiaMotivo) {
+  // Los dos días que libra (db/233): solo mientras no hayan empezado.
+  const libra = datos.libraDias === undefined ? null : libranzas.dosDiasLibra(datos.libraDias);
+  if (libra) aFuturo.validarLibra(t, libra, hoy);
+  const cambiaLibra = !!libra && String(libra) !== String((t.libra_dias || []).map(Number).sort((a, b) => a - b));
+  if (nuevas.desde === t.desde && nuevas.hasta === t.hasta && !cambiaMotivo && !cambiaLibra) {
     throw new Error('No has cambiado nada');
   }
 
   await plantilla.editarAusencia(Number(conductorId), Number(filaId), {
-    desde: nuevas.desde, hasta: nuevas.hasta, ...(cambiaMotivo ? { motivo } : {}),
+    desde: nuevas.desde, hasta: nuevas.hasta, ...(cambiaMotivo ? { motivo } : {}), ...(cambiaLibra ? { libraDias: libra } : {}),
   }, quien);
 
   const tramo = f => `del ${ddmmaaaa(f.desde)} al ${ddmmaaaa(f.hasta)}`;
   if (t.ticket_id) {
     const nota = (nuevas.desde !== t.desde || nuevas.hasta !== t.hasta)
       ? `Vacaciones cambiadas desde Vacaciones: antes ${tramo(t)}, ahora ${tramo(nuevas)}.`
-      : 'Vacaciones: cambiado el motivo desde Vacaciones.';
+      : cambiaLibra ? 'Vacaciones: cambiados los días que libra desde Vacaciones.' : 'Vacaciones: cambiado el motivo desde Vacaciones.';
     await ticketera.anotarCambioDeVacaciones(t.ticket_id, {
-      nota: nota + (cambiaMotivo ? ` Motivo: «${motivo || '(sin motivo)'}».` : ''),
+      nota: nota + (cambiaLibra ? ` Libra: ${libranzas.nombresDias(libra)}.` : '') + (cambiaMotivo ? ` Motivo: «${motivo || '(sin motivo)'}».` : ''),
       resolucion: `Aplicado: Vacaciones ${tramo(nuevas)} (cambiadas el ${ddmmaaaa(hoy)})`,
     }, quien);
   }
@@ -473,7 +519,7 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 }
 
 module.exports = {
-  TASA, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
-  lista, ficha, simular, sellarFestivos, cambiarVacaciones,
+  TASA, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
+  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };

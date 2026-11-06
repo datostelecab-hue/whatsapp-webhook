@@ -183,6 +183,9 @@
   // `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'opciones'|'semana'|'texto-largo'|'horas',
   //               opciones, valor, ayuda, grupo, obligatorio, marcador }]
   //
+  // 'semana' son los siete días (L…D) para marcar: devuelve [1…7]; `exactos: 2`
+  // obliga a marcar justo esos (los dos que libra en unas vacaciones).
+  //
   // 'horas' son dos casillas, horas y minutos (horasMin.js): `minutos` es lo que
   // trae puesto (o `valor` en horas decimales) y devuelve las horas en decimal
   // como cadena, '' si se deja en blanco.
@@ -618,6 +621,10 @@
             if ((salida[c.id] || []).some(x => !x.comentario)) {
               fallos.push('Escribe qué te ha dicho en cada una de las que marcas.');
             }
+          } else if (c.tipo === 'semana' && c.exactos && (salida[c.id] || []).length !== c.exactos) {
+            // CUÁNTOS DÍAS, EXACTOS (06/11/2026): los que libra en unas
+            // vacaciones son dos, ni uno ni tres. Se queda abierta y lo dice.
+            fallos.push(`Marca ${c.exactos} días en «${c.etiqueta}»: ni más ni menos.`);
           } else if (c.obligatorio && c.tipo !== 'semana' && c.tipo !== 'items'
                      && !String(salida[c.id] == null ? '' : salida[c.id]).trim()) {
             // EL TEXTO OBLIGATORIO TAMBIÉN (01/10/2026). Hasta aquí `obligatorio`

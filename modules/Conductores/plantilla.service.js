@@ -322,6 +322,7 @@ async function actualizar(id, datos = {}, quien = {}) {
 // no una aprobación.
 const aprobarVac = require('../../services/aprobarVacaciones');
 const aFuturo = require('../../services/vacacionesAFuturo');
+const { dosDiasLibra } = require('../Vacaciones/libranzas');
 const codigo = x => String(x && typeof x === 'object' ? x.valor : (x || ''));
 const sonVacaciones = x => codigo(x) === aprobarVac.ESTADO;
 const vacacionesParaLaPantalla = quien => aprobarVac.paraLaPantalla((quien || {}).usuarioId);
@@ -360,9 +361,21 @@ const vacacionesDe = async (id, filaId, quien) => {
 };
 const editarAusencia = async (id, filaId, datos, quien) => {
   const t = await vacacionesDe(id, filaId, quien);
-  if (t) aFuturo.validarCambio(t, { desde: (datos || {}).desde, hasta: (datos || {}).hasta });
+  if (t) {
+    aFuturo.validarCambio(t, { desde: (datos || {}).desde, hasta: (datos || {}).hasta });
+    // Los dos días que libra (db/233), solo mientras no hayan empezado.
+    if ((datos || {}).libraDias !== undefined) aFuturo.validarLibra(t, dosDiasLibra(datos.libraDias));
+  }
   return con.editarAusencia(Number(id), Number(filaId), datos, quien);
 };
+
+/**
+ * LO QUE LIBRA SEGÚN EL PLANIFICADOR la semana que empieza `desde`, para
+ * proponerlo al elegir a mano los dos días de unas vacaciones (db/233). La
+ * misma cuenta que Vacaciones (`libranzasSugeridas`); se pide aquí porque es
+ * Plantilla quien las pone.
+ */
+const libranzasSugeridas = (id, desde) => require('../Vacaciones/vacaciones.service').libranzasSugeridas(id, desde);
 const borrarAusencia = async (id, filaId, quien) => {
   const t = await vacacionesDe(id, filaId, quien);
   if (t) aFuturo.validarBorrado(t);
@@ -611,7 +624,7 @@ const documentosQueVencen = dias => docs.porVencer({ dias });
 module.exports = {
   paraLaPantalla, lista, mediaDelMes, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso, libranzasSugeridas,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
   anulacionDeAlta, anularAlta,

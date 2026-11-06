@@ -1,6 +1,6 @@
 ---
 tags: [modulo, rrhh, vacaciones]
-actualizado: 2026-10-14
+actualizado: 2026-11-06
 ---
 
 # Vacaciones
@@ -14,8 +14,8 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 | | Qué | Cómo |
 |---|---|---|
 | **+** | Generadas | **0,05882 días por cada día que genera** desde el alta que dice el sistema (la del contrato abierto): uno en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada** o uno de **baja médica** que le tocaba trabajar (sin plaza o antes del planificador, **5/7** de día). Ver [[#Por día laborado (06/11/2026, db/231)]]. Hasta el 06/11/2026 eran 0,0821 por día natural. |
-| **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no). |
-| **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: sus libranzas no cuentan. Ver [[#Las libranzas se mantienen en las vacaciones (06/11/2026)]]. |
+| **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no), **desde el 01/10/2026**: los de septiembre para atrás se pagaron en la nómina y no suman. Ver [[#Los festivos de septiembre para atrás, pagados (06/11/2026)]]. |
+| **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: los dos días que libra en esas vacaciones (puestos a mano) no cuentan; en las de antes, sus libranzas del planificador. Ver [[#Los dos días que libra, a mano (06/11/2026, db/233)]]. |
 
 **Los asuntos propios ya no restan de aquí** (desde el 29/10/2026): tienen su banco aparte, abajo. Ningún permiso toca el saldo de vacaciones.
 
@@ -67,6 +67,12 @@ La cuenta es una función pura, `vacaciones.service._saldoDe`, con su comprobado
 | Desde el 01/07/2026 | Las calcula el sistema desde `fv_tramo`: un cron horario en `app.js` (minuto 20). Se rehacen hasta 4 días después del festivo, porque BOLT manda tramos con retraso. Mientras tanto la ficha dice «Calculándose». |
 | Del 25/07/2025 al 02/05/2026 | db/198: sacadas del historial de cambios de estado de BOLT con la misma cuenta que `fv_tramo` (script «Scripts de análisis/vacaciones-modulo/festivos-horas-bolt.js»). Se comprobó contra la nómina el 15/08/2026: 106 de 107 personas iguales al minuto, y nadie cambia de lado de las 6 h. |
 | De enero a mayo de 2025 | **Sin datos.** BOLT no devuelve nada de antes de mediados de junio de 2025: el 01/06/2025 sale vacío y el 20/06/2025 ya trae datos. No suman, y la ficha lo dice. |
+
+### Los festivos de septiembre para atrás, pagados (06/11/2026)
+
+Camilo: *«quita las vacaciones generadas por festivos de septiembre para atrás ya que esas sí fueron pagas»*. Un festivo hasta el **30/09/2026** (`FESTIVOS_PAGADOS_HASTA` en `vacaciones.service.js`) no suma vacaciones aunque lo trabajara más de 6 h: se pagó en la nómina. Sigue saliendo en la ficha, con sus horas, como **«Pagado en nómina»**; desde el 01/10/2026 cada festivo trabajado suma su día, como antes. Las horas se siguen guardando igual (`festivo_horas`): solo cambia lo que suman.
+
+En la copia del 27/10: **302 días menos a 126 personas** (80 de ellas de alta), sobre todo del 15/08 (77), del 01 y el 02/05 (45 y 46) y de Semana Santa (36 y 41). A quien más, 7 días (Carlos Arturo Borelli, Rachid Lakraa, Javier Sánchez Núñez, Elian Fernando Bonilla). Siguen sumando 36 festivos, los de octubre.
 
 ## La pantalla
 
@@ -193,6 +199,25 @@ Arriba van los días naturales, las libranzas (y qué días libra), las vacacion
 Comprobadores: `scripts/comprobar-vacaciones-libranzas.js` (la regla, 14 casos) y `scripts/comprobar-vacaciones-saldo.js` (el saldo, con J, bajas y libranzas).
 
 **Medido en la copia** (06/11/2026, 143 de alta): días que generan de media 108 (83 de trabajo, 1 de J, 25 de baja), 6,36 generadas, 5,0 disfrutadas, saldo medio 3,0 y 27 en negativo. Quien está de baja médica todo el año y **sin plaza** en el planificador no tiene libranzas conocidas: le contaban todos los días y generaba más que quien trabaja (Ignacio Nieves y William Cucunubá, 310 días de baja, 18,23). Con el **5 de cada 7** (decisión de Camilo, 06/11/2026) les salen 221,43 días y **13,02** generadas; Rachid, que trabajó 198, lleva 11,65. Lo mismo vale para los días de baja de antes del planificador de quien luego tuvo plaza (en la copia, 8 personas y 132 días). Con todo: 5,98 generadas de media, saldo medio 2,6 y 27 en negativo.
+
+## Los dos días que libra, a mano (06/11/2026, db/233)
+
+Camilo: *«En el simulador debe de decir los días que libra pero A MANO, porque por ejemplo Angel Lopez Gomez descansa según el planificador solo un día, pero le tenemos que saltar dos días los cuales lo elegirá Laura. Sí o sí tienen que ser dos días obligatoriamente; cuando vaya a colocar vacaciones en la situación de la plantilla o por tickets, debe de poner los días que debe de librar según las vacaciones, pero eso sí, solo es por el periodo de vacaciones: cuando vuelva debe de tener de nuevo los días de libranza que le pone el planificador»*.
+
+**Unas vacaciones llevan sus dos días de libranza** (`conductor_estado_hist.libra_dias`, db/233: 1 = lunes … 7 = domingo). Dentro del tramo, esos días de la semana no cuentan como vacaciones y los demás sí, diga lo que diga el planificador. **Solo valen para ese tramo**: el planificador no se toca y, al volver, libra lo suyo. Siempre son **dos, distintos**: la base no admite otra cosa y la aplicación no deja poner unas vacaciones sin ellos (`libranzas.dosDiasLibra`).
+
+**Dónde se eligen**, todos con la llave de aprobar (Laura Blanco):
+- **Plantilla**, al «Cambiar situación» o «Añadir un tramo» de vacaciones: después de las fechas sale «Qué dos días libra … en sus vacaciones», con los siete días para marcar.
+- **Ticketera**, al aplicar un ticket como vacaciones: la misma pregunta antes de aplicarlo.
+- **Corregir** el tramo (Plantilla) o **«Cambiar las fechas»** (Vacaciones): se pueden cambiar **mientras no hayan empezado** (`vacacionesAFuturo.validarLibra`); en unas empezadas ya se han contado días con ellos. Las vacaciones de antes que aún no han empezado los piden al corregirlas.
+
+**Lo que propone el planificador.** Al elegirlos salen marcados los que libra según su plaza la semana en que empiezan (`libranzasSugeridas`; `GET /vacaciones/api/libranzas/:id`, `/plantilla/api/conductor/:id/libranzas`, `/ticketera/api/libranzas`), con una línea que lo explica. A Angel Lopez Gomez le sale **solo el miércoles**: «elige el segundo día». A un correturnos que trabaja dos días le salen cinco y no se marca nada. Es una ayuda: quien las pone decide.
+
+**El simulador** pide también los dos días (obligatorios) y cuenta con ellos; si el planificador dice otra cosa, lo avisa. A Angel, del 16 al 29/11/2026 librando miércoles y domingo: 14 naturales, 4 libranzas y 10 de vacaciones.
+
+**Las vacaciones de antes** (sin días puestos) siguen contando con las libranzas del planificador, como en [[#Las libranzas se mantienen en las vacaciones (06/11/2026)]]. En la ficha, la tabla de vacaciones dice «libra miércoles y domingo» debajo de las libranzas de las que los llevan; en Plantilla, debajo de los días del tramo.
+
+**Antes de aplicar db/233** la pantalla no se cae: Vacaciones lee sin la columna (y cuenta con el planificador) y poner unas vacaciones avisa de que falta la migración. Comprobado en la copia local: `scripts/comprobar-vacaciones-libranzas.js` y `scripts/comprobar-vacaciones-saldo.js`, más una prueba de punta a punta de las puertas (Plantilla, Vacaciones, cambiar situación), que deja el historial como estaba.
 
 ## La llave
 

@@ -82,4 +82,53 @@ function elDia(plan, dia, inicio) {
 /** Un día de vacaciones cuenta salvo que ese día librara. */
 const cuenta = x => !x || x.trabaja !== false;
 
-module.exports = { elDia, cuenta, isodow, _lasDeEseDia: lasDeEseDia };
+// ── LOS DOS DÍAS QUE LIBRA EN SUS VACACIONES, A MANO (06/11/2026, db/233) ────
+// Camilo: «Angel Lopez Gomez descansa según el planificador solo un día, pero le
+// tenemos que saltar dos días los cuales lo elegirá Laura. Sí o sí tienen que
+// ser dos días obligatoriamente … solo es por el periodo de vacaciones: cuando
+// vuelva debe de tener de nuevo los días de libranza que le pone el
+// planificador». Unas vacaciones nuevas llevan sus dos días (1 = lunes … 7 =
+// domingo); dentro del tramo, esos días no cuentan y los demás sí. Las de antes
+// no los tienen y cuentan con `elDia`.
+const NOMBRE_DIA = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+/**
+ * Los dos días que libra en unas vacaciones, ordenados: exactamente dos,
+ * distintos, de 1 a 7. Admite [3, 4] o '3,4'. Lanza con el porqué.
+ */
+function dosDiasLibra(v) {
+  const lista = (Array.isArray(v) ? v : String(v == null ? '' : v).split(','))
+    .map(x => String(x).trim()).filter(Boolean).map(Number);
+  const unicos = [...new Set(lista)];
+  if (lista.length !== 2 || unicos.length !== 2 || unicos.some(n => !Number.isInteger(n) || n < 1 || n > 7)) {
+    throw new Error('Elige los dos días que libra durante las vacaciones: siempre son dos, distintos.');
+  }
+  return unicos.sort((a, b) => a - b);
+}
+
+/** ¿Cuenta este día de unas vacaciones con sus dos días a mano? */
+const cuentaConLibra = (libra, dia) => !libra.includes(isodow(dia));
+
+/**
+ * Lo que dice el planificador de una semana a partir de `desde`: los días que
+ * libraría (1–7). Para proponerlos al elegir los dos a mano; si no se sabe (sin
+ * plaza, antes del planificador), ninguno. `queTocaba` = día → `elDia(...)`.
+ */
+function libraSegunPlanificador(queTocaba, desde) {
+  if (!queTocaba) return [];
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(Date.parse(desde + 'T12:00:00Z') + i * 86400000).toISOString().slice(0, 10);
+    const x = queTocaba(d);
+    if (x && x.trabaja === false) out.push(isodow(d));
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** 'miércoles y jueves' */
+const nombresDias = dias => {
+  const n = (dias || []).map(d => NOMBRE_DIA[d - 1]).filter(Boolean);
+  return n.length > 1 ? n.slice(0, -1).join(', ') + ' y ' + n.at(-1) : (n[0] || '');
+};
+
+module.exports = { elDia, cuenta, isodow, dosDiasLibra, cuentaConLibra, libraSegunPlanificador, nombresDias, _lasDeEseDia: lasDeEseDia };

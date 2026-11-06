@@ -49,6 +49,20 @@ function validarCambio(t, { desde, hasta } = {}, hoy = hoyMadrid()) {
   return { desde: nd, hasta: nh };
 }
 
+/**
+ * LOS DOS DÍAS QUE LIBRA (db/233), con la misma regla: se cambian mientras las
+ * vacaciones no hayan empezado. En unas empezadas ya hay días contados con los
+ * de antes, y cambiarlos sería cambiar el pasado. `libra` = los nuevos, ya
+ * comprobados (libranzas.dosDiasLibra).
+ */
+function validarLibra(t, libra, hoy = hoyMadrid()) {
+  const antes = (t.libra_dias || []).map(Number).sort((a, b) => a - b);
+  if (String(antes) === String(libra)) return;
+  if (t.desde <= hoy) {
+    throw new Error(`Estas vacaciones ya empezaron el ${ddmmaaaa(t.desde)}: los días que libra no se cambian, porque ya se han contado días con ellos.`);
+  }
+}
+
 /** Lanza si unas vacaciones `t` no se pueden borrar: solo las que aún no han empezado. */
 function validarBorrado(t, hoy = hoyMadrid()) {
   if (t.desde <= hoy) {
@@ -58,4 +72,4 @@ function validarBorrado(t, hoy = hoyMadrid()) {
   }
 }
 
-module.exports = { validarCambio, validarBorrado, hoyMadrid };
+module.exports = { validarCambio, validarBorrado, validarLibra, hoyMadrid };

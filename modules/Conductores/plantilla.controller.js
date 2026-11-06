@@ -143,6 +143,9 @@ router.post('/api/conductor/:id/situacion', responde(async req =>
 router.post('/api/conductor/:id/ausencia', responde(async req =>
   plantilla.anadirAusencia(req.params.id, req.body || {}, await quien(req))));
 
+// Lo que libra según el planificador, para proponer los dos días a mano de unas vacaciones (db/233).
+router.get('/api/conductor/:id/libranzas', responde(async req =>
+  ({ libranzas: await plantilla.libranzasSugeridas(req.params.id, req.query.desde) })));
 router.put('/api/conductor/:id/situacion/:filaId', responde(async req =>
   plantilla.editarAusencia(req.params.id, req.params.filaId, req.body || {}, await quien(req))));
 

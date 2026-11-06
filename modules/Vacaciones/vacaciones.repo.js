@@ -48,10 +48,28 @@ async function personas({ id = null, conEtt = false, conBajas = false, desde = '
  * Con quién lo puso y qué día: si el tramo no trae motivo, eso es lo único que
  * dice de dónde sale.
  */
+// LOS DOS DÍAS QUE LIBRA EN UNAS VACACIONES (db/233). Hasta que la migración
+// esté aplicada la columna no existe: se lee sin ella y las vacaciones cuentan
+// con el planificador, como antes, en vez de tirar la pantalla. Se vuelve a
+// probar CADA vez: si se recordara el fallo, tras aplicar la migración seguiría
+// leyendo sin la columna hasta reiniciar el servidor.
+let avisadoSinLibra = false;
+async function conLibra(sql, args) {
+  try { return await db.consulta(sql(true), args); } catch (e) {
+    if (!(e && e.code === '42703' && /libra_dias/.test(e.message || ''))) throw e;
+    if (!avisadoSinLibra) {
+      avisadoSinLibra = true;
+      console.warn('⚠️ [Vacaciones] Falta la migración db/233: las vacaciones cuentan con las libranzas del planificador.');
+    }
+  }
+  return db.consulta(sql(false), args);
+}
+const colLibra = con => (con ? 'h.libra_dias,' : 'NULL::smallint[] AS libra_dias,');
+
 async function tramos(ids, desde) {
   if (!ids.length) return [];
-  const r = await db.consulta(
-    `SELECT h.id::text AS fila, h.conductor_id::text AS id, h.estado,
+  const r = await conLibra(con =>
+    `SELECT h.id::text AS fila, h.conductor_id::text AS id, h.estado, ${colLibra(con)}
             to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta,
             h.motivo, h.leave_type_code, lt.name AS tipo_permiso,
             NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS quien,
@@ -70,8 +88,8 @@ async function tramos(ids, desde) {
 
 /** UN tramo de una persona, con su ticket. Null si no existe o no es suyo. */
 async function tramo(conductorId, filaId) {
-  const r = await db.consulta(
-    `SELECT h.id::text AS fila, h.conductor_id::text AS id, h.estado,
+  const r = await conLibra(con =>
+    `SELECT h.id::text AS fila, h.conductor_id::text AS id, h.estado, ${colLibra(con)}
             to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta,
             h.motivo, h.ticket_id::text AS ticket_id, t.codigo AS ticket_codigo
        FROM conductor_estado_hist h

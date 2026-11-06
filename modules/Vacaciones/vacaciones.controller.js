@@ -30,7 +30,8 @@ router.get('/', async (req, res) => {
   res.render('vacaciones', {
     titulo: 'Vacaciones', seccion: 'vacaciones', layout: 'layout-gestion',
     reglas: { tasa: vacaciones.TASA, desde: vacaciones.DESDE_HISTORICO, umbralHoras: vacaciones.UMBRAL_FESTIVO / 3600,
-      umbralLaborado: vacaciones.UMBRAL_LABORADO / 3600, apPorAnio: vacaciones.AP_POR_ANIO },
+      umbralLaborado: vacaciones.UMBRAL_LABORADO / 3600, apPorAnio: vacaciones.AP_POR_ANIO,
+      festivosPagadosHasta: vacaciones.FESTIVOS_PAGADOS_HASTA },
     // Solo para enseñar o no el botón de cambiar: lo que manda es el servidor.
     aprueba: await aprobarVac.paraLaPantalla((req.usuario || {}).id),
   });
@@ -45,6 +46,9 @@ router.get('/api/ficha/:id', responde(async req => ({ ficha: await vacaciones.fi
 router.get('/api/simular/:id', responde(async req => ({ simulacion: await vacaciones.simular(req.params.id, req.query || {}) })));
 
 // Cambiar unas vacaciones ya aprobadas: solo lo que aún no ha llegado.
+// Lo que libra según el planificador, para proponer los dos días a mano (db/233).
+router.get('/api/libranzas/:id', responde(async req => ({ libranzas: await vacaciones.libranzasSugeridas(req.params.id, req.query.desde) })));
+
 router.put('/api/conductor/:id/vacaciones/:filaId', responde(async req =>
   vacaciones.cambiarVacaciones(req.params.id, req.params.filaId, req.body || {}, await quien(req))));
 

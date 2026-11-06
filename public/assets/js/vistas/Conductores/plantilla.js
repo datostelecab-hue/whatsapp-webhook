@@ -165,6 +165,26 @@
     return v ? v.tipoPermiso : null;
   }
 
+  // LOS DOS DÍAS QUE LIBRA EN SUS VACACIONES (06/11/2026, db/233). Camilo: «sí o
+  // sí tienen que ser dos días obligatoriamente … solo es por el periodo de
+  // vacaciones: cuando vuelva debe de tener de nuevo los días de libranza que le
+  // pone el planificador». Se proponen los del planificador (si son dos o
+  // menos) y se eligen a mano. Devuelve [n, n], o null si se cancela.
+  const DIA_NOMBRE = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const nombresLibra = l => (l || []).map(n => DIA_NOMBRE[n - 1]).filter(Boolean).join(' y ');
+  const NOTA_LIBRA = 'Siempre dos días. Solo valen para estas vacaciones: esos días no cuentan como vacaciones y, al volver, libra lo que diga el planificador.';
+  async function pedirLibranzas(d, desde) {
+    let sug = { propuestos: [], texto: '' };
+    try {
+      const j = await api(`/plantilla/api/conductor/${d.id}/libranzas${desde ? '?desde=' + encodeURIComponent(desde) : ''}`);
+      if (j && j.libranzas) sug = j.libranzas;
+    } catch (e) { /* sin propuesta: se eligen igual */ }
+    const v = await pedirDatos(`Qué dos días libra ${d.nombre_completo} en sus vacaciones`, [
+      { id: 'libraDias', etiqueta: 'Libra', tipo: 'semana', exactos: 2, valor: sug.propuestos || [], ayuda: sug.texto || '' },
+    ], { textoBoton: 'Poner las vacaciones', nota: NOTA_LIBRA });
+    return v ? v.libraDias : null;
+  }
+
   async function accionSituacion(d) {
     const v = await pedirDatos(`Cambiar la situación de ${d.nombre_completo}`, [
       { id: 'estado', etiqueta: 'Situación', tipo: 'lista', valor: d.situacion,
@@ -213,6 +233,11 @@
       if (t === null) return;
       v.tipoPermiso = t;
     }
+    if (v.estado === 'vacaciones') {
+      const l = await pedirLibranzas(d, v.desde);
+      if (!l) return;
+      v.libraDias = l;
+    }
 
     // Una ausencia no cierra su asignación, así que aquí no se toca nada del
     // coche. Está decidido en el esquema y esto solo lo respeta.
@@ -247,6 +272,11 @@
       if (t === null) return;
       v.tipoPermiso = t;
     }
+    if (v.estado === 'vacaciones') {
+      const l = await pedirLibranzas(d, v.desde);
+      if (!l) return;
+      v.libraDias = l;
+    }
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/ausencia`, 'POST', v));
   }
 
@@ -276,6 +306,10 @@
     ].concat(fila.estado === 'permiso' ? [
       { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
         valor: fila.leave_type_code || 'OTRO', opciones: opcionesPermiso(), buscador: { tope: 20 }, ayuda: NOTA_PERMISO },
+    ] : []).concat(fila.estado === 'vacaciones' && !vacEmpezadas(fila) ? [
+      // Los dos días que libra (db/233), mientras no hayan empezado.
+      { id: 'libraDias', etiqueta: 'Libra en estas vacaciones', tipo: 'semana', exactos: 2,
+        valor: (fila.libra_dias || []).map(Number), ayuda: NOTA_LIBRA },
     ] : []), { nota: fila.estado === 'vacaciones'
                ? (vacEmpezadas(fila)
                   ? `Empezaron el ${fecha(fila.desde)}: ese día ya pasó y se queda. Solo se puede cambiar la vuelta (como pronto, hoy).`
@@ -1860,7 +1894,10 @@
               { titulo: 'Días', pinta: (v, f) => {
                   if (!f.hasta) return '';
                   const dd = Math.round((new Date(f.hasta) - new Date(f.desde)) / 86400000) + 1;
-                  return `<span class="text-telecab-muted">${dd}</span>`;
+                  // Unas vacaciones con sus dos días de libranza a mano (db/233).
+                  const libra = f.estado === 'vacaciones' && (f.libra_dias || []).length
+                    ? `<span class="block text-[11px] text-telecab-muted whitespace-nowrap" title="Los días que libra en estas vacaciones: no cuentan">libra ${esc(nombresLibra(f.libra_dias.map(Number)))}</span>` : '';
+                  return `<span class="text-telecab-muted">${dd}</span>${libra}`;
                 } },
               // DE DONDE SALIO ESTE TRAMO. Las tres preguntas que se hacen
               // justo despues de ver "Baja medica, del 18 al 20" son quien la

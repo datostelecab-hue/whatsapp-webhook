@@ -303,6 +303,22 @@
       v.tipoPermiso = p.tipoPermiso;
     }
 
+    // LOS DOS DÍAS QUE LIBRA EN SUS VACACIONES (06/11/2026, db/233): siempre dos,
+    // a mano, y solo para estas vacaciones. Se proponen los del planificador.
+    if (v.estado === 'vacaciones') {
+      let sug = { propuestos: [], texto: '' };
+      try {
+        const q = new URLSearchParams({ id: t.conductorId, desde: Dialogo.aISO(v.desde) || v.desde || '' });
+        const j = await (await fetch(`${BASE}/api/libranzas?${q}`)).json();
+        if (j && j.libranzas) sug = j.libranzas;
+      } catch (e) { /* sin propuesta: se eligen igual */ }
+      const l = await Dialogo.formulario(`Qué dos días libra ${t.quien} en sus vacaciones`, [
+        { id: 'libraDias', etiqueta: 'Libra', tipo: 'semana', exactos: 2, valor: sug.propuestos || [], ayuda: sug.texto || '' },
+      ], { textoBoton: 'Aplicar', nota: 'Siempre dos días. Solo valen para estas vacaciones: esos días no cuentan como vacaciones y, al volver, libra lo que diga el planificador.' });
+      if (!l) return;
+      v.libraDias = l.libraDias;
+    }
+
     const r = await api('/aplicar', { id: t.id, ...v });
     if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se ha podido aplicar', texto: r.msg, tono: 'error' });
     aviso('Aplicado: la ausencia ya está en su ficha.', 'ok');

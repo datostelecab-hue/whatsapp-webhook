@@ -130,6 +130,24 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-10-10', '2026-10-20')], [], new Map(), HOY);
   igual('Vacaciones que cruzan hoy: 5 disfrutados (10–14) y 6 programados', [s.disfrutadas, s.programadas], [5, 6]);
   igual('…y está de vacaciones hasta el 20', s.deVacacionesHasta, '2026-10-20');
+
+  // LOS DOS DÍAS QUE LIBRA, A MANO (06/11/2026, db/233): en esas vacaciones
+  // mandan sobre el planificador; sin ellos (las de antes), manda el planificador.
+  const vacL = (desde, hasta, libra) => ({ ...vac(desde, hasta), libra_dias: libra });
+  const dow = d => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return w === 0 ? 7 : w; };
+  const soloMiercoles = d => ({ trabaja: dow(d) !== 3, por: 'plaza' });
+  s = saldoDe({ alta: '2026-07-13' }, [vac('2026-08-03', '2026-08-16')], [], new Map(), HOY, new Map(), soloMiercoles);
+  igual('Sin días a mano manda el planificador: libra solo el miércoles, 14 − 2 = 12', s.disfrutadas, 12);
+  s = saldoDe({ alta: '2026-07-13' }, [vacL('2026-08-03', '2026-08-16', [3, 7])], [], new Map(), HOY, new Map(), soloMiercoles);
+  igual('Con miércoles y domingo a mano (el caso de Angel Lopez Gomez): 14 − 4 = 10',
+    [s.disfrutadas, s.detalle.vacaciones[0].libranzas, s.detalle.vacaciones[0].libraDias], [10, 4, [3, 7]]);
+  s = saldoDe({ alta: '2026-07-13' }, [vacL('2026-08-03', '2026-08-16', [3, 4])], [], new Map(), HOY, new Map(), d => ({ trabaja: true, por: 'plaza' }));
+  igual('Los dos días a mano mandan aunque el planificador diga que trabajaba todos', s.disfrutadas, 10);
+  s = saldoDe({ alta: '2026-07-13' }, [vacL('2026-10-12', '2026-10-25', [6, 7])], [], new Map(), HOY);
+  igual('Las que cruzan hoy librando sábado y domingo: 3 disfrutados (12–14) y 7 programados (15–25 sin dos fines de semana)',
+    [s.disfrutadas, s.programadas], [3, 7]);
+  s = saldoDe({ alta: '2026-07-13' }, [vacL('2026-08-03', '2026-08-09', ['3', '4'])], [], new Map(), HOY);
+  igual('Los días que llegan como texto de la base también valen', s.disfrutadas, 5);
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-03-01', '2026-03-10')], [], new Map(), HOY);
   igual('Vacaciones de antes de su alta (otro contrato): no cuentan', [s.disfrutadas, s.detalle.vacaciones.length], [0, 0]);
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-07-10', '2026-07-15')], [], new Map(), HOY);
@@ -159,32 +177,39 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   igual('Más días de los que tiene: el banco queda en negativo', s.asuntosPropios.saldo, -1);
 
   // ── 3. Los festivos ──────────────────────────────────────────────────────
-  const cal = [F('2025-05-01', null), F('2025-12-25'), F('2026-08-15'), F('2026-10-12', null), F('2026-10-14', null), F('2026-07-01')];
-  s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-08-15': 7 * 3600 }), HOY);
-  igual('Festivos de su periodo: los de antes del alta no entran', s.detalle.festivos.map(f => f.fecha), ['2026-08-15', '2026-10-12', '2026-10-14']);
-  igual('El 15/08 trabajó 7 h: +1; el 12/10 aún se calcula; el de hoy no ha terminado',
-    s.detalle.festivos.map(f => f.estado), ['suma', 'pendiente', 'hoy']);
+  // Los de septiembre para atrás se pagaron en la nómina (06/11/2026, Camilo:
+  // «quita las vacaciones generadas por festivos de septiembre para atrás ya que
+  // esas sí fueron pagas»): salen como «pagado» y no suman, aunque los trabajara.
+  const cal = [F('2025-05-01', null), F('2025-12-25'), F('2026-08-15'), F('2026-10-12'), F('2026-10-13', null), F('2026-10-14', null), F('2026-07-01')];
+  s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-08-15': 9 * 3600, '2026-10-12': 7 * 3600 }), HOY);
+  igual('Festivos de su periodo: los de antes del alta no entran', s.detalle.festivos.map(f => f.fecha), ['2026-08-15', '2026-10-12', '2026-10-13', '2026-10-14']);
+  igual('El 15/08 trabajó 9 h pero se pagó; el 12/10 trabajó 7 h: +1; el 13/10 aún se calcula; el de hoy no ha terminado',
+    s.detalle.festivos.map(f => f.estado), ['pagado', 'suma', 'pendiente', 'hoy']);
   igual('…suma 1 día al saldo', [s.festivosSuman, s.saldo], [1, 1]);
-  s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-08-15': 6 * 3600 }), HOY);
-  igual('Seis horas justas NO suman (tiene que ser más de 6)', [s.detalle.festivos[0].estado, s.festivosSuman], ['no-suma', 0]);
-  s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-08-15': 6 * 3600 + 1 }), HOY);
+  s = saldoDe({ alta: '2026-07-13' }, [], [F('2026-09-30'), F('2026-10-01')], H({ '2026-09-30': 8 * 3600, '2026-10-01': 8 * 3600 }), HOY);
+  igual('El 30/09 aún se pagó; el 01/10 ya suma', [s.detalle.festivos.map(f => f.estado), s.festivosSuman], [['pagado', 'suma'], 1]);
+  s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-10-12': 6 * 3600 }), HOY);
+  igual('Seis horas justas NO suman (tiene que ser más de 6)', [s.detalle.festivos[1].estado, s.festivosSuman], ['no-suma', 0]);
+  s = saldoDe({ alta: '2026-07-13' }, [], cal, H({ '2026-10-12': 6 * 3600 + 1 }), HOY);
   igual('Un segundo más, sí', s.festivosSuman, 1);
   s = saldoDe({ alta: '2023-01-01' }, [], cal, H({ '2025-12-25': 8 * 3600 }), HOY);
   igual('Los festivos de 2025 ya no entran (todo empieza el 01/01/2026)',
     [s.detalle.festivos.some(f => f.fecha < '2026-01-01'), s.festivosSinDatos, s.festivosSuman], [false, 0, 0]);
   s = saldoDe({ alta: '2026-07-13' }, [], cal, new Map(), HOY);
-  igual('Un festivo con horas calculadas y sin fila suya: no trabajó, no suma', s.detalle.festivos[0].estado, 'no-suma');
+  igual('Un festivo con horas calculadas y sin fila suya: no trabajó, no suma', s.detalle.festivos[1].estado, 'no-suma');
 
   // ── 4. Todo junto ────────────────────────────────────────────────────────
-  // Trabajó del 13 al 31/07 (19 días de 8 h), 10 días de 6 h en agosto, el festivo
-  // del 15/08 9 h (también es un día laborado) y 5 días de 3 h en septiembre (no suman).
-  const trabajo = L('2026-07-13', '2026-07-31', 8, L('2026-08-16', '2026-08-25', 6, L('2026-09-01', '2026-09-05', 3, new Map([['2026-08-15', 9 * 3600]]))));
+  // Trabajó del 13 al 31/07 (19 días de 8 h), 10 días de 6 h en agosto, los
+  // festivos del 15/08 y del 12/10 9 h (también son días laborados; el del 15/08
+  // se pagó y no suma vacaciones) y 5 días de 3 h en septiembre (no suman).
+  const trabajo = L('2026-07-13', '2026-07-31', 8, L('2026-08-16', '2026-08-25', 6, L('2026-09-01', '2026-09-05', 3,
+    new Map([['2026-08-15', 9 * 3600], ['2026-10-12', 9 * 3600]]))));
   s = saldoDe({ alta: '2026-07-13' },
     [vac('2026-08-01', '2026-08-05'), ap('2026-09-01', '2026-09-01'), susp('2026-09-10', '2026-09-11'), vac('2026-10-20', '2026-10-22')],
-    cal, H({ '2026-08-15': 9 * 3600 }), HOY, trabajo);
-  igual('30 días laborados (1,76) + 1 festivo − 5 disfrutadas = −2,24 (el día de asuntos propios no resta)',
-    [s.diasLaborados, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [30, 1.76, 1, 5, -2.24]);
-  igual('…y tras las vacaciones del 20 al 22, −5,24', s.saldoTras, -5.24);
+    cal, H({ '2026-08-15': 9 * 3600, '2026-10-12': 9 * 3600 }), HOY, trabajo);
+  igual('31 días laborados (1,82) + 1 festivo (el 12/10; el 15/08 se pagó) − 5 disfrutadas = −2,18 (el día de asuntos propios no resta)',
+    [s.diasLaborados, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [31, 1.82, 1, 5, -2.18]);
+  igual('…y tras las vacaciones del 20 al 22, −5,18', s.saldoTras, -5.18);
   igual('…y le queda 1 día de asuntos propios', s.asuntosPropios.saldo, 1);
 
   // ── 5. Las horas de los festivos ─────────────────────────────────────────
@@ -221,6 +246,12 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   igual('Borrar: las empezadas no', /ya empezaron el 12\/10\/2026/.test(borra(emp)), true);
   igual('Borrar: las de hoy tampoco', /ya empezaron/.test(borra({ desde: HOY, hasta: '2026-10-20' })), true);
   igual('Borrar: las pasadas no', /ya pasaron/.test(borra({ desde: '2026-10-01', hasta: '2026-10-05' })), true);
+  // Los dos días que libra (db/233): se cambian mientras no hayan empezado.
+  const libraOk = (t, l) => { try { require('../services/vacacionesAFuturo').validarLibra(t, l, HOY); return 'se cambian'; } catch (e) { return e.message; } };
+  igual('Los días que libra: en las futuras se cambian', libraOk({ ...fut, libra_dias: [3, 4] }, [6, 7]), 'se cambian');
+  igual('…en las empezadas no', /ya empezaron el 12\/10\/2026/.test(libraOk({ ...emp, libra_dias: [3, 4] }, [6, 7])), true);
+  igual('…pero mandar los mismos no es cambiarlos', libraOk({ ...emp, libra_dias: [4, 3] }, [3, 4]), 'se cambian');
+  igual('…y a las de antes, sin días, no se les ponen si ya empezaron', /ya empezaron/.test(libraOk(emp, [3, 4])), true);
   const conTicket = saldoDe({ alta: '2026-01-01' },
     [{ ...vac('2026-10-12', '2026-10-18'), ticket_id: '5', ticket_codigo: 'RH-1' }, vac('2026-10-01', '2026-10-05')], cal, H({}), HOY);
   igual('La ficha dice cuáles se pueden cambiar y de qué ticket salieron',

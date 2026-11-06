@@ -22,6 +22,11 @@
   const tasa = num(R.tasa, 5);
   // Un día laborado: más de estas horas (06/11/2026).
   const umbralL = num(R.umbralLaborado, 0);
+  // Los dos días que libra en unas vacaciones (db/233), en palabras: «miércoles y jueves».
+  const DIA_NOMBRE = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const nombresLibra = l => (l || []).map(n => DIA_NOMBRE[Number(n) - 1]).filter(Boolean).join(' y ');
+  // Los festivos hasta este día se pagaron (06/11/2026): suman los de después.
+  const diaSiguiente = d => (d ? new Date(Date.parse(d + 'T12:00:00Z') + 864e5).toISOString().slice(0, 10) : '');
   const horasTxt = s => { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return s ? `${h} h ${String(m).padStart(2, '0')} min` : '—'; };
 
   // EL SALDO, debajo del nombre (lo pidió Camilo así). El color no va solo: el
@@ -42,11 +47,13 @@
   }
 
   const AYUDA_SALDO = `Generadas: ${tasa} días por cada día trabajado más de ${umbralL} h, con una J aprobada o de baja médica (no las libranzas; sin plaza o antes del planificador, cada día de baja vale 5/7), desde el alta (o desde el ${f(R.desde)}).\n` +
-    `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h.\n− Vacaciones disfrutadas: solo los días que le tocaba trabajar; sus libranzas no cuentan.\n` +
+    `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h, desde el ${f(diaSiguiente(R.festivosPagadosHasta))} (los de antes se pagaron en la nómina).\n− Vacaciones disfrutadas: solo los días que le tocaba trabajar; los dos que libra en cada vacaciones (puestos a mano) no cuentan.\n` +
     `Los asuntos propios van aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco, no de las vacaciones.`;
 
   const ESTADO_FESTIVO = {
     'suma': '<span class="font-semibold">+1 día</span>',
+    // De septiembre de 2026 para atrás (06/11/2026): el festivo trabajado se pagó.
+    'pagado': '<span class="text-telecab-muted" title="Los festivos hasta septiembre de 2026 se pagaron en la nómina: no suman vacaciones.">Pagado en nómina</span>',
     'no-suma': `<span class="text-telecab-muted">No (menos de ${R.umbralHoras} h)</span>`,
     'sin-datos': '<span class="text-telecab-muted" title="BOLT no guarda las horas de antes de mediados de junio de 2025.">Sin datos</span>',
     'pendiente': '<span class="text-telecab-warn" title="El sistema calcula las horas de un festivo cuando BOLT ha terminado de mandar ese día.">Calculándose</span>',
@@ -94,7 +101,7 @@
 
     nota: () => ({ tono: 'info', icono: 'fa-scale-balanced',
       texto: `Saldo = ${tasa} días por cada día trabajado más de ${umbralL} h, justificado o de baja médica (sin plaza, a 5 de cada 7), desde el alta (o desde el ${f(R.desde)}) · ` +
-        `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas, sin sus libranzas. ` +
+        `+ 1 día por festivo trabajado más de ${R.umbralHoras} h desde el ${f(diaSiguiente(R.festivosPagadosHasta))} (los de antes se pagaron) · − vacaciones disfrutadas, sin los dos días que libra. ` +
         `Los asuntos propios, aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco.` }),
 
     filtros: [
@@ -199,8 +206,9 @@
               { titulo: 'Hasta', campo: 'hasta', clase: 'whitespace-nowrap tabular-nums', pinta: v => f(v) || DASH },
               { titulo: 'Días', campo: 'dias', clase: 'tabular-nums', ayuda: 'Días naturales, del primero al último.' },
               { titulo: 'Libranzas', campo: 'libranzas', clase: 'whitespace-nowrap tabular-nums',
-                ayuda: 'Los días que libraba según el cuadrante: se mantienen y no cuentan como vacaciones.',
-                pinta: (v, x) => (v ? String(v) : DASH) + (x.sinCuadrante
+                ayuda: 'Los días que libra en esas vacaciones: no cuentan. Las nuevas llevan sus dos días puestos a mano; las de antes, los del cuadrante.',
+                pinta: (v, x) => (v ? String(v) : DASH) + ((x.libraDias || []).length
+                  ? `<span class="block text-[11px] text-telecab-muted" title="Puestos a mano al aprobarlas">libra ${esc(nombresLibra(x.libraDias))}</span>` : '') + (x.sinCuadrante
                   ? `<span class="block text-[11px] text-telecab-muted" title="Antes del planificador (03/09/2026), o sin plaza: no se sabe qué libraba y el día cuenta.">${x.sinCuadrante} sin cuadrante</span>` : '') },
               { titulo: 'Cuentan', campo: 'disfrutados', clase: 'whitespace-nowrap tabular-nums',
                 pinta: (v, x) => (x.programados && !v ? '<span class="text-telecab-muted">programadas</span>'
@@ -259,16 +267,34 @@
    * tocaba (su plaza; si ese día no tiene, la última) y aquí se pinta el
    * calendario. No guarda nada.
    */
+  // Los dos días que libra en unas vacaciones (db/233): lo que propone el
+  // planificador y el texto que lo explica. Si no responde, se eligen igual.
+  async function propuestaLibra(id, desde) {
+    try {
+      const r = await fetch(`/vacaciones/api/libranzas/${encodeURIComponent(id)}${desde ? '?desde=' + encodeURIComponent(desde) : ''}`);
+      const j = await r.json();
+      if (r.ok && j.status === 'ok') return j.libranzas;
+    } catch (e) { /* sin propuesta */ }
+    return { propuestos: [], texto: '' };
+  }
+  const NOTA_LIBRA = 'Siempre dos días. Solo valen para estas vacaciones: esos días no cuentan y, al volver, libra lo que diga el planificador.';
+
   async function simular(d, antes) {
+    // LOS DOS DÍAS QUE LIBRA, A MANO (06/11/2026). Camilo: «En el simulador debe
+    // de decir los días que libra pero A MANO … sí o sí tienen que ser dos días».
+    // Se proponen los del planificador; quien simula los cambia.
+    const sug = antes ? { propuestos: antes.libra, texto: '' } : await propuestaLibra(d.id);
     const v = await Dialogo.formulario(`Simular vacaciones de ${d.nombre}`, [
       { id: 'desde', etiqueta: 'Primer día', tipo: 'fecha', obligatorio: true, valor: antes ? f(antes.desde) : '' },
       { id: 'hasta', etiqueta: 'Último día', tipo: 'fecha', obligatorio: true, valor: antes ? f(antes.hasta) : '' },
+      { id: 'libra', etiqueta: 'Los dos días que libra en las vacaciones', tipo: 'semana', exactos: 2,
+        valor: sug.propuestos || [], ayuda: sug.texto || NOTA_LIBRA },
     ], { textoBoton: 'Simular', textoCancelar: 'Cerrar',
-         nota: 'Solo cuentan los días que le toca trabajar: sus libranzas se mantienen (las de su plaza del planificador, también las futuras). No se guarda nada.' });
+         nota: 'Cuentan todos los días menos los dos que libra cada semana. Sus libranzas del planificador no cambian: al volver, libra lo suyo. No se guarda nada.' });
     if (!v) return;
     let s;
     try {
-      const q = new URLSearchParams({ desde: Dialogo.aISO(v.desde) || v.desde, hasta: Dialogo.aISO(v.hasta) || v.hasta });
+      const q = new URLSearchParams({ desde: Dialogo.aISO(v.desde) || v.desde, hasta: Dialogo.aISO(v.hasta) || v.hasta, libra: (v.libra || []).join(',') });
       const r = await fetch(`/vacaciones/api/simular/${encodeURIComponent(d.id)}?${q}`);
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.status !== 'ok') throw new Error(j.msg || `Error ${r.status}`);
@@ -293,6 +319,7 @@
     const celda = x => {
       const n = Number(x.dia.slice(8));
       const titulo = [x.cuenta ? 'Cuenta como vacaciones' : 'Libra: no cuenta',
+        x.por === 'a-mano' ? '' :
         x.por === 'su-ultima-plaza' ? 'según la última plaza que tuvo' : x.por === 'excepcional' ? 'libranza excepcional'
           : x.trabaja === null ? (x.por === 'antes-del-cuadrante' ? 'antes del planificador: no se sabe si libraba' : 'sin plaza: no se sabe si libraba') : '',
         x.festivo ? 'Festivo: ' + x.festivo : '', x.ya ? 'Ya tiene puesto: ' + x.ya.replace(/_/g, ' ') : ''].filter(Boolean).join(' · ');
@@ -319,10 +346,15 @@
     if (s.yaDeVacaciones) avisos.push(`${s.yaDeVacaciones} de esos días ya los tiene de vacaciones: no se cuentan dos veces.`);
     if (s.otraAusencia) avisos.push(`${s.otraAusencia} día(s) ya tienen otra ausencia puesta (punto en el día).`);
     if (s.sinCuadrante) avisos.push(`${s.sinCuadrante} día(s) sin cuadrante (antes del 03/09/2026 o sin plaza): no se sabe si libraba y cuentan.`);
+    const plan = s.segunPlanificador || [];
+    if (String(plan) !== String(s.libra || [])) {
+      avisos.push(plan.length ? `El planificador le tiene libranza el ${nombresLibra(plan)}; en las vacaciones libra el ${nombresLibra(s.libra)}, y al volver, lo del planificador.`
+        : 'El planificador no dice qué libra (sin plaza o antes del 03/09/2026).');
+    }
     return `
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         ${cifra('Días naturales', s.naturales)}
-        ${cifra('Libranzas', s.libranzas, s.diasQueLibra.length ? 'libra ' + s.diasQueLibra.join(', ') : 'ninguna')}
+        ${cifra('Libranzas', s.libranzas, 'libra ' + nombresLibra(s.libra) + ', a mano')}
         ${cifra('Vacaciones que gasta', s.cuentan, 'días que le toca trabajar')}
         ${cifra('Le quedarían', `<span class="${neg ? 'text-telecab-red' : ''}">${conSigno(s.quedaria, 2)}</span>`, `hoy ${conSigno(s.saldo, 2)}${s.programadas ? `, ${s.programadas} ya programadas` : ''}`)}
       </div>
@@ -331,7 +363,6 @@
       <div class="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-xs text-telecab-muted">
         <span><span class="inline-block w-3 h-3 rounded bg-telecab-gold/20 border border-telecab-gold/40 align-middle mr-1"></span>Cuenta como vacaciones</span>
         <span><span class="inline-block w-3 h-3 rounded bg-telecab-card2 align-middle mr-1"></span>Libra: no cuenta</span>
-        <span><span class="inline-block w-3 h-3 rounded bg-telecab-card2 border border-dashed border-telecab-warn/70 align-middle mr-1"></span>Sin cuadrante: cuenta</span>
         <span><span class="text-telecab-gold font-semibold mr-1">F</span>Festivo</span>
       </div>`;
   }
@@ -348,8 +379,15 @@
     if (!x.empezadas) campos.push({ id: 'desde', etiqueta: 'Primer día', tipo: 'fecha', valor: f(x.desde) });
     campos.push(
       { id: 'hasta', etiqueta: 'Último día', tipo: 'fecha', valor: f(x.hasta),
-        ayuda: 'El último día de vacaciones. Al siguiente vuelve al cuadrante solo.' },
-      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: x.motivo || '' });
+        ayuda: 'El último día de vacaciones. Al siguiente vuelve al cuadrante solo.' });
+    // Los dos días que libra (db/233), mientras no hayan empezado. Las de antes
+    // no los tienen: se proponen los del planificador y hay que elegirlos.
+    if (!x.empezadas) {
+      const sug = (x.libraDias || []).length ? { propuestos: x.libraDias, texto: '' } : await propuestaLibra(d.id, x.desde);
+      campos.push({ id: 'libraDias', etiqueta: 'Los dos días que libra en las vacaciones', tipo: 'semana', exactos: 2,
+        valor: sug.propuestos || [], ayuda: sug.texto || NOTA_LIBRA });
+    }
+    campos.push({ id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: x.motivo || '' });
     const nota = (x.empezadas
       ? `Empezaron el ${f(x.desde)}: ese día ya pasó y se queda. Se puede adelantar la vuelta (como pronto, hoy) o retrasarla.`
       : 'Solo a días que aún no han llegado: como pronto, desde mañana.') +
@@ -359,7 +397,7 @@
     try {
       const r = await fetch(`/vacaciones/api/conductor/${encodeURIComponent(d.id)}/vacaciones/${encodeURIComponent(x.fila)}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ desde: v.desde || x.desde, hasta: v.hasta, motivo: v.motivo }),
+        body: JSON.stringify({ desde: v.desde || x.desde, hasta: v.hasta, motivo: v.motivo, ...(v.libraDias ? { libraDias: v.libraDias } : {}) }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.status !== 'ok') throw new Error(j.msg || `Error ${r.status}`);
@@ -385,13 +423,16 @@
     const fest = d.detalle.festivos.length;
     const sinD = d.festivosSinDatos ? ` · ${d.festivosSinDatos} sin datos` : '';
     const pend = d.festivosPendientes ? ` · ${d.festivosPendientes} calculándose` : '';
+    // Los de septiembre para atrás se pagaron en la nómina (06/11/2026): no suman.
+    const pagados = d.detalle.festivos.filter(x => x.estado === 'pagado').length;
+    const pag = pagados ? ` · ${pagados} hasta el ${f(R.festivosPagadosHasta)}, pagados en nómina` : '';
     const neg = d.saldo < 0;
     const tramosVac = d.detalle.vacaciones.filter(v => v.disfrutados).length;
     const libVac = d.detalle.vacaciones.reduce((n, v) => n + (v.libranzas || 0), 0);
     return `
       <div class="px-5 py-2">
         ${linea('Generadas', d.generadas, `${num(d.diasQueGeneran, Number.isInteger(d.diasQueGeneran) ? 0 : 2)} día(s) desde el ${f(d.inicio)} × ${tasa}: ${generanTxt(d)}`, '+')}
-        ${linea('Festivos trabajados', d.festivosSuman, `${d.festivosSuman} de ${fest} festivo(s) con más de ${R.umbralHoras} h${sinD}${pend}`, '+')}
+        ${linea('Festivos trabajados', d.festivosSuman, `${d.festivosSuman} de ${fest - pagados} festivo(s) con más de ${R.umbralHoras} h${pag}${sinD}${pend}`, '+')}
         ${linea('Vacaciones disfrutadas', d.disfrutadas, (tramosVac ? `${tramosVac} tramo(s) hasta ${d.deBaja ? 'su baja' : 'hoy'}` : `Ninguna hasta ${d.deBaja ? 'su baja' : 'hoy'}`) + (libVac ? ` · sin ${libVac} día(s) de libranza, que no cuentan` : ''), '−')}
         <div class="flex items-baseline gap-4 pt-4 pb-2">
           <p class="flex-1 text-sm font-semibold uppercase tracking-wide text-telecab-muted">${d.deBaja ? 'Saldo a su baja (' + f(d.baja) + ')' : 'Saldo a hoy'}</p>

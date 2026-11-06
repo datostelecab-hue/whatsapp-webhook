@@ -403,7 +403,7 @@ async function reclasificar(id, subtipoCodigo, quien = {}) {
  * Se aplica ANTES de mover el ticket: si el tramo choca, el ticket se queda como
  * estaba en vez de figurar «Ejecutado» sin haberse ejecutado nada.
  */
-async function aplicar(id, { desde, hasta, estado, motivo, tipoPermiso } = {}, quien = {}) {
+async function aplicar(id, { desde, hasta, estado, motivo, tipoPermiso, libraDias } = {}, quien = {}) {
   const t = await repo.una(id);
   if (!t) throw new Error('No existe ese ticket');
   if (!t.estadoAbre) {
@@ -455,6 +455,8 @@ async function aplicar(id, { desde, hasta, estado, motivo, tipoPermiso } = {}, q
     motivo: String(motivo || '').trim() || `Ticket ${t.codigo}`,
     ticketId: Number(t.id),
     tipoPermiso,
+    // Unas vacaciones llevan sus dos días de libranza, elegidos a mano (db/233).
+    libraDias,
   }, { usuarioId: quien.usuarioId || null });
 
   const { ausencias: cat } = await repo.catalogos();

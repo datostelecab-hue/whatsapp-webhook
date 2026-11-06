@@ -18,6 +18,7 @@ const db = require('../../services/db');
 const vig = require('../../services/repo/vigencia');
 const audit = require('../../services/repo/auditoria');
 const jornada = require('./jornada');
+const { dosDiasLibra } = require('../Vacaciones/libranzas');
 // Lo que cabe en cada columna de texto, para decirlo antes de que falle (09/10/2026).
 const largos = require('../../services/repo/largos');
 
@@ -841,7 +842,7 @@ async function tipoDePermiso(estado, tipo) {
  * Una ausencia NO cierra la asignación: la persona conserva su plaza. Eso ya
  * está decidido en el esquema y aquí solo se respeta.
  */
-async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipoPermiso }, { usuarioId } = {}) {
+async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipoPermiso, libraDias }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   const cat = (await db.consulta(
     `SELECT codigo, etiqueta, fin_previsible, es_fin_contrato
@@ -889,7 +890,8 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipo
   }
 
   const tipo = await tipoDePermiso(estado, tipoPermiso);
-  return db.transaccion(async cli => {
+  const libra = libraDeVacaciones(estado, libraDias);
+  return conLibraDias(() => db.transaccion(async cli => {
     // Y la ausencia nace CERRADA en esa fecha (`hasta`), no solo "prevista": así
     // el día que toca vuelve al cuadrante sola, sin que nadie tenga que acordarse
     // de cerrarla. Si no vuelve, se amplía; que es justo lo que se quiere mirar.
@@ -897,8 +899,29 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipo
       estado, hasta: previsto, hasta_previsto: previsto,
       motivo: motivo || null, usuario_id: usuarioId || null,
       ...(tipo ? { leave_type_code: tipo } : {}),
+      ...(libra ? { libra_dias: libra } : {}),
     }, { desde, cli });
-  });
+  }));
+}
+
+/**
+ * LOS DOS DÍAS QUE LIBRA EN UNAS VACACIONES (06/11/2026, db/233). Camilo: «Sí o
+ * sí tienen que ser dos días obligatoriamente; cuando vaya a colocar vacaciones
+ * en la situación de la plantilla o por tickets, debe de poner los días que debe
+ * de librar según las vacaciones … solo por el periodo de vacaciones». Unas
+ * vacaciones no entran sin ellos; cualquier otra ausencia no los lleva.
+ */
+function libraDeVacaciones(estado, libraDias) {
+  return estado === 'vacaciones' ? dosDiasLibra(libraDias) : null;
+}
+/** Sin la migración db/233 la columna no existe: se dice cuál falta, no un error de SQL. */
+async function conLibraDias(fn) {
+  try { return await fn(); } catch (e) {
+    if (e && e.code === '42703' && /libra_dias/.test(e.message || '')) {
+      throw new Error('Falta aplicar la migración db/233 (los dos días que libra en las vacaciones) en /migraciones.');
+    }
+    throw e;
+  }
 }
 
 /**
@@ -942,7 +965,7 @@ async function partirFondos(cli, id, fondos, desde, fin) {
  * Aquí no se cierra ni se recorta nada: o el tramo cabe en un hueco libre, o se
  * dice cuál es el que estorba. Nada se pierde en silencio.
  */
-async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipoPermiso }, { usuarioId } = {}) {
+async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipoPermiso, libraDias }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   if (!desde) throw new Error('Falta el día en que empieza');
   const cat = (await db.consulta(
@@ -962,6 +985,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
   }
   if (fin && fin < desde) throw new Error('La vuelta no puede ser anterior al día en que empieza la ausencia');
   const tipo = await tipoDePermiso(estado, tipoPermiso);
+  const libra = libraDeVacaciones(estado, libraDias);
 
   // El hueco se comprueba aquí para poder decir CUÁL estorba. La base también
   // lo impide —hay una restricción de exclusión—, pero su error no dice nada.
@@ -1007,21 +1031,22 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
   // TODO JUNTO O NADA. Partir el fondo y meter la ausencia son tres escrituras;
   // a medias quedaría alguien sin ningún tramo —o con dos— y eso lo leen la
   // bitácora, el cuadrante y la nómina.
-  return db.transaccion(async cli => {
+  return conLibraDias(() => db.transaccion(async cli => {
     await partirFondos(cli, id, fondos, desde, fin);
 
     // Quién la abrió queda en `usuario_id`, que es la pregunta que de verdad se
     // hace: "¿quién le puso estas vacaciones?". Y si vino de un ticket, se
     // apunta CUÁL: desde ahí se llega al motivo que escribió el conductor y al
-    // justificante que subió, sin copiar ninguno de los dos.
+    // justificante que subió, sin copiar ninguno de los dos. Unas vacaciones
+    // llevan además sus dos días de libranza (db/233); el resto, no.
     const r = await cli.query(
       `INSERT INTO conductor_estado_hist
-         (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, ticket_id, leave_type_code)
-       VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8, $9) RETURNING *`,
+         (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, ticket_id, leave_type_code${libra ? ', libra_dias' : ''})
+       VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8, $9${libra ? ', $10::smallint[]' : ''}) RETURNING *`,
       [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null,
-       usuarioId || null, ticketId || null, tipo]);
+       usuarioId || null, ticketId || null, tipo, ...(libra ? [libra] : [])]);
     return { anadida: r.rows[0], fondoPartido: fondos.length };
-  });
+  }));
 }
 
 /**
@@ -1034,7 +1059,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
  * hace falta es tocar esa fila, no apilar otra encima. Hasta ahora eso solo se
  * podía por base de datos.
  */
-async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso }, { usuarioId } = {}) {
+async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso, libraDias }, { usuarioId } = {}) {
   const fila = (await db.consulta(
     `SELECT h.*, c.fin_previsible, c.etiqueta
        FROM conductor_estado_hist h
@@ -1045,6 +1070,12 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso },
   const cambios = {};
   if (desde !== undefined) cambios.desde = desde || fila.desde;
   if (motivo !== undefined) cambios.motivo = motivo || null;
+  // Los dos días que libra en unas vacaciones (db/233): solo en vacaciones, y
+  // siempre dos. Si son los mismos, no es un cambio.
+  if (libraDias !== undefined && fila.estado === 'vacaciones') {
+    const libra = dosDiasLibra(libraDias);
+    if (String(libra) !== String((fila.libra_dias || []).map(Number))) cambios.libra_dias = libra;
+  }
   // El tipo de un permiso se puede corregir (los de asuntos propios ya no son
   // un permiso: tienen su situación, db/225).
   if (tipoPermiso !== undefined && fila.estado === 'permiso') {
@@ -1086,7 +1117,7 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso },
           AND COALESCE(h.hasta, 'infinity'::date) >= $3::date
         ORDER BY h.desde`, [id, filaId, nd, nh])).rows;
     await partirFondos(cli, id, fondos, nd, nh);
-    const r = await vig.editar('situacion', filaId, id, cambios, { cli });
+    const r = await conLibraDias(() => vig.editar('situacion', filaId, id, cambios, { cli }));
     return { editada: r.despues || r, fondoPartido: fondos.length };
   });
 }
@@ -1094,7 +1125,7 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso },
 /** Un tramo del historial con sus fechas en 'AAAA-MM-DD' (o null si no es de esta persona). */
 async function ausenciaDe(id, filaId) {
   const r = await db.consulta(
-    `SELECT estado, to_char(desde, 'YYYY-MM-DD') AS desde, to_char(hasta, 'YYYY-MM-DD') AS hasta
+    `SELECT *, to_char(desde, 'YYYY-MM-DD') AS desde, to_char(hasta, 'YYYY-MM-DD') AS hasta
        FROM conductor_estado_hist WHERE id = $1 AND conductor_id = $2`, [filaId, id]);
   return r.rows[0] || null;
 }

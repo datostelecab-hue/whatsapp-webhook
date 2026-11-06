@@ -170,6 +170,11 @@ function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {})
   router.post('/aplicar', responde(async req =>
     ({ ticket: await ticketera.aplicar(req.body.id, req.body, await quien(req)) })));
 
+  // Lo que libra según el planificador, para proponer a mano los dos días de
+  // unas vacaciones al aplicarlas (db/233).
+  router.get('/api/libranzas', responde(async req =>
+    ({ libranzas: await require('../Vacaciones/vacaciones.service').libranzasSugeridas(req.query.id, req.query.desde) })));
+
   // Quién es quién, para poder enlazar a mano un ticket sin identificar.
   router.get('/api/personas', responde(async () => {
     const plantilla = require('../Conductores/plantilla.service');

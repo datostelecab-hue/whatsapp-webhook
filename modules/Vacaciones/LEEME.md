@@ -24,14 +24,17 @@ Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,05882 días por 
 DÍA LABORADO —un día con MÁS de 4 h de viaje + espera de BOLT— desde el alta (o desde
 el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—; lo de antes no cuenta para
 nada), y también cada día con una J aprobada y cada día de baja médica que le tocaba
-trabajar (sin plaza o antes del planificador, cada día de baja vale 5/7: BAJA_SIN_PLAZA); + 1 día por festivo trabajado más de 6 h; − vacaciones disfrutadas, SOLO los
-días que le tocaba trabajar (sus libranzas se mantienen: `libranzas.js`, la regla de
+trabajar (sin plaza o antes del planificador, cada día de baja vale 5/7: BAJA_SIN_PLAZA); + 1 día por festivo trabajado más de 6 h
+desde el 01/10/2026 (los de hasta el 30/09 se pagaron: FESTIVOS_PAGADOS_HASTA); − vacaciones disfrutadas, SOLO los
+días que le tocaba trabajar (las de db/233 llevan sus DOS días de libranza puestos a mano,
+`libra_dias`, y mandan esos; las de antes, sus libranzas del planificador: `libranzas.js`, la regla de
 f_cobertura sin apartar al ausente; la plaza de ese día o la última que tuvo; antes del
 planificador, 03/09/2026, no se sabe y cuentan). Ningún permiso resta. Hasta el
 06/11/2026 eran 0,0821 por día natural, sin las suspensiones.
 
-«Simular vacaciones» (ficha, GET /api/simular/:id?desde&hasta): el calendario de unas
-fechas, qué días cuentan y cuáles libra, y lo que le quedaría. No guarda nada.
+«Simular vacaciones» (ficha, GET /api/simular/:id?desde&hasta&libra=3,7): el calendario de unas
+fechas con los dos días que libra elegidos a mano (obligatorios), y lo que le quedaría. No
+guarda nada. GET /api/libranzas/:id?desde: lo que libra según el planificador, para proponerlo.
 
 LOS DÍAS LABORADOS (`repo.diasLaborados`): desde el 01/07/2026, los de la bitácora
 (`bitacora_horas`); antes, `bolt_jornada_historico` (db/231), las jornadas de 05:00 a

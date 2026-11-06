@@ -69,5 +69,16 @@ igual('Desde el 03/09 y antes de su primera plaza: la primera', L.elDia(p, '2026
 igual('Quien nunca ha tenido plaza: no se sabe', L.elDia(plan([]), LUN, INICIO), { trabaja: null, por: 'sin-plaza' });
 igual('Un día que no se sabe cuenta como vacaciones; uno que libra, no', [L.cuenta({ trabaja: null }), L.cuenta({ trabaja: false }), L.cuenta(null)], [true, false, true]);
 
+// 10. Los dos días que libra en unas vacaciones, a mano (06/11/2026, db/233).
+const lanza = fn => { try { fn(); return 'no lanza'; } catch (e) { return /siempre son dos/.test(e.message) ? 'lanza' : e.message; } };
+igual('Dos días a mano, ordenados', [L.dosDiasLibra([4, 3]), L.dosDiasLibra('7,1'), L.dosDiasLibra(['3', '5'])], [[3, 4], [1, 7], [3, 5]]);
+igual('Uno solo, tres, repetidos, un 0, un 8 o vacío: no', [[3], [1, 2, 3], [3, 3], [0, 3], [3, 8], [], null, 'x,3'].map(v => lanza(() => L.dosDiasLibra(v))),
+  ['lanza', 'lanza', 'lanza', 'lanza', 'lanza', 'lanza', 'lanza', 'lanza']);
+igual('Con miércoles y jueves, el 18/11 (X) no cuenta y el 16/11 (L) sí', [L.cuentaConLibra([3, 4], '2026-11-18'), L.cuentaConLibra([3, 4], LUN)], [false, true]);
+p = plan([fijo('2026-09-30', null)], { 25: [desc('2026-09-03', null, [3])] });
+igual('Lo que propone el planificador: el de Angel, solo el miércoles', L.libraSegunPlanificador(d => L.elDia(p, d, INICIO), LUN), [3]);
+igual('…y de quien no tiene plaza, nada', L.libraSegunPlanificador(d => L.elDia(plan([]), d, INICIO), LUN), []);
+igual('Los días en palabras', [L.nombresDias([3, 4]), L.nombresDias([6]), L.nombresDias([1, 3, 5])], ['miércoles y jueves', 'sábado', 'lunes, miércoles y viernes']);
+
 console.log(fallos ? `\n${fallos} fallo(s)` : '\nTodo bien');
 process.exit(fallos ? 1 : 0);
