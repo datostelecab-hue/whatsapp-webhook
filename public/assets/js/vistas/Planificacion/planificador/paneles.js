@@ -331,7 +331,8 @@
       if (banqTab === 'ett' && !p.esEtt) return false;
       if (banqTab === 'propios' && p.esEtt) return false;
       if (!q) return true;
-      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '') + ' ' + (p.turno || '') + ' ' + ((p.rendimiento && p.rendimiento.letra) || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      // También por el contrato: escribir «40x4» deja solo a los de cuatro días.
+      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '') + ' ' + (p.turno || '') + ' ' + (p.contrato || '') + ' ' + ((p.rendimiento && p.rendimiento.letra) || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       return t.includes(q);
     });
     document.querySelectorAll('.banq-tab').forEach(b => {

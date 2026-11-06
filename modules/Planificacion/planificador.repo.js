@@ -399,7 +399,12 @@ async function tablero({ dia } = {}) {
       modalidad: Number(c.jornada_horas) === jornada.TOPE_HORAS ? `40x${c.jornada_dias || 5}` : '',
       // Un correturno de 40x4 trabaja 4 días; el resto, lo que diga el catálogo.
       diasQueDebeCT: jornada.diasDeCt(c.jornada_horas, c.jornada_dias, c.dias_ct),
-      contrato: c.jornada_horas ? `${Number(c.jornada_horas)}h${c.contrato_tipo === 'ett' ? ' ETT' : ''}` : '',
+      // Lo que dice el banquillo: «40x5» o «40x4» si es de 40 horas (06/11/2026,
+      // Camilo: «agregues lo de las jornadas 40x4 y 40x5 en el banquillo
+      // también»); si no, las horas («32h»). Y « ETT» si va por la agencia.
+      contrato: c.jornada_horas
+        ? `${Number(c.jornada_horas) === jornada.TOPE_HORAS ? `40x${c.jornada_dias || 5}` : `${Number(c.jornada_horas)}h`}${c.contrato_tipo === 'ett' ? ' ETT' : ''}`
+        : '',
       esEtt: c.contrato_tipo === 'ett',
       ettNombre: c.ett_nombre || '',
       // Ficha su turno por WhatsApp (db/148): iniciar suelta el motor y

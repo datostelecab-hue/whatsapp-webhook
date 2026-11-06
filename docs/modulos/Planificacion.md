@@ -426,6 +426,7 @@ Comprobado ese día con una prueba que, cada vez que reutilizaba una pieza, la r
 ## Correturnos de 40x4 (05/11/2026)
 
 - La tarjeta de un correturno de **40x4** lleva el ítem «40x4» junto a sus días. El de 40x5 no lleva ítem.
+- **En el banquillo** (06/11/2026, Camilo: «agregues lo de las jornadas 40x4 y 40x5 en el banquillo también»), el contrato de quien es de 40 horas dice **«40x5»** o **«40x4»** en vez de «40h» (los demás, sus horas: «32h»), con « ETT» detrás si va por la agencia (`planificador.repo`, `contrato`). Y el buscador del banquillo lo encuentra: escribir «40x4» deja solo a los de cuatro días.
 - Un correturno de 40x4 exige **4 días** (`diasDeCt` en `modules/Conductores/jornada.js`), con el suelo de 4 de siempre. Los demás siguen el catálogo.
 - La vista vertical todavía no muestra el ítem.
 - Lo que falta decidir (un correturno de 40x5 cuenta 6 días hoy, y la modalidad dice 5) está en [[Conductores]].
