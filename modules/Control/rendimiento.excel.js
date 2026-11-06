@@ -6,7 +6,8 @@
 // rendimiento.service.js; aquí no se decide nada.
 //
 //   · «Resumen»: zona a zona, cada cuadrante en una fila (con enlace a su
-//     pestaña), el total de los cuadrantes y los coches sin cuadrante aparte.
+//     pestaña), con los coches sin cuadrante como una zona más, «Cuadrantes
+//     libres», que suma al total.
 //   · Una pestaña por cuadrante: su resumen, la parrilla de colores (fijo día
 //     azul, fijo noche caqui, CT día verde, CT noche morado; SIN los mal
 //     planificados) con lo que le falta y las horas de cada coche, y el día a día.
@@ -47,7 +48,7 @@ async function generar(inf) {
     (per.enCurso ? '' : ' El reparto en cuadrantes es el de hoy; lo que falta (fijos y CT) solo se da en el mes en curso.');
   const nombreHoja = new Set();
   const hojaDe = g => {
-    let n = (g.k === 'sin' ? 'Sin cuadrante' : `C${g.numero} ${g.zona}`).replace(/[\\/?*[\]:]/g, '').slice(0, 31);
+    let n = (g.k === 'sin' ? 'Cuadrantes libres' : `C${g.numero} ${g.zona}`).replace(/[\\/?*[\]:]/g, '').slice(0, 31);
     while (nombreHoja.has(n)) n = n.slice(0, 29) + '·' + nombreHoja.size;
     nombreHoja.add(n);
     return n;
@@ -90,16 +91,12 @@ async function generar(inf) {
       fila(z.zona.toUpperCase(), z.tot, { zona: true });
       z.grupos.forEach(g => fila(g.nombre, g.tot, { enlace: hoja.get(g.k) }));
     });
-    if (inf.sinCuadrante) {
-      fila('SIN CUADRANTE', inf.sinCuadrante.tot, { zona: true });
-      fila('Coches sin cuadrante', inf.sinCuadrante.tot, { enlace: hoja.get('sin') });
-    }
-    fila('TOTAL DE LOS CUADRANTES', inf.total, { total: true });
+    fila('TOTAL', inf.total, { total: true });
     fl++;
     [`Cada plaza, ${HT} h por turno: un coche con correturnos son 4 plazas (2 fijos y 2 CT) y ${2 * HT} h al día. Si falta el CT, los días que libran los fijos se quedan sin nadie y bajan el rendimiento del cuadrante y de la zona. Turnos sin conductor: los que le tocaban al coche y no tenían a nadie en el cuadrante (quien está de vacaciones o de baja no cubre), los que ya pasaron y los previstos hasta fin de mes; de ellos, los que caen el día que libra el fijo son falta de CT, y el resto, falta de fijo (o el fijo fuera). Horas que se pierden: esos turnos × ${HT} h.`,
       `Fijos que faltan hoy: plazas de fijo sin nadie el ${es(per.diaPlan)} ni escrito para más adelante. Días de CT que faltan: los días que libra un fijo y ningún correturnos tiene puestos (de día / de noche); en un turno sin fijo no se cuentan (falta el fijo). Los CT que faltan son esos días ÷ ${diasPorCt}, hacia arriba. Las dos cosas, como en el planificador: es la foto de ese día y solo de los coches que ruedan. Un coche configurado sin correturnos no pide CT.`,
       `Deben hacer: cada turno que le toca al coche en el mes a ${HT} h. Con correturnos, los dos turnos todos los días; sin correturnos, el turno del fijo que libra no se pide (con la configuración de cada día). Los días que el coche estuvo parado según su historial (taller, Policía…) no se piden ni cuentan sus horas, salvo que BOLT diga que rodó 1 h o más (el historial de antes del 08/10/2026 no es del todo fiable). Un coche que entró en el planificador a mitad de mes cuenta desde su primera plaza.`,
-      'Cómo van: en verde el 90 % o más de lo que debían llevar; en ámbar del 70 al 90 %; en rojo por debajo. A este ritmo: lo que harían en el mes si siguen igual. El total no incluye los coches sin cuadrante.',
+      'Cómo van: en verde el 90 % o más de lo que debían llevar; en ámbar del 70 al 90 %; en rojo por debajo. A este ritmo: lo que harían en el mes si siguen igual. Los coches sin cuadrante van en la zona «Cuadrantes libres» y suman al total.',
     ].forEach(txt => { ws.mergeCells(fl, 1, fl, cols.length); const c = ws.getCell(fl, 1); c.value = txt; c.font = { size: 9, color: { argb: E.TENUE } }; c.alignment = { wrapText: true, vertical: 'top' }; ws.getRow(fl).height = 12 * Math.ceil(txt.length / 210) + 6; fl++; });
   }
 
@@ -164,7 +161,7 @@ async function generar(inf) {
     const N = cols.length;
     const ws = wb.addWorksheet(hoja.get(g.k), { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
     cols.forEach(([, w], i) => { ws.getColumn(i + 1).width = w; });
-    let fl = E.bandaCabecera(ws, idLogo, sinCu ? `COCHES SIN CUADRANTE · ${per.nombre.toUpperCase()}` : `${g.nombre.toUpperCase()} · ${g.zona.toUpperCase()} · ${per.nombre.toUpperCase()}`,
+    let fl = E.bandaCabecera(ws, idLogo, sinCu ? `CUADRANTES LIBRES · ${per.nombre.toUpperCase()}` : `${g.nombre.toUpperCase()} · ${g.zona.toUpperCase()} · ${per.nombre.toUpperCase()}`,
       `${per.enCurso ? `El planificador del ${es(per.diaPlan)}. ` : ''}${regla}`, N);
     ws.getRow(2).height = 40; ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
 
@@ -186,7 +183,7 @@ async function generar(inf) {
       ['A este ritmo, a fin de mes', x.ritmo, H + ' "h"'],
       ['Les faltan para llegar', x.faltan, H + ' "h"'],
     ];
-    fl = E.cabeceraTabla(ws, fl, [sinCu ? 'Resumen de los coches sin cuadrante' : 'Resumen del cuadrante', ''], { alto: 20 });
+    fl = E.cabeceraTabla(ws, fl, [sinCu ? 'Resumen de los cuadrantes libres' : 'Resumen del cuadrante', ''], { alto: 20 });
     datos.forEach(([etq, v, fmt]) => {
       const r = ws.getRow(fl++);
       r.getCell(1).value = etq;
@@ -268,7 +265,7 @@ async function generar(inf) {
     // El total del cuadrante, bajo la parrilla.
     {
       const r = ws.getRow(fl++);
-      r.getCell(1).value = sinCu ? 'Sin cuadrante' : 'Cuadrante';
+      r.getCell(1).value = sinCu ? 'Cuadrantes libres' : 'Cuadrante';
       r.getCell(6).value = !conFalta ? '—' : x.fijosFaltan || x.ctFaltan ? `Faltan ${[x.fijosFaltan ? `${x.fijosFaltan} fijo${x.fijosFaltan === 1 ? '' : 's'}` : '', x.ctFaltan ? `${x.ctFaltan} CT` : ''].filter(Boolean).join(' y ')}` : 'Completo';
       r.getCell(7).value = `${x.sinPasados} / ${x.sinPrevistos}`;
       r.getCell(8).value = `${x.sinCtPasados} / ${x.sinCtPrevistos}`;

@@ -66,8 +66,8 @@ igual('…en el resto del mes: 27 días × 2 menos 4 viernes y 4 sábados', B.ob
 igual('…y no pide CT aunque el planificador diga días', [B.ctDia, B.ctNoche, B.falta], [0, 0, []]);
 igual('Coche que entra a mitad de mes: cuenta desde su primera plaza; las horas de antes no', [Cc.objAyer, Cc.llevan, Cc.dias[1].antes], [32, 28, true]);
 igual('…sin fijo de día: falta el fijo y no se piden días de CT de ese turno', [Cc.fijosFaltan, Cc.ctDia, Cc.falta], [1, 0, ['el fijo de día']]);
-igual('Los coches sin cuadrante van aparte: el total es de los cuadrantes', [r.total.coches, r.total.objAyer, r.total.llevan, r.sinCuadrante.tot.coches], [2, 96, 80, 1]);
-igual('La zona suma sus cuadrantes', [r.zonas.length, r.zonas[0].zona, r.zonas[0].tot.objAyer], [1, 'Norte', 96]);
+igual('Los coches sin cuadrante son la zona «Cuadrantes libres» y suman al total', [r.total.coches, r.total.objAyer, r.total.llevan, r.sinCuadrante.tot.coches, r.zonas.map(z => z.zona)], [3, 128, 108, 1, ['Norte', 'Cuadrantes libres']]);
+igual('La zona suma sus cuadrantes (y los libres son otra zona)', [r.zonas.length, r.zonas[0].zona, r.zonas[0].tot.objAyer], [2, 'Norte', 96]);
 const parado = R.calcular({ per, tablero: { coches: [cocheB], cuadrantes: tablero.cuadrantes, zonas: [] }, horas: new Map([['2222BBB', new Map([['2026-10-04', 9]])]]), cubierto,
   primera: new Map(), parado: new Map([['2|2026-10-04', 'En taller']]), descansos: [], sinCt: [] });
 igual('Si BOLT dice que rodó (1 h o más) el día de taller, el historial está mal y el día cuenta', [parado.grupos[0].coches[0].diasParado, parado.grupos[0].coches[0].dias[3].obj], [0, 16]);
@@ -75,8 +75,8 @@ igual('Si BOLT dice que rodó (1 h o más) el día de taller, el historial está
 // ── El ejecutivo ──
 const inf = { per, horasTurno: 8, diasPorCt: 6, ...r, personas: new Map(), contactos: new Map(), modelo: new Map(), etiquetaEstado: new Map([['X', 'En taller']]) };
 const e = R.ejecutivo(inf);
-igual('La frase dice cómo van', /van al 83,3 %/.test(e.frase), true);
-igual('El déficit, por su causa: CT, fijo y el resto', e.cascada.map(p => Math.round(p.valor)), [96, -8, -8, 0, 80]);
+igual('La frase dice cómo van', /van al 84,4 %/.test(e.frase), true);
+igual('El déficit, por su causa: CT, fijo y el resto', e.cascada.map(p => Math.round(p.valor)), [128, -8, -8, -4, 108]);
 igual('Seis cifras arriba', e.kpis.length, 6);
 igual('Los cuadrantes de peor a mejor', e.cuadrantes.map(c => c.etq), ['C1', 'C2']);
 igual('Qué le pasa al peor: las causas en horas y, en curso, lo que falta hoy', e.peores[0].que,
@@ -128,7 +128,7 @@ igual('Coche que dejó el planificador: cuenta hasta su último día con plaza, 
   const xlsx = await require('../modules/Control/rendimiento.excel').generar(inf);
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(xlsx);
-  igual('El Excel: Resumen y una pestaña por cuadrante (y la de sin cuadrante)', wb.worksheets.map(w => w.name), ['Resumen', 'C1 Norte', 'C2 Norte', 'Sin cuadrante']);
+  igual('El Excel: Resumen y una pestaña por cuadrante (y la de los cuadrantes libres)', wb.worksheets.map(w => w.name), ['Resumen', 'C1 Norte', 'C2 Norte', 'Cuadrantes libres']);
 
   console.log(fallos ? `\n${fallos} fallo(s)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);

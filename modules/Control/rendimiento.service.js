@@ -57,6 +57,10 @@ const db = require('../../services/db');
 const HORAS_TURNO = 8;            // por plaza y turno (Camilo, 06/11/2026)
 const DIAS_POR_CT = 6;            // como iceberg.js: días de CT que faltan ÷ 6, hacia arriba
 const PRIMER_MES = '2026-09';     // el planificador empieza en la base el 03/09/2026
+// Los coches sin cuadrante son una zona más y suman al total (06/11/2026, Camilo:
+// «también agrega a los que no tienen, para que sumen a esas horas. Y que se
+// llame "Cuadrantes libres" como zona»).
+const LIBRES = 'Cuadrantes libres';
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 // ── Fechas: 'AAAA-MM-DD', día natural de Madrid ─────────────────────────────
@@ -206,22 +210,22 @@ function calcular({ per, tablero, horas, primera, ultima, parado, descansos, sin
     const cu = coche.cuadranteId ? cuadranteDe.get(String(coche.cuadranteId)) : null;
     const k = cu ? 'c' + cu.id : 'sin';
     if (!grupos.has(k)) {
-      grupos.set(k, { k, zona: cu ? (cu.zona || coche.zona || 'Sin zona') : 'Sin cuadrante', numero: cu ? Number(cu.numero) : 1e9,
-        nombre: cu ? (cu.nombre || 'Cuadrante ' + cu.numero) : 'Sin cuadrante', coches: [] });
+      grupos.set(k, { k, zona: cu ? (cu.zona || coche.zona || 'Sin zona') : LIBRES, numero: cu ? Number(cu.numero) : 1e9,
+        nombre: cu ? (cu.nombre || 'Cuadrante ' + cu.numero) : LIBRES, coches: [] });
     }
     grupos.get(k).coches.push(cocheX(coche));
   });
   const ordenZonas = (tablero.zonas || []).map(z => (typeof z === 'string' ? z : z && (z.nombre || z.zona))).filter(x => typeof x === 'string');
-  const zonaOrden = z => { const i = ordenZonas.indexOf(z); return z === 'Sin cuadrante' ? 1e9 : i < 0 ? 1e6 : i; };
+  const zonaOrden = z => { const i = ordenZonas.indexOf(z); return z === LIBRES ? 1e9 : i < 0 ? 1e6 : i; };
   const lista = [...grupos.values()].sort((a, b) => zonaOrden(a.zona) - zonaOrden(b.zona) || a.zona.localeCompare(b.zona) || a.numero - b.numero);
   lista.forEach(g => { g.coches.sort((a, b) => a.coche.matricula.localeCompare(b.coche.matricula)); g.tot = totales(g.coches); });
-  const enCuadrante = lista.filter(g => g.k !== 'sin');
-  const zonas = [...new Set(enCuadrante.map(g => g.zona))].map(z => {
-    const gs = enCuadrante.filter(g => g.zona === z);
+  // Los cuadrantes libres son una zona más (la última) y entran en el total.
+  const zonas = [...new Set(lista.map(g => g.zona))].map(z => {
+    const gs = lista.filter(g => g.zona === z);
     return { zona: z, grupos: gs, tot: totales(gs.flatMap(g => g.coches)) };
   });
   const sin = lista.find(g => g.k === 'sin') || null;
-  return { grupos: lista, zonas, sinCuadrante: sin, total: totales(enCuadrante.flatMap(g => g.coches)) };
+  return { grupos: lista, zonas, sinCuadrante: sin, total: totales(lista.flatMap(g => g.coches)) };
 }
 
 /** Las sumas de un grupo de coches. Los CT que faltan, sobre los días juntos (÷ 6). */
@@ -368,8 +372,8 @@ const plural = (n, uno, varios) => `${n0(n)} ${n === 1 ? uno : varios}`;
 const mayus = s => s.charAt(0).toUpperCase() + s.slice(1);
 // «falta el fijo de día», «faltan 2 días de CT»: concuerda con lo que falta.
 const falta = xs => (xs.length > 1 || /^([2-9]|\d{2,})/.test(xs[0] || '') ? 'faltan ' : 'falta ') + yLista(xs);
-const corto = g => (g.k === 'sin' ? 'sin cuadrante' : `C${g.numero}`);
-const deZona = g => (g.k === 'sin' ? 'sin cuadrante' : `C${g.numero} de ${g.zona}`);
+const corto = g => (g.k === 'sin' ? 'Libres' : `C${g.numero}`);
+const deZona = g => (g.k === 'sin' ? 'cuadrantes libres' : `C${g.numero} de ${g.zona}`);
 
 // Topes de filas del ejecutivo; si aun así no caben, el PDF dice cuántas quedan fuera.
 const TOPE = { peores: 8, faltan: 14, coches: 10, mejores: 3, zonas: 9 };
@@ -439,7 +443,8 @@ function ejecutivo(inf) {
   const { deficit, hCt, hFijo, hResto } = causas(T, HT);
 
   const titulo = `Rendimiento de los cuadrantes · ${per.nombre}`;
-  const flota = `${T.coches} coches en ${enCuadrante.length} cuadrantes`;
+  const flota = S && S.coches ? `${T.coches} coches: ${T.coches - S.coches} en ${enCuadrante.length} cuadrantes y ${S.coches} en cuadrantes libres`
+    : `${T.coches} coches en ${enCuadrante.length} cuadrantes`;
   const sub = !per.enCurso ? `${mayus(mes)} entero · reparto de cuadrantes de hoy · ${flota}`
     : !per.cerrados ? `Aún sin días cerrados · lo previsto del 1 al ${Number(per.fin.slice(8))} de ${mes} · planificador del ${ddmmaaaa(per.diaPlan)} · ${flota}`
       : `Del 1 al ${Number(per.ayer.slice(8))} de ${mes} (días cerrados) y lo previsto hasta el ${Number(per.fin.slice(8))} · planificador del ${ddmmaaaa(per.diaPlan)} · ${flota}`;
@@ -458,8 +463,8 @@ function ejecutivo(inf) {
       : per.enCurso ? `Llevan ${n0(-deficit)} h más de las que debían hasta el ${ddmm(per.ayer)}.` : `Hicieron ${n0(-deficit)} h más de las que debían en ${mes}.`;
   }
 
-  // Lo que falta hoy, con los coches sin cuadrante (como el planificador).
-  const fF = T.fijosFaltan + (S ? S.fijosFaltan : 0), cD = T.ctDia + (S ? S.ctDia : 0), cN = T.ctNoche + (S ? S.ctNoche : 0);
+  // Lo que falta hoy: el total ya lleva los cuadrantes libres (como el planificador).
+  const fF = T.fijosFaltan, cD = T.ctDia, cN = T.ctNoche;
   const ctF = Math.ceil(cD / inf.diasPorCt) + Math.ceil(cN / inf.diasPorCt);
   const sinDias = 'aún sin días cerrados';
   const kpis = [
@@ -491,10 +496,9 @@ function ejecutivo(inf) {
     zonas = zonas.slice(0, TOPE.zonas);
     zonas.push({ nombre: `y ${fuera} zona${fuera === 1 ? '' : 's'} más (en el Excel)`, nota: true });
   }
-  zonas.push(filaZona('Total de los cuadrantes', T, { total: true }));
-  if (S) zonas.push(filaZona('Coches sin cuadrante', S, { aparte: true }));
+  zonas.push(filaZona('Total', T, { total: true }));
 
-  // Los cuadrantes, de peor a mejor (los coches sin cuadrante no son un cuadrante).
+  // Los cuadrantes, de peor a mejor (los libres son una zona, no un cuadrante: no van aquí).
   const conPct = enCuadrante.filter(g => g.tot.pct != null).sort((a, b) => a.tot.pct - b.tot.pct);
   const semaforo = { verde: conPct.filter(g => g.tot.pct >= 0.9).length, ambar: conPct.filter(g => g.tot.pct >= 0.7 && g.tot.pct < 0.9).length, rojo: conPct.filter(g => g.tot.pct < 0.7).length };
   const cuadrantes = conPct.map(g => ({ etq: corto(g), zona: g.zona, pct: g.tot.pct }));
@@ -533,7 +537,7 @@ function ejecutivo(inf) {
   const listaCt = k => {
     const gs = ctGrupos.filter(g => g.tot[k]);
     const zs = [...new Set(gs.map(g => g.zona))];
-    return conMas(zs.map(z => { const de = gs.filter(g => g.zona === z); return de[0].k === 'sin' ? 'coches sin cuadrante' : `${yLista(de.map(corto))} de ${z}`; }), 5);
+    return conMas(zs.map(z => { const de = gs.filter(g => g.zona === z); return de[0].k === 'sin' ? 'cuadrantes libres' : `${yLista(de.map(corto))} de ${z}`; }), 5);
   };
   if (hCt > 0 || ctGrupos.length) {
     const coste = `La falta de CT ${per.enCurso ? 'ya ha costado' : 'costó'} ${n0(hCt)} h` + (per.enCurso && T.sinCtPrevistos ? ` y hay ${n0(T.sinCtPrevistos * HT)} h más previstas hasta fin de mes` : '');

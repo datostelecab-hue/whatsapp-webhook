@@ -271,7 +271,7 @@ async function generar(e) {
     let yy = titulo(p2, e.cerrado ? 'Lo que faltaba en el planificador' : 'Lo que falta en el planificador', MX, yCols);
     const cols = [
       { etq: 'Zona', w: 62, cel: f => ({ s: f.zona }) },
-      { etq: 'Cuadrante', w: 52, cel: f => ({ s: f.cu === 'sin cuadrante' ? '—' : f.cu, f: bold }) },
+      { etq: 'Cuadrante', w: 52, cel: f => ({ s: f.cu, f: bold }) },
       { etq: 'Coches', w: 96, cel: f => ({ s: f.coches, envolver: true }) },
     ];
     cols.push({ etq: 'Qué falta', w: wCol - cols.reduce((s, c) => s + c.w, 0), cel: f => ({ s: f.que, envolver: true, c: f.peso === 0 ? C.rojo : C.texto }) });
