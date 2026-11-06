@@ -8,7 +8,8 @@
 const db = require('../../services/db');
 
 // 'asuntos_propios' (db/225): su banco va aparte del saldo de vacaciones.
-const ESTADOS = ['vacaciones', 'permiso', 'asuntos_propios', 'suspendido', 'suspension_permiso'];
+// 'baja_medica' (06/11/2026): sus días generan vacaciones, como uno trabajado.
+const ESTADOS = ['vacaciones', 'permiso', 'asuntos_propios', 'suspendido', 'suspension_permiso', 'baja_medica'];
 
 /**
  * Quien tiene el contrato abierto (o una persona, con `id`). Solo plantilla
@@ -168,4 +169,63 @@ async function diasLaborados(ids, desde) {
   return { filas: [...v.rows, ...n.rows], sinHistorico: !hay };
 }
 
-module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo, diasLaborados };
+/**
+ * LOS DÍAS JUSTIFICADOS (06/11/2026): las J APROBADAS de cada persona, una por
+ * jornada (las pendientes son presuntas y las rechazadas no valen, como en la
+ * bitácora). Generan vacaciones como un día trabajado. [{ id, dia }].
+ */
+async function justificados(ids, desde) {
+  if (!ids.length) return [];
+  const r = await db.consulta(
+    `SELECT DISTINCT conductor_id::text AS id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia
+       FROM justificante
+      WHERE conductor_id = ANY($1::bigint[]) AND dia_operativo >= $2::date
+        AND aprobado_at IS NOT NULL AND anulado_at IS NULL`, [ids, desde]);
+  return r.rows;
+}
+
+/**
+ * LO PLANIFICADO DE CADA PERSONA, para saber qué días libra (06/11/2026, ver
+ * libranzas.js): sus plazas (con el coche, el rol, el turno y, si es
+ * correturnos, sus días), el descanso de esos coches y sus libranzas
+ * excepcionales. Y el primer día del planificador en la base: antes no hay
+ * libranzas que saltar.
+ *
+ * Map(id → { asignaciones, descansos: Map(vehiculo → [...]), libra: Set, trabaja: Set }) + { inicio }.
+ */
+async function planes(ids) {
+  const vacio = () => ({ asignaciones: [], descansos: new Map(), libra: new Set(), trabaja: new Set() });
+  const out = new Map(ids.map(i => [String(i), vacio()]));
+  if (!ids.length) return { porId: out, inicio: null };
+  const [as, inicio, ex] = await Promise.all([
+    db.consulta(
+      `SELECT a.conductor_id::text AS id, to_char(a.desde, 'YYYY-MM-DD') AS desde, to_char(a.hasta, 'YYYY-MM-DD') AS hasta,
+              p.vehiculo_id::text AS vehiculo_id, s.rol, s.turno_id,
+              COALESCE((SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana) FROM asignacion_dia ad WHERE ad.asignacion_id = a.id), '{}') AS dias
+         FROM asignacion a
+         JOIN plaza p    ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN cat_slot s ON s.slot = p.slot
+        WHERE a.conductor_id = ANY($1::bigint[]) AND a.retirada_at IS NULL AND (a.hasta IS NULL OR a.hasta >= a.desde)
+        ORDER BY a.conductor_id, a.desde`, [ids]),
+    db.consulta(`SELECT to_char(min(desde), 'YYYY-MM-DD') AS inicio FROM asignacion`),
+    db.consulta(
+      `SELECT conductor_id::text AS id, to_char(dia_trabaja, 'YYYY-MM-DD') AS trabaja, to_char(dia_libra, 'YYYY-MM-DD') AS libra
+         FROM libranza_excepcional WHERE conductor_id = ANY($1::bigint[])`, [ids]),
+  ]);
+  const coches = [...new Set(as.rows.map(r => r.vehiculo_id))];
+  const de = coches.length ? (await db.consulta(
+    `SELECT vd.vehiculo_id::text AS vehiculo_id, vd.turno_id, to_char(vd.desde, 'YYYY-MM-DD') AS desde, to_char(vd.hasta, 'YYYY-MM-DD') AS hasta,
+            COALESCE((SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) FROM vehiculo_descanso_dia vdd WHERE vdd.descanso_id = vd.id), '{}') AS dias
+       FROM vehiculo_descanso vd WHERE vd.vehiculo_id = ANY($1::bigint[])`, [coches])).rows : [];
+  const descansos = new Map();
+  de.forEach(d => { if (!descansos.has(d.vehiculo_id)) descansos.set(d.vehiculo_id, []); descansos.get(d.vehiculo_id).push({ ...d, dias: d.dias.map(Number) }); });
+  as.rows.forEach(a => {
+    const p = out.get(a.id);
+    p.asignaciones.push({ ...a, dias: a.dias.map(Number) });
+    if (!p.descansos.has(a.vehiculo_id)) p.descansos.set(a.vehiculo_id, descansos.get(a.vehiculo_id) || []);
+  });
+  ex.rows.forEach(x => { const p = out.get(x.id); if (!p) return; if (x.libra) p.libra.add(x.libra); if (x.trabaja) p.trabaja.add(x.trabaja); });
+  return { porId: out, inicio: inicio.rows[0].inicio };
+}
+
+module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo, diasLaborados, justificados, planes };

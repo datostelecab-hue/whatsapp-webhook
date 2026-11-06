@@ -56,8 +56,25 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   igual('Hoy sí cuenta, lo de después no', s.diasLaborados, 1);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY);
   igual('Sin días trabajados no genera nada, aunque lleve 94 días de alta', [s.diasNaturales, s.diasLaborados, s.generadas], [94, 0, 0]);
+  // 06/11/2026, Camilo: «las bajas médicas y días justificados sí suman también, las libranzas y ausencias injustificadas no».
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-01', hasta: '2026-09-30' }], [], new Map(), HOY, L('2026-07-13', '2026-07-31', 8));
-  igual('La baja médica ya no genera: solo los 19 días que trabajó', [s.diasLaborados, s.generadas], [19, 1.12]);
+  igual('La baja médica SÍ genera: 19 trabajados + 61 de baja = 80 × 0,05882',
+    [s.diasLaborados, s.diasBaja, s.diasQueGeneran, s.generadas], [19, 61, 80, 4.71]);
+  s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-09-01', '2026-09-03', 2), null, new Set(['2026-09-01', '2026-09-02', '2026-10-30']));
+  igual('Un día con una J aprobada genera aunque trabajara 2 h; la J de mañana no', [s.diasJustificados, s.diasQueGeneran, s.generadas], [2, 2, 0.12]);
+  igual('…y el día de 2 h sin J se queda corto', s.detalle.meses.map(m => [m.mes, m.laborados, m.justificados, m.cortos]), [['2026-09', 0, 2, 1]]);
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-02' }], [], new Map(), HOY,
+    L('2026-09-01', '2026-09-01', 9), null, new Set(['2026-09-01']));
+  igual('Cada día cuenta una vez: trabajó, con J y de baja el 01/09 es un día; el 02/09, de baja', [s.diasLaborados, s.diasJustificados, s.diasBaja, s.diasQueGeneran], [1, 0, 1, 2]);
+  // Con su plan: libra los miércoles y jueves.
+  const libraXJ = d => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return { trabaja: w !== 3 && w !== 4, por: 'plaza' }; };
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), libraXJ);
+  igual('Una baja de 14 días que pisa 4 libranzas: genera 10 (las libranzas no suman)', [s.diasBaja, s.generadas], [10, 0.59]);
+  s = saldoDe({ alta: '2026-07-13' }, [vac('2026-09-14', '2026-09-27'), vac('2026-11-02', '2026-11-08')], [], new Map(), HOY, new Map(), libraXJ);
+  igual('Vacaciones del 14 al 27/09 con libranza X y J: 14 naturales, 4 libranzas, cuentan 10', [s.detalle.vacaciones[0].dias, s.detalle.vacaciones[0].libranzas, s.disfrutadas], [14, 4, 10]);
+  igual('…y las de noviembre, 7 naturales menos sus 2 libranzas futuras: 5 programadas', [s.programadas, s.detalle.vacaciones[1].libranzas], [5, 2]);
+  s = saldoDe({ alta: '2026-07-13' }, [vac('2026-09-14', '2026-09-27')], [], new Map(), HOY, new Map(), d => ({ trabaja: null, por: 'antes-del-cuadrante' }));
+  igual('Un día sin cuadrante (no se sabe si libraba) cuenta, y se dice', [s.disfrutadas, s.detalle.vacaciones[0].sinCuadrante], [14, 14]);
 
   s = saldoDe({ alta: '2023-11-13' }, [], [], new Map(), HOY, L('2025-12-01', '2026-01-31', 8));
   // 19/10/2026, Camilo: «Reinicia las vacaciones desde el 1 … que empiecen a contar desde este año».

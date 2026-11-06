@@ -14,15 +14,24 @@ vacaciones.controller.js   la pantalla y la API (/api/lista, /api/ficha/:id,
                            PUT /api/conductor/:id/vacaciones/:filaId)
 vacaciones.service.js      LA CUENTA (saldoDe, pura), las horas de los festivos (sellarFestivos)
                            y cambiar unas aprobadas (cambiarVacaciones, con validarCambio pura)
-vacaciones.repo.js         contratos, ausencias, festivos y horas de cada festivo
+vacaciones.repo.js         contratos, ausencias, festivos, horas de cada festivo, días
+                           laborados, J aprobadas y lo planificado (planes)
+libranzas.js               qué le tocaba cada día (pura): las libranzas no cuentan
 vistas/vacaciones.ejs      el Listado: el saldo debajo de cada nombre y, en la ficha, el extracto
 ```
 
 Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,05882 días por cada
 DÍA LABORADO —un día con MÁS de 4 h de viaje + espera de BOLT— desde el alta (o desde
 el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—; lo de antes no cuenta para
-nada); + 1 día por festivo trabajado más de 6 h; − vacaciones disfrutadas. Ningún
-permiso resta. Hasta el 06/11/2026 eran 0,0821 por día natural, sin las suspensiones.
+nada), y también cada día con una J aprobada y cada día de baja médica que le tocaba
+trabajar; + 1 día por festivo trabajado más de 6 h; − vacaciones disfrutadas, SOLO los
+días que le tocaba trabajar (sus libranzas se mantienen: `libranzas.js`, la regla de
+f_cobertura sin apartar al ausente; la plaza de ese día o la última que tuvo; antes del
+planificador, 03/09/2026, no se sabe y cuentan). Ningún permiso resta. Hasta el
+06/11/2026 eran 0,0821 por día natural, sin las suspensiones.
+
+«Simular vacaciones» (ficha, GET /api/simular/:id?desde&hasta): el calendario de unas
+fechas, qué días cuentan y cuáles libra, y lo que le quedaría. No guarda nada.
 
 LOS DÍAS LABORADOS (`repo.diasLaborados`): desde el 01/07/2026, los de la bitácora
 (`bitacora_horas`); antes, `bolt_jornada_historico` (db/231), las jornadas de 05:00 a

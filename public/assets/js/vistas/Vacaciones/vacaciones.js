@@ -41,8 +41,8 @@
       <b class="tabular-nums ${neg ? 'text-telecab-red' : 'text-telecab-text'}">${neg ? '−' : ''}${dia(Math.abs(a.saldo || 0))}</b>`;
   }
 
-  const AYUDA_SALDO = `Generadas: ${tasa} días por cada día trabajado más de ${umbralL} h desde el alta (o desde el ${f(R.desde)}).\n` +
-    `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h.\n− Vacaciones disfrutadas.\n` +
+  const AYUDA_SALDO = `Generadas: ${tasa} días por cada día trabajado más de ${umbralL} h, con una J aprobada o de baja médica (no las libranzas), desde el alta (o desde el ${f(R.desde)}).\n` +
+    `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h.\n− Vacaciones disfrutadas: solo los días que le tocaba trabajar; sus libranzas no cuentan.\n` +
     `Los asuntos propios van aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco, no de las vacaciones.`;
 
   const ESTADO_FESTIVO = {
@@ -93,8 +93,8 @@
     },
 
     nota: () => ({ tono: 'info', icono: 'fa-scale-balanced',
-      texto: `Saldo = ${tasa} días por cada día trabajado más de ${umbralL} h desde el alta (o desde el ${f(R.desde)}) · ` +
-        `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas. ` +
+      texto: `Saldo = ${tasa} días por cada día trabajado más de ${umbralL} h, justificado o de baja médica, desde el alta (o desde el ${f(R.desde)}) · ` +
+        `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas, sin sus libranzas. ` +
         `Los asuntos propios, aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco.` }),
 
     filtros: [
@@ -128,7 +128,7 @@
         ayuda: `Desde cuándo se le calcula: su alta, o el ${f(R.desde)} si entró antes (el histórico de vacaciones empieza ahí).`,
         pinta: (v, x) => `${f(v)}${x.desdeElAlta ? '' : '<span class="block text-[11px] text-telecab-muted">alta ' + f(x.alta) + '</span>'}` },
       { titulo: 'Generadas', campo: 'generadas', clase: 'tabular-nums whitespace-nowrap',
-        ayuda: `${tasa} días por cada día que trabajó más de ${umbralL} h (viaje + espera de BOLT, el día de la bitácora).`,
+        ayuda: `${tasa} días por cada día que trabajó más de ${umbralL} h (viaje + espera de BOLT, el día de la bitácora), con una J aprobada o de baja médica en un día que no libraba.`,
         pinta: v => '+' + num(v) },
       { titulo: 'Festivos', campo: 'festivosSuman', clase: 'tabular-nums whitespace-nowrap',
         ayuda: `Festivos nacionales y de la Comunidad de Madrid en los que trabajó más de ${R.umbralHoras} h: cada uno suma 1 día.`,
@@ -160,6 +160,9 @@
         (d.desdeElAlta ? '' : ` · se le calcula desde el ${f(d.inicio)}`),
 
       acciones: [
+        // SIMULAR UNAS VACACIONES (06/11/2026): qué días cuentan y cuáles libra.
+        { texto: 'Simular vacaciones', icono: 'fa-calendar-days', principal: true,
+          visible: d => !d.deBaja, onClick: d => simular(d) },
         { texto: 'Abrir en Plantilla', icono: 'fa-id-card',
           onClick: d => { window.location.href = '/plantilla#' + encodeURIComponent(d.id); } },
       ],
@@ -194,7 +197,11 @@
             columnas: [
               { titulo: 'Desde', campo: 'desde', clase: 'whitespace-nowrap tabular-nums', pinta: v => f(v) },
               { titulo: 'Hasta', campo: 'hasta', clase: 'whitespace-nowrap tabular-nums', pinta: v => f(v) || DASH },
-              { titulo: 'Días', campo: 'dias', clase: 'tabular-nums' },
+              { titulo: 'Días', campo: 'dias', clase: 'tabular-nums', ayuda: 'Días naturales, del primero al último.' },
+              { titulo: 'Libranzas', campo: 'libranzas', clase: 'whitespace-nowrap tabular-nums',
+                ayuda: 'Los días que libraba según el cuadrante: se mantienen y no cuentan como vacaciones.',
+                pinta: (v, x) => (v ? String(v) : DASH) + (x.sinCuadrante
+                  ? `<span class="block text-[11px] text-telecab-muted" title="Antes del planificador (03/09/2026), o sin plaza: no se sabe qué libraba y el día cuenta.">${x.sinCuadrante} sin cuadrante</span>` : '') },
               { titulo: 'Cuentan', campo: 'disfrutados', clase: 'whitespace-nowrap tabular-nums',
                 pinta: (v, x) => (x.programados && !v ? '<span class="text-telecab-muted">programadas</span>'
                   : (v ? '−' + v : DASH) + (x.programados ? `<span class="block text-[11px] text-telecab-muted">y ${x.programados} programado(s)</span>` : '')) },
@@ -243,6 +250,91 @@
       ],
     },
   });
+
+  /**
+   * SIMULA UNAS VACACIONES (06/11/2026). Camilo: «en un calendario, simula los
+   * días que X trabajador ha pedido. Si pongo por ejemplo de 11/08 al 12/09, me
+   * tiene que decir cuántos días de libranza coge el trabajador saltando también
+   * sus futuras libranzas». Pide las fechas, el servidor dice día a día qué le
+   * tocaba (su plaza; si ese día no tiene, la última) y aquí se pinta el
+   * calendario. No guarda nada.
+   */
+  async function simular(d, antes) {
+    const v = await Dialogo.formulario(`Simular vacaciones de ${d.nombre}`, [
+      { id: 'desde', etiqueta: 'Primer día', tipo: 'fecha', obligatorio: true, valor: antes ? f(antes.desde) : '' },
+      { id: 'hasta', etiqueta: 'Último día', tipo: 'fecha', obligatorio: true, valor: antes ? f(antes.hasta) : '' },
+    ], { textoBoton: 'Simular', textoCancelar: 'Cerrar',
+         nota: 'Solo cuentan los días que le toca trabajar: sus libranzas se mantienen (las de su plaza del planificador, también las futuras). No se guarda nada.' });
+    if (!v) return;
+    let s;
+    try {
+      const q = new URLSearchParams({ desde: Dialogo.aISO(v.desde) || v.desde, hasta: Dialogo.aISO(v.hasta) || v.hasta });
+      const r = await fetch(`/vacaciones/api/simular/${encodeURIComponent(d.id)}?${q}`);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.status !== 'ok') throw new Error(j.msg || `Error ${r.status}`);
+      s = j.simulacion;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se ha podido simular', texto: e.message, tono: 'error' });
+      return;
+    }
+    const otra = await Dialogo.elegir({
+      titulo: `${d.nombre}: del ${f(s.desde)} al ${f(s.hasta)}`, tono: 'info', ancho: 'max-w-3xl',
+      html: calendario(s),
+      opciones: [{ texto: 'Otras fechas', valor: 'otra' }, { texto: 'Cerrar', valor: true, principal: true }],
+    });
+    if (otra === 'otra') return simular(d, s);
+  }
+
+  // El calendario de la simulación: un mes por bloque, de lunes a domingo.
+  function calendario(s) {
+    const SEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const porMes = new Map();
+    s.dias.forEach(x => { const m = x.dia.slice(0, 7); if (!porMes.has(m)) porMes.set(m, []); porMes.get(m).push(x); });
+    const celda = x => {
+      const n = Number(x.dia.slice(8));
+      const titulo = [x.cuenta ? 'Cuenta como vacaciones' : 'Libra: no cuenta',
+        x.por === 'su-ultima-plaza' ? 'según la última plaza que tuvo' : x.por === 'excepcional' ? 'libranza excepcional'
+          : x.trabaja === null ? (x.por === 'antes-del-cuadrante' ? 'antes del planificador: no se sabe si libraba' : 'sin plaza: no se sabe si libraba') : '',
+        x.festivo ? 'Festivo: ' + x.festivo : '', x.ya ? 'Ya tiene puesto: ' + x.ya.replace(/_/g, ' ') : ''].filter(Boolean).join(' · ');
+      const clase = !x.cuenta
+        ? 'bg-telecab-card2 text-telecab-muted line-through decoration-telecab-muted/60'
+        : x.trabaja === null ? 'bg-telecab-card2 text-telecab-text border border-dashed border-telecab-warn/70'
+          : 'bg-telecab-gold/20 text-telecab-text border border-telecab-gold/40 font-semibold';
+      return `<div class="h-9 rounded-lg flex flex-col items-center justify-center text-sm tabular-nums relative ${clase}" title="${esc(titulo)}">
+        <span>${n}</span>${x.ya ? '<span class="absolute top-0.5 right-1 w-1.5 h-1.5 rounded-full bg-telecab-text/60" aria-hidden="true"></span>' : ''}
+        ${x.festivo ? '<span class="absolute bottom-0.5 left-1 text-[9px] leading-none text-telecab-gold" aria-hidden="true">F</span>' : ''}</div>`;
+    };
+    const mes = (m, lista) => {
+      const hueco = lista[0].dow - 1;
+      return `<div>
+        <p class="text-sm font-semibold mb-2">${MESES[Number(m.slice(5)) - 1]} ${m.slice(0, 4)}</p>
+        <div class="grid grid-cols-7 gap-1 text-[11px] text-telecab-muted text-center mb-1">${SEM.map(x => `<span>${x}</span>`).join('')}</div>
+        <div class="grid grid-cols-7 gap-1">${'<div></div>'.repeat(hueco)}${lista.map(celda).join('')}</div>
+      </div>`;
+    };
+    const neg = s.quedaria < 0;
+    const cifra = (txt, valor, nota) => `<div class="rounded-xl bg-telecab-card2 border border-telecab-border px-3 py-2">
+        <p class="text-xs text-telecab-muted">${txt}</p><p class="text-xl font-bold tabular-nums">${valor}</p>${nota ? `<p class="text-[11px] text-telecab-muted">${nota}</p>` : ''}</div>`;
+    const avisos = [];
+    if (s.yaDeVacaciones) avisos.push(`${s.yaDeVacaciones} de esos días ya los tiene de vacaciones: no se cuentan dos veces.`);
+    if (s.otraAusencia) avisos.push(`${s.otraAusencia} día(s) ya tienen otra ausencia puesta (punto en el día).`);
+    if (s.sinCuadrante) avisos.push(`${s.sinCuadrante} día(s) sin cuadrante (antes del 03/09/2026 o sin plaza): no se sabe si libraba y cuentan.`);
+    return `
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        ${cifra('Días naturales', s.naturales)}
+        ${cifra('Libranzas', s.libranzas, s.diasQueLibra.length ? 'libra ' + s.diasQueLibra.join(', ') : 'ninguna')}
+        ${cifra('Vacaciones que gasta', s.cuentan, 'días que le toca trabajar')}
+        ${cifra('Le quedarían', `<span class="${neg ? 'text-telecab-red' : ''}">${conSigno(s.quedaria, 2)}</span>`, `hoy ${conSigno(s.saldo, 2)}${s.programadas ? `, ${s.programadas} ya programadas` : ''}`)}
+      </div>
+      ${avisos.length ? `<p class="text-sm text-telecab-warn mb-3">${avisos.map(esc).join(' ')}</p>` : ''}
+      <div class="grid sm:grid-cols-2 gap-5 max-h-[52vh] overflow-y-auto pr-1">${[...porMes].map(([m, l]) => mes(m, l)).join('')}</div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-xs text-telecab-muted">
+        <span><span class="inline-block w-3 h-3 rounded bg-telecab-gold/20 border border-telecab-gold/40 align-middle mr-1"></span>Cuenta como vacaciones</span>
+        <span><span class="inline-block w-3 h-3 rounded bg-telecab-card2 align-middle mr-1"></span>Libra: no cuenta</span>
+        <span><span class="inline-block w-3 h-3 rounded bg-telecab-card2 border border-dashed border-telecab-warn/70 align-middle mr-1"></span>Sin cuadrante: cuenta</span>
+        <span><span class="text-telecab-gold font-semibold mr-1">F</span>Festivo</span>
+      </div>`;
+  }
 
   /**
    * CAMBIA UNAS VACACIONES YA APROBADAS. Solo lo que aún no ha llegado: si ya
@@ -295,11 +387,12 @@
     const pend = d.festivosPendientes ? ` · ${d.festivosPendientes} calculándose` : '';
     const neg = d.saldo < 0;
     const tramosVac = d.detalle.vacaciones.filter(v => v.disfrutados).length;
+    const libVac = d.detalle.vacaciones.reduce((n, v) => n + (v.libranzas || 0), 0);
     return `
       <div class="px-5 py-2">
-        ${linea('Generadas', d.generadas, `${d.diasLaborados} día(s) trabajado(s) más de ${umbralL} h desde el ${f(d.inicio)} × ${tasa}`, '+')}
+        ${linea('Generadas', d.generadas, `${d.diasQueGeneran} día(s) desde el ${f(d.inicio)} × ${tasa}: ${generanTxt(d)}`, '+')}
         ${linea('Festivos trabajados', d.festivosSuman, `${d.festivosSuman} de ${fest} festivo(s) con más de ${R.umbralHoras} h${sinD}${pend}`, '+')}
-        ${linea('Vacaciones disfrutadas', d.disfrutadas, tramosVac ? `${tramosVac} tramo(s) hasta ${d.deBaja ? 'su baja' : 'hoy'}` : `Ninguna hasta ${d.deBaja ? 'su baja' : 'hoy'}`, '−')}
+        ${linea('Vacaciones disfrutadas', d.disfrutadas, (tramosVac ? `${tramosVac} tramo(s) hasta ${d.deBaja ? 'su baja' : 'hoy'}` : `Ninguna hasta ${d.deBaja ? 'su baja' : 'hoy'}`) + (libVac ? ` · sin ${libVac} día(s) de libranza, que no cuentan` : ''), '−')}
         <div class="flex items-baseline gap-4 pt-4 pb-2">
           <p class="flex-1 text-sm font-semibold uppercase tracking-wide text-telecab-muted">${d.deBaja ? 'Saldo a su baja (' + f(d.baja) + ')' : 'Saldo a hoy'}</p>
           <p class="tabular-nums text-right whitespace-nowrap">
@@ -316,18 +409,28 @@
       </div>`;
   }
 
+  // De qué salen los días que generan (06/11/2026).
+  function generanTxt(d) {
+    const partes = [`${d.diasLaborados} trabajado(s) más de ${umbralL} h`];
+    if (d.diasJustificados) partes.push(`${d.diasJustificados} justificado(s)`);
+    if (d.diasBaja) partes.push(`${d.diasBaja} de baja médica`);
+    return partes.join(' · ');
+  }
+
   // LOS DÍAS LABORADOS, MES A MES (06/11/2026): cuántos días pasaron de las
   // horas que hacen falta, cuántos se quedaron cortos y lo que generó cada mes.
   function mesAMes(d) {
     const meses = (d.detalle.meses || []).slice().reverse();
     const nota = R.sinHistorico || (d.reglas && d.reglas.sinHistorico)
       ? `<p class="text-sm text-telecab-warn mt-3">Falta aplicar la migración db/231: los días de antes del ${f(R.nucleoDesde || '2026-07-01')} todavía no cuentan.</p>`
-      : `<p class="text-xs text-telecab-muted mt-3">Viaje + espera de BOLT, por el día de la bitácora. Antes del 01/07/2026, del historial de estados de BOLT; desde entonces, de la base. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
+      : `<p class="text-xs text-telecab-muted mt-3">Generan los días que trabajó más de ${umbralL} h (viaje + espera de BOLT, por el día de la bitácora; antes del 01/07/2026, del historial de estados de BOLT), los que tienen una J aprobada y los de baja médica que le tocaba trabajar. Las libranzas, las vacaciones y las ausencias sin justificar no. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
     if (!meses.length) return `<div class="px-5 py-4"><p class="text-sm text-telecab-muted">Ningún día trabajado desde el ${f(d.inicio)}.</p>${nota}</div>`;
     const fila = m => `
       <tr class="border-t border-telecab-border/60">
         <td class="py-2 pr-3 whitespace-nowrap">${MESES[Number(m.mes.slice(5)) - 1]} ${m.mes.slice(0, 4)}</td>
         <td class="py-2 px-3 text-right tabular-nums font-semibold">${m.laborados}</td>
+        <td class="py-2 px-3 text-right tabular-nums">${m.justificados || '—'}</td>
+        <td class="py-2 px-3 text-right tabular-nums">${m.bajas || '—'}</td>
         <td class="py-2 px-3 text-right tabular-nums text-telecab-muted">${m.cortos || '—'}</td>
         <td class="py-2 px-3 text-right tabular-nums whitespace-nowrap">${horasTxt(m.segundos)}</td>
         <td class="py-2 pl-3 text-right tabular-nums whitespace-nowrap">+ ${num(m.generadas, 2)}</td>
@@ -338,8 +441,10 @@
           <thead class="text-xs text-telecab-muted">
             <tr>
               <th class="text-left font-medium pb-1 pr-3">Mes</th>
-              <th class="text-right font-medium pb-1 px-3" title="Los días que suman: trabajó más de ${umbralL} h.">Más de ${umbralL} h</th>
-              <th class="text-right font-medium pb-1 px-3" title="Días que trabajó, pero no más de ${umbralL} h: no suman.">${umbralL} h o menos</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días que trabajó más de ${umbralL} h.">Trabajó más de ${umbralL} h</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días con una J aprobada (y sin llegar a ${umbralL} h).">Justificados</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días de baja médica que le tocaba trabajar: los que caían en su libranza no suman.">Baja médica</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días que trabajó, pero no más de ${umbralL} h, y sin J: no suman.">${umbralL} h o menos</th>
               <th class="text-right font-medium pb-1 px-3">Horas del mes</th>
               <th class="text-right font-medium pb-1 pl-3">Generadas</th>
             </tr>

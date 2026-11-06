@@ -41,6 +41,9 @@ router.get('/api/lista', responde(() => vacaciones.lista()));
 // `ficha`: es la clave que busca el componente Listado.
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await vacaciones.ficha(req.params.id) })));
 
+// Simular unas vacaciones (06/11/2026): qué días cuentan y cuáles libra. No guarda nada.
+router.get('/api/simular/:id', responde(async req => ({ simulacion: await vacaciones.simular(req.params.id, req.query || {}) })));
+
 // Cambiar unas vacaciones ya aprobadas: solo lo que aún no ha llegado.
 router.put('/api/conductor/:id/vacaciones/:filaId', responde(async req =>
   vacaciones.cambiarVacaciones(req.params.id, req.params.filaId, req.body || {}, await quien(req))));

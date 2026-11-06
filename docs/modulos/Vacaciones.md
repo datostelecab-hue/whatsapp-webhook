@@ -13,9 +13,9 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 
 | | Qué | Cómo |
 |---|---|---|
-| **+** | Generadas | **0,05882 días por cada día laborado** desde el alta que dice el sistema (la del contrato abierto): un día en el que trabajó **más de 4 horas** (4 justas, no). Ver [[#Por día laborado (06/11/2026, db/231)]]. Hasta el 06/11/2026 eran 0,0821 por día natural. |
+| **+** | Generadas | **0,05882 días por cada día que genera** desde el alta que dice el sistema (la del contrato abierto): uno en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada** o uno de **baja médica** que le tocaba trabajar. Ver [[#Por día laborado (06/11/2026, db/231)]]. Hasta el 06/11/2026 eran 0,0821 por día natural. |
 | **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no). |
-| **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron. |
+| **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: sus libranzas no cuentan. Ver [[#Las libranzas se mantienen en las vacaciones (06/11/2026)]]. |
 
 **Los asuntos propios ya no restan de aquí** (desde el 29/10/2026): tienen su banco aparte, abajo. Ningún permiso toca el saldo de vacaciones.
 
@@ -153,7 +153,7 @@ Medido el 21/10/2026: **134 de alta** y **161 que se fueron desde el 01/01/2026*
 
 Camilo: *«De ahora en adelante las vacaciones serán calculadas a 0,05882 por día LABORADO del mes, solo si tiene más de 4 horas en ese día, sino no le suma. Toca cargar entonces desde aquí las vacaciones calculadas desde antes del 1 de julio ya que esos son los datos, a partir de esa fecha todas calculadas con las horas que tenemos en pg»*.
 
-**Lo generado ya no sale de los días naturales**: 0,05882 por cada día con **más de 4 h** de viaje + espera de BOLT, desde que se le calcula (su alta o el 01/01/2026). Un día de 4 h justas, o menos, no suma. La libranza, la baja médica, las vacaciones y los permisos generaban; ahora generan solo si ese día trabajó (no lo hace). Las suspensiones se siguen enseñando, pero ya no hace falta restarlas. Lo demás no cambia: el festivo trabajado más de 6 h sigue sumando 1 día entero (y además es un día laborado), y las vacaciones disfrutadas restan. Las J no cuentan como horas.
+**Lo generado ya no sale de los días naturales**: 0,05882 por cada día con **más de 4 h** de viaje + espera de BOLT, desde que se le calcula (su alta o el 01/01/2026). Un día de 4 h justas, o menos, no suma. **Generan también** (06/11/2026, Camilo: *«las bajas médicas y días justificados sí suman también, las libranzas y ausencias injustificadas no»*) un día con una **J aprobada** (las pendientes son presuntas y no cuentan, como en la bitácora) y un día de **baja médica** que le tocaba trabajar: uno de baja que caía en su libranza no suma, como no suma la libranza. Cada día cuenta una vez, por lo primero que tenga (trabajo, J, baja). Las vacaciones, los permisos retribuidos, los asuntos propios y las ausencias sin justificar no generan. Las suspensiones se siguen enseñando, pero ya no hace falta restarlas. Lo demás no cambia: el festivo trabajado más de 6 h sigue sumando 1 día entero (y además es un día laborado), y las vacaciones disfrutadas restan. Las J no cuentan como horas.
 
 **«El día» es el de la [[Bitacora|bitácora]]**, el de la persona: con dos cuentas a la vez cuenta una, y un turno de noche que cruza la medianoche es un día, no dos.
 - **Desde el 01/07/2026**: `bitacora_horas` (de `fv_tramo`). Hasta el 05/10, la jornada de 05:00 a 05:00; desde el 06/10, su turno de día (00→24) o de noche (12→12). Lo de hoy y ayer suma cuando la bitácora sella la jornada.
@@ -166,6 +166,33 @@ Camilo: *«De ahora en adelante las vacaciones serán calculadas a 0,05882 por d
 **Lo que cambia**, medido el 26/10/2026 en la copia: de los 144 de alta, lo generado de media pasa de 12,77 a 4,71 días, el saldo medio de 9,1 a 1,0 días, y en negativo pasan de 10 a 31.
 
 **Cuentas de enero a junio sin enlazar.** 12 cuentas de BOLT con jornadas de esos meses no están enlazadas a ninguna ficha y llevan exactamente el nombre completo de alguien de plantilla propia (Sarzosa, Magdaleno, Espinoza, Orueta, Useche, Jaramillo y seis altas de finales de junio que ya se fueron). Sin el enlace, esos días no le suman. Once están **desactivadas en BOLT**, y «Enlazar BOLT» de Plantilla solo ofrece cuentas activas (`v_bolt_libres`). La lista está en `Scripts de análisis/vacaciones-dias-laborados/cuentas-por-enlazar.json`. **db/232 las enlaza** (06/11/2026, Camilo: «Sí, enlázalas con la migración»): lo mismo que «Enlazar BOLT» (y su línea en el historial de la ficha), firmado por Camilo con origen «migracion»; para entera si alguna ya es de otra persona. Siete de ellas tienen tramos desde julio que la bitácora selló sin dueño: db/232 les quita el sello a esas jornadas (del 30/06 al 23/09 en la copia) y **la bitácora las vuelve a sellar sola la próxima vez que se abre** (en la copia, 87 días en 2,9 s). Con eso, por ejemplo, Daniel Lanza pasa de 0 a 152 h en julio. Sus horas de julio y agosto entran también en Nóminas y Extras de esos meses si no están congelados.
+
+## Las libranzas se mantienen en las vacaciones (06/11/2026)
+
+Camilo: *«las libranzas que tenga se mantienen en las vacaciones. Entonces, si pido 18 días de vacaciones, me tiene que contar solo días laborales para mí, se saltan los días de libranza … Una cosa importante de las libranzas es que siempre se mantienen: si se planifica un fijo para L M eso se va a ver siempre hasta que se cambie en el planificador»*.
+
+**Un día de vacaciones solo resta si ese día le tocaba trabajar.** Lo dice el cuadrante (`modules/Vacaciones/libranzas.js`, la regla de `f_cobertura` sin apartar a quien está ausente, porque esos son justo los días que se miran):
+- un **fijo** trabaja salvo el descanso de su coche (el común o el de su turno, [[Coches sin correturnos]]);
+- un **correturnos**, los días que le pusieron;
+- con dos plazas a la vez, trabaja si alguna lo dice;
+- la **libranza excepcional** manda: libra su día de librar y trabaja el de trabajar.
+
+Unas vacaciones no le quitan la plaza (db/57: el cuadrante solo le aparta esos días), así que vale **la plaza que tenía ese día**. Si ese día no tiene ninguna (se la quitaron para cubrirle, o aún no está planificado), **la última que tuvo**: lo planificado se mantiene hasta que se cambie. Y si aún no ha tenido ninguna, la primera. Igual con el descanso de su coche.
+
+**Lo que no se sabe cuenta, y se dice.** El planificador empieza en la base el **03/09/2026**: antes no hay libranzas que saltar y el día cuenta (como contaba siempre). Quien nunca ha tenido plaza, igual. En la ficha, la tabla de vacaciones dice por tramo los días naturales, **las libranzas** (que no cuentan) y cuántos fueron «sin cuadrante». A Rachid Lakraa (libra X y J), sus vacaciones del 14 al 27/09 son 14 días naturales, 4 libranzas y 10 que cuentan; las de marzo y agosto, de antes del planificador, cuentan enteras.
+
+**Simular vacaciones** (botón de la ficha, `GET /vacaciones/api/simular/:id?desde&hasta`, no guarda nada): se ponen el primer y el último día y sale el **calendario**, mes a mes y de lunes a domingo:
+- en oro, los días que cuentan;
+- tachados, los que libra;
+- con borde discontinuo, los «sin cuadrante», que cuentan;
+- con una F, los festivos;
+- con un punto, lo que ya tiene puesto.
+
+Arriba van los días naturales, las libranzas (y qué días libra), las vacaciones que gasta y lo que **le quedaría**: el saldo de hoy menos lo ya programado y menos los días nuevos (los que ya son vacaciones no se cuentan dos veces). Con las fechas del ejemplo de Camilo, del 11/08 al 12/09/2026, a Rachid le salen 33 naturales, 3 libranzas (03, 09 y 10/09) y 30 que gasta, 23 de ellos sin cuadrante (agosto). Del 11/12/2026 al 12/01/2027: 33, 8 y 25, todo por su plaza.
+
+Comprobadores: `scripts/comprobar-vacaciones-libranzas.js` (la regla, 14 casos) y `scripts/comprobar-vacaciones-saldo.js` (el saldo, con J, bajas y libranzas).
+
+**Medido en la copia** (06/11/2026, 143 de alta): días que generan de media 108 (83 de trabajo, 1 de J, 25 de baja), 6,36 generadas, 5,0 disfrutadas, saldo medio 3,0 y 27 en negativo. **Ojo**: quien está de baja médica todo el año y **sin plaza** en el planificador no tiene libranzas conocidas y le cuentan todos los días: Ignacio Nieves y William Cucunubá, 310 días de baja, generan 18,23, más que quien trabaja todo el año. Pendiente de que Camilo diga qué semana se les supone.
 
 ## La llave
 

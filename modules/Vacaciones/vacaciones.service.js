@@ -12,9 +12,14 @@
 //               desde el 01/07/2026, bitacora_horas (de fv_tramo); antes, la
 //               jornada de 05:00 a 05:00 de cada cuenta de BOLT que cargó db/231
 //               del historial de estados de BOLT. Horas = viaje + espera de BOLT;
-//               las J no cuentan. Hasta entonces eran 0,0821 por DÍA NATURAL (con
-//               libranzas, bajas, vacaciones y permisos, y sin las suspensiones):
-//               ahora todo eso genera solo si ese día trabajó.
+//               las J no cuentan como horas. Generan TAMBIÉN (06/11/2026, Camilo:
+//               «las bajas médicas y días justificados sí suman también, las
+//               libranzas y ausencias injustificadas no») un día con una J
+//               aprobada y un día de baja médica que le tocaba trabajar; uno que
+//               caía en su libranza, no. Cada día cuenta una vez. Las
+//               vacaciones, los permisos y los asuntos propios no generan.
+//               Hasta entonces eran 0,0821 por DÍA NATURAL (con libranzas,
+//               bajas, vacaciones y permisos, y sin las suspensiones).
 //               Quien entró antes de 2026 empieza el 01/01/2026
 //               (19/10/2026, Camilo: «Reinicia las vacaciones desde el 1, si
 //               están dados de alta antes pues muy de malas, perdieron esos
@@ -25,7 +30,12 @@
 //   FESTIVOS    + 1 día entero por cada festivo nacional o de la Comunidad de
 //               Madrid en el que trabajó MÁS DE 6 HORAS (las de la nómina: viaje
 //               + espera de BOLT, por día natural).
-//   DISFRUTADAS − los días de vacaciones que ya pasaron.
+//   DISFRUTADAS − los días de vacaciones que ya pasaron Y le tocaba trabajar:
+//               sus libranzas se mantienen y no cuentan (06/11/2026, Camilo: «si
+//               pido 18 días de vacaciones, me tiene que contar solo días
+//               laborales para mí, se saltan los días de libranza»). Qué libra
+//               cada día lo dice el cuadrante (libranzas.js); antes del
+//               planificador (03/09/2026) no se sabe y cuentan todos.
 //   PERMISOS    no tocan el saldo de vacaciones. Hasta el 29/10/2026 los de
 //               asuntos propios restaban un día cada uno; desde entonces tienen
 //               su banco aparte (abajo).
@@ -62,6 +72,7 @@ const plantilla = require('../Conductores/plantilla.service');   // la puerta de
 const ticketera = require('../Ticketera/ticketera.service');      // la historia del ticket
 const aFuturo = require('../../services/vacacionesAFuturo');       // solo a futuro: la misma regla que Plantilla
 const nominas = require('../Nominas/nominas.service');   // la puerta de Nóminas: las horas de un día
+const libranzas = require('./libranzas');                // qué días libra: no cuentan como vacaciones
 
 const TASA = 0.05882;                      // por día laborado (06/11/2026; era 0,0821 por día natural)
 // Desde aquí cuenta todo (ver arriba). saldoDe recorta a esta fecha lo generado,
@@ -103,12 +114,26 @@ const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Mad
  *   horas     Map(fecha → segundos) suyas en los festivos
  *   laborados Map(día → segundos) suyos, cada día de la bitácora con horas
  *             (de db/231 antes del 01/07/2026)
+ *   plan      día → { trabaja, por } (libranzas.elDia con su plan): un día de
+ *             vacaciones en el que libraba NO cuenta (06/11/2026). Sin plan,
+ *             cuentan todos, como antes.
+ *   justificados Set(día) de sus J aprobadas: generan como un día trabajado
  */
-function saldoDe(p, tramos, festivos, horas, hoy, laborados) {
+function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados) {
   const inicio = p.alta > DESDE_HISTORICO ? p.alta : DESDE_HISTORICO;
   const manana = mas(hoy, 1);
   const vacaciones = [], permisos = [], suspensiones = [], asuntos = [];
   let disfrutadas = 0, programadas = 0, diasSuspension = 0, apUsados = 0, apProgramados = 0;
+  // Los días de vacaciones de a…b que cuentan: los que le tocaba trabajar.
+  const deVacaciones = (a, b) => {
+    const r = { cuentan: 0, libra: 0, sinCuadrante: 0 };
+    for (let d = a; d <= b; d = mas(d, 1)) {
+      const x = plan ? plan(d) : null;
+      if (!libranzas.cuenta(x)) r.libra++;
+      else { r.cuentan++; if (x && x.trabaja === null) r.sinCuadrante++; }
+    }
+    return r;
+  };
 
   for (const t of tramos || []) {
     const hasta = t.hasta || FIN;
@@ -119,8 +144,13 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados) {
     const linea = { fila: t.fila, desde: t.desde, hasta: t.hasta, motivo: t.motivo || '', dias: t.hasta ? dias(t.desde, t.hasta) : null };
     if (t.estado === 'vacaciones') {
       if (!pasado && !futuro) continue;
-      disfrutadas += pasado; programadas += futuro;
-      vacaciones.push({ ...linea, disfrutados: pasado, programados: futuro, quien: t.quien || '', puesto: t.puesto || '',
+      // Solo los días que le tocaba trabajar: sus libranzas se mantienen.
+      const ya = pasado ? deVacaciones(t.desde > inicio ? t.desde : inicio, hasta < hoy ? hasta : hoy) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
+      const va = futuro ? deVacaciones(t.desde > manana ? t.desde : manana, t.hasta) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
+      disfrutadas += ya.cuentan; programadas += va.cuentan;
+      vacaciones.push({ ...linea, disfrutados: ya.cuentan, programados: va.cuentan,
+        libranzas: ya.libra + va.libra, sinCuadrante: ya.sinCuadrante + va.sinCuadrante,
+        quien: t.quien || '', puesto: t.puesto || '',
         // El ticket del que salieron, si salieron de uno.
         ticket: t.ticket_id ? { id: t.ticket_id, codigo: t.ticket_codigo || '' } : null,
         // Se pueden cambiar mientras les quede algo por llegar; las empezadas,
@@ -143,21 +173,47 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados) {
   }
 
   const diasNaturales = dias(inicio, hoy);
-  // LOS DÍAS LABORADOS: cada día de su periodo, hasta hoy, con MÁS de 4 h. Mes a
-  // mes, para la ficha: los que suman y los que trabajó pero no llegaron.
+  // LOS DÍAS QUE GENERAN, cada uno una vez y por lo primero que tenga:
+  //   · trabajó MÁS de 4 h (laborados);
+  //   · si no, una J aprobada ese día (06/11/2026, Camilo: «las bajas médicas y
+  //     días justificados sí suman también, las libranzas y ausencias
+  //     injustificadas no»);
+  //   · si no, estaba de baja médica y ese día le tocaba trabajar: un día de
+  //     baja que caía en su libranza no suma, como no suma la libranza.
+  // Mes a mes, para la ficha; `cortos` son los que trabajó 4 h o menos y no
+  // tienen otra cosa que los haga sumar.
   const porMes = new Map();
-  let diasLaborados = 0;
+  const mesDe = dia => {
+    const m = dia.slice(0, 7);
+    if (!porMes.has(m)) porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, cortos: 0, segundos: 0 });
+    return porMes.get(m);
+  };
+  const genera = new Map();      // día → 'trabajo' | 'justificado' | 'baja'
   (laborados || new Map()).forEach((seg, dia) => {
     if (dia < inicio || dia > hoy || !(seg > 0)) return;
-    const m = dia.slice(0, 7);
-    if (!porMes.has(m)) porMes.set(m, { mes: m, laborados: 0, cortos: 0, segundos: 0 });
-    const x = porMes.get(m);
-    x.segundos += seg;
-    if (seg > UMBRAL_LABORADO) { x.laborados++; diasLaborados++; } else x.cortos++;
+    mesDe(dia).segundos += seg;
+    if (seg > UMBRAL_LABORADO) genera.set(dia, 'trabajo');
   });
-  const generadas = r2(TASA * diasLaborados);
+  (justificados || new Set()).forEach(dia => {
+    if (dia >= inicio && dia <= hoy && !genera.has(dia)) genera.set(dia, 'justificado');
+  });
+  for (const t of tramos || []) {
+    if (t.estado !== 'baja_medica') continue;
+    const a = t.desde > inicio ? t.desde : inicio, b = (t.hasta || FIN) < hoy ? t.hasta : hoy;
+    for (let d = a; d <= b; d = mas(d, 1)) {
+      if (!genera.has(d) && libranzas.cuenta(plan ? plan(d) : null)) genera.set(d, 'baja');
+    }
+  }
+  genera.forEach((por, dia) => { const x = mesDe(dia); if (por === 'trabajo') x.laborados++; else if (por === 'justificado') x.justificados++; else x.bajas++; });
+  (laborados || new Map()).forEach((seg, dia) => {
+    if (dia >= inicio && dia <= hoy && seg > 0 && !genera.has(dia)) mesDe(dia).cortos++;
+  });
+  const cuantos = por => [...genera.values()].filter(v => v === por).length;
+  const diasLaborados = cuantos('trabajo'), diasJustificados = cuantos('justificado'), diasBaja = cuantos('baja');
+  const diasQueGeneran = genera.size;
+  const generadas = r2(TASA * diasQueGeneran);
   const meses = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes))
-    .map(x => ({ ...x, generadas: r2(TASA * x.laborados) }));
+    .map(x => ({ ...x, generan: x.laborados + x.justificados + x.bajas, generadas: r2(TASA * (x.laborados + x.justificados + x.bajas)) }));
 
   // Los festivos de su periodo. El de hoy aún no ha terminado.
   const lista = (festivos || []).filter(f => f.fecha >= inicio && f.fecha <= hoy).map(f => {
@@ -179,7 +235,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados) {
   const apSaldo = apGenerados - apUsados;
   return {
     inicio, desdeElAlta: inicio === p.alta,
-    diasNaturales, diasSuspension, diasLaborados, generadas,
+    diasNaturales, diasSuspension, diasQueGeneran, diasLaborados, diasJustificados, diasBaja, generadas,
     festivosSuman, festivosSinDatos: lista.filter(f => f.estado === 'sin-datos').length,
     festivosPendientes: lista.filter(f => f.estado === 'pendiente' || f.estado === 'hoy').length,
     disfrutadas, saldo,
@@ -206,8 +262,12 @@ async function cargar({ id = null } = {}) {
     if (e.code === '42P01') throw new Error('Falta aplicar la migración db/197 (el calendario de festivos).');
     throw e;
   }
-  const [tramos, lab] = await Promise.all([repo.tramos(ids, DESDE_HISTORICO), repo.diasLaborados(ids, DESDE_HISTORICO)]);
-  const porId = new Map(ids.map(i => [i, { tramos: [], horas: new Map(), laborados: new Map() }]));
+  const [tramos, lab, pl, js] = await Promise.all([repo.tramos(ids, DESDE_HISTORICO), repo.diasLaborados(ids, DESDE_HISTORICO),
+    repo.planes(ids), repo.justificados(ids, DESDE_HISTORICO)]);
+  // Qué le tocaba cada día (libranzas.js): sus libranzas no cuentan como vacaciones.
+  const planDe = id => { const x = pl.porId.get(String(id)); return x ? (d => libranzas.elDia(x, d, pl.inicio)) : null; };
+  const porId = new Map(ids.map(i => [i, { tramos: [], horas: new Map(), laborados: new Map(), justificados: new Set(), plan: planDe(i) }]));
+  js.forEach(j => { const x = porId.get(j.id); if (x) x.justificados.add(j.dia); });
   tramos.forEach(t => porId.get(t.id).tramos.push(t));
   horas.forEach(h => porId.get(h.id).horas.set(h.fecha, Number(h.segundos)));
   lab.filas.forEach(d => { const x = porId.get(d.id); if (x) x.laborados.set(d.dia, Number(d.segundos)); });
@@ -227,7 +287,7 @@ function saldoPara(p, x, festivos, hoy) {
   const deBaja = !!(p.baja && p.baja <= hoy);
   const corte = deBaja ? p.baja : hoy;
   const tramos = deBaja ? x.tramos.filter(t => t.desde <= p.baja) : x.tramos;
-  const s = saldoDe(p, tramos, festivos, x.horas, corte, x.laborados);
+  const s = saldoDe(p, tramos, festivos, x.horas, corte, x.laborados, x.plan, x.justificados);
   if (deBaja) {
     s.programadas = 0; s.saldoTras = s.saldo; s.deVacacionesHasta = null;
     s.asuntosPropios.programados = 0; s.asuntosPropios.saldoTras = s.asuntosPropios.saldo;
@@ -270,6 +330,58 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
     id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, hoy,
     reglas: reglas(sinHistorico),
     ...saldoPara(p, x, festivos, hoy),
+  };
+}
+
+// ── Simular unas vacaciones (06/11/2026) ────────────────────────────────────
+// Camilo: «en un calendario, simula los días que X trabajador ha pedido. Si pongo
+// por ejemplo de 11/08 al 12/09, me tiene que decir cuántos días de libranza
+// coge el trabajador saltando también sus futuras libranzas». No guarda nada.
+
+const DIAS_SEMANA = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+// 'AAAA-MM-DD' o 'dd/mm/aaaa' → 'AAAA-MM-DD'.
+function aIso(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;
+}
+
+/**
+ * Del `desde` al `hasta` de una persona, día a día: si le tocaba trabajar (cuenta
+ * como vacaciones) o libraba (no cuenta), por qué, si es festivo y si ya tiene
+ * algo puesto. Con el saldo de hoy y el que le quedaría.
+ */
+async function simular(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}) {
+  const a = aIso(desde), b = aIso(hasta);
+  if (!a || !b) throw new Error('Faltan el primer y el último día');
+  if (b < a) throw new Error('El último día va antes que el primero');
+  if (dias(a, b) > 366) throw new Error('Como mucho un año de una vez');
+  const f = await ficha(id, { hoy });            // la misma persona y el mismo saldo que la ficha
+  const { porId } = await cargar({ id: Number(id) });
+  const x = porId.get(String(f.id));
+  const fest = new Map((await repo.festivos()).map(z => [z.fecha, z.nombre]));
+  const ya = d => (x.tramos || []).find(t => t.desde <= d && (t.hasta || FIN) >= d);
+  const lista = [];
+  for (let d = a; d <= b; d = mas(d, 1)) {
+    const q = x.plan ? x.plan(d) : null;
+    const t = ya(d);
+    lista.push({ dia: d, dow: libranzas.isodow(d), trabaja: q ? q.trabaja : null, por: q ? q.por : 'sin-plaza',
+      cuenta: libranzas.cuenta(q), festivo: fest.get(d) || null, ya: t ? t.estado : null });
+  }
+  const cuentan = lista.filter(d => d.cuenta);
+  // Lo que restaría de verdad: lo que ya son vacaciones ya está en su saldo.
+  const nuevos = cuentan.filter(d => d.ya !== 'vacaciones').length;
+  const libra = [...new Set(lista.filter(d => !d.cuenta).map(d => d.dow))].sort().map(n => DIAS_SEMANA[n - 1]);
+  return {
+    id: f.id, nombre: f.nombre, desde: a, hasta: b, hoy,
+    naturales: lista.length, cuentan: cuentan.length, libranzas: lista.length - cuentan.length, nuevos,
+    yaDeVacaciones: lista.filter(d => d.ya === 'vacaciones').length,
+    otraAusencia: lista.filter(d => d.ya && d.ya !== 'vacaciones').length,
+    sinCuadrante: cuentan.filter(d => d.trabaja === null).length,
+    diasQueLibra: libra,
+    saldo: f.saldo, programadas: f.programadas, saldoTras: f.saldoTras, quedaria: r2(f.saldoTras - nuevos),
+    deBaja: f.deBaja, dias: lista,
   };
 }
 
@@ -337,6 +449,6 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 
 module.exports = {
   TASA, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
-  lista, ficha, sellarFestivos, cambiarVacaciones,
+  lista, ficha, simular, sellarFestivos, cambiarVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };
