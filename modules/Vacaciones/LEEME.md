@@ -18,10 +18,17 @@ vacaciones.repo.js         contratos, ausencias, festivos y horas de cada festiv
 vistas/vacaciones.ejs      el Listado: el saldo debajo de cada nombre y, en la ficha, el extracto
 ```
 
-Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,0821 días por día
-natural desde el alta (o desde el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—;
-lo de antes no cuenta para nada), sin los días de suspensión; + 1 día
-por festivo trabajado más de 6 h; − vacaciones disfrutadas. Ningún permiso resta.
+Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,05882 días por cada
+DÍA LABORADO —un día con MÁS de 4 h de viaje + espera de BOLT— desde el alta (o desde
+el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—; lo de antes no cuenta para
+nada); + 1 día por festivo trabajado más de 6 h; − vacaciones disfrutadas. Ningún
+permiso resta. Hasta el 06/11/2026 eran 0,0821 por día natural, sin las suspensiones.
+
+LOS DÍAS LABORADOS (`repo.diasLaborados`): desde el 01/07/2026, los de la bitácora
+(`bitacora_horas`); antes, `bolt_jornada_historico` (db/231), las jornadas de 05:00 a
+05:00 de cada CUENTA de BOLT sacadas del historial de estados, repartidas a cada
+persona al leer (conductor_externo y cuentas prestadas), como la bitácora. Una
+cuenta que se enlace después trae sus días sola.
 
 Los ASUNTOS PROPIOS van en un banco aparte (29/10/2026, db/225): 2 días por año
 natural, enteros y acumulables, menos cada día en la situación «Asuntos propios»

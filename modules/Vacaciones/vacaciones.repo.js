@@ -128,4 +128,44 @@ async function guardarHorasFestivo(fecha, horas, fuente) {
   });
 }
 
-module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo };
+/**
+ * LOS DÍAS DE CADA PERSONA CON SUS HORAS, para los días laborados (06/11/2026):
+ * { filas: [{ id, dia, segundos }], sinHistorico }.
+ *
+ *   · Desde el 01/07/2026, los de la bitácora: `bitacora_horas` (de fv_tramo,
+ *     viaje + espera; su día es la jornada 05→05 hasta el 05/10 y el turno de
+ *     cada uno desde el 06/10). Lo de hoy y ayer entra cuando la bitácora lo
+ *     sella.
+ *   · Antes, `bolt_jornada_historico` (db/231): las jornadas de 05:00 a 05:00 de
+ *     cada CUENTA de BOLT, del historial de estados. De quién es cada cuenta se
+ *     decide aquí, día a día, como en la bitácora (bitacora.repo.horasPorJornada05):
+ *     si ese día estaba prestada (cuenta_fantasma), de quien la llevaba; si no,
+ *     de su dueño. Dos cuentas de una persona el mismo día se suman.
+ *
+ * Sin db/231, solo lo de la bitácora y `sinHistorico`: la pantalla lo dice.
+ */
+const NUCLEO = '2026-07-01';
+async function diasLaborados(ids, desde) {
+  if (!ids.length) return { filas: [], sinHistorico: false };
+  const hay = (await db.consulta("SELECT to_regclass('bolt_jornada_historico') IS NOT NULL AS hay")).rows[0].hay;
+  const nuevo = db.consulta(
+    `SELECT conductor_id::text AS id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia, horas_seg AS segundos
+       FROM bitacora_horas
+      WHERE conductor_id = ANY($1::bigint[]) AND dia_operativo >= GREATEST($2::date, $3::date) AND horas_seg > 0`,
+    [ids, desde, NUCLEO]);
+  const viejo = hay ? db.consulta(
+    `SELECT x.id, to_char(x.dia, 'YYYY-MM-DD') AS dia, sum(x.segundos)::int AS segundos
+       FROM (SELECT COALESCE(f.conductor_id, ce.conductor_id)::text AS id, h.jornada AS dia, h.segundos
+               FROM bolt_jornada_historico h
+               JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = h.cuenta_uuid
+               LEFT JOIN cuenta_fantasma f
+                      ON f.cuenta_id = ce.id AND f.anulado_at IS NULL
+                     AND h.jornada >= f.desde AND (f.hasta IS NULL OR h.jornada <= f.hasta)
+              WHERE h.jornada >= $2::date AND h.jornada < $3::date) x
+      WHERE x.id::bigint = ANY($1::bigint[])
+      GROUP BY x.id, x.dia`, [ids, desde, NUCLEO]) : Promise.resolve({ rows: [] });
+  const [n, v] = await Promise.all([nuevo, viejo]);
+  return { filas: [...v.rows, ...n.rows], sinHistorico: !hay };
+}
+
+module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo, diasLaborados };

@@ -13,7 +13,7 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 
 | | Qué | Cómo |
 |---|---|---|
-| **+** | Generadas | **0,0821 días por cada día natural** desde el alta que dice el sistema (la del contrato abierto). Cuentan la libranza, la **baja médica**, las vacaciones y los permisos. **No** cuentan los días de **suspensión** (de empleo y sueldo, o por retirada del permiso de conducir). |
+| **+** | Generadas | **0,05882 días por cada día laborado** desde el alta que dice el sistema (la del contrato abierto): un día en el que trabajó **más de 4 horas** (4 justas, no). Ver [[#Por día laborado (06/11/2026, db/231)]]. Hasta el 06/11/2026 eran 0,0821 por día natural. |
 | **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no). |
 | **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron. |
 
@@ -148,6 +148,24 @@ Camilo: *«quiero ver las vacaciones generadas de la gente que fue dada de baja 
 - **Las suspensiones no generan**, ni aquí ni en la nómina. Wilson Santos Martínez (ficha 94) no se fue el 04/09: estuvo suspendido de empleo y sueldo del 04/09 al 21/10/2026 y causó baja el 21/10 (corregido directo en la base ese día, firmado por Camilo). Del 09/04 al 21/10 son 196 días, menos 48 de suspensión: 148, que dan 12,15, más 2 festivos = **14,15 días a su baja**.
 
 Medido el 21/10/2026: **134 de alta** y **161 que se fueron desde el 01/01/2026**, con **941,5 días sin disfrutar** a su baja (3 en contra). Ojo: **11 de plantilla propia tienen la baja el 04/09/2026**, que puede ser la fecha de relleno de la carga inicial (7 sin motivo). Su saldo sale cortado ese día hasta que RRHH confirme la fecha real.
+
+## Por día laborado (06/11/2026, db/231)
+
+Camilo: *«De ahora en adelante las vacaciones serán calculadas a 0,05882 por día LABORADO del mes, solo si tiene más de 4 horas en ese día, sino no le suma. Toca cargar entonces desde aquí las vacaciones calculadas desde antes del 1 de julio ya que esos son los datos, a partir de esa fecha todas calculadas con las horas que tenemos en pg»*.
+
+**Lo generado ya no sale de los días naturales**: 0,05882 por cada día con **más de 4 h** de viaje + espera de BOLT, desde que se le calcula (su alta o el 01/01/2026). Un día de 4 h justas, o menos, no suma. La libranza, la baja médica, las vacaciones y los permisos generaban; ahora generan solo si ese día trabajó (no lo hace). Las suspensiones se siguen enseñando, pero ya no hace falta restarlas. Lo demás no cambia: el festivo trabajado más de 6 h sigue sumando 1 día entero (y además es un día laborado), y las vacaciones disfrutadas restan. Las J no cuentan como horas.
+
+**«El día» es el de la [[Bitacora|bitácora]]**, el de la persona: con dos cuentas a la vez cuenta una, y un turno de noche que cruza la medianoche es un día, no dos.
+- **Desde el 01/07/2026**: `bitacora_horas` (de `fv_tramo`). Hasta el 05/10, la jornada de 05:00 a 05:00; desde el 06/10, su turno de día (00→24) o de noche (12→12). Lo de hoy y ayer suma cuando la bitácora sella la jornada.
+- **Antes**: la base no tenía nada por persona (el núcleo empieza el 01/07 y [[Visibilidad|db/217]] solo guardó el total de la flota). **db/231** crea `bolt_jornada_historico`: los segundos de viaje + espera de **cada cuenta de BOLT** en cada jornada de 05:00 a 05:00 del 01/01 al 30/06/2026, sacados del historial de estados de BOLT (las mismas cachés de db/217, enteras y comprobadas). De quién es cada cuenta se decide **al leer**, día a día, como la bitácora: si estaba prestada, de quien la llevaba; si no, de su dueño. Así, **una cuenta que se enlace después trae sus días sola**.
+
+**Comprobado**: el total de enero a junio, −0,05 % frente a db/217; julio persona a persona contra `bitacora_horas`, en 542 de 556 persona-jornadas coincide si pasa o no de 4 h, y las 14 que no son tres personas (fichas 95, 101 y 218) que llevaban el **3035LTX**, que no está en `fv_tramo` hasta el 01/08: es un hueco de la base, no de la cuenta. A Rachid Lakraa le salen mes a mes las horas de su informe de BOLT.
+
+**La ficha** enseña un bloque nuevo, **«Días laborados, mes a mes»**: los que suman, los que se quedaron en 4 h o menos, las horas y lo generado cada mes. Sin db/231 aplicada lo dice y solo cuenta desde julio.
+
+**Lo que cambia**, medido el 26/10/2026 en la copia: de los 144 de alta, lo generado de media pasa de 12,77 a 4,71 días, el saldo medio de 9,1 a 1,0 días, y en negativo pasan de 10 a 31.
+
+**Cuentas de enero a junio sin enlazar.** 12 cuentas de BOLT con jornadas de esos meses no están enlazadas a ninguna ficha y llevan exactamente el nombre completo de alguien de plantilla propia (Sarzosa, Magdaleno, Espinoza, Orueta, Useche, Jaramillo y seis altas de finales de junio que ya se fueron). Sin el enlace, esos días no le suman. Once están **desactivadas en BOLT**, y «Enlazar BOLT» de Plantilla solo ofrece cuentas activas (`v_bolt_libres`). La lista está en `Scripts de análisis/vacaciones-dias-laborados/cuentas-por-enlazar.json`.
 
 ## La llave
 

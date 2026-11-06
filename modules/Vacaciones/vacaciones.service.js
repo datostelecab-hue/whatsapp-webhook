@@ -3,11 +3,19 @@
 // ============================================================
 // Camilo, 14/10/2026. Las reglas, todas suyas:
 //
-//   GENERADAS   0,0821 días por cada DÍA NATURAL desde el alta que dice el
-//               sistema (el del contrato abierto). Cuentan la libranza, la baja
-//               médica, las vacaciones y los permisos; NO cuentan los días de
-//               suspensión (de empleo y sueldo, o por retirada del permiso de
-//               conducir). Quien entró antes de 2026 empieza el 01/01/2026
+//   GENERADAS   0,05882 días por cada DÍA LABORADO desde el alta que dice el
+//               sistema (el del contrato abierto): un día en el que trabajó MÁS
+//               DE 4 HORAS; con 4 h justas, o menos, ese día no suma (06/11/2026,
+//               Camilo: «De ahora en adelante las vacaciones serán calculadas a
+//               0,05882 por día LABORADO del mes, solo si tiene más de 4 horas
+//               en ese día, sino no le suma»). «El día» es el de la bitácora:
+//               desde el 01/07/2026, bitacora_horas (de fv_tramo); antes, la
+//               jornada de 05:00 a 05:00 de cada cuenta de BOLT que cargó db/231
+//               del historial de estados de BOLT. Horas = viaje + espera de BOLT;
+//               las J no cuentan. Hasta entonces eran 0,0821 por DÍA NATURAL (con
+//               libranzas, bajas, vacaciones y permisos, y sin las suspensiones):
+//               ahora todo eso genera solo si ese día trabajó.
+//               Quien entró antes de 2026 empieza el 01/01/2026
 //               (19/10/2026, Camilo: «Reinicia las vacaciones desde el 1, si
 //               están dados de alta antes pues muy de malas, perdieron esos
 //               días, que empiecen a contar desde este año»). Hasta entonces
@@ -55,10 +63,11 @@ const ticketera = require('../Ticketera/ticketera.service');      // la historia
 const aFuturo = require('../../services/vacacionesAFuturo');       // solo a futuro: la misma regla que Plantilla
 const nominas = require('../Nominas/nominas.service');   // la puerta de Nóminas: las horas de un día
 
-const TASA = 0.0821;
+const TASA = 0.05882;                      // por día laborado (06/11/2026; era 0,0821 por día natural)
 // Desde aquí cuenta todo (ver arriba). saldoDe recorta a esta fecha lo generado,
 // las vacaciones, los permisos, las suspensiones y los festivos.
 const DESDE_HISTORICO = '2026-01-01';
+const UMBRAL_LABORADO = 4 * 3600;         // un día laborado: más de 4 horas
 const UMBRAL_FESTIVO = 6 * 3600;          // más de 6 horas
 // Desde aquí las horas de un festivo salen de `fv_tramo` (las calcula el
 // sistema). Antes, de db/198 (historial de BOLT) o no hay datos.
@@ -92,8 +101,10 @@ const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Mad
  *   tramos    [{ estado, desde, hasta, motivo, tipo_permiso, fila, quien, puesto }] suyos
  *   festivos  [{ fecha, nombre, ambito, horas_at }] el calendario
  *   horas     Map(fecha → segundos) suyas en los festivos
+ *   laborados Map(día → segundos) suyos, cada día de la bitácora con horas
+ *             (de db/231 antes del 01/07/2026)
  */
-function saldoDe(p, tramos, festivos, horas, hoy) {
+function saldoDe(p, tramos, festivos, horas, hoy, laborados) {
   const inicio = p.alta > DESDE_HISTORICO ? p.alta : DESDE_HISTORICO;
   const manana = mas(hoy, 1);
   const vacaciones = [], permisos = [], suspensiones = [], asuntos = [];
@@ -132,8 +143,21 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
   }
 
   const diasNaturales = dias(inicio, hoy);
-  const diasQueGeneran = Math.max(0, diasNaturales - diasSuspension);
-  const generadas = r2(TASA * diasQueGeneran);
+  // LOS DÍAS LABORADOS: cada día de su periodo, hasta hoy, con MÁS de 4 h. Mes a
+  // mes, para la ficha: los que suman y los que trabajó pero no llegaron.
+  const porMes = new Map();
+  let diasLaborados = 0;
+  (laborados || new Map()).forEach((seg, dia) => {
+    if (dia < inicio || dia > hoy || !(seg > 0)) return;
+    const m = dia.slice(0, 7);
+    if (!porMes.has(m)) porMes.set(m, { mes: m, laborados: 0, cortos: 0, segundos: 0 });
+    const x = porMes.get(m);
+    x.segundos += seg;
+    if (seg > UMBRAL_LABORADO) { x.laborados++; diasLaborados++; } else x.cortos++;
+  });
+  const generadas = r2(TASA * diasLaborados);
+  const meses = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes))
+    .map(x => ({ ...x, generadas: r2(TASA * x.laborados) }));
 
   // Los festivos de su periodo. El de hoy aún no ha terminado.
   const lista = (festivos || []).filter(f => f.fecha >= inicio && f.fecha <= hoy).map(f => {
@@ -155,7 +179,7 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
   const apSaldo = apGenerados - apUsados;
   return {
     inicio, desdeElAlta: inicio === p.alta,
-    diasNaturales, diasSuspension, diasQueGeneran, generadas,
+    diasNaturales, diasSuspension, diasLaborados, generadas,
     festivosSuman, festivosSinDatos: lista.filter(f => f.estado === 'sin-datos').length,
     festivosPendientes: lista.filter(f => f.estado === 'pendiente' || f.estado === 'hoy').length,
     disfrutadas, saldo,
@@ -167,7 +191,7 @@ function saldoDe(p, tramos, festivos, horas, hoy) {
       generados: apGenerados, usados: apUsados, programados: apProgramados,
       saldo: apSaldo, saldoTras: apSaldo - apProgramados,
     },
-    detalle: { festivos: lista, vacaciones, permisos, suspensiones, asuntos },
+    detalle: { festivos: lista, vacaciones, permisos, suspensiones, asuntos, meses },
   };
 }
 
@@ -182,11 +206,12 @@ async function cargar({ id = null } = {}) {
     if (e.code === '42P01') throw new Error('Falta aplicar la migración db/197 (el calendario de festivos).');
     throw e;
   }
-  const tramos = await repo.tramos(ids, DESDE_HISTORICO);
-  const porId = new Map(ids.map(i => [i, { tramos: [], horas: new Map() }]));
+  const [tramos, lab] = await Promise.all([repo.tramos(ids, DESDE_HISTORICO), repo.diasLaborados(ids, DESDE_HISTORICO)]);
+  const porId = new Map(ids.map(i => [i, { tramos: [], horas: new Map(), laborados: new Map() }]));
   tramos.forEach(t => porId.get(t.id).tramos.push(t));
   horas.forEach(h => porId.get(h.id).horas.set(h.fecha, Number(h.segundos)));
-  return { gente, festivos, porId };
+  lab.filas.forEach(d => { const x = porId.get(d.id); if (x) x.laborados.set(d.dia, Number(d.segundos)); });
+  return { gente, festivos, porId, sinHistorico: lab.sinHistorico };
 }
 
 const contrato = p => (p.tipo === 'ett' ? `ETT${p.ett_nombre ? ' · ' + p.ett_nombre : ''}` : 'Propia');
@@ -202,7 +227,7 @@ function saldoPara(p, x, festivos, hoy) {
   const deBaja = !!(p.baja && p.baja <= hoy);
   const corte = deBaja ? p.baja : hoy;
   const tramos = deBaja ? x.tramos.filter(t => t.desde <= p.baja) : x.tramos;
-  const s = saldoDe(p, tramos, festivos, x.horas, corte);
+  const s = saldoDe(p, tramos, festivos, x.horas, corte, x.laborados);
   if (deBaja) {
     s.programadas = 0; s.saldoTras = s.saldo; s.deVacacionesHasta = null;
     s.asuntosPropios.programados = 0; s.asuntosPropios.saldoTras = s.asuntosPropios.saldo;
@@ -213,22 +238,26 @@ function saldoPara(p, x, festivos, hoy) {
 }
 
 /** La lista: una fila por persona —de alta, o que se fue este año—, con su saldo. */
+// Las reglas, para que la pantalla las diga con los números de aquí y no con los suyos.
+const reglas = sinHistorico => ({ tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600,
+  umbralLaborado: UMBRAL_LABORADO / 3600, nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO, sinHistorico: !!sinHistorico });
+
 async function lista({ hoy = hoyMadrid() } = {}) {
-  const { gente, festivos, porId } = await cargar();
+  const { gente, festivos, porId, sinHistorico } = await cargar();
   const filas = gente.map(p => {
     const x = porId.get(p.id);
     const s = saldoPara(p, x, festivos, hoy);
     delete s.detalle;
     return { id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, ...s };
   });
-  return { filas, hoy, reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, apPorAnio: AP_POR_ANIO } };
+  return { filas, hoy, reglas: reglas(sinHistorico) };
 }
 
 /** La ficha de una persona: el saldo y de dónde sale cada número. */
 async function ficha(id, { hoy = hoyMadrid() } = {}) {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) throw new Error('Falta la persona');
-  const { gente, festivos, porId } = await cargar({ id: n });
+  const { gente, festivos, porId, sinHistorico } = await cargar({ id: n });
   if (!gente.length) {
     const [ett] = await repo.personas({ id: n, conEtt: true });
     throw new Error(ett
@@ -239,7 +268,7 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
   const x = porId.get(p.id);
   return {
     id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, hoy,
-    reglas: { tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO },
+    reglas: reglas(sinHistorico),
     ...saldoPara(p, x, festivos, hoy),
   };
 }
@@ -307,7 +336,7 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 }
 
 module.exports = {
-  TASA, DESDE_HISTORICO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
+  TASA, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
   lista, ficha, sellarFestivos, cambiarVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };

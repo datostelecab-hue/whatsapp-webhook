@@ -18,7 +18,10 @@
   const num = (v, dec = 1) => Number(v || 0).toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: dec });
   const conSigno = (v, dec = 1) => (v < 0 ? '−' : '') + num(Math.abs(v), dec);
   const DASH = '<span class="text-telecab-muted">—</span>';
-  const tasa = num(R.tasa, 4);
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const tasa = num(R.tasa, 5);
+  // Un día laborado: más de estas horas (06/11/2026).
+  const umbralL = num(R.umbralLaborado, 0);
   const horasTxt = s => { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return s ? `${h} h ${String(m).padStart(2, '0')} min` : '—'; };
 
   // EL SALDO, debajo del nombre (lo pidió Camilo así). El color no va solo: el
@@ -38,7 +41,7 @@
       <b class="tabular-nums ${neg ? 'text-telecab-red' : 'text-telecab-text'}">${neg ? '−' : ''}${dia(Math.abs(a.saldo || 0))}</b>`;
   }
 
-  const AYUDA_SALDO = `Generadas: ${tasa} días por cada día natural desde el alta (o desde el ${f(R.desde)}), sin los días de suspensión.\n` +
+  const AYUDA_SALDO = `Generadas: ${tasa} días por cada día trabajado más de ${umbralL} h desde el alta (o desde el ${f(R.desde)}).\n` +
     `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h.\n− Vacaciones disfrutadas.\n` +
     `Los asuntos propios van aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco, no de las vacaciones.`;
 
@@ -90,7 +93,7 @@
     },
 
     nota: () => ({ tono: 'info', icono: 'fa-scale-balanced',
-      texto: `Saldo = ${tasa} días por día natural desde el alta (o desde el ${f(R.desde)}), sin las suspensiones · ` +
+      texto: `Saldo = ${tasa} días por cada día trabajado más de ${umbralL} h desde el alta (o desde el ${f(R.desde)}) · ` +
         `+ 1 día por festivo trabajado más de ${R.umbralHoras} h · − vacaciones disfrutadas. ` +
         `Los asuntos propios, aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco.` }),
 
@@ -125,7 +128,7 @@
         ayuda: `Desde cuándo se le calcula: su alta, o el ${f(R.desde)} si entró antes (el histórico de vacaciones empieza ahí).`,
         pinta: (v, x) => `${f(v)}${x.desdeElAlta ? '' : '<span class="block text-[11px] text-telecab-muted">alta ' + f(x.alta) + '</span>'}` },
       { titulo: 'Generadas', campo: 'generadas', clase: 'tabular-nums whitespace-nowrap',
-        ayuda: `${tasa} días por cada día natural, sin los días de suspensión.`,
+        ayuda: `${tasa} días por cada día que trabajó más de ${umbralL} h (viaje + espera de BOLT, el día de la bitácora).`,
         pinta: v => '+' + num(v) },
       { titulo: 'Festivos', campo: 'festivosSuman', clase: 'tabular-nums whitespace-nowrap',
         ayuda: `Festivos nacionales y de la Comunidad de Madrid en los que trabajó más de ${R.umbralHoras} h: cada uno suma 1 día.`,
@@ -164,6 +167,11 @@
       bloques: [
         { titulo: 'Saldo', icono: 'fa-scale-balanced', pinta: (d, hueco) => { hueco.innerHTML = extracto(d); } },
         { titulo: 'Asuntos propios', icono: 'fa-user-clock', pinta: (d, hueco) => { hueco.innerHTML = extractoAP(d); } },
+        // LOS DÍAS LABORADOS, MES A MES (06/11/2026): de dónde sale lo generado.
+        {
+          titulo: 'Días laborados, mes a mes', icono: 'fa-calendar-check',
+          pinta: (d, hueco) => { hueco.innerHTML = mesAMes(d); },
+        },
         {
           titulo: 'Festivos', icono: 'fa-calendar-day',
           tabla: {
@@ -282,7 +290,6 @@
         </div>
         <p class="tabular-nums text-right whitespace-nowrap font-semibold w-28">${signo} ${num(valor, 2)}</p>
       </div>`;
-    const sus = d.diasSuspension ? `, sin ${d.diasSuspension} día(s) de suspensión` : '';
     const fest = d.detalle.festivos.length;
     const sinD = d.festivosSinDatos ? ` · ${d.festivosSinDatos} sin datos` : '';
     const pend = d.festivosPendientes ? ` · ${d.festivosPendientes} calculándose` : '';
@@ -290,7 +297,7 @@
     const tramosVac = d.detalle.vacaciones.filter(v => v.disfrutados).length;
     return `
       <div class="px-5 py-2">
-        ${linea('Generadas', d.generadas, `${d.diasQueGeneran} días naturales desde el ${f(d.inicio)}${sus} × ${tasa}`, '+')}
+        ${linea('Generadas', d.generadas, `${d.diasLaborados} día(s) trabajado(s) más de ${umbralL} h desde el ${f(d.inicio)} × ${tasa}`, '+')}
         ${linea('Festivos trabajados', d.festivosSuman, `${d.festivosSuman} de ${fest} festivo(s) con más de ${R.umbralHoras} h${sinD}${pend}`, '+')}
         ${linea('Vacaciones disfrutadas', d.disfrutadas, tramosVac ? `${tramosVac} tramo(s) hasta ${d.deBaja ? 'su baja' : 'hoy'}` : `Ninguna hasta ${d.deBaja ? 'su baja' : 'hoy'}`, '−')}
         <div class="flex items-baseline gap-4 pt-4 pb-2">
@@ -306,6 +313,40 @@
               Cuando pasen le quedarán</p>
             <p class="tabular-nums font-semibold whitespace-nowrap">${conSigno(d.saldoTras, 2)} días</p>
           </div>` : ''}
+      </div>`;
+  }
+
+  // LOS DÍAS LABORADOS, MES A MES (06/11/2026): cuántos días pasaron de las
+  // horas que hacen falta, cuántos se quedaron cortos y lo que generó cada mes.
+  function mesAMes(d) {
+    const meses = (d.detalle.meses || []).slice().reverse();
+    const nota = R.sinHistorico || (d.reglas && d.reglas.sinHistorico)
+      ? `<p class="text-sm text-telecab-warn mt-3">Falta aplicar la migración db/231: los días de antes del ${f(R.nucleoDesde || '2026-07-01')} todavía no cuentan.</p>`
+      : `<p class="text-xs text-telecab-muted mt-3">Viaje + espera de BOLT, por el día de la bitácora. Antes del 01/07/2026, del historial de estados de BOLT; desde entonces, de la base. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
+    if (!meses.length) return `<div class="px-5 py-4"><p class="text-sm text-telecab-muted">Ningún día trabajado desde el ${f(d.inicio)}.</p>${nota}</div>`;
+    const fila = m => `
+      <tr class="border-t border-telecab-border/60">
+        <td class="py-2 pr-3 whitespace-nowrap">${MESES[Number(m.mes.slice(5)) - 1]} ${m.mes.slice(0, 4)}</td>
+        <td class="py-2 px-3 text-right tabular-nums font-semibold">${m.laborados}</td>
+        <td class="py-2 px-3 text-right tabular-nums text-telecab-muted">${m.cortos || '—'}</td>
+        <td class="py-2 px-3 text-right tabular-nums whitespace-nowrap">${horasTxt(m.segundos)}</td>
+        <td class="py-2 pl-3 text-right tabular-nums whitespace-nowrap">+ ${num(m.generadas, 2)}</td>
+      </tr>`;
+    return `
+      <div class="px-5 py-3 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-telecab-muted">
+            <tr>
+              <th class="text-left font-medium pb-1 pr-3">Mes</th>
+              <th class="text-right font-medium pb-1 px-3" title="Los días que suman: trabajó más de ${umbralL} h.">Más de ${umbralL} h</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días que trabajó, pero no más de ${umbralL} h: no suman.">${umbralL} h o menos</th>
+              <th class="text-right font-medium pb-1 px-3">Horas del mes</th>
+              <th class="text-right font-medium pb-1 pl-3">Generadas</th>
+            </tr>
+          </thead>
+          <tbody>${meses.map(fila).join('')}</tbody>
+        </table>
+        ${nota}
       </div>`;
   }
 
