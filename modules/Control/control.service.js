@@ -456,6 +456,29 @@ async function jornadaSemanalExcel(lunes) {
 /** Las semanas que ofrece la tarjeta, decididas aquí en hora de Madrid. */
 const semanasJornada = () => jornadaSemanal.semanas();
 
+// ── Rendimiento de las zonas y los cuadrantes (06/11/2026) ──────────────────
+// Un clic baja los dos: el Excel (un cuadrante por pestaña) y el ejecutivo en
+// PDF (dos páginas). Las cuentas, en rendimiento.service.js.
+
+async function rendimientoExcel(mes) {
+  const r = require('./rendimiento.service');
+  const inf = await r.informe({ mes });
+  const bytes = await require('./rendimiento.excel').generar(inf);
+  console.log(`📊 [Control] rendimiento por cuadrantes ${inf.per.mes} (corte ${inf.per.hoy}): ${inf.total.coches} coches, ` +
+    `${r.pc(inf.total.pct)}, ${inf.total.sinPasados}/${inf.total.sinPrevistos} turnos sin conductor`);
+  return { bytes, nombre: `rendimiento-cuadrantes-${inf.per.mes}${inf.per.enCurso && inf.per.cerrados ? '-a-' + inf.per.ayer : ''}.xlsx` };
+}
+
+async function rendimientoPdf(mes) {
+  const r = require('./rendimiento.service');
+  const inf = await r.informe({ mes });
+  const bytes = await require('./rendimiento.pdf').generar(r.ejecutivo(inf));
+  return { bytes, nombre: `rendimiento-cuadrantes-${inf.per.mes}${inf.per.enCurso && inf.per.cerrados ? '-a-' + inf.per.ayer : ''}-ejecutivo.pdf` };
+}
+
+/** Los meses que ofrece la tarjeta, en hora de Madrid. */
+const mesesRendimiento = () => require('./rendimiento.service').meses();
+
 // ── Los descargables del día ───────────────────────────────────────────────
 // `dia` aquí NO es una fecha: es la clave 1|2|3 del reporte de horas (hoy, ayer,
 // anteayer), que es como lo pide la pantalla desde que existe.
@@ -555,7 +578,7 @@ module.exports = {
   marcarNoSale, quitarNoSale, marcarSlack, quitarSlack,
   kmTraza, kmDiagnostico,
   asistenciaPdf, asistenciaExcel, asistenciaPeriodo, auditoriaLunesExcel,
-  jornadaSemanalExcel, semanasJornada,
+  jornadaSemanalExcel, semanasJornada, rendimientoExcel, rendimientoPdf, mesesRendimiento,
   reporteHorasExcel, cascadaPdf, sankeyPdf,
   turnosExcel, parrillaExcel, reporteTurnosExcel,
 };

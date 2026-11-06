@@ -35,6 +35,9 @@ marcas.repo.js              «No saldrá» (6 motivos) y «Traza por Slack» (db
 reporteTurnos.service.js    el reporte por turnos (datos + Excel)
 jornadaSemanal.service.js   ¿cumplió su jornada de la semana? (plantilla propia, una
                             pestaña por jornada) · jornadaSemanal.repo.js  sus contratos
+rendimiento.service.js      rendimiento por zonas y cuadrantes (8 h por plaza y turno; la
+                            cuenta pura y el ejecutivo) · rendimiento.excel.js  un cuadrante
+                            por pestaña · rendimiento.pdf.js  el ejecutivo en 2 páginas
 *.excel.js  *.pdf.js        los descargables
 vistas/                     controlDirecto · controlCampanas(+Informe) ·
                             controlHistorico · kmTraza · alertas ·

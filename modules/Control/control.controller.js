@@ -116,6 +116,7 @@ router.get('/reportes', (req, res) => {
   res.render('reportes', {
     titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion',
     semanas: control.semanasJornada(),
+    mesesRendimiento: control.mesesRendimiento(),
   });
 });
 
@@ -248,6 +249,12 @@ router.get('/turnos/excel', descarga(req =>
   control.turnosExcel({ dias: req.query.dias, desde: req.query.desde }), XLSX));
 
 router.get('/planificador/excel', descarga(req => control.parrillaExcel(req.query.dia), XLSX));
+
+//   /control/rendimiento/excel?mes=2026-10   → un cuadrante por pestaña, con su resumen
+//   /control/rendimiento/pdf?mes=2026-10     → el ejecutivo, en dos páginas
+// Sin ?mes=, el en curso. La tarjeta baja los dos de un clic.
+router.get('/rendimiento/excel', descarga(req => control.rendimientoExcel(req.query.mes), XLSX));
+router.get('/rendimiento/pdf', descarga(req => control.rendimientoPdf(req.query.mes), PDF));
 router.get('/reporte-turnos/excel', descarga(req => control.reporteTurnosExcel(req.query.dia), XLSX));
 
 module.exports = router;

@@ -116,6 +116,45 @@
       </div>
     </div>
 
+    <!-- Rendimiento de las zonas y los cuadrantes: Excel + ejecutivo (06/11/2026) -->
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 sm:col-span-2">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-gauge-high text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Rendimiento por zonas y cuadrantes</div>
+          <p class="text-sm text-telecab-muted mt-0.5">
+            Cuántas horas deben hacer los coches en el mes, cuántas llevan y cómo van, zona a zona y
+            cuadrante a cuadrante. Cada plaza, <b>8 h por turno</b>: un coche con correturnos son 4 plazas y
+            16 h al día, y si <b>falta el CT</b> esos turnos se piden igual, que es lo que baja el rendimiento.
+            De un clic: el <b>Excel</b> (un cuadrante por pestaña, con su parrilla y el día a día) y el
+            <b>ejecutivo en PDF</b> (dos páginas, para dirección).
+          </p>
+          <p class="text-xs text-telecab-muted mt-2">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Un coche configurado sin correturnos no pide el turno del fijo que libra; los días en el taller no
+            se piden. Lo que falta (fijos y CT) es la foto del planificador de hoy; en un mes pasado, la de su
+            último día.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 mt-3">
+            <select id="rd-mes" aria-label="Mes del rendimiento" class="min-w-[14rem] px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+              <% (typeof mesesRendimiento !== 'undefined' ? mesesRendimiento : []).forEach(function (m) { %>
+                <option value="<%= m.mes %>" <%= m.porDefecto ? 'selected' : '' %>><%= m.etiqueta %></option>
+              <% }) %>
+            </select>
+            <button id="rd-bajar" type="button"
+               class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-download mr-1"></i> Excel + ejecutivo
+            </button>
+            <a id="rd-pdf" href="/control/rendimiento/pdf"
+               class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+               title="Solo el ejecutivo en PDF">
+              <i class="fa-solid fa-file-pdf mr-1"></i> Solo el PDF
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Asistencia: quién faltó y cuántas veces -->
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 sm:col-span-2">
       <div class="flex items-start gap-3">

@@ -44,6 +44,18 @@
   $('#r-sankey').addEventListener('click', () =>
     baja('/control/sankey/pdf?dia=' + encodeURIComponent($('#r-horas-dia').value)));
 
+  // ── Rendimiento por zonas y cuadrantes ───────────────────────────────────
+  // «El reporte ejecutivo debe de descargarse junto con el excel» (Camilo,
+  // 06/11/2026): un clic, los dos ficheros, como el reporte de horas.
+  if ($('#rd-mes')) {
+    sinc('#rd-mes', '#rd-pdf', 'mes');
+    $('#rd-bajar').addEventListener('click', () => {
+      const q = '?mes=' + encodeURIComponent($('#rd-mes').value);
+      baja('/control/rendimiento/excel' + q);
+      setTimeout(() => baja('/control/rendimiento/pdf' + q), 500);
+    });
+  }
+
   // ── Asistencia ────────────────────────────────────────────────────────────
   // Las fechas por defecto las decide el SERVIDOR (día 1 del mes → ayer, en hora
   // de Madrid): calcularlas aquí saldría con el reloj del navegador, que no tiene
