@@ -20,12 +20,16 @@ Una sola constante dice cuál es la sede que se vigila: `SEDE_FLOTA = 'madrid'` 
 | Las **horas** de BOLT | `sede_bolt_state_log` (los cambios de estado, tal cual) | db/181, 07/10/2026 | Planificador, reporte y Visibilidad de Barcelona |
 | Los **coches de BOLT** | `sede_bolt_vehiculo` (matrícula, modelo, estado en BOLT) | db/181, 07/10/2026 | Planificador de Barcelona, junto con los de `vehiculo` con sede Barcelona que aún no están en BOLT |
 | Los **pedidos** de BOLT | `sede_bolt_order` (quién, cuándo, estado y neto) | db/182, 07/10/2026 | Visibilidad de Barcelona (neto, viajes, €·hora) |
-| El **planificador** | `sede_asignacion`: matrícula + turno + cuenta de BOLT, fija hasta que se cambia | db/181, 07/10/2026 | Barcelona |
+| El **planificador** | `sede_asignacion`: matrícula + turno + cuenta de BOLT, fija hasta que se cambia; desde db/234, de fijo o de CT (con sus días) | db/181, 07/10/2026 | Barcelona |
+| Las **zonas y los cuadrantes** | `sede_zona`, `sede_cuadrante` y el cuadrante de cada matrícula en `sede_coche` | db/234, 06/11/2026 | Planificador de Barcelona |
+| Las **libranzas y los correturnos** | `sede_descanso` (el bloque del coche o el de cada fijo) y `sede_coche_ct` (los periodos CON CT: sin fila, el coche no lleva, que es lo de por defecto; una plaza de CT no pasa de su periodo, db/235) | db/234 y db/235, 06/11/2026 | Planificador, reporte, semana y Visibilidad de Barcelona |
 | Las **fichas** de las personas | — | no hay ni hacen falta: Barcelona trabaja con el nombre y el teléfono de BOLT | — |
 
 ## Barcelona en el ERP (07/10/2026)
 
-Camilo: «en el login ahora va a aparecer Barcelona o Madrid». Barcelona no necesita fichas, altas ni libranzas: un **planificador** (sus conductores de BOLT en sus matrículas, de día o de noche, fijo hasta que se cambia), un **reporte de horas** con la misma regla que Madrid («No salió» si no hizo horas) y su **Visibilidad**. Lo cuenta [[Barcelona]].
+Camilo: «en el login ahora va a aparecer Barcelona o Madrid». Barcelona no necesita fichas ni altas: un **planificador** (sus conductores de BOLT en sus matrículas, de día o de noche, fijo hasta que se cambia), un **reporte de horas** con la misma regla que Madrid («No salió» si le tocaba y no hizo horas) y su **Visibilidad**. Lo cuenta [[Barcelona]].
+
+Desde el 06/11/2026 (db/234) su planificador es **el de Madrid con sus datos** (Camilo: *«Prácticamente será el mismo diseño de Madrid, solo que la arquitectura y flujo de datos cambia ya que no tenemos lo mismo»*): zonas y cuadrantes, libranzas de la plaza, correturnos **desactivados por defecto** y el promedio de horas de cada uno, sin letra. Todo en tablas `sede_*` con su columna `sede`, por lo mismo que las horas (abajo): de `base_zona`, `cuadrante`, `vehiculo_descanso` o `asignacion` beben `f_cobertura`, Control, el bot y las nóminas de Madrid. Quién trabaja cada día lo decide `modules/Barcelona/barcelona.plan.js`, la regla de `f_cobertura` escrita en JS para plazas por matrícula y personas que son cuentas de BOLT.
 
 **Sus horas van aparte, a propósito.** Madrid lee las horas de Flota viva (`fv_tramo`) y de `bolt_state_log` en Control, Visibilidad, la Bitácora, el mapa y la foto del ahora. Si las de Barcelona entraran ahí, sus conductores (sin ficha) saldrían como NN en todas esas pantallas. Así que la ingesta trae lo de `CONFIG_BOLT.flotasOtrasSedes` a **tablas suyas** (`services/repo/otrasSedes.js`), con dos tareas propias ([[Ingesta]]):
 
@@ -84,7 +88,7 @@ Pedido por Camilo el 02/10/2026: que los conductores de Barcelona abran turno y 
 - **Qué coche.** No se comprueba la matrícula contra BOLT ni contra el cuadrante: basta con que esté en Mapon y sea un coche de Barcelona en Vehículos, que se cruzó con BOLT y Mapon en db/173.
 - **La regla de la sede** pasa de «un coche de otra sede no se toca» a «**el coche tiene que ser de la sede de la persona**». El motor de Barcelona no se corta ni se suelta nunca: se lleva desde Mapon.
 - **La oficina con `/puertas`** (y el desarrollador) abre y cierra los coches de las **dos sedes** (Camilo, 02/10/2026). Los viajes de la empresa siguen siendo solo con coches de Madrid.
-- **«Ver mis turnos» y «Código de lavado»** no les salen: Barcelona aún no tiene planificador ni Ballenoil. Si lo escriben, se les dice que por el momento no está disponible.
+- **«Ver mis turnos» y «Código de lavado»** no les salen: Barcelona no tiene Ballenoil, y su planificador (desde el 07/10, con libranzas desde el 06/11) aún no está en el bot. Si lo escriben, se les dice que por el momento no está disponible.
 - Sus turnos quedan en el mismo libro (`fichaje_turno`, sin `conductor_id`) y no salen en el panel del planificador de Madrid.
 
 **Sin db/174 el bot no reconocía a nadie de Barcelona**: sin la empresa de cada cuenta no se sabe cuáles son de allí. Se aplicó el 02/10 a las 20:14 y la pasada del padrón de las 20:28 metió las 28 cuentas, con 0 cambiadas y 0 desaparecidas.

@@ -1,47 +1,114 @@
-<div class="max-w-[1100px] mx-auto">
+<%
+  // EL PLANIFICADOR DE BARCELONA v2 (06/11/2026). Camilo: «Prácticamente será el
+  // mismo diseño de Madrid, solo que la arquitectura y flujo de datos cambia ya
+  // que no tenemos lo mismo, pero está empezando de 0 para ir cogiendo forma».
+  //
+  // Así que la cara es la del cuadrante de Madrid (modules/Planificacion/vistas/
+  // planificadorV2.ejs): zonas como tarjetas, un bloque por cuadrante con su tabla
+  // de coches, el descanso con sol y luna, las plazas fijo / CT de día y de noche,
+  // «Sin correturnos» y el promedio de cada uno, SIN letra («no nos interesa la
+  // utilización y avisos de velocidad, por el momento»). Los datos son otros: las
+  // personas son cuentas de BOLT, la plaza va por matrícula y todo vive en las
+  // tablas sede_* (db/181, db/234). Las reglas (quién libra, quién trabaja, qué es
+  // un hueco) son del servidor (barcelona.plan.js): aquí solo se pinta y se pide.
+  //
+  // Todo lo que se guarda vale DESDE el día que se mira, como en Madrid. El
+  // JavaScript, en public/assets/js/vistas/Barcelona/barcelona-planificador.js.
+%>
 
-  <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
-    <div>
-      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-table-cells-large text-telecab-gold"></i> Planificador · Barcelona
-      </h1>
-      <p class="text-sm text-telecab-muted mt-1 max-w-[70ch]">
-        Cada matrícula con su conductor de <b>día</b> y de <b>noche</b>. Vale todos los días hasta que se cambie:
-        no hay libranzas, así que el día que alguien no hace horas el reporte dice «No salió».
-        Pulsa una plaza para cambiarla.
-      </p>
+<div class="p-4 lg:p-6 max-w-[1600px] mx-auto">
+
+  <style>
+    /* Lo que se pulsa nota el dedo (lo mismo que en el cuadrante de Madrid):
+       solo transform, rápido y con salida suave. Nada de esto con «menos movimiento». */
+    .tc-pulsable { transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease,
+                   transform 120ms cubic-bezier(0.23, 1, 0.32, 1); }
+    .tc-pulsable:active { transform: scale(0.98); }
+    @media (prefers-reduced-motion: reduce) {
+      .tc-pulsable { transition: none; }
+      .tc-pulsable:active { transform: none; }
+    }
+    /* El cuadrante recién creado se marca un momento con el acento, para que el
+       ojo lo encuentre. Se apaga solo. */
+    .tc-resalte { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 4px; border-radius: 1rem;
+                  transition: outline-color 600ms ease; }
+  </style>
+
+  <!-- ══════════ Cabecera: el día, Zonas y + Cuadrante ══════════ -->
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <div class="min-w-0">
+      <h2 class="text-xl font-bold flex items-center gap-2">
+        <i class="fa-solid fa-table-cells-large text-telecab-gold" aria-hidden="true"></i>Planificador · Barcelona
+      </h2>
+      <p id="bp-sub" class="text-sm text-telecab-muted mt-0.5">Cargando…</p>
     </div>
-    <label class="flex items-center gap-2 text-sm text-telecab-muted">
-      Ver el día
-      <input id="b-fecha" class="js-fecha w-32 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm text-telecab-text"
-             placeholder="dd/mm/aaaa" readonly>
-    </label>
-  </div>
 
-  <div id="b-aviso" class="hidden mb-4 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
-
-  <div id="b-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5"></div>
-
-  <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden mb-5">
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-xs uppercase tracking-wide text-telecab-muted border-b border-telecab-border">
-            <th class="px-4 py-3 font-semibold w-[28%]">Matrícula</th>
-            <th class="px-4 py-3 font-semibold"><i class="fa-solid fa-sun mr-1 text-telecab-gold"></i>Día <span class="normal-case font-normal">· 00:00 a 24:00</span></th>
-            <th class="px-4 py-3 font-semibold"><i class="fa-solid fa-moon mr-1 text-telecab-gold"></i>Noche <span class="normal-case font-normal">· 12:00 a 12:00</span></th>
-          </tr>
-        </thead>
-        <tbody id="b-filas"><tr><td colspan="3" class="px-4 py-6 text-telecab-muted">Cargando…</td></tr></tbody>
-      </table>
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      <button id="bp-prev" type="button" aria-label="Día anterior" title="Día anterior"
+              class="tc-pulsable w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted">
+        <i class="fa-solid fa-chevron-left text-xs" aria-hidden="true"></i>
+      </button>
+      <input id="bp-fecha" class="js-fecha w-32 text-center px-2 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm cursor-pointer"
+             placeholder="dd/mm/aaaa" readonly aria-label="Día que se mira">
+      <button id="bp-next" type="button" aria-label="Día siguiente" title="Día siguiente"
+              class="tc-pulsable w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted">
+        <i class="fa-solid fa-chevron-right text-xs" aria-hidden="true"></i>
+      </button>
+      <button id="bp-hoy" type="button"
+              class="tc-pulsable px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm">Hoy</button>
+      <%# LAS ZONAS (como «Zonas» de Madrid): crear una, cambiarle el nombre o
+          retirarla. A un cuadrante se le cambia la zona desde su cabecera. %>
+      <button id="bp-btn-zonas" type="button" title="Crear una zona, o cambiarle el nombre o retirar una"
+              class="tc-pulsable flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm">
+        <i class="fa-solid fa-location-dot" aria-hidden="true"></i>Zonas
+      </button>
+      <button id="bp-btn-cuadrante" type="button" title="Crear un cuadrante: el número se pone solo y se elige su zona"
+              class="tc-pulsable flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>Cuadrante
+      </button>
     </div>
   </div>
 
-  <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
-    <div class="font-semibold text-telecab-text mb-1">Sin plaza</div>
-    <p class="text-xs text-telecab-muted mb-3">Conductores activos en BOLT Barcelona que ese día no están en ninguna matrícula.</p>
-    <div id="b-sinplaza" class="flex flex-wrap gap-2"></div>
+  <%# Lo que impide pintar: la migración sin aplicar o un error del servidor. %>
+  <div id="bp-aviso" class="hidden mb-4 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
+
+  <%# LAS CIFRAS DEL DÍA. Se cuentan TURNOS (dos por coche y día), no plazas: el
+      día que libra un fijo de un coche sin correturnos su turno no sale, y eso no
+      es un hueco. Cada una dice en su ayuda qué cuenta. %>
+  <div id="bp-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4"></div>
+
+  <%# LAS ZONAS, como las bases de Madrid: una tarjeta por zona y «Sin zona».
+      Pincharla deja solo sus cuadrantes; la elección viaja en la dirección
+      (#zona=eixample) para que recargar o pasar el enlace abra la misma. %>
+  <nav id="bp-zonas" aria-label="Zonas" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4"></nav>
+
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <div class="relative">
+      <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs" aria-hidden="true"></i>
+      <input id="bp-busca" type="search" placeholder="Buscar conductor o matrícula…" aria-label="Buscar conductor o matrícula"
+             class="pl-8 pr-3 py-2 w-60 bg-telecab-card border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+    </div>
+    <h3 id="bp-ambito" class="text-sm font-semibold ml-1">Todas las zonas</h3>
+    <span id="bp-ambito-sub" class="text-xs text-telecab-muted tabular-nums"></span>
+    <button id="bp-todas" type="button"
+            class="tc-pulsable hidden items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border border-telecab-border hover:border-telecab-gold/40">
+      <i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i>Todas las zonas</button>
   </div>
+
+  <!-- ══════════ Los cuadrantes y los coches sin cuadrante ══════════ -->
+  <div id="bp-cuadrantes" class="space-y-6">
+    <p class="px-4 py-6 text-sm text-telecab-muted">Cargando…</p>
+  </div>
+
+  <!-- ══════════ Sin plaza ══════════ -->
+  <section id="bp-sinplaza-caja" class="mt-6 bg-telecab-card border border-telecab-border rounded-2xl p-4 scroll-mt-24">
+    <h3 class="font-semibold text-sm flex items-center gap-2 mb-1">
+      <i class="fa-solid fa-users text-telecab-muted" aria-hidden="true"></i>Sin plaza
+      <span id="bp-sinplaza-n" class="ml-auto text-xs text-telecab-muted tabular-nums"></span>
+    </h3>
+    <p class="text-xs text-telecab-muted mb-3">Cuentas activas en BOLT Barcelona que ese día no están en ninguna matrícula. Al lado, su promedio de horas del mes.</p>
+    <div id="bp-sinplaza" class="flex flex-wrap gap-2"></div>
+  </section>
 </div>
 
 <script src="<%= est('/assets/js/vistas/Barcelona/barcelona-planificador.js') %>"></script>

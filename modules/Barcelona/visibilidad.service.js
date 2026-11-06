@@ -9,8 +9,9 @@
 //   · Las horas, de sus apuntes de BOLT (sede_bolt_state_log), pasados a ratos
 //     como en el reporte (barcelona.horas.js). Madrid las lee de Flota viva.
 //   · El neto y los viajes, de sus pedidos (sede_bolt_order, db/182).
-//   · Los turnos, por el plan de SU planificador (sede_asignacion): quien no
-//     tiene plaza va por su hora de inicio, como los NN de Madrid.
+//   · Los turnos, por el plan del día de SU planificador (barcelona.plan: quien
+//     TRABAJA ese día, con sus libranzas y sus CT, db/234): quien no tiene plaza,
+//     o libra, va por su hora de inicio, como los NN de Madrid.
 //   · La configuración (capacidad, meta, coches), en su propia fila de
 //     visibilidad_config ('parametros_barcelona').
 //
@@ -19,6 +20,8 @@
 
 const repo = require('./barcelona.repo');
 const H = require('./barcelona.horas');
+const P = require('./barcelona.plan');
+const B = require('./barcelona.service');
 const R = require('../../services/flotaViva/repartoTurnos');
 const V = require('../../services/visibilidad');
 const T = require('../../services/visibilidadTendencia');
@@ -49,7 +52,7 @@ async function leerConfig() {
     repo.coches(SEDE).catch(() => []),
   ]);
   const c = { ...DEFECTO, ...(guardada || {}) };
-  if (c.vehiculos == null) c.vehiculos = coches.filter(require('./barcelona.service').cocheActivo).length || null;
+  if (c.vehiculos == null) c.vehiculos = coches.filter(B.cocheActivo).length || null;
   return c;
 }
 
@@ -118,15 +121,15 @@ function resumen() {
     const ahora = Date.now();
     const desde = [primeroMes, lunes, R.sumarDias(ayerJornada, -1)].sort()[0];
     const iniMs = inicioDe(desde);
-    const [ivs, asignaciones, config] = await Promise.all([
+    const [ivs, plan, config] = await Promise.all([
       ratos(iniMs, ahora),
-      repo.asignacionesEntre(SEDE, R.sumarDias(desde, -1), R.sumarDias(hoy, 1)),
+      B.planParaHoras(R.sumarDias(desde, -1), R.sumarDias(hoy, 1)),
       leerConfig(),
     ]);
 
-    // Los turnos, por el plan del planificador (los sin plaza, por su hora de inicio).
+    // Los turnos, por el plan del día (los sin plaza o librando, por su hora de inicio).
     const efectivos = ivs.filter(x => H.EFECTIVAS.has(x.situacion)).map(x => ({ ...x, persona: x.uuid }));
-    const { porClave } = R.repartir(efectivos, H.planDesde(asignaciones));
+    const { porClave } = R.repartir(efectivos, H.planDesde(P.crear(plan)));
     const VACIO = { viajeSeg: 0, esperaSeg: 0, personas: new Set(), nnSeg: 0, nnPersonas: new Set() };
     const turno = (fecha, tt) => porClave.get(R.clave(fecha, tt)) || VACIO;
     const jD = turno(ayerJornada, 'dia'), jN = turno(ayerJornada, 'noche');
@@ -172,11 +175,11 @@ function aEstaHora(ref = {}) {
     const ahora = Date.now();
     // Ocho días: la noche del mismo día de la semana pasada puede ser la de la víspera.
     const desde = R.sumarDias(hoy, -8);
-    const [ivs, asignaciones] = await Promise.all([
+    const [ivs, delPlanificador] = await Promise.all([
       ratos(inicioDe(desde), ahora),
-      repo.asignacionesEntre(SEDE, R.sumarDias(desde, -1), R.sumarDias(hoy, 1)),
+      B.planParaHoras(R.sumarDias(desde, -1), R.sumarDias(hoy, 1)),
     ]);
-    const plan = H.planDesde(asignaciones);
+    const plan = H.planDesde(P.crear(delPlanificador));
     const efectivos = ivs.filter(x => H.EFECTIVAS.has(x.situacion)).map(x => ({ ...x, persona: x.uuid }));
     const horasDe = s => (s.viajeSeg + s.esperaSeg) / 3600;
     const natural = [], turnos = [];

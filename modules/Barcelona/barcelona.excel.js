@@ -6,10 +6,13 @@
 //   · Por día        una fila por día y plaza (matrícula + turno) con conductor:
 //                    sus horas en SU turno, viaje y espera, y si salió. El color
 //                    de las horas es el del reporte de Madrid (verde ≥ 7,6,
-//                    amarillo 6,4–7,5, rojo menos); «No salió» en rojo.
-//   · Por conductor  los días que le tocaba, los que salió y los que no, y sus
-//                    horas. Primero quien más días no salió.
-//   · Sin plaza      quien trabajó un día sin tener plaza en el planificador.
+//                    amarillo 6,4–7,5, rojo menos); «No salió» en rojo y
+//                    «Libra» en gris: desde db/234 (06/11/2026) Barcelona tiene
+//                    libranzas, y el día que un fijo libra no es «No salió».
+//   · Por conductor  los días que le tocaba, los que salió, los que no y los que
+//                    libró, y sus horas. Primero quien más días no salió.
+//   · Sin plaza      quien trabajó un día sin trabajar en ninguna plaza: sin
+//                    plaza en el planificador, o en su día de libranza.
 //
 // Los datos los arma barcelona.horas.js (informe); aquí solo se pinta.
 
@@ -22,9 +25,11 @@ const sello = () => new Intl.DateTimeFormat('es-ES', {
 }).format(new Date());
 const esFecha = iso => iso.split('-').reverse().join('/');
 const TURNO = { dia: 'Día', noche: 'Noche' };
+// El turno de una plaza: «Día», o «Día · CT» si es de correturnos.
+const turnoDe = p => TURNO[p.turno] + (p.rol === 'ct' ? ' · CT' : '');
 // El turno asignado en el planificador (y su matrícula). Si cambió en el
 // periodo, los dos: «Día / Noche», «1234ABC, 5678DEF».
-const turnoAsignado = ps => (ps && ps.length ? [...new Set(ps.map(p => TURNO[p.turno]))].join(' / ') : 'Sin plaza');
+const turnoAsignado = ps => (ps && ps.length ? [...new Set(ps.map(turnoDe))].join(' / ') : 'Sin plaza');
 const matriculaAsignada = ps => (ps && ps.length ? [...new Set(ps.map(p => p.matricula))].join(', ') : '');
 
 // Los colores de las horas: los del reporte de Madrid (reporteHoras.service.js).
@@ -35,6 +40,8 @@ const ESTADO = {
   todavia: { texto: 'Aún no ha salido', bg: 'FFFEF3C7', fg: 'FF92400E' },
   pendiente: { texto: 'Por empezar', bg: 'FFF3F4F6', fg: 'FF6B7280' },
   no_salio: { texto: 'No salió', bg: 'FFFEE2E2', fg: 'FF991B1B' },
+  // El día que libra su plaza: no le tocaba (db/234). Gris, como en el planificador.
+  libra: { texto: 'Libra', bg: 'FFF3F4F6', fg: 'FF4B5563' },
 };
 
 /** Una tabla: cabecera, filas y filtro. `pintar(fila, r)` rellena cada fila. */
@@ -90,10 +97,12 @@ async function generar(datos) {
   tabla(wb.addWorksheet('Por día'), logo, {
     titulo: 'Horas · Barcelona',
     subtitulo: `${periodo[0].toUpperCase() + periodo.slice(1)} · ${r.plazas} plazas con conductor · ${r.salieron} salieron · ` +
-      `${r.noSalieron} no salieron · ${String(r.horas).replace('.', ',')} h · generado el ${sello()}${parcial}`,
+      `${r.noSalieron} no salieron · ${r.libran || 0} libran · ${String(r.horas).replace('.', ',')} h · generado el ${sello()}${parcial}`,
     leyenda: 'Horas efectivas (viaje + espera; el descanso no cuenta) en SU turno: el de día de 00:00 a 24:00 y el de noche de 12:00 ' +
-      'a 12:00 del día siguiente, como en Madrid · No salió = tenía plaza y no hizo ni un minuto en su turno (Barcelona no tiene libranzas) · ' +
-      'verde ≥ 7,6 h, amarillo de 6,4 a 7,5, rojo menos',
+      'a 12:00 del día siguiente, como en Madrid · No salió = le tocaba trabajar y no hizo ni un minuto en su turno · ' +
+      'Libra = era su día de libranza en el planificador (no cuenta como no salió; si trabajó, sus horas van en la otra plaza que ' +
+      'trabajara ese día —se dice en las observaciones— o, si no tenía otra, en «Sin plaza») · ' +
+      'el CT sale solo los días que cubre · verde ≥ 7,6 h, amarillo de 6,4 a 7,5, rojo menos',
     cols: [
       { titulo: 'Fecha', ancho: 12 }, { titulo: 'Turno', ancho: 8 }, { titulo: 'Matrícula', ancho: 12 },
       { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
@@ -106,11 +115,11 @@ async function generar(datos) {
     pintar: (x, celda) => {
       const est = ESTADO[x.estado] || ESTADO.pendiente;
       celda(1, esFecha(x.fecha));
-      celda(2, TURNO[x.turno]);
+      celda(2, turnoDe(x));
       celda(3, x.matricula, { negrita: true });
       celda(4, x.nombre);
       celda(5, x.telefono);
-      const cuenta = x.estado !== 'pendiente' && x.estado !== 'todavia';
+      const cuenta = x.estado !== 'pendiente' && x.estado !== 'todavia' && x.estado !== 'libra';
       celda(6, cuenta ? x.horas : null, { num: true, negrita: true, bg: x.banda ? BANDA[x.banda] : null });
       celda(7, cuenta ? x.viaje : null, { num: true });
       celda(8, cuenta ? x.espera : null, { num: true });
@@ -128,6 +137,7 @@ async function generar(datos) {
       { titulo: 'Turno', ancho: 12 }, { titulo: 'Matrícula', ancho: 14 },
       { titulo: 'Le tocaba', ancho: 11 }, { titulo: 'Salió', ancho: 9 }, { titulo: 'No salió', ancho: 10 },
       { titulo: 'Horas en su turno', ancho: 17 }, { titulo: 'Media al salir', ancho: 14 }, { titulo: 'Fuera de su turno', ancho: 17 },
+      { titulo: 'Libró', ancho: 9 },
     ],
     filas: datos.porConductor,
     vacio: 'Nadie tenía plaza en esas fechas.',
@@ -142,6 +152,7 @@ async function generar(datos) {
       celda(8, x.horas, { num: true, negrita: true });
       celda(9, x.media, { num: true });
       celda(10, x.fuera || null, { num: true });
+      celda(11, x.libra || null, { tono: x.libra ? ESTADO.libra : null });
     },
   });
 
@@ -149,12 +160,12 @@ async function generar(datos) {
     titulo: 'Horas · Barcelona · sin plaza',
     subtitulo: `${periodo[0].toUpperCase() + periodo.slice(1)} · ${r.personasSinPlan} conductores trabajaron sin plaza en el planificador · ` +
       `${String(r.horasSinPlan).replace('.', ',')} h · generado el ${sello()}`,
-    leyenda: 'Quien trabajó un día sin tener plaza ninguna ese día. Su turno sale de la hora a la que empezó: antes de las 12:00, día; desde las 12:00, noche (como los NN de Madrid).',
+    leyenda: 'Quien trabajó un día sin trabajar en ninguna plaza: sin plaza ese día, o en su día de libranza («Libraba»). Su turno sale de la hora a la que empezó: antes de las 12:00, día; desde las 12:00, noche (como los NN de Madrid).',
     cols: [
       { titulo: 'Fecha', ancho: 12 }, { titulo: 'Turno', ancho: 8 },
       { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
       { titulo: 'Horas', ancho: 9 }, { titulo: 'Viaje', ancho: 8 }, { titulo: 'Espera', ancho: 8 },
-      { titulo: 'Coche en BOLT', ancho: 18 },
+      { titulo: 'Coche en BOLT', ancho: 18 }, { titulo: 'Por qué', ancho: 26, izq: true },
     ],
     filas: datos.sinPlan,
     vacio: 'Nadie trabajó sin plaza en esas fechas.',
@@ -167,6 +178,7 @@ async function generar(datos) {
       celda(6, x.viaje, { num: true });
       celda(7, x.espera, { num: true });
       celda(8, x.coches.join(', '));
+      celda(9, x.libraba && x.libraba.length ? `Libraba (${x.libraba.join(', ')})` : 'Sin plaza');
     },
   });
 
@@ -177,7 +189,8 @@ async function generar(datos) {
 // Una fila por conductor y de lunes a domingo sus horas efectivas en BOLT (su
 // turno de día más su turno de noche). Cada día con algo que contar lleva su
 // NOTA (el globo de Excel): cuánto fue de día y cuánto de noche, en qué plaza
-// estaba, o que tenía plaza y no salió. De menor a mayor.
+// estaba, que tenía plaza y no salió, o que libraba («L» en gris). De menor a
+// mayor.
 const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const h1t = n => String(Math.round(n * 10) / 10).replace('.', ',');
 const TONO_SEMANA = {
@@ -185,17 +198,22 @@ const TONO_SEMANA = {
   futuro: { bg: 'FFF3F4F6', fg: 'FF9CA3AF' },
   curso: { bg: 'FFEFF6FF', fg: 'FF1E40AF' },
   nada: { bg: null, fg: 'FFB0B5BD' },
+  libra: { bg: 'FFF3F4F6', fg: 'FF4B5563' },
 };
 
 /** Lo que se escribe en la celda de un día, su color y su nota. */
 function celdaSemana(x) {
-  const plaza = x.plazas.length ? x.plazas.map(p => `${p.matricula} (${TURNO[p.turno].toLowerCase()})`).join(', ') : '';
-  if (x.estado === 'futuro') return { valor: '', tono: TONO_SEMANA.futuro };
+  const nombrar = ps => ps.map(p => `${p.matricula} (${turnoDe(p).toLowerCase()})`).join(', ');
+  const plaza = x.plazas.length ? nombrar(x.plazas) : '';
+  const libra = x.libra && x.libra.length ? nombrar(x.libra) : '';
+  if (x.estado === 'futuro') return { valor: libra ? 'L' : '', tono: TONO_SEMANA.futuro, nota: libra ? `Libra: ${libra}` : null };
   const partes = [];
   if (x.dia && x.noche) partes.push(`Día ${h1t(x.dia)} h · Noche ${h1t(x.noche)} h`);
   else if (x.noche) partes.push(`De noche: ${h1t(x.noche)} h`);
   if (plaza) partes.push(`Plaza: ${plaza}`);
+  else if (libra) partes.push(`Libraba: ${libra}${x.horas ? ' (y trabajó)' : ''}`);
   else if (x.horas) partes.push('Sin plaza en el planificador');
+  if (libra && !x.horas) return { valor: 'L', tono: TONO_SEMANA.libra, nota: partes.join('\n') };
   if (x.estado === 'abierto') partes.push('El día aún no ha terminado: su noche cuenta hasta las 12:00 del día siguiente.');
   if (x.noSalio) return { valor: 0, num: true, tono: TONO_SEMANA.rojo, nota: `Tenía plaza (${plaza}) y no salió.` };
   if (!x.horas) return { valor: x.estado === 'abierto' ? '' : '—', tono: x.estado === 'abierto' ? TONO_SEMANA.curso : TONO_SEMANA.nada, nota: partes.join('\n') || null };
@@ -227,8 +245,8 @@ async function generarSemana(datos) {
   ws.mergeCells(3, 1, 3, cols.length);
   const ley = ws.getCell(3, 1);
   ley.value = 'Horas efectivas en BOLT (viaje + espera; el descanso no cuenta) de cada día: su turno de día (00:00 a 24:00) más su turno ' +
-    'de noche (12:00 a 12:00 del día siguiente), como el reporte diario · 0 en rojo = tenía plaza y no salió · — = ese día no trabajó ' +
-    '· pasa el ratón por un día para ver el detalle';
+    'de noche (12:00 a 12:00 del día siguiente), como el reporte diario · 0 en rojo = le tocaba trabajar y no salió · L = libraba ' +
+    '· — = ese día no trabajó · pasa el ratón por un día para ver el detalle';
   ley.font = { size: 9, italic: true, color: { argb: E.TENUE } };
   ley.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
   ws.getRow(3).height = 26;
