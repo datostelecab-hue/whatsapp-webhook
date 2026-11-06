@@ -306,7 +306,9 @@ async function controlAcceso(req, res, next) {
   const u = req.usuario;
   if (!u) return next();               // ya lo cubre `protegido`
   if (ADMIN_TOTAL.includes(u.rol)) return next();
-  if (SIEMPRE_ABIERTO.some(r => req.path === r || req.path.startsWith(r + '/'))) return next();
+  // En minúsculas, como `claveDeRuta`: Express casa las rutas sin mirar mayúsculas.
+  const ruta = String(req.path || '').toLowerCase();
+  if (SIEMPRE_ABIERTO.some(r => ruta === r || ruta.startsWith(r + '/'))) return next();
   // Con el METODO: en los modulos partidos en mirar/tocar, un GET pide el
   // permiso de leer y todo lo demas el de escribir (ver `claveDeRuta`).
   const clave = permisos.claveDeRuta(req.path, req.method);

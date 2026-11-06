@@ -257,6 +257,9 @@ const RUTA_A_CLAVE = [
   ['/control/turnos/',            '/control/reportes'],
   ['/control/planificador/',      '/control/reportes'],
   ['/control/reporte-turnos/',    '/control/reportes'],
+  ['/control/rendimiento/',       '/control/reportes'],
+  // La tarjeta de la jornada semanal también está en Reportes.
+  ['/control/jornada-semanal/',   '/control/reportes'],
   ['/control/asistencia',         '/control/reportes'],
   ['/control/api/km-traza',       '/control/km'],
   ['/control/api/km-diagnostico', '/control/km'],
@@ -332,7 +335,9 @@ const ES_CLAVE = new Set(CLAVES);
  * tickets que cuelga del planificador.
  */
 function claveDeRuta(path, metodo) {
-  let p = String(path || '');
+  // En minúsculas: Express casa las rutas sin mirar mayúsculas, y la clave tiene
+  // que salir igual para '/control/Reportes' que para '/control/reportes'.
+  let p = String(path || '').toLowerCase();
   const seg = '/' + (p.split('/')[1] || '');
   if (ALIAS[seg]) p = ALIAS[seg] + p.slice(seg.length);
   for (const [ruta, clave] of RUTA_A_CLAVE) {
