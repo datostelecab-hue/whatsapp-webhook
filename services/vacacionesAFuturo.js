@@ -51,14 +51,16 @@ function validarCambio(t, { desde, hasta } = {}, hoy = hoyMadrid()) {
 
 /**
  * LOS DOS DÍAS QUE LIBRA (db/233), con la misma regla: se cambian mientras las
- * vacaciones no hayan empezado. En unas empezadas ya hay días contados con los
- * de antes, y cambiarlos sería cambiar el pasado. `libra` = los nuevos, ya
- * comprobados (libranzas.dosDiasLibra).
+ * vacaciones no hayan empezado. En unas empezadas ya hay días contados con
+ * ellos, y cambiarlos sería cambiar el pasado. Pero unas empezadas que AÚN NO
+ * LOS LLEVAN (las de antes de db/233, como las de Angel Lopez Gomez, el ejemplo
+ * de Camilo) pueden recibirlos una vez: si no, contarían para siempre con el
+ * planificador. `libra` = los nuevos, ya comprobados (libranzas.dosDiasLibra).
  */
 function validarLibra(t, libra, hoy = hoyMadrid()) {
   const antes = (t.libra_dias || []).map(Number).sort((a, b) => a - b);
   if (String(antes) === String(libra)) return;
-  if (t.desde <= hoy) {
+  if (antes.length && t.desde <= hoy) {
     throw new Error(`Estas vacaciones ya empezaron el ${ddmmaaaa(t.desde)}: los días que libra no se cambian, porque ya se han contado días con ellos.`);
   }
 }

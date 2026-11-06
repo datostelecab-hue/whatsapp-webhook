@@ -416,6 +416,7 @@ async function simular(id, { desde, hasta, libra } = {}, { hoy = hoyMadrid() } =
   // Lo que restaría de verdad: lo que ya son vacaciones ya está en su saldo.
   const nuevos = cuentan.filter(d => d.ya !== 'vacaciones').length;
   const segun = libranzas.libraSegunPlanificador(x.plan, a);
+  const q0 = x.plan ? x.plan(a) : null;
   return {
     id: f.id, nombre: f.nombre, desde: a, hasta: b, hoy,
     naturales: lista.length, cuentan: cuentan.length, libranzas: lista.length - cuentan.length, nuevos,
@@ -424,7 +425,7 @@ async function simular(id, { desde, hasta, libra } = {}, { hoy = hoyMadrid() } =
     sinCuadrante: 0,
     libra: dosDias,
     diasQueLibra: dosDias.map(n => DIAS_SEMANA[n - 1]),
-    segunPlanificador: segun,
+    segunPlanificador: segun, sinPlan: !q0 || q0.trabaja === null,
     saldo: f.saldo, programadas: f.programadas, saldoTras: f.saldoTras, quedaria: r2(f.saldoTras - nuevos),
     deBaja: f.deBaja, dias: lista,
   };
@@ -444,12 +445,15 @@ async function libranzasSugeridas(id, desde, { hoy = hoyMadrid() } = {}) {
   const pl = await repo.planes([String(n)]);
   const x = pl.porId.get(String(n));
   const segun = x ? libranzas.libraSegunPlanificador(dia => libranzas.elDia(x, dia, pl.inicio), d) : [];
-  const texto = !segun.length
+  const q = x ? libranzas.elDia(x, d, pl.inicio) : null;
+  const sinPlan = !q || q.trabaja === null;
+  const texto = sinPlan
     ? 'El planificador no dice qué libra (no tiene plaza, o es antes del 03/09/2026).'
+    : !segun.length ? 'Según el planificador no libra ningún día esa semana: elige los dos de sus vacaciones.'
     : segun.length === 1 ? `Según el planificador libra solo el ${libranzas.nombresDias(segun)}: elige el segundo día.`
       : segun.length === 2 ? `Según el planificador libra ${libranzas.nombresDias(segun)}.`
         : `Según el planificador libra ${segun.length} días a la semana (${libranzas.nombresDias(segun)}): elige los dos de sus vacaciones.`;
-  return { desde: d, segunPlanificador: segun, propuestos: segun.length <= 2 ? segun : [], texto };
+  return { desde: d, segunPlanificador: segun, propuestos: segun.length <= 2 ? segun : [], texto, sinPlan };
 }
 
 // ── Cambiar unas vacaciones ya aprobadas ────────────────────────────────────

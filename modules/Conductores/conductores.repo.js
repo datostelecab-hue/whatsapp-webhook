@@ -891,6 +891,20 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipo
 
   const tipo = await tipoDePermiso(estado, tipoPermiso);
   const libra = libraDeVacaciones(estado, libraDias);
+  // Unas vacaciones encima de otras: «Cambiar situación» reemplaza lo vigente y
+  // se llevaría por delante las que ya hay (con su ticket), saltándose la regla
+  // de «solo a futuro». Para moverlas está «Corregir» (o «Cambiar las fechas»).
+  if (estado === 'vacaciones') {
+    const pisa = (await db.consulta(
+      `SELECT to_char(desde, 'DD/MM/YYYY') AS d, to_char(hasta, 'DD/MM/YYYY') AS h FROM conductor_estado_hist
+        WHERE conductor_id = $1 AND estado = 'vacaciones'
+          AND desde <= COALESCE($3::date, 'infinity'::date) AND COALESCE(hasta, 'infinity'::date) >= COALESCE($2::date, CURRENT_DATE)
+        ORDER BY desde LIMIT 1`, [id, desde || null, previsto])).rows[0];
+    if (pisa) {
+      throw new Error(`Ya tiene vacaciones del ${pisa.d}${pisa.h ? ' al ' + pisa.h : ''}: para cambiarlas usa «Corregir» en ese tramo ` +
+        '(o «Cambiar las fechas» en Vacaciones), que las deja unidas a su ticket.');
+    }
+  }
   return conLibraDias(() => db.transaccion(async cli => {
     // Y la ausencia nace CERRADA en esa fecha (`hasta`), no solo "prevista": así
     // el día que toca vuelve al cuadrante sola, sin que nadie tenga que acordarse

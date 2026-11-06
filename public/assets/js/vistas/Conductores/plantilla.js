@@ -306,7 +306,7 @@
     ].concat(fila.estado === 'permiso' ? [
       { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
         valor: fila.leave_type_code || 'OTRO', opciones: opcionesPermiso(), buscador: { tope: 20 }, ayuda: NOTA_PERMISO },
-    ] : []).concat(fila.estado === 'vacaciones' && !vacEmpezadas(fila) ? [
+    ] : []).concat(fila.estado === 'vacaciones' && (!vacEmpezadas(fila) || !(fila.libra_dias || []).length) ? [
       // Los dos días que libra (db/233), mientras no hayan empezado.
       { id: 'libraDias', etiqueta: 'Libra en estas vacaciones', tipo: 'semana', exactos: 2,
         valor: (fila.libra_dias || []).map(Number), ayuda: NOTA_LIBRA },

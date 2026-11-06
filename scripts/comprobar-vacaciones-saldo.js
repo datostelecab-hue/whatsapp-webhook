@@ -251,7 +251,7 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   igual('Los días que libra: en las futuras se cambian', libraOk({ ...fut, libra_dias: [3, 4] }, [6, 7]), 'se cambian');
   igual('…en las empezadas no', /ya empezaron el 12\/10\/2026/.test(libraOk({ ...emp, libra_dias: [3, 4] }, [6, 7])), true);
   igual('…pero mandar los mismos no es cambiarlos', libraOk({ ...emp, libra_dias: [4, 3] }, [3, 4]), 'se cambian');
-  igual('…y a las de antes, sin días, no se les ponen si ya empezaron', /ya empezaron/.test(libraOk(emp, [3, 4])), true);
+  igual('…y a las de antes, sin días, se les ponen una vez aunque ya hayan empezado (las de Angel)', libraOk(emp, [3, 4]), 'se cambian');
   const conTicket = saldoDe({ alta: '2026-01-01' },
     [{ ...vac('2026-10-12', '2026-10-18'), ticket_id: '5', ticket_codigo: 'RH-1' }, vac('2026-10-01', '2026-10-05')], cal, H({}), HOY);
   igual('La ficha dice cuáles se pueden cambiar y de qué ticket salieron',

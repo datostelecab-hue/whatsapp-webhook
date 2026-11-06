@@ -215,6 +215,8 @@ Camilo: *«En el simulador debe de decir los días que libra pero A MANO, porque
 
 **El simulador** pide también los dos días (obligatorios) y cuenta con ellos; si el planificador dice otra cosa, lo avisa. A Angel, del 16 al 29/11/2026 librando miércoles y domingo: 14 naturales, 4 libranzas y 10 de vacaciones.
 
+**Revisado** (06/11/2026): unas vacaciones **ya empezadas que aún no llevan sus días** (las de antes de db/233, como las de Angel Lopez Gomez del 02 al 16/11) **pueden recibirlos una vez** desde «Corregir» o «Cambiar las fechas»; una vez puestos, en unas empezadas ya no se cambian. **«Cambiar situación» a vacaciones no puede pisar otras vacaciones**: reemplazaría las que hay (y su enlace al ticket) saltándose la regla de «solo a futuro»; para moverlas está «Corregir». Y la propuesta distingue «no tiene plaza» de «según el planificador no libra ningún día esa semana».
+
 **Las vacaciones de antes** (sin días puestos) siguen contando con las libranzas del planificador, como en [[#Las libranzas se mantienen en las vacaciones (06/11/2026)]]. En la ficha, la tabla de vacaciones dice «libra miércoles y domingo» debajo de las libranzas de las que los llevan; en Plantilla, debajo de los días del tramo.
 
 **Antes de aplicar db/233** la pantalla no se cae: Vacaciones lee sin la columna (y cuenta con el planificador) y poner unas vacaciones avisa de que falta la migración. Comprobado en la copia local: `scripts/comprobar-vacaciones-libranzas.js` y `scripts/comprobar-vacaciones-saldo.js`, más una prueba de punta a punta de las puertas (Plantilla, Vacaciones, cambiar situación), que deja el historial como estaba.

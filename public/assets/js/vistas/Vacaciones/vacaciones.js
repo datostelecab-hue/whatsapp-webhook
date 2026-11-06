@@ -349,7 +349,7 @@
     const plan = s.segunPlanificador || [];
     if (String(plan) !== String(s.libra || [])) {
       avisos.push(plan.length ? `El planificador le tiene libranza el ${nombresLibra(plan)}; en las vacaciones libra el ${nombresLibra(s.libra)}, y al volver, lo del planificador.`
-        : 'El planificador no dice qué libra (sin plaza o antes del 03/09/2026).');
+        : s.sinPlan ? 'El planificador no dice qué libra (sin plaza o antes del 03/09/2026).' : 'Según el planificador no libra ningún día esa semana.');
     }
     return `
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
@@ -382,7 +382,8 @@
         ayuda: 'El último día de vacaciones. Al siguiente vuelve al cuadrante solo.' });
     // Los dos días que libra (db/233), mientras no hayan empezado. Las de antes
     // no los tienen: se proponen los del planificador y hay que elegirlos.
-    if (!x.empezadas) {
+    // Las empezadas que aún no los llevan (de antes de db/233) los reciben una vez.
+    if (!x.empezadas || !(x.libraDias || []).length) {
       const sug = (x.libraDias || []).length ? { propuestos: x.libraDias, texto: '' } : await propuestaLibra(d.id, x.desde);
       campos.push({ id: 'libraDias', etiqueta: 'Los dos días que libra en las vacaciones', tipo: 'semana', exactos: 2,
         valor: sug.propuestos || [], ayuda: sug.texto || NOTA_LIBRA });
