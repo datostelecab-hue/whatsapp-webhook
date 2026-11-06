@@ -57,17 +57,42 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY);
   igual('Sin días trabajados no genera nada, aunque lleve 94 días de alta', [s.diasNaturales, s.diasLaborados, s.generadas], [94, 0, 0]);
   // 06/11/2026, Camilo: «las bajas médicas y días justificados sí suman también, las libranzas y ausencias injustificadas no».
-  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-01', hasta: '2026-09-30' }], [], new Map(), HOY, L('2026-07-13', '2026-07-31', 8));
+  // Con su plaza, y trabajando todos los días (para no mezclarlo con las libranzas).
+  const todoTrabaja = () => ({ trabaja: true, por: 'plaza' });
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-01', hasta: '2026-09-30' }], [], new Map(), HOY, L('2026-07-13', '2026-07-31', 8), todoTrabaja);
   igual('La baja médica SÍ genera: 19 trabajados + 61 de baja = 80 × 0,05882',
     [s.diasLaborados, s.diasBaja, s.diasQueGeneran, s.generadas], [19, 61, 80, 4.71]);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-09-01', '2026-09-03', 2), null, new Set(['2026-09-01', '2026-09-02', '2026-10-30']));
   igual('Un día con una J aprobada genera aunque trabajara 2 h; la J de mañana no', [s.diasJustificados, s.diasQueGeneran, s.generadas], [2, 2, 0.12]);
   igual('…y el día de 2 h sin J se queda corto', s.detalle.meses.map(m => [m.mes, m.laborados, m.justificados, m.cortos]), [['2026-09', 0, 2, 1]]);
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-02' }], [], new Map(), HOY,
-    L('2026-09-01', '2026-09-01', 9), null, new Set(['2026-09-01']));
+    L('2026-09-01', '2026-09-01', 9), todoTrabaja, new Set(['2026-09-01']));
   igual('Cada día cuenta una vez: trabajó, con J y de baja el 01/09 es un día; el 02/09, de baja', [s.diasLaborados, s.diasJustificados, s.diasBaja, s.diasQueGeneran], [1, 0, 1, 2]);
   // Con su plan: libra los miércoles y jueves.
   const libraXJ = d => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return { trabaja: w !== 3 && w !== 4, por: 'plaza' }; };
+
+  // BAJA SIN PLAZA: 5 de cada 7 (06/11/2026, Camilo: «Supón 5 de cada 7 para los de baja sin plaza»).
+  const sinPlaza = () => ({ trabaja: null, por: 'sin-plaza' });
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), sinPlaza);
+  igual('Dos semanas de baja sin plaza: 14 días a 5/7 = 10 (0,59)', [s.diasBaja, s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [0, 14, 10, 0.59]);
+  igual('…y en el mes, como «sin plaza»', s.detalle.meses.map(m => [m.mes, m.bajas, m.bajasSupuestas, m.generan, m.generadas]), [['2026-09', 0, 14, 10, 0.59]]);
+  s = saldoDe({ alta: '2023-11-13' }, [{ estado: 'baja_medica', desde: '2025-11-01', hasta: null }], [], new Map(), '2026-11-06', new Map(), sinPlaza);
+  igual('Todo 2026 de baja y sin plaza (310 días): 221,43 que generan, 13,02 días; antes le salían 18,23',
+    [s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [310, 221.43, 13.02]);
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), d => ({ trabaja: null, por: 'antes-del-cuadrante' }));
+  igual('Antes del planificador es lo mismo: no se sabe qué libraría, 5/7', [s.diasBajaSupuestos, s.diasQueGeneran], [14, 10]);
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-01', hasta: '2026-10-01' }], [], new Map(), HOY, new Map(), sinPlaza);
+  igual('Lo generado sale de los días sin redondear: 62 × 5/7 × 0,05882 = 2,6049 → 2,60 (no 44,29 × 0,05882 = 2,61)',
+    [s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [62, 44.29, 2.6]);
+  // Del 25/08 al 07/09: hasta el 02/09 sin cuadrante (9 días); desde el 03/09 con su plaza, que libra X y J (el 03 libra).
+  const mixto = d => (d < '2026-09-03' ? { trabaja: null, por: 'antes-del-cuadrante' } : libraXJ(d));
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-25', hasta: '2026-09-07' }], [], new Map(), HOY, new Map(), mixto);
+  igual('Una baja que empieza antes del planificador: 9 a 5/7 y, con su plaza, 4 de 5 (el jueves 03 libra)',
+    [s.diasBajaSupuestos, s.diasBaja, s.diasQueGeneran], [9, 4, 10.43]);
+  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-07' }], [], new Map(), HOY,
+    L('2026-09-01', '2026-09-02', 8), sinPlaza, new Set(['2026-09-03']));
+  igual('Sin plaza, lo que trabajó o justificó cuenta entero y el resto de la baja a 5/7: 2 + 1 + 4 × 5/7',
+    [s.diasLaborados, s.diasJustificados, s.diasBajaSupuestos, s.diasQueGeneran], [2, 1, 4, 5.86]);
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), libraXJ);
   igual('Una baja de 14 días que pisa 4 libranzas: genera 10 (las libranzas no suman)', [s.diasBaja, s.generadas], [10, 0.59]);
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-09-14', '2026-09-27'), vac('2026-11-02', '2026-11-08')], [], new Map(), HOY, new Map(), libraXJ);

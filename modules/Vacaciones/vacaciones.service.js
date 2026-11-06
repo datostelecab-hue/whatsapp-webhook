@@ -16,7 +16,9 @@
 //               «las bajas médicas y días justificados sí suman también, las
 //               libranzas y ausencias injustificadas no») un día con una J
 //               aprobada y un día de baja médica que le tocaba trabajar; uno que
-//               caía en su libranza, no. Cada día cuenta una vez. Las
+//               caía en su libranza, no; si no se sabe qué libraría (sin plaza o
+//               antes del planificador), 5/7 de día («Supón 5 de cada 7 para los
+//               de baja sin plaza»). Cada día cuenta una vez. Las
 //               vacaciones, los permisos y los asuntos propios no generan.
 //               Hasta entonces eran 0,0821 por DÍA NATURAL (con libranzas,
 //               bajas, vacaciones y permisos, y sin las suspensiones).
@@ -79,6 +81,9 @@ const TASA = 0.05882;                      // por día laborado (06/11/2026; era
 // las vacaciones, los permisos, las suspensiones y los festivos.
 const DESDE_HISTORICO = '2026-01-01';
 const UMBRAL_LABORADO = 4 * 3600;         // un día laborado: más de 4 horas
+// Un día de baja médica sin saber qué libraría (sin plaza, o antes del
+// planificador) vale 5/7 de día: una semana de cinco (06/11/2026).
+const BAJA_SIN_PLAZA = 5 / 7;
 const UMBRAL_FESTIVO = 6 * 3600;          // más de 6 horas
 // Desde aquí las horas de un festivo salen de `fv_tramo` (las calcula el
 // sistema). Antes, de db/198 (historial de BOLT) o no hay datos.
@@ -179,16 +184,20 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   //     días justificados sí suman también, las libranzas y ausencias
   //     injustificadas no»);
   //   · si no, estaba de baja médica y ese día le tocaba trabajar: un día de
-  //     baja que caía en su libranza no suma, como no suma la libranza.
+  //     baja que caía en su libranza no suma, como no suma la libranza. Si NO
+  //     SE SABE qué libraría (sin plaza, o antes del planificador), cada día de
+  //     baja vale 5/7 (06/11/2026, Camilo: «Supón 5 de cada 7 para los de baja
+  //     sin plaza»): una semana de baja genera como una de cinco días, sin tener
+  //     que inventarse cuáles serían sus libranzas.
   // Mes a mes, para la ficha; `cortos` son los que trabajó 4 h o menos y no
   // tienen otra cosa que los haga sumar.
   const porMes = new Map();
   const mesDe = dia => {
     const m = dia.slice(0, 7);
-    if (!porMes.has(m)) porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, cortos: 0, segundos: 0 });
+    if (!porMes.has(m)) porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, bajasSupuestas: 0, cortos: 0, segundos: 0 });
     return porMes.get(m);
   };
-  const genera = new Map();      // día → 'trabajo' | 'justificado' | 'baja'
+  const genera = new Map();      // día → 'trabajo' | 'justificado' | 'baja' | 'baja-supuesta'
   (laborados || new Map()).forEach((seg, dia) => {
     if (dia < inicio || dia > hoy || !(seg > 0)) return;
     mesDe(dia).segundos += seg;
@@ -201,19 +210,35 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     if (t.estado !== 'baja_medica') continue;
     const a = t.desde > inicio ? t.desde : inicio, b = (t.hasta || FIN) < hoy ? t.hasta : hoy;
     for (let d = a; d <= b; d = mas(d, 1)) {
-      if (!genera.has(d) && libranzas.cuenta(plan ? plan(d) : null)) genera.set(d, 'baja');
+      if (genera.has(d)) continue;
+      const q = plan ? plan(d) : null;
+      if (!q || q.trabaja === null) genera.set(d, 'baja-supuesta');
+      else if (q.trabaja) genera.set(d, 'baja');
     }
   }
-  genera.forEach((por, dia) => { const x = mesDe(dia); if (por === 'trabajo') x.laborados++; else if (por === 'justificado') x.justificados++; else x.bajas++; });
+  genera.forEach((por, dia) => {
+    const x = mesDe(dia);
+    if (por === 'trabajo') x.laborados++; else if (por === 'justificado') x.justificados++;
+    else if (por === 'baja') x.bajas++; else x.bajasSupuestas++;
+  });
   (laborados || new Map()).forEach((seg, dia) => {
     if (dia >= inicio && dia <= hoy && seg > 0 && !genera.has(dia)) mesDe(dia).cortos++;
   });
   const cuantos = por => [...genera.values()].filter(v => v === por).length;
   const diasLaborados = cuantos('trabajo'), diasJustificados = cuantos('justificado'), diasBaja = cuantos('baja');
-  const diasQueGeneran = genera.size;
-  const generadas = r2(TASA * diasQueGeneran);
+  const diasBajaSupuestos = cuantos('baja-supuesta');
+  // Los de baja sin saber qué libraría valen 5/7: el total puede llevar
+  // decimales. Lo generado sale de los días SIN redondear (redondearlos antes de
+  // multiplicar movía 0,01 lo generado); solo se redondea lo que se enseña.
+  const valen = (enteros, supuestos) => enteros + supuestos * BAJA_SIN_PLAZA;
+  const crudo = valen(diasLaborados + diasJustificados + diasBaja, diasBajaSupuestos);
+  const diasQueGeneran = r2(crudo);
+  const generadas = r2(TASA * crudo);
   const meses = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes))
-    .map(x => ({ ...x, generan: x.laborados + x.justificados + x.bajas, generadas: r2(TASA * (x.laborados + x.justificados + x.bajas)) }));
+    .map(x => {
+      const c = valen(x.laborados + x.justificados + x.bajas, x.bajasSupuestas);
+      return { ...x, generan: r2(c), generadas: r2(TASA * c) };
+    });
 
   // Los festivos de su periodo. El de hoy aún no ha terminado.
   const lista = (festivos || []).filter(f => f.fecha >= inicio && f.fecha <= hoy).map(f => {
@@ -235,7 +260,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   const apSaldo = apGenerados - apUsados;
   return {
     inicio, desdeElAlta: inicio === p.alta,
-    diasNaturales, diasSuspension, diasQueGeneran, diasLaborados, diasJustificados, diasBaja, generadas,
+    diasNaturales, diasSuspension, diasQueGeneran, diasLaborados, diasJustificados, diasBaja, diasBajaSupuestos, generadas,
     festivosSuman, festivosSinDatos: lista.filter(f => f.estado === 'sin-datos').length,
     festivosPendientes: lista.filter(f => f.estado === 'pendiente' || f.estado === 'hoy').length,
     disfrutadas, saldo,
@@ -300,7 +325,7 @@ function saldoPara(p, x, festivos, hoy) {
 /** La lista: una fila por persona —de alta, o que se fue este año—, con su saldo. */
 // Las reglas, para que la pantalla las diga con los números de aquí y no con los suyos.
 const reglas = sinHistorico => ({ tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600,
-  umbralLaborado: UMBRAL_LABORADO / 3600, nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO, sinHistorico: !!sinHistorico });
+  umbralLaborado: UMBRAL_LABORADO / 3600, bajaSinPlaza: '5/7', nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO, sinHistorico: !!sinHistorico });
 
 async function lista({ hoy = hoyMadrid() } = {}) {
   const { gente, festivos, porId, sinHistorico } = await cargar();

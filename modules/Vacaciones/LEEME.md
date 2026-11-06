@@ -24,7 +24,7 @@ Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,05882 días por 
 DÍA LABORADO —un día con MÁS de 4 h de viaje + espera de BOLT— desde el alta (o desde
 el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—; lo de antes no cuenta para
 nada), y también cada día con una J aprobada y cada día de baja médica que le tocaba
-trabajar; + 1 día por festivo trabajado más de 6 h; − vacaciones disfrutadas, SOLO los
+trabajar (sin plaza o antes del planificador, cada día de baja vale 5/7: BAJA_SIN_PLAZA); + 1 día por festivo trabajado más de 6 h; − vacaciones disfrutadas, SOLO los
 días que le tocaba trabajar (sus libranzas se mantienen: `libranzas.js`, la regla de
 f_cobertura sin apartar al ausente; la plaza de ese día o la última que tuvo; antes del
 planificador, 03/09/2026, no se sabe y cuentan). Ningún permiso resta. Hasta el

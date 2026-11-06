@@ -8,7 +8,8 @@
 const db = require('../../services/db');
 
 // 'asuntos_propios' (db/225): su banco va aparte del saldo de vacaciones.
-// 'baja_medica' (06/11/2026): sus días generan vacaciones, como uno trabajado.
+// 'baja_medica' (06/11/2026): sus días generan vacaciones, como uno trabajado
+// (si no se sabe qué libraría, 5/7 de día: vacaciones.service BAJA_SIN_PLAZA).
 const ESTADOS = ['vacaciones', 'permiso', 'asuntos_propios', 'suspendido', 'suspension_permiso', 'baja_medica'];
 
 /**
