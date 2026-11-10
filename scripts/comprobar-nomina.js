@@ -5,8 +5,9 @@
 //   · cada J vale SUS horas, sumadas a las rodadas (como en la bitácora); sin
 //     horas no suma, y antes del arranque no cuenta; en un día de vacaciones,
 //     permiso o baja tampoco (20/10/2026: manda la marca, como en la bitácora);
-//   · utilización: quien llega al 75 % no pierde nada; a quien no llega se le
-//     quita espera hasta dejarlo en el 85 %, nunca viaje;
+//   · utilización (10/11/2026): quien llega al 77 % no pierde nada; a quien no
+//     llega se le quita espera hasta dejarlo en el 77 %, nunca viaje (antes,
+//     del 16/10 al 10/11, el listón era el 75 % y se exigía el 85 %);
 //   · la ETT no cobra MBO y no sale en la nómina, pero sí en su parte;
 //   · la config guardada con claves retiradas no se cuela;
 //   · las vacaciones (5,84 h por día natural) y los permisos (8 h) suman para
@@ -33,7 +34,7 @@ const sustituir = (rel, exp) => {
 // una que entra el 6 de octubre y otra que se fue el 20 de septiembre).
 const H = h => h * 3600;
 const tramos = new Map([
-  [1, { horasSeg: H(180), viajeSeg: H(135), esperaSeg: H(45), nocSeg: H(10), nocEsperaSeg: H(5), primerDia: 1, porDia: new Map([[3, H(2)]]) }],     // 75 % justo
+  [1, { horasSeg: H(180), viajeSeg: H(139), esperaSeg: H(41), nocSeg: H(10), nocEsperaSeg: H(5), primerDia: 1, porDia: new Map([[3, H(2)]]) }],     // 77,2 %: llega
   // 74 %: de sus 20 h nocturnas, 10 son de espera (30/10/2026: van con el recorte).
   [2, { horasSeg: H(180), viajeSeg: H(133.2), esperaSeg: H(46.8), nocSeg: H(20), nocEsperaSeg: H(10), primerDia: 1, porDia: new Map() }],
   [3, { horasSeg: H(100), viajeSeg: H(90), esperaSeg: H(10), nocSeg: 0, primerDia: 1, porDia: new Map() }],                    // 90 %
@@ -100,7 +101,7 @@ function igual(nombre, real, esperado) {
   const cfg = await N.leerConfig();
   igual('La config guardada con claves retiradas no se cuela, y manda lo guardado',
     [cfg.utilMinima, cfg.lUtilizacion, cfg.diasObjetivo, cfg.eurHoraNoc, cfg.utilUmbral, cfg.utilExigida],
-    [undefined, undefined, undefined, 9.9, 0.75, 0.85]);
+    [undefined, undefined, undefined, 9.9, 0.77, 0.77]);
 
   const r = await N.calcular(10, 2026);
   const de = id => [...r.filas, ...r.filasETT].find(f => f.conductorId === id);
@@ -147,17 +148,19 @@ function igual(nombre, real, esperado) {
   igual('«Cómo sale su total» dice qué J no ha contado y por qué', texto.includes('+ 3,5 de J (sin la J del 20/09, de vacaciones)'), true);
 
   // ── La utilización ────────────────────────────────────────────────────────
-  igual('Con el 75 % justo no se quita nada', uno.horasEsperaQuitadas, 0);
+  igual('Con el 77,2 % no se quita nada', uno.horasEsperaQuitadas, 0);
+  const justo = N._calcularFila({ conductorId: 9, alta: '2025-01-01', horas: 100, viajeH: 77, esperaH: 23, utilPct: 77, jDias: [] }, 30, cfg, 9, 2026);
+  igual('Con el 77 % justo tampoco', justo.horasEsperaQuitadas, 0);
   igual('Con el 90 % tampoco', tres.horasEsperaQuitadas, 0);
-  const x = 180 - 133.2 / 0.85;
-  igual('Con el 74 % se le exige el 85 %: se quita espera hasta dejarlo ahí',
+  const x = 180 - 133.2 / 0.77;
+  igual('Con el 74 % se quita espera hasta dejarlo en el 77 %',
     [dos.horasEsperaQuitadas, Math.round(133.2 / (180 - dos.horasEsperaQuitadas) * 1000) / 1000],
-    [Math.round(x * 100) / 100, 0.85]);
+    [Math.round(x * 100) / 100, 0.77]);
   igual('Nunca más espera de la que tuvo (ni viaje)', dos.horasEsperaQuitadas <= 46.8, true);
   const alReves = N._calcularFila({ conductorId: 9, alta: '2025-01-01', horas: 100, viajeH: 70, esperaH: 30, utilPct: 70, jDias: [] },
     30, { ...cfg, utilUmbral: 0.9, utilExigida: 0.6 }, 9, 2026);
   igual('Con el umbral por encima de la exigida no se quita nada en negativo', alReves.horasEsperaQuitadas, 0);
-  igual('La ETT también lleva el recorte (es la hora que se le factura)', cuatro.horasEsperaQuitadas, Math.round((200 - 100 / 0.85) * 100) / 100);
+  igual('La ETT también lleva el recorte, al mismo 77 % (es la hora que se le factura)', cuatro.horasEsperaQuitadas, Math.round((200 - 100 / 0.77) * 100) / 100);
 
   // ── Las nocturnas llevan el mismo recorte (30/10/2026) ──────────────────
   const qn = x * 10 / 46.8;
@@ -183,7 +186,7 @@ function igual(nombre, real, esperado) {
   const p = await N.paraETT(9, 2026);
   igual('El parte de la ETT trae a los suyos con sus listones',
     [p.filas.map(f => f.conductorId), p.utilUmbral, p.utilExigida, p.filas[0].horasTrabajadas],
-    [[4, 7, 8], 0.75, 0.85, Math.round((200 - cuatro.horasEsperaQuitadas) * 100) / 100]);
+    [[4, 7, 8], 0.77, 0.77, Math.round((200 - cuatro.horasEsperaQuitadas) * 100) / 100]);
   igual('En el parte, quien pasó a propia y quien se fue sin horas, con su «Fecha baja»',
     p.filas.filter(f => f.conductorId !== 4).map(f => [f.conductorId, f.horasTrabajadas, f.bajaEnElMes]),
     [[7, 10, '2026-09-12'], [8, 0, '2026-09-01']]);
@@ -206,8 +209,8 @@ function igual(nombre, real, esperado) {
   igual('Quien pasa del tope cobra el tope; lo que pasa va a las variables',
     [b1.importe, b1.tope, b1.base, b1.sobreElTope, b1.llegaAlTope], [1534.08, 1443, 1443, 91.08, true]);
   const b2 = bde(2);
-  const h2 = Math.round((180 - (180 - 133.2 / 0.85)) * 100) / 100;
-  igual('La base lleva el mismo recorte por utilización (74 % → 85 %)', b2.horasBase, h2);
+  const h2 = Math.round((180 - (180 - 133.2 / 0.77)) * 100) / 100;
+  igual('La base lleva el mismo recorte por utilización (74 % → 77 %)', b2.horasBase, h2);
   igual('Quien no llega cobra lo que hizo', [b2.base, b2.llegaAlTope, b2.faltaParaElTope],
     [Math.round(h2 * 8.16 * 100) / 100, false, Math.round((1443 - h2 * 8.16) * 100) / 100]);
   igual('La J del 30/09 de Tres sí entra en la base', bde(3).horasJustificadas, 4);

@@ -115,7 +115,30 @@ Medido al cambiarlo, con la nómina de octubre (trabajo de septiembre): **27 per
 
 Las horas efectivas son viaje + espera, así que quien pasa el mes con la app abierta y poca carrera acumula horas igual que quien no para. El caso que lo destapó: 211,4 h en el mes y 35,4 de exceso sobre el objetivo… con un **52,7 % de utilización**. De sus 211 horas, 100 fueron espera.
 
-Así que hay **dos listones**, los dos editables desde el panel (16/10/2026, Camilo: *«a los que tengan 75 % de utilización o más no les quitaremos horas, pero los que no lleguen ni a 75 % se les exige hasta el 85 %»*):
+### Desde el 10/11/2026: un solo listón, el 77 % (db/239)
+
+Camilo: *«Necesito un ajuste importante en la nómina, tanto de ETT como propia. No vamos a ser tan agresivos, deja que todo mundo tenga al menos 77% de utilización, si tiene más de eso no le quitamos, si tiene menos de eso entonces le quitamos hasta llegar al 77%»*.
+
+- Quien llega al **77 %** no pierde ninguna hora.
+- A quien no llega se le quitan horas **de espera**, nunca de viaje, hasta dejarlo **exactamente en el 77 %**.
+- Vale para la plantilla propia y para la ETT: las dos pasan por el mismo recorte, y el parte de la ETT factura las horas ya recortadas.
+
+Siguen siendo los dos parámetros de abajo (`utilUmbral` y `utilExigida`), ahora los dos a 0,77. Lo guardado en `nomina_config` manda sobre el código, así que **db/239 los guarda** ahí. Se pueden volver a separar desde el panel. Las nóminas congeladas no cambian; el 10/11 no había ninguna.
+
+Medido con la nómina de noviembre (trabajo de octubre), en producción, antes de aplicarlo:
+
+| | 75 % / 85 % | 77 % |
+|---|---|---|
+| Recortados, propia | 57 de 184 (1.218 h) | 66 de 184 (790 h) |
+| Recortados, ETT | 45 de 123 (857 h) | 52 de 123 (576 h) |
+| Variables, propia | 18.708 € | 19.240 € |
+| Nómina entera, propia (base + variables) | 87.562 € | 90.278 € |
+
+**94 personas cobran más y 14 menos.** Las que cobran menos son las que estaban entre el 75 y el 77 %: antes no perdían nada y ahora sí. A la ETT se le facturan unas 281 h más.
+
+### Del 16/10 al 10/11/2026: dos listones
+
+Había **dos listones**, los dos editables desde el panel (16/10/2026, Camilo: *«a los que tengan 75 % de utilización o más no les quitaremos horas, pero los que no lleguen ni a 75 % se les exige hasta el 85 %»*):
 
 - quien llega al **75 %** (`utilUmbral`) no pierde ninguna hora;
 - a quien no llega se le exige el **85 %** (`utilExigida`): se le quitan horas **de espera** —nunca de viaje— hasta dejarlo exactamente ahí, y eso sale en su propia columna.
@@ -157,7 +180,7 @@ Medido al cambiarlo (copia del 27/10): la nómina de octubre (trabajo de septiem
 ```
 objetivo de horas = objetivo de SU jornada × (días desde el arranque ÷ días del mes)
                     40 h → 172      32 h → 172 × 32/40 = 137,6
-horas quitadas    = (viaje + espera) − viaje ÷ exigida (85 %)   (0 si llega al umbral, 75 %)
+horas quitadas    = (viaje + espera) − viaje ÷ exigida (77 %)   (0 si llega al umbral, 77 %)
 diferencia        = (horas rodadas − horas quitadas + horas justificadas) − objetivo
 MBO horas extra   = diferencia × € hora extra × utilización   (solo si la diferencia es positiva)
 MBO FAS           = (facturación neta − umbral) × % MBO FAS    (solo si supera el umbral de SU jornada)
@@ -184,8 +207,8 @@ Todo lo numérico se edita desde el panel y se guarda en `nomina_config`. Los va
 |---|---|---|
 | `horasMetaMes40` | el objetivo del mes con jornada de 40 h (172) | sí |
 | `eurHoraExtra` | € por hora extra (8,16 desde el 16/10/2026) | sí |
-| `utilUmbral` | utilización con la que no se quitan horas (0,75) | sí |
-| `utilExigida` | utilización que se exige a quien no llega (0,85) | sí |
+| `utilUmbral` | utilización con la que no se quitan horas (0,77 desde el 10/11/2026; antes 0,75) | sí |
+| `utilExigida` | utilización que se exige a quien no llega (0,77 desde el 10/11/2026; antes 0,85) | sí |
 | `umbralFAS40` / `umbralFAS32` | neto a partir del cual hay MBO FAS, por jornada: 4.750 y 3.750 (el de 32 h era 4.750 hasta el 19/10/2026). Las demás jornadas, el de 40 h (`umbralDe`). Es también el objetivo que ve el conductor en su [[Portal de conductores\|portal]] | sí |
 | `pctMBOFAS` | fracción del exceso de facturación (0,4) | sí |
 | `eurHoraNoc`, `factorNoc` | € hora nocturna (9,9) y su multiplicador (0,1) | sí |
