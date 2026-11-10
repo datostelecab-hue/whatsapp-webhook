@@ -407,6 +407,69 @@ function lunesDe(fecha) {
 }
 
 /**
+ * LAS HORAS DE CADA COCHE EN LA SEMANA (Camilo, 10/11/2026: «otra pestaña por
+ * coche, cuántas horas hizo cada coche en la semana»).
+ *
+ * Son las mismas horas que las de los conductores, repartidas por el coche en
+ * que se hicieron: cada rato lleva su coche de BOLT, y se reparte por días con
+ * la regla de siempre (repartoTurnos con el plan de quien lo llevaba: su turno
+ * de día y su turno de noche). Así la suma de los coches es la de los
+ * conductores, salvo lo que BOLT no dice en qué coche fue («Sin coche»).
+ *
+ * Salen todos los coches de la sede (también los que no hicieron nada: un coche
+ * parado es justo lo que se quiere ver) y cualquier otro en que se trabajara. De
+ * menor a mayor, como la de los conductores.
+ *
+ * Devuelve [{ matricula, modelo, estado, celdas: [{ fecha, horas, estado }],
+ *   total, dias, utilizacion, conductores: [{ nombre, horas }] }].
+ */
+const SIN_COCHE = 'Sin coche';
+function cochesDeLaSemana({ fechas, ivs, planDe, coches, nombreDe, ahoraMs }) {
+  const matDe = new Map((coches || []).filter(c => c.uuid).map(c => [c.uuid, c.matricula]));
+  const SEP = '\u0001';
+  // Una «persona» por conductor y coche: el reparto es el mismo (el plan es el
+  // del conductor), pero las horas salen separadas por coche.
+  const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: `${x.uuid}${SEP}${x.veh ? (matDe.get(x.veh) || x.veh) : SIN_COCHE}` })),
+    (p, f) => planDe(String(p).split(SEP)[0], f));
+
+  const porMat = new Map();
+  const de = mat => {
+    if (!porMat.has(mat)) porMat.set(mat, { matricula: mat, dias: new Map(), viajeSeg: 0, quien: new Map() });
+    return porMat.get(mat);
+  };
+  (coches || []).forEach(c => { if (c.matricula) de(c.matricula); });
+  porPersona.forEach((claves, p) => {
+    const [uuid, mat] = String(p).split(SEP);
+    fechas.forEach(f => ['dia', 'noche'].forEach(t => {
+      const x = claves.get(R.clave(f, t));
+      if (!x || !(x.seg > 0)) return;
+      const c = de(mat);
+      c.dias.set(f, (c.dias.get(f) || 0) + x.seg);
+      c.viajeSeg += x.viajeSeg;
+      c.quien.set(uuid, (c.quien.get(uuid) || 0) + x.seg);
+    }));
+  });
+
+  const info = new Map((coches || []).map(c => [c.matricula, c]));
+  return [...porMat.values()].map(c => {
+    const totalSeg = [...c.dias.values()].reduce((s, x) => s + x, 0);
+    const i = info.get(c.matricula) || {};
+    return {
+      matricula: c.matricula, modelo: i.modelo || '', estado: i.estado || '', deLaSede: info.has(c.matricula),
+      celdas: fechas.map(f => ({
+        fecha: f, horas: h1(c.dias.get(f) || 0),
+        estado: ahoraMs < R.instante(f, 0) ? 'futuro' : ahoraMs < R.cierreDe(f) ? 'abierto' : 'cerrado',
+      })),
+      total: h1(totalSeg), dias: [...c.dias.values()].filter(x => x > 0).length,
+      utilizacion: utilizacion(c.viajeSeg, totalSeg),
+      conductores: [...c.quien.entries()].sort((a, b) => b[1] - a[1]).map(([uuid, seg]) => ({ nombre: nombreDe(uuid), horas: h1(seg) })),
+    };
+  }).sort((a, b) => (a.matricula === SIN_COCHE) - (b.matricula === SIN_COCHE) || a.total - b.total || a.matricula.localeCompare(b.matricula))
+    // «Sin coche» solo si hubo horas así.
+    .filter(c => c.matricula !== SIN_COCHE || c.total > 0);
+}
+
+/**
  * LAS HORAS DE LA SEMANA de cada conductor (Camilo, 07/10/2026: «las horas
  * semanales también en los reportes de Barcelona, solo de conductores, de horas
  * efectivas en BOLT; también la semana en curso»).
@@ -429,7 +492,7 @@ function lunesDe(fecha) {
  * Salen las cuentas ACTIVAS y cualquiera que haya trabajado esa semana. De
  * menor a mayor: arriba, quien menos horas ha hecho (como la semanal de Madrid).
  */
-function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuadrante, conductores, ahoraMs = Date.now() }) {
+function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuadrante, conductores, coches, ahoraMs = Date.now() }) {
   const l = lunesDe(lunes);
   const fechas = fechasEntre(l, R.sumarDias(l, 6));
   const reglas = reglasDe({ asignaciones, cts, descansos, casillas, cochesCuadrante });
@@ -437,6 +500,8 @@ function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuad
   const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: x.uuid })), planDe);
   const cuenta = new Map((conductores || []).map(c => [c.uuid, c]));
   const segDe = (uuid, f, t) => { const x = (porPersona.get(uuid) || new Map()).get(R.clave(f, t)); return x ? x.seg : 0; };
+  // Lo de viaje, para la utilización de la semana (viaje / viaje + espera).
+  const viajeDe = (uuid, f, t) => { const x = (porPersona.get(uuid) || new Map()).get(R.clave(f, t)); return x ? x.viajeSeg : 0; };
   const plaza = a => ({ matricula: a.matricula, turno: a.turno, ...(a.rol === 'ct' ? { rol: 'ct' } : {}) });
   const plazasDe = (uuid, f) => reglas.planDelDia(f).filter(a => a.uuid === uuid).map(plaza);
   const libraDe = (uuid, f) => reglas.vigentesEn(f).filter(a => a.uuid === uuid && reglas.libra(a, f)).map(plaza);
@@ -447,13 +512,14 @@ function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuad
   });
 
   const filas = [...quienes].map(uuid => {
-    let totalSeg = 0, dias = 0;
+    let totalSeg = 0, dias = 0, viajeSeg = 0;
     const celdas = fechas.map(f => {
       const d = segDe(uuid, f, 'dia'), n = segDe(uuid, f, 'noche');
       const estado = ahoraMs < R.instante(f, 0) ? 'futuro' : ahoraMs < R.cierreDe(f) ? 'abierto' : 'cerrado';
       const plazas = plazasDe(uuid, f);
       const libra = plazas.length ? [] : libraDe(uuid, f);
       totalSeg += d + n;
+      viajeSeg += viajeDe(uuid, f, 'dia') + viajeDe(uuid, f, 'noche');
       if (d + n > 0) dias++;
       return {
         fecha: f, horas: h1(d + n), dia: h1(d), noche: h1(n), estado, plazas, libra,
@@ -465,6 +531,9 @@ function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuad
       uuid, nombre: c.nombre || `Cuenta ${String(uuid).slice(0, 8)}`, telefono: c.telefono || '',
       activa: String(c.estado || '').toLowerCase() === 'active',
       celdas, total: h1(totalSeg), dias, media: dias ? Math.round((totalSeg / dias) / 360) / 10 : null,
+      // La de la semana entera, con el tiempo de toda la semana: pesa más el
+      // día que más trabajó (Camilo, 10/11/2026).
+      utilizacion: utilizacion(viajeSeg, totalSeg), segEfectivo: totalSeg, segViaje: viajeSeg,
       noSalio: celdas.filter(x => x.noSalio).length,
       libra: celdas.filter(x => x.libra.length).length,
       asignadas: plazasDistintas(celdas.flatMap(x => [...x.plazas, ...x.libra])),
@@ -472,11 +541,14 @@ function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuad
   }).sort((a, b) => a.total - b.total || a.nombre.localeCompare(b.nombre));
 
   const domingo = fechas[6];
+  const porCoche = cochesDeLaSemana({ fechas, ivs, planDe, coches, nombreDe: uuid => (cuenta.get(uuid) || {}).nombre || `Cuenta ${String(uuid).slice(0, 8)}`, ahoraMs });
   return {
-    lunes: l, domingo, fechas, filas,
+    lunes: l, domingo, fechas, filas, porCoche,
     resumen: {
       conductores: filas.length,
       horas: Math.round(filas.reduce((s, f) => s + f.total, 0) * 10) / 10,
+      utilizacion: utilizacion(sumar(filas, 'segViaje'), sumar(filas, 'segEfectivo')),
+      coches: porCoche.filter(c => c.total > 0).length,
       conHoras: filas.filter(f => f.total > 0).length,
       noSalio: filas.reduce((s, f) => s + f.noSalio, 0),
       cerrada: ahoraMs >= R.cierreDe(domingo),

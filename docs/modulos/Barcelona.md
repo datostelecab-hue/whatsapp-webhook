@@ -265,6 +265,17 @@ Camilo, 07/10/2026: *«las horas semanales también en los reportes de Barcelona
 - **La semana en curso** también se puede sacar. Los días que aún no han terminado van en azul y los que faltan, en blanco.
 - **La semana se elige con el calendario de la casa** (`js-fecha`): cualquier día vale por su semana. Debajo se dice cuál es, y hay atajos para «Esta semana» y «La pasada».
 
+### Utilización y la pestaña «Por coche» (10/11/2026)
+
+Camilo: *«en el reporte semanal de Barcelona también agrega la utilización semanal del conductor y haz otra pestaña por coche, cuántas horas hizo cada coche en la semana»*.
+
+- **Utilización** de cada conductor: viaje / (viaje + espera) de toda su semana, con el tiempo de la semana entera. No es la media de los días: pesa más el día que más trabajó. Sin horas, va vacía (no a 0 %). En la cabecera va la de todos.
+- **Por coche**: una fila por coche con las horas de cada día, el total, los días con horas, la media, la utilización y quién lo llevó, con cuántas horas cada uno.
+  - Son las mismas horas que las de los conductores, repartidas por el coche en que se hicieron. Cada rato de BOLT lleva su coche, y va al día del turno de quien lo llevaba (`cochesDeLaSemana` en `barcelona.horas.js`). Por eso la suma de los coches es la de los conductores.
+  - Salen todos los coches de la sede, también los parados, con un 0 en rojo los días cerrados. Lo que BOLT no dice en qué coche fue sale como «Sin coche».
+  - Va de menor a mayor, como la de conductores.
+- Con la semana del 19/10 de la copia local: 1.101,1 h de los conductores y 1.101,2 h de los coches (el redondeo), 78 % de utilización, y 14 de 22 coches con horas.
+
 Con datos reales (07/10), la semana del 28/09 da 565,6 h entre 26 conductores, 19 de ellos con horas. **La historia de Barcelona empieza el 30/09 a mediodía**, los 7 días que trajo la ingesta al aplicar db/181: por eso ese lunes y ese martes salen a cero.
 
 ## La Visibilidad (`/barcelona/visibilidad`)

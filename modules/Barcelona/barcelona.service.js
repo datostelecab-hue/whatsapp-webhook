@@ -1045,12 +1045,13 @@ async function reporteSemanal({ dia } = {}) {
   const iniMs = R.instante(R.sumarDias(lunes, -1), R.INICIO.noche);
   const finMs = Math.min(Date.now(), R.instante(R.sumarDias(domingo, 1), R.INICIO.noche));
   try {
-    const [ivs, plan, conductores] = await Promise.all([
+    const [ivs, plan, conductores, coches] = await Promise.all([
       ratos(iniMs, finMs),
       planParaHoras(R.sumarDias(lunes, -1), R.sumarDias(domingo, 1)),
       repo.conductores(SEDE),
+      repo.coches(SEDE),
     ]);
-    return H.semana({ lunes, ivs, ...plan, conductores });
+    return H.semana({ lunes, ivs, ...plan, conductores, coches });
   } catch (e) {
     if (repo.faltaMigracion(e)) return { faltaMigracion: true, lunes, domingo };
     throw e;

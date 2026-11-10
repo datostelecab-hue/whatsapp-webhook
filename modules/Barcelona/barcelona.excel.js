@@ -222,7 +222,10 @@ async function generar(datos) {
 // turno de día más su turno de noche). Cada día con algo que contar lleva su
 // NOTA (el globo de Excel): cuánto fue de día y cuánto de noche, en qué plaza
 // estaba, que tenía plaza y no salió, o que libraba («L» en gris). De menor a
-// mayor.
+// mayor. Con su UTILIZACIÓN de la semana, y una pestaña POR COCHE: las horas de
+// cada coche cada día (Camilo, 10/11/2026: «agregues la utilización semanal del
+// conductor y hagas otra pestaña por coche, cuántas horas hizo cada coche en la
+// semana»).
 const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const h1t = n => String(Math.round(n * 10) / 10).replace('.', ',');
 const TONO_SEMANA = {
@@ -268,17 +271,19 @@ async function generarSemana(datos) {
     { titulo: 'Turno', ancho: 12 }, { titulo: 'Matrícula', ancho: 14 },
     ...datos.fechas.map((f, i) => ({ titulo: `${DIAS_CORTOS[i]} ${f.slice(8, 10)}/${f.slice(5, 7)}`, ancho: 10 })),
     { titulo: 'Total', ancho: 9 }, { titulo: 'Días', ancho: 7 }, { titulo: 'Media', ancho: 8 },
+    { titulo: 'Utilización', ancho: 12 },
   ];
   ws.columns = cols.map(c => ({ width: c.ancho }));
   let fila = E.bandaCabecera(ws, logo, `Horas semanales · Barcelona${r.cerrada ? '' : ' · EN CURSO'}`,
     `Del lunes ${esFecha(datos.lunes)} al domingo ${esFecha(datos.domingo)} · ${r.conductores} conductores · ${h1t(r.horas)} h · ` +
+    `utilización ${pc(r.utilizacion)} · ` +
     `${r.noSalio ? r.noSalio + ' día(s) con plaza sin salir · ' : ''}de menor a mayor · generado el ${sello()}` +
     (r.cerrada ? '' : ' · LA SEMANA NO HA TERMINADO: los días en azul aún suman y los grises están por venir'), cols.length);
   ws.mergeCells(3, 1, 3, cols.length);
   const ley = ws.getCell(3, 1);
   ley.value = 'Horas efectivas en BOLT (viaje + espera; el descanso no cuenta) de cada día: su turno de día (00:00 a 24:00) más su turno ' +
     'de noche (12:00 a 12:00 del día siguiente), como el reporte diario · 0 en rojo = le tocaba trabajar y no salió · L = libraba ' +
-    '· — = ese día no trabajó · pasa el ratón por un día para ver el detalle';
+    '· — = ese día no trabajó · Utilización = viaje / (viaje + espera) de toda su semana · pasa el ratón por un día para ver el detalle';
   ley.font = { size: 9, italic: true, color: { argb: E.TENUE } };
   ley.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
   ws.getRow(3).height = 26;
@@ -288,13 +293,14 @@ async function generarSemana(datos) {
 
   datos.filas.forEach(p => {
     const rr = ws.getRow(fila++);
-    const celda = (n, valor, { num, tono, nota, negrita } = {}) => {
+    const celda = (n, valor, { num, pct, tono, nota, negrita } = {}) => {
       const c = rr.getCell(n);
       c.value = valor;
       c.border = E.TODOS_BORDES;
       c.alignment = { vertical: 'middle', horizontal: cols[n - 1].izq ? 'left' : 'center' };
       c.font = { size: 10, bold: !!negrita, color: { argb: E.TEXTO } };
       if (num) c.numFmt = '0.0';
+      if (pct) c.numFmt = '0.0" %"';
       if (tono) {
         if (tono.bg) c.fill = E.relleno(tono.bg);
         c.font = { size: 10, bold: !!negrita || tono === TONO_SEMANA.rojo, color: { argb: tono.fg } };
@@ -309,6 +315,7 @@ async function generarSemana(datos) {
     celda(12, p.total, { num: true, negrita: true });
     celda(13, p.dias);
     celda(14, p.media, { num: true });
+    celda(15, p.utilizacion, { pct: true });
     rr.height = 18;
   });
   if (!datos.filas.length) {
@@ -316,7 +323,85 @@ async function generarSemana(datos) {
     ws.getRow(fila).getCell(1).font = { size: 10, italic: true, color: { argb: E.TENUE } };
   }
   ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: filaCab, column: cols.length } };
+
+  hojaPorCoche(wb, logo, datos);
   return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/**
+ * LA PESTAÑA POR COCHE: una fila por coche, sus horas de cada día de la semana
+ * (las que hicieron en él sus conductores, repartidas con la misma regla), el
+ * total, la utilización y quién lo llevó. De menor a mayor: arriba, el coche que
+ * menos trabajó. Un día cerrado sin horas va en rojo: el coche estuvo parado.
+ */
+function hojaPorCoche(wb, logo, datos) {
+  const ws = wb.addWorksheet('Por coche');
+  const r = datos.resumen;
+  const coches = datos.porCoche || [];
+  const cols = [
+    { titulo: 'Matrícula', ancho: 12 }, { titulo: 'Modelo', ancho: 22, izq: true },
+    ...datos.fechas.map((f, i) => ({ titulo: `${DIAS_CORTOS[i]} ${f.slice(8, 10)}/${f.slice(5, 7)}`, ancho: 10 })),
+    { titulo: 'Total', ancho: 9 }, { titulo: 'Días', ancho: 7 }, { titulo: 'Media', ancho: 8 },
+    { titulo: 'Utilización', ancho: 12 }, { titulo: 'Conductores (horas en el coche)', ancho: 60, izq: true },
+  ];
+  ws.columns = cols.map(c => ({ width: c.ancho }));
+  const total = coches.reduce((s, c) => s + c.total, 0);
+  let fila = E.bandaCabecera(ws, logo, `Horas semanales por coche · Barcelona${r.cerrada ? '' : ' · EN CURSO'}`,
+    `Del lunes ${esFecha(datos.lunes)} al domingo ${esFecha(datos.domingo)} · ${coches.filter(c => c.total > 0).length} de ${coches.length} coches trabajaron · ` +
+    `${h1t(total)} h · de menor a mayor · generado el ${sello()}`, cols.length);
+  ws.mergeCells(3, 1, 3, cols.length);
+  const ley = ws.getCell(3, 1);
+  ley.value = 'Horas efectivas en BOLT (viaje + espera) hechas en cada coche, el día del turno en que se hicieron (día 00:00 a 24:00, ' +
+    'noche 12:00 a 12:00), como la pestaña de los conductores: la suma es la misma · 0 en rojo = día cerrado sin que nadie lo moviera · ' +
+    '«Sin coche» = horas en las que BOLT no dice el coche · Utilización = viaje / (viaje + espera) de la semana';
+  ley.font = { size: 9, italic: true, color: { argb: E.TENUE } };
+  ley.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
+  ws.getRow(3).height = 26;
+  const filaCab = fila;
+  fila = E.cabeceraTabla(ws, fila, cols.map(c => c.titulo));
+  ws.views = [{ state: 'frozen', ySplit: filaCab, xSplit: 1 }];
+
+  coches.forEach(c => {
+    const rr = ws.getRow(fila++);
+    const celda = (n, valor, { num, pct, tono, negrita } = {}) => {
+      const x = rr.getCell(n);
+      x.value = valor;
+      x.border = E.TODOS_BORDES;
+      x.alignment = { vertical: 'middle', horizontal: cols[n - 1].izq ? 'left' : 'center', wrapText: n === cols.length };
+      x.font = { size: 10, bold: !!negrita, color: { argb: E.TEXTO } };
+      if (num) x.numFmt = '0.0';
+      if (pct) x.numFmt = '0.0" %"';
+      if (tono) {
+        if (tono.bg) x.fill = E.relleno(tono.bg);
+        x.font = { size: 10, bold: !!negrita || tono === TONO_SEMANA.rojo, color: { argb: tono.fg } };
+      }
+    };
+    celda(1, c.matricula, { negrita: true });
+    // El estado de BOLT, en castellano: el que no está activo se dice.
+    const estadoBolt = !c.deLaSede || !c.estado || c.estado === 'active' ? ''
+      : c.estado === 'deactivated' ? ' (desactivado en BOLT)' : ` (BOLT: ${c.estado})`;
+    celda(2, c.modelo + estadoBolt);
+    c.celdas.forEach((d, i) => {
+      if (d.estado === 'futuro') return celda(3 + i, '', { tono: TONO_SEMANA.futuro });
+      if (!d.horas) {
+        return celda(3 + i, d.estado === 'abierto' ? '' : 0,
+          { num: d.estado !== 'abierto', tono: d.estado === 'abierto' ? TONO_SEMANA.curso : TONO_SEMANA.rojo });
+      }
+      return celda(3 + i, d.horas, { num: true, tono: d.estado === 'abierto' ? TONO_SEMANA.curso : null });
+    });
+    const n = 3 + c.celdas.length;
+    celda(n, c.total, { num: true, negrita: true });
+    celda(n + 1, c.dias);
+    celda(n + 2, c.dias ? Math.round((c.total / c.dias) * 10) / 10 : null, { num: true });
+    celda(n + 3, c.utilizacion, { pct: true });
+    celda(n + 4, c.conductores.map(p => `${p.nombre} (${h1t(p.horas)} h)`).join(', '));
+    rr.height = 18;
+  });
+  if (!coches.length) {
+    ws.getRow(fila).getCell(1).value = 'Ningún coche de Barcelona esa semana.';
+    ws.getRow(fila).getCell(1).font = { size: 10, italic: true, color: { argb: E.TENUE } };
+  }
+  ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: filaCab, column: cols.length } };
 }
 
 module.exports = { generar, generarSemana };

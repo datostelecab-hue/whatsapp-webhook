@@ -948,6 +948,32 @@ const S = require('../modules/Barcelona/barcelona.service');
   const caro = sem.filas.find(f => f.nombre === 'Caro');
   igual('Caro trabajó sin plaza: sus horas cuentan, sin «no salió»', [caro.celdas[1].horas, caro.noSalio, caro.celdas[1].plazas.length], [3, 0, 0]);
   igual('Semana cerrada', [sem.resumen.cerrada, sem.resumen.enCurso, sem.resumen.horas], [true, false, 21.5]);
+  // Utilización de la semana y horas por coche (Camilo, 10/11/2026).
+  igual('Utilización de la semana: viaje / (viaje + espera) de toda su semana',
+    sem.filas.filter(f => f.total > 0).map(f => `${f.nombre} ${f.utilizacion}`), ['Caro 100', 'Ana 20', 'Beto 9.1']);
+  igual('Sin horas, sin utilización (no es 0 %)', sem.filas.find(f => f.nombre === 'Eva').utilizacion, null);
+  igual('La de todos: el tiempo total, no la media de los %', sem.resumen.utilizacion, 25.6);
+  const semCoche = H.semana({ lunes: '2026-10-07', ivs: ivsSemana, asignaciones: ASIGS, conductores: CONDUCTORES, coches: COCHES, ahoraMs: en('2026-10-13', 13) });
+  const cocheS = m => semCoche.porCoche.find(c => c.matricula === m) || {};
+  igual('Por coche: las horas de cada coche (el de Beto por la mañana y el de Caro, en el mismo coche)',
+    ['1111AAA', '2222BBB', '3333CCC'].map(m => `${m} ${cocheS(m).total} ${cocheS(m).conductores.map(p => p.nombre + ':' + p.horas).join('+')}`),
+    ['1111AAA 7.5 Ana:7.5', '2222BBB 5 Caro:3+Beto:2', '3333CCC 9 Beto:9']);
+  igual('Por coche: el día en que se hicieron (el martes) y la utilización del coche',
+    [cocheS('2222BBB').celdas.map(x => x.horas), cocheS('2222BBB').utilizacion, cocheS('2222BBB').dias], [[0, 5, 0, 0, 0, 0, 0], 60, 1]);
+  igual('Por coche: salen también los coches parados, y la suma es la de los conductores',
+    [semCoche.porCoche.length, semCoche.porCoche[0].total, Math.round(semCoche.porCoche.reduce((s, c) => s + c.total, 0) * 10) / 10, semCoche.resumen.horas, semCoche.resumen.coches],
+    [COCHES.length, 0, 21.5, 21.5, 3]);
+  const libroCoche = new ExcelJS.Workbook();
+  await libroCoche.xlsx.load(await require('../modules/Barcelona/barcelona.excel').generarSemana(semCoche));
+  const hojaCoche = libroCoche.getWorksheet('Por coche');
+  const fCoche = [...Array(hojaCoche ? hojaCoche.rowCount : 0).keys()].map(i => hojaCoche.getRow(i + 1)).find(r => r.getCell(1).value === '2222BBB');
+  igual('Excel semanal: la pestaña «Por coche» con sus días, total, utilización y quién lo llevó',
+    fCoche ? [fCoche.getCell(4).value, fCoche.getCell(10).value, fCoche.getCell(13).value, fCoche.getCell(14).value] : null,
+    [5, 5, 60, 'Caro (3 h), Beto (2 h)']);
+  const hojaSem = libroCoche.getWorksheet('Semana');
+  const fAnaSem = [...Array(hojaSem.rowCount).keys()].map(i => hojaSem.getRow(i + 1)).find(r => r.getCell(1).value === 'Ana');
+  igual('Excel semanal: la utilización de cada conductor, en %', [hojaSem.getRow(4).getCell(15).value, fAnaSem.getCell(15).value, fAnaSem.getCell(15).numFmt],
+    ['Utilización', 20, '0.0" %"']);
   // Con libranzas: Beto (noche de 1111AAA) libra J V.
   const semL = H.semana({ lunes: '2026-10-05', ivs: ivsSemana, asignaciones: ASIGS, conductores: CONDUCTORES, ahoraMs: en('2026-10-13', 13),
     cts: [], descansos: [{ matricula: '1111AAA', turno: 'noche', dias: [4, 5], desde: '2026-10-01', hasta: null }] });
