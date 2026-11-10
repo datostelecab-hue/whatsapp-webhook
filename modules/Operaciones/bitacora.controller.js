@@ -87,4 +87,34 @@ router.post('/api/libranza', responde(async req => {
 router.post('/api/resellar', sesion.requiereDesarrollador, responde(req =>
   bitacora.resellar(req.body || {}, (req.usuario || {}).nombre)));
 
+// ── Horas Caverel (db/238, 10/11/2026) ─────────────────────────────────────
+// Las horas mensuales del informe de BOLT de antes. Mirarlas es mirar la
+// bitácora; SUBIR el CSV es otra llave, '/bitacora/caverel/importar'
+// (services/permisos.js), porque sustituye cifras.
+const caverel = require('./caverel.service');
+
+router.get('/caverel', (req, res) => {
+  const mias = res.locals.permisos;
+  res.render('bitacoraCaverel', {
+    titulo: 'Horas Caverel', seccion: 'bitacora', layout: 'layout-gestion',
+    puedeImportar: !mias || mias.includes('/bitacora/caverel/importar'),
+  });
+});
+router.get('/caverel/api/lista', responde(() => caverel.lista(), 500));
+router.get('/caverel/api/persona/:id', responde(req => caverel.persona(req.params.id)));
+
+// El CSV viaja en base64 dentro del JSON, como el Excel de Combustible: la ruta
+// está en SUBEN_ARCHIVOS de app.js (se salta el parser global de 2 MB) y pone el
+// suyo. El de octubre de 2026 (23 meses, 4.715 filas) pesa 1,2 MB: 1,6 en base64.
+const jsonCsv = express.json({ limit: '9mb' });
+const leerCsv = (req, res, next) => jsonCsv(req, res, e => {
+  if (!e) return next();
+  const grande = e.type === 'entity.too.large';
+  res.status(grande ? 413 : 400).json({ status: 'error', msg: grande
+    ? 'El archivo es demasiado grande: el informe de 23 meses pesa 1,2 MB. ¿Es el CSV de BOLT? No se ha importado nada.'
+    : 'No se pudo leer lo que se ha enviado. No se ha importado nada.' });
+});
+router.post('/caverel/api/importar', leerCsv, responde(async req =>
+  ({ importacion: await caverel.importar(req.body || {}, await quien(req)) })));
+
 module.exports = router;

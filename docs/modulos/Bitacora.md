@@ -10,6 +10,7 @@ El calendario de la plantilla: **qué hizo cada persona cada día** —cuántas 
 
 - `/bitacora` — el día a día, con el panel de un día concreto.
 - `/bitacora/general` — la plantilla entera contra el calendario entero.
+- `/bitacora/caverel` — **Horas Caverel**: las horas mensuales del informe de BOLT de antes (abajo).
 
 ## Las dos pantallas leen el MISMO `/api/datos`
 
@@ -185,14 +186,46 @@ Abrir la bitácora es `/bitacora`. Poner la J, quitarla y marcar libranza es **`
 
 Antes eso era una lista de roles escrita dentro de la vista —`['trafico','desarrollador','superadmin']`— así que el de taller no podía justificar sus propias averías y **no había forma de dárselo sin tocar código**. Y la API no comprobaba nada: el candado era solo el botón.
 
+## Horas Caverel (`/bitacora/caverel`, db/238, 10/11/2026)
+
+Camilo: *«Tengo las horas de Caverel de mucho antes, resumida por meses, vamos a hacer un apartado en la bitácora llamado "Horas Caverel", en la cual vamos a poder visualizar las horas mensuales de este archivo por nombre, que se vea la utilización, horas totales y desglosadas por espera y viaje por el mes que se le ve ahí»*.
+
+**El archivo** es el «Fleet Owner Earnings Report» de BOLT agrupado por meses (columna «Dynamic Timeframe» = AAAA-MM): una fila por cuenta y mes. El de octubre de 2026 va de diciembre de 2024 a octubre de 2026 y trae 4.715 filas. De ellas entran 4.632, de 1.396 personas. Se quedan fuera 20 vacías y 63 sin horas ni viajes. Del archivo se guarda:
+
+| Dato | Columna de BOLT |
+|---|---|
+| Horas | «Total Online Hours»: el tiempo conectado, viaje más espera |
+| Utilización | «Occupation Rate». Es la de la casa (viaje / viaje + espera), pero BOLT la redondea a un % entero |
+| Viajes | «Finished Trips Count» |
+
+**El viaje y la espera no se guardan:** viaje = horas × utilización, y espera = el resto. Así no pueden contradecirse. Llevan el redondeo de BOLT (como mucho, medio punto de las horas).
+
+**Al sumar** (las cifras de arriba, el total de la ficha), la utilización es la del tiempo total (Σ viaje / Σ horas), no la media de los porcentajes: pesa más el mes que más se trabajó.
+
+**Los datos entran subiendo el CSV desde la pantalla («Subir CSV»), no en la migración.** El repositorio es público y el archivo trae el DNI de cada uno («Personal Code»).
+- Se guarda en `bitacora_caverel_mes` en una transacción: o entra todo o nada, y si una fila no se puede leer se dice cuál.
+- Subirlo otra vez **sustituye** cada cuenta y mes (índice único `cuenta, mes`). Si el informe nuevo trae más meses, se suman los que faltan.
+- Para subirlo hace falta la llave **`/bitacora/caverel/importar`** («Subir el CSV de Horas Caverel»): sustituye cifras. Para mirar basta con la de la bitácora.
+
+**La pantalla** es el [[Componentes de la casa#El Listado|Listado]]:
+- Hay una fila por persona y mes, del mes más nuevo al más viejo.
+- Se puede filtrar por mes y buscar por nombre. Las cifras de arriba son las de lo que se ve.
+- **La ficha** reúne todos los meses de la persona, también los de otras cuentas de BOLT suyas con el mismo DNI, con el total y la media al mes.
+- Si su DNI está en la plantilla, la fila lo dice («en plantilla») y la ficha lleva a su ficha.
+- El DNI no viaja a la pantalla.
+
 ## Las piezas
 
 ```
-bitacora.controller.js   las rutas
+bitacora.controller.js   las rutas (también las de Horas Caverel)
 bitacora.service.js      la caché, la invalidación y la puerta del módulo
 bitacora.repo.js         el SQL: la rejilla, las horas por jornada y el sellado
-vistas/bitacora.ejs · vistas/bitacoraGeneral.ejs
+caverel.service.js       Horas Caverel: leer el CSV, las cuentas, la lista y la ficha
+caverel.repo.js          Horas Caverel: bitacora_caverel_mes
+vistas/bitacora.ejs · vistas/bitacoraGeneral.ejs · vistas/bitacoraCaverel.ejs
 ```
+
+`scripts/comprobar-horas-caverel.js` prueba lo puro de Horas Caverel: el CSV, lo que se rechaza y las cuentas.
 
 Las llamadas de un día (`/api/dia`) van aparte del payload gordo: ese se cachea entero para toda la plantilla y 365 días, y esto solo se pide cuando alguien abre **un** día de **una** persona.
 

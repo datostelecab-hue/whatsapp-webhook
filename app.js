@@ -62,7 +62,7 @@ const jsonGlobal = express.json({ limit: '2mb', verify: (req, _res, buf) => { re
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.
 const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento', '/facturas/api/pdf',
   '/inspecciones/api/importar', '/taller/api/citas/importar', '/combustible/api/importar',
-  '/barcelona/mantenimientos/api/citas/importar'];
+  '/barcelona/mantenimientos/api/citas/importar', '/bitacora/caverel/api/importar'];
 app.use((req, res, next) => {
   if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);

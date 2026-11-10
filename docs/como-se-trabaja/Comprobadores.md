@@ -378,6 +378,11 @@ No son de los seis, pero forman parte de la misma red:
   casilla de CT combinada en todas las filas de su cuadrante (la todoturno en dos
   columnas), los estados y colores, y que la zona y el buscador dejan lo mismo que la
   pantalla. Con una carpeta como argumento deja un `ejemplo.xlsx`.
+- **`comprobar-horas-caverel.js`** (10/11/2026) — [[Bitacora#Horas Caverel (`/bitacora/caverel`, db/238, 10/11/2026)|Horas Caverel]] sin base:
+  leer el CSV de BOLT (comillas, BOM, miles con coma), qué filas no entran (vacías, sin
+  actividad, repetidas) y cuáles paran la subida (mes que no es AAAA-MM, horas o % que no
+  lo son), y las cuentas (viaje y espera desde la utilización, la utilización del tiempo
+  total al sumar).
 - **`comprobar-contrato-candidatura.js`** (13/10/2026) — la candidatura y el
   contrato no dicen cosas distintas: si una edición cambia el tipo de contrato
   (ETT o propia) y la ficha tiene abierto otro, se pregunta en vez de guardar; con

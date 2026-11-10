@@ -1,0 +1,10 @@
+<%#
+  HORAS CAVEREL (10/11/2026, db/238)
+  Las horas mensuales del «Fleet Owner Earnings Report» de BOLT de antes, por
+  persona y mes: horas, viaje, espera y utilización. Se sube el CSV desde aquí.
+  Servicio: modules/Operaciones/caverel.service.js
+%>
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeImportar: !!puedeImportar }) %></script>
+<script src="<%= est('/assets/js/vistas/Operaciones/bitacoraCaverel.js') %>"></script>

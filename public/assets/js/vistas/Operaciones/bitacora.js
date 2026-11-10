@@ -356,6 +356,7 @@
          <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-calendar-day text-telecab-gold"></i> Hoy, ${esc(fmtLargo(hoy))}</h2>
          <div class="flex items-center gap-2">
            <a href="/bitacora/general" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition"><i class="fa-solid fa-table-cells mr-1"></i>Bitácora general</a>
+           <a href="/bitacora/caverel" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition" title="Las horas mensuales del informe de BOLT de antes: horas, viaje, espera y utilización por persona y mes"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Horas Caverel</a>
            <button id="b-vac-btn" class="text-xs px-3 py-2 rounded-lg font-semibold" style="background:${tint('V')};color:${clr('V')}"><i class="fa-solid fa-umbrella-beach mr-1"></i>Vacaciones por meses</button>
          </div>
        <p class="text-xs text-telecab-muted mb-4">Quién falta hoy y por qué. Elige a alguien en la lista para ver su calendario completo, día a día.</p>

@@ -164,6 +164,9 @@ const CATALOGO = [
     // justificar sus propias averías y no había forma de dárselo sin tocar
     // código. Y la API no comprobaba nada: el candado era solo el botón.
     { clave: '/bitacora/justificar', etiqueta: 'Justificar días en la bitácora' },
+    // Las horas de Caverel (db/238) se miran con la bitácora; subir su CSV
+    // sustituye las cifras de cada cuenta y mes, y eso es aparte.
+    { clave: '/bitacora/caverel/importar', etiqueta: 'Subir el CSV de Horas Caverel' },
     // FICHAR lo hace cualquiera que tenga el fichaje activado en su ficha, y
     // por eso '/fichaje' NO está en el catálogo (ver db/106): un permiso para
     // fichar sería una forma más de que alguien no pueda fichar el día que le
@@ -294,6 +297,8 @@ const RUTA_A_CLAVE = [
   ['/bitacora/api/anular-justificante', '/bitacora/justificar'],
   ['/bitacora/api/libranza',            '/bitacora/justificar'],
   ['/bitacora/api/menos-j',             '/bitacora/justificar'],
+  // Subir el CSV de Horas Caverel sustituye cifras: no basta con mirar la bitácora.
+  ['/bitacora/caverel/api/importar',    '/bitacora/caverel/importar'],
   // Cambiar el estado de una pieza del coche. MIRARLO no pasa por aquí: va por
   // '/vehiculos/api/ficha/:id/piezas', que cae en '/vehiculos'.
   ['/vehiculos/api/piezas',             '/vehiculos/piezas'],
