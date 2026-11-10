@@ -5,25 +5,29 @@
   //
   // Así que la cara es la del cuadrante de Madrid (modules/Planificacion/vistas/
   // planificadorV2.ejs): zonas como tarjetas, un bloque por cuadrante con su tabla
-  // de coches, el descanso con sol y luna, las plazas fijo / CT de día y de noche,
-  // «Sin correturnos» y el promedio de cada uno, SIN letra («no nos interesa la
-  // utilización y avisos de velocidad, por el momento»). Los datos son otros: las
-  // personas son cuentas de BOLT, la plaza va por matrícula y todo vive en las
-  // tablas sede_* (db/181, db/234). Las reglas (quién libra, quién trabaja, qué es
-  // un hueco) son del servidor (barcelona.plan.js): aquí solo se pinta y se pide.
+  // de coches, el descanso de cada fijo con sol y luna, los fijos de día y de
+  // noche y el promedio de cada uno, SIN letra («no nos interesa la utilización y
+  // avisos de velocidad, por el momento»). Los datos son otros: las personas son
+  // cuentas de BOLT, la plaza va por matrícula y todo vive en las tablas sede_*
+  // (db/181, db/234, db/236). Las reglas (quién libra, quién trabaja, qué es un
+  // hueco) son del servidor (barcelona.plan.js): aquí solo se pinta y se pide.
+  //
+  // LOS CORRETURNOS SON CASILLAS DEL CUADRANTE (db/236, 06/11/2026). Camilo: «los
+  // correturnos sí o sí van a ser una sola casilla cogiendo los coches que estén
+  // ahí». Una por jornada (día con sol, noche con luna, o todoturno sin icono),
+  // pintada como UNA celda que ocupa todas las filas del cuadrante. Se agregan con
+  // «+ CT» en la cabecera del cuadrante.
   //
   // Todo lo que se guarda vale DESDE el día que se mira, como en Madrid. El
   // JavaScript, en public/assets/js/vistas/Barcelona/barcelona-planificador.js.
   //
-  // Y SE IMPRIME (06/11/2026). Camilo: «en Barcelona permíteme imprimir el
-  // planificador con casi el mismo formato que se pinta el front». La hoja es la
-  // misma pantalla con otra hoja de estilos (@media print, abajo): sale lo que se
-  // está viendo —el día, la zona abierta, lo que deja el buscador— en A4 apaisado
-  // y siempre en claro. Lo que solo sirve en pantalla lleva data-no-imprimir; lo
-  // que solo sale en el papel, data-solo-imprimir.
+  // Y SE EXPORTA A EXCEL, no se imprime. Camilo: «perdona, no era imprimir sino
+  // exportar en excel … elimina lo de "imprimir", no necesitamos eso en PDF sino
+  // en excel». El Excel lo hace el servidor (/barcelona/planificador/excel) con lo
+  // que se está viendo: el día, la zona abierta y el buscador.
 %>
 
-<div id="bp-raiz" class="p-4 lg:p-6 max-w-[1600px] mx-auto">
+<div class="p-4 lg:p-6 max-w-[1600px] mx-auto">
 
   <style>
     /* Lo que se pulsa nota el dedo (lo mismo que en el cuadrante de Madrid):
@@ -39,131 +43,10 @@
        ojo lo encuentre. Se apaga solo. */
     .tc-resalte { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 4px; border-radius: 1rem;
                   transition: outline-color 600ms ease; }
-
-    /* ══════════ LA HOJA IMPRESA ══════════
-       Camilo (06/11/2026): «en Barcelona permíteme imprimir el planificador con
-       casi el mismo formato que se pinta el front». No hay una plantilla aparte:
-       se imprime la pantalla, y aquí se dice qué sobra en el papel y cómo se ve.
-       Va en esta vista porque solo la usa ella (el @page no debe tocar ninguna
-       otra pantalla). Las piezas se marcan con atributos, no con clases:
-         · data-no-imprimir   → botones, buscador, tarjetas de zona y cifras grandes;
-         · data-solo-imprimir → la cabecera de la hoja y el «Sin conductor» de una
-                                plaza libre (en pantalla no existen). */
-    @media not print {
-      #bp-raiz [data-solo-imprimir] { display: none !important; }
-    }
-    @media print {
-      /* A4 apaisado: la tabla tiene seis columnas y en vertical no caben. */
-      @page { size: A4 landscape; margin: 8mm 9mm; }
-
-      /* SIEMPRE EN CLARO, aunque la pantalla esté en oscuro o con otro acento:
-         papel blanco, tinta oscura y el oro de la casa. Son los tokens del tema
-         claro de telecab.css, con la línea un punto más oscura para que se vea en
-         papel. html:root[data-theme] pesa más que cualquier :root[data-theme='…']. */
-      html:root, html:root[data-theme] {
-        color-scheme: light;
-        --tc-dark: 255 255 255; --tc-card: 255 255 255; --tc-card2: 241 243 245; --tc-campo: 255 255 255;
-        --tc-border: 200 205 212;
-        --tc-gold: 150 106 0; --tc-gold-soft: 196 145 20; --tc-gold-deep: 120 84 0; --tc-on-gold: 255 255 255;
-        --tc-azul: 44 98 170; --tc-red: 196 50 46; --tc-red-hover: 170 40 38; --tc-green: 22 122 82;
-        --tc-warn: 176 90 10; --tc-violet: 104 76 190;
-        --tc-text: 24 28 34; --tc-muted: 88 96 108;
-        --tc-sombra: none; --tc-sombra-alta: none;
-      }
-      html, body { background: #fff !important; }
-      body, body .min-h-screen { min-height: 0 !important; }
-
-      /* FUERA TODO LO QUE NO ES EL PLANIFICADOR: el menú, la barra de arriba, la
-         carga, los avisos que flotan (cumpleaños, efectivo), un diálogo o un
-         calendario abiertos… Se oculta todo lo que ni contiene la pantalla ni
-         está dentro de ella, sin tener que conocer cada pieza del layout. */
-      body *:not(:has(#bp-raiz)):not(#bp-raiz):not(#bp-raiz *) { display: none !important; }
-      /* Por si el navegador no sabe :has(): las del layout, por su nombre. */
-      #menu, #menu-fondo, #cargando-overlay, #cumple-pila, #cumple-globos, #efec-aviso,
-      body > div > div > header { display: none !important; }
-
-      /* La letra, algo más pequeña que en pantalla para que la tabla quepa a lo
-         ancho: todo a la vez con zoom, en la misma proporción que la pantalla
-         (encoger solo la raíz no vale: los tamaños en px, como el teléfono o la
-         cabecera de la tabla, se quedarían grandes al lado de lo demás). */
-      #bp-raiz { padding: 0 !important; margin: 0 !important; max-width: none !important; zoom: .85; }
-      /* Los colores de los turnos y de los avisos, tal cual: sin esto el navegador
-         quita los fondos para ahorrar tinta y el papel sale gris. */
-      #bp-raiz, #bp-raiz * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-shadow: none !important; }
-      #bp-raiz [data-no-imprimir] { display: none !important; }
-      #bp-raiz .tc-resalte { outline: none; }
-
-      /* La cabecera de la hoja: qué, qué día, qué zona y las cifras en una línea. */
-      .bp-hoja-cab { margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid rgb(var(--tc-border)); }
-      .bp-hoja-fila { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
-      .bp-hoja-titulo { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; }
-      .bp-hoja-titulo i { color: rgb(var(--tc-gold)); margin-right: 6px; font-size: .9em; }
-      .bp-hoja-dia { font-size: 1.15rem; font-weight: 600; }
-      .bp-hoja-zona { font-size: 1.05rem; font-weight: 600; color: rgb(var(--tc-muted)); }
-      .bp-hoja-impreso { margin-left: auto; font-size: .85rem; color: rgb(var(--tc-muted)); }
-      .bp-hoja-cifras { margin-top: 3px; font-size: .95rem; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
-      .bp-hoja-cifras b { color: rgb(var(--tc-text)); font-weight: 600; }
-      .bp-hoja-cifras .bp-hoja-rojo { color: rgb(var(--tc-red)); }
-
-      /* Un cuadrante entero en la misma hoja. El que no cabe en una (data-largo,
-         lo marca el JavaScript por su número de filas: si no, el navegador dejaba
-         una hoja en blanco antes de partirlo igual) se parte por filas enteras y
-         repitiendo la cabecera de la tabla. Ninguna cabecera (de zona, de
-         cuadrante, de «Sin plaza») se queda sola al pie de la hoja. */
-      #bp-raiz section[data-cuadrante]:not([data-largo]),
-      #bp-raiz section[data-sueltos]:not([data-largo]) { break-inside: avoid; page-break-inside: avoid; }
-      #bp-raiz [data-cab-zona], #bp-raiz [data-cab-cuadrante], #bp-sinplaza-caja h3 { break-after: avoid; page-break-after: avoid; }
-      #bp-raiz thead { display: table-header-group; }
-      #bp-raiz tr { break-inside: avoid; page-break-inside: avoid; }
-      /* Con el scroll de lado puesto, la tabla no se parte entre hojas: se corta. */
-      #bp-raiz [data-tabla] { overflow: visible !important; border-radius: 0 !important; }
-      /* El marco, en la tabla y no en la caja que la envuelve. Una caja partida
-         entre hojas se estira hasta el pie de la hoja, y su borde dibujaba debajo
-         de la última fila una fila vacía (visto imprimiendo 20 coches sin
-         cuadrante, 06/11/2026). La tabla termina en su última fila. */
-      #bp-raiz [data-tabla] { border: 0 !important; }
-      #bp-raiz [data-tabla] > table { border: 1px solid rgb(var(--tc-border)); }
-      /* Sin cuadrantes todavía, la primera pieza de la pantalla es «cómo
-         empezar», que no se imprime: la siguiente no lleva su raya de separación
-         encima, que en el papel salía doble, pegada a la de la cabecera. */
-      #bp-cuadrantes > [data-no-imprimir]:first-child + * { border-top: 0 !important; padding-top: 0 !important; }
-
-      /* Lo que en pantalla es un botón se lee como texto: sin raya discontinua de
-         «pincha aquí» ni subrayado. La plaza libre dice «Sin conductor». */
-      #bp-raiz [data-accion] { border-style: solid !important; text-decoration: none !important; }
-      #bp-raiz [data-plaza-libre] { border: 0 !important; padding: 0 !important; font-style: italic; }
-
-      /* LOS COLORES DE LOS TURNOS, los de Madrid (rendimiento.excel.js, FONDO):
-         fijo de día azul, fijo de noche caqui, CT de día verde y CT de noche
-         morado. Lleno en la cabecera de la columna y a medias en sus celdas, para
-         que los avisos de dentro (hueco, libra, cubre) se sigan leyendo. Son
-         colores de papel, como los del Excel: en pantalla no existen. */
-      #bp-raiz th[data-col="fijo-dia"]   { background: #DDEBF7; }
-      #bp-raiz th[data-col="fijo-noche"] { background: #EDE3C5; }
-      #bp-raiz th[data-col="ct-dia"]     { background: #E2EFDA; }
-      #bp-raiz th[data-col="ct-noche"]   { background: #E4DFEC; }
-      #bp-raiz td[data-col="fijo-dia"]   { background: #EEF5FB; }
-      #bp-raiz td[data-col="fijo-noche"] { background: #F6F1E2; }
-      #bp-raiz td[data-col="ct-dia"]     { background: #F0F7ED; }
-      #bp-raiz td[data-col="ct-noche"]   { background: #F2EFF6; }
-    }
   </style>
 
-  <%# LA CABECERA DE LA HOJA IMPRESA: solo en el papel. La rellena el JavaScript
-      justo antes de imprimir (también con Ctrl+P): el día, la zona abierta, las
-      cifras en una línea y cuándo se imprimió, porque un papel no se actualiza. %>
-  <header class="bp-hoja-cab" data-solo-imprimir>
-    <div class="bp-hoja-fila">
-      <p class="bp-hoja-titulo"><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i>Planificador · Barcelona</p>
-      <span id="bp-hoja-dia" class="bp-hoja-dia"></span>
-      <span id="bp-hoja-zona" class="bp-hoja-zona"></span>
-      <span id="bp-hoja-impreso" class="bp-hoja-impreso"></span>
-    </div>
-    <p id="bp-hoja-cifras" class="bp-hoja-cifras"></p>
-  </header>
-
-  <!-- ══════════ Cabecera: el día, Imprimir, Zonas y + Cuadrante ══════════ -->
-  <div class="flex flex-wrap items-center gap-3 mb-4" data-no-imprimir>
+  <!-- ══════════ Cabecera: el día, Exportar Excel, Zonas y + Cuadrante ══════════ -->
+  <div class="flex flex-wrap items-center gap-3 mb-4">
     <div class="min-w-0">
       <h2 class="text-xl font-bold flex items-center gap-2">
         <i class="fa-solid fa-table-cells-large text-telecab-gold" aria-hidden="true"></i>Planificador · Barcelona
@@ -184,11 +67,12 @@
       </button>
       <button id="bp-hoy" type="button"
               class="tc-pulsable px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm">Hoy</button>
-      <%# IMPRIMIR (06/11/2026): lo que se está viendo, en A4 apaisado y en claro.
-          Ctrl+P hace lo mismo; el botón es para que se encuentre. %>
-      <button id="bp-btn-imprimir" type="button" title="Imprimir lo que se está viendo: el día elegido y, si hay una zona abierta, solo esa"
+      <%# EXPORTAR EXCEL (06/11/2026): lo que se está viendo —el día, la zona
+          abierta y lo que deja el buscador— con casi el mismo formato que la
+          pantalla. Lo monta el servidor; aquí solo se pide y se descarga. %>
+      <button id="bp-btn-excel" type="button" title="Descargar en Excel lo que se está viendo: el día elegido, la zona abierta (si hay una) y lo que deja el buscador"
               class="tc-pulsable flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm">
-        <i class="fa-solid fa-print" aria-hidden="true"></i>Imprimir
+        <i class="fa-solid fa-file-excel" aria-hidden="true"></i>Exportar Excel
       </button>
       <%# LAS ZONAS (como «Zonas» de Madrid): crear una, cambiarle el nombre o
           retirarla. A un cuadrante se le cambia la zona desde su cabecera. %>
@@ -207,18 +91,17 @@
   <div id="bp-aviso" class="hidden mb-4 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
 
   <%# LAS CIFRAS DEL DÍA. Se cuentan TURNOS (dos por coche y día), no plazas: el
-      día que libra un fijo de un coche sin correturnos su turno no sale, y eso no
-      es un hueco. Cada una dice en su ayuda qué cuenta. %>
-  <%# En el papel van en una línea, en la cabecera de la hoja. %>
-  <div id="bp-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4" data-no-imprimir></div>
+      día que libra un fijo y su cuadrante no tiene CT de ese turno, el turno no
+      sale, y eso no es un hueco. Cada una dice en su ayuda qué cuenta. %>
+  <div id="bp-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4"></div>
 
   <%# LAS ZONAS, como las bases de Madrid: una tarjeta por zona y «Sin zona».
       Pincharla deja solo sus cuadrantes; la elección viaja en la dirección
       (#zona=eixample) para que recargar o pasar el enlace abra la misma. %>
-  <nav id="bp-zonas" aria-label="Zonas" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4" data-no-imprimir></nav>
+  <nav id="bp-zonas" aria-label="Zonas" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4"></nav>
 
-  <%# El buscador y la zona abierta: en el papel, la zona va en la cabecera de la hoja. %>
-  <div class="flex flex-wrap items-center gap-2 mb-3" data-no-imprimir>
+  <%# El buscador y la zona abierta. %>
+  <div class="flex flex-wrap items-center gap-2 mb-3">
     <div class="relative">
       <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs" aria-hidden="true"></i>
       <input id="bp-busca" type="search" placeholder="Buscar conductor o matrícula…" aria-label="Buscar conductor o matrícula"
@@ -242,7 +125,7 @@
       <i class="fa-solid fa-users text-telecab-muted" aria-hidden="true"></i>Sin plaza
       <span id="bp-sinplaza-n" class="ml-auto text-xs text-telecab-muted tabular-nums"></span>
     </h3>
-    <p class="text-xs text-telecab-muted mb-3">Cuentas activas en BOLT Barcelona que ese día no están en ninguna matrícula. Al lado, su promedio de horas del mes.</p>
+    <p class="text-xs text-telecab-muted mb-3">Cuentas activas en BOLT Barcelona que ese día no están en ninguna matrícula ni en ninguna casilla de CT. Al lado, su promedio de horas del mes.</p>
     <div id="bp-sinplaza" class="flex flex-wrap gap-2"></div>
   </section>
 </div>

@@ -2,8 +2,8 @@
 // LAS HORAS DE BARCELONA — de los cambios de estado de BOLT al reporte
 // ============================================================
 // Puro: no lee nada. El servicio le da los apuntes de BOLT (sede_bolt_state_log),
-// el planificador (sede_asignacion, sus periodos con CT y sus descansos: db/181 y
-// db/234) y las cuentas, y aquí se cuenta.
+// el planificador (sede_asignacion, sus descansos y las casillas de CT de los
+// cuadrantes: db/181, db/234 y db/236) y las cuentas, y aquí se cuenta.
 //
 // LA MISMA REGLA QUE MADRID (Camilo, 07/10/2026: «si es de día el mismo flujo de
 // Madrid, revisar qué hizo X día de 00:00 a 23:59 y si es de noche… desde las 12
@@ -21,7 +21,8 @@
 // necesito agregarle días de libranzas desde el planificador»), así que «tenía
 // que trabajar» lo dice el plan del día (barcelona.plan.js), no la asignación
 // en crudo: el día que un fijo libra sale «Libra», no «No salió»; y un CT solo
-// cuenta los días que cubre.
+// cuenta los días que coge una plaza, en esa plaza (desde db/236 el CT es una
+// casilla del cuadrante: una todoturno puede ir de día un día y de noche otro).
 //
 // DE LOS APUNTES A LOS RATOS. BOLT apunta CAMBIOS: cada apunte dice en qué estado
 // entra el conductor y dura hasta su siguiente apunte. Dos apuntes en el mismo
@@ -79,10 +80,13 @@ function intervalos(apuntes, situacionDe, iniMs, finMs, { situaciones = EFECTIVA
 
 /**
  * Las reglas del plan (barcelona.plan.crear) de lo que da el servicio: las
- * asignaciones, sus periodos con CT y sus descansos. Sin periodos ni descansos
- * (antes de db/234) todos son fijos que no libran: lo de antes.
+ * asignaciones, los descansos, las casillas de CT y en qué cuadrante está cada
+ * coche (y lo de antes de db/236: los periodos con CT por coche). Sin
+ * descansos ni casillas (antes de db/234) todos son fijos que no libran: lo de
+ * antes.
  */
-const reglasDe = ({ asignaciones, cts, descansos } = {}) => P.crear({ asignaciones, cts, descansos });
+const reglasDe = ({ asignaciones, cts, descansos, casillas, cochesCuadrante } = {}) =>
+  P.crear({ asignaciones, cts, descansos, casillas, cochesCuadrante });
 
 /**
  * El plan para el reparto: (uuid, fecha) → Set de turnos que TRABAJA ese día.
@@ -90,8 +94,8 @@ const reglasDe = ({ asignaciones, cts, descansos } = {}) => P.crear({ asignacion
  * Con el plan del día (barcelona.plan), no con las asignaciones en crudo: el
  * día que un fijo libra no tiene turno planificado —sus horas, si las hace, van
  * por su hora de inicio, como las de quien no tiene plaza—, y un CT solo tiene
- * turno los días que cubre. Si no, repartoTurnos le daría a su turno lo que
- * hizo en su día libre.
+ * turno los días que coge una plaza, el de esa plaza. Si no, repartoTurnos le
+ * daría a su turno lo que hizo en su día libre.
  */
 function planDesde(reglas) {
   const VACIO = new Set();
@@ -139,13 +143,58 @@ const ventana = (fecha, turno) => [R.instante(fecha, R.INICIO[turno]), R.instant
 const h1 = seg => Math.round(seg / 360) / 10;
 
 /**
+ * LA UTILIZACIÓN: tiempo en viaje / tiempo efectivo (viaje + espera), en %, con
+ * un decimal. Es la definición de la casa (la del BI, la nómina variable y la
+ * calificación: docs «Calificacion de conductores»). Sin horas, null: 0 de 0 no
+ * es «cero por ciento», es que no hay nada que medir.
+ */
+const utilizacion = (segViaje, segEfectivo) => (segEfectivo > 0 ? Math.round((segViaje / segEfectivo) * 1000) / 10 : null);
+const sumar = (lista, campo) => lista.reduce((s, x) => s + (x[campo] || 0), 0);
+
+/**
+ * LOS VIAJES QUE NO COGIÓ, en el turno al que pertenecen: Map('uuid|fecha|turno'
+ * → { aDedo, sinContestar }). Cada pedido va al turno planificado de esa
+ * persona a esa hora (la misma etiqueta con la que se reparten sus horas,
+ * R.etiquetaPlan); si a esa hora no tenía plaza, al turno de esa hora (antes de
+ * las 12:00, día), como las horas sin plan. Así un rechazo cae en la misma
+ * fila que las horas de ese rato y no se cuenta dos veces cuando la noche y el
+ * día se pisan (de 12:00 a 24:00).
+ *   aDedo         driver_rejected: lo rechaza él
+ *   sinContestar  driver_did_not_respond: se le ofreció y no contestó
+ */
+function rechazosPorTurno(rechazos, planDe) {
+  const out = new Map();
+  (rechazos || []).forEach(o => {
+    if (!o || !o.uuid || !Number.isFinite(o.ts)) return;
+    const et = R.etiquetaPlan(o.ts, f => planDe(o.uuid, f)) || R.etiquetaNN(o.ts);
+    const k = `${o.uuid}|${R.clave(et.fecha, et.turno)}`;
+    if (!out.has(k)) out.set(k, { aDedo: 0, sinContestar: 0 });
+    if (o.estado === 'driver_rejected') out.get(k).aDedo++;
+    else if (o.estado === 'driver_did_not_respond') out.get(k).sinContestar++;
+  });
+  return out;
+}
+
+/** El total de un campo de rechazosPorTurno en los turnos de [desde, hasta]. */
+function totalRechazos(porTurno, desde, hasta, campo) {
+  let n = 0;
+  porTurno.forEach((v, k) => {
+    const fecha = k.split('|')[1];
+    if (fecha >= desde && fecha <= hasta) n += v[campo];
+  });
+  return n;
+}
+
+/**
  * EL REPORTE DE HORAS de unas fechas.
  *
  *   ivs           los ratos de trabajo (intervalos()), desde el mediodía de la
  *                 víspera de `desde` hasta el mediodía del día después de `hasta`
  *   asignaciones  las de sede_asignacion que tocan esas fechas (y la víspera)
- *   cts           los periodos con CT de esas fechas (sede_coche_ct)
  *   descansos     los descansos de esas fechas (sede_descanso)
+ *   casillas, cochesCuadrante  las casillas de CT de los cuadrantes y en qué
+ *                 cuadrante está cada coche (db/236)
+ *   cts           los periodos con CT por coche de antes de db/236 (histórico)
  *   conductores   [{ uuid, nombre, telefono, estado }] las cuentas de la sede
  *   coches        [{ uuid, matricula }] para decir en qué coche fue, si el
  *                 rato trae el uuid del coche y no ya su matrícula
@@ -154,16 +203,18 @@ const h1 = seg => Math.round(seg / 360) / 10;
  *   filas         una por día y plaza con conductor: sus horas en SU turno y si
  *                 salió. De más antigua a más nueva; el día antes que la noche.
  *                 El fijo que libra ese día sale con estado «libra» (no es «No
- *                 salió»); el CT, solo los días que cubre.
+ *                 salió»); el CT, solo los días que coge una plaza, en ella.
  *   sinPlan       quien trabajó un día sin trabajar en ninguna plaza ese día:
  *                 sin plaza, o en su día de libranza (`libraba`, con la matrícula).
  *   porConductor  el resumen de cada uno en el periodo.
  */
-function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores, coches, ahoraMs = Date.now() }) {
+function informe({ desde, hasta, ivs, asignaciones, cts, descansos, casillas, cochesCuadrante, conductores, coches, rechazos, ahoraMs = Date.now() }) {
   const fechas = fechasEntre(desde, hasta);
-  const reglas = reglasDe({ asignaciones, cts, descansos });
+  const reglas = reglasDe({ asignaciones, cts, descansos, casillas, cochesCuadrante });
   const planDe = planDesde(reglas);
   const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: x.uuid })), planDe);
+  const noCogio = rechazosPorTurno(rechazos, planDe);
+  const rechazosDe = (uuid, fecha, turno) => noCogio.get(`${uuid}|${R.clave(fecha, turno)}`) || { aDedo: 0, sinContestar: 0 };
   const cuenta = new Map((conductores || []).map(c => [c.uuid, c]));
   const matDe = new Map((coches || []).filter(c => c.uuid).map(c => [c.uuid, c.matricula]));
   const nombreDe = uuid => (cuenta.get(uuid) || {}).nombre || `Cuenta ${String(uuid).slice(0, 8)}`;
@@ -178,10 +229,10 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
   const filas = [];
   const sinPlan = [];
   fechas.forEach(fecha => {
-    // Las plazas vigentes ese día: los fijos (trabajen o libren) y los CT que
-    // trabajan. El CT que no cubre ese día no tiene nada que contar: no libra,
-    // es que ese día no es suyo.
-    const delDia = reglas.vigentesEn(fecha).filter(a => a.rol !== 'ct' || reglas.trabaja(a, fecha));
+    // Las plazas de ese día: los fijos (trabajen o libren) y los CT que
+    // trabajan, en la plaza que cogen. El CT que ese día no coge nada no tiene
+    // nada que contar: es su libranza, y no tiene matrícula que poner.
+    const delDia = reglas.plazasDelDia(fecha);
     TURNOS.forEach(turno => delDia.filter(a => a.turno === turno)
       .sort((a, b) => a.matricula.localeCompare(b.matricula) || (a.rol === 'ct') - (b.rol === 'ct'))
       .forEach(a => {
@@ -202,6 +253,9 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
           filas.push({
             fecha, turno, rol: a.rol, matricula: a.matricula, uuid: a.uuid, nombre: nombreDe(a.uuid), telefono: telDe(a.uuid),
             horas: 0, viaje: 0, espera: 0, fuera: 0, estado: 'libra', coches: cochesEn(a.uuid, v), banda: null, obs,
+            // Sin rechazos aquí, como sin horas: los que tuviera ese día van con
+            // sus horas (en su otra plaza de ese día o en «Sin plaza»).
+            utilizacion: null, segEfectivo: 0, segViaje: 0, aDedo: 0, sinContestar: 0,
           });
           return;
         }
@@ -223,12 +277,23 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
         }
         if (usados.length && !usados.includes(a.matricula)) obs.push(`Trabajó en ${usados.join(', ')}, no en su matrícula`);
         if (fuera && fuera.seg > 0) obs.push(`Además, ${String(h1(fuera.seg)).replace('.', ',')} h fuera de su turno`);
+        // Los viajes que no cogió, en su turno y, como las horas de «fuera», los
+        // del otro turno si ese día no tenía plaza en él (el de noche que se
+        // conecta por la mañana): esos no tienen otra fila donde ir.
+        const nc = rechazosDe(a.uuid, fecha, turno);
+        const ncFuera = planDe(a.uuid, fecha).has(otro) ? { aDedo: 0, sinContestar: 0 } : rechazosDe(a.uuid, fecha, otro);
+        if (ncFuera.aDedo + ncFuera.sinContestar > 0) {
+          obs.push(`De sus viajes sin coger, ${ncFuera.aDedo + ncFuera.sinContestar} fueron fuera de su turno`);
+        }
         filas.push({
           fecha, turno, rol: a.rol, matricula: a.matricula, uuid: a.uuid, nombre: nombreDe(a.uuid), telefono: telDe(a.uuid),
           horas: h1(seg), viaje: h1(x ? x.viajeSeg : 0), espera: h1(x ? x.esperaSeg : 0),
           fuera: fuera ? h1(fuera.seg) : 0, estado, coches: usados,
           banda: estado === 'salio' ? banda(h1(seg)).color : null,
           obs: obs.join(' · '),
+          utilizacion: utilizacion(x ? x.viajeSeg : 0, seg),
+          segEfectivo: seg, segViaje: x ? x.viajeSeg : 0,
+          aDedo: nc.aDedo + ncFuera.aDedo, sinContestar: nc.sinContestar + ncFuera.sinContestar,
         });
       }));
 
@@ -238,16 +303,24 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
       if (!librando.has(a.uuid)) librando.set(a.uuid, []);
       librando.get(a.uuid).push(a.matricula);
     });
-    porPersona.forEach((claves, uuid) => {
+    // También quien ese día no hizo ni un minuto pero tuvo viajes que no cogió:
+    // si se le ofrecieron estaba conectado, y sus rechazos tienen que salir en
+    // alguna fila (si no, el total de arriba no cuadraría con las filas).
+    const conRechazos = [...noCogio.keys()].filter(k => k.split('|')[1] === fecha).map(k => k.split('|')[0]);
+    new Set([...porPersona.keys(), ...conRechazos]).forEach(uuid => {
       if (planDe(uuid, fecha).size) return;
+      const claves = porPersona.get(uuid) || new Map();
       TURNOS.forEach(turno => {
-        const x = claves.get(R.clave(fecha, turno));
-        if (!x || !(x.seg > 0)) return;
+        const x = claves.get(R.clave(fecha, turno)) || { seg: 0, viajeSeg: 0, esperaSeg: 0 };
+        const nc = rechazosDe(uuid, fecha, turno);
+        if (!(x.seg > 0) && !nc.aDedo && !nc.sinContestar) return;
         sinPlan.push({
           fecha, turno, uuid, nombre: nombreDe(uuid), telefono: telDe(uuid),
           horas: h1(x.seg), viaje: h1(x.viajeSeg), espera: h1(x.esperaSeg),
           coches: cochesEn(uuid, ventana(fecha, turno)),
           libraba: librando.has(uuid) ? [...new Set(librando.get(uuid))].sort() : null,
+          utilizacion: utilizacion(x.viajeSeg, x.seg), segEfectivo: x.seg, segViaje: x.viajeSeg,
+          ...rechazosDe(uuid, fecha, turno),
         });
       });
     });
@@ -260,10 +333,15 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
   filas.forEach(f => {
     if (f.estado === 'pendiente') return;
     if (!resumenDe.has(f.uuid)) {
-      resumenDe.set(f.uuid, { uuid: f.uuid, nombre: f.nombre, telefono: f.telefono, plazas: 0, salio: 0, noSalio: 0, libra: 0, horas: 0, fuera: 0, asignadas: [] });
+      resumenDe.set(f.uuid, { uuid: f.uuid, nombre: f.nombre, telefono: f.telefono, plazas: 0, salio: 0, noSalio: 0, libra: 0, horas: 0, fuera: 0, asignadas: [],
+        segEfectivo: 0, segViaje: 0, aDedo: 0, sinContestar: 0 });
     }
     const r = resumenDe.get(f.uuid);
     r.asignadas = plazasDistintas([...r.asignadas, { turno: f.turno, matricula: f.matricula, rol: f.rol }]);
+    r.segEfectivo += f.segEfectivo || 0;
+    r.segViaje += f.segViaje || 0;
+    r.aDedo += f.aDedo || 0;
+    r.sinContestar += f.sinContestar || 0;
     if (f.estado === 'libra') { r.libra++; return; }
     r.plazas++;
     if (f.estado === 'salio' || f.estado === 'en_curso') r.salio++;
@@ -274,6 +352,7 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
   const porConductor = [...resumenDe.values()].map(r => ({
     ...r, horas: Math.round(r.horas * 10) / 10, fuera: Math.round(r.fuera * 10) / 10,
     media: r.salio ? Math.round((r.horas / r.salio) * 10) / 10 : null,
+    utilizacion: utilizacion(r.segViaje, r.segEfectivo),
   })).sort((a, b) => b.noSalio - a.noSalio || a.horas - b.horas || a.nombre.localeCompare(b.nombre));
 
   const cerradas = filas.filter(f => f.estado === 'salio' || f.estado === 'no_salio');
@@ -286,7 +365,13 @@ function informe({ desde, hasta, ivs, asignaciones, cts, descansos, conductores,
       libran: filas.filter(f => f.estado === 'libra').length,
       horas: Math.round(filas.reduce((s, f) => s + f.horas, 0) * 10) / 10,
       horasSinPlan: Math.round(sinPlan.reduce((s, f) => s + f.horas, 0) * 10) / 10,
-      personasSinPlan: new Set(sinPlan.map(f => f.uuid)).size,
+      personasSinPlan: new Set(sinPlan.filter(f => f.horas > 0).map(f => f.uuid)).size,
+      // Con plaza y sin plaza: lo que hizo la flota en esos días.
+      utilizacion: utilizacion(sumar(filas, 'segViaje') + sumar(sinPlan, 'segViaje'), sumar(filas, 'segEfectivo') + sumar(sinPlan, 'segEfectivo')),
+      // Todos los de esos días, también los de quien no tiene fila (se le
+      // ofrecieron viajes y no hizo ni un minuto de trabajo).
+      aDedo: totalRechazos(noCogio, desde, hasta, 'aDedo'),
+      sinContestar: totalRechazos(noCogio, desde, hasta, 'sinContestar'),
       abierto: filas.some(f => f.estado === 'en_curso' || f.estado === 'todavia' || f.estado === 'pendiente')
         || ahoraMs < R.cierreDe(hasta),
     },
@@ -334,7 +419,8 @@ function lunesDe(fecha) {
  *   ivs           los ratos de trabajo desde el mediodía del domingo anterior
  *                 hasta el mediodía del lunes siguiente
  *   asignaciones  las de sede_asignacion que tocan la semana (y la víspera)
- *   cts, descansos  los periodos con CT y los descansos de esas fechas (db/234)
+ *   descansos, casillas, cochesCuadrante, cts  el resto del planificador de
+ *                 esas fechas (como el reporte)
  *   conductores   las cuentas de la sede, con su estado en BOLT
  *
  * Cada día dice en qué plazas TRABAJABA (`plazas`) y en cuáles libraba
@@ -343,10 +429,10 @@ function lunesDe(fecha) {
  * Salen las cuentas ACTIVAS y cualquiera que haya trabajado esa semana. De
  * menor a mayor: arriba, quien menos horas ha hecho (como la semanal de Madrid).
  */
-function semana({ lunes, ivs, asignaciones, cts, descansos, conductores, ahoraMs = Date.now() }) {
+function semana({ lunes, ivs, asignaciones, cts, descansos, casillas, cochesCuadrante, conductores, ahoraMs = Date.now() }) {
   const l = lunesDe(lunes);
   const fechas = fechasEntre(l, R.sumarDias(l, 6));
-  const reglas = reglasDe({ asignaciones, cts, descansos });
+  const reglas = reglasDe({ asignaciones, cts, descansos, casillas, cochesCuadrante });
   const planDe = planDesde(reglas);
   const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: x.uuid })), planDe);
   const cuenta = new Map((conductores || []).map(c => [c.uuid, c]));
@@ -464,11 +550,12 @@ function periodosDelPromedio(hoy, ahoraMs = Date.now()) {
  *
  *   ivs     los ratos de trabajo desde el mediodía de la víspera del primer día
  *           que se carga (periodosDelPromedio().desde) hasta ahora
- *   asignaciones, cts, descansos   el planificador de esas fechas (y la víspera)
+ *   asignaciones, descansos, casillas, cochesCuadrante, cts   el planificador
+ *           de esas fechas (y la víspera)
  */
-function promedios({ hoy, ivs, asignaciones, cts, descansos, ahoraMs = Date.now() }) {
+function promedios({ hoy, ivs, asignaciones, cts, descansos, casillas, cochesCuadrante, ahoraMs = Date.now() }) {
   const per = periodosDelPromedio(hoy, ahoraMs);
-  const reglas = reglasDe({ asignaciones, cts, descansos });
+  const reglas = reglasDe({ asignaciones, cts, descansos, casillas, cochesCuadrante });
   const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: x.uuid })), planDesde(reglas));
   const segDe = (uuid, f) => {
     const m = porPersona.get(uuid);

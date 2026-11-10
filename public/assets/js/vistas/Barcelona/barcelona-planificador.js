@@ -3,10 +3,9 @@
 // EL PLANIFICADOR DE BARCELONA v2 (06/11/2026). Camilo: «ahora necesito agregarle
 // días de libranzas desde el planificador, además de agregar los promedios de
 // cada uno como en el planificador de Madrid, sin letra […] Además de que ahora
-// también se van a agregar zonas de Barcelona así como en Madrid, no sé todavía
-// si habrá o no CT allá pero actívalo de una vez, por defecto todos deben de
-// venir con los CT desactivados». Y: «Prácticamente será el mismo diseño de
-// Madrid, solo que la arquitectura y flujo de datos cambia».
+// también se van a agregar zonas de Barcelona así como en Madrid». Y:
+// «Prácticamente será el mismo diseño de Madrid, solo que la arquitectura y flujo
+// de datos cambia».
 //
 // Por eso esto COPIA EL DISEÑO Y EL LENGUAJE del cuadrante de Madrid
 // (public/assets/js/vistas/Planificacion/planificador/: cuadrante.js, bases.js,
@@ -15,23 +14,34 @@
 // BOLT. Lo que se copia, con su nombre de allí para encontrarlo:
 //   · las zonas como tarjetas que filtran (tarjetaBase / pintarBases);
 //   · un bloque por cuadrante con su cabecera y su tabla (seccionCuadrante, filaCoche);
-//   · el descanso: con correturnos, el bloque del coche; sin ellos, el del fijo de
-//     día (sol) y el de noche (luna) (botonesLibranzaFijos, db/203);
-//   · «Sin correturnos» y su aviso en la fila (chipSinCT, AVISO_SIN_CT, sinCorreturnosUI);
-//   · el CT del cuadrante (asignarCTCuadrante) y sus «saltados»;
+//   · el descanso de cada fijo: el de día (sol) y el de noche (luna) (botonesLibranzaFijos);
 //   · el chip del promedio (chipRend), SIN la letra.
 // Lo que NO se copia, a propósito: la letra, eventos y CT2, vacantes, libranza
 // excepcional, fichaje, ausencias y banquillo. Barcelona no tiene RRHH: «no sé
 // quién está de alta desde qué fecha, solo nos basamos si está activo o no en BOLT».
 //
-// AL REVÉS QUE MADRID, EL CORRETURNOS NACE APAGADO. En Madrid la marca es «sin
-// correturnos»; aquí lo que se marca es tenerlo, y sin marca el coche no lo lleva.
-// La pantalla habla igual que Madrid («Sin correturnos», «libra L M»), pero el
-// botón del coche, por defecto, es para PONÉRSELO.
+// LOS CORRETURNOS SON CASILLAS DEL CUADRANTE (db/236, 06/11/2026). Camilo: «si los
+// coches pertenecen a un cuadrante y tienen correturnos, los correturnos sí o sí
+// van a ser una sola casilla cogiendo los coches que estén ahí, ojo, ninguna
+// plaza se puede repetir […] el correturno debe de coger las plazas que no se
+// trabajan, por lo que no puede coger dos coches a la vez». Y «que se pueda
+// agregar la casilla por jornada, tipo: Agregar CT al cuadrante, se abre con 3
+// opciones: día, noche, todoturno».
+//   · Cada fijo libra lo suyo, siempre (sol y luna). Ya no hay bloque común ni
+//     CT por coche ni «Sin correturnos»: el CT cubre a TODOS los coches de su
+//     cuadrante, y un coche sin cuadrante no lleva CT.
+//   · Una casilla por jornada: día (sol), noche (luna) o todoturno (sin icono),
+//     nunca todoturno junto a día o noche. En la tabla es UNA celda que ocupa
+//     todas las filas del cuadrante: la persona, lo que coge cada día, su
+//     libranza («el día que no coja ninguno de los coches en el cuadrante») y
+//     cómo está ese día.
+//   · El día que libra un fijo: si una casilla coge ese turno, lo lleva su
+//     persona (hueco si está vacía); si no, el coche no sale (no es hueco).
 //
 // LAS REGLAS SON DEL SERVIDOR (barcelona.plan.js): quién libra, quién trabaja,
-// qué turno es hueco, el promedio. La pantalla solo pinta el tablero tal cual
-// llega (la forma está en la especificación y es el contrato) y pide los cambios.
+// qué turno es hueco, qué coge cada casilla y cuándo libra, qué casillas se
+// pueden agregar, el promedio. La pantalla solo pinta el tablero tal cual llega
+// (la forma está en la especificación y es el contrato) y pide los cambios.
 // Toda escritura devuelve { tablero } del día de la escritura y se repinta con él.
 //
 // Va en una sola IIFE: no hay nombres de primer nivel que puedan chocar con los
@@ -63,16 +73,28 @@
   const fmt1 = n => Number(n || 0).toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
   const nombreTurno = t => (t === 'noche' ? 'noche' : 'día');
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : (varios || uno + 's')}`;
+  const mayus = s => s.charAt(0).toUpperCase() + s.slice(1);
   // Sin tildes y en minúsculas: quien busca «Nunez» tiene que encontrar a «Núñez».
   const plano = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const slug = s => plano(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   /** Los ids son enteros (identity); si un día no lo fueran, se mandan tal cual. */
   const aId = v => (/^\d+$/.test(String(v)) ? Number(v) : v);
 
-  // El aviso de Madrid, palabra por palabra (cuadrante.js): Camilo lo pidió así
-  // para Madrid y aquí es el mismo coche.
-  const AVISO_SIN_CT = 'Este coche no tiene correturnos: no se pueden agregar personas en esta matrícula.';
   const SIN = 'sin';                 // la clave de «Sin zona»
+
+  // Las casillas de CT, por jornada y en este orden. Camilo: «Si es todoturno es
+  // una sola casilla sin logo. Si es día es una sola casilla con logo de sol. Si
+  // es noche es una sola casilla con logo de luna».
+  const JORNADAS = ['dia', 'noche', 'todoturno'];
+  const JORNADA = {
+    dia: { titulo: 'CT día', nombre: 'CT de día', opcion: 'Día', icono: 'fa-sun',
+      coge: 'los días que libra el fijo de día de algún coche del cuadrante' },
+    noche: { titulo: 'CT noche', nombre: 'CT de noche', opcion: 'Noche', icono: 'fa-moon',
+      coge: 'los días que libra el fijo de noche de algún coche del cuadrante' },
+    todoturno: { titulo: 'CT todoturno', nombre: 'CT todoturno', opcion: 'Todoturno', icono: null,
+      coge: 'los días que libra cualquier fijo del cuadrante, de día o de noche' },
+  };
+  const jornadaDe = j => JORNADA[j] || { titulo: 'CT', nombre: 'CT', opcion: 'CT', icono: null, coge: '' };
 
   // ── El estado ───────────────────────────────────────────────────────────────
   let T = null;                      // el tablero que llega del servidor (el contrato)
@@ -83,7 +105,7 @@
   // Índices del tablero, rehechos en cada `aplicar`.
   let cochePorMat = new Map();
   let cuadPorId = new Map();
-  let plazasDe = new Map();          // uuid → [{ matricula, turno, rol, dias }]
+  let plazasDe = new Map();          // uuid → [{ rol: 'fijo', turno, matricula } | { rol: 'ct', jornada, cuadrante }]
 
   // ── Hablar con el servidor ──────────────────────────────────────────────────
   // Con Api (api.js), la pieza de la casa: el mensaje del servidor llega en
@@ -141,19 +163,18 @@
     $('#bp-fecha').value = isoAes(DIA);
     cochePorMat = new Map((T.coches || []).map(c => [c.matricula, c]));
     cuadPorId = new Map((T.cuadrantes || []).map(cu => [String(cu.id), cu]));
-    // Las plazas de cada persona ese día, sacadas de los coches: así el selector
-    // dice dónde está ya cada uno sin depender de nada más que el contrato.
+    // Dónde está cada persona ese día, sacado de los fijos de los coches y de las
+    // casillas de los cuadrantes: así el selector dice dónde está ya cada uno sin
+    // depender de nada más que el contrato.
     plazasDe = new Map();
-    (T.coches || []).forEach(c => {
-      const p = c.plazas || {};
-      [['fijoDia', 'dia', 'fijo'], ['fijoNoche', 'noche', 'fijo'], ['ctDia', 'dia', 'ct'], ['ctNoche', 'noche', 'ct']]
-        .forEach(([clave, turno, rol]) => {
-          const x = p[clave];
-          if (!x || !x.uuid) return;
-          if (!plazasDe.has(x.uuid)) plazasDe.set(x.uuid, []);
-          plazasDe.get(x.uuid).push({ matricula: c.matricula, turno, rol, dias: x.dias || null });
-        });
-    });
+    const apuntar = (uuid, x) => { if (!plazasDe.has(uuid)) plazasDe.set(uuid, []); plazasDe.get(uuid).push(x); };
+    (T.coches || []).forEach(c => [['fijoDia', 'dia'], ['fijoNoche', 'noche']].forEach(([clave, turno]) => {
+      const x = (c.plazas || {})[clave];
+      if (x && x.uuid) apuntar(x.uuid, { rol: 'fijo', turno, matricula: c.matricula });
+    }));
+    (T.cuadrantes || []).forEach(cu => (cu.casillas || []).forEach(k => {
+      if (k.persona && k.persona.uuid) apuntar(k.persona.uuid, { rol: 'ct', jornada: k.jornada, cuadrante: cu });
+    }));
     if (ZONA_PEDIDA !== null) { ZONA = claveDeSlug(ZONA_PEDIDA); ZONA_PEDIDA = null; }
     if (ZONA && ZONA !== SIN && !(T.zonas || []).some(z => String(z.id) === ZONA)) ZONA = '';
     pintarTodo();
@@ -176,8 +197,6 @@
 
   /** «hoy», o «el S 08/11» si se mira otro día: «libra hoy» un sábado que no es hoy mentiría. */
   const cuando = () => (T && DIA === T.hoy ? 'hoy' : `el ${DIAS_LETRA[isodow(DIA) - 1]} ${ddmm(DIA)}`);
-  /** Desde cuándo vale poner o quitar el correturnos: el día que se mira, nunca antes de hoy. */
-  const desdeCT = () => (T && T.hoy && DIA < T.hoy ? T.hoy : DIA);
 
   function pintarCabecera() {
     const av = $('#bp-aviso');
@@ -186,12 +205,11 @@
     if (T.faltaMigracion) {
       av.classList.remove('hidden');
       av.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1" aria-hidden="true"></i> Falta aplicar la migración
-        <b>${esc(typeof T.faltaMigracion === 'string' ? T.faltaMigracion : 'db/234')}</b> (en Migraciones). Hasta entonces el planificador de Barcelona no se puede pintar.`;
+        <b>${esc(typeof T.faltaMigracion === 'string' ? T.faltaMigracion : 'db/236')}</b> (en Migraciones). Hasta entonces el planificador de Barcelona no se puede pintar.`;
     } else {
       av.classList.add('hidden');
     }
-    const dia = DIAS_NOMBRE[isodow(DIA) - 1];
-    $('#bp-sub').textContent = `${dia.charAt(0).toUpperCase() + dia.slice(1)} ${isoAes(DIA)}${DIA === T.hoy ? ' · hoy' : ''}` +
+    $('#bp-sub').textContent = `${mayus(DIAS_NOMBRE[isodow(DIA) - 1])} ${isoAes(DIA)}${DIA === T.hoy ? ' · hoy' : ''}` +
       ' · Cada cambio vale desde el día que se mira hasta que se cambie.';
   }
 
@@ -212,24 +230,32 @@
     const r = T.resumen;
     if (!r) { $('#bp-kpis').innerHTML = ''; return; }
     const n = v => Number(v || 0);
+    // Las casillas: la cifra del servidor; las vacías se cuentan aquí, que son
+    // las que piden a alguien.
+    const casillas = (T.cuadrantes || []).flatMap(cu => cu.casillas || []);
+    const nCas = r.casillas != null ? n(r.casillas) : casillas.length;
+    const vacias = casillas.filter(k => !k.persona).length;
     $('#bp-kpis').innerHTML = [
-      kpi({ titulo: 'Coches', valor: n(r.coches), sub: n(r.conCT) ? `${plural(n(r.conCT), 'con correturnos', 'con correturnos')}` : 'ninguno con correturnos',
-        ayuda: 'Los coches de Barcelona que se pueden planificar: los de su empresa de BOLT y los de Vehículos con sede Barcelona.\nPor defecto ninguno lleva correturnos: se le pone a cada coche con su botón.' }),
+      kpi({ titulo: 'Coches', valor: n(r.coches),
+        sub: nCas ? `${plural(nCas, 'casilla')} de CT${vacias ? ` · ${vacias} ${vacias === 1 ? 'vacía' : 'vacías'}` : ''}` : 'ningún cuadrante con CT',
+        ayuda: 'Los coches de Barcelona que se pueden planificar: los de su empresa de BOLT y los de Vehículos con sede Barcelona.\n' +
+          'Debajo, las casillas de CT de los cuadrantes. Por defecto ningún cuadrante lleva CT: se le agrega con «+ CT» en su cabecera.' }),
       kpi({ titulo: 'Turnos cubiertos', valor: `${n(r.cubiertos)} / ${n(r.turnos)}`, sub: cuando(),
-        ayuda: 'Cada coche tiene dos turnos al día, de día y de noche.\nCubierto: alguien lo lleva ese día, su fijo o, si el fijo libra, el correturnos que cubre ese día.' }),
+        ayuda: 'Cada coche tiene dos turnos al día, de día y de noche. Cuentan los que tienen que salir.\nCubierto: alguien lo lleva ese día, su fijo o, si el fijo libra, la persona de la casilla de CT del cuadrante.' }),
       kpi({ titulo: 'Huecos', valor: n(r.huecos), tono: n(r.huecos) ? 'text-telecab-red' : '', sub: 'turnos sin nadie',
-        ayuda: 'Turnos que tenían que salir y no los lleva nadie: sin fijo, o el fijo libra y ningún correturnos cubre ese día.\nLo que libra un fijo en un coche sin correturnos no es hueco: ese turno no sale.' }),
+        ayuda: 'Turnos que tenían que salir y no los lleva nadie: sin fijo, o el fijo libra y la casilla de CT que lo coge está vacía.\nSi el cuadrante no tiene CT de ese turno, lo que libra el fijo no es hueco: ese turno no sale.' }),
       kpi({ titulo: 'Libran', valor: n(r.libran), sub: 'el coche no sale',
-        ayuda: 'Turnos en los que el coche no sale porque libra su fijo y el coche no tiene correturnos.\nEs lo planificado: no cuenta como hueco.' }),
+        ayuda: 'Turnos en los que el coche no sale: libra su fijo y su cuadrante no tiene CT de ese turno (o el coche no está en ningún cuadrante).\nEs lo planificado: no cuenta como hueco.' }),
       kpi({ titulo: 'Sin plaza', valor: n(r.sinPlaza), sub: 'pincha para verlos', ir: '#bp-sinplaza-caja',
-        ayuda: 'Cuentas activas en BOLT Barcelona que ese día no están en ninguna matrícula.\nEstán abajo, con su promedio.' }),
+        ayuda: 'Cuentas activas en BOLT Barcelona que ese día no están en ninguna matrícula ni en ninguna casilla de CT.\nEstán abajo, con su promedio.' }),
     ].join('');
   }
 
   // ── Las zonas (como las bases de Madrid) ────────────────────────────────────
 
   const zonaDeCuad = cu => (cu && cu.zonaId != null && cu.zonaId !== '' ? String(cu.zonaId) : SIN);
-  const zonaDeCoche = c => (c.cuadranteId != null ? zonaDeCuad(cuadPorId.get(String(c.cuadranteId))) : SIN);
+  const cuadDe = c => (c && c.cuadranteId != null ? cuadPorId.get(String(c.cuadranteId)) || null : null);
+  const zonaDeCoche = c => (c.cuadranteId != null ? zonaDeCuad(cuadDe(c)) : SIN);
   const nombreZona = clave => (clave === SIN ? 'Sin zona'
     : ((T.zonas || []).find(z => String(z.id) === clave) || {}).nombre || 'Zona');
   const slugDeClave = clave => (clave === SIN ? 'sin-zona' : slug(nombreZona(clave)));
@@ -268,7 +294,7 @@
     const titulo = clave === SIN
       ? `Cuadrantes sin zona y coches que no están en ningún cuadrante: ${k.coches} coche(s).\nPincha para ver solo esos.`
       : `${nombre}: ${k.coches} coche(s) en ${k.cuadrantes} cuadrante(s).\n` +
-        `${cuando().charAt(0).toUpperCase() + cuando().slice(1)}: ${k.huecos} turno(s) sin nadie y ${k.libran} que libran.\n` +
+        `${mayus(cuando())}: ${k.huecos} turno(s) sin nadie y ${k.libran} que libran.\n` +
         'Pincha para ver solo sus cuadrantes; otra vez, para volver a todas.';
     return `
       <button type="button" data-zona="${esc(clave)}" aria-pressed="${on}" title="${esc(titulo)}"
@@ -364,26 +390,6 @@
 
   const tituloCuad = cu => `C${cu.numero}${cu.nombre ? ' · ' + cu.nombre : ''}`;
 
-  /**
-   * Un texto que en pantalla invita a pulsar («asignar», «poner zona») y en el
-   * papel dice lo que hay («—», «sin zona»): los dos van en el HTML y la hoja
-   * de impresión (la vista) enseña uno u otro. Son textos fijos: no se escapan.
-   */
-  const enPapel = (pantalla, papel) => `<span data-no-imprimir>${pantalla}</span><span data-solo-imprimir>${papel}</span>`;
-
-  /**
-   * En el papel, un cuadrante va entero en una hoja (break-inside: avoid)… salvo
-   * que no quepa en ninguna: entonces el navegador lo pasaba igual a la hoja
-   * siguiente y dejaba la de antes en blanco, para partirlo de todos modos. Una
-   * hoja A4 apaisada lleva unas ocho filas de coche con la cabecera de la tabla,
-   * y la primera, con la cabecera de la hoja, la de la zona y la del cuadrante,
-   * seis (medido imprimiendo, con las filas más altas: las de los CT). Con más
-   * de seis se marca `data-largo` y se deja partir, por filas enteras y
-   * repitiendo la cabecera de la tabla.
-   */
-  const FILAS_POR_HOJA = 6;
-  const largo = lista => (lista.length > FILAS_POR_HOJA ? ' data-largo' : '');
-
   /** Los coches de un cuadrante, en el orden que da el servidor. */
   function cochesDe(cu) {
     const orden = (cu.coches || []).map(String);
@@ -392,13 +398,24 @@
       .sort((a, b) => pos(a.matricula) - pos(b.matricula));
   }
 
-  /** Las personas de un coche, para el buscador. */
+  /** Las casillas de un cuadrante, siempre en el mismo orden: día, noche, todoturno. */
+  const casillasDe = cu => JORNADAS.flatMap(j => ((cu && cu.casillas) || []).filter(k => k.jornada === j));
+  /** La casilla que coge ese turno en el cuadrante (la suya o la todoturno), o null. */
+  const casillaDelTurno = (cu, turno) => casillasDe(cu).find(k => k.jornada === turno || k.jornada === 'todoturno') || null;
+  /** ¿Tiene el cuadrante todas las casillas que admite? (día y noche, o todoturno) */
+  const casillasCompletas = cu => {
+    const j = new Set(casillasDe(cu).map(k => k.jornada));
+    return j.has('todoturno') || (j.has('dia') && j.has('noche'));
+  };
+
+  /** Los fijos de un coche, para el buscador. */
   const gente = c => Object.values(c.plazas || {}).filter(Boolean);
 
   function pintarCuadrantes() {
     const cont = $('#bp-cuadrantes');
     if (T.faltaMigracion) { cont.innerHTML = ''; return; }
     const q = plano($('#bp-busca').value).trim();
+    const pasaPersona = p => plano(`${p.nombre} ${p.telefono || ''}`).includes(q);
     const pasa = c => !q || plano([c.matricula, c.modelo, ...gente(c).map(p => `${p.nombre} ${p.telefono || ''}`)].join(' ')).includes(q);
 
     const cuads = (T.cuadrantes || []).filter(cu => !ZONA || zonaDeCuad(cu) === ZONA);
@@ -410,10 +427,15 @@
     const piezas = [];
     orden.forEach(clave => {
       const deZona = cuads.filter(cu => zonaDeCuad(cu) === clave)
-        .map(cu => ({ cu, lista: cochesDe(cu).filter(pasa) }))
+        .map(cu => {
+          // Buscando a la persona de una casilla, sale el cuadrante con TODOS sus
+          // coches: la casilla los coge a todos.
+          const delCT = !!q && casillasDe(cu).some(k => k.persona && pasaPersona(k.persona));
+          return { cu, delCT, lista: delCT ? cochesDe(cu) : cochesDe(cu).filter(pasa) };
+        })
         // Buscando, un cuadrante sin nada que coincida se oculta: si no, parece
         // que el buscador no hace nada.
-        .filter(x => !q || x.lista.length);
+        .filter(x => !q || x.lista.length || x.delCT);
       if (!deZona.length) return;
       if (!ZONA) piezas.push(cabeceraZona(clave));
       deZona.forEach(x => piezas.push(seccionCuadrante(x.cu, x.lista)));
@@ -434,8 +456,8 @@
     if (ZONA && ZONA !== SIN) {
       return `<div class="px-6 py-10 text-center border border-dashed border-telecab-border rounded-2xl">
         <p class="text-sm font-semibold">${esc(nombreZona(ZONA))} todavía no tiene cuadrantes</p>
-        <p class="mt-1 text-xs text-telecab-muted" data-no-imprimir>Crea uno y mete sus coches con «+ Coche».</p>
-        <button type="button" data-accion="nuevo-cua" data-no-imprimir class="tc-pulsable mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">
+        <p class="mt-1 text-xs text-telecab-muted">Crea uno y mete sus coches con «+ Coche».</p>
+        <button type="button" data-accion="nuevo-cua" class="tc-pulsable mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">
           <i class="fa-solid fa-plus" aria-hidden="true"></i>Nuevo cuadrante en ${esc(nombreZona(ZONA))}</button>
       </div>`;
     }
@@ -444,12 +466,11 @@
       Todavía no hay coches de Barcelona: la ingesta los trae de BOLT cada seis horas, y los de Vehículos salen si tienen la sede Barcelona.</div>`;
   }
 
-  // Instrucciones de pantalla: en el papel no dicen nada.
   function comoEmpezar() {
-    return `<div data-no-imprimir class="rounded-2xl border border-telecab-border bg-telecab-card p-4 text-sm">
+    return `<div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 text-sm">
       <p class="font-semibold flex items-center gap-2"><i class="fa-solid fa-circle-info text-telecab-gold" aria-hidden="true"></i>Todavía no hay cuadrantes</p>
       <p class="text-telecab-muted mt-1">Como en Madrid: crea las zonas con «Zonas», un cuadrante con «+ Cuadrante» y mete sus coches con «+ Coche».
-        Mientras, los coches están abajo, en «Coches sin cuadrante», y se planifican igual.</p>
+        Si lleva correturnos, agrégale su casilla con «+ CT». Mientras, los coches están abajo, en «Coches sin cuadrante», y se planifican igual.</p>
     </div>`;
   }
 
@@ -457,103 +478,103 @@
   function cabeceraZona(clave) {
     const k = cuentaZona(clave);
     const falta = k.huecos ? `${plural(k.huecos, 'hueco')} ${cuando()}` : '';
-    return `<div data-cab-zona class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-4 border-t border-telecab-border first:pt-0 first:border-t-0">
+    return `<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-4 border-t border-telecab-border first:pt-0 first:border-t-0">
       <h3 class="text-base font-semibold whitespace-nowrap">${esc(nombreZona(clave))}</h3>
       <span class="text-xs text-telecab-muted tabular-nums">${plural(k.coches, 'coche')} · ${plural(k.cuadrantes, 'cuadrante')}</span>
       ${falta ? `<span class="text-xs font-semibold text-telecab-warn">${esc(falta)}</span>` : ''}
-      <button type="button" data-zona="${esc(clave)}" data-no-imprimir class="tc-pulsable ml-auto text-xs text-telecab-muted hover:text-telecab-gold">Ver solo ${clave === SIN ? 'estos' : esc(nombreZona(clave))} <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></button>
+      <button type="button" data-zona="${esc(clave)}" class="tc-pulsable ml-auto text-xs text-telecab-muted hover:text-telecab-gold">Ver solo ${clave === SIN ? 'estos' : esc(nombreZona(clave))} <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></button>
     </div>`;
   }
 
-  // La libranza de un CT = lo que NO cubre entre todos sus coches (como libraCT
-  // de Madrid): la unión de sus días en cada matrícula, y el resto, libra.
-  function libraCT(uuid) {
-    const trabaja = new Set();
-    (plazasDe.get(uuid) || []).filter(x => x.rol === 'ct').forEach(x => (x.dias || []).forEach(d => trabaja.add(Number(d))));
-    if (!trabaja.size) return '';
-    return [1, 2, 3, 4, 5, 6, 7].filter(d => !trabaja.has(d)).map(d => DIAS_LETRA[d - 1]).join(' ') || 'no libra';
-  }
-
   function seccionCuadrante(cu, lista) {
-    const todos = cochesDe(cu);
-    const bloques = cu.bloques || [];
-    const nSinCT = todos.filter(c => !c.conCT).length;
-    // El CT del cuadrante es de los coches que llevan correturnos (los bloques).
-    // Sin ninguno, sus chips no tendrían a quién poner: se quedan fuera y la
-    // cabecera dice por qué.
-    const chipCT = turno => {
-      const quienes = ((cu.ct || {})[turno]) || [];
-      const nombre = quienes.length === 1 ? quienes[0].nombre : quienes.length > 1 ? 'Varios' : null;
-      const libra = quienes.length === 1 ? libraCT(quienes[0].uuid) : '';
-      const tit = quienes.length > 1
-        ? `Lo llevan ${quienes.map(p => p.nombre).join(', ')}. Pincha para poner a uno en todos los bloques.`
-        : quienes.length ? `CT de ${nombreTurno(turno)} del cuadrante: cubre los días del bloque de cada coche con correturnos. Pincha para cambiarlo o quitarlo.`
-          : `Poner un CT de ${nombreTurno(turno)} en todos los coches con correturnos de este cuadrante, cada uno con los días de su bloque.`;
-      return `<button type="button" data-accion="ct-cua" data-turno="${turno}" title="${esc(tit)}"
-                class="tc-pulsable inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border hover:border-telecab-gold/50
-                       ${nombre ? 'bg-telecab-violet/10 text-telecab-violet border-telecab-violet/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
-                <i class="fa-solid fa-user-group" aria-hidden="true"></i>CT ${nombreTurno(turno)}: ${nombre ? esc(nombre) : enPapel('asignar', '—')}${libra ? ` <span class="text-telecab-muted">libra ${esc(libra)}</span>` : ''}</button>`;
-    };
-    // En el papel, la cabecera se queda en lo que dice (número, nombre, zona, CT):
-    // el lápiz, «+ Coche» y «borrar cuadrante» son de pantalla.
-    return `<section data-cuadrante="${esc(cu.id)}"${largo(lista)} class="scroll-mt-24">
-      <div data-cab-cuadrante class="flex flex-wrap items-center gap-2 mb-2">
+    const n = cochesDe(cu).length;
+    const casillas = casillasDe(cu);
+    // Sin casillas se dice, porque cambia lo que pasa cuando libra un fijo: ese
+    // turno no sale. Con ellas, ya se ven en su columna.
+    const sinCT = casillas.length ? ''
+      : ` · <span title="${esc('Este cuadrante no tiene CT: el día que libra un fijo, ese turno el coche no sale (no es hueco). Se le agrega con «+ CT».')}">sin CT</span>`;
+    // «+ CT» sale mientras quede alguna casilla que poner: con día y noche, o
+    // con todoturno, ya no cabe ninguna (Camilo: «Si se escoge día o noche no se
+    // puede elegir luego el todoturno y viceversa»).
+    const masCT = casillasCompletas(cu) ? ''
+      : `<button type="button" data-accion="ct-agregar" aria-label="Agregar CT al ${esc(tituloCuad(cu))}"
+                title="Agregar CT al cuadrante: una casilla de día, de noche o todoturno que coge las plazas que no se trabajan"
+                class="tc-pulsable px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> CT</button>`;
+    return `<section data-cuadrante="${esc(cu.id)}" class="scroll-mt-24">
+      <div class="flex flex-wrap items-center gap-2 mb-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex flex-wrap items-center gap-x-2">
           ${esc(tituloCuad(cu))}
           <span class="text-telecab-muted font-normal normal-case">·
             <button type="button" data-accion="zona-cua" title="Cambiar la zona de este cuadrante: sus coches van con él"
                     class="tc-pulsable inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-telecab-gold">
-              <i class="fa-solid fa-location-dot text-[10px]" aria-hidden="true"></i>${cu.zona ? esc(cu.zona) : enPapel('poner zona', 'sin zona')}</button>
-            · ${plural(bloques.length, 'bloque')}${nSinCT ? ` · ${nSinCT} sin correturnos` : ''}</span>
+              <i class="fa-solid fa-location-dot text-[10px]" aria-hidden="true"></i>${cu.zona ? esc(cu.zona) : 'poner zona'}</button>
+            · ${plural(n, 'coche')}${sinCT}</span>
         </h3>
-        <button type="button" data-accion="nombre-cua" data-no-imprimir aria-label="Cambiar el nombre del ${esc(tituloCuad(cu))}" title="Ponerle o cambiarle el nombre (el número no cambia)"
+        <button type="button" data-accion="nombre-cua" aria-label="Cambiar el nombre del ${esc(tituloCuad(cu))}" title="Ponerle o cambiarle el nombre (el número no cambia)"
                 class="tc-pulsable w-7 h-7 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold">
           <i class="fa-solid fa-pen text-[11px]" aria-hidden="true"></i></button>
-        <button type="button" data-accion="coche-cua" data-no-imprimir title="Meter en este cuadrante un coche que no esté en ninguno"
+        <button type="button" data-accion="coche-cua" title="Meter en este cuadrante un coche que no esté en ninguno"
                 class="tc-pulsable px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50">
           <i class="fa-solid fa-plus" aria-hidden="true"></i> Coche</button>
-        ${bloques.length ? `<div class="flex flex-wrap items-center gap-2 ml-1">${chipCT('dia')}${chipCT('noche')}</div>` : ''}
+        ${masCT}
         <span class="ml-auto"></span>
-        <button type="button" data-accion="borrar-cua" data-no-imprimir class="text-xs text-telecab-muted hover:text-telecab-red"
+        <button type="button" data-accion="borrar-cua" class="text-xs text-telecab-muted hover:text-telecab-red"
                 title="Dar de baja el cuadrante. Solo se puede vacío: antes hay que sacar sus coches.">
           <i class="fa-solid fa-trash" aria-hidden="true"></i> borrar cuadrante</button>
       </div>
-      ${lista.length ? tablaCoches(lista, true)
-        : `<p class="text-xs text-telecab-muted px-3 py-4 border border-dashed border-telecab-border rounded-2xl text-center">Cuadrante vacío.<span data-no-imprimir> Pulsa «+ Coche» para meter una matrícula.</span></p>`}
+      ${lista.length || casillas.length ? tablaCoches(lista, cu)
+        : '<p class="text-xs text-telecab-muted px-3 py-4 border border-dashed border-telecab-border rounded-2xl text-center">Cuadrante vacío. Pulsa «+ Coche» para meter una matrícula.</p>'}
     </section>`;
   }
 
   function seccionSueltos(lista) {
-    return `<section data-sueltos${largo(lista)} class="scroll-mt-24 ${ZONA ? '' : 'pt-4 border-t border-telecab-border first:pt-0 first:border-t-0'}">
+    return `<section class="scroll-mt-24 ${ZONA ? '' : 'pt-4 border-t border-telecab-border first:pt-0 first:border-t-0'}">
       <div class="flex flex-wrap items-center gap-2 mb-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-muted flex items-center gap-2"
-            title="Coches que no están en ningún cuadrante. Se planifican igual; para darles zona, mételos en un cuadrante.">
+            title="Coches que no están en ningún cuadrante. Se planifican igual, pero no llevan CT: el día que libra un fijo, ese turno no sale. Para darles zona o CT, mételos en un cuadrante.">
           <i class="fa-solid fa-car-side" aria-hidden="true"></i>Coches sin cuadrante <span class="font-normal normal-case">${lista.length}</span></h3>
       </div>
-      ${tablaCoches(lista, false)}
+      ${tablaCoches(lista, null)}
     </section>`;
   }
 
-  // Las columnas: Fijo día/noche siempre; CT día/noche solo si algún coche de la
-  // tabla lleva correturnos. Si ninguno (lo de por defecto), sobran (db/203).
-  // `data-col` dice de qué turno es cada columna: el papel la pinta con el color
-  // de ese turno, como Madrid. La de las acciones no se imprime.
-  function tablaCoches(lista, enCuadrante) {
-    const conColsCT = lista.some(c => c.conCT);
-    const th = (txt, tit, col) => `<th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap"${col ? ` data-col="${col}"` : ''}${tit ? ` title="${esc(tit)}"` : ''}>${txt}</th>`;
-    return `<div data-tabla class="overflow-x-auto border border-telecab-border rounded-2xl">
+  const SOL = '<i class="fa-solid fa-sun mr-1 text-telecab-gold" aria-hidden="true"></i>';
+  const LUNA = '<i class="fa-solid fa-moon mr-1 text-telecab-gold" aria-hidden="true"></i>';
+  const iconoJornada = j => (jornadaDe(j).icono ? `<i class="fa-solid ${jornadaDe(j).icono} mr-1 text-telecab-gold" aria-hidden="true"></i>` : '');
+
+  /**
+   * La tabla de un cuadrante (o de los coches sin cuadrante, `cu` null). Las
+   * columnas: Matrícula, Descanso, Fijo día, Fijo noche y, después, UNA columna
+   * por casilla de CT del cuadrante, con una sola celda que ocupa todas las filas
+   * (rowspan): «una sola casilla cogiendo los coches que estén ahí». Va en la
+   * primera fila; el navegador coloca las celdas de las demás filas saltándosela.
+   */
+  function tablaCoches(lista, cu) {
+    const casillas = cu ? casillasDe(cu) : [];
+    const th = (txt, tit, extra) => `<th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap${extra ? ' ' + extra : ''}"${tit ? ` title="${esc(tit)}"` : ''}>${txt}</th>`;
+    const celdas = filas => casillas.map(k => celdaCasilla(cu, k, filas)).join('');
+    const filas = lista.length
+      ? lista.map((c, i) => filaCoche(c, !!cu, i === 0 ? celdas(lista.length) : '')).join('')
+      // Un cuadrante sin coches puede tener ya su casilla (se agregó antes de
+      // meterlos): se pinta igual, para poder ponerle a alguien o quitarla.
+      : `<tr class="align-top"><td colspan="4" class="px-3 py-4 text-xs text-telecab-muted">Cuadrante vacío. Pulsa «+ Coche» para meter una matrícula.</td>${celdas(1)}<td></td></tr>`;
+    return `<div class="overflow-x-auto border border-telecab-border rounded-2xl">
       <table class="w-full text-sm border-collapse">
         <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
           <tr>
             ${th('Matrícula')}
-            ${th('Descanso', 'Con correturnos, el bloque del coche: los dos fijos libran a la vez y el correturnos lo cubre. Sin ellos, cada fijo libra sus días.')}
-            ${th('<i class="fa-solid fa-sun mr-1 text-telecab-gold" aria-hidden="true"></i>Fijo día', 'El turno de día: de 00:00 a 24:00.', 'fijo-dia')}
-            ${th('<i class="fa-solid fa-moon mr-1 text-telecab-gold" aria-hidden="true"></i>Fijo noche', 'El turno de noche: de 12:00 a 12:00 del día siguiente.', 'fijo-noche')}
-            ${conColsCT ? th('CT día', 'El correturnos de día: cubre los días que libra el fijo de día.', 'ct-dia') + th('CT noche', 'El correturnos de noche: cubre los días que libra el fijo de noche.', 'ct-noche') : ''}
-            <th class="w-20" aria-label="Acciones" data-no-imprimir></th>
+            ${th('Descanso', 'Los días que libra cada fijo: el de día (sol) y el de noche (luna).\nSi el cuadrante tiene CT de ese turno, esos días lo lleva su casilla; si no, ese turno el coche no sale.')}
+            ${th(SOL + 'Fijo día', 'El turno de día: de 00:00 a 24:00.')}
+            ${th(LUNA + 'Fijo noche', 'El turno de noche: de 12:00 a 12:00 del día siguiente.')}
+            ${casillas.map(k => th(iconoJornada(k.jornada) + esc(jornadaDe(k.jornada).titulo),
+              `La casilla de ${jornadaDe(k.jornada).nombre} del cuadrante: una sola persona que coge ${jornadaDe(k.jornada).coge}.\n` +
+              'Ninguna plaza se repite: no coge dos coches el mismo día. Los días que no coge ninguna, libra.',
+              'border-l border-telecab-border')).join('')}
+            <th class="w-12" aria-label="Acciones"></th>
           </tr>
         </thead>
-        <tbody>${lista.map(c => filaCoche(c, conColsCT, enCuadrante)).join('')}</tbody>
+        <tbody>${filas}</tbody>
       </table>
     </div>`;
   }
@@ -562,67 +583,45 @@
   // sin él la fila decía «deactivated en BOLT», en inglés.
   const estadoBolt = e => ({ inactive: 'desactivado', deactivated: 'desactivado', blocked: 'bloqueado', suspended: 'suspendido' }[String(e || '').toLowerCase()] || e || 'desactivado');
 
-  function filaCoche(c, conColsCT, enCuadrante) {
+  /**
+   * Una fila de coche. `casillasTd` son las celdas de las casillas (solo en la
+   * primera fila). El coche desactivado se atenúa en SUS celdas, no en la fila:
+   * la de la casilla, que cuelga de la primera fila, es de todo el cuadrante.
+   */
+  function filaCoche(c, enCuadrante, casillasTd) {
+    const apagado = c.activo ? '' : ' opacity-70';
     const aviso = !c.activo
       ? ` · <span class="text-telecab-warn">${esc(estadoBolt(c.estadoBolt))}${c.enBolt ? ' en BOLT' : ''}</span>`
       : !c.enBolt
         ? ' · <span class="text-telecab-warn" title="Está en Vehículos con sede Barcelona, pero no en la empresa de BOLT de Barcelona: hasta que se dé de alta, nadie puede trabajar con él en BOLT.">No está dado de alta en BOLT</span>'
         : '';
-    const chipSinCT = c.conCT ? '' : `<div class="mt-1"><span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide
-        bg-telecab-card2 border border-telecab-border text-telecab-muted"
-        title="${esc(AVISO_SIN_CT + ' Cada fijo libra sus días. Para ponérselos, el botón de la persona a la derecha.')}">
-        <i class="fa-solid fa-user-slash text-[9px]" aria-hidden="true"></i>Sin correturnos</span></div>`;
-    const conCTDesde = c.conCT && c.conCTDesde
-      ? `<div class="mt-1 text-[11px] text-telecab-muted">con correturnos desde ${esc(ddmm(c.conCTDesde))}</div>` : '';
-
-    let ct = '';
-    if (conColsCT) {
-      ct = c.conCT
-        ? `<td class="px-3 py-2.5" data-col="ct-dia">${celdaPlaza(c, 'dia', 'ct')}</td><td class="px-3 py-2.5" data-col="ct-noche">${celdaPlaza(c, 'noche', 'ct')}</td>`
-        : `<td colspan="2" class="px-3 py-2.5 align-middle"><p class="text-xs text-telecab-muted flex items-center gap-2 max-w-md">
-             <i class="fa-solid fa-user-slash shrink-0" aria-hidden="true"></i>${esc(AVISO_SIN_CT)}</p></td>`;
-    }
-    const tituloCT = c.conCT
-      ? 'Quitar los correturnos de este coche: cada fijo pasa a librar los días del bloque'
-      : 'Ponerle correturnos: los dos fijos libran a la vez unos días (el bloque) y el correturnos los cubre';
-    return `<tr data-mat="${esc(c.matricula)}" class="border-t border-telecab-border/70 align-top scroll-mt-24 ${c.activo ? '' : 'opacity-70'}">
-      <td class="px-3 py-2.5 whitespace-nowrap">
+    return `<tr data-mat="${esc(c.matricula)}" class="border-t border-telecab-border/70 align-top scroll-mt-24">
+      <td class="px-3 py-2.5 whitespace-nowrap${apagado}">
         <div class="font-mono font-semibold">${esc(c.matricula)}</div>
         <div class="text-xs text-telecab-muted">${esc(c.modelo || '')}${aviso}</div>
-        ${chipSinCT}${conCTDesde}
       </td>
-      <td class="px-3 py-2.5 whitespace-nowrap">${celdaDescanso(c)}</td>
-      <td class="px-3 py-2.5" data-col="fijo-dia">${celdaPlaza(c, 'dia', 'fijo')}</td>
-      <td class="px-3 py-2.5" data-col="fijo-noche">${celdaPlaza(c, 'noche', 'fijo')}</td>
-      ${ct}
-      <td class="px-2 py-2.5 text-right whitespace-nowrap" data-no-imprimir>
+      <td class="px-3 py-2.5 whitespace-nowrap${apagado}">${celdaDescanso(c)}</td>
+      <td class="px-3 py-2.5${apagado}">${celdaPlaza(c, 'dia')}</td>
+      <td class="px-3 py-2.5${apagado}">${celdaPlaza(c, 'noche')}</td>
+      ${casillasTd}
+      <td class="px-2 py-2.5 text-right whitespace-nowrap">
         <button type="button" data-accion="${enCuadrante ? 'sacar' : 'meter'}" aria-label="${enCuadrante ? 'Sacar del cuadrante' : 'Meter en un cuadrante'} ${esc(c.matricula)}"
-                title="${enCuadrante ? 'Sacar del cuadrante (queda en «Coches sin cuadrante»)' : 'Meter en un cuadrante'}"
+                title="${enCuadrante ? 'Sacar del cuadrante (queda en «Coches sin cuadrante», sin CT)' : 'Meter en un cuadrante'}"
                 class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition">
           <i class="fa-solid ${enCuadrante ? 'fa-object-ungroup' : 'fa-object-group'}" aria-hidden="true"></i></button>
-        <button type="button" data-accion="ct-coche" aria-label="${c.conCT ? 'Quitar los correturnos de' : 'Ponerle correturnos a'} ${esc(c.matricula)}" title="${esc(tituloCT)}"
-                class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition">
-          <i class="fa-solid ${c.conCT ? 'fa-user-slash' : 'fa-user-plus'}" aria-hidden="true"></i></button>
       </td>
     </tr>`;
   }
 
-  // El descanso. Con correturnos, el del coche (el bloque): sus fijos libran
-  // esos días y el CT los cubre. Sin ellos (lo de por defecto), uno por fijo:
-  // el sol para el de día y la luna para el de noche (db/203 de Madrid).
+  // El descanso: uno por fijo, siempre. El sol para el de día y la luna para el
+  // de noche (db/203 de Madrid). Qué pasa esos días lo decide el cuadrante: con
+  // casilla de ese turno, la coge su persona; sin ella, el turno no sale.
   function celdaDescanso(c) {
-    if (c.conCT) {
-      const txt = diasTexto(c.descanso);
-      return `<button type="button" data-accion="bloque" title="El descanso del coche: los dos fijos libran a la vez estos días y el correturnos los cubre. Pincha para cambiarlo."
-                class="tc-pulsable px-2 py-1 rounded-lg text-xs font-semibold border hover:border-telecab-gold/50
-                       ${txt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
-                ${txt ? esc(txt) : 'sin descanso'}</button>`;
-    }
     const boton = (turno, icono) => {
       const dias = ((c.descansoTurno || {})[turno]) || [];
       const txt = dias.length ? 'libra ' + diasTexto(dias) : 'no libra';
       return `<button type="button" data-accion="desc-turno" data-turno="${turno}"
-                title="${esc(`Los días que libra el fijo de ${nombreTurno(turno)}. Ese turno, esos días, el coche no sale. Pincha para cambiarlos.`)}"
+                title="${esc(`Los días que libra el fijo de ${nombreTurno(turno)}. Si el cuadrante tiene CT de ${nombreTurno(turno)} (o todoturno), esos días lo lleva su casilla; si no, ese turno el coche no sale. Pincha para cambiarlos.`)}"
                 class="tc-pulsable inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border hover:border-telecab-gold/50
                        ${dias.length ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
                 <i class="fa-solid ${icono} text-[9px]" aria-hidden="true"></i>${esc(txt)}</button>`;
@@ -630,55 +629,70 @@
     return `<div class="flex flex-col items-start gap-1">${boton('dia', 'fa-sun')}${boton('noche', 'fa-moon')}</div>`;
   }
 
-  const CLAVE = { fijo: { dia: 'fijoDia', noche: 'fijoNoche' }, ct: { dia: 'ctDia', noche: 'ctNoche' } };
+  const CLAVE = { dia: 'fijoDia', noche: 'fijoNoche' };
 
   /**
-   * Una plaza. Libre: el botón de borde discontinuo «+ Asignar». Ocupada: el
-   * nombre con su promedio, el teléfono, «libra L M» (fijo) o «días X J» (CT) y
-   * «desde dd/mm»; tachada si la cuenta ya no está activa en BOLT. Debajo del
-   * fijo, cómo está ESE turno ese día: «libra hoy» (gris) o «hueco» (rojo).
+   * Una persona puesta (un fijo o la de una casilla): el nombre con su promedio,
+   * el teléfono y la línea de debajo (`sub`, ya escapada); tachada si la cuenta
+   * ya no está activa en BOLT. Es un botón: pulsarlo la cambia o la quita.
    */
-  function celdaPlaza(c, turno, rol) {
-    const p = (c.plazas || {})[CLAVE[rol][turno]];
-    const datos = `data-accion="plaza" data-turno="${turno}" data-rol="${rol}"`;
+  function botonPersona(p, datos, sub, titulo) {
+    return `<button type="button" ${datos} class="text-left w-full group" title="${esc(titulo)}">
+        <span class="flex flex-wrap items-center gap-1.5">
+          <span class="${p.activa === false ? 'line-through text-telecab-muted' : 'font-medium group-hover:text-telecab-gold'} transition">${esc(p.nombre)}</span>
+          ${chipPromedio(p.promedio)}
+        </span>
+        ${p.telefono ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(p.telefono)}</span>`
+                     : '<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>'}
+        <span class="block text-xs text-telecab-muted">${sub}</span>
+        ${p.activa === false ? '<span class="block text-[11px] text-telecab-warn font-semibold">ya no está activa en BOLT</span>' : ''}
+      </button>`;
+  }
+
+  /** El botón de una plaza o casilla libre: borde discontinuo y «+ Asignar». */
+  const botonLibre = (datos, titulo) => `<button type="button" ${datos} title="${esc(titulo)}"
+      class="tc-pulsable text-left w-full px-2 py-1 rounded-lg border border-dashed border-telecab-border text-telecab-muted text-sm hover:border-telecab-gold/60 hover:text-telecab-text">
+      <i class="fa-solid fa-plus text-xs mr-1" aria-hidden="true"></i>Asignar</button>`;
+
+  /**
+   * La plaza de un fijo. Libre: «+ Asignar». Ocupada: la persona, «libra L M» y
+   * «desde dd/mm». Debajo, cómo está ESE turno ese día (lineaTurno).
+   */
+  function celdaPlaza(c, turno) {
+    const p = (c.plazas || {})[CLAVE[turno]];
+    const datos = `data-accion="plaza" data-turno="${turno}"`;
     let html;
     if (!p) {
-      // En el papel no hay nada que pulsar: dice «Sin conductor», sin el borde de botón.
-      html = `<button type="button" ${datos} data-plaza-libre title="Plaza libre. Pincha para poner a alguien."
-                class="tc-pulsable text-left w-full px-2 py-1 rounded-lg border border-dashed border-telecab-border text-telecab-muted text-sm hover:border-telecab-gold/60 hover:text-telecab-text">
-                ${enPapel('<i class="fa-solid fa-plus text-xs mr-1" aria-hidden="true"></i>Asignar', 'Sin conductor')}</button>`;
+      html = botonLibre(datos, 'Plaza libre. Pincha para poner a alguien.');
     } else {
-      const sub = rol === 'fijo'
-        ? (() => { const d = diasTexto(c.conCT ? c.descanso : (c.descansoTurno || {})[turno]); return d ? 'libra ' + d : 'no libra'; })()
-        : (diasTexto(p.dias) ? 'días ' + diasTexto(p.dias) : 'sin días');
-      html = `<button type="button" ${datos} class="text-left w-full group"
-                title="${esc(`${p.nombre}, desde el ${isoAes(p.desde)}${p.hasta ? ' hasta el ' + isoAes(p.hasta) : ''}. Pincha para cambiarlo o dejar la plaza libre.`)}">
-          <span class="flex flex-wrap items-center gap-1.5">
-            <span class="${p.activa === false ? 'line-through text-telecab-muted' : 'font-medium group-hover:text-telecab-gold'} transition">${esc(p.nombre)}</span>
-            ${chipPromedio(p.promedio)}
-          </span>
-          ${p.telefono ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(p.telefono)}</span>`
-                       : '<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>'}
-          <span class="block text-xs text-telecab-muted">${esc(sub)} · desde ${esc(ddmm(p.desde))}${p.hasta ? ` · hasta ${esc(ddmm(p.hasta))}` : ''}</span>
-          ${p.activa === false ? '<span class="block text-[11px] text-telecab-warn font-semibold">ya no está activa en BOLT</span>' : ''}
-        </button>`;
+      const d = diasTexto((c.descansoTurno || {})[turno]);
+      const sub = `${d ? 'libra ' + d : 'no libra'} · desde ${ddmm(p.desde)}${p.hasta ? ` · hasta ${ddmm(p.hasta)}` : ''}`;
+      html = botonPersona(p, datos, esc(sub),
+        `${p.nombre}, desde el ${isoAes(p.desde)}${p.hasta ? ' hasta el ' + isoAes(p.hasta) : ''}. Pincha para cambiarlo o dejar la plaza libre.`);
     }
-    return html + (rol === 'fijo' ? lineaTurno(c, turno) : lineaCT(c, turno, p));
+    return html + lineaTurno(c, turno);
   }
 
   const pastilla = (txt, cls, tit, icono) => `<span class="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-semibold border ${cls}" title="${esc(tit)}">
       ${icono ? `<i class="fa-solid ${icono} text-[9px]" aria-hidden="true"></i>` : ''}${esc(txt)}</span>`;
   const GRIS = 'bg-telecab-card2 border-telecab-border text-telecab-muted';
   const ROJO = 'bg-telecab-red/10 border-telecab-red/40 text-telecab-red';
-  const AMBAR = 'bg-telecab-warn/10 border-telecab-warn/40 text-telecab-warn';
   const VIOLETA = 'bg-telecab-violet/10 border-telecab-violet/30 text-telecab-violet';
 
-  /** Cómo está el turno ese día (`turnos` del tablero, que decide el servidor). */
+  /**
+   * Cómo está el turno de un fijo ese día (`turnos` del tablero, que decide el
+   * servidor):
+   *   'cubre-ct' → «libra hoy · lo cubre el CT»: libra y lo lleva la casilla;
+   *   'hueco'    → «libra hoy · hueco» si libra y la casilla está vacía, o
+   *                «hueco» si no tiene fijo;
+   *   'libra'    → «libra hoy»: libra y no hay casilla de ese turno, el coche no sale;
+   *   'trabaja'  → nada que decir.
+   */
   function lineaTurno(c, turno) {
     const st = (c.turnos || {})[turno];
-    const fijo = (c.plazas || {})[CLAVE.fijo[turno]];
-    const ct = (c.plazas || {})[CLAVE.ct[turno]];
+    const fijo = (c.plazas || {})[CLAVE[turno]];
     const t = nombreTurno(turno);
+    const cu = cuadDe(c);
     // Un coche desactivado en BOLT (o que ya no es de la sede) no sale: su turno
     // sin nadie no es un hueco rojo que cubrir. Tampoco cuenta en la cifra de
     // Huecos ni en las tarjetas de zona.
@@ -687,42 +701,139 @@
       return pastilla(`no sale · ${porque}`, GRIS,
         `El coche no está activo (${porque}): ese turno no sale y no cuenta en las cifras de arriba. Si vuelve a estar activo, sale como cualquier otro.`, 'fa-ban');
     }
+    if (st === 'cubre-ct') {
+      const k = casillasDe(cu).find(x => x.hoy && x.hoy.matricula === c.matricula && x.hoy.turno === turno) || casillaDelTurno(cu, turno);
+      const quien = k && k.persona ? k.persona.nombre : 'el correturnos';
+      return pastilla(`libra ${cuando()} · lo cubre el CT`, VIOLETA,
+        `Libra el fijo de ${t}; ese día lleva el coche ${quien}${k && cu ? `, la casilla de ${jornadaDe(k.jornada).nombre} del ${tituloCuad(cu)}` : ''}.`, 'fa-user-group');
+    }
     if (st === 'libra') {
-      return pastilla(`libra ${cuando()}`, GRIS,
-        `Libra el fijo de ${t} y el coche no tiene correturnos: ese turno no sale. Es lo planificado, no un hueco.`, 'fa-mug-hot');
+      return pastilla(`libra ${cuando()}`, GRIS, cu
+        ? `Libra el fijo de ${t} y el ${tituloCuad(cu)} no tiene CT de ${t}: ese turno el coche no sale. Es lo planificado, no un hueco.`
+        : `Libra el fijo de ${t} y el coche no está en ningún cuadrante, así que no lleva CT: ese turno no sale. Es lo planificado, no un hueco.`, 'fa-mug-hot');
     }
     if (st === 'hueco') {
-      const porque = !fijo ? `No tiene fijo de ${t}.`
-        : !fijo.libraHoy ? ''
-          : ct ? `Libra el fijo y ${ct.nombre} no cubre ese día.` : 'Libra el fijo y no hay correturnos que lo cubra.';
-      // Si el fijo libra, se dice delante: el hueco es el día que no cubre nadie, no el fijo.
-      return pastilla(`${fijo && fijo.libraHoy ? `libra ${cuando()} · hueco` : `hueco ${cuando()}`}`, ROJO,
-        `Ese turno tiene que salir y no lo lleva nadie. ${porque}`.trim(), 'fa-triangle-exclamation');
+      // La libranza es de la plaza (matrícula y turno): libra aunque no tenga fijo.
+      const libra = ((c.descansoTurno || {})[turno] || []).map(Number).includes(isodow(DIA)) || !!(fijo && fijo.libraHoy);
+      if (libra) {
+        const k = casillaDelTurno(cu, turno);
+        return pastilla(`libra ${cuando()} · hueco`, ROJO,
+          `Libra el fijo de ${t} y ${k ? `la casilla de ${jornadaDe(k.jornada).nombre} del ${tituloCuad(cu)} está vacía: pon a alguien en ella` : 'nadie lo coge'}.`,
+          'fa-triangle-exclamation');
+      }
+      return pastilla(`hueco ${cuando()}`, ROJO, `Ese turno tiene que salir y no lo lleva nadie: no tiene fijo de ${t}.`, 'fa-triangle-exclamation');
     }
-    if (st === 'trabaja' && fijo && fijo.libraHoy) {
-      return pastilla(`libra ${cuando()} · cubre el CT`, GRIS, `Libra el fijo de ${t}; ese día lleva el coche el correturnos.`, 'fa-mug-hot');
+    return '';
+  }
+
+  // ── Las casillas de CT ──────────────────────────────────────────────────────
+
+  /** Lo que coge una casilla, por día de la semana (y de día antes que de noche). */
+  const cubreOrdenado = k => (k.cubre || []).slice()
+    .sort((a, b) => Number(a.dia) - Number(b.dia) || Number(a.turno === 'noche') - Number(b.turno === 'noche'));
+  /** Una plaza que coge, en texto: «L 1111AAA», y en la todoturno con su turno: «M 2222BBB (noche)». */
+  const textoCoge = (x, k) => `${DIAS_LETRA[Number(x.dia) - 1] || '?'} ${x.matricula}${k.jornada === 'todoturno' ? ` (${nombreTurno(x.turno)})` : ''}`;
+  /** Los días que libra la casilla, en texto. */
+  const textoLibra = k => { const l = (k.libra || []).map(Number); return l.length >= 7 ? 'todos los días' : l.length ? diasTexto(l) : 'no libra'; };
+
+  /**
+   * «cubre: L 1111AAA · M 2222BBB …»: lo que coge cada día de la semana. En la
+   * todoturno, cada plaza con su sol o su luna. La del día que se mira, resaltada.
+   */
+  function lineaCubre(k) {
+    const cubre = cubreOrdenado(k);
+    if (!cubre.length) {
+      return `<p class="mt-2 text-xs text-telecab-muted">Todavía no coge nada: ${k.jornada === 'todoturno' ? 'ningún fijo' : `ningún fijo de ${nombreTurno(k.jornada)}`} del cuadrante libra.</p>`;
+    }
+    const h = k.hoy;
+    const items = cubre.map(x => {
+      const esHoy = h && Number(x.dia) === isodow(DIA) && h.matricula === x.matricula && h.turno === x.turno;
+      const turno = k.jornada === 'todoturno'
+        ? ` <i class="fa-solid ${x.turno === 'noche' ? 'fa-moon' : 'fa-sun'} text-[9px]" role="img" aria-label="de ${nombreTurno(x.turno)}" title="de ${nombreTurno(x.turno)}"></i>` : '';
+      return `<span class="whitespace-nowrap${esHoy ? ' text-telecab-text font-semibold' : ''}"><b class="font-semibold">${DIAS_LETRA[Number(x.dia) - 1] || '?'}</b> <span class="font-mono">${esc(x.matricula)}</span>${turno}</span>`;
+    });
+    return `<p class="mt-2 text-xs text-telecab-muted leading-relaxed" title="${esc(`Las plazas que coge cada día de la semana: las que no se trabajan porque libra su fijo. Ninguna se repite.`)}">
+      <span class="text-[10px] uppercase tracking-wide font-semibold">cubre</span> ${items.join(' · ')}</p>`;
+  }
+
+  /**
+   * LAS PLAZAS REPETIDAS (`repetidas` del tablero): días en que la casilla
+   * tendría que coger más de una plaza. Las escrituras no lo dejan pasar, pero
+   * la conversión de db/236 pudo dejar alguno (dos CT por coche que libraban el
+   * mismo día). La casilla coge la primera y las demás quedan en hueco: se dice
+   * en rojo hasta que se cambie una de esas libranzas.
+   */
+  function lineaRepetidas(k) {
+    const reps = (k.repetidas || []).filter(x => (x.plazas || []).length > 1);
+    if (!reps.length) return '';
+    const items = reps.map(x => `el ${DIAS_LETRA[Number(x.dia) - 1] || '?'} ${x.plazas.map(p => `${p.matricula} (${nombreTurno(p.turno)})`).join(' y ')}`);
+    return `<p class="mt-2 text-xs font-semibold text-telecab-red" title="${esc('Ninguna plaza se puede repetir: la casilla no coge dos coches a la vez. Coge la primera y las demás quedan en hueco. Cambia una de esas libranzas.')}">
+      <i class="fa-solid fa-triangle-exclamation mr-1" aria-hidden="true"></i>Plaza repetida: libran ${esc(items.join('; '))}. Cambia una de esas libranzas.</p>`;
+  }
+
+  /**
+   * LOS DOBLES TURNOS (`dobles` del tablero): días en que la persona de la
+   * casilla tendría que coger un coche en un turno en que ya es fija de otro.
+   * Las escrituras no lo dejan pasar, pero la conversión de db/236 pudo dejar
+   * alguno (un CT por coche que también era fijo pasa a una casilla que coge a
+   * todos los coches del cuadrante). Se dice en rojo hasta que se arregle.
+   */
+  function lineaDobles(k) {
+    const dobles = (k.dobles || []).filter(x => (x.dias || []).length);
+    if (!k.persona || !dobles.length) return '';
+    const items = dobles.map(x => `del ${x.matricula} de ${nombreTurno(x.turno)} (los ${x.dias.map(d => DIAS_LETRA[Number(d) - 1] || '?').join(' ')})`);
+    return `<p class="mt-2 text-xs font-semibold text-telecab-red" title="${esc('Nadie lleva dos coches a la vez: esos días la casilla la pone a coger un coche mientras trabaja de fija en otro. Quítala de la casilla o de su plaza fija, o cambia una libranza.')}">
+      <i class="fa-solid fa-triangle-exclamation mr-1" aria-hidden="true"></i>Dobla turno: ${esc(k.persona.nombre)} también es fija ${esc(items.join(' y '))}. Quítala de una de las dos.</p>`;
+  }
+
+  /** Cómo está la casilla el día que se mira: a quién cubre, o que libra, o el hueco si está vacía. */
+  function estadoCasilla(k) {
+    const h = k.hoy;
+    if (k.persona) {
+      if (h) {
+        return pastilla(`cubre ${cuando()} ${h.matricula} de ${nombreTurno(h.turno)}`, VIOLETA,
+          `${mayus(cuando())} libra el fijo de ${nombreTurno(h.turno)} del ${h.matricula}: lleva el coche ${k.persona.nombre}.`, 'fa-user-group');
+      }
+      return pastilla(`libra ${cuando()}`, GRIS,
+        `${mayus(cuando())} no libra ningún fijo que coja esta casilla: ${k.persona.nombre} libra.`, 'fa-mug-hot');
+    }
+    if (h) {
+      return pastilla(`hueco ${cuando()} · ${h.matricula} de ${nombreTurno(h.turno)}`, ROJO,
+        `${mayus(cuando())} libra el fijo de ${nombreTurno(h.turno)} del ${h.matricula} y la casilla está vacía: nadie lleva ese turno. Pulsa «Asignar».`,
+        'fa-triangle-exclamation');
     }
     return '';
   }
 
   /**
-   * El CT que trabaja ese día, señalado. Si ese día el fijo de su turno también
-   * trabaja, el CT no está cubriendo a nadie: sus días ya no son los del bloque
-   * (se cambió el bloque después de ponerlo, y sus días no cambian solos, como
-   * en Madrid, que los copia una vez al asignar). Decir «cubre» sería mentira:
-   * se avisa en ámbar para que se le cambien los días en su plaza.
+   * LA CASILLA: una celda que ocupa todas las filas del cuadrante (`filas`). La
+   * persona (o «+ Asignar»), lo que coge, su libranza, cómo está ese día y el
+   * botón para quitarla.
    */
-  function lineaCT(c, turno, p) {
-    if (!p || !p.trabajaHoy) return '';
-    const fijo = (c.plazas || {})[CLAVE.fijo[turno]];
-    if (fijo && fijo.trabajaHoy) {
-      return pastilla(`trabaja ${cuando()} con el fijo`, AMBAR,
-        `Sus días (${diasTexto(p.dias) || 'ninguno'}) no son los del bloque (${diasTexto(c.descanso) || 'sin días'}): ese día el fijo no libra y van los dos. ` +
-        'Cámbiale los días en su plaza.', 'fa-triangle-exclamation');
-    }
-    return pastilla(`cubre ${cuando()}`, VIOLETA,
-      fijo ? 'Ese día lleva el coche el correturnos: es uno de los días que libra el fijo.'
-        : `Ese día lleva el coche el correturnos: no tiene fijo de ${nombreTurno(turno)}.`, 'fa-user-group');
+  function celdaCasilla(cu, k, filas) {
+    const J = jornadaDe(k.jornada);
+    const p = k.persona;
+    const datos = `data-accion="casilla" data-jornada="${esc(k.jornada)}"`;
+    const desde = (p && p.desde) || k.desde;
+    const quien = p
+      ? botonPersona(p, datos, esc(`desde ${ddmm(desde)}${p.hasta ? ` · hasta ${ddmm(p.hasta)}` : ''}`),
+        `${p.nombre}, ${J.nombre} del ${tituloCuad(cu)} desde el ${isoAes(desde)}. Pincha para cambiarlo o dejar la casilla vacía.`)
+      : botonLibre(datos, `Casilla vacía${k.desde ? ` desde el ${isoAes(k.desde)}` : ''}. Pincha para poner a alguien.`);
+    const libra = cubreOrdenado(k).length
+      ? `<p class="text-xs text-telecab-muted" title="${esc('Los días que no coge ninguna plaza del cuadrante: los que no libra ningún fijo que coja. Se calcula solo.')}">
+          <span class="text-[10px] uppercase tracking-wide font-semibold">libra</span> ${esc(textoLibra(k))}</p>` : '';
+    return `<td rowspan="${filas}" class="px-3 py-2.5 align-top border-l border-telecab-border/70 min-w-[13rem] max-w-[20rem]">
+      ${quien}
+      ${lineaCubre(k)}
+      ${libra}
+      ${lineaRepetidas(k)}
+      ${lineaDobles(k)}
+      ${estadoCasilla(k)}
+      <button type="button" data-accion="quitar-casilla" data-jornada="${esc(k.jornada)}"
+              aria-label="Quitar la casilla de ${esc(J.nombre)} del ${esc(tituloCuad(cu))}" title="Quitar esta casilla del cuadrante desde el día que se mira"
+              class="mt-2 block text-[11px] text-telecab-muted hover:text-telecab-red">
+        <i class="fa-solid fa-trash mr-1" aria-hidden="true"></i>quitar la casilla</button>
+    </td>`;
   }
 
   // ── Sin plaza ───────────────────────────────────────────────────────────────
@@ -739,63 +850,12 @@
       : '<span class="text-xs text-telecab-muted">Todos tienen plaza.</span>';
   }
 
-  // ── La hoja impresa ─────────────────────────────────────────────────────────
-  // Camilo, 06/11/2026: «en Barcelona permíteme imprimir el planificador con casi
-  // el mismo formato que se pinta el front». Se imprime la pantalla tal cual está
-  // (el día, la zona abierta y lo que deja el buscador); la hoja de estilos de
-  // impresión está en la vista. Aquí solo se rellena la cabecera del papel, que
-  // en pantalla no existe: un papel no se actualiza, así que dice de qué día es,
-  // de qué zona y cuándo se imprimió.
-
-  /**
-   * Las cifras de la hoja. Sin zona abierta, las del servidor (las de arriba en
-   * pantalla). Con una zona, las de sus coches, con la misma regla que el
-   * resumen del servidor (barcelona.service): solo los coches activos, «turnos»
-   * son los que tienen que salir (cubiertos + huecos) y los que libran van
-   * aparte. «Sin plaza» es de toda Barcelona: una persona no es de ninguna zona.
-   */
-  function cifrasHoja() {
-    const r = T.resumen || {};
-    if (!ZONA) return r;
-    const coches = (T.coches || []).filter(c => c.activo && zonaDeCoche(c) === ZONA);
-    const estados = coches.flatMap(c => [(c.turnos || {}).dia, (c.turnos || {}).noche]);
-    return {
-      coches: coches.length,
-      turnos: estados.filter(x => x !== 'libra').length,
-      cubiertos: estados.filter(x => x === 'trabaja').length,
-      huecos: estados.filter(x => x === 'hueco').length,
-      libran: estados.filter(x => x === 'libra').length,
-      sinPlaza: r.sinPlaza,
-    };
-  }
-
-  function prepararHoja() {
-    if (!T || !DIA) return;
-    const dia = DIAS_NOMBRE[isodow(DIA) - 1];
-    $('#bp-hoja-dia').textContent = `${dia.charAt(0).toUpperCase() + dia.slice(1)} ${isoAes(DIA)}`;
-    $('#bp-hoja-zona').textContent = !ZONA ? 'Todas las zonas'
-      : ZONA === SIN ? 'Sin zona y coches sin cuadrante' : `Zona ${nombreZona(ZONA)}`;
-    const n = v => Number(v || 0);
-    const k = cifrasHoja();
-    const q = $('#bp-busca').value.trim();
-    $('#bp-hoja-cifras').innerHTML = [
-      `<b>${plural(n(k.coches), 'coche')}</b>`,
-      `<b>${n(k.cubiertos)} / ${n(k.turnos)}</b> turnos cubiertos`,
-      `<b class="${n(k.huecos) ? 'bp-hoja-rojo' : ''}">${plural(n(k.huecos), 'hueco')}</b>`,
-      `<b>${n(k.libran)}</b> ${n(k.libran) === 1 ? 'libra' : 'libran'} (el coche no sale)`,
-      `<b>${n(k.sinPlaza)}</b> sin plaza${ZONA ? ' en Barcelona' : ''}`,
-      // Con el buscador puesto, el papel no tiene todo: se dice.
-      ...(q ? [`solo lo que coincide con «${esc(q)}»`] : []),
-    ].join(' · ');
-    const ahora = new Date();
-    $('#bp-hoja-impreso').textContent = `Impreso el ${pad(ahora.getDate())}/${pad(ahora.getMonth() + 1)}/${ahora.getFullYear()}` +
-      ` a las ${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`;
-  }
-
   // ══════════ LAS ACCIONES ══════════
 
-  /** Dónde está ya alguien ese día, en palabras: «fijo de día en 1234ABC». */
-  const textoPlaza = x => `${x.rol === 'ct' ? 'CT' : 'fijo'} de ${nombreTurno(x.turno)} en ${x.matricula}${x.rol === 'ct' && x.dias ? ` (${diasTexto(x.dias)})` : ''}`;
+  /** Dónde está ya alguien ese día, en palabras: «fijo de día en 1234ABC», «CT de noche del C1». */
+  const textoPlaza = x => (x.rol === 'ct'
+    ? `${jornadaDe(x.jornada).nombre} del ${tituloCuad(x.cuadrante)}`
+    : `fijo de ${nombreTurno(x.turno)} en ${x.matricula}`);
 
   /**
    * Las cuentas activas para el selector, con dónde está ya cada una. Primero
@@ -816,115 +876,75 @@
     });
     if (actual && !ops.some(o => o.valor === actual.uuid)) {
       ops.unshift({ valor: actual.uuid, texto: actual.nombre + (actual.activa === false ? ' (ya no activa en BOLT)' : ''),
-        detalle: 'Es quien tiene la plaza ahora' });
+        detalle: 'Es quien está ahora' });
     }
     return ops;
   }
 
-  /** Lo que ya libra el resto de bloques del cuadrante: dos bloques no pueden compartir día (los cubre el mismo CT). */
-  function otrosBloques(c) {
-    const cu = c && c.cuadranteId != null ? cuadPorId.get(String(c.cuadranteId)) : null;
-    if (!cu) return '';
-    const otros = (cu.bloques || []).filter(b => b.matricula !== c.matricula && (b.dias || []).length);
-    return otros.length
-      ? `En el ${tituloCuad(cu)} ya libran: ${otros.map(b => `${b.matricula} ${diasTexto(b.dias)}`).join(' · ')}. Dos bloques del mismo cuadrante no pueden compartir día: los cubre el mismo correturnos.`
-      : '';
-  }
+  const buscadorConductor = { marcador: 'Busca por nombre o teléfono', tope: 12 };
+  const nombreDe = uuid => ((T.conductores || []).find(p => p.uuid === uuid) || {}).nombre || 'la persona';
 
-  // Poner, cambiar o quitar a alguien de una plaza. Un FIJO no elige días: hace
-  // todos menos su libranza. Un CT dice qué días trabaja EN ESTA MATRÍCULA
-  // (puede llevar varios coches del mismo turno, cada uno sus días).
-  async function asignarPlaza(mat, turno, rol) {
+  // Poner, cambiar o quitar al fijo de una plaza. Un fijo no elige días: hace
+  // todos menos su libranza.
+  async function asignarPlaza(mat, turno) {
     const c = cochePorMat.get(mat);
     if (!c) return;
-    const actual = (c.plazas || {})[CLAVE[rol][turno]] || null;
+    const actual = (c.plazas || {})[CLAVE[turno]] || null;
     const t = nombreTurno(turno);
-    const esCT = rol === 'ct';
-    const campos = [{
-      id: 'uuid', etiqueta: esCT ? 'Correturnos' : 'Conductor', tipo: 'lista',
-      opciones: opcionesConductores(actual), valor: actual ? actual.uuid : '',
-      buscador: { marcador: 'Busca por nombre o teléfono', tope: 12 },
-      ayuda: esCT ? '«Sin dato» deja la plaza libre.'
-        : `Si ya era fijo de ${t} en otra matrícula, se mueve aquí. «Sin dato» deja la plaza libre.`,
-    }];
-    if (esCT) {
-      campos.push({ id: 'dias', etiqueta: 'Qué días trabaja en esta matrícula', tipo: 'semana',
-        valor: ((actual && actual.dias) || c.descanso || []).map(Number),
-        ayuda: diasTexto(c.descanso) ? `El bloque del coche es ${diasTexto(c.descanso)}: los días que libran sus fijos.` : 'El coche aún no tiene bloque.' });
-    }
-    campos.push({ id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: isoAes(DIA),
-      ayuda: 'Vale todos los días desde esa fecha hasta que se cambie. Lo de antes se cierra la víspera.' });
-
-    const v = await Dialogo.formulario(`${esCT ? 'CT' : 'Fijo'} ${t} · ${mat}`, campos, {
+    const v = await Dialogo.formulario(`Fijo ${t} · ${mat}`, [
+      { id: 'uuid', etiqueta: 'Conductor', tipo: 'lista', opciones: opcionesConductores(actual), valor: actual ? actual.uuid : '',
+        buscador: buscadorConductor, ayuda: `Si ya era fijo de ${t} en otra matrícula, se mueve aquí. «Sin dato» deja la plaza libre.` },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: isoAes(DIA),
+        ayuda: 'Vale todos los días desde esa fecha hasta que se cambie. Lo de antes se cierra la víspera.' },
+    ], {
       textoBoton: 'Guardar', ancho: 'max-w-lg',
-      nota: esCT
-        ? 'Un correturnos puede llevar varios coches del mismo turno, cada uno con sus días; los días no pueden pisarse entre dos coches.'
-        : `Un fijo hace todos los días menos su libranza (${diasTexto(c.conCT ? c.descanso : (c.descansoTurno || {})[turno]) || 'ahora no libra'}).`,
+      nota: `Un fijo hace todos los días menos su libranza (${diasTexto((c.descansoTurno || {})[turno]) || 'ahora no libra'}).`,
     });
     if (!v) return;
     const uuid = v.uuid || null;
-    const dias = v.dias || [];
-    if (esCT && uuid && !dias.length) {
-      await Dialogo.aviso({ titulo: 'Faltan los días', tono: 'aviso', texto: 'Un correturnos sin días no cubre nada: marca al menos uno.' });
-      return;
-    }
     // Lo mismo que había: no se escribe nada. Salvo que se adelante el «desde»
     // de quien ya estaba (corregir desde cuándo lleva la plaza): eso sí se manda.
-    const igual = uuid === (actual ? actual.uuid : null) && (!esCT || !uuid || mismosDias(dias, actual.dias));
-    if (igual && !(actual && actual.desde && v.desde && v.desde < actual.desde)) {
+    if (uuid === (actual ? actual.uuid : null) && !(actual && actual.desde && v.desde && v.desde < actual.desde)) {
       Dialogo.hecho('Ya estaba así.', { tono: 'info' });
       return;
     }
-    const r = await escribir('/barcelona/api/asignar',
-      { matricula: mat, turno, rol, uuid, desde: v.desde || DIA, ...(esCT && uuid ? { dias } : {}) },
+    const r = await escribir('/barcelona/api/asignar', { matricula: mat, turno, rol: 'fijo', uuid, desde: v.desde || DIA },
       { titulo: 'No se pudo guardar' });
     if (!r) return;
     hecho(r, r.cambio === false ? 'Ya estaba así.' : r.movidaDe ? `Hecho. Se ha movido desde ${r.movidaDe}.` : 'Hecho.');
   }
 
-  // El bloque de un coche con correturnos: los dos fijos libran a la vez esos
-  // días, y el CT los cubre.
-  async function fijarBloque(mat) {
-    const c = cochePorMat.get(mat);
-    if (!c) return;
-    const v = await Dialogo.formulario(`Descanso de ${mat}`, [
-      { id: 'dias', etiqueta: 'Días que libran los fijos', tipo: 'semana', valor: (c.descanso || []).map(Number), ayuda: otrosBloques(c) },
-    ], { textoBoton: 'Guardar', nota: `Desde el ${isoAes(DIA)}. Los días que libran los fijos (día y noche a la vez). El correturnos cubre justo esos días.` });
-    if (!v) return;
-    if (mismosDias(v.dias, c.descanso)) { Dialogo.hecho('Ya estaba así.', { tono: 'info' }); return; }
-    const r = await escribir('/barcelona/api/descanso', { matricula: mat, turno: null, dias: v.dias, desde: DIA },
-      { titulo: 'No se pudo guardar el descanso' });
-    if (!r) return;
-    const texto = `Descanso de ${mat}: ${diasTexto(v.dias) || 'sin descanso'}.`;
-    // Los días de cada CT no cambian con el bloque (como en Madrid: se copian al
-    // ponerlo). Si ya no son los del bloque nuevo, el CT trabajaría días en que
-    // el fijo no libra y dejaría otros sin cubrir: se dice quién y con qué
-    // días, para cambiárselos en su columna. Se mira en el tablero que vuelve.
-    const ahora = cochePorMat.get(mat) || {};
-    const desfasados = [['dia', 'ctDia'], ['noche', 'ctNoche']]
-      .map(([turno, k]) => [turno, (ahora.plazas || {})[k]])
-      .filter(([, p]) => p && !mismosDias(p.dias, v.dias))
-      .map(([turno, p]) => `${p.nombre} (CT de ${nombreTurno(turno)}) sigue con ${diasTexto(p.dias) || 'ningún día'}`);
-    if (desfasados.length) {
-      const varios = desfasados.length > 1;
-      await Dialogo.aviso({ titulo: texto, tono: 'aviso',
-        texto: `${desfasados.join(' y ')}. Sus días no cambian solos con el bloque: ` + ((v.dias || []).length
-          ? `cámbialos en su columna para que ${varios ? 'cubran' : 'cubra'} ${diasTexto(v.dias)}.`
-          : `ahora los fijos no libran ningún día; si ya no ${varios ? 'hacen falta, quítalos' : 'hace falta, quítalo'} en su columna.`) });
-    } else {
-      hecho(r, texto);
-    }
+  /**
+   * Lo que ya coge la casilla de ese turno sin contar esta plaza: esos días este
+   * fijo no puede librar (Camilo: «si el coche xxxx tiene como libranza el de día
+   * el L, no puede haber otro coche descansando de día el L»). Es una ayuda: la
+   * regla, con las fechas, la mira el servidor.
+   */
+  function yaCoge(c, turno, k) {
+    if (!k) return '';
+    const otras = cubreOrdenado(k).filter(x => !(x.matricula === c.matricula && x.turno === turno));
+    return otras.length
+      ? `La casilla de ${jornadaDe(k.jornada).nombre} ya coge ${otras.map(x => textoCoge(x, k)).join(' · ')}: esos días este fijo no puede librar, porque la casilla no coge dos plazas a la vez.`
+      : '';
   }
 
-  // La libranza de un fijo en un coche sin correturnos (lo de por defecto).
+  // La libranza de un fijo: sus días, con el sol o la luna. Qué pasa esos días
+  // depende del cuadrante, y la nota lo dice.
   async function fijarDescansoTurno(mat, turno) {
     const c = cochePorMat.get(mat);
     if (!c) return;
     const t = nombreTurno(turno);
+    const cu = cuadDe(c);
+    const k = casillaDelTurno(cu, turno);
     const actual = ((c.descansoTurno || {})[turno] || []).map(Number);
+    const queDias = k
+      ? `Esos días lo lleva la casilla de ${jornadaDe(k.jornada).nombre} del ${tituloCuad(cu)}${k.persona ? ` (${k.persona.nombre})` : ', ahora vacía: serían huecos'}.`
+      : cu ? `El ${tituloCuad(cu)} no tiene CT de ${t}: esos días, el turno de ${t} no sale.`
+        : `El coche no está en ningún cuadrante, así que no lleva CT: esos días, el turno de ${t} no sale.`;
     const v = await Dialogo.formulario(`Libranza del fijo de ${t} · ${mat}`, [
-      { id: 'dias', etiqueta: 'Días que libra', tipo: 'semana', valor: actual, ayuda: 'Sin ninguno marcado, no libra.' },
-    ], { textoBoton: 'Guardar', nota: `Desde el ${isoAes(DIA)}. Los días que libra el fijo de ${t}. El coche no tiene correturnos: esos días, el turno de ${t} no sale.` });
+      { id: 'dias', etiqueta: 'Días que libra', tipo: 'semana', valor: actual,
+        ayuda: [yaCoge(c, turno, k), 'Sin ninguno marcado, no libra.'].filter(Boolean).join(' ') },
+    ], { textoBoton: 'Guardar', ancho: 'max-w-lg', nota: `Desde el ${isoAes(DIA)}. Los días que libra el fijo de ${t}. ${queDias}` });
     if (!v) return;
     if (mismosDias(v.dias, actual)) { Dialogo.hecho('Ya estaba así.', { tono: 'info' }); return; }
     const r = await escribir('/barcelona/api/descanso', { matricula: mat, turno, dias: v.dias, desde: DIA },
@@ -933,50 +953,116 @@
   }
 
   /**
-   * PONER O QUITAR EL CORRETURNOS de un coche (como sinCorreturnosUI de Madrid,
-   * al revés: aquí nace sin él). Vale desde el día que se mira, nunca antes de hoy.
-   * Ponerlo pide el bloque; quitarlo saca a sus CT y cada fijo pasa a librar el bloque.
+   * «+ CT»: AGREGAR CT AL CUADRANTE. Camilo: «se abre con 3 opciones: día,
+   * noche, todoturno. Si se escoge día o noche no se puede elegir luego el
+   * todoturno y viceversa». Lo que se puede agregar lo dice el servidor
+   * (`puedeAgregar`); aquí se dice por qué no lo otro.
+   *
+   * El selector de la casa (Dialogo.elegir, la lista de Dialogo.formulario) no
+   * tiene opciones apagadas: se ofrecen solo las que caben y, debajo, las que no
+   * y por qué. Va todo en un formulario —la casilla y desde cuándo— porque son
+   * las dos preguntas de lo mismo. Nace vacía: la persona se pone pulsándola.
    */
-  async function correturnosCoche(mat) {
-    const c = cochePorMat.get(mat);
-    if (!c) return;
-    const desde = desdeCT();
-    if (!c.conCT) {
-      const t = c.descansoTurno || {};
-      const v = await Dialogo.formulario(`Ponerle correturnos · ${mat}`, [
-        { id: 'dias', etiqueta: 'El descanso del coche (el bloque)', tipo: 'semana',
-          valor: ((t.dia || []).length ? t.dia : (t.noche || [])).map(Number), ayuda: otrosBloques(c) },
-      ], {
-        textoBoton: 'Ponerle correturnos', ancho: 'max-w-lg',
-        nota: `Desde el ${isoAes(desde)}. Los dos fijos pasan a librar a la vez estos días y el correturnos los cubre; ` +
-          'la libranza que tenía cada fijo se cierra. Después se pone el correturnos, en su columna o con el CT del cuadrante.',
-      });
-      if (!v) return;
-      if (!(v.dias || []).length) {
-        await Dialogo.aviso({ titulo: 'Faltan los días', tono: 'aviso', texto: 'El bloque son los días que libran los fijos y cubre el correturnos: marca al menos uno.' });
-        return;
+  async function agregarCasilla(cu) {
+    const pa = cu.puedeAgregar || {};
+    const tiene = j => casillasDe(cu).some(k => k.jornada === j);
+    const porQueNo = j => {
+      if (tiene(j)) return 'ya la tiene';
+      if (j === 'todoturno' && (tiene('dia') || tiene('noche'))) {
+        return `no va junto a ${tiene('dia') && tiene('noche') ? 'la de día y la de noche' : tiene('dia') ? 'la de día' : 'la de noche'}`;
       }
-      const r = await escribir('/barcelona/api/ct', { matricula: mat, activar: true, dias: v.dias, desde },
-        { titulo: 'No se pudo poner el correturnos' });
-      if (r) hecho(r, `${mat} ya lleva correturnos.`);
+      if (j !== 'todoturno' && tiene('todoturno')) return 'ya tiene la todoturno, que coge los dos turnos';
+      return 'dos fijos que cogería libran el mismo día, y una casilla no coge dos plazas a la vez: cambia antes esas libranzas';
+    };
+    const si = JORNADAS.filter(j => pa[j]);
+    const no = JORNADAS.filter(j => !pa[j]);
+    if (!si.length) {
+      await Dialogo.aviso({ titulo: `No se puede agregar CT al ${tituloCuad(cu)}`, tono: 'aviso',
+        texto: no.map(j => `${jornadaDe(j).opcion}: ${porQueNo(j)}.`).join('\n') });
       return;
     }
-    const cts = [['dia', c.plazas && c.plazas.ctDia], ['noche', c.plazas && c.plazas.ctNoche]]
-      .filter(([, p]) => p).map(([turno, p]) => `${p.nombre} (CT ${nombreTurno(turno)})`);
-    const bloque = diasTexto(c.descanso);
+    const DETALLE = {
+      dia: 'Con el sol. Coge los días que libran los fijos de día.',
+      noche: 'Con la luna. Coge los días que libran los fijos de noche.',
+      todoturno: 'Sin icono. Una sola casilla para los dos turnos: coge los días que libra cualquier fijo, de día o de noche. No va con la de día ni con la de noche.',
+    };
+    const v = await Dialogo.formulario(`Agregar CT al ${tituloCuad(cu)}`, [
+      { id: 'jornada', etiqueta: 'Qué casilla', tipo: 'lista', obligatorio: true, valor: si.length === 1 ? si[0] : '',
+        opciones: si.map(j => ({ valor: j, texto: jornadaDe(j).opcion, detalle: DETALLE[j] })),
+        ayuda: no.length ? `No se ofrece: ${no.map(j => `${jornadaDe(j).opcion.toLowerCase()} (${porQueNo(j)})`).join('; ')}.` : undefined },
+      // Como pronto hoy, como al quitarla (barcelona.service.fechaCT): un día
+      // pasado lo guardaría el servidor desde hoy igualmente.
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: isoAes(T.hoy && DIA < T.hoy ? T.hoy : DIA), obligatorio: true,
+        ayuda: 'La casilla vale desde ese día hasta que se quite. Como pronto hoy: una casilla no se agrega hacia atrás.' },
+    ], {
+      textoBoton: 'Agregar CT', ancho: 'max-w-lg',
+      nota: 'Una sola casilla que coge, cada día, la plaza que no se trabaja porque libra su fijo, en todos los coches del cuadrante. ' +
+        'Ninguna plaza se repite: no coge dos coches a la vez. Nace vacía; luego se pone a la persona pulsándola.',
+    });
+    if (!v || !v.jornada) return;
+    const r = await escribir(`/barcelona/api/cuadrantes/${encodeURIComponent(cu.id)}/casillas`, { jornada: v.jornada, desde: v.desde || DIA },
+      { titulo: 'No se pudo agregar el CT' });
+    if (r) hecho(r, `${tituloCuad(cu)}: casilla de ${jornadaDe(v.jornada).nombre} agregada. Púlsala para poner a la persona.`);
+  }
+
+  /**
+   * Poner, cambiar o vaciar a la persona de una casilla. Una persona está en una
+   * sola casilla y no de fijo en un turno que se pise: lo mira el servidor y, si
+   * no, lo dice.
+   */
+  async function asignarCasilla(cu, jornada) {
+    const k = casillasDe(cu).find(x => x.jornada === jornada);
+    if (!k) return;
+    const J = jornadaDe(jornada);
+    const actual = k.persona || null;
+    const desdeActual = actual ? (actual.desde || k.desde) : null;
+    const coge = cubreOrdenado(k).map(x => textoCoge(x, k)).join(' · ');
+    const v = await Dialogo.formulario(`${J.nombre} · ${tituloCuad(cu)}`, [
+      { id: 'uuid', etiqueta: 'Correturnos', tipo: 'lista', opciones: opcionesConductores(actual), valor: actual ? actual.uuid : '',
+        buscador: buscadorConductor, ayuda: '«Sin dato» deja la casilla vacía: sigue en el cuadrante, y los días que coge son huecos.' },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: isoAes(DIA),
+        ayuda: 'Vale todos los días desde esa fecha hasta que se cambie. Lo de antes se cierra la víspera.' },
+    ], {
+      textoBoton: 'Guardar', ancho: 'max-w-lg',
+      nota: (coge ? `Coge ${coge}; libra ${textoLibra(k)}. ` : 'Todavía no coge nada: ningún fijo que coja libra. ') +
+        'Una persona solo puede estar en una casilla, y no de fijo en un turno que se pise con ella.',
+    });
+    if (!v) return;
+    const uuid = v.uuid || null;
+    if (uuid === (actual ? actual.uuid : null) && !(desdeActual && v.desde && v.desde < desdeActual)) {
+      Dialogo.hecho('Ya estaba así.', { tono: 'info' });
+      return;
+    }
+    const r = await escribir(`/barcelona/api/cuadrantes/${encodeURIComponent(cu.id)}/casillas/${encodeURIComponent(jornada)}`,
+      { uuid, desde: v.desde || DIA }, { titulo: 'No se pudo guardar la casilla' });
+    if (r) hecho(r, uuid ? `${nombreDe(uuid)}, ${J.nombre} del ${tituloCuad(cu)}.` : `La casilla de ${J.nombre} del ${tituloCuad(cu)} queda vacía.`);
+  }
+
+  /**
+   * Quitar una casilla del cuadrante desde el día que se mira, con confirmación.
+   * Nunca antes de hoy (barcelona.service.fechaCT): el pasado de ese cuadrante
+   * fue como fue y su reporte tiene que seguir cuadrando. Mirando un día pasado,
+   * se quita desde hoy, y el diálogo lo dice.
+   */
+  async function quitarCasilla(cu, jornada) {
+    const k = casillasDe(cu).find(x => x.jornada === jornada);
+    if (!k) return;
+    const J = jornadaDe(jornada);
+    const pasado = !!T.hoy && DIA < T.hoy;
+    const desde = pasado ? T.hoy : DIA;
     const ok = await Dialogo.confirmar({
-      titulo: `Sin correturnos · ${mat}`, tono: 'aviso', ancho: 'max-w-lg', si: 'Quitar correturnos', no: 'Cancelar',
-      html: `<p class="text-sm mb-2">Desde el <b>${esc(isoAes(desde))}</b> este coche no lleva correturnos:</p>
+      titulo: `Quitar la casilla de ${J.nombre} · ${tituloCuad(cu)}`, tono: 'aviso', ancho: 'max-w-lg', si: 'Quitar la casilla', no: 'Cancelar',
+      html: `<p class="text-sm mb-2">Desde ${pasado ? 'hoy, ' : ''}el <b>${esc(isoAes(desde))}</b>, el ${esc(tituloCuad(cu))} deja de tener ${esc(J.nombre)}:</p>
         <ul class="text-sm list-disc pl-5 space-y-1 mb-2">
-          <li>${cts.length ? 'Se quitan de este coche: <b>' + cts.map(esc).join(', ') + '</b>. Si no tienen otra plaza, pasan a «Sin plaza».' : 'Ahora no tiene correturnos puestos.'}</li>
-          <li>Se ocultan sus columnas de correturnos y no se pueden agregar personas en ellas.</li>
-          <li>Cada fijo pasa a tener su propio descanso${bloque ? `; los dos empiezan con el del coche (<b>${esc(bloque)}</b>) y luego se cambia el de cada uno` : ''}. Los días que libre un fijo, ese turno el coche no sale.</li>
-          <li>Puede seguir en su cuadrante.</li>
+          <li>${k.persona ? `<b>${esc(k.persona.nombre)}</b> sale de la casilla; si no tiene otra plaza, pasa a «Sin plaza».` : 'La casilla está vacía: no sale nadie.'}</li>
+          <li>Los días que libre un fijo ${jornada === 'todoturno' ? 'del cuadrante' : `de ${nombreTurno(jornada)}`}, ese turno el coche no sale (no es hueco).</li>
+          ${pasado ? `<li>Se mira un día pasado, pero una casilla no se quita hacia atrás: hasta ayer sigue como estaba y los reportes no cambian. Después se verá el ${esc(isoAes(desde))}.</li>` : ''}
         </ul>`,
     });
     if (!ok) return;
-    const r = await escribir('/barcelona/api/ct', { matricula: mat, activar: false, desde }, { titulo: 'No se pudo quitar el correturnos' });
-    if (r) hecho(r, `${mat} sin correturnos.`);
+    const r = await escribir(`/barcelona/api/cuadrantes/${encodeURIComponent(cu.id)}/casillas/${encodeURIComponent(jornada)}?desde=${encodeURIComponent(desde)}`,
+      { desde }, { metodo: 'DELETE', titulo: 'No se pudo quitar la casilla' });
+    if (r) hecho(r, `El ${tituloCuad(cu)} ya no tiene ${J.nombre}.`);
   }
 
   // ── Zonas (como gestionarZonas de Madrid, sin ubicación) ────────────────────
@@ -1063,7 +1149,7 @@
         valor: ZONA || ((T.zonas || []).length ? '' : SIN) },
       { id: 'nombre', etiqueta: 'Nombre (opcional)', tipo: 'texto', max: 60, marcador: 'Sants',
         ayuda: 'El número se pone solo, el siguiente libre. El nombre es por si se le quiere llamar de otra forma.' },
-    ], { textoBoton: 'Crear cuadrante', nota: 'Nace vacío. Después le metes los coches con «+ Coche».' });
+    ], { textoBoton: 'Crear cuadrante', nota: 'Nace vacío y sin CT. Después le metes los coches con «+ Coche» y, si lleva correturnos, su casilla con «+ CT».' });
     if (!v || !v.zona) return null;
     const antes = new Set((T.cuadrantes || []).map(cu => String(cu.id)));
     const r = await escribir('/barcelona/api/cuadrantes',
@@ -1129,6 +1215,14 @@
     if (r) Dialogo.hecho(`${tituloCuad(cu)} borrado.`);
   }
 
+  /** Las libranzas de un coche, en una línea: «día libra L M · noche no libra». */
+  const libranzasTexto = c => ['dia', 'noche'].map(t => {
+    const d = diasTexto((c.descansoTurno || {})[t]);
+    return `${nombreTurno(t)} ${d ? 'libra ' + d : 'no libra'}`;
+  }).join(' · ');
+  /** Las casillas de un cuadrante, en palabras: «CT de día y CT de noche», o «sin CT». */
+  const casillasTexto = cu => casillasDe(cu).map(k => jornadaDe(k.jornada).nombre).join(' y ') || 'sin CT';
+
   /** «+ Coche»: los coches que no están en ningún cuadrante. */
   async function cocheAlCuad(cu) {
     const libres = (T.coches || []).filter(c => c.cuadranteId == null);
@@ -1137,12 +1231,17 @@
         texto: 'Todos los coches están ya en un cuadrante. Para pasar uno de otro cuadrante, sácalo primero de allí.' });
       return;
     }
+    // Con CT en el cuadrante, las libranzas del coche no pueden caer en un día
+    // que la casilla ya coge (lo mira el servidor al meterlo, con las fechas).
+    const coge = casillasDe(cu).filter(k => cubreOrdenado(k).length)
+      .map(k => `la de ${jornadaDe(k.jornada).nombre} coge ${cubreOrdenado(k).map(x => textoCoge(x, k)).join(' · ')}`);
     const v = await Dialogo.formulario(`Meter un coche en el ${tituloCuad(cu)}`, [
       { id: 'mat', etiqueta: 'Matrícula', tipo: 'lista', obligatorio: true,
         buscador: { marcador: 'Busca por matrícula o modelo', tope: 12 },
-        opciones: libres.map(c => ({ valor: c.matricula, texto: c.matricula,
-          detalle: [c.modelo, c.conCT ? `con correturnos · bloque ${diasTexto(c.descanso) || 'sin días'}` : 'sin correturnos'].filter(Boolean).join(' · ') })) },
-    ], { textoBoton: 'Meter', nota: (cu.bloques || []).length ? `Si el coche lleva correturnos, su bloque no puede compartir día con los de este cuadrante (${(cu.bloques || []).map(b => `${b.matricula} ${diasTexto(b.dias)}`).join(' · ')}).` : undefined });
+        opciones: libres.map(c => ({ valor: c.matricula, texto: c.matricula, detalle: [c.modelo, libranzasTexto(c)].filter(Boolean).join(' · ') })) },
+    ], { textoBoton: 'Meter', nota: casillasDe(cu).length
+      ? `El ${tituloCuad(cu)} tiene ${casillasTexto(cu)}: sus casillas cogerán también este coche, y sus libranzas no pueden repetir día con lo que ya cogen${coge.length ? ` (${coge.join('; ')})` : ''}.`
+      : undefined });
     if (!v || !v.mat) return;
     // Con el día que se mira: el servidor devuelve el tablero de ese día (si no,
     // el de hoy, y la pantalla saltaría de día sin que nadie lo pida).
@@ -1154,11 +1253,11 @@
   /** Desde «Coches sin cuadrante»: a qué cuadrante va (o uno nuevo). */
   async function meterEnCuad(mat) {
     const opciones = (T.cuadrantes || []).map(cu => ({ valor: String(cu.id), texto: tituloCuad(cu),
-      detalle: `${cu.zona || 'Sin zona'} · ${plural(cochesDe(cu).length, 'coche')}` }));
+      detalle: `${cu.zona || 'Sin zona'} · ${plural(cochesDe(cu).length, 'coche')} · ${casillasTexto(cu)}` }));
     opciones.push({ valor: '__nuevo__', texto: 'Nuevo cuadrante…' });
     const v = await Dialogo.formulario(`Meter ${mat} en un cuadrante`, [
       { id: 'cua', etiqueta: 'Cuadrante', tipo: 'lista', opciones, obligatorio: true },
-    ], { textoBoton: 'Seguir' });
+    ], { textoBoton: 'Seguir', nota: 'Si el cuadrante tiene CT, su casilla coge también este coche: sus libranzas no pueden repetir día con lo que ya coge.' });
     if (!v || !v.cua) return;
     let id = v.cua;
     if (id === '__nuevo__') { id = await nuevoCuadrante({ seguido: true }); if (!id) return; }
@@ -1173,77 +1272,56 @@
   async function sacarDeCuad(mat, boton) {
     const c = cochePorMat.get(mat);
     if (!c || c.cuadranteId == null) return;
-    const cu = cuadPorId.get(String(c.cuadranteId));
+    const cu = cuadDe(c);
     const r = await escribir(`/barcelona/api/cuadrantes/${encodeURIComponent(c.cuadranteId)}/coche`, { matricula: mat, quitar: true },
       { titulo: 'No se pudo sacar el coche', boton });
-    if (r) hecho(r, `${mat} sale del ${cu ? tituloCuad(cu) : 'cuadrante'}: ahora está en «Coches sin cuadrante».`);
+    if (r) hecho(r, `${mat} sale del ${cu ? tituloCuad(cu) : 'cuadrante'}: ahora está en «Coches sin cuadrante», sin CT.`);
   }
 
-  /**
-   * EL CT DEL CUADRANTE (como asignarCTCuadrante de Madrid): la persona pasa a
-   * CT de ese turno en cada coche CON correturnos del cuadrante, con los días del
-   * bloque de cada uno. Los que ya lleva otro esos días no se tocan: vuelven en
-   * `saltados`. «Sin dato» lo quita de todos.
-   */
-  async function ctDelCuad(cu, turno) {
-    const bloques = cu.bloques || [];
-    const t = nombreTurno(turno);
-    if (!bloques.length) {
-      await Dialogo.aviso({ titulo: 'Ningún coche con correturnos', tono: 'aviso',
-        texto: `Ningún coche del ${tituloCuad(cu)} lleva correturnos. Pónselo a un coche con su botón y después el CT del cuadrante.` });
-      return;
-    }
-    const quienes = ((cu.ct || {})[turno]) || [];
-    const actual = quienes.length === 1 ? quienes[0] : null;
-    const reparto = bloques.map(b => `${b.matricula} (${diasTexto(b.dias) || 'sin días'})`).join(', ');
-    const v = await Dialogo.formulario(`CT de ${t} del ${tituloCuad(cu)}`, [
-      { id: 'uuid', etiqueta: 'Correturnos', tipo: 'lista', opciones: opcionesConductores(actual), valor: actual ? actual.uuid : '',
-        buscador: { marcador: 'Busca por nombre o teléfono', tope: 12 },
-        ayuda: quienes.length > 1 ? `Ahora lo llevan ${quienes.map(p => p.nombre).join(', ')}. «Sin dato» los quita de todos.` : '«Sin dato» lo quita de todos los bloques.' },
-      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: isoAes(DIA), ayuda: 'Vale todos los días desde esa fecha hasta que se cambie.' },
-    ], {
-      textoBoton: 'Guardar', ancho: 'max-w-lg',
-      nota: `Se pone de CT de ${t} en cada coche con correturnos del cuadrante, con los días de su bloque: ${reparto}. Los coches sin correturnos se saltan.`,
-    });
-    if (!v) return;
-    const uuid = v.uuid || null;
-    if (!uuid && !quienes.length) { Dialogo.hecho('Ya estaba así.', { tono: 'info' }); return; }
-    // Con «Varios» el selector sale sin nadie elegido, así que «Guardar» tal
-    // cual los quitaría a todos sin querer (lo que opcionesConductores evita en
-    // la plaza suelta; Madrid pide elegir «Dejar la plaza vacía» a mano). Se
-    // pregunta antes, diciendo a quién y de dónde.
-    if (!uuid && quienes.length > 1) {
-      const ok = await Dialogo.confirmar({
-        titulo: `Quitar el CT de ${t} del ${tituloCuad(cu)}`, tono: 'aviso', si: 'Quitarlos', no: 'Cancelar',
-        texto: `Se quitan ${quienes.map(p => `${p.nombre} (${(p.matriculas || []).join(', ')})`).join(', ')} desde el ${isoAes(v.desde || DIA)}.`,
-      });
-      if (!ok) return;
-    }
-    const r = await escribir(`/barcelona/api/cuadrantes/${encodeURIComponent(cu.id)}/ct`, { turno, uuid, desde: v.desde || DIA },
-      { titulo: 'No se ha podido' });
-    if (!r) return;
-    // Los coches que no se han tocado, por lo que son (el servidor dice el
-    // motivo): los que ya lleva otro esos días (es decisión de una persona
-    // sobre un coche: se hace coche a coche) y los que aún no tienen días en su
-    // bloque (esos no los cubre nadie: primero el descanso). En Madrid solo
-    // existía el primero; decirle «ya los cubre otro» al segundo era falso.
-    const saltados = (r.saltados || []).filter(Boolean);
-    if (saltados.length) {
-      const otros = saltados.filter(s => s.nombre);
-      const sinBloque = saltados.filter(s => !s.nombre);
-      const partes = [];
-      if (r.cambiados) partes.push(`Puesto en ${plural(r.cambiados, 'coche')}.`);
-      if (otros.length) {
-        partes.push(`${otros.map(s => `${s.matricula}, lo lleva ${s.nombre}`).join('; ')}: esos días ya los cubre otro; ` +
-          'si aun así tiene que entrar, hazlo coche a coche desde su columna.');
+  // ── Exportar a Excel ────────────────────────────────────────────────────────
+  // Camilo (06/11/2026): «no era imprimir sino exportar en excel». El Excel lo
+  // monta el servidor (/barcelona/planificador/excel) con lo que se está viendo:
+  // el día, la zona abierta y el texto del buscador, con los mismos valores que
+  // el filtro de la pantalla. La zona va como su id, «libres» para la tarjeta
+  // «Sin zona» (los cuadrantes sin zona y los coches sin cuadrante) o vacía si
+  // se ven todas. Se baja como en los reportes de Barcelona: fetch y blob, para
+  // que un fallo se diga en un aviso y no deje la pantalla en una página de error.
+
+  async function exportarExcel(boton) {
+    if (!T || T.faltaMigracion || !DIA) return;
+    const params = new URLSearchParams({ fecha: DIA, zona: !ZONA ? '' : ZONA === SIN ? 'libres' : ZONA, q: $('#bp-busca').value.trim() });
+    const antes = boton.innerHTML;
+    boton.disabled = true;
+    boton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>Preparando…';
+    try {
+      let r;
+      try {
+        r = await fetch('/barcelona/planificador/excel?' + params.toString(), { credentials: 'same-origin' });
+      } catch (_) {
+        throw new Error('No hay conexión con el servidor. Comprueba la red y vuelve a intentarlo.');
       }
-      if (sinBloque.length) {
-        partes.push(`${sinBloque.map(s => s.matricula).join(', ')} no ${sinBloque.length === 1 ? 'tiene' : 'tienen'} días en su bloque: ` +
-          `pon${sinBloque.length === 1 ? 'le' : 'les'} antes el descanso.`);
+      const tipo = r.headers.get('content-type') || '';
+      // Con la sesión caducada, el servidor manda al login: llega una página,
+      // no un Excel. Se dice en vez de descargar un .xlsx que no abre.
+      if (!r.ok || /json|html/.test(tipo)) {
+        const j = tipo.includes('json') ? await r.json().catch(() => ({})) : {};
+        throw new Error(j.msg || j.error || (r.status === 401 || r.redirected
+          ? 'La sesión ha caducado: recarga la página y vuelve a entrar.' : 'No se pudo preparar el Excel.'));
       }
-      await Dialogo.aviso({ titulo: 'No se ha puesto en todos los coches', tono: 'aviso', texto: partes.join(' ') });
-    } else {
-      hecho(r, uuid ? 'Hecho.' : `CT de ${t} quitado del ${tituloCuad(cu)}.`);
+      const disp = r.headers.get('content-disposition') || '';
+      const m = disp.match(/filename\*=UTF-8''([^;]+)/i) || disp.match(/filename="?([^";]+)"?/i);
+      // El nombre lo pone el servidor, como los de los reportes de Barcelona
+      // («Planificador Barcelona 06-11-2026.xlsx»); este es por si no llegara.
+      const nombre = (m && decodeURIComponent(m[1])) || `Planificador Barcelona ${DIA.split('-').reverse().join('-')}.xlsx`;
+      const fichero = URL.createObjectURL(await r.blob());
+      const a = Object.assign(document.createElement('a'), { href: fichero, download: nombre });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(fichero), 5000);
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo exportar', texto: e.message, tono: 'error' });
+    } finally {
+      boton.disabled = false;
+      boton.innerHTML = antes;
     }
   }
 
@@ -1260,10 +1338,8 @@
     const sec = b.closest('[data-cuadrante]');
     const cu = sec ? cuadPorId.get(sec.dataset.cuadrante) : null;
     switch (b.dataset.accion) {
-      case 'plaza': return asignarPlaza(mat, b.dataset.turno, b.dataset.rol);
-      case 'bloque': return fijarBloque(mat);
+      case 'plaza': return asignarPlaza(mat, b.dataset.turno);
       case 'desc-turno': return fijarDescansoTurno(mat, b.dataset.turno);
-      case 'ct-coche': return correturnosCoche(mat);
       case 'sacar': return sacarDeCuad(mat, b);
       case 'meter': return meterEnCuad(mat);
       case 'nuevo-cua': return nuevoCuadrante();
@@ -1271,7 +1347,9 @@
       case 'nombre-cua': return cu && nombrarCuad(cu);
       case 'borrar-cua': return cu && borrarCuad(cu);
       case 'coche-cua': return cu && cocheAlCuad(cu);
-      case 'ct-cua': return cu && ctDelCuad(cu, b.dataset.turno);
+      case 'ct-agregar': return cu && agregarCasilla(cu);
+      case 'casilla': return cu && asignarCasilla(cu, b.dataset.jornada);
+      case 'quitar-casilla': return cu && quitarCasilla(cu, b.dataset.jornada);
       default: return undefined;
     }
   });
@@ -1305,10 +1383,7 @@
   const listo = () => !!T && !T.faltaMigracion;
   $('#bp-btn-zonas').addEventListener('click', () => { if (listo()) gestionarZonas(); });
   $('#bp-btn-cuadrante').addEventListener('click', () => { if (listo()) nuevoCuadrante(); });
-  // Imprimir: sin tablero todavía, el papel solo diría «Cargando…». La cabecera
-  // de la hoja se rellena justo antes, también si se imprime con Ctrl+P.
-  $('#bp-btn-imprimir').addEventListener('click', () => { if (!T) return; prepararHoja(); window.print(); });
-  window.addEventListener('beforeprint', prepararHoja);
+  $('#bp-btn-excel').addEventListener('click', e => { if (listo()) exportarExcel(e.currentTarget); });
 
   // La zona de la dirección (#zona=eixample) se abre en cuanto llegue el
   // tablero, que es quien sabe qué zonas hay. Sin fecha, el servidor da hoy.

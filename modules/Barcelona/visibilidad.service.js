@@ -10,8 +10,9 @@
 //     como en el reporte (barcelona.horas.js). Madrid las lee de Flota viva.
 //   · El neto y los viajes, de sus pedidos (sede_bolt_order, db/182).
 //   · Los turnos, por el plan del día de SU planificador (barcelona.plan: quien
-//     TRABAJA ese día, con sus libranzas y sus CT, db/234): quien no tiene plaza,
-//     o libra, va por su hora de inicio, como los NN de Madrid.
+//     TRABAJA ese día, con sus libranzas, db/234, y la persona de cada casilla de
+//     CT en la plaza que coge ese día, db/236): quien no tiene plaza, o libra, va
+//     por su hora de inicio, como los NN de Madrid.
 //   · La configuración (capacidad, meta, coches), en su propia fila de
 //     visibilidad_config ('parametros_barcelona').
 //

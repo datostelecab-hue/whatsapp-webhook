@@ -370,6 +370,14 @@ No son de los seis, pero forman parte de la misma red:
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día
   00→24, noche 12→12, «No salió», sin plaza, otro coche, fuera de su turno, el Excel).
+  Desde db/236 (06/11/2026), las casillas de CT del cuadrante (lo que cogen, su libranza,
+  ninguna plaza repetida, el todoturno solo), los 400 de lo que ya no existe, la pantalla
+  en un `vm` y el Excel del planificador de verdad.
+- **`comprobar-barcelona-planificador-excel.js`** (06/11/2026) — el Excel del
+  planificador de Barcelona con un tablero de mentira: la banda, las cabeceras, cada
+  casilla de CT combinada en todas las filas de su cuadrante (la todoturno en dos
+  columnas), los estados y colores, y que la zona y el buscador dejan lo mismo que la
+  pantalla. Con una carpeta como argumento deja un `ejemplo.xlsx`.
 - **`comprobar-contrato-candidatura.js`** (13/10/2026) — la candidatura y el
   contrato no dicen cosas distintas: si una edición cambia el tipo de contrato
   (ETT o propia) y la ficha tiene abierto otro, se pregunta en vez de guardar; con

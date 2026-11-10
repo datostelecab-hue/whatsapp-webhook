@@ -4,6 +4,7 @@
 // Traduce HTTP a llamadas al servicio. No decide nada.
 //
 //   /barcelona               el planificador (portada de la sede)
+//   /barcelona/planificador/excel  el planificador de un día, en Excel
 //   /barcelona/reportes      el reporte de horas (descargable)
 //   /barcelona/visibilidad   las horas de la flota de Barcelona
 //   /barcelona/mantenimientos  el taller de sus coches (mantenimientos.controller.js)
@@ -72,22 +73,30 @@ router.use('/mantenimientos', require('./mantenimientos.controller'));
 router.use('/recaudacion', require('./recaudacion.controller'));
 
 // ── El planificador ────────────────────────────────────────────────────────
-// db/234 (06/11/2026): el de Madrid con los datos de Barcelona. Cada escritura
-// devuelve { tablero } del día desde el que vale. Las de zonas y cuadrantes no
-// tienen día: devuelven el tablero del día que se mire si se manda `fecha`
-// (en el cuerpo o en ?fecha=); si no, la pantalla vuelve a pedir el suyo.
+// db/234 (06/11/2026): el de Madrid con los datos de Barcelona; db/236 (el
+// mismo día): el CT es una casilla del cuadrante (día, noche o todoturno). Cada
+// escritura devuelve { tablero } del día desde el que vale. Las de zonas y
+// cuadrantes no tienen día: devuelven el tablero del día que se mire si se
+// manda `fecha` (en el cuerpo o en ?fecha=); si no, la pantalla vuelve a pedir
+// el suyo.
 
-/** El cuerpo, con la `fecha` de la dirección si no viene dentro. */
+/** El cuerpo, con la `fecha` y el `desde` de la dirección si no vienen dentro (un DELETE puede no llevar cuerpo). */
 const cuerpo = req => {
   const b = req.body && typeof req.body === 'object' ? req.body : {};
-  return b.fecha || !req.query.fecha ? b : { ...b, fecha: req.query.fecha };
+  const q = req.query || {};
+  return {
+    ...(q.fecha && !b.fecha ? { fecha: q.fecha } : {}),
+    ...(q.desde && !b.desde ? { desde: q.desde } : {}),
+    ...b,
+  };
 };
 
 router.get('/api/tablero', responde(req => barcelona.tablero({ fecha: req.query.fecha })));
 
 router.post('/api/asignar', responde(async req => barcelona.asignar(cuerpo(req), await actor.idDe(req)), 400));
 router.post('/api/descanso', responde(async req => barcelona.fijarDescanso(cuerpo(req), await actor.idDe(req)), 400));
-router.post('/api/ct', responde(async req => barcelona.correturnos(cuerpo(req), await actor.idDe(req)), 400));
+// El CT por coche ya no existe (db/236): un 400 que dice dónde está ahora.
+router.post('/api/ct', responde(() => barcelona.ctPorCoche(), 400));
 
 router.post('/api/zonas', responde(async req => barcelona.crearZona(cuerpo(req), await actor.idDe(req)), 400));
 router.put('/api/zonas/:id', responde(req => barcelona.cambiarZona(req.params.id, cuerpo(req)), 400));
@@ -96,7 +105,21 @@ router.post('/api/cuadrantes', responde(async req => barcelona.crearCuadrante(cu
 router.put('/api/cuadrantes/:id', responde(req => barcelona.cambiarCuadrante(req.params.id, cuerpo(req)), 400));
 router.delete('/api/cuadrantes/:id', responde(req => barcelona.borrarCuadrante(req.params.id, cuerpo(req)), 400));
 router.post('/api/cuadrantes/:id/coche', responde(async req => barcelona.cocheEnCuadrante(req.params.id, cuerpo(req), await actor.idDe(req)), 400));
-router.post('/api/cuadrantes/:id/ct', responde(async req => barcelona.ctDelCuadrante(req.params.id, cuerpo(req), await actor.idDe(req)), 400));
+// Las casillas de CT del cuadrante: agregar una (vacía), poner/cambiar/vaciar a
+// su persona, quitarla. El CT del cuadrante coche a coche ya no existe.
+router.post('/api/cuadrantes/:id/casillas', responde(async req => barcelona.agregarCasilla(req.params.id, cuerpo(req), await actor.idDe(req)), 400));
+router.post('/api/cuadrantes/:id/casillas/:jornada',
+  responde(async req => barcelona.personaCasilla(req.params.id, req.params.jornada, cuerpo(req), await actor.idDe(req)), 400));
+router.delete('/api/cuadrantes/:id/casillas/:jornada',
+  responde(async req => barcelona.quitarCasilla(req.params.id, req.params.jornada, cuerpo(req), await actor.idDe(req)), 400));
+router.post('/api/cuadrantes/:id/ct', responde(() => barcelona.ctPorCoche(), 400));
+
+// EXPORTAR EL PLANIFICADOR A EXCEL (Camilo, 06/11/2026: «no necesitamos eso en
+// PDF sino en excel»): el día, la zona abierta y el buscador, lo que se ve.
+//   /barcelona/planificador/excel?fecha=2026-11-06&zona=3&q=ana
+router.get('/planificador/excel', descarga(req => barcelona.planificadorExcel({
+  fecha: req.query.fecha, zona: req.query.zona, q: req.query.q,
+}), XLSX));
 
 // ── La Visibilidad ─────────────────────────────────────────────────────────
 

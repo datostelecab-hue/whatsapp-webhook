@@ -14,6 +14,12 @@
 //   · Sin plaza      quien trabajó un día sin trabajar en ninguna plaza: sin
 //                    plaza en el planificador, o en su día de libranza.
 //
+// En las tres, la UTILIZACIÓN (viaje / viaje + espera) y los viajes que no
+// cogió, separados: RECHAZADOS A DEDO (driver_rejected) y SIN CONTESTAR
+// (driver_did_not_respond). Camilo, 10/11/2026: «agrega al reporte de Barcelona
+// el total de utilización de la jornada del conductor y el total de viajes
+// rechazados a dedo y rechazados por no contestar separados».
+//
 // Los datos los arma barcelona.horas.js (informe); aquí solo se pinta.
 
 const ExcelJS = require('exceljs');
@@ -34,6 +40,10 @@ const matriculaAsignada = ps => (ps && ps.length ? [...new Set(ps.map(p => p.mat
 
 // Los colores de las horas: los del reporte de Madrid (reporteHoras.service.js).
 const BANDA = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B' };
+// Rechazar a dedo no está permitido a ninguna hora (Control Alertas): en rojo.
+const ROJO = { bg: 'FFFEE2E2', fg: 'FF991B1B' };
+const pc = n => (n == null ? '—' : String(n).replace('.', ',') + ' %');
+
 const ESTADO = {
   salio: { texto: 'Salió', bg: 'FFD1FAE5', fg: 'FF065F46' },
   en_curso: { texto: 'Salió · en curso', bg: 'FFDBEAFE', fg: 'FF1E40AF' },
@@ -61,13 +71,15 @@ function tabla(ws, idLogo, { titulo, subtitulo, leyenda, cols, filas, pintar, va
   ws.views = [{ state: 'frozen', ySplit: filaCab }];
   filas.forEach(x => {
     const r = ws.getRow(f++);
-    const celda = (n, valor, { num, tono, bg, negrita, al } = {}) => {
+    const celda = (n, valor, { num, pct, tono, bg, negrita, al } = {}) => {
       const c = r.getCell(n);
       c.value = valor;
       c.border = E.TODOS_BORDES;
       c.alignment = { vertical: 'middle', horizontal: al || (cols[n - 1].izq ? 'left' : 'center'), wrapText: !!cols[n - 1].ajustar };
       c.font = { size: 10, bold: !!negrita, color: { argb: E.TEXTO } };
       if (num) c.numFmt = '0.0';
+      // La utilización va en % con un decimal: el valor es 0-100, no 0-1.
+      if (pct) c.numFmt = '0.0" %"';
       if (bg) c.fill = E.relleno(bg);
       if (tono) { c.fill = E.relleno(tono.bg); c.font = { size: 10, bold: true, color: { argb: tono.fg } }; }
     };
@@ -97,16 +109,20 @@ async function generar(datos) {
   tabla(wb.addWorksheet('Por día'), logo, {
     titulo: 'Horas · Barcelona',
     subtitulo: `${periodo[0].toUpperCase() + periodo.slice(1)} · ${r.plazas} plazas con conductor · ${r.salieron} salieron · ` +
-      `${r.noSalieron} no salieron · ${r.libran || 0} libran · ${String(r.horas).replace('.', ',')} h · generado el ${sello()}${parcial}`,
+      `${r.noSalieron} no salieron · ${r.libran || 0} libran · ${String(r.horas).replace('.', ',')} h · utilización ${pc(r.utilizacion)} · ` +
+      `${r.aDedo || 0} rechazados a dedo · ${r.sinContestar || 0} sin contestar · generado el ${sello()}${parcial}`,
     leyenda: 'Horas efectivas (viaje + espera; el descanso no cuenta) en SU turno: el de día de 00:00 a 24:00 y el de noche de 12:00 ' +
       'a 12:00 del día siguiente, como en Madrid · No salió = le tocaba trabajar y no hizo ni un minuto en su turno · ' +
       'Libra = era su día de libranza en el planificador (no cuenta como no salió; si trabajó, sus horas van en la otra plaza que ' +
       'trabajara ese día —se dice en las observaciones— o, si no tenía otra, en «Sin plaza») · ' +
-      'el CT sale solo los días que cubre · verde ≥ 7,6 h, amarillo de 6,4 a 7,5, rojo menos',
+      'el CT (la casilla del cuadrante) sale solo los días que coge la plaza de un fijo que libra, en esa matrícula · ' +
+      'verde ≥ 7,6 h, amarillo de 6,4 a 7,5, rojo menos · Utilización = viaje / (viaje + espera) en su turno · ' +
+      'A dedo = viajes que rechazó él; Sin contestar = se le ofrecieron y no contestó (cada uno, en el turno en que se le ofreció)',
     cols: [
       { titulo: 'Fecha', ancho: 12 }, { titulo: 'Turno', ancho: 8 }, { titulo: 'Matrícula', ancho: 12 },
       { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
       { titulo: 'Horas', ancho: 9 }, { titulo: 'Viaje', ancho: 8 }, { titulo: 'Espera', ancho: 8 },
+      { titulo: 'Utilización', ancho: 12 }, { titulo: 'A dedo', ancho: 9 }, { titulo: 'Sin contestar', ancho: 13 },
       { titulo: 'Estado', ancho: 17 }, { titulo: 'Coche en BOLT', ancho: 16 },
       { titulo: 'Observaciones', ancho: 52, izq: true, ajustar: true },
     ],
@@ -123,21 +139,29 @@ async function generar(datos) {
       celda(6, cuenta ? x.horas : null, { num: true, negrita: true, bg: x.banda ? BANDA[x.banda] : null });
       celda(7, cuenta ? x.viaje : null, { num: true });
       celda(8, cuenta ? x.espera : null, { num: true });
-      celda(9, est.texto, { tono: est });
-      celda(10, x.coches.join(', '));
-      celda(11, x.obs);
+      celda(9, cuenta ? x.utilizacion : null, { pct: true });
+      // Los rechazos se cuentan aunque el turno no cuente (libra, en curso): si
+      // los hubo, se dicen.
+      celda(10, cuenta ? x.aDedo || 0 : x.aDedo || null, { tono: x.aDedo ? ROJO : null });
+      celda(11, cuenta ? x.sinContestar || 0 : x.sinContestar || null);
+      celda(12, est.texto, { tono: est });
+      celda(13, x.coches.join(', '));
+      celda(14, x.obs);
     },
   });
 
   tabla(wb.addWorksheet('Por conductor'), logo, {
     titulo: 'Horas · Barcelona · por conductor',
     subtitulo: `${periodo[0].toUpperCase() + periodo.slice(1)} · ${datos.porConductor.length} conductores con plaza · primero quien más días no salió · generado el ${sello()}`,
+    leyenda: 'Utilización = viaje / (viaje + espera) de todos sus turnos con plaza en el periodo (no la media de los días: pesa más el día que más trabajó) · ' +
+      'A dedo y Sin contestar: el total del periodo en sus turnos con plaza; lo de los días sin plaza va en «Sin plaza».',
     cols: [
       { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
       { titulo: 'Turno', ancho: 12 }, { titulo: 'Matrícula', ancho: 14 },
       { titulo: 'Le tocaba', ancho: 11 }, { titulo: 'Salió', ancho: 9 }, { titulo: 'No salió', ancho: 10 },
-      { titulo: 'Horas en su turno', ancho: 17 }, { titulo: 'Media al salir', ancho: 14 }, { titulo: 'Fuera de su turno', ancho: 17 },
-      { titulo: 'Libró', ancho: 9 },
+      { titulo: 'Horas en su turno', ancho: 17 }, { titulo: 'Media al salir', ancho: 14 },
+      { titulo: 'Utilización', ancho: 12 }, { titulo: 'A dedo', ancho: 9 }, { titulo: 'Sin contestar', ancho: 13 },
+      { titulo: 'Fuera de su turno', ancho: 17 }, { titulo: 'Libró', ancho: 9 },
     ],
     filas: datos.porConductor,
     vacio: 'Nadie tenía plaza en esas fechas.',
@@ -151,8 +175,11 @@ async function generar(datos) {
       celda(7, x.noSalio, { tono: x.noSalio ? ESTADO.no_salio : null });
       celda(8, x.horas, { num: true, negrita: true });
       celda(9, x.media, { num: true });
-      celda(10, x.fuera || null, { num: true });
-      celda(11, x.libra || null, { tono: x.libra ? ESTADO.libra : null });
+      celda(10, x.utilizacion, { pct: true });
+      celda(11, x.aDedo || 0, { tono: x.aDedo ? ROJO : null });
+      celda(12, x.sinContestar || 0);
+      celda(13, x.fuera || null, { num: true });
+      celda(14, x.libra || null, { tono: x.libra ? ESTADO.libra : null });
     },
   });
 
@@ -160,11 +187,13 @@ async function generar(datos) {
     titulo: 'Horas · Barcelona · sin plaza',
     subtitulo: `${periodo[0].toUpperCase() + periodo.slice(1)} · ${r.personasSinPlan} conductores trabajaron sin plaza en el planificador · ` +
       `${String(r.horasSinPlan).replace('.', ',')} h · generado el ${sello()}`,
-    leyenda: 'Quien trabajó un día sin trabajar en ninguna plaza: sin plaza ese día, o en su día de libranza («Libraba»). Su turno sale de la hora a la que empezó: antes de las 12:00, día; desde las 12:00, noche (como los NN de Madrid).',
+    leyenda: 'Quien trabajó un día sin trabajar en ninguna plaza: sin plaza ese día, o en su día de libranza («Libraba»). Su turno sale de la hora a la que empezó: antes de las 12:00, día; desde las 12:00, noche (como los NN de Madrid). ' +
+      'Una fila con 0 h es de quien no trabajó pero tuvo viajes ofrecidos que no cogió (a dedo o sin contestar).',
     cols: [
       { titulo: 'Fecha', ancho: 12 }, { titulo: 'Turno', ancho: 8 },
       { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
       { titulo: 'Horas', ancho: 9 }, { titulo: 'Viaje', ancho: 8 }, { titulo: 'Espera', ancho: 8 },
+      { titulo: 'Utilización', ancho: 12 }, { titulo: 'A dedo', ancho: 9 }, { titulo: 'Sin contestar', ancho: 13 },
       { titulo: 'Coche en BOLT', ancho: 18 }, { titulo: 'Por qué', ancho: 26, izq: true },
     ],
     filas: datos.sinPlan,
@@ -177,8 +206,11 @@ async function generar(datos) {
       celda(5, x.horas, { num: true, negrita: true });
       celda(6, x.viaje, { num: true });
       celda(7, x.espera, { num: true });
-      celda(8, x.coches.join(', '));
-      celda(9, x.libraba && x.libraba.length ? `Libraba (${x.libraba.join(', ')})` : 'Sin plaza');
+      celda(8, x.utilizacion, { pct: true });
+      celda(9, x.aDedo || 0, { tono: x.aDedo ? ROJO : null });
+      celda(10, x.sinContestar || 0);
+      celda(11, x.coches.join(', '));
+      celda(12, x.libraba && x.libraba.length ? `Libraba (${x.libraba.join(', ')})` : 'Sin plaza');
     },
   });
 

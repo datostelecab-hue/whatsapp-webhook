@@ -1,11 +1,22 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-26
+actualizado: 2026-11-10
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-11-06 · Barcelona: el correturnos es una casilla del cuadrante, y el planificador se exporta a Excel
+
+*«Los correturnos sí o sí van a ser una sola casilla cogiendo los coches que estén ahí, ojo, ninguna plaza se puede repetir»* y *«no era imprimir sino exportar en excel»* (Camilo).
+
+- **El CT deja de ir por coche** (db/234 y db/235, del mismo día): es una casilla del cuadrante por jornada (día, noche o todoturno, nunca la todoturno con las otras) que coge, cada día, la plaza cuyo fijo libra. Cubre a todos los coches del cuadrante; sin casilla de un turno, el día que libra el fijo el coche no sale (no es hueco). Su libranza se calcula: los días que no coge nada.
+- **Ninguna plaza se repite**: lo mira el servicio al poner una libranza, al meter un coche y al agregar una casilla, día a día hasta lo último escrito. No es un CHECK porque depende de los descansos de todo el cuadrante.
+- **db/236 convierte lo que hubiera** sin borrar nada: lo de antes queda cerrado la víspera como historial, y el reporte de un día viejo dice lo mismo.
+- **«Imprimir» se va**: el Excel lo arma el servidor con lo que se ve (día, zona y buscador), con el formato de la pantalla.
+
+→ [[Barcelona#Los correturnos son casillas del cuadrante (db/236, 06/11/2026)]]
 
 ## 2026-10-26 · Bitácora: la J se manda a Tráfico, RRHH o Taller
 
