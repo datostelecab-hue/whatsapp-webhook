@@ -17,6 +17,7 @@ El mapa del proyecto. Cada nota cuenta una pieza y enlaza con las de al lado; si
 - **[[Telecab]]** — El negocio y la forma en que se trabaja. Sin esto, la mitad de las decisiones del sistema no se entienden.
 - **[[Arquitectura]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
 - **[[Estado y pendientes]]** — Lo que está abierto hoy. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
+- **[[Hoja de ruta]]** — Los 21 desarrollos que pidió Ignacio el 10/11/2026 (tablero de tareas, chat, avisos, RR. HH., administración, flota), en qué orden y qué del ERP sirve para cada uno. Antes de nada, una fase de cimientos.
 
 ## Referencia de las APIs
 
