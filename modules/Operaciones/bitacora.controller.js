@@ -34,8 +34,6 @@ router.get('/', (req, res) => {
     titulo: 'Bitácora', seccion: 'bitacora', layout: 'layout-gestion',
     rol: (req.usuario && req.usuario.rol) || '',
     puedeJustificar: !mias || mias.includes('/bitacora/justificar'),
-    // El Excel de las vacaciones por meses: con la llave de Vacaciones.
-    puedeVacaciones: !mias || mias.includes('/vacaciones'),
     // A quién se puede mandar una J desde aquí, y el nombre de todas (para
     // decir a quién fue una que vino de Control).
     destinosJ: bitacora.DESTINOS,
@@ -89,13 +87,14 @@ router.post('/api/libranza', responde(async req => {
 router.post('/api/resellar', sesion.requiereDesarrollador, responde(req =>
   bitacora.resellar(req.body || {}, (req.usuario || {}).nombre)));
 
-// ── Las vacaciones por meses, en Excel (12/11/2026) ────────────────────────
-// Camilo: «Ponme en bitácora un descargable en excel de las vacaciones por
-// meses». Son los saldos de Vacaciones: lleva la llave de Vacaciones
-// ('/vacaciones', services/permisos.js), no la de la bitácora.
+// ── «Vacaciones por meses», en Excel (12/11/2026) ──────────────────────────
+// Camilo: «el excel lo quiero en base a esto [el calendario de la bitácora] …
+// mes pasado, mes cursante y los próximos meses hasta el último que tenga
+// vacaciones programadas». Es el mismo calendario que ya ve quien abre la
+// bitácora: va con su llave.
 router.get('/vacaciones/excel', async (req, res) => {
   try {
-    const { bytes, nombre } = await require('../Vacaciones/vacaciones.service').excelPorMeses();
+    const { bytes, nombre } = await bitacora.vacacionesExcel();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(bytes);

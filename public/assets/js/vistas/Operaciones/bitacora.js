@@ -358,8 +358,8 @@
            <a href="/bitacora/general" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition"><i class="fa-solid fa-table-cells mr-1"></i>Bitácora general</a>
            <a href="/bitacora/caverel" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition" title="Las horas mensuales del informe de BOLT de antes: horas, viaje, espera y utilización por persona y mes"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Horas Caverel</a>
            <button id="b-vac-btn" class="text-xs px-3 py-2 rounded-lg font-semibold" style="background:${tint('V')};color:${clr('V')}"><i class="fa-solid fa-umbrella-beach mr-1"></i>Vacaciones por meses</button>
-           ${DEL_SERVIDOR.puedeVacaciones ? `<button id="b-vac-excel" class="text-xs px-3 py-2 rounded-lg font-semibold border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition"
-              title="El saldo de vacaciones de cada uno, mes a mes: lo que generó (con el tope de 1,85), los festivos, lo disfrutado y el saldo al acabar cada mes"><i class="fa-solid fa-file-excel mr-1"></i>Vacaciones por meses (Excel)</button>` : ''}
+           <button id="b-vac-excel" class="text-xs px-3 py-2 rounded-lg font-semibold border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition"
+              title="El calendario de «Vacaciones por meses» en Excel: del mes pasado al último con vacaciones programadas, una hoja por mes"><i class="fa-solid fa-file-excel mr-1"></i>Excel</button>
          </div>
        <p class="text-xs text-telecab-muted mb-4">Quién falta hoy y por qué. Elige a alguien en la lista para ver su calendario completo, día a día.</p>
        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">${bloque('B', porTipo.B)}${bloque('V', porTipo.V)}${bloque('P', porTipo.P)}</div>
@@ -485,7 +485,10 @@
       '<div class="flex items-center justify-between flex-wrap gap-2 mb-1">' +
         '<h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">' +
           '<i class="fa-solid fa-umbrella-beach" style="color:' + clr('V') + '"></i> Vacaciones por meses</h2>' +
-        '<button id="b-vac-volver" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Hoy</button>' +
+        '<div class="flex items-center gap-2">' +
+          '<button id="b-vac-excel2" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold transition" title="Este calendario en Excel: del mes pasado al último con vacaciones programadas, una hoja por mes"><i class="fa-solid fa-file-excel mr-1"></i>Excel</button>' +
+          '<button id="b-vac-volver" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Hoy</button>' +
+        '</div>' +
       '</div>' +
       '<p class="text-xs text-telecab-muted mb-3">Lo disfrutado va sólido; lo <b>programado</b>, rayado. La fila «a la vez» dice cuánta gente falta cada día: si se pone caliente, ese mes no cabe nadie más.</p>' +
       '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">' +
@@ -517,6 +520,7 @@
         '</div></details>';
 
     d.querySelector('#b-vac-volver').addEventListener('click', pintarDefault);
+    d.querySelector('#b-vac-excel2').addEventListener('click', bajarVacacionesExcel);
     d.querySelectorAll('[data-vacmes]').forEach(b => b.addEventListener('click', () => { vacMesSel = Number(b.dataset.vacmes); pintarVacaciones(); }));
     d.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.abrir))));
   }

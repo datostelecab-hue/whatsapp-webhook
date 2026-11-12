@@ -11,7 +11,11 @@ El calendario de la plantilla: **qué hizo cada persona cada día** —cuántas 
 - `/bitacora` — el día a día, con el panel de un día concreto.
 - `/bitacora/general` — la plantilla entera contra el calendario entero.
 - `/bitacora/caverel` — **Horas Caverel**: las horas mensuales del informe de BOLT de antes (abajo).
-- **Vacaciones por meses (Excel)** (12/11/2026): el saldo de vacaciones de cada uno mes a mes, con la llave de Vacaciones. Ver [[Vacaciones#0,084 por día con un tope de 1,85 al mes (12/11/2026)]].
+- **«Vacaciones por meses» en Excel** (12/11/2026): botón «Excel» en el panel de hoy y en el propio calendario. Camilo: *«el excel lo quiero en base a esto, no las que disfrutaron ni nada, quiero más que todo las proyectadas y las que pasaron hace un mes máximo… mes pasado, mes cursante y los próximos meses hasta el último que tenga vacaciones programadas»*.
+  - **Una hoja por mes** con la misma cuenta que la pantalla (`bitacora.vacaciones.excel.js`, con los datos de `leerVacaciones`). Cada hoja lleva una fila por persona de vacaciones ese mes y una columna por día. Lo que ya pasó, sólido; lo programado, rayado; los fines de semana, en gris.
+  - La fila **«A la vez»** va más oscura cuanta más gente falta, y el pico sale en la cabecera.
+  - Al final, la hoja **«Sin vacaciones»**: quién no tiene ni un día.
+  - Como mucho 15 meses vista, como la pantalla. Va con la llave de la bitácora, como el calendario.
 
 ## Las dos pantallas leen el MISMO `/api/datos`
 

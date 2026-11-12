@@ -401,39 +401,6 @@ async function lista({ hoy = hoyMadrid() } = {}) {
 }
 
 /** La ficha de una persona: el saldo y de dónde sale cada número. */
-/**
- * LAS VACACIONES MES A MES DE TODOS, para el Excel de la bitácora (12/11/2026,
- * Camilo: «Ponme en bitácora un descargable en excel de las vacaciones por
- * meses»). La misma cuenta que la lista y la ficha (`saldoPara`), con su
- * desglose por mes: lo que generó (con el tope), los festivos que suman, lo
- * disfrutado y el saldo al acabar cada mes. `meses` son todos los de DESDE_HISTORICO
- * a hoy, para que todas las personas vayan en las mismas columnas.
- */
-async function porMeses({ hoy = hoyMadrid() } = {}) {
-  const { gente, festivos, porId } = await cargar();
-  const meses = [];
-  for (let m = DESDE_HISTORICO.slice(0, 7); m <= hoy.slice(0, 7); m = mesSiguiente(m)) meses.push(m);
-  const filas = gente.map(p => {
-    const s = saldoPara(p, porId.get(p.id), festivos, hoy);
-    const de = new Map(s.detalle.meses.map(m => [m.mes, m]));
-    return {
-      id: p.id, nombre: p.nombre, alta: p.alta, contrato: contrato(p), deBaja: s.deBaja, baja: s.baja,
-      inicio: s.inicio, generadas: s.generadas, festivos: s.festivosSuman, disfrutadas: s.disfrutadas,
-      saldo: s.saldo, programadas: s.programadas, saldoTras: s.saldoTras,
-      // Antes de su inicio (alta), el mes va vacío y sin saldo.
-      meses: meses.map(m => de.get(m) || null),
-    };
-  }).sort((a, b) => Number(a.deBaja) - Number(b.deBaja) || a.nombre.localeCompare(b.nombre, 'es'));
-  return { hoy, meses, filas, tasa: TASA, topeMes: TOPE_MES };
-}
-
-/** El Excel de las vacaciones por meses: { bytes, nombre }. */
-async function excelPorMeses({ hoy = hoyMadrid() } = {}) {
-  const datos = await porMeses({ hoy });
-  const bytes = await require('./vacaciones.excel').porMeses(datos);
-  return { bytes, nombre: `Vacaciones por meses ${hoy.split('-').reverse().join('-')}.xlsx` };
-}
-
 async function ficha(id, { hoy = hoyMadrid() } = {}) {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) throw new Error('Falta la persona');
@@ -631,6 +598,6 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 
 module.exports = {
   TASA, TOPE_MES, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
-  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones, porMeses, excelPorMeses,
+  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };

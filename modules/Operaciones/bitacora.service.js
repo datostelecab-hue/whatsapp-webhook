@@ -68,6 +68,17 @@ async function vacaciones() {
 }
 
 /**
+ * «VACACIONES POR MESES» EN EXCEL (12/11/2026): el mismo calendario que la
+ * pantalla, del mes pasado al último con vacaciones programadas
+ * (bitacora.vacaciones.excel.js). { bytes, nombre }.
+ */
+async function vacacionesExcel() {
+  const vac = await vacaciones();
+  const bytes = await require('./bitacora.vacaciones.excel').generar(vac);
+  return { bytes, nombre: `Vacaciones por meses ${vac.hoy.split('-').reverse().join('-')}.xlsx` };
+}
+
+/**
  * LAS LLAMADAS DE UN DÍA, con lo que contestó de cada alerta. Va aparte del
  * payload gordo —que se cachea entero para toda la plantilla y 365 días—:
  * esto solo se pide cuando alguien abre UN día de UNA persona.
@@ -313,7 +324,7 @@ async function sellarPuntuacionSemanal() {
 
 module.exports = {
   mediaDelMes, promedioHoras, recalcularPromedios, sellarPuntuacionSemanal,
-  datos, vacaciones, llamadasDelDia,
+  datos, vacaciones, vacacionesExcel, llamadasDelDia,
   justificar, anularJustificante, libranza, resellar, DESTINOS, ponerMenosJ,
   CASUISTICAS_MENOS_J: menosJ.CASUISTICAS,
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el

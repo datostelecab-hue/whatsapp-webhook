@@ -49,12 +49,7 @@ Camilo: *«0,084 Dias generan por dia laborable completado. Con un maximo de 1.8
 | Generadas | 837,5 días | 1.172,4 días |
 | Saldo medio | 1,40 días | 3,74 días |
 
-**El Excel por meses, en la bitácora.** Camilo: *«Ponme en bitácora un descargable en excel de las vacaciones por meses»*.
-- Botón **«Vacaciones por meses (Excel)»** junto a «Vacaciones por meses». Lleva la llave de Vacaciones (`/bitacora/vacaciones/` → `/vacaciones`), porque son saldos.
-- Una fila por persona (de alta, y quien se fue este año, en gris).
-- Un bloque por mes desde enero: **Generadas** (en ámbar si llegó al tope), **Festivos**, **Disfrutadas** y **Saldo** al acabar el mes.
-- Al final, el saldo de hoy, lo programado y lo que quedará.
-- Es la misma cuenta que la ficha (`vacaciones.service.porMeses`, `vacaciones.excel.js`), así que el saldo del último mes es el de la ficha.
+**El Excel de la bitácora no es de saldos**: es el calendario «Vacaciones por meses» (ver [[Bitacora]]). El desglose por mes del saldo (generadas con su tope, festivos, disfrutadas y saldo al acabar el mes) se ve en la ficha.
 
 ## Asuntos propios: un banco aparte (29/10/2026, db/225)
 
