@@ -38,20 +38,33 @@
       });
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo iniciar el envío');
-      seguirEnvio(btn, previo);
+      // Hace cola si hay otro saliendo (12/11/2026): el botón sigue SU envío.
+      seguirEnvio(btn, previo, j.trabajo);
     } catch (e) {
       btn.disabled = false; btn.innerHTML = previo;
       await Dialogo.aviso({ titulo: 'No se pudo enviar', texto: e.message, tono: 'error' });
     }
   }
 
-  // El progreso del envío, en el propio botón (el estado es el de Cobertura).
-  async function seguirEnvio(btn, previo) {
-    for (let i = 0; i < 100; i++) {
-      await new Promise(r => setTimeout(r, 3000));
+  // El progreso del envío, en el propio botón. Los envíos HACEN COLA (12/11/2026):
+  // cada botón sondea el suyo por su número y, mientras espera a que acabe otro,
+  // dice en qué puesto va. Antes había uno a la vez y el segundo no salía.
+  async function seguirEnvio(btn, previo, trabajo) {
+    const url = '/cobertura/enviar-turnos/estado' + (trabajo ? '?trabajo=' + encodeURIComponent(trabajo) : '');
+    // Hasta media hora: con la cola, un envío puede esperar a los que van delante.
+    for (let i = 0; i < 600; i++) {
+      await new Promise(r => setTimeout(r, i ? 3000 : 800));
       let p;
-      try { p = ((await (await fetchPlan('/cobertura/enviar-turnos/estado')).json()).progreso) || {}; }
+      try { p = ((await (await fetchPlan(url)).json()).progreso) || {}; }
       catch (_) { continue; }
+      if (p.desconocido) {
+        // El servidor se reinició con este envío esperando: no salió.
+        btn.disabled = false; btn.innerHTML = previo;
+        await Dialogo.aviso({ titulo: 'El envío no salió', tono: 'error',
+          texto: 'El servidor se reinició mientras este envío esperaba en la cola. Vuelve a pulsar «Enviar turnos».' });
+        return;
+      }
+      if (p.activo && p.enCola) { btn.innerHTML = `<i class="fa-solid fa-hourglass-half"></i> En cola · ${p.enCola}.º`; continue; }
       if (p.activo) { btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${p.enviados}/${p.total}`; continue; }
       const extra = (p.errores ? ` · ${p.errores} err` : '') + (p.sinTel ? ` · ${p.sinTel} sin tel` : '');
       btn.innerHTML = `<i class="fa-solid fa-check"></i> ${p.enviados}/${p.total} enviados${extra}`;

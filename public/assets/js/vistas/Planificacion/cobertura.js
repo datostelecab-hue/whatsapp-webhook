@@ -388,8 +388,9 @@ $('#btn-turnos-todos').addEventListener('click', async () => {
   }))) return;
   $('#btn-turnos-todos').disabled = true;
   try {
-    await Api.post('/cobertura/enviar-turnos-todos', { semana: SEMANA });
-    arrancarPollTurnos();   // el botón vuelve cuando el envío termina
+    const r = await Api.post('/cobertura/enviar-turnos-todos', { semana: SEMANA });
+    // Hace cola si hay otro saliendo (12/11/2026): se sigue SU envío.
+    arrancarPollTurnos(r && r.trabajo);   // el botón vuelve cuando el envío termina
   } catch (err) {
     $('#btn-turnos-todos').disabled = false;
     await Dialogo.aviso({ titulo: 'No se pudo iniciar el envío', texto: err.message, tono: 'error' });
@@ -397,14 +398,24 @@ $('#btn-turnos-todos').addEventListener('click', async () => {
 });
 async function pollTurnos() {
   try {
-    const d = await Api.get('/cobertura/enviar-turnos/estado');
+    const d = await Api.get('/cobertura/enviar-turnos/estado' + (_trabajoTurnos ? '?trabajo=' + encodeURIComponent(_trabajoTurnos) : ''));
     const p = d.progreso || {};
-    $('#turnos-estado').textContent = p.activo
+    $('#turnos-estado').textContent = p.desconocido
+      ? 'El envío no salió: el servidor se reinició mientras esperaba. Vuelve a pulsar.'
+      : p.activo && p.enCola
+      ? `En cola (${p.enCola}.º): sale en cuanto acabe el que va delante`
+      : p.activo
       ? `Enviando… ${p.enviados}/${p.total}${p.errores ? ' · ' + p.errores + ' err' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin tel' : ''}`
       : (p.total ? `${p.enviados}/${p.total} enviados${p.errores ? ' · ' + p.errores + ' con error' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin teléfono' : ''}` : '');
     if (!p.activo) { clearInterval(_pollTurnos); _pollTurnos = null; $('#btn-turnos-todos').disabled = false; cargarAvisos(); }
   } catch (_) {}
 }
-function arrancarPollTurnos() { $('#turnos-estado').textContent = 'Iniciando…'; if (!_pollTurnos) _pollTurnos = setInterval(pollTurnos, 3000); pollTurnos(); }
+let _trabajoTurnos = null;   // el número del envío que se sigue (la cola, 12/11/2026)
+function arrancarPollTurnos(trabajo) {
+  _trabajoTurnos = trabajo || null;
+  $('#turnos-estado').textContent = 'Iniciando…';
+  if (!_pollTurnos) _pollTurnos = setInterval(pollTurnos, 3000);
+  pollTurnos();
+}
 
 cargar();

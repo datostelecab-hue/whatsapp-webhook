@@ -92,7 +92,8 @@ enviar se marca la semana: cuando pulse, tiene que ver ESA y no la de hoy.
 
 **Un envío masivo a la vez, y a 1,2 segundos por mensaje** (~50/min, por debajo
 de los límites de Meta). Doscientas personas son cuatro minutos: va en segundo
-plano y el panel sondea el progreso. El segundo envío recibe un 409, no una cola.
+plano y el panel sondea el progreso. Desde el 12/11/2026 el segundo HACE COLA
+(antes recibía un 409 y no salía): cada botón sigue su trabajo por su número.
 
 **El apunte nunca tumba el envío.** Si el registro falla, el WhatsApp sale igual.
 No avisar a nadie porque no se pudo escribir una fila sería cambiar un problema

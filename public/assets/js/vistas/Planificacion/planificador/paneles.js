@@ -40,6 +40,21 @@
     const cambiados = infos.filter(i => i.cambiado).length;
     const sinAviso = ids.length - infos.length;
     const veces = Math.max(...infos.map(i => i.veces));
+    // A quién de este cuadrante se le ha avisado más veces, y de quién eran
+    // esos avisos (12/11/2026). «×6» con el nombre del último se leía como «lo
+    // mandó él seis veces».
+    const masAvisado = infos.reduce((a, b) => (b.veces > a.veces ? b : a));
+    const reparto = masAvisado.porUsuario || [];
+    const ultimoPila = String(u.ultimoPor || '').split(' ')[0];
+    const otros = reparto.filter(x => x.pila !== ultimoPila);
+    const cuantas = veces > 1
+      ? ` · ${veces} envíos esta semana` + (otros.length ? ` (${otros.map(x => `${x.veces} de ${x.pila}`).join(', ')})` : '')
+      : '';
+    const idMas = ids.find(id => AV.conductores[id] === masAvisado);
+    const masAvisadoNombre = (idMas && (porId.get(idMas) || {}).nombre) || '';
+    const detalleQuien = veces > 1 && reparto.length
+      ? ` A quien más se le ha avisado esta semana${masAvisadoNombre ? ' (' + masAvisadoNombre + ')' : ''}: ${veces} veces, ${reparto.map(x => `${x.veces} de ${x.nombre}`).join(', ')}.`
+      : '';
     if (cambiados || sinAviso) {
       const que = [cambiados ? `${cambiados} con los turnos CAMBIADOS desde el aviso` : '',
                    sinAviso ? `${sinAviso} sin avisar` : ''].filter(Boolean).join(' y ');
@@ -48,8 +63,8 @@
         <i class="fa-solid fa-triangle-exclamation"></i> Cambiado · reavisar</span>`;
     }
     return `<span class="${base} bg-telecab-green/15 text-telecab-green border-telecab-green/40"
-      title="${esc(`Avisado ${u.ultimoAt}${u.ultimoPor ? ' por ' + u.ultimoPor : ''} · ${veces} envío(s) · sin cambios desde entonces`)}">
-      <i class="fa-solid fa-check"></i> Avisado ${esc(u.ultimoAt)}${u.ultimoPor ? ' · ' + esc(u.ultimoPor) : ''}${veces > 1 ? ` · ×${veces}` : ''}</span>`;
+      title="${esc(`Último aviso ${u.ultimoAt}${u.ultimoPor ? ' por ' + u.ultimoPor : ''}, sin cambios desde entonces.${detalleQuien}`)}">
+      <i class="fa-solid fa-check"></i> Avisado ${esc(u.ultimoAt)}${u.ultimoPor ? ' · ' + esc(u.ultimoPor) : ''}${esc(cuantas)}</span>`;
   }
 
   // EL CHIP VA EN SU PROPIO HUECO (03/11/2026). El semáforo llega aparte y

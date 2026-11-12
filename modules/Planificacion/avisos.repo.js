@@ -85,12 +85,35 @@ async function estadoSemana({ dia }) {
        FROM aviso_turnos
       WHERE semana_lunes = $1::date AND resultado = 'ok'
       ORDER BY conductor_id, enviado_at DESC`, [lunes]);
+  // QUIÉN le avisó y cuántas veces (12/11/2026). El chip decía «Avisado 12/11
+  // 13:51 · William Reinoso · ×6» y se leía como «William lo mandó seis
+  // veces», cuando cinco eran de Ángel del domingo. Por usuario y no por el
+  // texto: el mismo usuario sale escrito de dos formas en el registro.
+  const quien = await db.consulta(
+    `SELECT a.conductor_id,
+            COALESCE(NULLIF(btrim(u.nombre), ''), split_part(a.usuario, ' ', 1), 'Sin usuario') AS pila,
+            COALESCE(NULLIF(btrim(concat_ws(' ', u.nombre, u.apellidos)), ''), a.usuario, 'Sin usuario') AS nombre,
+            count(*)::int AS veces,
+            max(a.enviado_at) AS ultimo
+       FROM aviso_turnos a
+       LEFT JOIN usuario u ON u.id = a.usuario_id
+      WHERE a.semana_lunes = $1::date AND a.resultado = 'ok'
+      GROUP BY a.conductor_id, 2, 3
+      ORDER BY a.conductor_id, count(*) DESC, max(a.enviado_at) DESC`, [lunes]);
+  const porQuien = new Map();
+  quien.rows.forEach(x => {
+    const id = String(x.conductor_id);
+    if (!porQuien.has(id)) porQuien.set(id, []);
+    porQuien.get(id).push({ pila: x.pila, nombre: x.nombre, veces: x.veces });
+  });
+
   const conductores = {};
   r.rows.forEach(x => {
     const id = String(x.conductor_id);
     const actual = porConductor.get(id) || '';
     conductores[id] = {
       veces: x.veces,
+      porUsuario: porQuien.get(id) || [],
       ultimoAt: x.cuando,
       ultimoTs: Number(x.ts) || 0,
       ultimoPor: x.usuario || '',

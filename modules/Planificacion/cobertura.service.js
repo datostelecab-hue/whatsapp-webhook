@@ -17,9 +17,10 @@
 //    días, contados desde el momento en que pulsa (28/09/2026). Antes se
 //    apuntaba la semana avisada para enseñarle esa; ya no hace falta.
 //
-// 3. UN ENVÍO A LA VEZ. El masivo guarda su progreso en memoria y el panel lo
-//    sondea; dos a la vez se pisarían el contador y, peor, duplicarían mensajes.
-//    El segundo recibe un 409, no una cola.
+// 3. UN ENVÍO A LA VEZ, Y LOS DEMÁS ESPERAN (cola desde el 12/11/2026). Dos a
+//    la vez se pisarían el contador y duplicarían mensajes; antes el segundo
+//    recibía un 409 y no salía. Ahora hace cola y sale después (ver «Los envíos
+//    hacen cola», más abajo).
 //
 // 4. 1,2 SEGUNDOS ENTRE MENSAJES. Son ~50/min, por debajo de los límites de
 //    Meta. Un bulk de 200 personas son cuatro minutos: por eso va en segundo
@@ -188,26 +189,74 @@ async function enviarAUno({ id, semana }, quienEs) {
   return { enviado: true, via: r.via, cambio: !!r.cambio };
 }
 
-// El progreso del masivo vive en memoria: lo sondea el panel mientras dura y no
-// hace falta guardarlo. Si el proceso se reinicia a mitad, lo que interesa —qué
-// se mandó y a quién— está en `aviso_turnos`, no aquí.
-let _prog = { activo: false, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: null, fin: null, detalle: [] };
+// ── LOS ENVÍOS HACEN COLA (12/11/2026) ─────────────────────────────────────
+// Camilo: «Haz la cola de envíos». Antes había UN envío a la vez y el segundo
+// recibía un 409 («Ya hay un envío en marcha») sin que nada quedara apuntado.
+// El 12/11 Ángel fue pulsando cuadrantes seguidos en el planificador y, cuando
+// uno caía mientras otro seguía enviando, ese no salía: el chip del cuadrante
+// seguía diciendo «Avisado» con lo del domingo y nadie se enteraba.
+//
+// Ahora cada botón deja un TRABAJO en la cola y los trabajos salen de uno en
+// uno, con el mismo ritmo (nota 4): nunca hay dos envíos a la vez hablando con
+// Meta ni pisándose el contador, que es lo que la regla de antes protegía.
+//
+//   · Cada trabajo lleva su número y su progreso; el botón que lo pidió sondea
+//     el SUYO (`progreso(id)`), y mientras espera dice en qué puesto va.
+//   · El mismo envío pedido dos veces (mismo cuadrante, misma gente, misma
+//     semana) mientras espera o se está enviando es el MISMO trabajo: un doble
+//     clic o un «por si acaso» no manda dos veces.
+//   · La cola vive en memoria. Si el proceso se reinicia, lo que estaba
+//     esperando se pierde (el botón lo dice y se puede volver a pulsar); lo que
+//     ya salió está en `aviso_turnos`.
+const _cola = [];
+let _actual = null;
+const _hechos = [];          // los últimos trabajos terminados, para que su botón vea cómo acabaron
+const HECHOS_MAX = 50;
+let _ultimoId = 0;
 
-/** Los últimos 15 renglones bastan: el panel enseña una cola, no un histórico. */
-const progreso = () => ({ ..._prog, detalle: _prog.detalle.slice(-15) });
+const progresoVacio = () => ({ total: 0, enviados: 0, errores: 0, sinTel: 0, porTexto: 0, iniciado: null, fin: null, detalle: [] });
 
-const hayEnvioEnMarcha = () => _prog.activo;
+/** Lo que ve el botón de un trabajo. `activo` = todavía no ha acabado (esperando o enviando). */
+function estadoDe(t) {
+  if (!t) return { desconocido: true, activo: false, total: 0, enviados: 0, errores: 0, sinTel: 0, detalle: [] };
+  const puesto = _cola.indexOf(t);
+  return {
+    trabajo: t.id,
+    cuadrante: t.ctx.cuadrante || null,
+    usuario: t.ctx.usuario || null,
+    pedido: t.pedido,
+    activo: !t.hecho,
+    enCola: puesto >= 0 ? puesto + 1 : 0,
+    ...t.prog,
+    detalle: t.prog.detalle.slice(-15),
+  };
+}
+
+/**
+ * El progreso de UN trabajo (el que pidió ese botón) o, sin número, el del que
+ * se está enviando ahora —o el último que acabó— y cuántos esperan detrás.
+ */
+function progreso(id) {
+  if (id != null && id !== '') {
+    const n = Number(id);
+    const t = (_actual && _actual.id === n && _actual) || _cola.find(x => x.id === n) || _hechos.find(x => x.id === n);
+    return estadoDe(t);
+  }
+  const t = _actual || _hechos[_hechos.length - 1] || null;
+  return { ...(t ? estadoDe(t) : estadoDe(null)), desconocido: false, activo: !!_actual || _cola.length > 0, enEspera: _cola.length };
+}
+
 
 /**
  * A TODOS los que trabajan esa semana, o a UNA LISTA (un cuadrante del
- * planificador). Misma maquinaria y mismo ritmo; el panel sondea lo mismo.
+ * planificador). Misma maquinaria y mismo ritmo; cada trabajo, su progreso.
  *
  * `cuadrante` viene del botón del planificador y se queda en el registro:
  * "William avisó al cuadrante X".
  */
-async function enviarABastantes(semana, soloIds = null, ctx = {}) {
-  const s = semanaDe(semana);
-  _prog = { activo: true, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: sello(), fin: null, detalle: [] };
+async function enviarABastantes(t) {
+  const { semana: s, soloIds, ctx, prog } = t;
+  prog.iniciado = sello();
   try {
     const porConductor = await listaDeAvisos(s);
     // La foto de lo que se está avisando, para el registro y el semáforo. Si no
@@ -227,34 +276,63 @@ async function enviarABastantes(semana, soloIds = null, ctx = {}) {
     // y por eso sigue en la lista, pero no se le avisa de nada.
     const lista = porConductor.filter(e =>
       (!soloIds || soloIds.has(String(e.id))) && !e.deBaja && e.dias.some(d => d.trabaja));
-    _prog.total = lista.length;
+    prog.total = lista.length;
 
     for (const e of lista) {
       if (!e.telefono) {
-        _prog.sinTel++; _prog.detalle.push(`${e.nombre}: sin teléfono`);
+        prog.sinTel++; prog.detalle.push(`${e.nombre}: sin teléfono`);
         await apunte(e, 'sin-telefono');
         continue;
       }
       const r = await avisarTurnos(e, { lunes: h.lunes, huella: h.porConductor.get(String(e.id)) || '' });
-      if (r.ok) { _prog.enviados++; if (r.via === 'texto') _prog.porTexto = (_prog.porTexto || 0) + 1; }
-      else { _prog.errores++; _prog.detalle.push(`${e.nombre}: ${r.error}`); }
+      if (r.ok) { prog.enviados++; if (r.via === 'texto') prog.porTexto++; }
+      else { prog.errores++; prog.detalle.push(`${e.nombre}: ${r.error}`); }
       await apunte(e, r.ok ? 'ok' : 'error', detalleDe(r));
       await sleep(RITMO_MS);
     }
   } finally {
-    _prog.activo = false; _prog.fin = sello();
+    prog.fin = sello();
   }
-  console.log(`📅 [Turnos] Bulk semana ${s}: ${_prog.enviados} enviados (${_prog.porTexto || 0} por texto, sin plantilla) · ` +
-    `${_prog.errores} err · ${_prog.sinTel} sin tel`);
+  console.log(`📅 [Turnos] Envío ${t.id}${ctx.cuadrante ? ' (' + ctx.cuadrante + ')' : ''} de ${ctx.usuario || '¿?'}, semana ${s}: ` +
+    `${prog.enviados} enviados (${prog.porTexto} por texto, sin plantilla) · ${prog.errores} err · ${prog.sinTel} sin tel`);
+}
+
+/** Saca los trabajos de la cola de uno en uno. Si ya está sacando, no hace nada. */
+async function correrCola() {
+  if (_actual) return;
+  while (_cola.length) {
+    _actual = _cola.shift();
+    try {
+      await enviarABastantes(_actual);
+    } catch (e) {
+      _actual.prog.errores++;
+      _actual.prog.detalle.push(`El envío se cortó: ${e.message}`);
+      console.error(`❌ [Turnos] envío ${_actual.id}:`, e.message);
+    } finally {
+      _actual.hecho = true;
+      _hechos.push(_actual);
+      if (_hechos.length > HECHOS_MAX) _hechos.shift();
+      _actual = null;
+    }
+  }
 }
 
 /**
- * Lanza el masivo EN SEGUNDO PLANO y vuelve enseguida: son minutos (ver la nota
- * 4) y la petición se cortaría. El panel sondea `progreso()`.
+ * Deja un envío en la cola y vuelve enseguida: son minutos (ver la nota 4) y la
+ * petición se cortaría. Devuelve su estado, con su número para sondearlo.
  */
-function lanzarMasivo(semana, soloIds, ctx) {
-  enviarABastantes(semana, soloIds, ctx)
-    .catch(e => console.error('❌ [Turnos] bulk:', e.message));
+function lanzarMasivo(semana, soloIds, ctx = {}) {
+  const s = semanaDe(semana);
+  const clave = [s, ctx.cuadrante || '', soloIds ? [...soloIds].sort().join(',') : '*'].join('|');
+  // El mismo envío, pedido otra vez mientras espera o se está enviando: el mismo trabajo.
+  const igual = [_actual, ..._cola].find(x => x && x.clave === clave);
+  if (igual) return { ...estadoDe(igual), repetido: true };
+  const t = { id: ++_ultimoId, clave, semana: s, soloIds, ctx, pedido: sello(), prog: progresoVacio(), hecho: false };
+  _cola.push(t);
+  // Primero se arranca (si no había nada saliendo, este sale ya y deja la cola)
+  // y DESPUÉS se mira su puesto: si no, decía «en cola» uno que ya salía.
+  correrCola().catch(e => console.error('❌ [Turnos] cola:', e.message));
+  return estadoDe(t);
 }
 
 /**
@@ -301,6 +379,6 @@ async function proximosDe(conductorId) {
 module.exports = {
   proximosDeCadaUno, proximosDe,
   paraLaPantalla, datos, conductorPorTelefono, estadoDeAvisos, informeDeAvisos,
-  enviarAUno, lanzarMasivo, progreso, hayEnvioEnMarcha,
+  enviarAUno, lanzarMasivo, progreso,
   semanaDe, diaDeSemana,
 };

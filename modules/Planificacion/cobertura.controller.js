@@ -52,33 +52,31 @@ router.post('/enviar-turnos', responde(async req => {
   return cobertura.enviarAUno({ id: b.idBolt || b.id, semana: semanaDe(req) }, quienEs(req));
 }, 400));
 
-/** Un envío a la vez: el segundo recibe un 409, no una cola. */
-const siNoHayOtro = fn => (req, res) => {
-  if (cobertura.hayEnvioEnMarcha()) {
-    return res.status(409).json({ status: 'error', msg: 'Ya hay un envío en marcha' });
-  }
-  return fn(req, res);
-};
+// Los envíos HACEN COLA (12/11/2026): antes el segundo recibía un 409 y no
+// salía. Cada petición deja su trabajo y devuelve su número; el botón sondea el
+// suyo con /enviar-turnos/estado?trabajo=N.
 
 // A TODOS los que trabajan esa semana.
-router.post('/enviar-turnos-todos', siNoHayOtro((req, res) => {
-  cobertura.lanzarMasivo(semanaDe(req), null, { ...quienEs(req), origen: 'cobertura' });
-  res.json({ status: 'ok', msg: 'Envío iniciado' });
-}));
+router.post('/enviar-turnos-todos', (req, res) => {
+  const t = cobertura.lanzarMasivo(semanaDe(req), null, { ...quienEs(req), origen: 'cobertura' });
+  res.json({ status: 'ok', msg: t.enCola ? `En cola (${t.enCola}.º): sale en cuanto acabe lo de delante` : (t.repetido ? 'Ese envío ya está saliendo' : 'Envío iniciado'), trabajo: t.trabajo, enCola: t.enCola, repetido: !!t.repetido });
+});
 
 // A UNA LISTA (un cuadrante del planificador, por ejemplo).
-router.post('/enviar-turnos-varios', siNoHayOtro((req, res) => {
+router.post('/enviar-turnos-varios', (req, res) => {
   const b = req.body || {};
   const ids = [...new Set((b.ids || []).map(x => String(x).trim()).filter(Boolean))];
   if (!ids.length) return res.status(400).json({ status: 'error', msg: 'No hay conductores a los que enviar' });
   const cuadrante = String(b.cuadrante || '').slice(0, 120) || null;
-  cobertura.lanzarMasivo(semanaDe(req), new Set(ids),
+  const t = cobertura.lanzarMasivo(semanaDe(req), new Set(ids),
     { ...quienEs(req), cuadrante, origen: 'planificador' });
-  res.json({ status: 'ok', msg: 'Envío iniciado', pedidos: ids.length });
-}));
+  res.json({ status: 'ok', msg: t.enCola ? `En cola (${t.enCola}.º): sale en cuanto acabe lo de delante` : (t.repetido ? 'Ese envío ya está saliendo' : 'Envío iniciado'), pedidos: ids.length,
+    trabajo: t.trabajo, enCola: t.enCola, repetido: !!t.repetido });
+});
 
+// Con ?trabajo=N, el de ese envío; sin él, el que está saliendo y cuántos esperan.
 router.get('/enviar-turnos/estado', (req, res) =>
-  res.json({ status: 'ok', progreso: cobertura.progreso() }));
+  res.json({ status: 'ok', progreso: cobertura.progreso((req.query || {}).trabajo) }));
 
 // El estado de los avisos de una semana (el semáforo del planificador).
 router.get('/api/avisos-estado', responde(req => cobertura.estadoDeAvisos(semanaDe(req))));
