@@ -31,6 +31,11 @@
     manual:     { texto: 'A mano',     icono: 'fa-pen' },
   };
 
+  /** El icono que abre el PDF de la factura (lo sirve el ERP, desde Drive). */
+  const enlacePdf = m => `<a href="/facturas/api/factura/${encodeURIComponent(m.facturaId)}/pdf" target="_blank" rel="noopener"
+      class="inline-flex items-center gap-1 text-telecab-gold hover:underline" title="Ver la factura en PDF"
+      aria-label="Ver la factura ${esc(m.facturaNumero || '')} en PDF"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>PDF</a>`;
+
   /** De dónde sale: «Discom · Factura 2026/000566», «Pieza del inventario», «Apuntado por Óscar». */
   function procedencia(m) {
     const partes = [];
@@ -38,7 +43,9 @@
     if (m.origen === 'factura' && m.facturaNumero) {
       const num = 'Factura ' + esc(m.facturaNumero);
       partes.push(m.facturaId
-        ? `<a href="/facturas#${encodeURIComponent(m.facturaId)}" class="underline underline-offset-2 decoration-telecab-border hover:text-telecab-gold">${num}</a>`
+        ? `<a href="/facturas#${encodeURIComponent(m.facturaId)}" class="underline underline-offset-2 decoration-telecab-border hover:text-telecab-gold">${num}</a>` +
+          // El PDF de la factura, sin ir a Facturas (12/11/2026).
+          (m.facturaEnlace ? ` ${enlacePdf(m)}` : '')
         : num);
     } else if (m.origen === 'inventario') {
       partes.push('Pieza del inventario');

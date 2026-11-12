@@ -249,6 +249,14 @@ El fichero va a **Drive** y el **índice a PostgreSQL**, que es como guarda docu
 
 `/facturas/api/pdf` lleva su propio parser de JSON con límite de 30 MB, porque una factura escaneada en base64 pasa de largo los 2 MB del parser global — que por eso se salta esa ruta en `app.js`.
 
+**Verlo sin ir a Drive: `GET /facturas/api/factura/:id/pdf`** (12/11/2026). Camilo: *«que esté el ícono de PDF para descargar en estas pantallas también para no tener que ir hasta el módulo de facturas»*.
+- **Cómo se sirve:** el ERP baja el PDF de Drive y lo sirve él. El enlace de Drive solo abría a quien tenía acceso a esa carpeta.
+- **Quién lo ve:** quien puede ver la factura, porque se comprueba la sede. Es un GET, así que pide la llave `/facturas`. Va en `/api/factura/:id/pdf` y no en `/api/pdf/:id`, que es la ruta de subir.
+- **Dónde sale el icono:**
+  - en la ficha de la factura («Ver PDF») y en la columna de la lista;
+  - en la ficha de un mantenimiento («Factura en PDF», y junto al número);
+  - en cada mantenimiento de la ficha del coche.
+
 **Muchos PDF de una vez: «Subir PDFs»** (12/11/2026). Las 302 facturas que entraron leídas de los PDF (db/242, [[Inventario y mantenimientos]]) llegaron sin su papel.
 - Se eligen muchos ficheros y cada uno se casa con **su** factura por el número que lleva en el nombre: «Discom 2026-000566.pdf» va a la 2026/000566 de Discom.
 - Si un número cabe en dos, gana el más largo (566 cabe dentro de 2026/000566). Si aun así hay dos, decide el taller que diga el nombre.

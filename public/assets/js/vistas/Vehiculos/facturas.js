@@ -81,7 +81,7 @@
         pinta: v => etiqueta(v === 'barcelona' ? 'Barcelona' : 'Madrid', v === 'barcelona' ? 'violet' : 'muted') }] : []),
       { titulo: 'PDF', campo: 'archivo',
         pinta: (v, f) => (f.enlace
-          ? `<a href="${esc(f.enlace)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline" aria-label="Ver la factura ${esc(f.numero)} en PDF"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i></a>`
+          ? `<a href="/facturas/api/factura/${encodeURIComponent(f.id)}/pdf" target="_blank" rel="noopener" class="text-telecab-gold hover:underline" aria-label="Ver la factura ${esc(f.numero)} en PDF" title="Ver la factura en PDF"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i></a>`
           : '<span class="text-telecab-muted">—</span>') },
     ],
 
@@ -91,7 +91,11 @@
       subtitulo: d => [fecha(d.fecha), eur(d.total), d.anulada ? 'ANULADA' : ''].filter(Boolean).join(' · '),
 
       acciones: [
-        ...(PUEDE ? [{ texto: 'Subir PDF', icono: 'fa-file-arrow-up', principal: true,
+        // El PDF, abierto por el ERP (no hace falta acceso a la carpeta de Drive).
+        { texto: 'Ver PDF', icono: 'fa-file-pdf', principal: true,
+          visible: d => !!(d.archivo || d.enlace),
+          onClick: d => { window.open(`/facturas/api/factura/${encodeURIComponent(d.id)}/pdf`, '_blank', 'noopener'); } },
+        ...(PUEDE ? [{ texto: 'Subir PDF', icono: 'fa-file-arrow-up', principal: false,
           visible: d => !d.anulada, onClick: subirPdf }] : []),
         ...(PUEDE ? [{ texto: 'Anular', icono: 'fa-ban', peligro: true,
           visible: d => !d.anulada, onClick: anular }] : []),

@@ -533,6 +533,10 @@
         acciones: [
           { texto: 'Ver el coche', icono: 'fa-car-side', principal: true,
             onClick: d => { location.href = '/vehiculos#' + encodeURIComponent(d.vehiculoId); } },
+          // El PDF de la factura, sin ir a Facturas (12/11/2026).
+          { texto: 'Factura en PDF', icono: 'fa-file-pdf',
+            visible: d => !!(d.facturaId && d.facturaEnlace),
+            onClick: d => { window.open(`/facturas/api/factura/${encodeURIComponent(d.facturaId)}/pdf`, '_blank', 'noopener'); } },
           { texto: 'Anular', icono: 'fa-ban', peligro: true,
             visible: d => PUEDE && !d.anuladoAt,
             onClick: d => anularMant(d, async () => { HIST.volver(); }) },
@@ -546,7 +550,8 @@
               { etiqueta: 'Qué se hizo', valor: d => queSeHizo(d).join(', ') },
               { etiqueta: 'Taller', valor: d => d.taller },
               { etiqueta: 'Factura', html: true, valor: d => (d.facturaId
-                ? `<a class="underline underline-offset-2 hover:text-telecab-gold" href="/facturas#${encodeURIComponent(d.facturaId)}">${esc(d.facturaNumero || 'Ver factura')}</a>`
+                ? `<a class="underline underline-offset-2 hover:text-telecab-gold" href="/facturas#${encodeURIComponent(d.facturaId)}">${esc(d.facturaNumero || 'Ver factura')}</a>` +
+                  (d.facturaEnlace ? ` <a class="ml-2 inline-flex items-center gap-1 text-telecab-gold hover:underline" href="/facturas/api/factura/${encodeURIComponent(d.facturaId)}/pdf" target="_blank" rel="noopener" title="Ver la factura en PDF"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>PDF</a>` : '')
                 : (d.origen === 'inventario' ? 'Pieza del inventario' : '—')) },
               { etiqueta: 'Referencia', valor: d => d.referencia },
               { etiqueta: 'Coste sin IVA', valor: d => (d.coste == null ? '' : fEuros(d.coste)) },

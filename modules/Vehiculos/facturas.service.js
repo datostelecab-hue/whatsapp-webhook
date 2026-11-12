@@ -140,6 +140,21 @@ async function subirPdf(id, { nombre, mime, base64 } = {}, quien = {}) {
   return { id: String(id), archivo: subido.name, enlace: subido.webViewLink || '' };
 }
 
+/**
+ * EL PDF DE UNA FACTURA, SERVIDO POR EL ERP (12/11/2026). Camilo: «que esté el
+ * ícono de PDF para descargar en estas pantallas también para no tener que ir
+ * hasta el módulo de facturas» (la ficha del mantenimiento, la del coche y la de
+ * la factura). El enlace de Drive solo abre a quien tiene acceso a esa carpeta;
+ * así lo abre cualquiera que pueda ver la factura, y se comprueba su sede.
+ */
+async function pdf(id, quien = {}) {
+  await ver(id, quien);
+  const a = await repo.adjunto(id);
+  if (!a || !a.externo_id) throw new Error('Esa factura no tiene PDF todavía');
+  const d = await require('../../services/drive').descargar(a.externo_id);
+  return { bytes: d.bytes, mime: d.mime || a.mime || 'application/pdf', nombre: d.nombre || a.nombre_archivo || 'factura.pdf' };
+}
+
 const proveedores = () => repo.proveedores();
 const nuevoProveedor = datos => repo.crearProveedor(datos);
 
@@ -154,7 +169,7 @@ const gastoDeCoche = vehiculoId => repo.gastoDe(vehiculoId);
 const flota = (quien = {}) => repo.flota(sedesDe(quien));
 
 module.exports = {
-  listar, ver, alta, anular, subirPdf, asignarCoche,
+  listar, ver, alta, anular, subirPdf, pdf, asignarCoche,
   proveedores, nuevoProveedor,
   gasto, gastoDeCoche, flota,
   sedesDe, SEDES, SEDE_POR_DEFECTO,

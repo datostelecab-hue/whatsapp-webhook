@@ -264,6 +264,13 @@ async function ponerCoche(lineaId, { matricula, km } = {}) {
   return { id: String(r.rows[0].id), facturaId: String(r.rows[0].factura_id), reconocido: !!vehiculoId };
 }
 
+/** Dónde está el PDF de una factura (para servirlo desde el ERP). */
+async function adjunto(id) {
+  const r = await db.consulta(
+    'SELECT externo_id, nombre_archivo, mime FROM factura_taller WHERE id = $1', [Number(id)]);
+  return r.rows[0] || null;
+}
+
 /** El PDF: se guarda dónde quedó, no el fichero. */
 async function guardarAdjunto(id, { almacen, externoId, enlace, nombreArchivo, mime, bytes }) {
   const r = await db.consulta(
@@ -390,7 +397,7 @@ async function gastoDe(vehiculoId) {
 
 module.exports = {
   proveedores, crearProveedor,
-  lista, ficha, crear, anular, guardarAdjunto, ponerCoche,
+  lista, ficha, crear, anular, guardarAdjunto, adjunto, ponerCoche,
   gastoPorVehiculo, gastoDe, flota,
   EXIGE_MATRICULA_DESDE,
 };

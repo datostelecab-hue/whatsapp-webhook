@@ -127,6 +127,23 @@ router.post('/api/proveedor', responde(exigeApuntar(req => facturas.nuevoProveed
 router.post('/api/linea/coche', responde(exigeApuntar((req, ctx) =>
   facturas.asignarCoche(req.body.facturaId, req.body.lineaId, req.body, ctx))));
 
+/**
+ * El PDF de la factura, para verlo o bajarlo sin pasar por Drive (12/11/2026).
+ * Es un GET: lo abre quien puede mirar facturas ('/facturas'). Va en
+ * '/api/factura/:id/pdf' y no en '/api/pdf/:id', que es la ruta de subir.
+ */
+router.get('/api/factura/:id/pdf', async (req, res) => {
+  try {
+    const d = await facturas.pdf(req.params.id, await quien(req));
+    res.setHeader('Content-Type', d.mime);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(d.nombre)}`);
+    res.send(d.bytes);
+  } catch (e) {
+    console.error('❌ [Facturas] PDF:', e.message);
+    res.status(404).type('text/plain; charset=utf-8').send(e.message || 'No se encontró el PDF');
+  }
+});
+
 /** El PDF de la factura: a Drive, y en la base solo dónde quedó. */
 router.post('/api/pdf', responde(exigeApuntar((req, ctx) =>
   facturas.subirPdf(req.body.id, req.body, ctx))));
