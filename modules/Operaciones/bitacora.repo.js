@@ -29,7 +29,7 @@
 //                     lManual: { 'YYYY-MM-DD': { por, el } },  // libranzas puestas a mano (bitacora_dia)
 //                     lQuitada: { 'YYYY-MM-DD': { por, el } }, // libranzas del planificador quitadas a mano
 //                     fantasma: { 'YYYY-MM-DD': 'nombre de la cuenta' }, // trabajó con la cuenta de otro
-//                     ausencias: [{ marca, etiqueta, desde, hasta }],
+//                     ausencias: [{ marca, etiqueta, desde, desdeReal, hasta }],
 //                     sinPlaza: [[desdeIdx, hastaIdx], ...],             // días sin ninguna plaza
 //                     situaciones: [[desdeIdx, hastaIdx, etiqueta], ...] }], // sin marca: suspensión…
 //     hoyIdx, inicio, avisos: { sinFicha } }
@@ -414,6 +414,10 @@ async function leerBitacora() {
     db.consulta(
       `SELECT h.conductor_id, ce.marca_bitacora AS marca, ce.etiqueta,
               to_char(GREATEST(h.desde, $1::date), 'YYYY-MM-DD')                    AS desde,
+              -- El inicio de verdad, aunque sea de antes de la rejilla: con él se
+              -- cuentan los días que lleva de baja (12/11/2026). «desde» está
+              -- recortado al primer día de la bitácora y es solo para pintar.
+              to_char(h.desde, 'YYYY-MM-DD')                                       AS desde_real,
               to_char(LEAST(COALESCE(h.hasta, $2::date), $2::date), 'YYYY-MM-DD')   AS hasta,
               (h.hasta IS NULL)                                                    AS abierta
          FROM conductor_estado_hist h
@@ -607,7 +611,7 @@ async function leerBitacora() {
       if (typeof c.dias[i] === 'number') c.horasBolt[isoDeIdx(i)] = c.dias[i];
       c.dias[i] = r.marca;
     }
-    c.ausencias.push({ marca: r.marca, etiqueta: r.etiqueta, desde: r.desde, hasta: r.hasta, abierta: !!r.abierta });
+    c.ausencias.push({ marca: r.marca, etiqueta: r.etiqueta, desde: r.desde, desdeReal: r.desde_real, hasta: r.hasta, abierta: !!r.abierta });
   });
 
   // CUALES DE ESAS HORAS SON DE UNA CUENTA PRESTADA.

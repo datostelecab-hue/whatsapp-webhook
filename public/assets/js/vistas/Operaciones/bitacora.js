@@ -344,12 +344,49 @@
     const hoy = DATA.hoyIdx, mes = MESES[mesDeHoy()];
     const aus = DATA.conductores.filter(c => c.vigente && esAus(val(c, hoy)));
     const porTipo = { B: [], V: [], P: [] }; aus.forEach(c => porTipo[val(c, hoy)].push(c));
-    const fila = c => `<button type="button" data-id="${c.conductorId}" class="b-open w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 transition">
-        <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(c.id)}</span>
-        <span class="text-[11px] text-telecab-muted font-mono">${esc(c.telefono || '')}</span>
-        ${(() => { const a = c.ausencias.find(x => x.desde <= isoDe(hoy) && x.hasta >= isoDe(hoy)); return a ? `<span class="text-[11px] text-telecab-muted">desde ${a.desde.slice(8, 10)}/${a.desde.slice(5, 7)}${a.abierta ? ' · sin fecha de vuelta' : ' · hasta ' + a.hasta.slice(8, 10) + '/' + a.hasta.slice(5, 7)}</span>` : ''; })()}
+    const hoyIso = isoDe(hoy);
+    const diasEntre = (a, b) => Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) -
+      Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86400000);
+    /**
+     * La ausencia de hoy y DESDE CUÁNDO dura (12/11/2026). Camilo: «pon los días
+     * que lleva de baja médica, ordenados de mayor a menor». Una baja que se
+     * renueva suele ser otro tramo pegado al anterior: se cuenta desde el primero
+     * de la cadena (mismo tipo, sin un día libre en medio), no desde la renovación.
+     */
+    const ausenciaDeHoy = c => {
+      const a = c.ausencias.find(x => x.desde <= hoyIso && x.hasta >= hoyIso);
+      if (!a) return null;
+      // `desdeReal`: el inicio de verdad, que puede ser de antes del primer día
+      // de la bitácora (allí `desde` viene recortado).
+      const ini = x => x.desdeReal || x.desde;
+      let desde = ini(a);
+      for (;;) {
+        // Un tramo del mismo tipo que acaba el día antes (o se pisa con este).
+        const antes = c.ausencias.find(x => x !== a && x.marca === a.marca && ini(x) < desde && diasEntre(x.hasta, desde) <= 1);
+        if (!antes) break;
+        desde = ini(antes);
+      }
+      return { ...a, desde, dias: diasEntre(desde, hoyIso) + 1 };
+    };
+    // Las bajas médicas, de la que más lleva a la que menos.
+    porTipo.B.sort((x, y) => ((ausenciaDeHoy(y) || {}).dias || 0) - ((ausenciaDeHoy(x) || {}).dias || 0) ||
+      String(x.id).localeCompare(String(y.id), 'es'));
+    const fila = (c, t) => {
+      const a = ausenciaDeHoy(c);
+      // Dos líneas: con los días al lado, en una columna estrecha el nombre se
+      // quedaba sin sitio.
+      return `<button type="button" data-id="${c.conductorId}" class="b-open w-full text-left block px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 transition">
+        <span class="flex items-center gap-3">
+          <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(c.id)}</span>
+          ${a && t === 'B' ? `<span class="shrink-0 text-xs font-semibold tabular-nums text-telecab-text" title="Días naturales de baja, contando hoy">${a.dias} ${a.dias === 1 ? 'día' : 'días'}</span>` : ''}
+        </span>
+        <span class="flex items-center gap-3 mt-0.5 text-[11px] text-telecab-muted">
+          <span class="font-mono">${esc(c.telefono || '')}</span>
+          ${a ? `<span class="ml-auto truncate">desde ${a.desde.slice(8, 10)}/${a.desde.slice(5, 7)}${a.desde.slice(0, 4) !== hoyIso.slice(0, 4) ? '/' + a.desde.slice(2, 4) : ''}${a.abierta ? ' · sin fecha de vuelta' : ' · hasta ' + a.hasta.slice(8, 10) + '/' + a.hasta.slice(5, 7)}</span>` : ''}
+        </span>
       </button>`;
-    const bloque = (t, lista) => lista.length ? `<div><p class="text-xs font-semibold mb-1.5" style="color:${clr(t)}">${NOM[t]} · ${lista.length}</p><div class="space-y-1">${lista.map(fila).join('')}</div></div>` : '';
+    };
+    const bloque = (t, lista) => lista.length ? `<div><p class="text-xs font-semibold mb-1.5" style="color:${clr(t)}">${NOM[t]} · ${lista.length}${t === 'B' ? ' <span class="font-normal text-telecab-muted">· de la que más lleva a la que menos</span>' : ''}</p><div class="space-y-1">${lista.map(c => fila(c, t)).join('')}</div></div>` : '';
     const jotasMes = DATA.conductores.reduce((s, c) => s + resumen(c, mes.start, mes.start + mes.len - 1).J, 0);
     $('#b-default').innerHTML =
       `<div class="flex items-center justify-between flex-wrap gap-2 mb-1">

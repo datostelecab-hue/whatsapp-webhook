@@ -219,6 +219,14 @@ Camilo: *«Tengo las horas de Caverel de mucho antes, resumida por meses, vamos 
 - Si su DNI está en la plantilla, la fila lo dice («en plantilla») y la ficha lleva a su ficha.
 - El DNI no viaja a la pantalla.
 
+## «Hoy»: las bajas médicas, por los días que llevan (12/11/2026)
+
+Camilo: *«En bitácora, a parte de las fechas, pon los días que lleva de baja médica, ordenados de mayor a menor»*. En el panel de inicio, cada baja médica lleva sus **días naturales contando hoy**, y la lista va de la que más lleva a la que menos. Cada fila va en dos líneas, nombre y días arriba y teléfono y fechas abajo: en una columna estrecha, con todo en una, el nombre se quedaba sin sitio.
+
+- **Desde el inicio de verdad.** La consulta de ausencias recorta `desde` al primer día de la rejilla (01/06/2026), que es lo que hace falta para pintar. Para contar los días viene además `desde_real`: una baja del 08/07/2025 salía «desde 01/06» con 165 días y lleva 493.
+- **Una renovación no reinicia la cuenta.** Si la baja es otro tramo pegado al anterior, del mismo tipo y sin un día libre en medio, se cuenta desde el primero.
+- Si la fecha es de otro año, lleva el año («desde 08/07/25»).
+
 ## Las piezas
 
 ```
