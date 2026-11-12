@@ -59,6 +59,8 @@
 
     acciones: [
       ...(PUEDE ? [{ texto: 'Nueva factura', icono: 'fa-plus', onClick: () => abrir() }] : []),
+      // Muchos PDF de una vez, cada uno a su factura por el número (12/11/2026).
+      ...(PUEDE ? [{ texto: 'Subir PDFs', icono: 'fa-file-arrow-up', principal: false, onClick: () => subirVarios() }] : []),
       { texto: 'Gasto por coche', icono: 'fa-chart-column', principal: false, onClick: verGasto },
     ],
 
@@ -473,6 +475,122 @@
             (r.enlace ? ` <a href="${esc(r.enlace)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline">Abrirlo</a>` : ''),
           opciones: [{ texto: 'Entendido' }] });
       } catch (e) { Dialogo.aviso({ titulo: 'No se pudo subir', texto: e.message, tono: 'error' }); }
+    });
+    input.click();
+  }
+
+  /**
+   * MUCHOS PDF DE UNA VEZ (12/11/2026). Camilo: «Sube los PDFs de los
+   * mantenimientos que subimos hace un momento en taller, todos». Las facturas
+   * leídas de los PDF (db/242) entraron sin su papel: son trescientas, y de una
+   * en una no se sube nadie.
+   *
+   * Se eligen los ficheros y cada uno se casa con SU factura por el número que
+   * lleva en el nombre («Discom 2026-000566.pdf» → la 2026/000566 de Discom).
+   * Si un número cabe en dos (566 dentro de 2026/000566), gana el más largo; si
+   * aun así hay dos, el taller que diga el nombre. Antes de subir nada se enseña
+   * qué va a dónde, lo que ya tenía PDF (se deja) y lo que no se reconoce. Suben
+   * de uno en uno por la misma puerta que el botón de cada factura.
+   */
+  const normNum = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  function casarFichero(nombre, filas) {
+    const n = normNum(String(nombre).replace(/\.[a-z0-9]{2,5}$/i, ''));
+    let c = filas.filter(f => !f.anulada && normNum(f.numero).length >= 4 && n.includes(normNum(f.numero)));
+    if (c.length > 1) {
+      const largo = Math.max(...c.map(f => normNum(f.numero).length));
+      c = c.filter(f => normNum(f.numero).length === largo);
+    }
+    if (c.length > 1) {
+      const delTaller = c.filter(f => String(f.proveedor || '').toUpperCase().split(/[^A-Z0-9]+/)
+        .some(p => p.length >= 4 && n.includes(p)));
+      if (delTaller.length) c = delTaller;
+    }
+    return c.length === 1 ? c[0] : null;
+  }
+
+  const leerBase64 = file => new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(',')[1]);
+    fr.onerror = () => rej(new Error('No se pudo leer el archivo'));
+    fr.readAsDataURL(file);
+  });
+
+  function subirVarios() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'application/pdf,image/*';
+    input.addEventListener('change', async () => {
+      const ficheros = [...(input.files || [])];
+      if (!ficheros.length) return;
+      const filas = lista.filas || [];
+      const plan = [], yaTenian = [], sinCasar = [], repetidos = [], grandes = [];
+      const usadas = new Set();
+      for (const file of ficheros) {
+        if (file.size > 25 * 1024 * 1024) { grandes.push(file.name); continue; }
+        const f = casarFichero(file.name, filas);
+        if (!f) { sinCasar.push(file.name); continue; }
+        if (f.enlace) { yaTenian.push(`${file.name} → ${f.proveedor} ${f.numero}`); continue; }
+        if (usadas.has(f.id)) { repetidos.push(file.name); continue; }
+        usadas.add(f.id);
+        plan.push({ file, f });
+      }
+      const lineas = (titulo, xs) => (xs.length
+        ? `<p class="text-sm mt-3 font-semibold">${esc(titulo)} (${xs.length})</p>
+           <div class="mt-1 max-h-32 overflow-y-auto text-xs text-telecab-muted font-mono">${xs.map(esc).join('<br>')}</div>` : '');
+      if (!plan.length) {
+        await Dialogo.aviso({ titulo: 'Nada que subir', tono: 'aviso', ancho: 'max-w-xl',
+          html: '<p class="text-sm">Ninguno de esos ficheros va a una factura que esté sin PDF.</p>' +
+            lineas('Ya tenían PDF: se dejan como están', yaTenian) +
+            lineas('No se sabe de qué factura son', sinCasar) +
+            lineas('Ocupan más de 25 MB', grandes) });
+        return;
+      }
+      const ok = await Dialogo.confirmar({
+        titulo: `Subir ${plan.length} PDF a sus facturas`, si: `Subir ${plan.length}`, no: 'Cancelar', ancho: 'max-w-xl',
+        html: '<p class="text-sm">Cada uno va a Drive y a su factura: la que lleva el número en el nombre del fichero.</p>' +
+          lineas('Van a su factura', plan.map(x => `${x.file.name} → ${x.f.proveedor} ${x.f.numero}`)) +
+          lineas('Ya tenían PDF: se dejan como están', yaTenian) +
+          lineas('No se sabe de qué factura son: no se suben', sinCasar) +
+          lineas('El mismo número otra vez: se sube solo el primero', repetidos) +
+          lineas('Ocupan más de 25 MB: no se suben', grandes),
+      });
+      if (!ok) return;
+
+      // El progreso, a la vista: trescientos PDF son unos minutos.
+      const capa = document.createElement('div');
+      capa.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4';
+      capa.innerHTML = `<div role="status" aria-live="polite" class="w-full max-w-md rounded-2xl border border-telecab-border bg-telecab-card p-5 shadow-soft">
+          <p class="font-semibold">Subiendo los PDF a Drive</p>
+          <p class="text-sm text-telecab-muted mt-1" data-texto>Empezando…</p>
+          <div class="mt-3 h-2 rounded-full bg-telecab-card2 overflow-hidden"><div data-barra class="h-full bg-telecab-gold" style="width:0%"></div></div>
+          <p class="text-xs text-telecab-muted mt-3">No cierres esta pestaña hasta que acabe.</p>
+        </div>`;
+      document.body.appendChild(capa);
+      const errores = [];
+      let subidos = 0;
+      for (let i = 0; i < plan.length; i++) {
+        const { file, f } = plan[i];
+        capa.querySelector('[data-texto]').textContent = `${i + 1} de ${plan.length} · ${f.proveedor} ${f.numero}`;
+        capa.querySelector('[data-barra]').style.width = `${Math.round(i / plan.length * 100)}%`;
+        try {
+          const base64 = await leerBase64(file);
+          await pedir('/facturas/api/pdf', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: f.id, nombre: file.name, mime: file.type || 'application/pdf', base64 }),
+          });
+          subidos++;
+        } catch (e) {
+          errores.push(`${file.name}: ${e.message}`);
+        }
+      }
+      capa.remove();
+      await lista.recargar();
+      await Dialogo.aviso({
+        titulo: errores.length ? `${subidos} subidos, ${errores.length} con error` : `${subidos} PDF subidos`,
+        tono: errores.length ? 'aviso' : 'ok', ancho: 'max-w-xl',
+        html: '<p class="text-sm">Cada uno está en Drive y en su factura.</p>' + lineas('No se pudieron subir', errores),
+      });
     });
     input.click();
   }

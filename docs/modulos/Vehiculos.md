@@ -249,6 +249,13 @@ El fichero va a **Drive** y el **índice a PostgreSQL**, que es como guarda docu
 
 `/facturas/api/pdf` lleva su propio parser de JSON con límite de 30 MB, porque una factura escaneada en base64 pasa de largo los 2 MB del parser global — que por eso se salta esa ruta en `app.js`.
 
+**Muchos PDF de una vez: «Subir PDFs»** (12/11/2026). Las 302 facturas que entraron leídas de los PDF (db/242, [[Inventario y mantenimientos]]) llegaron sin su papel.
+- Se eligen muchos ficheros y cada uno se casa con **su** factura por el número que lleva en el nombre: «Discom 2026-000566.pdf» va a la 2026/000566 de Discom.
+- Si un número cabe en dos, gana el más largo (566 cabe dentro de 2026/000566). Si aun así hay dos, decide el taller que diga el nombre.
+- Antes de subir nada se enseña qué va a cada factura. Lo que ya tenía PDF se deja, y lo que no se reconoce no se sube.
+- Suben de uno en uno por la misma puerta, con una barra de progreso.
+- Los 302 PDF partidos, uno por factura, se probaron contra la lista: los 302 casan con la suya.
+
 ## La puerta
 
 Desde fuera del módulo se entra por `vehiculos.service`, **nunca** por `vehiculos.repo`. Lo comprueba `node scripts/comprobar-capas.js`.
