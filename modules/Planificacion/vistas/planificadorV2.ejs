@@ -199,6 +199,21 @@
               class="tc-pulsable flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-sm">
         <i class="fa-solid fa-grip-lines-vertical text-xs"></i><span>Vertical</span></button>
     </div>
+    <%# EL ORDEN DE LOS CUADRANTES (12/11/2026, Camilo: «Necesito que los
+        cuadrantes del planificador puedan ordenarse por número … desde el 1
+        hasta el último»): el iceberg (de mejor a peor, por base) o por número,
+        del 1 al último. Se recuerda en el navegador, como la vista. %>
+    <div id="f-orden" role="group" aria-label="Orden de los cuadrantes"
+         class="inline-flex p-0.5 rounded-xl bg-telecab-card border border-telecab-border">
+      <button type="button" data-orden="iceberg" aria-pressed="true"
+              title="Iceberg: cada base con sus cuadrantes de mejor a peor (completos, con plazas vacías, sin nadie)."
+              class="tc-pulsable flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-sm">
+        <i class="fa-solid fa-layer-group text-xs"></i><span>Iceberg</span></button>
+      <button type="button" data-orden="numero" aria-pressed="false"
+              title="Por número: del cuadrante 1 al último, sin agrupar por base."
+              class="tc-pulsable flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-sm">
+        <i class="fa-solid fa-arrow-down-1-9 text-xs"></i><span>Nº</span></button>
+    </div>
     <label class="flex items-center gap-2 text-sm text-telecab-muted ml-1">
       <input type="checkbox" id="f-huecos" class="accent-telecab-gold"> Solo con huecos
     </label>

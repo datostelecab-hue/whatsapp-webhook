@@ -100,6 +100,10 @@
   // coche). Se recuerda en este navegador; si no se puede, se queda en horizontal.
   let VISTA = 'horizontal';
   try { if (localStorage.getItem('planificador-vista') === 'vertical') VISTA = 'vertical'; } catch (_) {}
+  // EL ORDEN DE LOS CUADRANTES (12/11/2026): 'iceberg' (cada base de mejor a
+  // peor, el de siempre) o 'numero' (del 1 al último, sin agrupar por base).
+  let ORDEN = 'iceberg';
+  try { if (localStorage.getItem('planificador-orden') === 'numero') ORDEN = 'numero'; } catch (_) {}
 
   const $ = s => document.querySelector(s);
   const pad = n => String(n).padStart(2, '0');
@@ -200,6 +204,24 @@
     if (T) pintar();
   }));
   pintarVista();
+  function pintarOrden() {
+    document.querySelectorAll('#f-orden [data-orden]').forEach(b => {
+      const on = b.dataset.orden === ORDEN;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('bg-telecab-gold/15', on);
+      b.classList.toggle('text-telecab-gold', on);
+      b.classList.toggle('font-semibold', on);
+      b.classList.toggle('text-telecab-muted', !on);
+    });
+  }
+  document.querySelectorAll('#f-orden [data-orden]').forEach(b => b.addEventListener('click', () => {
+    if (ORDEN === b.dataset.orden) return;
+    ORDEN = b.dataset.orden;
+    try { localStorage.setItem('planificador-orden', ORDEN); } catch (_) {}
+    pintarOrden();
+    if (T) pintar();
+  }));
+  pintarOrden();
   $('#f-huecos').addEventListener('change', pintar);
   { let t; $('#f-busca').addEventListener('input', () => { clearTimeout(t); t = setTimeout(pintar, 150); }); }
   $('#banq-busca').addEventListener('input', pintarBanquillo);

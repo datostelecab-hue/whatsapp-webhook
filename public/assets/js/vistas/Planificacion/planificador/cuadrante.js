@@ -324,9 +324,17 @@
     // FILTRAR (buscando o solo-huecos), un cuadrante sin coches que pasen el
     // filtro se oculta: si no, salía como "vacío" y parecía que el filtro no
     // hacía nada. Sin filtro, los vacíos siguen (para poder añadir bloques).
+    // POR NÚMERO (12/11/2026, Camilo: «que los cuadrantes del planificador
+    // puedan ordenarse por número … desde el 1 hasta el último»): del 1 al
+    // último, sin agrupar por base ni partir en escalones. El iceberg sigue
+    // siendo lo de siempre (`ORDEN`, el selector de la barra).
+    const porNumero = ORDEN === 'numero';
+    const numDe = cu => Number(cu.numero) || Number(String(cu.nombre || '').replace(/\D+/g, '')) || 1e6;
     const cuadrantes = (T.cuadrantes || [])
       .filter(cu => (!ZONA || zonaDe(cu) === ZONA) && (!filtrando || (porCua.get(String(cu.id)) || []).length))
-      .sort((a, b) => (ZONA ? 0 : ordenBase(zonaDe(a)) - ordenBase(zonaDe(b))) || ordenIce(a) - ordenIce(b));
+      .sort(porNumero
+        ? (a, b) => numDe(a) - numDe(b)
+        : (a, b) => (ZONA ? 0 : ordenBase(zonaDe(a)) - ordenBase(zonaDe(b))) || ordenIce(a) - ordenIce(b));
 
     const hayAlgo = cuadrantes.length || sueltos.length;
     const b = baseActual();
@@ -346,12 +354,13 @@
     let base = null, escalon = null;
     cuadrantes.forEach(cu => {
       const z = zonaDe(cu);
-      if (!ZONA && z !== base) {
+      // Por número no hay bases ni escalones que separar: la lista va seguida.
+      if (!porNumero && !ZONA && z !== base) {
         base = z; escalon = null;
         piezas.push({ clave: 'base:' + z, crear: () => cabeceraBase(z) });
       }
       const e = escalonDe(cu);
-      if (!buscando && e !== escalon) {
+      if (!porNumero && !buscando && e !== escalon) {
         escalon = e;
         const delEscalon = cuadrantes.filter(x => zonaDe(x) === z && escalonDe(x) === e);
         piezas.push({ clave: 'franja:' + z + ':' + e, crear: () => franjaEscalon(e, delEscalon, porCua) });

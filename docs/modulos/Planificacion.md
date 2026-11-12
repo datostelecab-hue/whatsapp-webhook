@@ -69,6 +69,14 @@ Un **cuadrante** va en el escalón de sus coches —completo si lo están todos,
 - **La libranza excepcional** (trabaja un día que libra y libra uno que trabaja) puede tener **los dos días en semanas distintas** desde el 28/10/2026 (db/223, Camilo: «que sea de diferentes semanas»). Antes, el CHECK `ck_lexc_semana` y la propia pantalla obligaban a que cayeran en la misma. Siguen sin poder ser el mismo día. `f_cobertura` lee cada día por su cuenta, así que cada mitad del cambio sale en su semana. Prueba en la copia local: `scripts/comprobar-libranza-excepcional.js`.
 - **Vertical**: cada coche es una tarjeta con sus plazas apiladas, **el día a la izquierda y la noche a la derecha**, para ver más coches de un golpe. El nombre se queda con toda la línea y el chip de horas va debajo (al lado, en una tarjeta estrecha el nombre se quedaba en «Carl…»). El teléfono y la zona de casa van en la ayuda del nombre; la libranza excepcional y la zona de casa se editan en la horizontal.
 
+**Por número, si se quiere** (12/11/2026, Camilo: *«Necesito que los cuadrantes del planificador puedan ordenarse por número, crea un filtro para reordenarlos así desde el 1 hasta el último»*). En la barra, junto a «Horizontal / Vertical», el selector **«Iceberg | Nº»**:
+- **Iceberg** es lo de siempre.
+- **Nº** pone los cuadrantes del 1 al último, sin cabeceras de base ni franjas de escalón. Con una base abierta, solo los de esa base, en orden.
+- Los coches sin cuadrante siguen al final.
+- Se recuerda en el navegador (`planificador-orden`), como la vista.
+- El número es el del tablero (`numero`, del 1 a N entre los cuadrantes vivos).
+- Lo pinta `pintar()` en `planificador/cuadrante.js`, con la variable `ORDEN` de `planificadorV2.js`.
+
 **La base abierta viaja en la dirección** (`/planificador#base=getafe`): recargar o pasar el enlace abre la misma base, y «atrás» vuelve a las bases en vez de salir del planificador. Crear un cuadrante con una base abierta lo crea en ella y lleva la vista hasta él (un cuadrante vacío va al fondo del iceberg).
 
 Lo que **no** cambió: crear y editar cuadrantes, bloques, CT, eventos y fichaje funcionan igual. La **parrilla impresa** sigue por número de cuadrante: es papel colgado en la pared y ahí se busca por número.
