@@ -20,6 +20,8 @@
   const DASH = '<span class="text-telecab-muted">—</span>';
   const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const tasa = num(R.tasa, 5);
+  // El tope de lo que genera un mes (12/11/2026): los festivos van aparte.
+  const tope = num(R.topeMes, 2);
   // Un día laborado: más de estas horas (06/11/2026).
   const umbralL = num(R.umbralLaborado, 0);
   // Los dos días que libra en unas vacaciones (db/233), en palabras: «miércoles y jueves».
@@ -46,7 +48,7 @@
       <b class="tabular-nums ${neg ? 'text-telecab-red' : 'text-telecab-text'}">${neg ? '−' : ''}${dia(Math.abs(a.saldo || 0))}</b>`;
   }
 
-  const AYUDA_SALDO = `Generadas: ${tasa} días por cada día trabajado más de ${umbralL} h, con una J aprobada o de baja médica (no las libranzas; sin plaza o antes del planificador, cada día de baja vale 5/7), desde el alta (o desde el ${f(R.desde)}).\n` +
+  const AYUDA_SALDO = `Generadas: ${tasa} días por cada día trabajado más de ${umbralL} h, con una J aprobada o de baja médica (cada día de baja cuenta, también los que libraría), como mucho ${tope} al mes, desde el alta (o desde el ${f(R.desde)}). Los festivos van aparte y no entran en el tope.\n` +
     `+ 1 día por cada festivo en el que trabajó más de ${R.umbralHoras} h, desde el ${f(diaSiguiente(R.festivosPagadosHasta))} (los de antes se pagaron en la nómina).\n− Vacaciones disfrutadas: solo los días que le tocaba trabajar; los dos que libra en cada vacaciones (puestos a mano) no cuentan.\n` +
     `Los asuntos propios van aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco, no de las vacaciones.`;
 
@@ -100,7 +102,7 @@
     },
 
     nota: () => ({ tono: 'info', icono: 'fa-scale-balanced',
-      texto: `Saldo = ${tasa} días por cada día trabajado más de ${umbralL} h, justificado o de baja médica (sin plaza, a 5 de cada 7), desde el alta (o desde el ${f(R.desde)}) · ` +
+      texto: `Saldo = ${tasa} días por cada día trabajado más de ${umbralL} h, justificado o de baja médica (cada día de baja), como mucho ${tope} al mes, desde el alta (o desde el ${f(R.desde)}) · ` +
         `+ 1 día por festivo trabajado más de ${R.umbralHoras} h desde el ${f(diaSiguiente(R.festivosPagadosHasta))} (los de antes se pagaron) · − vacaciones disfrutadas, sin los dos días que libra. ` +
         `Los asuntos propios, aparte: ${R.apPorAnio} días al año, y cada día que coge resta de ese banco.` }),
 
@@ -135,7 +137,7 @@
         ayuda: `Desde cuándo se le calcula: su alta, o el ${f(R.desde)} si entró antes (el histórico de vacaciones empieza ahí).`,
         pinta: (v, x) => `${f(v)}${x.desdeElAlta ? '' : '<span class="block text-[11px] text-telecab-muted">alta ' + f(x.alta) + '</span>'}` },
       { titulo: 'Generadas', campo: 'generadas', clase: 'tabular-nums whitespace-nowrap',
-        ayuda: `${tasa} días por cada día que trabajó más de ${umbralL} h (viaje + espera de BOLT, el día de la bitácora), con una J aprobada o de baja médica en un día que no libraba. Sin plaza, o antes del planificador (03/09/2026), cada día de baja vale 5/7.`,
+        ayuda: `${tasa} días por cada día que trabajó más de ${umbralL} h (viaje + espera de BOLT, el día de la bitácora), con una J aprobada o de baja médica (cada día de baja, también los que libraría), como mucho ${tope} al mes.`,
         pinta: v => '+' + num(v) },
       { titulo: 'Festivos', campo: 'festivosSuman', clase: 'tabular-nums whitespace-nowrap',
         ayuda: `Festivos nacionales y de la Comunidad de Madrid en los que trabajó más de ${R.umbralHoras} h: cada uno suma 1 día.`,
@@ -458,9 +460,10 @@
     const partes = [`${d.diasLaborados} trabajado(s) más de ${umbralL} h`];
     if (d.diasJustificados) partes.push(`${d.diasJustificados} justificado(s)`);
     if (d.diasBaja) partes.push(`${d.diasBaja} de baja médica`);
-    // Sin saber qué libraría (sin plaza, o antes del planificador): 5 de cada 7.
-    if (d.diasBajaSupuestos) partes.push(`${d.diasBajaSupuestos} de baja sin plaza o antes del planificador, a 5 de cada 7 (${num(d.diasBajaSupuestos * 5 / 7, 2)})`);
-    return partes.join(' · ');
+    // Del 06/11 al 12/11/2026 la baja sin plaza valía 5/7; ya no (cada día cuenta).
+    if (d.diasBajaSupuestos) partes.push(`${d.diasBajaSupuestos} de baja sin plaza, a 5 de cada 7 (${num(d.diasBajaSupuestos * 5 / 7, 2)})`);
+    const enTope = (d.detalle && d.detalle.meses || []).filter(m => m.tope).length;
+    return partes.join(' · ') + (enTope ? ` · ${enTope} mes(es) en el tope de ${tope}` : '');
   }
   // Los días de baja de un mes: los de su plaza, y los que no se sabe a 5/7.
   const bajasMes = m => {
@@ -476,7 +479,7 @@
     const meses = (d.detalle.meses || []).slice().reverse();
     const nota = R.sinHistorico || (d.reglas && d.reglas.sinHistorico)
       ? `<p class="text-sm text-telecab-warn mt-3">Falta aplicar la migración db/231: los días de antes del ${f(R.nucleoDesde || '2026-07-01')} todavía no cuentan.</p>`
-      : `<p class="text-xs text-telecab-muted mt-3">Generan los días que trabajó más de ${umbralL} h (viaje + espera de BOLT, por el día de la bitácora; antes del 01/07/2026, del historial de estados de BOLT), los que tienen una J aprobada y los de baja médica que le tocaba trabajar (sin plaza, o antes del planificador, cada día de baja vale 5/7). Las libranzas, las vacaciones y las ausencias sin justificar no. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
+      : `<p class="text-xs text-telecab-muted mt-3">Generan los días que trabajó más de ${umbralL} h (viaje + espera de BOLT, por el día de la bitácora; antes del 01/07/2026, del historial de estados de BOLT), los que tienen una J aprobada y cada día de baja médica (también los que libraría), a ${tasa} cada uno y como mucho ${tope} al mes. Las libranzas, las vacaciones y las ausencias sin justificar no. Los festivos van aparte. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
     if (!meses.length) return `<div class="px-5 py-4"><p class="text-sm text-telecab-muted">Ningún día trabajado desde el ${f(d.inicio)}.</p>${nota}</div>`;
     const fila = m => `
       <tr class="border-t border-telecab-border/60">
@@ -486,7 +489,7 @@
         <td class="py-2 px-3 text-right tabular-nums">${bajasMes(m)}</td>
         <td class="py-2 px-3 text-right tabular-nums text-telecab-muted">${m.cortos || '—'}</td>
         <td class="py-2 px-3 text-right tabular-nums whitespace-nowrap">${horasTxt(m.segundos)}</td>
-        <td class="py-2 pl-3 text-right tabular-nums whitespace-nowrap">+ ${num(m.generadas, 2)}</td>
+        <td class="py-2 pl-3 text-right tabular-nums whitespace-nowrap"${m.tope ? ` title="Daría ${num(m.sinTope, 2)}: se queda en el tope de ${tope} al mes"` : ''}>+ ${num(m.generadas, 2)}${m.tope ? '<span class="block text-[11px] text-telecab-muted">en el tope</span>' : ''}</td>
       </tr>`;
     return `
       <div class="px-5 py-3 overflow-x-auto">
@@ -496,7 +499,7 @@
               <th class="text-left font-medium pb-1 pr-3">Mes</th>
               <th class="text-right font-medium pb-1 px-3" title="Días que trabajó más de ${umbralL} h.">Trabajó más de ${umbralL} h</th>
               <th class="text-right font-medium pb-1 px-3" title="Días con una J aprobada (y sin llegar a ${umbralL} h).">Justificados</th>
-              <th class="text-right font-medium pb-1 px-3" title="Días de baja médica que le tocaba trabajar: los que caían en su libranza no suman. Sin plaza, o antes del planificador (03/09/2026), cada día vale 5/7.">Baja médica</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días de baja médica: cuentan todos, también los que habría librado (cada B vale un día de 8 h).">Baja médica</th>
               <th class="text-right font-medium pb-1 px-3" title="Días que trabajó, pero no más de ${umbralL} h, y sin J: no suman.">${umbralL} h o menos</th>
               <th class="text-right font-medium pb-1 px-3">Horas del mes</th>
               <th class="text-right font-medium pb-1 pl-3">Generadas</th>

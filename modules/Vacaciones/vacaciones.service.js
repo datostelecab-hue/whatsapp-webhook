@@ -3,23 +3,30 @@
 // ============================================================
 // Camilo, 14/10/2026. Las reglas, todas suyas:
 //
-//   GENERADAS   0,05882 días por cada DÍA LABORADO desde el alta que dice el
-//               sistema (el del contrato abierto): un día en el que trabajó MÁS
-//               DE 4 HORAS; con 4 h justas, o menos, ese día no suma (06/11/2026,
-//               Camilo: «De ahora en adelante las vacaciones serán calculadas a
-//               0,05882 por día LABORADO del mes, solo si tiene más de 4 horas
-//               en ese día, sino no le suma»). «El día» es el de la bitácora:
+//   GENERADAS   0,084 días por cada DÍA LABORADO desde el alta que dice el
+//               sistema (el del contrato abierto), con un MÁXIMO DE 1,85 DÍAS
+//               AL MES; los festivos trabajados van aparte y no cuentan para el
+//               tope (12/11/2026, Camilo: «0,084 Dias generan por dia laborable
+//               completado. Con un maximo de 1.85 dias al mes, el límite no
+//               tiene en cuenta los días festivos trabajados»; del 06/11 al
+//               12/11 eran 0,05882 sin tope). Un día laborado es uno en el que
+//               trabajó MÁS DE 4 HORAS; con 4 h justas, o menos, ese día no suma
+//               (06/11/2026, Camilo: «… solo si tiene más de 4 horas en ese día,
+//               sino no le suma»). «El día» es el de la bitácora:
 //               desde el 01/07/2026, bitacora_horas (de fv_tramo); antes, la
 //               jornada de 05:00 a 05:00 de cada cuenta de BOLT que cargó db/231
 //               del historial de estados de BOLT. Horas = viaje + espera de BOLT;
 //               las J no cuentan como horas. Generan TAMBIÉN (06/11/2026, Camilo:
 //               «las bajas médicas y días justificados sí suman también, las
 //               libranzas y ausencias injustificadas no») un día con una J
-//               aprobada y un día de baja médica que le tocaba trabajar; uno que
-//               caía en su libranza, no; si no se sabe qué libraría (sin plaza o
-//               antes del planificador), 5/7 de día («Supón 5 de cada 7 para los
-//               de baja sin plaza»). Cada día cuenta una vez. Las
-//               vacaciones, los permisos y los asuntos propios no generan.
+//               aprobada y CADA día de baja médica, también los que habría
+//               librado: cada B vale como un día de 8 h y lo frena el tope del
+//               mes (12/11/2026, Camilo: «ojo con las bajas médicas, ahí es que
+//               se aplica más que todo el límite de 1,85 días … ya que no tiene
+//               días de libranza, y cada B equivale a 8 horas»; hasta entonces
+//               la baja en su libranza no sumaba y, sin plaza, valía 5/7). Cada
+//               día cuenta una vez. Las vacaciones, los permisos y los asuntos
+//               propios no generan.
 //               Hasta entonces eran 0,0821 por DÍA NATURAL (con libranzas,
 //               bajas, vacaciones y permisos, y sin las suspensiones).
 //               Quien entró antes de 2026 empieza el 01/01/2026
@@ -30,8 +37,12 @@
 //               generado, ni las vacaciones cogidas, ni los permisos, ni los
 //               festivos trabajados.
 //   FESTIVOS    + 1 día entero por cada festivo nacional o de la Comunidad de
-//               Madrid en el que trabajó MÁS DE 6 HORAS (las de la nómina: viaje
-//               + espera de BOLT, por día natural).
+//               Madrid en el que trabajó MÁS DE 6 HORAS EN SU JORNADA de ese
+//               día: su turno de día (00:00 → 24:00) más su turno de noche
+//               (12:00 → 12:00 del día siguiente), como la bitácora (12/11/2026,
+//               Camilo: «no tomes literal de 00:00 a 23:59 … si empieza el día
+//               festivo a las 20:00 y termina a las 04:00 hizo 8 horas en su
+//               jornada del día festivo»). Hasta entonces, el día natural.
 //   DISFRUTADAS − los días de vacaciones que ya pasaron Y le tocaba trabajar:
 //               sus libranzas se mantienen y no cuentan (06/11/2026, Camilo: «si
 //               pido 18 días de vacaciones, me tiene que contar solo días
@@ -73,10 +84,15 @@ const repo = require('./vacaciones.repo');
 const plantilla = require('../Conductores/plantilla.service');   // la puerta de las ausencias (y la llave de aprobar)
 const ticketera = require('../Ticketera/ticketera.service');      // la historia del ticket
 const aFuturo = require('../../services/vacacionesAFuturo');       // solo a futuro: la misma regla que Plantilla
-const nominas = require('../Nominas/nominas.service');   // la puerta de Nóminas: las horas de un día
 const libranzas = require('./libranzas');                // qué días libra: no cuentan como vacaciones
 
-const TASA = 0.05882;                      // por día laborado (06/11/2026; era 0,0821 por día natural)
+// 12/11/2026, Camilo: «0,084 días generan por día laborable completado. Con un
+// máximo de 1.85 días al mes, el límite no tiene en cuenta los días festivos
+// trabajados». El día que genera es el de siempre (más de 4 h, una J aprobada o
+// de baja médica). Del 06/11 al 12/11 la tasa era 0,05882, sin tope; antes,
+// 0,0821 por día natural.
+const TASA = 0.084;                        // por día laborado
+const TOPE_MES = 1.85;                     // lo más que genera un mes (los festivos van aparte)
 // Desde aquí cuenta todo (ver arriba). saldoDe recorta a esta fecha lo generado,
 // las vacaciones, los permisos, las suspensiones y los festivos.
 const DESDE_HISTORICO = '2026-01-01';
@@ -112,6 +128,8 @@ const mas = (d, n) => iso(ms(d) + n * DIA);
 const dias = (a, b) => (b < a ? 0 : Math.round((ms(b) - ms(a)) / DIA) + 1);
 const solape = (a1, b1, a2, b2) => dias(a1 > a2 ? a1 : a2, b1 < b2 ? b1 : b2);
 const r2 = n => Math.round(n * 100) / 100;
+/** 'AAAA-MM' → el mes siguiente, 'AAAA-MM'. */
+const mesSiguiente = m => { const [y, mm] = m.split('-').map(Number); return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, '0')}`; };
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 
 /**
@@ -132,19 +150,37 @@ const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Mad
 function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados) {
   const inicio = p.alta > DESDE_HISTORICO ? p.alta : DESDE_HISTORICO;
   const manana = mas(hoy, 1);
+  // MES A MES, para la ficha y para el Excel de la bitácora (12/11/2026): cada
+  // mes con lo que genera (con su tope), los festivos que suman, lo disfrutado y
+  // el saldo al acabarlo. Están todos los meses, de su inicio a hoy, aunque estén
+  // vacíos: el Excel los pone en columnas y tienen que cuadrar entre personas.
+  // `cortos` son los días que trabajó 4 h o menos y no tienen otra cosa que los
+  // haga sumar.
+  const porMes = new Map();
+  const mesDe = dia => {
+    const m = dia.slice(0, 7);
+    if (!porMes.has(m)) {
+      porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, bajasSupuestas: 0, cortos: 0, segundos: 0,
+        festivos: 0, disfrutadas: 0 });
+    }
+    return porMes.get(m);
+  };
+  for (let m = inicio.slice(0, 7); m <= hoy.slice(0, 7); m = mesSiguiente(m)) mesDe(m + '-01');
   const vacaciones = [], permisos = [], suspensiones = [], asuntos = [];
   let disfrutadas = 0, programadas = 0, diasSuspension = 0, apUsados = 0, apProgramados = 0;
   // Los días de vacaciones de a…b que cuentan: los que le tocaba trabajar. Si
   // las vacaciones llevan sus dos días de libranza puestos a mano (db/233),
   // mandan esos: esos días de la semana no cuentan y los demás sí. Las de antes
   // no los tienen y cuentan con lo que dice el planificador.
-  const deVacaciones = (a, b, libra) => {
+  // `alMes`: apuntar cada día que cuenta en su mes (lo disfrutado, no lo programado).
+  const deVacaciones = (a, b, libra, alMes = false) => {
     const r = { cuentan: 0, libra: 0, sinCuadrante: 0 };
+    const cuenta = d => { r.cuentan++; if (alMes) mesDe(d).disfrutadas++; };
     for (let d = a; d <= b; d = mas(d, 1)) {
-      if (libra) { if (libranzas.cuentaConLibra(libra, d)) r.cuentan++; else r.libra++; continue; }
+      if (libra) { if (libranzas.cuentaConLibra(libra, d)) cuenta(d); else r.libra++; continue; }
       const x = plan ? plan(d) : null;
       if (!libranzas.cuenta(x)) r.libra++;
-      else { r.cuentan++; if (x && x.trabaja === null) r.sinCuadrante++; }
+      else { cuenta(d); if (x && x.trabaja === null) r.sinCuadrante++; }
     }
     return r;
   };
@@ -173,7 +209,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
           editable: false, empezadas: true });
         continue;
       }
-      const ya = pasado ? deVacaciones(t.desde > inicio ? t.desde : inicio, hasta < hoy ? hasta : hoy, libra) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
+      const ya = pasado ? deVacaciones(t.desde > inicio ? t.desde : inicio, hasta < hoy ? hasta : hoy, libra, true) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
       const va = futuro ? deVacaciones(t.desde > manana ? t.desde : manana, t.hasta, libra) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
       disfrutadas += ya.cuentan; programadas += va.cuentan;
       vacaciones.push({ ...linea, disfrutados: ya.cuentan, programados: va.cuentan,
@@ -206,20 +242,14 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   //   · si no, una J aprobada ese día (06/11/2026, Camilo: «las bajas médicas y
   //     días justificados sí suman también, las libranzas y ausencias
   //     injustificadas no»);
-  //   · si no, estaba de baja médica y ese día le tocaba trabajar: un día de
-  //     baja que caía en su libranza no suma, como no suma la libranza. Si NO
-  //     SE SABE qué libraría (sin plaza, o antes del planificador), cada día de
-  //     baja vale 5/7 (06/11/2026, Camilo: «Supón 5 de cada 7 para los de baja
-  //     sin plaza»): una semana de baja genera como una de cinco días, sin tener
-  //     que inventarse cuáles serían sus libranzas.
-  // Mes a mes, para la ficha; `cortos` son los que trabajó 4 h o menos y no
-  // tienen otra cosa que los haga sumar.
-  const porMes = new Map();
-  const mesDe = dia => {
-    const m = dia.slice(0, 7);
-    if (!porMes.has(m)) porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, bajasSupuestas: 0, cortos: 0, segundos: 0 });
-    return porMes.get(m);
-  };
+  //   · si no, estaba de BAJA MÉDICA: CADA DÍA de baja genera, también los que
+  //     habría librado (12/11/2026, Camilo: «ojo con las bajas médicas, ahí es
+  //     que se aplica más que todo el límite de 1,85 días de vacaciones
+  //     generadas ya que no tiene días de libranza, y cada B equivale a 8 horas
+  //     ya que genera vacaciones»). Un mes entero de baja daría 30 × 0,084 =
+  //     2,52 y se queda en el tope de 1,85. Del 06/11 al 12/11 el día de baja
+  //     que caía en su libranza no sumaba, y sin plaza cada día valía 5/7.
+  // (El mes a mes, `porMes`, está arriba.)
   const genera = new Map();      // día → 'trabajo' | 'justificado' | 'baja' | 'baja-supuesta'
   (laborados || new Map()).forEach((seg, dia) => {
     if (dia < inicio || dia > hoy || !(seg > 0)) return;
@@ -233,10 +263,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     if (t.estado !== 'baja_medica') continue;
     const a = t.desde > inicio ? t.desde : inicio, b = (t.hasta || FIN) < hoy ? t.hasta : hoy;
     for (let d = a; d <= b; d = mas(d, 1)) {
-      if (genera.has(d)) continue;
-      const q = plan ? plan(d) : null;
-      if (!q || q.trabaja === null) genera.set(d, 'baja-supuesta');
-      else if (q.trabaja) genera.set(d, 'baja');
+      if (!genera.has(d)) genera.set(d, 'baja');
     }
   }
   genera.forEach((por, dia) => {
@@ -256,12 +283,12 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   const valen = (enteros, supuestos) => enteros + supuestos * BAJA_SIN_PLAZA;
   const crudo = valen(diasLaborados + diasJustificados + diasBaja, diasBajaSupuestos);
   const diasQueGeneran = r2(crudo);
-  const generadas = r2(TASA * crudo);
-  const meses = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes))
-    .map(x => {
-      const c = valen(x.laborados + x.justificados + x.bajas, x.bajasSupuestas);
-      return { ...x, generan: r2(c), generadas: r2(TASA * c) };
-    });
+  // EL TOPE ES POR MES (12/11/2026): cada mes genera TASA por día, como mucho
+  // TOPE_MES. Lo generado es la suma de los meses (sin redondear por el camino).
+  // Los festivos van aparte y no entran en el tope.
+  const conTope = c => Math.min(TOPE_MES, TASA * c);
+  const mesesOrden = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes));
+  const generadas = r2(mesesOrden.reduce((t, x) => t + conTope(valen(x.laborados + x.justificados + x.bajas, x.bajasSupuestas)), 0));
 
   // Los festivos de su periodo. El de hoy aún no ha terminado.
   const lista = (festivos || []).filter(f => f.fecha >= inicio && f.fecha <= hoy).map(f => {
@@ -274,6 +301,17 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     return { fecha: f.fecha, nombre: f.nombre, ambito: f.ambito, segundos, estado };
   });
   const festivosSuman = lista.filter(f => f.estado === 'suma').length;
+  lista.filter(f => f.estado === 'suma').forEach(f => { mesDe(f.fecha).festivos++; });
+
+  // Cada mes: lo que genera (con el tope), sus festivos, lo disfrutado y el
+  // saldo al acabarlo (lo de los meses anteriores incluido).
+  let acumulado = 0;
+  const meses = mesesOrden.map(x => {
+    const c = valen(x.laborados + x.justificados + x.bajas, x.bajasSupuestas);
+    const gen = conTope(c);
+    acumulado += gen + x.festivos - x.disfrutadas;
+    return { ...x, generan: r2(c), sinTope: r2(TASA * c), generadas: r2(gen), tope: TASA * c > TOPE_MES, saldoFin: r2(acumulado) };
+  });
 
   const saldo = r2(generadas + festivosSuman - disfrutadas);
   const ahora = vacaciones.find(v => v.desde <= hoy && (v.hasta || FIN) >= hoy);
@@ -348,7 +386,7 @@ function saldoPara(p, x, festivos, hoy) {
 
 /** La lista: una fila por persona —de alta, o que se fue este año—, con su saldo. */
 // Las reglas, para que la pantalla las diga con los números de aquí y no con los suyos.
-const reglas = sinHistorico => ({ tasa: TASA, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, festivosPagadosHasta: FESTIVOS_PAGADOS_HASTA,
+const reglas = sinHistorico => ({ tasa: TASA, topeMes: TOPE_MES, desde: DESDE_HISTORICO, umbralHoras: UMBRAL_FESTIVO / 3600, festivosPagadosHasta: FESTIVOS_PAGADOS_HASTA,
   umbralLaborado: UMBRAL_LABORADO / 3600, bajaSinPlaza: '5/7', nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO, sinHistorico: !!sinHistorico });
 
 async function lista({ hoy = hoyMadrid() } = {}) {
@@ -363,6 +401,39 @@ async function lista({ hoy = hoyMadrid() } = {}) {
 }
 
 /** La ficha de una persona: el saldo y de dónde sale cada número. */
+/**
+ * LAS VACACIONES MES A MES DE TODOS, para el Excel de la bitácora (12/11/2026,
+ * Camilo: «Ponme en bitácora un descargable en excel de las vacaciones por
+ * meses»). La misma cuenta que la lista y la ficha (`saldoPara`), con su
+ * desglose por mes: lo que generó (con el tope), los festivos que suman, lo
+ * disfrutado y el saldo al acabar cada mes. `meses` son todos los de DESDE_HISTORICO
+ * a hoy, para que todas las personas vayan en las mismas columnas.
+ */
+async function porMeses({ hoy = hoyMadrid() } = {}) {
+  const { gente, festivos, porId } = await cargar();
+  const meses = [];
+  for (let m = DESDE_HISTORICO.slice(0, 7); m <= hoy.slice(0, 7); m = mesSiguiente(m)) meses.push(m);
+  const filas = gente.map(p => {
+    const s = saldoPara(p, porId.get(p.id), festivos, hoy);
+    const de = new Map(s.detalle.meses.map(m => [m.mes, m]));
+    return {
+      id: p.id, nombre: p.nombre, alta: p.alta, contrato: contrato(p), deBaja: s.deBaja, baja: s.baja,
+      inicio: s.inicio, generadas: s.generadas, festivos: s.festivosSuman, disfrutadas: s.disfrutadas,
+      saldo: s.saldo, programadas: s.programadas, saldoTras: s.saldoTras,
+      // Antes de su inicio (alta), el mes va vacío y sin saldo.
+      meses: meses.map(m => de.get(m) || null),
+    };
+  }).sort((a, b) => Number(a.deBaja) - Number(b.deBaja) || a.nombre.localeCompare(b.nombre, 'es'));
+  return { hoy, meses, filas, tasa: TASA, topeMes: TOPE_MES };
+}
+
+/** El Excel de las vacaciones por meses: { bytes, nombre }. */
+async function excelPorMeses({ hoy = hoyMadrid() } = {}) {
+  const datos = await porMeses({ hoy });
+  const bytes = await require('./vacaciones.excel').porMeses(datos);
+  return { bytes, nombre: `Vacaciones por meses ${hoy.split('-').reverse().join('-')}.xlsx` };
+}
+
 async function ficha(id, { hoy = hoyMadrid() } = {}) {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) throw new Error('Falta la persona');
@@ -521,13 +592,37 @@ async function cambiarVacaciones(conductorId, filaId, datos = {}, quien = {}, { 
  * 01/07/2026 que ya pasaron y no tienen las horas, o las tienen de antes de que
  * BOLT terminara de mandar ese día. Con la misma cuenta que la nómina.
  */
+/**
+ * LAS HORAS DE UN FESTIVO, POR LA JORNADA DE CADA UNO, no por el reloj
+ * (12/11/2026, Camilo: «en los días festivos trabajados no tomes literal de
+ * 00:00 a 23:59. Dependiendo del turno, si empieza el día festivo a las 20:00 y
+ * termina a las 04:00 hizo 8 horas en su jornada del día festivo»). Es la regla
+ * de la casa (repartoTurnos, la de Control, la bitácora y los reportes): su
+ * turno de día de esa fecha (00:00 → 24:00) más su turno de noche de esa fecha
+ * (12:00 → 12:00 del día siguiente); quien trabaja sin plan, por su hora de
+ * inicio. Hasta entonces eran las horas del día natural, las de la nómina.
+ * Map(conductor_id → segundos).
+ */
+async function horasDelFestivo(fecha) {
+  const porPersona = await require('../../services/flotaViva/repartoTurnos').porPersonaYDia([fecha]);
+  const out = new Map();
+  porPersona.forEach((dias, persona) => {
+    const m = /^c(\d+)$/.exec(String(persona));
+    const x = dias.get(fecha);
+    if (!m || !x) return;
+    const seg = (x.dia || 0) + (x.noche || 0);
+    if (seg > 0) out.set(Number(m[1]), seg);
+  });
+  return out;
+}
+
 async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
   let fechas;
   try { fechas = await repo.festivosPorSellar(NUCLEO_DESDE, hoy, MARGEN_DIAS); }
   catch (e) { if (e.code === '42P01') return { sinTabla: true, hechos: [] }; throw e; }
   const hechos = [];
   for (const fecha of fechas) {
-    const horas = await nominas.horasDelDia(fecha);
+    const horas = await horasDelFestivo(fecha);
     const personas = await repo.guardarHorasFestivo(fecha, horas, 'nucleo');
     hechos.push({ fecha, personas, masDe6: [...horas.values()].filter(s => s > UMBRAL_FESTIVO).length });
   }
@@ -535,7 +630,7 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 }
 
 module.exports = {
-  TASA, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
-  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones,
+  TASA, TOPE_MES, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
+  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones, porMeses, excelPorMeses,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };

@@ -13,8 +13,8 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 
 | | Qué | Cómo |
 |---|---|---|
-| **+** | Generadas | **0,05882 días por cada día que genera** desde el alta que dice el sistema (la del contrato abierto): uno en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada** o uno de **baja médica** que le tocaba trabajar (sin plaza o antes del planificador, **5/7** de día). Ver [[#Por día laborado (06/11/2026, db/231)]]. Hasta el 06/11/2026 eran 0,0821 por día natural. |
-| **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas** (6 justas no), **desde el 01/10/2026**: los de septiembre para atrás se pagaron en la nómina y no suman. Ver [[#Los festivos de septiembre para atrás, pagados (06/11/2026)]]. |
+| **+** | Generadas | **0,084 días por cada día que genera, con un máximo de 1,85 al mes** (los festivos van aparte). Cuentan desde el alta que dice el sistema (la del contrato abierto). Genera un día en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada** o **cada día de baja médica**, también los que habría librado. Ver [[#0,084 por día con un tope de 1,85 al mes (12/11/2026)]]. Del 06/11 al 12/11/2026 eran 0,05882 sin tope; antes, 0,0821 por día natural. |
+| **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas en su jornada** (6 justas no), **desde el 01/10/2026**. Los de septiembre para atrás se pagaron en la nómina y no suman. **No entran en el tope.** Ver [[#Los festivos de septiembre para atrás, pagados (06/11/2026)]]. |
 | **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: los dos días que libra en esas vacaciones (puestos a mano) no cuentan; en las de antes, sus libranzas del planificador. Ver [[#Los dos días que libra, a mano (06/11/2026, db/233)]]. |
 
 **Los asuntos propios ya no restan de aquí** (desde el 29/10/2026): tienen su banco aparte, abajo. Ningún permiso toca el saldo de vacaciones.
@@ -24,6 +24,37 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 - El saldo puede ser **negativo**: ha disfrutado más de lo generado.
 
 Las decisiones de Camilo, el 14/10/2026: los permisos se descuentan del saldo, y luego, *«Solo restan los de asuntos propios»*; para los antiguos, desde el 01/01/2025; las suspensiones no generan; y el festivo suma solo si se trabajó más de 6 h.
+
+## 0,084 por día con un tope de 1,85 al mes (12/11/2026)
+
+Camilo: *«0,084 Dias generan por dia laborable completado. Con un maximo de 1.85 dias al mes, el límite no tiene en cuenta los días festivos trabajados»*. Y lo que lo cierra (eligió él):
+
+- **Un día laborable completado** es el de siempre: más de 4 h, una J aprobada o un día de baja médica.
+- **Las bajas médicas** (*«ahí es que se aplica más que todo el límite de 1,85 días … ya que no tiene días de libranza, y cada B equivale a 8 horas»*): cada día de baja genera, también los que habría librado.
+  - Un mes entero de baja daría 30 × 0,084 = 2,52 y se queda en 1,85.
+  - Hasta ese día, la baja en su libranza no sumaba y, sin plaza, valía 5/7.
+- **El tope es por mes natural.** Cada mes genera 0,084 por día, como mucho 1,85 (es decir, a partir del día 23 ya no suma más). Lo generado es la suma de los meses.
+- **Los festivos**, aparte y sin tope.
+- **En la ficha**, en el mes a mes, la columna «Generadas» dice *«en el tope»* y, al pasar el ratón, lo que daría sin él.
+
+**Las horas de un festivo son las de su jornada**, no las del reloj (Camilo: *«no tomes literal de 00:00 a 23:59. Dependiendo del turno, si empieza el día festivo a las 20:00 y termina a las 04:00 hizo 8 horas en su jornada del día festivo»*).
+- Se cuenta su turno de día de esa fecha (00:00 → 24:00) más su turno de noche (12:00 → 12:00 del día siguiente). Es la regla de la bitácora y de Control (`horasDelFestivo`, con `repartoTurnos.porPersonaYDia`). Hasta entonces eran las horas del día natural, las de la nómina.
+- **db/240** vuelve a calcular los festivos desde el 01/10/2026: los marca como pendientes y el cron de cada hora (minuto 20) los rehace.
+- En la copia local, el 12/10 pasa de 66 a 74 personas con más de 6 h: 10 cambian de lado, casi todas de noche (de 3,2 h a 9,0 h, de 4,6 h a 10,4 h…).
+
+**Lo que cambia**, en la copia local a 27/10 (143 de alta, sin db/240 todavía):
+
+| | Antes | Ahora |
+|---|---|---|
+| Generadas | 837,5 días | 1.172,4 días |
+| Saldo medio | 1,40 días | 3,74 días |
+
+**El Excel por meses, en la bitácora.** Camilo: *«Ponme en bitácora un descargable en excel de las vacaciones por meses»*.
+- Botón **«Vacaciones por meses (Excel)»** junto a «Vacaciones por meses». Lleva la llave de Vacaciones (`/bitacora/vacaciones/` → `/vacaciones`), porque son saldos.
+- Una fila por persona (de alta, y quien se fue este año, en gris).
+- Un bloque por mes desde enero: **Generadas** (en ámbar si llegó al tope), **Festivos**, **Disfrutadas** y **Saldo** al acabar el mes.
+- Al final, el saldo de hoy, lo programado y lo que quedará.
+- Es la misma cuenta que la ficha (`vacaciones.service.porMeses`, `vacaciones.excel.js`), así que el saldo del último mes es el de la ficha.
 
 ## Asuntos propios: un banco aparte (29/10/2026, db/225)
 

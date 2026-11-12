@@ -358,6 +358,8 @@
            <a href="/bitacora/general" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition"><i class="fa-solid fa-table-cells mr-1"></i>Bitácora general</a>
            <a href="/bitacora/caverel" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition" title="Las horas mensuales del informe de BOLT de antes: horas, viaje, espera y utilización por persona y mes"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Horas Caverel</a>
            <button id="b-vac-btn" class="text-xs px-3 py-2 rounded-lg font-semibold" style="background:${tint('V')};color:${clr('V')}"><i class="fa-solid fa-umbrella-beach mr-1"></i>Vacaciones por meses</button>
+           ${DEL_SERVIDOR.puedeVacaciones ? `<button id="b-vac-excel" class="text-xs px-3 py-2 rounded-lg font-semibold border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition"
+              title="El saldo de vacaciones de cada uno, mes a mes: lo que generó (con el tope de 1,85), los festivos, lo disfrutado y el saldo al acabar cada mes"><i class="fa-solid fa-file-excel mr-1"></i>Vacaciones por meses (Excel)</button>` : ''}
          </div>
        <p class="text-xs text-telecab-muted mb-4">Quién falta hoy y por qué. Elige a alguien en la lista para ver su calendario completo, día a día.</p>
        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">${bloque('B', porTipo.B)}${bloque('V', porTipo.V)}${bloque('P', porTipo.P)}</div>
@@ -366,6 +368,33 @@
     $('#b-default').querySelectorAll('.b-open').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.id))));
     const vb = $('#b-vac-btn');
     if (vb) vb.addEventListener('click', abrirVacaciones);
+    const vx = $('#b-vac-excel');
+    if (vx) vx.addEventListener('click', bajarVacacionesExcel);
+  }
+
+  // EL EXCEL DE LAS VACACIONES POR MESES (12/11/2026). Se pide con fetch: si el
+  // servidor contesta un error, se dice con el aviso de la casa en vez de
+  // guardarse como «.json» (lo que pasó con el reporte de Control).
+  async function bajarVacacionesExcel() {
+    const carga = window.telecabCarga || { abrir() {}, cerrar() {} };
+    carga.abrir();
+    try {
+      const r = await fetch('/bitacora/vacaciones/excel');
+      if (!r.ok) {
+        let msg = `El servidor contestó con un error (${r.status}).`;
+        try { const j = await r.json(); if (j && j.msg) msg = j.msg; } catch (e) { /* no era JSON */ }
+        await Dialogo.aviso({ titulo: 'No se ha descargado', texto: msg, tono: 'error' });
+        return;
+      }
+      const blob = await r.blob();
+      const m = /filename="?([^";]+)"?/i.exec(r.headers.get('Content-Disposition') || '');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = m ? m[1] : 'Vacaciones por meses.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se ha descargado', texto: 'No hay conexión con el servidor. Vuelve a intentarlo.', tono: 'error' });
+    } finally { carga.cerrar(); }
   }
 
   // ── Vacaciones por meses: disfrutadas + PROGRAMADAS, para asignar sin pisarse ──

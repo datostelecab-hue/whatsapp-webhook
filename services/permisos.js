@@ -297,6 +297,9 @@ const RUTA_A_CLAVE = [
   ['/bitacora/api/anular-justificante', '/bitacora/justificar'],
   ['/bitacora/api/libranza',            '/bitacora/justificar'],
   ['/bitacora/api/menos-j',             '/bitacora/justificar'],
+  // El Excel de las vacaciones por meses vive en la bitácora, pero son los
+  // saldos de Vacaciones: con su llave (12/11/2026).
+  ['/bitacora/vacaciones/',             '/vacaciones'],
   // Subir el CSV de Horas Caverel sustituye cifras: no basta con mirar la bitácora.
   ['/bitacora/caverel/api/importar',    '/bitacora/caverel/importar'],
   // Cambiar el estado de una pieza del coche. MIRARLO no pasa por aquí: va por

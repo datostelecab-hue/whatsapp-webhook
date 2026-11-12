@@ -1,10 +1,12 @@
 // ============================================================
 // EL SALDO DE VACACIONES, CON LAS REGLAS DE CAMILO (14/10/2026)
 // ============================================================
-//   + 0,05882 días por día LABORADO —uno con MÁS de 4 h— desde el alta (o el
-//     01/01/2026; hasta el 19/10/2026 era el 01/01/2025). Desde el 06/11/2026:
-//     antes eran 0,0821 por día natural, sin las suspensiones
-//   + 1 día por festivo trabajado MÁS de 6 horas
+//   + 0,084 días por día LABORADO —uno con MÁS de 4 h, una J aprobada o un día
+//     de baja médica, libre o no— con un TOPE de 1,85 al mes (12/11/2026; del
+//     06/11 al 12/11, 0,05882 sin tope; antes, 0,0821 por día natural), desde
+//     el alta (o el 01/01/2026; hasta el 19/10/2026 era el 01/01/2025)
+//   + 1 día por festivo trabajado MÁS de 6 horas EN SU JORNADA (su turno de día
+//     más su turno de noche de esa fecha; fuera del tope)
 //   − vacaciones disfrutadas (ningún permiso resta)
 //
 // Y LOS ASUNTOS PROPIOS, UN BANCO APARTE (29/10/2026): + 2 días por año natural
@@ -17,7 +19,7 @@
 // y el cálculo de las horas de los festivos se prueba con dobles.
 
 const repo = require('../modules/Vacaciones/vacaciones.repo');
-const nominas = require('../modules/Nominas/nominas.service');
+const reparto = require('../services/flotaViva/repartoTurnos');
 const svc = require('../modules/Vacaciones/vacaciones.service');
 const saldoDe = svc._saldoDe;
 
@@ -41,15 +43,17 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
 
 (async () => {
   // ── 1. Lo que se genera: los días laborados (06/11/2026) ─────────────────
-  // Camilo: «0,05882 por día LABORADO del mes, solo si tiene más de 4 horas en ese día, sino no le suma».
+  // Camilo: «0,084 Dias generan por dia laborable completado. Con un maximo de 1.85 dias al mes».
   let s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-07-13', '2026-08-31', 8));
   igual('Alta el 13/07, 50 días de 8 h: 50 laborados', s.diasLaborados, 50);
-  igual('…× 0,05882 = 2,94 días', s.generadas, 2.94);
+  igual('…julio 19 × 0,084 = 1,60 y agosto 31 × 0,084 = 2,60, que se queda en el tope de 1,85: 3,45', s.generadas, 3.45);
+  igual('…y el mes lo dice: lo que daría sin tope y que llegó al tope',
+    s.detalle.meses.slice(0, 2).map(m => [m.mes, m.sinTope, m.generadas, m.tope]), [['2026-07', 1.6, 1.6, false], ['2026-08', 2.6, 1.85, true]]);
   igual('…se le calcula desde el alta', [s.inicio, s.desdeElAlta], ['2026-07-13', true]);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-09-01', '2026-09-10', 4));
   igual('Cuatro horas justas NO suman (tiene que ser más de 4)', [s.diasLaborados, s.generadas], [0, 0]);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-09-01', '2026-09-10', 4 + 1 / 3600));
-  igual('Un segundo más, sí: 10 × 0,05882 = 0,59', [s.diasLaborados, s.generadas], [10, 0.59]);
+  igual('Un segundo más, sí: 10 × 0,084 = 0,84', [s.diasLaborados, s.generadas], [10, 0.84]);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-07-01', '2026-07-20', 8));
   igual('Los días de antes de su alta no cuentan (solo del 13 al 20: 8)', s.diasLaborados, 8);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-10-14', '2026-10-20', 8));
@@ -60,41 +64,41 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   // Con su plaza, y trabajando todos los días (para no mezclarlo con las libranzas).
   const todoTrabaja = () => ({ trabaja: true, por: 'plaza' });
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-01', hasta: '2026-09-30' }], [], new Map(), HOY, L('2026-07-13', '2026-07-31', 8), todoTrabaja);
-  igual('La baja médica SÍ genera: 19 trabajados + 61 de baja = 80 × 0,05882',
-    [s.diasLaborados, s.diasBaja, s.diasQueGeneran, s.generadas], [19, 61, 80, 4.71]);
+  igual('La baja médica SÍ genera: 19 trabajados (1,60) + agosto y septiembre de baja (en el tope, 1,85 cada uno) = 5,30',
+    [s.diasLaborados, s.diasBaja, s.diasQueGeneran, s.generadas], [19, 61, 80, 5.3]);
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, L('2026-09-01', '2026-09-03', 2), null, new Set(['2026-09-01', '2026-09-02', '2026-10-30']));
-  igual('Un día con una J aprobada genera aunque trabajara 2 h; la J de mañana no', [s.diasJustificados, s.diasQueGeneran, s.generadas], [2, 2, 0.12]);
-  igual('…y el día de 2 h sin J se queda corto', s.detalle.meses.map(m => [m.mes, m.laborados, m.justificados, m.cortos]), [['2026-09', 0, 2, 1]]);
+  igual('Un día con una J aprobada genera aunque trabajara 2 h; la J de mañana no', [s.diasJustificados, s.diasQueGeneran, s.generadas], [2, 2, 0.17]);
+  igual('…el día de 2 h sin J se queda corto; y salen todos los meses desde el alta, aunque estén vacíos',
+    s.detalle.meses.map(m => [m.mes, m.laborados, m.justificados, m.cortos]),
+    [['2026-07', 0, 0, 0], ['2026-08', 0, 0, 0], ['2026-09', 0, 2, 1], ['2026-10', 0, 0, 0]]);
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-02' }], [], new Map(), HOY,
     L('2026-09-01', '2026-09-01', 9), todoTrabaja, new Set(['2026-09-01']));
   igual('Cada día cuenta una vez: trabajó, con J y de baja el 01/09 es un día; el 02/09, de baja', [s.diasLaborados, s.diasJustificados, s.diasBaja, s.diasQueGeneran], [1, 0, 1, 2]);
   // Con su plan: libra los miércoles y jueves.
   const libraXJ = d => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return { trabaja: w !== 3 && w !== 4, por: 'plaza' }; };
 
-  // BAJA SIN PLAZA: 5 de cada 7 (06/11/2026, Camilo: «Supón 5 de cada 7 para los de baja sin plaza»).
+  // LA BAJA MÉDICA: CADA DÍA GENERA, también los que habría librado; lo frena
+  // el tope del mes (12/11/2026, Camilo: «ahí es que se aplica más que todo el
+  // límite de 1,85 días … ya que no tiene días de libranza, y cada B equivale a
+  // 8 horas»). Antes la libranza no sumaba y, sin plaza, cada día valía 5/7.
   const sinPlaza = () => ({ trabaja: null, por: 'sin-plaza' });
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), sinPlaza);
-  igual('Dos semanas de baja sin plaza: 14 días a 5/7 = 10 (0,59)', [s.diasBaja, s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [0, 14, 10, 0.59]);
-  igual('…y en el mes, como «sin plaza»', s.detalle.meses.map(m => [m.mes, m.bajas, m.bajasSupuestas, m.generan, m.generadas]), [['2026-09', 0, 14, 10, 0.59]]);
+  igual('Dos semanas de baja sin plaza: los 14 días, 14 × 0,084 = 1,18', [s.diasBaja, s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [14, 0, 14, 1.18]);
+  igual('…y en su mes, como baja', s.detalle.meses.filter(m => m.mes === '2026-09').map(m => [m.bajas, m.generan, m.generadas]), [[14, 14, 1.18]]);
   s = saldoDe({ alta: '2023-11-13' }, [{ estado: 'baja_medica', desde: '2025-11-01', hasta: null }], [], new Map(), '2026-11-06', new Map(), sinPlaza);
-  igual('Todo 2026 de baja y sin plaza (310 días): 221,43 que generan, 13,02 días; antes le salían 18,23',
-    [s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [310, 221.43, 13.02]);
+  igual('Todo 2026 de baja (310 días): manda el tope, 10 meses × 1,85 + 6 días de noviembre × 0,084 = 19,00',
+    [s.diasBaja, s.diasQueGeneran, s.generadas, s.detalle.meses.filter(m => m.tope).length], [310, 310, 19, 10]);
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), d => ({ trabaja: null, por: 'antes-del-cuadrante' }));
-  igual('Antes del planificador es lo mismo: no se sabe qué libraría, 5/7', [s.diasBajaSupuestos, s.diasQueGeneran], [14, 10]);
+  igual('Antes del planificador, igual: los 14 días', [s.diasBajaSupuestos, s.diasQueGeneran], [0, 14]);
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-01', hasta: '2026-10-01' }], [], new Map(), HOY, new Map(), sinPlaza);
-  igual('Lo generado sale de los días sin redondear: 62 × 5/7 × 0,05882 = 2,6049 → 2,60 (no 44,29 × 0,05882 = 2,61)',
-    [s.diasBajaSupuestos, s.diasQueGeneran, s.generadas], [62, 44.29, 2.6]);
-  // Del 25/08 al 07/09: hasta el 02/09 sin cuadrante (9 días); desde el 03/09 con su plaza, que libra X y J (el 03 libra).
-  const mixto = d => (d < '2026-09-03' ? { trabaja: null, por: 'antes-del-cuadrante' } : libraXJ(d));
-  s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-08-25', hasta: '2026-09-07' }], [], new Map(), HOY, new Map(), mixto);
-  igual('Una baja que empieza antes del planificador: 9 a 5/7 y, con su plaza, 4 de 5 (el jueves 03 libra)',
-    [s.diasBajaSupuestos, s.diasBaja, s.diasQueGeneran], [9, 4, 10.43]);
+  igual('Dos meses de baja en el tope (1,85 cada uno) y el 01/10, 0,084: 3,78', [s.diasBaja, s.diasQueGeneran, s.generadas], [62, 62, 3.78]);
+  // Libra X y J, y la baja pisa esos días: cuentan igual.
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-07' }], [], new Map(), HOY,
     L('2026-09-01', '2026-09-02', 8), sinPlaza, new Set(['2026-09-03']));
-  igual('Sin plaza, lo que trabajó o justificó cuenta entero y el resto de la baja a 5/7: 2 + 1 + 4 × 5/7',
-    [s.diasLaborados, s.diasJustificados, s.diasBajaSupuestos, s.diasQueGeneran], [2, 1, 4, 5.86]);
+  igual('Lo que trabajó o justificó cuenta como tal y el resto de la baja como baja: 2 + 1 + 4 = 7',
+    [s.diasLaborados, s.diasJustificados, s.diasBaja, s.diasQueGeneran], [2, 1, 4, 7]);
   s = saldoDe({ alta: '2026-07-13' }, [{ estado: 'baja_medica', desde: '2026-09-01', hasta: '2026-09-14' }], [], new Map(), HOY, new Map(), libraXJ);
-  igual('Una baja de 14 días que pisa 4 libranzas: genera 10 (las libranzas no suman)', [s.diasBaja, s.generadas], [10, 0.59]);
+  igual('Una baja de 14 días que pisa 4 libranzas: genera los 14 (la baja no tiene libranzas)', [s.diasBaja, s.generadas], [14, 1.18]);
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-09-14', '2026-09-27'), vac('2026-11-02', '2026-11-08')], [], new Map(), HOY, new Map(), libraXJ);
   igual('Vacaciones del 14 al 27/09 con libranza X y J: 14 naturales, 4 libranzas, cuentan 10', [s.detalle.vacaciones[0].dias, s.detalle.vacaciones[0].libranzas, s.disfrutadas], [14, 4, 10]);
   igual('…y las de noviembre, 7 naturales menos sus 2 libranzas futuras: 5 programadas', [s.programadas, s.detalle.vacaciones[1].libranzas], [5, 2]);
@@ -104,7 +108,7 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   s = saldoDe({ alta: '2023-11-13' }, [], [], new Map(), HOY, L('2025-12-01', '2026-01-31', 8));
   // 19/10/2026, Camilo: «Reinicia las vacaciones desde el 1 … que empiecen a contar desde este año».
   igual('Alta en 2023: se le calcula desde el 01/01/2026', [s.inicio, s.desdeElAlta, s.diasNaturales], ['2026-01-01', false, 287]);
-  igual('…y los días de 2025 no cuentan: 31 de enero', [s.diasLaborados, s.generadas], [31, 1.82]);
+  igual('…y los días de 2025 no cuentan: 31 de enero (2,60, en el tope de 1,85)', [s.diasLaborados, s.generadas], [31, 1.85]);
   s = saldoDe({ alta: '2023-11-13' }, [vac('2025-08-01', '2025-08-20'), vac('2025-12-28', '2026-01-03')], [], new Map(), HOY);
   // 12/11/2026, Camilo: las que empezaron en 2025 y acaban en 2026 tampoco
   // restan: «empezó en 2025, que le reste 0». Hasta entonces restaban sus días de 2026.
@@ -116,8 +120,9 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   const meses = L('2026-07-13', '2026-07-31', 8, L('2026-08-01', '2026-08-05', 3, L('2026-08-06', '2026-08-10', 9)));
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, meses);
   igual('Mes a mes: julio 19 que suman; agosto 5 que suman y 5 que se quedan cortos',
-    s.detalle.meses.map(m => [m.mes, m.laborados, m.cortos, m.generadas]), [['2026-07', 19, 0, 1.12], ['2026-08', 5, 5, 0.29]]);
-  igual('…con las horas de cada mes', s.detalle.meses.map(m => m.segundos / 3600), [152, 60]);
+    s.detalle.meses.map(m => [m.mes, m.laborados, m.cortos, m.generadas]),
+    [['2026-07', 19, 0, 1.6], ['2026-08', 5, 5, 0.42], ['2026-09', 0, 0, 0], ['2026-10', 0, 0, 0]]);
+  igual('…con las horas de cada mes', s.detalle.meses.map(m => m.segundos / 3600), [152, 60, 0, 0]);
 
   s = saldoDe({ alta: '2026-07-13' }, [susp('2026-08-01', '2026-08-10')], [], new Map(), HOY);
   igual('Las suspensiones se siguen viendo en la ficha (10 días)', s.diasSuspension, 10);
@@ -163,7 +168,7 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   // ── 2b. Los asuntos propios: su banco, aparte (29/10/2026) ─────────────────
   // Camilo: «que no reste a las vacaciones, él se restará solo».
   s = saldoDe({ alta: '2026-07-13' }, [ap('2026-09-01', '2026-09-01'), ap('2026-10-20', '2026-10-20')], [], new Map(), HOY, L('2026-07-13', '2026-08-31', 8));
-  igual('Asuntos propios: no tocan el saldo de vacaciones', [s.saldo, s.saldoTras, s.generadas], [2.94, 2.94, 2.94]);
+  igual('Asuntos propios: no tocan el saldo de vacaciones', [s.saldo, s.saldoTras, s.generadas], [3.45, 3.45, 3.45]);
   igual('…su banco: 2 este año, 1 cogido, 1 programado',
     [s.asuntosPropios.generados, s.asuntosPropios.usados, s.asuntosPropios.programados, s.asuntosPropios.saldo, s.asuntosPropios.saldoTras], [2, 1, 1, 1, 0]);
   igual('…y se ven aparte en la ficha, no entre los permisos', [s.detalle.asuntos.length, s.detalle.permisos.length], [2, 0]);
@@ -211,19 +216,38 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   s = saldoDe({ alta: '2026-07-13' },
     [vac('2026-08-01', '2026-08-05'), ap('2026-09-01', '2026-09-01'), susp('2026-09-10', '2026-09-11'), vac('2026-10-20', '2026-10-22')],
     cal, H({ '2026-08-15': 9 * 3600, '2026-10-12': 9 * 3600 }), HOY, trabajo);
-  igual('31 días laborados (1,82) + 1 festivo (el 12/10; el 15/08 se pagó) − 5 disfrutadas = −2,18 (el día de asuntos propios no resta)',
-    [s.diasLaborados, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [31, 1.82, 1, 5, -2.18]);
-  igual('…y tras las vacaciones del 20 al 22, −5,18', s.saldoTras, -5.18);
+  igual('31 días laborados (2,60) + 1 festivo (el 12/10; el 15/08 se pagó) − 5 disfrutadas = −1,40 (el día de asuntos propios no resta)',
+    [s.diasLaborados, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [31, 2.6, 1, 5, -1.4]);
+  igual('…y tras las vacaciones del 20 al 22, −4,40', s.saldoTras, -4.4);
+  // EL MES A MES DEL EXCEL DE LA BITÁCORA (12/11/2026): lo generado, los
+  // festivos, lo disfrutado y el saldo al acabar cada mes. El último cuadra con el saldo.
+  igual('Mes a mes: generadas, festivos, disfrutadas y saldo al acabar el mes (el de octubre es el saldo de hoy)',
+    s.detalle.meses.map(m => [m.mes, m.generadas, m.festivos, m.disfrutadas, m.saldoFin]),
+    [['2026-07', 1.6, 0, 0, 1.6], ['2026-08', 0.92, 0, 5, -2.48], ['2026-09', 0, 0, 0, -2.48], ['2026-10', 0.08, 1, 0, -1.4]]);
+  // El tope no cuenta los festivos: un mes en el tope con un festivo trabajado da 1,85 + 1.
+  const tf = saldoDe({ alta: '2026-07-13' }, [], [F('2026-10-12')], H({ '2026-10-12': 8 * 3600 }), HOY, L('2026-09-01', '2026-09-30', 8, L('2026-10-01', '2026-10-14', 8)));
+  igual('El tope no cuenta los festivos: septiembre 1,85 (en el tope) y octubre 14 × 0,084 = 1,18 + el festivo del 12/10',
+    [tf.generadas, tf.festivosSuman, tf.saldo, tf.detalle.meses.map(m => [m.mes, m.generadas, m.festivos])],
+    [3.03, 1, 4.03, [['2026-07', 0, 0], ['2026-08', 0, 0], ['2026-09', 1.85, 0], ['2026-10', 1.18, 1]]]);
   igual('…y le queda 1 día de asuntos propios', s.asuntosPropios.saldo, 1);
 
   // ── 5. Las horas de los festivos ─────────────────────────────────────────
   const guardado = [];
   repo.festivosPorSellar = async (desde, hoy, margen) => { guardado.push(['pide', desde, hoy, margen]); return ['2026-08-15']; };
-  nominas.horasDelDia = async dia => new Map([[12, 7 * 3600], [13, 3600]]);
+  // LAS HORAS DE SU JORNADA, NO LAS DEL RELOJ (12/11/2026): su turno de día de
+  // esa fecha más su turno de noche (de 12:00 a 12:00 del día siguiente). El 12
+  // entró a las 20:00 y salió a las 04:00: 4 h de noche que caen ya en el día 16
+  // siguen siendo de su jornada del festivo. Quien no tiene ficha («u…») no entra.
+  reparto.porPersonaYDia = async fechas => new Map([
+    ['c12', new Map([[fechas[0], { dia: 0, noche: 8 * 3600 }]])],
+    ['c13', new Map([[fechas[0], { dia: 3600, noche: 0 }], ['2026-08-14', { dia: 9 * 3600, noche: 0 }]])],
+    ['u-sin-ficha', new Map([[fechas[0], { dia: 9 * 3600, noche: 0 }]])],
+  ]);
   repo.guardarHorasFestivo = async (fecha, horas, fuente) => { guardado.push(['guarda', fecha, [...horas.entries()], fuente]); return horas.size; };
   const r = await svc.sellarFestivos({ hoy: HOY });
   igual('Pide los festivos desde el 01/07/2026, con 4 días de margen', guardado[0], ['pide', '2026-07-01', HOY, 4]);
-  igual('Guarda las horas de la nómina de ese día, como del sistema', guardado[1], ['guarda', '2026-08-15', [[12, 25200], [13, 3600]], 'nucleo']);
+  igual('Guarda las horas de su jornada de ese día (turno de día + turno de noche), como del sistema',
+    guardado[1], ['guarda', '2026-08-15', [[12, 28800], [13, 3600]], 'nucleo']);
   igual('…y dice cuántos pasan de 6 h', r.hechos, [{ fecha: '2026-08-15', personas: 2, masDe6: 1 }]);
   repo.festivosPorSellar = async () => { const e = new Error('no existe'); e.code = '42P01'; throw e; };
   igual('Sin la migración aplicada, el cron no revienta', await svc.sellarFestivos({ hoy: HOY }), { sinTabla: true, hechos: [] });

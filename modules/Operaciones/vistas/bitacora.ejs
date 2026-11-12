@@ -147,6 +147,7 @@
 <script type="application/json" id="datos-servidor"><%- json({
   rol: String(rol || ''),
   puedeJustificar: !!(puedeJustificar),
+  puedeVacaciones: typeof puedeVacaciones !== 'undefined' && !!puedeVacaciones,
   destinosJ: destinosJ || [],
   casuisticasMenosJ: typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : [],
   tiposJ: tiposJ || [],

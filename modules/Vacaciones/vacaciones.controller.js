@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
     titulo: 'Vacaciones', seccion: 'vacaciones', layout: 'layout-gestion',
     reglas: { tasa: vacaciones.TASA, desde: vacaciones.DESDE_HISTORICO, umbralHoras: vacaciones.UMBRAL_FESTIVO / 3600,
       umbralLaborado: vacaciones.UMBRAL_LABORADO / 3600, apPorAnio: vacaciones.AP_POR_ANIO,
-      festivosPagadosHasta: vacaciones.FESTIVOS_PAGADOS_HASTA },
+      festivosPagadosHasta: vacaciones.FESTIVOS_PAGADOS_HASTA, topeMes: vacaciones.TOPE_MES },
     // Solo para enseñar o no el botón de cambiar: lo que manda es el servidor.
     aprueba: await aprobarVac.paraLaPantalla((req.usuario || {}).id),
   });

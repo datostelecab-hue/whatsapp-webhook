@@ -11,6 +11,7 @@ El calendario de la plantilla: **qué hizo cada persona cada día** —cuántas 
 - `/bitacora` — el día a día, con el panel de un día concreto.
 - `/bitacora/general` — la plantilla entera contra el calendario entero.
 - `/bitacora/caverel` — **Horas Caverel**: las horas mensuales del informe de BOLT de antes (abajo).
+- **Vacaciones por meses (Excel)** (12/11/2026): el saldo de vacaciones de cada uno mes a mes, con la llave de Vacaciones. Ver [[Vacaciones#0,084 por día con un tope de 1,85 al mes (12/11/2026)]].
 
 ## Las dos pantallas leen el MISMO `/api/datos`
 
