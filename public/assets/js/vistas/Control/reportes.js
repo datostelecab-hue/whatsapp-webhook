@@ -29,15 +29,47 @@
   // El reporte del día baja DOS ficheros de un clic: el Excel de horas+KM y el PDF
   // del Sankey. Con un pequeño desfase, porque algunos navegadores frenan dos
   // descargas seguidas.
-  const baja = url => {
+  //
+  // SE PIDE CON fetch, NO CON UN ENLACE (12/11/2026). Con `<a download>`, cuando
+  // el servidor contestaba un error (un JSON con el motivo), el navegador lo
+  // guardaba como «excel.json» y nadie veía qué había pasado. Ahora un error se
+  // dice con el aviso de la casa y solo se guarda lo que de verdad es el fichero,
+  // con el nombre que da el servidor.
+  const baja = async url => {
+    let r;
+    try {
+      r = await fetch(url);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se ha descargado', texto: 'No hay conexión con el servidor. Vuelve a intentarlo.', tono: 'error' });
+      return false;
+    }
+    if (!r.ok) {
+      let msg = `El servidor contestó con un error (${r.status}).`;
+      try { const j = await r.json(); if (j && j.msg) msg = j.msg; } catch (e) { /* no era JSON: se queda el genérico */ }
+      await Dialogo.aviso({ titulo: 'No se ha descargado', texto: msg, tono: 'error', ancho: 'max-w-xl' });
+      return false;
+    }
+    const blob = await r.blob();
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+    const nombre = m ? decodeURIComponent(m[1] || m[2]) : '';
     const a = document.createElement('a');
-    a.href = url; a.download = '';
+    a.href = URL.createObjectURL(blob); a.download = nombre;
     document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    return true;
   };
-  $('#r-horas').addEventListener('click', () => {
+  // El reporte tarda (lee el día entero de BOLT, Mapon y los fichajes): se tapa
+  // con la carga de la casa hasta que llega, y el PDF va después.
+  $('#r-horas').addEventListener('click', async () => {
     const key = $('#r-horas-dia').value;
-    baja('/control/reporte/excel?dia=' + encodeURIComponent(key));
-    setTimeout(() => baja('/control/cascada/pdf?dia=' + encodeURIComponent(key)), 500);
+    const carga = window.telecabCarga || { abrir() {}, cerrar() {} };
+    carga.abrir();
+    try {
+      if (await baja('/control/reporte/excel?dia=' + encodeURIComponent(key))) {
+        await baja('/control/cascada/pdf?dia=' + encodeURIComponent(key));
+      }
+    } finally { carga.cerrar(); }
   });
   // El Sankey sigue estando, aparte: a quien ya sabe leerlo le dice más que la
   // cascada, porque enseña los dos turnos a la vez y por dónde se va cada km.
