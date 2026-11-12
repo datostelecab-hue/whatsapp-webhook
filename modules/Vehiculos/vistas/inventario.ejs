@@ -1,0 +1,13 @@
+<%#
+  INVENTARIO DEL TALLER (db/241) — lo que hay en el almacén y no lleva matrícula.
+
+  Lista → ficha → atrás con el Listado de la casa: un artículo por fila con su
+  stock (la suma de sus movimientos). En la ficha, su historia: lo que entró
+  (las facturas de Hergar o a mano), lo que se puso en cada coche y los ajustes.
+  Sumar, restar en un coche y ajustar se piden con el formulario de la casa.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeMover: !!puedeMover, categorias: categorias || [] }) %></script>
+<script src="<%= est('/assets/js/vistas/Vehiculos/inventario.js') %>"></script>

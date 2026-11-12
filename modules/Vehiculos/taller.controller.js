@@ -69,10 +69,11 @@ const exigeApuntar = fn => async req => {
 
 router.get('/', async (req, res) => {
   res.render('taller', {
-    titulo: 'Taller',
+    titulo: 'Mantenimientos',
     seccion: 'taller',
     layout: 'layout-gestion',
     tipos: taller.TIPOS,
+    categorias: taller.CATEGORIAS,
     estados: taller.ESTADOS,
     intervaloGeneral: taller.INTERVALO,
     puedeApuntar: await puedeApuntar(req),
@@ -86,6 +87,16 @@ router.get('/api/cuadro', responde(async req =>
   taller.estadoDeLaFlota({ busca: req.query.busca, estado: req.query.estado, sedes: await sedesDe(req) })));
 
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await taller.ficha(req.params.id, { sedes: await sedesDe(req) }) })));
+
+// El historial de mantenimientos (db/241): la lista de la pestaña y cada uno con
+// sus piezas. Va en '/api/historial' y no en '/api/mantenimiento/:id' porque
+// esa ruta está en RUTA_A_CLAVE con la llave de apuntar, mire el método que mire.
+router.get('/api/historial', responde(async req => ({
+  filas: await taller.historial({ sedes: await sedesDe(req), desde: req.query.desde, hasta: req.query.hasta }),
+})));
+router.get('/api/historial/:id', responde(async req => ({
+  ficha: await taller.mantenimiento(req.params.id, { sedes: await sedesDe(req) }),
+})));
 
 // El informe, en Excel y en PDF. Quien decide QUE lleva y como se llama es el
 // servicio; aqui solo se ponen las cabeceras y se manda.

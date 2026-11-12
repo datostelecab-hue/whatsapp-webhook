@@ -207,26 +207,11 @@
     }
     html += '</div>';
 
-    html += '<div><p class="text-xs text-telecab-muted uppercase tracking-wide mb-2">Historial (' + f.historial.length + ')</p>' +
-      (f.historial.length ? f.historial.map(m =>
-        '<div class="border border-telecab-border rounded-xl px-3 py-2 mb-2 ' + (m.anuladoAt ? 'opacity-50' : '') + '">' +
-          '<div class="flex items-center justify-between gap-2">' +
-            '<span class="text-sm font-semibold text-telecab-text">' + esc(m.tipoEtiqueta) + '</span>' +
-            '<span class="text-sm tabular-nums text-telecab-text">' + n(m.km) + ' km</span>' +
-          '</div>' +
-          '<p class="text-[11px] text-telecab-muted">' +
-            (m.fecha ? dia(m.fecha) : 'sin fecha') +
-            (m.taller ? ' · ' + esc(m.taller) : '') +
-            (m.coste != null ? ' · ' + n1(m.coste) + ' €' : '') +
-            (m.usuario ? ' · lo apuntó ' + esc(m.usuario) : '') +
-          '</p>' +
-          (m.descripcion ? '<p class="text-xs text-telecab-text mt-1">' + esc(m.descripcion) + '</p>' : '') +
-          (m.anuladoAt
-            ? '<p class="text-[11px] text-telecab-red mt-1">Anulado por ' + esc(m.anuladoPor || '—') + ': ' + esc(m.anuladoMotivo) + '</p>'
-            : (PUEDE ? '<button class="anular text-[11px] text-telecab-red underline mt-1" data-id="' + m.id + '">Anular</button>' : '')) +
-        '</div>').join('')
-        : '<p class="text-sm text-telecab-muted">Ninguno todavía.</p>') +
-      '</div>';
+    // Los mantenimientos del coche, uno por uno y con sus piezas (db/241): el
+    // mismo componente que la ficha del vehículo. La revisión por km cuenta
+    // solo los apuntados a mano; los demás salen aquí igual.
+    html += '<div><p class="text-xs text-telecab-muted uppercase tracking-wide mb-2">Mantenimientos (' +
+      f.historial.filter(m => !m.anuladoAt).length + ')</p><div id="pf-historial"></div></div>';
 
     if (f.anclas.length) {
       html += '<div><p class="text-xs text-telecab-muted uppercase tracking-wide mb-2">Lecturas del cuadro</p>' +
@@ -236,6 +221,10 @@
     }
 
     $('#pf-cuerpo').innerHTML = html;
+    MantenimientosCoche.pintar($('#pf-historial'), f.historial, {
+      vacio: 'Ninguno todavía.',
+      anular: PUEDE ? m => anularMant(m, () => abrirFicha(f.id)) : null,
+    });
     $('#p-ficha').classList.remove('hidden');
 
     if ($('#pf-apuntar')) $('#pf-apuntar').addEventListener('click', () => abrirMant(f));
@@ -251,17 +240,32 @@
       }
     });
     if ($('#pf-intervalo')) $('#pf-intervalo').addEventListener('click', () => cambiarIntervalo(f));
-    document.querySelectorAll('#pf-cuerpo .anular').forEach(b => b.addEventListener('click', async () => {
-      const motivo = prompt('¿Por qué se anula? Queda apuntado con tu nombre.');
-      if (!motivo) return;
-      try {
-        await api(BASE + '/api/anular', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: b.dataset.id, motivo }),
-        });
-        await abrirFicha(f.id); await cargar();
-      } catch (e) { alert(e.message); }
-    }));
+  }
+
+  /**
+   * Anular un mantenimiento: no se borra, queda tachado con quién y por qué. Si
+   * era una pieza del inventario, vuelve al almacén (lo hace el servidor).
+   * `despues` repinta lo que estuviera abierto.
+   */
+  async function anularMant(m, despues) {
+    const v = await Dialogo.formulario('Anular el mantenimiento · ' + (m.fecha ? dia(m.fecha) : 'sin fecha'), [
+      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true, marcador: 'Ej.: era de otro coche',
+        ayuda: 'No se borra: queda anulado, con tu nombre y el motivo.' +
+          (m.origen === 'inventario' ? ' La pieza vuelve al inventario.' : '') },
+    ], { textoBoton: 'Anular' });
+    if (!v) return;
+    try {
+      const r = await api(BASE + '/api/anular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: m.id, motivo: v.motivo }),
+      });
+      Dialogo.hecho(r.devueltoAlInventario ? 'Anulado; la pieza vuelve al inventario' : 'Mantenimiento anulado');
+      if (despues) await despues();
+      await cargar();
+      if (HIST) await HIST.recargar();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo anular', texto: e.message, tono: 'error' });
+    }
   }
 
   async function cambiarIntervalo(f) {
@@ -378,8 +382,189 @@
 
   cargar().catch(e => alert('No se pudo cargar el taller: ' + e.message));
 
-  // Sin citas (Mantenimientos de Barcelona) la pantalla acaba aquí: la vista no
-  // pinta ni las pestañas ni la lista de citas.
+  // ══════════ LOS MANTENIMIENTOS, UNO POR UNO (db/241) ══════════
+  // Cada paso por taller de cada coche: de las facturas (Discom, iPark…), a mano
+  // o del inventario. Lista → ficha → atrás con el Listado de la casa; la ficha
+  // de un mantenimiento va en el #id de la dirección, como en todo el sistema.
+  const CATS = DEL_SERVIDOR.categorias || [];
+  const { fecha: fFecha, euros: fEuros } = Listado.fmt;
+  const fKm = v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 }) + ' km');
+  const hoyIso = hoyMadrid();
+  const haceDias = d => {
+    const x = new Date(hoyIso + 'T12:00:00Z');
+    x.setUTCDate(x.getUTCDate() - d);
+    return x.toISOString().slice(0, 10);
+  };
+  const queSeHizo = f => ((f.categoriasEtiqueta && f.categoriasEtiqueta.length) ? f.categoriasEtiqueta : [f.tipoEtiqueta]);
+  let HIST = null;
+
+  function montarHistorial() {
+    if (HIST) return;
+    HIST = Listado.montar({
+      raiz: '#h-lista',
+      titulo: 'Lo que se le ha hecho a cada coche',
+      icono: 'fa-list-check',
+      clave: 'id',
+      origen: BASE + '/api/historial',
+      vacio: 'No hay mantenimientos que coincidan.',
+      buscar: {
+        texto: 'Matrícula, pieza, taller, factura…',
+        campos: ['matricula', 'vehiculo', 'descripcion', 'taller', 'referencia', 'facturaNumero',
+          f => queSeHizo(f).join(' ')],
+      },
+      subtitulo: (visibles, todas) => (visibles.length === todas.length
+        ? `${todas.length} mantenimientos`
+        : `${visibles.length} de ${todas.length} mantenimientos`),
+
+      kpis: filas => {
+        const d30 = haceDias(30), anio = hoyIso.slice(0, 4);
+        const suma = xs => xs.reduce((a, f) => a + (Number(f.coste) || 0), 0);
+        const ult = filas.filter(f => f.fecha && f.fecha >= d30);
+        const delMes = ult;
+        const delAnio = filas.filter(f => f.fecha && f.fecha.slice(0, 4) === anio);
+        return [
+          { etiqueta: 'Últimos 30 días', valor: ult.length, tono: 'gold',
+            pie: `en ${new Set(ult.map(f => f.vehiculoId)).size} coches`,
+            ayuda: 'Mantenimientos con fecha en los últimos 30 días, y en cuántos coches distintos' },
+          { etiqueta: 'Gasto de 30 días', valor: fEuros(suma(delMes)), pie: 'los mismos 30 días · sin IVA',
+            ayuda: 'Lo que cuestan los mantenimientos de los últimos 30 días, sin IVA' },
+          { etiqueta: 'Gasto del año', valor: fEuros(suma(delAnio)), pie: `${delAnio.length} mantenimientos · sin IVA`,
+            ayuda: 'Lo que cuestan los mantenimientos de este año, sin IVA' },
+          { etiqueta: 'Sin km', valor: filas.filter(f => f.km == null).length, tono: 'warn',
+            pie: 'el taller no los puso',
+            ayuda: 'Mantenimientos cuya factura no trae los km del coche (Discom imprime «1 Km» cuando no los mira)' },
+        ];
+      },
+
+      filtros: [
+        {
+          id: 'categoria', etiqueta: 'Qué se hizo', textoTodos: 'Todo',
+          opciones: filas => CATS.filter(c => c.codigo !== 'mano_obra' && c.codigo !== 'nota')
+            .map(c => ({ valor: c.codigo, texto: c.etiqueta,
+              cuenta: filas.filter(f => (f.categorias || []).includes(c.codigo) || f.tipo === c.codigo).length }))
+            .filter(o => o.cuenta > 0),
+          pasa: (f, v) => (f.categorias || []).includes(v) || f.tipo === v,
+        },
+        {
+          id: 'taller', campo: 'taller', etiqueta: 'Taller', textoTodos: 'Todos los talleres',
+          opciones: filas => [...new Set(filas.map(f => f.taller).filter(Boolean))].sort()
+            .map(t => ({ valor: t, texto: t, cuenta: filas.filter(f => f.taller === t).length })),
+        },
+        {
+          id: 'origen', campo: 'origen', etiqueta: 'De dónde sale', textoTodos: 'De todas partes',
+          opciones: filas => [['factura', 'Facturas'], ['manual', 'A mano'], ['inventario', 'Inventario']]
+            .map(([v, t]) => ({ valor: v, texto: t, cuenta: filas.filter(f => f.origen === v).length }))
+            .filter(o => o.cuenta > 0),
+        },
+      ],
+
+      columnas: [
+        { titulo: 'Fecha', campo: 'fecha', clase: 'whitespace-nowrap tabular-nums',
+          pinta: v => (v ? fFecha(v) : '<span class="text-telecab-muted">—</span>') },
+        { titulo: 'Coche', campo: 'matricula', clase: 'whitespace-nowrap',
+          pinta: (v, f) => `<span class="font-semibold">${esc(v)}</span>` +
+            (f.vehiculo ? `<span class="block text-[11px] text-telecab-muted truncate max-w-[180px]">${esc(f.vehiculo)}</span>` : '') },
+        { titulo: 'Qué se hizo', campo: 'descripcion',
+          pinta: (v, f) => `<div class="flex flex-wrap gap-1 mb-0.5">${queSeHizo(f)
+            .map(c => `<span class="px-1.5 py-px rounded bg-telecab-card2 border border-telecab-border text-[10px]">${esc(c)}</span>`).join('')
+          }</div><span class="block text-xs text-telecab-muted max-w-[460px] truncate">${esc(v || '')}</span>` },
+        { titulo: 'Km', campo: 'km', clase: 'whitespace-nowrap tabular-nums text-right',
+          pinta: v => (v == null ? '<span class="text-telecab-muted">—</span>' : fKm(v)) },
+        { titulo: 'Taller', campo: 'taller', clase: 'whitespace-nowrap',
+          pinta: (v, f) => esc(v || '') + (f.facturaNumero ? `<span class="block text-[11px] text-telecab-muted">${esc(f.facturaNumero)}</span>` : '') },
+        { titulo: 'Coste', campo: 'coste', clase: 'whitespace-nowrap tabular-nums text-right',
+          ayuda: 'Sin IVA', pinta: v => (v == null ? '' : fEuros(v)) },
+        { titulo: 'Qué se hizo (categorías)', soloExcel: true, valor: f => queSeHizo(f).join(', ') },
+        { titulo: 'Factura', soloExcel: true, valor: f => f.facturaNumero || '' },
+      ],
+
+      detalle: {
+        origen: id => `${BASE}/api/historial/${id}`,
+        titulo: d => `${d.matricula} · ${d.fecha ? fFecha(d.fecha) : 'sin fecha'}`,
+        subtitulo: d => [d.vehiculo, d.taller, d.referencia].filter(Boolean).join(' · '),
+        acciones: [
+          { texto: 'Ver el coche', icono: 'fa-car-side', principal: true,
+            onClick: d => { location.href = '/vehiculos#' + encodeURIComponent(d.vehiculoId); } },
+          { texto: 'Anular', icono: 'fa-ban', peligro: true,
+            visible: d => PUEDE && !d.anuladoAt,
+            onClick: d => anularMant(d, async () => { HIST.volver(); }) },
+        ],
+        bloques: [
+          {
+            titulo: 'El mantenimiento', icono: 'fa-circle-info',
+            campos: [
+              { etiqueta: 'Fecha', valor: d => (d.fecha ? fFecha(d.fecha) : 'Sin fecha') },
+              { etiqueta: 'Km del coche', valor: d => (d.km == null ? 'El taller no los puso' : fKm(d.km)) },
+              { etiqueta: 'Qué se hizo', valor: d => queSeHizo(d).join(', ') },
+              { etiqueta: 'Taller', valor: d => d.taller },
+              { etiqueta: 'Factura', html: true, valor: d => (d.facturaId
+                ? `<a class="underline underline-offset-2 hover:text-telecab-gold" href="/facturas#${encodeURIComponent(d.facturaId)}">${esc(d.facturaNumero || 'Ver factura')}</a>`
+                : (d.origen === 'inventario' ? 'Pieza del inventario' : '—')) },
+              { etiqueta: 'Referencia', valor: d => d.referencia },
+              { etiqueta: 'Coste sin IVA', valor: d => (d.coste == null ? '' : fEuros(d.coste)) },
+              { etiqueta: 'Apuntado', valor: d => (d.origen === 'factura' ? 'Leído de la factura'
+                : [d.usuario, d.creadoAt].filter(Boolean).join(' · ')) },
+              { etiqueta: 'Descripción', valor: d => d.descripcion, ancho: 'sm:col-span-2 lg:col-span-3' },
+            ],
+          },
+          {
+            titulo: 'Líneas de la factura', icono: 'fa-list',
+            visible: d => (d.lineas || []).length > 0,
+            tabla: {
+              datos: d => d.lineas,
+              columnas: [
+                { titulo: 'Descripción', campo: 'descripcion' },
+                { titulo: 'Código', campo: 'codigo', clase: 'text-telecab-muted whitespace-nowrap' },
+                { titulo: 'Qué es', campo: 'categoriaEtiqueta', clase: 'text-telecab-muted whitespace-nowrap' },
+                { titulo: 'Cantidad', campo: 'cantidad', clase: 'tabular-nums text-right',
+                  pinta: v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 2 })) },
+                { titulo: 'Precio', campo: 'precio', clase: 'tabular-nums text-right', pinta: v => (v == null ? '' : fEuros(v)) },
+                { titulo: 'Dto.', campo: 'dto', clase: 'tabular-nums text-right',
+                  pinta: v => (v ? `${Number(v).toLocaleString('es-ES')} %` : '') },
+                { titulo: 'Importe', campo: 'importe', clase: 'tabular-nums text-right', pinta: v => (v == null ? '' : fEuros(v)) },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  // ── Las pestañas (12/11/2026). La que se ve va en ?vista=: el #id es del
+  // Listado de mantenimientos, que abre con él la ficha de uno. El #citas de
+  // antes (los enlaces de Control) sigue valiendo: se pasa a ?vista=citas
+  // ANTES de montar el Listado, que si no lo tomaría por un id. ──
+  const VISTAS = ['historial', 'flota'].concat(CON_CITAS ? ['citas'] : []);
+  function verPestana(p) {
+    if (!VISTAS.includes(p)) p = 'historial';
+    document.querySelectorAll('.pestana').forEach(b => {
+      const on = b.dataset.pestana === p;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.className = 'pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition ' +
+        (on ? 'bg-telecab-gold text-telecab-dark shadow-gold'
+          : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:border-telecab-gold/40 hover:text-telecab-text');
+    });
+    // Al salir de la lista con una ficha abierta, se cierra: si no, al volver
+    // seguiría abierta sin su #id en la dirección.
+    if (p !== 'historial' && HIST && HIST.abierto !== null) HIST.volver({ historial: false });
+    VISTAS.forEach(v => $('#v-' + v).classList.toggle('hidden', v !== p));
+    try {
+      const q = new URLSearchParams(location.search);
+      if (p === 'historial') q.delete('vista'); else q.set('vista', p);
+      const busca = q.toString();
+      history.replaceState(history.state, '', location.pathname + (busca ? '?' + busca : '') +
+        (p === 'historial' ? location.hash : ''));
+    } catch (_) { /* nada */ }
+    if (p === 'historial') montarHistorial();
+  }
+  document.querySelectorAll('.pestana').forEach(b => b.addEventListener('click', () => verPestana(b.dataset.pestana)));
+  {
+    const antes = { '#citas': 'citas', '#flota': 'flota' }[location.hash];
+    if (antes) history.replaceState(null, '', location.pathname + '?vista=' + antes);
+    verPestana(new URLSearchParams(location.search).get('vista') || 'historial');
+  }
+
+  // Sin citas la pantalla acaba aquí: la vista no pinta la lista de citas.
   if (!CON_CITAS) return;
 
   // ══════════ LAS CITAS DEL TALLER ══════════
@@ -391,21 +576,6 @@
     { id: 'pasadas', texto: 'Últimos 30 días' },
   ];
   let tramo = 'proximas', CITAS = null;
-
-  // ── Las pestañas. `#citas` en la dirección abre la de las citas. ──
-  function verPestana(p) {
-    document.querySelectorAll('.pestana').forEach(b => {
-      const on = b.dataset.pestana === p;
-      b.className = 'pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition ' +
-        (on ? 'bg-telecab-gold text-telecab-dark shadow-gold'
-            : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:border-telecab-gold/40 hover:text-telecab-text');
-    });
-    $('#v-flota').classList.toggle('hidden', p !== 'flota');
-    $('#v-citas').classList.toggle('hidden', p !== 'citas');
-    try { history.replaceState(null, '', p === 'citas' ? '#citas' : location.pathname); } catch (_) { /* nada */ }
-  }
-  document.querySelectorAll('.pestana').forEach(b => b.addEventListener('click', () => verPestana(b.dataset.pestana)));
-  verPestana(location.hash === '#citas' ? 'citas' : 'flota');
 
   async function cargarCitas() {
     const hoy = CITAS ? CITAS.hoy : new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());

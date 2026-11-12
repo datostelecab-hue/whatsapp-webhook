@@ -125,6 +125,13 @@ const CATALOGO = [
     ] },
     // MIRAR lo que se gasta en la flota lo quiere dirección; METERLO es del
     // taller. Mismo reparto que en mantenimientos, y por el mismo motivo.
+    // El inventario del taller (db/241): lo que hay en el almacén sin matrícula
+    // (Hergar). MIRARLO es una llave; MOVERLO (sumar, restar en un coche,
+    // ajustar, anular), otra marcada `escribir`: toda petición que no sea un
+    // GET a /inventario la exige sola.
+    { clave: '/inventario', etiqueta: 'Inventario del taller', hijos: [
+      { clave: '/inventario/mover', etiqueta: 'Inventario · sumar, restar en un coche, ajustar y anular', escribir: true },
+    ] },
     { clave: '/facturas', etiqueta: 'Facturas de taller', hijos: [
       { clave: '/facturas/apuntar', etiqueta: 'Facturas · dar de alta y anular' },
     ] },

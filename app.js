@@ -322,6 +322,8 @@ app.use('/taller', require('./modules/Vehiculos/taller.controller'));
 // Inspección de vehículos: el primer submódulo de taller (db/150).
 app.use('/inspecciones', require('./modules/Vehiculos/inspeccion.controller'));
 app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
+// El inventario del taller (db/241): recambios sin matrícula y sus movimientos.
+app.use('/inventario', require('./modules/Vehiculos/inventario.controller'));
 // Los repostajes que llegan por correo (Ballenoil DNI & GO, db/212): el cron de
 // abajo lee el buzón y esto los enseña. Ver modules/Combustible.
 app.use('/combustible', require('./modules/Combustible/combustible.controller'));

@@ -59,6 +59,7 @@ router.get('/', async (req, res) => {
     sedeNombre: mant.SEDE_NOMBRE,
     citasAgenda: true,
     tipos: mant.TIPOS,
+    categorias: mant.CATEGORIAS,
     estados: mant.ESTADOS,
     intervaloGeneral: mant.INTERVALO,
     puedeApuntar: await puedeApuntar(req),
@@ -71,6 +72,9 @@ router.get('/', async (req, res) => {
 router.get('/api/cuadro', responde(req => mant.estadoDeLaFlota({ busca: req.query.busca, estado: req.query.estado })));
 
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await mant.ficha(req.params.id) })));
+// El historial de mantenimientos con sus piezas (db/241), como en Madrid.
+router.get('/api/historial', responde(async req => ({ filas: await mant.historial({ desde: req.query.desde, hasta: req.query.hasta }) })));
+router.get('/api/historial/:id', responde(async req => ({ ficha: await mant.mantenimiento(req.params.id) })));
 
 const descarga = formato => async (req, res) => {
   try {

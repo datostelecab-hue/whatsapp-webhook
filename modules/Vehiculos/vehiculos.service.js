@@ -74,7 +74,24 @@ async function diaria() {
 // Lectura y escritura de la ficha del coche. Se delega tal cual: ver arriba por
 // qué la puerta existe igualmente.
 const listar = opciones => veh.listar(opciones);
-const ficha = id => veh.ficha(id);
+
+/**
+ * La ficha del coche, con sus MANTENIMIENTOS uno por uno (12/11/2026, db/241):
+ * lo que se le ha hecho, de las facturas, a mano o del inventario. Salen debajo
+ * del historial de estado. Si fallan, la ficha sale igual sin ellos: un añadido
+ * no puede dejar sin ficha a un coche.
+ */
+async function ficha(id) {
+  const f = await veh.ficha(id);
+  if (!f) return f;
+  try {
+    f.mantenimientos = await require('./taller.service').deCoche(f.id);
+  } catch (e) {
+    console.error(`⚠️  [VEHICULOS] mantenimientos de la ficha ${id}: ${e.message}`);
+    f.mantenimientos = null;
+  }
+  return f;
+}
 const resumen = sedes => veh.resumen(sedes);
 const catalogos = () => veh.catalogos();
 const crear = (datos, usuarioId) => veh.crear(datos, usuarioId);

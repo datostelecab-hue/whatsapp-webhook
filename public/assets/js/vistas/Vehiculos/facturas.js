@@ -68,6 +68,8 @@
       { titulo: 'Nº', campo: 'numero', clase: 'tabular-nums whitespace-nowrap' },
       { titulo: 'Coches', campo: 'coches', clase: 'tabular-nums',
         pinta: (v, f) => ((v ? v : '') +
+          // Una compra para el almacén (Hergar, db/241): no es de ningún coche.
+          (f.paraInventario ? ` ${etiqueta('Inventario', 'muted')}` : '') +
           (f.nnLineas ? ` ${etiqueta('NN ×' + f.nnLineas, f.nnReclamable ? 'red' : 'warn')}` : '') +
           (f.desconocidas ? ` ${etiqueta('? ×' + f.desconocidas, 'warn')}` : ''))
           || '<span class="text-telecab-muted">—</span>' },

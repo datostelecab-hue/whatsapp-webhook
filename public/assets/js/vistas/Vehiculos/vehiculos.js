@@ -173,6 +173,16 @@
           },
         },
         {
+          // Lo que se le ha hecho al coche, uno por uno (12/11/2026, db/241): de
+          // las facturas del taller, apuntado a mano o piezas del inventario.
+          titulo: 'Mantenimientos', icono: 'fa-screwdriver-wrench',
+          pinta: (d, hueco) => MantenimientosCoche.pintar(hueco, d.mantenimientos, {
+            vacio: d.mantenimientos === null
+              ? 'No se han podido cargar los mantenimientos. Recarga la ficha.'
+              : 'Ningún mantenimiento apuntado todavía.',
+          }),
+        },
+        {
           titulo: 'Historial de zona', icono: 'fa-location-dot',
           visible: d => (d.historialZona || []).length > 0,
           tabla: {

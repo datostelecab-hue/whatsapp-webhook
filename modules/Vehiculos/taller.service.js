@@ -154,6 +154,15 @@ async function puedeApuntar({ rol, usuarioId } = {}) {
   } catch (_) { return false; }
 }
 
+// ── EL HISTORIAL DE MANTENIMIENTOS (db/241) ────────────────────────────────
+// Cada paso por taller con sus piezas, venga de una factura, de un apunte a mano
+// o del inventario. La pestaña «Mantenimientos» lista todos (de la sede de la
+// pantalla) y abre cada uno; la ficha del vehículo enseña los de ese coche.
+const historial = filtros => repo.historial(filtros);
+const mantenimiento = (id, { sedes } = {}) => repo.mantenimientoFicha(id, { sedes });
+/** Los mantenimientos de un coche, con sus piezas, para la ficha del vehículo. */
+const deCoche = vehiculoId => repo.deCoche(vehiculoId);
+
 // ── LO QUE EL MÓDULO OFRECE ────────────────────────────────────────────────
 const cuadro = filtros => repo.cuadro(filtros);
 const resumen = () => repo.resumen();
@@ -161,6 +170,8 @@ const resumen = () => repo.resumen();
 module.exports = {
   // Los catálogos que la pantalla necesita para pintarse.
   INTERVALO: repo.INTERVALO, TIPOS: repo.TIPOS, ESTADOS: repo.ESTADOS,
+  CATEGORIAS: repo.CATEGORIAS,
   cuadro, resumen, estadoDeLaFlota, ficha, registrar, anular, anclar, intervalo,
+  historial, mantenimiento, deCoche,
   puedeApuntar, informe, FORMATOS_INFORME,
 };

@@ -23,6 +23,11 @@ citas.service.js          LA PUERTA de las citas del taller (Excel, a mano,
                           responsable, aviso de WhatsApp, botones, llamadas de Control)
 citas.repo.js             su SQL (taller_cita, db/187)
 
+inventario.controller.js  idem para /inventario (db/241)
+inventario.service.js     LA PUERTA del inventario: recambios sin matrícula
+inventario.repo.js        su SQL; el stock es la suma de los movimientos
+vistas/inventario.ejs     la pantalla (/inventario)
+
 facturas.controller.js    idem para /facturas
 facturas.service.js       LA PUERTA de las facturas de taller
 facturas.repo.js          su SQL

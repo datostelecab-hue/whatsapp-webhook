@@ -38,6 +38,9 @@ const estadoDeLaFlota = ({ busca, estado } = {}) =>
 
 /** La ficha de un coche de Barcelona; uno de otra sede no se abre desde aquí. */
 const ficha = id => taller.ficha(id, { sedes: SEDES });
+// El historial de mantenimientos (db/241), con los coches de Barcelona.
+const historial = ({ desde, hasta } = {}) => taller.historial({ sedes: SEDES, desde, hasta });
+const mantenimiento = id => taller.mantenimiento(id, { sedes: SEDES });
 
 // Las citas: leer, los coches que se pueden citar y añadir (a mano o el Excel).
 const citas = ({ desde, hasta } = {}) => citasTaller.lista({ desde, hasta, sede: SEDE });
@@ -71,7 +74,8 @@ module.exports = {
   SEDE, SEDE_NOMBRE,
   // Los catálogos con los que se pinta la pantalla: los del taller, tal cual.
   INTERVALO: taller.INTERVALO, TIPOS: taller.TIPOS, ESTADOS: taller.ESTADOS,
-  estadoDeLaFlota, ficha, informe, registrar, anular, anclar, intervalo,
+  CATEGORIAS: taller.CATEGORIAS,
+  estadoDeLaFlota, ficha, historial, mantenimiento, informe, registrar, anular, anclar, intervalo,
   citas, cita, cochesParaCita, crearCita, importarCitas, anularCita,
   // La misma llave que en Madrid: '/taller/apuntar'.
   puedeApuntar: taller.puedeApuntar,

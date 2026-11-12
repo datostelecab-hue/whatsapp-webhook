@@ -15,12 +15,12 @@
   <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-screwdriver-wrench text-telecab-gold"></i> Taller<%= SEDE_NOMBRE ? ' · ' + SEDE_NOMBRE : '' %>
+        <i class="fa-solid fa-screwdriver-wrench text-telecab-gold"></i> Mantenimientos<%= SEDE_NOMBRE ? ' · ' + SEDE_NOMBRE : '' %>
       </h1>
-      <p class="text-sm text-telecab-muted mt-1">
-        Mantenimiento por kilómetros. Un coche entra a revisión cuando lleva
-        <b><%= intervaloGeneral.toLocaleString('es-ES') %> km</b> desde la última,
-        y eso son dos cifras: el <b>odómetro de hoy</b> y el <b>km de su última revisión</b>.
+      <p class="text-sm text-telecab-muted mt-1 max-w-4xl">
+        Todo lo que se le ha hecho a cada coche: lo de las facturas del taller, lo apuntado a mano y las piezas
+        del inventario. En <b>Revisión por km</b>, a qué coche le toca revisión: lleva
+        <b><%= intervaloGeneral.toLocaleString('es-ES') %> km</b> desde la última apuntada a mano.
         <% if (SEDE_NOMBRE) { %>Aquí, los coches con sede <b><%= SEDE_NOMBRE %></b> en Vehículos.<% } %>
       </p>
     </div>
@@ -44,20 +44,31 @@
     </div>
   </div>
 
-  <!-- ── Las dos vistas: el estado de la flota y las citas del taller ──── -->
-  <% if (CON_CITAS) { %>
-  <div id="t-pestanas" class="flex flex-wrap items-center gap-2 mb-4">
-    <button data-pestana="flota" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
-      <i class="fa-solid fa-gauge-high"></i> Estado de la flota
+  <!-- ── Las vistas (12/11/2026): los mantenimientos uno por uno, la
+       revisión por km de cada coche y las citas del taller. La que se ve va en
+       ?vista= (el #id es del Listado, que abre con él la ficha de un mantenimiento). -->
+  <div id="t-pestanas" class="flex flex-wrap items-center gap-2 mb-4" role="tablist">
+    <button data-pestana="historial" role="tab" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-list-check" aria-hidden="true"></i> Mantenimientos
     </button>
-    <button data-pestana="citas" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
-      <i class="fa-solid fa-calendar-check"></i> Citas del taller
+    <button data-pestana="flota" role="tab" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Revisión por km
+    </button>
+    <% if (CON_CITAS) { %>
+    <button data-pestana="citas" role="tab" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Citas del taller
       <span id="ct-cuenta" class="hidden"></span>
     </button>
+    <% } %>
   </div>
-  <% } %>
 
-  <div id="v-flota">
+  <!-- ══ LOS MANTENIMIENTOS, UNO POR UNO (db/241) ══════════════════════════
+       El Listado trae su propio margen: el -mx lo deja alineado con el resto. -->
+  <div id="v-historial" class="hidden -mx-4 lg:-mx-6 -mt-4 lg:-mt-6">
+    <div id="h-lista"></div>
+  </div>
+
+  <div id="v-flota" class="hidden">
   <!-- ── Los cuatro estados ───────────────────────────────────────────── -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
     <button data-estado="toca" class="tarjeta-estado bg-telecab-card border-2 border-telecab-red/40 rounded-2xl p-4 text-left">
@@ -286,5 +297,6 @@
 </div>
 
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
-<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, citasAgenda: CITAS_AGENDA, sedeNombre: SEDE_NOMBRE, puedeApuntar: !!puedeApuntar, tipos: tipos, intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
+<script src="<%= typeof est === 'function' ? est('/assets/js/mantenimientosCoche.js') : '/assets/js/mantenimientosCoche.js' %>"></script>
+<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, citasAgenda: CITAS_AGENDA, sedeNombre: SEDE_NOMBRE, puedeApuntar: !!puedeApuntar, tipos: tipos, categorias: typeof categorias !== 'undefined' ? categorias : [], intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
 <script src="<%= est('/assets/js/vistas/Vehiculos/taller.js') %>"></script>

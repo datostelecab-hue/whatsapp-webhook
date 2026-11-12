@@ -60,18 +60,19 @@ const SELECT_LISTA = `
   SELECT f.id, f.numero, to_char(f.fecha,'YYYY-MM-DD') AS fecha,
          f.total_cent, f.base_cent, f.iva_cent, f.sede,
          f.anulado_at IS NOT NULL AS anulada, f.anulado_motivo,
-         f.nombre_archivo, f.enlace,
+         f.nombre_archivo, f.enlace, f.para_inventario,
          p.id AS proveedor_id, p.nombre AS proveedor,
          (SELECT count(*) FROM factura_taller_linea l WHERE l.factura_id = f.id) AS lineas,
          (SELECT count(DISTINCT l.vehiculo_id) FROM factura_taller_linea l
            WHERE l.factura_id = f.id AND l.vehiculo_id IS NOT NULL) AS coches,
          -- NN DE VERDAD: el papel no dice de qué coche es. Se le reclama al
-         -- taller.
+         -- taller. Una compra para el almacén (Hergar, db/241) no es NN: no
+         -- es de ningún coche y no hay nada que reclamar.
          (SELECT COALESCE(sum(l.importe_cent),0) FROM factura_taller_linea l
-           WHERE l.factura_id = f.id AND l.vehiculo_id IS NULL
+           WHERE l.factura_id = f.id AND l.vehiculo_id IS NULL AND NOT f.para_inventario
              AND COALESCE(btrim(l.matricula_texto),'') = '') AS nn_cent,
          (SELECT count(*) FROM factura_taller_linea l
-           WHERE l.factura_id = f.id AND l.vehiculo_id IS NULL
+           WHERE l.factura_id = f.id AND l.vehiculo_id IS NULL AND NOT f.para_inventario
              AND COALESCE(btrim(l.matricula_texto),'') = '') AS nn_lineas,
          -- OTRA COSA: el papel SÍ dice la matrícula, pero no la reconocemos.
          -- Eso no se le reclama a nadie: o está mal tecleada, o es un coche que
@@ -102,6 +103,8 @@ const aFila = x => ({
   nnReclamable: Number(x.nn_lineas) > 0 && x.fecha >= EXIGE_MATRICULA_DESDE,
   anulada: x.anulada,
   anuladoMotivo: x.anulado_motivo,
+  // Compra para el almacén (db/241): lo comprado entra en el Inventario.
+  paraInventario: x.para_inventario === true,
   archivo: x.nombre_archivo || '',
   enlace: x.enlace || '',
 });
@@ -121,7 +124,7 @@ async function lista({ sedes, desde, hasta, proveedorId, texto, soloNN = false, 
   if (desde) { par.push(desde); w += ` AND f.fecha >= $${par.length}::date`; }
   if (hasta) { par.push(hasta); w += ` AND f.fecha <= $${par.length}::date`; }
   if (proveedorId) { par.push(Number(proveedorId)); w += ` AND f.proveedor_id = $${par.length}`; }
-  if (soloNN) w += ' AND EXISTS (SELECT 1 FROM factura_taller_linea l WHERE l.factura_id = f.id AND l.vehiculo_id IS NULL)';
+  if (soloNN) w += ' AND NOT f.para_inventario AND EXISTS (SELECT 1 FROM factura_taller_linea l WHERE l.factura_id = f.id AND l.vehiculo_id IS NULL)';
   if (texto && String(texto).trim()) {
     par.push(`%${String(texto).trim().toLowerCase()}%`);
     const i = par.length;
@@ -310,6 +313,8 @@ async function gastoPorVehiculo({ sedes, desde, hasta } = {}) {
        FROM factura_taller_linea l
        JOIN factura_taller f ON f.id = l.factura_id AND f.anulado_at IS NULL
       WHERE l.vehiculo_id IS NULL
+        -- Las compras para el almacén (Hergar, db/241) no son de ningún coche.
+        AND NOT f.para_inventario
         AND f.sede = ANY($1::varchar[])
         AND ($2::date IS NULL OR l.fecha >= $2::date)
         AND ($3::date IS NULL OR l.fecha <= $3::date)`, [...par, EXIGE_MATRICULA_DESDE]);

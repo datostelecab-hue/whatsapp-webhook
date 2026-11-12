@@ -145,6 +145,9 @@ En la sincronización diaria, **el odómetro solo se toca si vino el CAN** (`COA
 
 ## Taller: el mantenimiento por km
 
+> [!info] Rediseñado el 12/11/2026 → [[Inventario y mantenimientos]]
+> La pantalla se llama ahora **Mantenimientos** y abre por la lista de todo lo que se le ha hecho a cada coche (de las facturas, a mano o del inventario), con sus piezas. Lo de abajo es la pestaña **Revisión por km**, que sigue contando solo lo apuntado a mano. La ficha del coche lista sus mantenimientos debajo del historial de estado.
+
 La pregunta del módulo es una sola:
 
 ```

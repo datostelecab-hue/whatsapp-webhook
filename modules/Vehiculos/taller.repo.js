@@ -38,16 +38,45 @@ const IMPOSIBLE = 120000;
 
 const TIPOS = [
   { codigo: 'revision',   etiqueta: 'Revisión',        icono: 'fa-screwdriver-wrench', cuenta: true },
-  { codigo: 'aceite',     etiqueta: 'Cambio de aceite', icono: 'fa-oil-can',           cuenta: false },
+  { codigo: 'aceite',     etiqueta: 'Aceite y filtros', icono: 'fa-oil-can',           cuenta: false },
+  { codigo: 'frenos',     etiqueta: 'Frenos',          icono: 'fa-circle-stop',        cuenta: false },
   { codigo: 'neumaticos', etiqueta: 'Neumáticos',      icono: 'fa-circle-dot',         cuenta: false },
+  { codigo: 'suspension', etiqueta: 'Suspensión y dirección', icono: 'fa-car-side',    cuenta: false },
+  { codigo: 'alumbrado',  etiqueta: 'Alumbrado',       icono: 'fa-lightbulb',          cuenta: false },
+  { codigo: 'bateria',    etiqueta: 'Batería',         icono: 'fa-car-battery',        cuenta: false },
+  { codigo: 'mecanica',   etiqueta: 'Mecánica',        icono: 'fa-gears',              cuenta: false },
   { codigo: 'itv',        etiqueta: 'ITV',             icono: 'fa-clipboard-check',    cuenta: false },
   { codigo: 'chapa',      etiqueta: 'Chapa y pintura', icono: 'fa-spray-can',          cuenta: false },
   { codigo: 'averia',     etiqueta: 'Avería',          icono: 'fa-triangle-exclamation', cuenta: false },
   { codigo: 'otro',       etiqueta: 'Otro',            icono: 'fa-wrench',             cuenta: false },
 ];
 const CODIGOS = TIPOS.map(t => t.codigo);
-/** Los que cuentan como "última revisión" para el control por km. */
+/**
+ * Los que cuentan como "última revisión" para el control por km. SOLO los
+ * apuntados a mano (origen 'manual'): lo que llega de las facturas sale en el
+ * historial pero no mueve el semáforo. Lo decidió Camilo el 12/11/2026.
+ */
 const CUENTAN = TIPOS.filter(t => t.cuenta).map(t => t.codigo);
+
+/**
+ * LAS CATEGORÍAS DE UNA PIEZA (db/241). Las de un mantenimiento son las de sus
+ * piezas; `mano_obra` y `nota` no cuentan para decir qué se le hizo al coche.
+ * Las mismas valen para los artículos del inventario (menos esas dos).
+ */
+const CATEGORIAS = [
+  { codigo: 'aceite',     etiqueta: 'Aceite y filtros' },
+  { codigo: 'frenos',     etiqueta: 'Frenos' },
+  { codigo: 'neumaticos', etiqueta: 'Neumáticos' },
+  { codigo: 'suspension', etiqueta: 'Suspensión y dirección' },
+  { codigo: 'alumbrado',  etiqueta: 'Alumbrado' },
+  { codigo: 'bateria',    etiqueta: 'Batería' },
+  { codigo: 'chapa',      etiqueta: 'Chapa y pintura' },
+  { codigo: 'mecanica',   etiqueta: 'Mecánica' },
+  { codigo: 'otro',       etiqueta: 'Otro' },
+  { codigo: 'mano_obra',  etiqueta: 'Mano de obra' },
+  { codigo: 'nota',       etiqueta: 'Nota' },
+];
+
 
 const ESTADOS = [
   { codigo: 'toca',      etiqueta: 'Toca revisión' },
@@ -121,7 +150,8 @@ async function cuadro({ busca, estado, sedes } = {}) {
       SELECT DISTINCT ON (m.vehiculo_id)
              m.vehiculo_id, m.id, m.km, m.fecha, m.taller
         FROM mantenimiento m
-       WHERE m.anulado_at IS NULL AND m.tipo = ANY($2)
+       -- Solo lo apuntado a mano (12/11/2026): las facturas no mueven el semáforo.
+       WHERE m.anulado_at IS NULL AND m.tipo = ANY($2) AND m.origen = 'manual'
        ORDER BY m.vehiculo_id, m.km DESC NULLS LAST, m.fecha DESC NULLS LAST, m.id DESC
     ),
     ritmo AS (
@@ -260,18 +290,7 @@ async function ficha(vehiculoId, { sedes } = {}) {
   const [fila] = (await cuadro({ sedes })).filter(f => f.id === id);
   if (!fila) throw new Error('Ese vehículo no existe, está de baja o es de otra sede');
 
-  const h = await db.consulta(`
-    SELECT m.id, m.tipo, to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.km, m.taller,
-           m.coste_cent, m.descripcion,
-           to_char(m.creado_at, 'YYYY-MM-DD HH24:MI') AS creado_at,
-           to_char(m.anulado_at, 'YYYY-MM-DD HH24:MI') AS anulado_at,
-           m.anulado_motivo,
-           u.nombre AS usuario, ua.nombre AS anulado_usuario
-      FROM mantenimiento m
-      LEFT JOIN usuario u  ON u.id = m.usuario_id
-      LEFT JOIN usuario ua ON ua.id = m.anulado_por
-     WHERE m.vehiculo_id = $1
-     ORDER BY m.km DESC NULLS LAST, m.fecha DESC NULLS LAST, m.id DESC`, [id]);
+  const historial = await deCoche(id, { conAnulados: true });
 
   const anclas = await db.consulta(`
     SELECT a.id, a.km, to_char(a.leido_at, 'YYYY-MM-DD HH24:MI') AS leido_at,
@@ -283,18 +302,143 @@ async function ficha(vehiculoId, { sedes } = {}) {
 
   return {
     ...fila,
-    historial: h.rows.map(m => ({
-      id: m.id, tipo: m.tipo,
-      tipoEtiqueta: (TIPOS.find(t => t.codigo === m.tipo) || {}).etiqueta || m.tipo,
-      fecha: m.fecha, km: m.km == null ? null : Number(m.km), taller: m.taller,
-      coste: m.coste_cent == null ? null : Number(m.coste_cent) / 100,
-      descripcion: m.descripcion, creadoAt: m.creado_at, usuario: m.usuario,
-      anuladoAt: m.anulado_at, anuladoPor: m.anulado_usuario, anuladoMotivo: m.anulado_motivo,
-    })),
+    historial,
     anclas: anclas.rows.map(a => ({
       id: a.id, km: Number(a.km), leidoAt: a.leido_at, nota: a.nota, usuario: a.usuario,
     })),
   };
+}
+
+// ============================================================
+// EL HISTORIAL: CADA MANTENIMIENTO, CON SUS PIEZAS (db/241)
+// ============================================================
+// Lo que se le ha hecho a cada coche, venga de donde venga: apuntado a mano, de
+// una factura de taller (Discom, iPark…) o una pieza del inventario. Es lo que
+// sale en la ficha del vehículo, en la del taller y en la pestaña de
+// Mantenimientos.
+
+const etiquetaTipo = c => (TIPOS.find(t => t.codigo === c) || {}).etiqueta || c;
+const etiquetaCat = c => (CATEGORIAS.find(t => t.codigo === c) || {}).etiqueta || c;
+const euros = c => (c == null ? null : Number(c) / 100);
+
+// Las columnas de un mantenimiento, iguales en la lista, en la ficha y en el coche.
+const SELECT_MANT = `
+  SELECT m.id, m.vehiculo_id, v.matricula, v.marca_modelo, v.sede,
+         m.tipo, m.origen, m.referencia, m.categorias,
+         to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.km,
+         COALESCE(m.taller, p.nombre) AS taller, m.proveedor_id,
+         m.coste_cent, m.descripcion,
+         m.factura_id, f.numero AS factura_numero, f.enlace AS factura_enlace,
+         to_char(m.creado_at, 'YYYY-MM-DD HH24:MI') AS creado_at,
+         to_char(m.anulado_at, 'YYYY-MM-DD HH24:MI') AS anulado_at,
+         m.anulado_motivo,
+         u.nombre AS usuario, ua.nombre AS anulado_usuario,
+         (SELECT count(*) FROM mantenimiento_pieza z WHERE z.mantenimiento_id = m.id) AS n_piezas
+    FROM mantenimiento m
+    JOIN vehiculo v              ON v.id = m.vehiculo_id
+    LEFT JOIN taller_proveedor p ON p.id = m.proveedor_id
+    LEFT JOIN factura_taller f   ON f.id = m.factura_id
+    LEFT JOIN usuario u          ON u.id = m.usuario_id
+    LEFT JOIN usuario ua         ON ua.id = m.anulado_por`;
+
+function aMant(m) {
+  const cats = (m.categorias || []).filter(c => c !== 'mano_obra' && c !== 'nota');
+  return {
+    id: Number(m.id),
+    vehiculoId: Number(m.vehiculo_id),
+    matricula: m.matricula,
+    vehiculo: m.marca_modelo || '',
+    sede: m.sede,
+    tipo: m.tipo,
+    tipoEtiqueta: etiquetaTipo(m.tipo),
+    origen: m.origen,
+    referencia: m.referencia,
+    categorias: cats,
+    categoriasEtiqueta: cats.map(etiquetaCat),
+    fecha: m.fecha,
+    km: m.km == null ? null : Number(m.km),
+    taller: m.taller,
+    coste: euros(m.coste_cent),
+    descripcion: m.descripcion,
+    facturaId: m.factura_id == null ? null : Number(m.factura_id),
+    facturaNumero: m.factura_numero,
+    facturaEnlace: m.factura_enlace || '',
+    piezas: Number(m.n_piezas) || 0,
+    creadoAt: m.creado_at,
+    usuario: m.usuario,
+    anuladoAt: m.anulado_at,
+    anuladoPor: m.anulado_usuario,
+    anuladoMotivo: m.anulado_motivo,
+  };
+}
+
+/** Las piezas de varios mantenimientos, por id. */
+async function piezasDe(ids) {
+  const lista = [...new Set((ids || []).map(Number).filter(Boolean))];
+  const porMant = new Map(lista.map(i => [i, []]));
+  if (!lista.length) return porMant;
+  const r = await db.consulta(`
+    SELECT mantenimiento_id, trabajo, codigo, descripcion, cantidad::float8 AS cantidad,
+           precio_cent, dto::float8 AS dto, importe_cent, categoria
+      FROM mantenimiento_pieza
+     WHERE mantenimiento_id = ANY($1::bigint[])
+     ORDER BY mantenimiento_id, orden, id`, [lista]);
+  for (const p of r.rows) {
+    porMant.get(Number(p.mantenimiento_id)).push({
+      trabajo: p.trabajo, codigo: p.codigo, descripcion: p.descripcion,
+      cantidad: p.cantidad, precio: euros(p.precio_cent), dto: p.dto,
+      importe: euros(p.importe_cent), categoria: p.categoria,
+      categoriaEtiqueta: etiquetaCat(p.categoria),
+    });
+  }
+  return porMant;
+}
+
+/**
+ * Los mantenimientos de UN coche, con sus piezas, del más reciente al más
+ * antiguo. Por FECHA (y a igualdad, por km): en la ficha del coche se lee como
+ * una historia. Los anulados solo si se piden (la ficha del taller los enseña
+ * tachados; la del vehículo, no).
+ */
+async function deCoche(vehiculoId, { conAnulados = false } = {}) {
+  const id = ent(vehiculoId);
+  if (!id) throw new Error('Falta el vehículo');
+  const r = await db.consulta(`${SELECT_MANT}
+     WHERE m.vehiculo_id = $1 ${conAnulados ? '' : 'AND m.anulado_at IS NULL'}
+     ORDER BY m.fecha DESC NULLS LAST, m.km DESC NULLS LAST, m.id DESC`, [id]);
+  const filas = r.rows.map(aMant);
+  const piezas = await piezasDe(filas.map(f => f.id));
+  return filas.map(f => ({ ...f, lineas: piezas.get(f.id) || [] }));
+}
+
+/**
+ * TODOS los mantenimientos (la pestaña «Mantenimientos»), sin piezas: la lista
+ * las cuenta y la ficha de cada uno las trae. Con `sedes`, los coches de esas.
+ */
+async function historial({ sedes, desde, hasta, limite = 5000 } = {}) {
+  const par = [];
+  let w = 'WHERE m.anulado_at IS NULL';
+  if (Array.isArray(sedes) && sedes.length) { par.push(sedes); w += ` AND v.sede = ANY($${par.length}::varchar[])`; }
+  if (aIso(desde)) { par.push(aIso(desde)); w += ` AND m.fecha >= $${par.length}::date`; }
+  if (aIso(hasta)) { par.push(aIso(hasta)); w += ` AND m.fecha <= $${par.length}::date`; }
+  par.push(Math.min(Number(limite) || 5000, 20000));
+  const r = await db.consulta(`${SELECT_MANT} ${w}
+     ORDER BY m.fecha DESC NULLS LAST, v.matricula, m.id DESC
+     LIMIT $${par.length}`, par);
+  return r.rows.map(aMant);
+}
+
+/** Un mantenimiento con sus piezas. Con `sedes`, solo si el coche es de una de ellas. */
+async function mantenimientoFicha(mantId, { sedes } = {}) {
+  const id = ent(mantId);
+  if (!id) throw new Error('Falta el mantenimiento');
+  const r = await db.consulta(`${SELECT_MANT} WHERE m.id = $1`, [id]);
+  if (!r.rows.length) throw new Error('Ese mantenimiento no existe');
+  const m = aMant(r.rows[0]);
+  if (Array.isArray(sedes) && sedes.length && !sedes.includes(m.sede)) {
+    throw new Error('Ese mantenimiento es de un coche de otra sede');
+  }
+  return { ...m, lineas: (await piezasDe([id])).get(id) || [] };
 }
 
 // ============================================================
@@ -350,13 +494,22 @@ async function anular(id, motivo, { usuarioId } = {}) {
   if (!n) throw new Error('Falta el movimiento');
   const razon = txt(motivo);
   if (!razon) throw new Error('Hay que decir por qué se anula');
-  const r = await db.consulta(`
-    UPDATE mantenimiento
-       SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
-     WHERE id = $1 AND anulado_at IS NULL
-    RETURNING id`, [n, ent(usuarioId), razon]);
-  if (!r.rowCount) throw new Error('Ese movimiento no existe o ya estaba anulado');
-  return { id: n };
+  return db.transaccion(async cli => {
+    const r = await cli.query(`
+      UPDATE mantenimiento
+         SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
+       WHERE id = $1 AND anulado_at IS NULL
+      RETURNING id`, [n, ent(usuarioId), razon]);
+    if (!r.rowCount) throw new Error('Ese movimiento no existe o ya estaba anulado');
+    // Si era una pieza del inventario puesta en el coche (db/241), anular el
+    // apunte devuelve la pieza al almacén: la salida se anula con él.
+    const inv = await cli.query(`
+      UPDATE inventario_movimiento
+         SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
+       WHERE mantenimiento_id = $1 AND anulado_at IS NULL
+      RETURNING id`, [n, ent(usuarioId), `Anulado desde Mantenimientos: ${razon}`]);
+    return { id: n, devueltoAlInventario: inv.rowCount > 0 };
+  });
 }
 
 /**
@@ -459,6 +612,7 @@ async function todo({ sedes } = {}) {
 }
 
 module.exports = {
-  INTERVALO, TIPOS, ESTADOS, CODIGOS, CUENTAN, IMPOSIBLE,
+  INTERVALO, TIPOS, ESTADOS, CODIGOS, CUENTAN, IMPOSIBLE, CATEGORIAS,
   cuadro, resumen, ficha, todo, sedeDe, registrar, anular, anclar, intervalo,
+  historial, mantenimientoFicha, deCoche, piezasDe,
 };
