@@ -50,9 +50,43 @@ Quien libraba y no trabajó no sale: no es una falta.
 | **Turno** | el de **su plaza** ese día, libre o no |
 | **Horas** | las efectivas de la jornada. Es la única celda con color |
 | **Observaciones** | la banda automática + el aviso (*Fuera del cuadrante*, *Trabajó en su libranza*, *Solo en BOLT · sin ficha*), o el motivo de la J con sus horas delante |
-| **Matrícula** | los coches que llevó |
-| **KM BOLT** | km rodados trabajando |
-| **KM descon.** | km rodados en descanso o desconectado |
+| **Matrícula** | los coches que llevó; **primero el que fichó** |
+| **Fichaje** | a qué horas fichó por WhatsApp («05:02–17:10», «desde 05:02» si sigue abierto; varios del mismo coche, «06:28–21:10 (5 fichajes)»), o **Sin fichar** en negrita ámbar si trabajó o movió un coche sin fichar |
+| **KM BOLT** | km del coche con esa cuenta conectada en BOLT (viaje o espera) |
+| **KM fuera BOLT** | km del coche sin nadie en BOLT: de quien lo tenía fichado o, si no había nadie, del último que estuvo en BOLT con él (hasta el 12/11/2026, «KM descon.») |
+
+### Los km de fuera de BOLT, con el fichaje (12/11/2026, la versión ligera)
+
+Camilo: *«Hazlo con la versión ligera entonces. Si no hay nadie fichado en los KM rodados por fuera, entonces se le suman al último que estuvo en BOLT»*.
+
+- **KM BOLT no cambian**: son de la cuenta que estaba conectada con el coche, como siempre.
+- **KM fuera de BOLT**: los que el coche hace sin nadie en viaje o en espera con él (también los que antes no eran de nadie).
+  - Si en ese rato alguien tenía el coche **fichado por WhatsApp**, son suyos.
+  - Si no había nadie fichado, del **último que estuvo en BOLT** con el coche, como hasta ahora: hasta que otro se conecta con él, aparece en otro coche o pasan 12 h (`FIN_KM`).
+- Los **viajes de la oficina** también son fichajes: sus km de fuera van a esa persona (fila «Oficina · viaje fichado», sin banda de horas y fuera de «No salieron»).
+- **Quien fichó** sale en el reporte aunque no estuviera en BOLT. Quien solo fichó coches de Barcelona, no.
+- **El resumen** cuenta cuántos ficharon y cuántos trabajaron sin fichar.
+
+**Cómo se hace.** `rutas.kmPorVentanas`, la de siempre, no se toca: la usa también En directo. Aparte, `services/flotaViva/kmFichaje.js` calcula **solo lo que cambia** y **solo con los coches fichados ese día**:
+- para cada fichaje, los km del coche sin nadie en BOLT;
+- para cada cuenta, lo que `kmPorVentanas` le dio como «fuera» y cae dentro de un fichaje, que se le quita.
+
+El reporte junta las dos cosas. En la copia local, el 22/10 de día pasan a quien fichó 2.995 km de fuera, y a las cuentas se les quitan 2.403; la diferencia son km que antes no eran de nadie. Los KM BOLT no cambian para nadie.
+
+**Lo que tumbó producción, y por qué esta no puede.** La versión completa (la del mismo día, deshecha en `eee9e7f`) metía el fichaje en el reparto de *todos* los coches y se quedó colgada en producción más de diez minutos por petición, hasta tumbar la base.
+- **Por qué no se vio antes:** **la copia local no tenía ni una fila de `fv_odometro`** (solo el GPS, unas 1.400 filas al día), y en producción entran unas 40.000.
+- **Cómo se reprodujo:** rellenando la copia con un odómetro de prueba de unas 70.000 filas al día (los trayectos de `fv_ruta` partidos en trozos de un minuto). La de siempre tardaba 2,5 s y aquella pasaba de 90 s.
+- **La causa:** Postgres estima 1 fila en los CTE de km (son más de cien mil) y elige un **bucle anidado** que compara todos los trozos contra todos.
+- **Lo que lleva esta para no repetirlo:**
+  1. `SET LOCAL enable_nestloop = off`, que la obliga a cruzar por coche: de más de 170 s a 1,7 s con ese volumen.
+  2. Un **`statement_timeout` de 25 s** (`KM_FICHAJE_TOPE_MS`) dentro de una transacción de solo lectura.
+  3. Se lanza **después** de la consulta de siempre, no a la vez.
+- **Si se pasa del tope:** el reporte sale con la regla de antes y la cabecera dice «SIN EL FICHAJE».
+- **Medido:** el reporte entero del 22/10, 3,8 s (2,5 s sin el fichaje).
+
+> [!warning] Para medir una consulta de km en local
+> Hay que tener odómetro. Se rellena así (y se borra después: no es real):
+> `INSERT INTO fv_odometro (unit_id, inicio, fin, metros) SELECT r.unit_id, s.ini, LEAST(s.ini + interval '1 minute', r.fin), round(r.metros * EXTRACT(EPOCH FROM (LEAST(s.ini + interval '1 minute', r.fin) - s.ini)) / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0))::int FROM fv_ruta r CROSS JOIN LATERAL generate_series(r.inicio, r.fin - interval '1 second', interval '1 minute') s(ini) WHERE r.inicio >= '…' AND r.fin > r.inicio AND r.fin - r.inicio < interval '12 hours' ON CONFLICT DO NOTHING`.
 
 **Los km de un coche de Barcelona no se cuentan** (24/09/2026). La flota que se vigila es la de Madrid (ver [[Vehiculos#La sede manda, y ahora se puede cambiar|la sede]]). Las horas no se tocan —Control sigue igual—; lo que cambia es el apartado de km:
 

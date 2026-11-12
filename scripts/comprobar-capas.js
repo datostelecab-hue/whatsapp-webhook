@@ -249,6 +249,10 @@ const CAPA_DECLARADA = new Map([
   // ningún servicio y la usan repositorios —Bitácora, Reporte de horas— igual
   // que usan `rutas`: si fuera "servicio", ellos saldrían llamando hacia arriba.
   ['services/flotaViva/repartoTurnos', 'repositorio'],
+  // Los km de fuera de BOLT con el fichaje (12/11/2026): una sola consulta
+  // sobre fv_odometro / fv_ruta / fv_tramo / fichaje_turno, como `rutas`, y la
+  // usa el reporte de horas, que es un repositorio.
+  ['services/flotaViva/kmFichaje', 'repositorio'],
   // Mismo caso que `rutas`, y por el mismo motivo: ingiere de Mapon y guarda
   // en su tabla (`mapon_zona_alerta`). Es un repositorio con un adaptador
   // delante, no un servicio de dominio — no decide nada, solo trae y lee.

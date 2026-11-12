@@ -28,7 +28,15 @@
 //               en el cuadrante (aunque no saliera) + todo el que tenga una J.
 //   · Turno   → el de su plaza ese día (f_cobertura). Al que trabajó sin estar
 //               en el cuadrante se le deduce por dónde cayeron sus horas.
-//   · KM      → de la misma llamada, por uuid. Sin cruces por nombre.
+//   · KM      → de la misma llamada, por uuid. Sin cruces por nombre. Y desde
+//               el 12/11/2026, LOS DE FUERA DE BOLT CON EL FICHAJE (Camilo: «Hazlo
+//               con la versión ligera entonces. Si no hay nadie fichado en los
+//               KM rodados por fuera, entonces se le suman al último que estuvo
+//               en BOLT»): los KM BOLT siguen siendo de la cuenta conectada; los
+//               de fuera de un coche, de quien lo tenía fichado por WhatsApp en
+//               ese rato y, si no había nadie, del último en BOLT con él, como
+//               siempre (services/flotaViva/kmFichaje.js). Si esa cuenta no sale
+//               a tiempo, el reporte sale sin ella y lo dice (`sinFichaje`).
 //   · J       → la tabla `justificante` de PostgreSQL, la misma que la bitácora
 //               y que el botón de justificar de Control. Antes se leía la hoja
 //               JUSTIFICANTES, así que una J puesta desde la bitácora no salía
@@ -222,17 +230,73 @@ function apartarOtraSede(fila, a, otraSede) {
   fila.revisar = !fila.kmBolt && !fila.kmDesc && (a.minutos || 0) > 0;
 }
 
+/** La misma forma que fechaDeClave, de una fecha ISO. */
+function fechaDeIso(isoDia) {
+  const [y, m, d] = isoDia.split('-').map(Number);
+  const f = new Date(Date.UTC(y, m - 1, d, 12));
+  const pad = n => String(n).padStart(2, '0');
+  return { Y: y, M: m, D: d, str: `${pad(d)}/${pad(m)}/${y}`, iso: isoDia, idx: (f.getUTCDay() + 6) % 7 };
+}
+
+// ── LOS FICHAJES DEL DÍA (12/11/2026) ───────────────────────────────────────
+// Los turnos fichados por WhatsApp que tocan el día del reporte (de las 00:00
+// del día a las 12:00 del siguiente: su turno de día y su turno de noche). Cada
+// uno con su dueño: el conductor si se le reconoció; si no, su teléfono; y los
+// viajes de la oficina, su usuario. Es una consulta pequeña: una fila por fichaje.
+async function fichajesDelDia(iso) {
+  const r = await db.consulta(
+    `SELECT f.id, f.tipo, f.conductor_id, f.usuario_id, f.telefono, f.matricula, f.inicio, f.fin,
+            COALESCE(NULLIF(btrim(f.nombre), ''), btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')), f.telefono) AS nombre
+       FROM fichaje_turno f
+       LEFT JOIN usuario u ON u.id = f.usuario_id
+      WHERE f.inicio < (($1::date + 1) + interval '12 hours') AT TIME ZONE 'Europe/Madrid'
+        AND COALESCE(f.fin, now()) > ($1::date)::timestamp AT TIME ZONE 'Europe/Madrid'
+        AND f.inicio >= $1::date - interval '3 days'
+      ORDER BY f.inicio`, [iso]);
+  return r.rows.map(x => ({
+    id: String(x.id), tipo: x.tipo, conductorId: x.conductor_id ? Number(x.conductor_id) : null,
+    usuarioId: x.usuario_id ? Number(x.usuario_id) : null, telefono: x.telefono || '', nombre: x.nombre || '',
+    matricula: normPlaca(x.matricula), inicio: new Date(x.inicio), fin: x.fin ? new Date(x.fin) : null,
+  }));
+}
+
+/** De quién es un fichaje (o una fila de km de fichaje): la misma clave para los dos. */
+const duenoFichaje = x => (x.conductorId || x.conductor_id ? `c${Number(x.conductorId || x.conductor_id)}`
+  : (x.usuarioId || x.usuario_id) ? `u${Number(x.usuarioId || x.usuario_id)}` : `t${x.telefono || ''}`);
+
+const horaMadrid = d => new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+
 /**
- * El reporte de un día. `key`: 0=Hoy, 1=Ayer, 2=Hace 2, 3=Hace 3.
+ * El texto de la columna «Fichaje»: las horas de cada turno fichado («05:02–17:10»,
+ * «desde 05:02» si sigue abierto), por coche. Quien ficha y vuelve a fichar el
+ * mismo coche muchas veces va en una línea: «06:28–21:10 (5 fichajes)».
+ */
+function textoFichaje(lista) {
+  if (!lista.length) return '';
+  const coches = [...new Set(lista.map(f => f.matricula))];
+  const tramo = f => (f.fin ? `${horaMadrid(f.inicio)}–${horaMadrid(f.fin)}` : `desde ${horaMadrid(f.inicio)}`);
+  return coches.map(m => {
+    const suyos = lista.filter(f => f.matricula === m);
+    const ultimo = suyos[suyos.length - 1];
+    const texto = suyos.length > 2
+      ? `${horaMadrid(suyos[0].inicio)}–${ultimo.fin ? horaMadrid(ultimo.fin) : 'abierto'} (${suyos.length} fichajes)`
+      : suyos.map(tramo).join(' · ');
+    return texto + (coches.length > 1 ? ` ${m}` : '');
+  }).join(' · ');
+}
+
+/**
+ * El reporte de un día. `key`: 0=Hoy, 1=Ayer, 2=Hace 2, 3=Hace 3, o una fecha
+ * ISO (AAAA-MM-DD), que es como se comprueba con un día pasado.
  */
 async function reporteDia(key) {
-  const { str: fecha, iso, idx } = fechaDeClave(key);
+  const { str: fecha, iso, idx } = /^\d{4}-\d{2}-\d{2}$/.test(String(key)) ? fechaDeIso(String(key)) : fechaDeClave(key);
   const rutas = require('../../services/flotaViva/rutas');
   const repoJust = require('../../services/repo/justificantes');
   await require('../../services/flotaViva/db').preparar();
 
   const reparto = require('../../services/flotaViva/repartoTurnos');
-  const [vent, horasRep, plan, pad, justis, prom, otraSede] = await Promise.all([
+  const [vent, horasRep, plan, pad, justis, prom, otraSede, fichajes] = await Promise.all([
     // LAS VENTANAS DE LOS TURNOS (las de Control): de ahí salen los km, los
     // coches y quién se conectó. Quien dobla, la de sus dos turnos juntos.
     rutas.actividadDeVariosTurnos(iso, ['diaControl', 'nocheControl', 'todoturnoControl']),
@@ -249,7 +313,21 @@ async function reporteDia(key) {
     // manda fuera, una nota escolar al lado de un nombre sobra.
     require('../../services/repo/rendimiento').leer().catch(() => new Map()),
     cochesDeOtraSede(),
+    // Los turnos fichados por WhatsApp que tocan el día (una fila por fichaje).
+    fichajesDelDia(iso),
   ]);
+  // LOS KM DE FUERA CON EL FICHAJE, aparte y con su tope (kmFichaje.js). Si no
+  // salen —se pasan del tope, o falla algo—, el reporte sale igual con la regla
+  // de antes y lo dice: mejor un Excel con los km de siempre que ninguno. Va
+  // DESPUÉS de lo de arriba, no a la vez: así no se suma a la carga de la base.
+  let kmF = null, sinFichaje = null;
+  try {
+    kmF = await require('../../services/flotaViva/kmFichaje').kmFueraConFichaje(iso,
+      ['diaControl', 'nocheControl', 'todoturnoControl'].map(c => { const [hIni, off, hFin] = rutas.TURNOS[c]; return { codigo: c, hIni, off, hFin }; }));
+  } catch (e) {
+    sinFichaje = e.message;
+    console.error(`⚠️  [Reporte de horas] ${iso}: los km con el fichaje no salieron (${e.message}); va sin ellos`);
+  }
 
   // Los justificantes, por persona (la clave 'id:<conductor_id>').
   const justPorId = new Map();
@@ -275,12 +353,41 @@ async function reporteDia(key) {
   const ventanaDe = { dia: vent.get('diaControl'), noche: vent.get('nocheControl'), todo: vent.get('todoturnoControl') };
   const cuentas = new Set();
   Object.values(ventanaDe).forEach(v => v && v.porUuid.forEach((_, u) => cuentas.add(u)));
-  const actividadDe = uuid => {
+  const CODIGO_DE = { dia: 'diaControl', noche: 'nocheControl', todo: 'todoturnoControl' };
+  // La actividad de una cuenta y el código de la ventana de la que sale (para
+  // casar con ella lo que el fichaje le quita).
+  const actividadYVentana = uuid => {
     const x = horasDe(claveDe(uuid));
-    const v = x.dia > 0 && x.noche > 0 ? ventanaDe.todo : x.noche > 0 ? ventanaDe.noche : ventanaDe.dia;
-    return (v && v.porUuid.get(uuid))
-      || (ventanaDe.dia && ventanaDe.dia.porUuid.get(uuid))
-      || (ventanaDe.noche && ventanaDe.noche.porUuid.get(uuid));
+    const k = x.dia > 0 && x.noche > 0 ? 'todo' : x.noche > 0 ? 'noche' : 'dia';
+    for (const kk of [k, 'dia', 'noche']) {
+      const v = ventanaDe[kk];
+      const a = v && v.porUuid.get(uuid);
+      if (a) return { a, codigo: CODIGO_DE[kk] };
+    }
+    return { a: null, codigo: null };
+  };
+  // LO QUE EL FICHAJE LE QUITA A CADA CUENTA (12/11/2026): sus km de fuera de
+  // BOLT que caen dentro del fichaje de otro coche o de otra persona. Por
+  // ventana, cuenta y coche.
+  const restaDe = new Map();
+  if (kmF) kmF.forEach((v, codigo) => v.restas.forEach(x => {
+    const k = `${codigo}|${x.uuid}`;
+    if (!restaDe.has(k)) restaDe.set(k, new Map());
+    const m = restaDe.get(k);
+    m.set(x.matricula, r1((m.get(x.matricula) || 0) + (Number(x.km_fuera) || 0)));
+  }));
+  /** La actividad con sus km de fuera ya sin lo que se lleva el fichaje. */
+  const conResta = (a, codigo) => {
+    const m = restaDe.get(`${codigo}|${a.uuid}`);
+    if (!m) return a;
+    const kmPorCoche = {};
+    let quita = 0;
+    Object.entries(a.kmPorCoche || {}).forEach(([mat, k]) => {
+      const q = Math.min(k.kmFuera || 0, m.get(mat) || 0);
+      quita += q;
+      kmPorCoche[mat] = { ...k, kmFuera: r1((k.kmFuera || 0) - q) };
+    });
+    return { ...a, kmPorCoche, kmFuera: Math.max(0, r1((Number(a.kmFuera) || 0) - quita)) };
   };
 
   // ── 1. Todo el que TRABAJÓ (o al menos se conectó) ────────────────────────
@@ -288,8 +395,9 @@ async function reporteDia(key) {
   const sueltos = [];             // los que ni ficha tienen: NN puros
   const conHoras = new Set();     // personas a las que ya se les pusieron sus horas
   for (const uuid of cuentas) {
-    const a = actividadDe(uuid);
-    if (!a) continue;
+    const { a: a0, codigo } = actividadYVentana(uuid);
+    if (!a0) continue;
+    const a = conResta(a0, codigo);
     // Las horas son de la PERSONA (todas sus cuentas ya juntas, cada segundo
     // una vez): se ponen en su primera cuenta y las demás suman cero.
     const clave = claveDe(uuid);
@@ -332,7 +440,7 @@ async function reporteDia(key) {
     };
     // Los km de un coche de Barcelona no cuentan: ver `apartarOtraSede`.
     apartarOtraSede(fila, a, otraSede);
-    if (fila.revisar) { fila.kmBolt = 'REVISAR'; fila.kmDesc = 'REVISAR'; }
+    // «REVISAR» se escribe al final: antes se suman los km de su fichaje.
     if (!cid) { sueltos.push(fila); continue; }
     if (!filasPorId.has(cid)) { filasPorId.set(cid, fila); continue; }
     // La MISMA persona con otra cuenta de BOLT ese día: se suma, no se pisa.
@@ -347,8 +455,8 @@ async function reporteDia(key) {
     // Si solo una, cuentan los km de la otra (el texto suma cero).
     const soloOtra = f.otraSede && fila.otraSede ? f.otraSede : null;
     f.fuenteKm = f.fuenteKm === fila.fuenteKm ? f.fuenteKm : (f.fuenteKm && fila.fuenteKm ? 'mixta' : (f.fuenteKm || fila.fuenteKm));
-    f.kmBolt = soloOtra || (revisar ? 'REVISAR' : Math.round((num(f.kmBolt) + num(fila.kmBolt)) * 10) / 10);
-    f.kmDesc = soloOtra || (revisar ? 'REVISAR' : Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10);
+    f.kmBolt = soloOtra || Math.round((num(f.kmBolt) + num(fila.kmBolt)) * 10) / 10;
+    f.kmDesc = soloOtra || Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10;
     f.revisar = revisar;
     f.otraSede = soloOtra;
     if (fila.kmAparte) {
@@ -358,6 +466,88 @@ async function reporteDia(key) {
         : fila.kmAparte;
     }
   }
+
+  // ── 1b. LOS FICHAJES (12/11/2026): sus km de fuera de BOLT ─────────────────
+  // Cada persona, con la ventana de su turno —por sus horas; sin horas, por su
+  // plaza; sin plaza, por la hora a la que fichó (antes de las 12:00, día)—, se
+  // lleva los km de fuera de BOLT de los coches que tenía fichados en esa
+  // ventana. Si no tenía fila (fichó y no estuvo en BOLT, o es de la oficina),
+  // se le hace una. La columna «Fichaje» sale aunque los km no se hayan podido
+  // calcular.
+  const ventanaPara = (cid, susFichajes) => {
+    if (cid) {
+      const x = horasDe(`c${cid}`);
+      if (x.dia > 0 && x.noche > 0) return 'todo';
+      if (x.noche > 0) return 'noche';
+      if (x.dia > 0) return 'dia';
+      const t = ((plan.get(cid) || {}).turno || '').trim();
+      if (t === 'TodoTurno') return 'todo';
+      if (t === 'Noche') return 'noche';
+      if (t === 'Día' || t === 'Dia') return 'dia';
+    }
+    const h = Number(horaMadrid(susFichajes[0].inicio).slice(0, 2));
+    return h < 12 ? 'dia' : 'noche';
+  };
+  const ventanaMs = codigo => { const v = vent.get(codigo); return [new Date(v.ini).getTime(), new Date(v.finPlan || v.fin).getTime()]; };
+  const fichajesDe = new Map();
+  fichajes.forEach(f => { const k = duenoFichaje(f); if (!fichajesDe.has(k)) fichajesDe.set(k, []); fichajesDe.get(k).push(f); });
+  for (const [dueno, susFichajes] of fichajesDe.entries()) {
+    const cid = dueno.startsWith('c') ? Number(dueno.slice(1)) : null;
+    const codigo = CODIGO_DE[ventanaPara(cid, susFichajes)];
+    const [ini, fin] = ventanaMs(codigo);
+    const enVentana = susFichajes.filter(f => f.inicio.getTime() < fin && (f.fin ? f.fin.getTime() : Date.now()) > ini);
+    if (!enVentana.length) continue;
+    let fila = cid ? filasPorId.get(cid) : null;
+    // Quien solo fichó coches de otra sede (Barcelona) no entra en este reporte.
+    if (!fila && enVentana.every(f => otraSede.has(f.matricula))) continue;
+    if (!fila) {
+      const p = cid ? pad.porId.get(cid) : null;
+      const pl = cid ? plan.get(cid) : null;
+      const f0 = enVentana[0];
+      fila = {
+        conductorId: cid, nombre: (p && p.nombre) || f0.nombre || `#${cid || f0.telefono}`,
+        telefono: (p && p.telefono) || f0.telefono || '',
+        turno: (pl && pl.turno) || '', horas: 0, libra: !!(pl && pl.libra), debiaSalir: !!(pl && pl.debiaSalir),
+        esNN: !pl || !pl.debiaSalir, enLibranza: !!(pl && pl.libra), sinFicha: !cid && f0.tipo !== 'viaje',
+        deOficina: f0.tipo === 'viaje',
+        matricula: null, kmBolt: 0, kmDesc: 0, fuenteKm: null, revisar: false,
+        just: cid ? justPorId.get(cid) || null : null,
+      };
+      if (cid) filasPorId.set(cid, fila); else sueltos.push(fila);
+    }
+    fila.fichajes = enVentana;
+    // Los km de fuera de sus fichajes, coche a coche (los de otra sede, aparte).
+    const km = kmF ? (kmF.get(codigo) || { fichajes: [] }).fichajes.filter(x => duenoFichaje(x) === dueno) : [];
+    let kf = 0, can = false, gps = false;
+    km.forEach(x => {
+      const k = Number(x.km_fuera) || 0;
+      const sede = otraSede.get(normPlaca(x.matricula));
+      if (sede) {
+        const ap = fila.kmAparte || (fila.kmAparte = { sede, matriculas: [], km: 0 });
+        if (!ap.matriculas.includes(x.matricula)) ap.matriculas.push(x.matricula);
+        ap.km = r1(ap.km + k);
+        return;
+      }
+      kf += k;
+      if (x.hay_can) can = true;
+      if (x.hay_gps) gps = true;
+    });
+    if (typeof fila.kmDesc !== 'string') {
+      const num = v => (typeof v === 'number' ? v : 0);
+      fila.kmBolt = r1(num(fila.kmBolt));
+      fila.kmDesc = r1(num(fila.kmDesc) + kf);
+    }
+    const fuente = can && gps ? 'mixta' : gps ? 'gps' : can ? 'can' : null;
+    if (fuente) fila.fuenteKm = !fila.fuenteKm || fila.fuenteKm === fuente ? fuente : 'mixta';
+    // El coche fichado va primero en la matrícula.
+    const fichados = [...new Set(enVentana.map(f => f.matricula).filter(Boolean))];
+    fila.matricula = [...new Set([...fichados, ...(fila.matricula ? fila.matricula.split(', ') : [])])].join(', ') || null;
+    if (kf > 0) fila.revisar = false;
+  }
+  // REVISAR, ahora sí: estuvo en BOLT con un coche y ni BOLT ni el fichaje dan km.
+  [...filasPorId.values(), ...sueltos].forEach(f => {
+    if (f.revisar && !f.otraSede) { f.kmBolt = 'REVISAR'; f.kmDesc = 'REVISAR'; }
+  });
 
   // ── 2. Los que DEBÍAN salir y no aparecen en BOLT: 0 h ────────────────────
   for (const [cid, pl] of plan.entries()) {
@@ -385,7 +575,7 @@ async function reporteDia(key) {
 
   // Quien libraba y no trabajó no sale en el reporte: no es una falta.
   const bruto = [...filasPorId.values(), ...sueltos]
-    .filter(f => f.horas > 0 || f.debiaSalir || f.just);
+    .filter(f => f.horas > 0 || f.debiaSalir || f.just || (f.fichajes && f.fichajes.length));
 
   // ORGANIZADO POR TURNO. Tráfico lee el reporte por turnos, no en una lista
   // de 138 nombres mezclados: primero el bloque de DÍA, luego el de NOCHE, luego
@@ -409,6 +599,12 @@ async function reporteDia(key) {
       enLibranza: f.enLibranza,
       matricula: f.matricula, kmBolt: f.kmBolt, kmDesc: f.kmDesc, fuenteKm: f.fuenteKm || null, revisar: f.revisar,
       otraSede: f.otraSede || null, kmAparte: f.kmAparte || null,
+      // EL FICHAJE (12/11/2026): sus horas, o «Sin fichar» si trabajó o movió
+      // un coche sin fichar. Quien no salió no lleva nada.
+      fichaje: f.fichajes && f.fichajes.length ? textoFichaje(f.fichajes) : '',
+      sinFichar: !(f.fichajes && f.fichajes.length) && !f.otraSede
+        && ((f.horas || 0) > 0 || (typeof f.kmBolt === 'number' && f.kmBolt > 0) || (typeof f.kmDesc === 'number' && f.kmDesc > 0)),
+      deOficina: !!f.deOficina,
     };
     if (f.just) {
       const horasTexto = (f.horas != null && f.horas > 0) ? `${r1(f.horas)} (J)` : 'J';
@@ -418,10 +614,14 @@ async function reporteDia(key) {
       const observacion = (hj != null ? `J ${String(hj).replace('.', ',')} h · ` : 'J · ') + (f.just.observacion || '');
       return { ...comun, horasTexto, horasJ: hj, color: 'azul', observacion, esJ: true };
     }
+    // La oficina no hace turnos: su fila es solo para sus km (un viaje fichado).
+    if (f.deOficina) {
+      return { ...comun, horasTexto: '', color: 'gris', observacion: 'Oficina · viaje fichado', esJ: false };
+    }
     const b = banda(f.horas);
     // El aviso va con la observación automática: el que salió sin estar en el
     // cuadrante es justo el que hay que mirar, y antes no se distinguía.
-    const nota = f.sinFicha ? 'Solo en BOLT · sin ficha'
+    const nota = f.sinFicha ? (f.fichajes && f.fichajes.length && !(f.uuids || []).length ? 'Fichó por WhatsApp · sin ficha' : 'Solo en BOLT · sin ficha')
       : (f.enLibranza && f.horas > 0) ? 'Trabajó en su libranza'
       : (f.esNN && f.horas > 0) ? 'Fuera del cuadrante'
       : '';
@@ -439,6 +639,8 @@ async function reporteDia(key) {
     // Antes de las 12:00 del día siguiente, el día sigue abierto: la noche
     // cuenta hasta esa hora (06/10/2026). El Excel lo dice, no lo esconde.
     parcial: Date.now() < reparto.cierreDe(iso),
+    // Si los km con el fichaje no salieron, el motivo (el Excel lo dice arriba).
+    sinFichaje,
     filas, resumen: resumirFilas(filas),
   };
 }
@@ -456,7 +658,7 @@ function resumirFilas(filas) {
   return {
     salieron: filas.filter(hizo).length,
     // Se les esperaba y no aparecieron. La libranza no cuenta como falta.
-    noSalieron: filas.filter(f => !hizo(f) && !f.libra).length,
+    noSalieron: filas.filter(f => !hizo(f) && !f.libra && !f.deOficina).length,
     cumplieron8: filas.filter(f => (f.horas ?? 0) >= 8).length,
     menos4: filas.filter(f => hizo(f) && f.horas < 4).length,
     justificados: filas.filter(f => f.esJ).length,
@@ -474,6 +676,9 @@ function resumirFilas(filas) {
     horasSinTurno: porTurno['(sin turno)'] || 0,
     horasTotal: r1(filas.reduce((s, f) => s + (f.horas ?? 0), 0)),
     personas: filas.length,
+    // Cuántos ficharon por WhatsApp y cuántos trabajaron (o movieron un coche) sin fichar.
+    ficharon: filas.filter(f => f.fichaje).length,
+    sinFichar: filas.filter(f => f.sinFichar).length,
   };
 }
 
