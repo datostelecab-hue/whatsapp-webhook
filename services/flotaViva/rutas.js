@@ -1062,8 +1062,30 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
  * VENTANA, no una vez para todas. Un coche puede tener CAN suficiente en la
  * jornada entera y no tenerlo en la franja de noche, y ahí la vara de medir
  * cambia. Por eso `fuente` agrupa por (codigo, unit_id) y no solo por unit_id.
+ *
+ * CON `conFichaje` (12/11/2026, el reporte de horas de Control). Camilo: «Como
+ * ahora fichan por WhatsApp, que ese sea el punto de referencia. Si a alguien
+ * se le olvidó fichar, los KM del coche van para el que estaba conectado en
+ * BOLT, pero los KM por fuera de BOLT van para el que se le olvidó fichar». Y
+ * eligió: con fichaje, TODOS los km del coche mientras dura su turno fichado
+ * (de «Iniciar turno» a «Terminar», el relevo incluido) son de quien fichó,
+ * aunque en BOLT saliera otra cuenta con ese coche; sin fichaje, la regla de
+ * siempre: los de BOLT de quien estaba conectado y los de fuera del último que
+ * estuvo en BOLT con el coche (el corte de FIN_KM).
+ *
+ *   · Los km de un coche que caen dentro de un fichaje suyo se le quitan al
+ *     reparto por tramos (el tiempo que se solapa con el fichaje) y van a filas
+ *     `fila: 'fichaje'`, una por fichaje: `km` = los que el coche hizo con
+ *     alguien conectado en BOLT con él (viaje o espera, cualquier cuenta) y
+ *     `km_fuera` = el resto, con BOLT cerrado.
+ *   · Lo que queda, en filas `fila: 'cuenta'`, por cuenta de BOLT, como sin la
+ *     opción.
+ *   · Un fichaje sin persona conocida (`conductor_id` vacío) también manda: el
+ *     coche lo tenía alguien que no era el de BOLT. Va con su teléfono y su
+ *     nombre; los viajes de la oficina (tipo 'viaje'), con su usuario.
+ * Sin la opción, la consulta es la de siempre (la de En directo no cambia).
  */
-async function kmPorVentanas(dia, ventanas) {
+async function kmPorVentanas(dia, ventanas, { conFichaje = false } = {}) {
   if (!ventanas.length) return new Map();
   const d = String(dia).slice(0, 10);
 
@@ -1161,7 +1183,16 @@ async function kmPorVentanas(dia, ventanas) {
         -- abajo lo descarta solo. Por eso basta con acotar por la envolvente.
         WHERE tb.d0 < w.fin
      ),
-     solape AS (
+     ${conFichaje ? SOLAPE_CON_FICHAJE : SOLAPE_POR_VENTANA}`,
+    [d]);
+
+  const por = new Map(ventanas.map(v => [v.codigo, []]));
+  r.rows.forEach(x => { if (por.has(x.codigo)) por.get(x.codigo).push(x); });
+  return por;
+}
+
+// EL FINAL DE kmPorVentanas SIN FICHAJE: el reparto de siempre, por tramos.
+const SOLAPE_POR_VENTANA = `solape AS (
        SELECT tk.codigo, tk.uuid, tk.matricula, tk.situacion, r.por_can,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
                 LEAST(r.fin, tk.h) - GREATEST(r.inicio, tk.d))))
@@ -1176,13 +1207,106 @@ async function kmPorVentanas(dia, ventanas) {
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera,
             bool_or(por_can AND metros_trozo > 0)       AS hay_can,
             bool_or(NOT por_can AND metros_trozo > 0)   AS hay_gps
-       FROM solape GROUP BY codigo, uuid, matricula`,
-    [d]);
+       FROM solape GROUP BY codigo, uuid, matricula`;
 
-  const por = new Map(ventanas.map(v => [v.codigo, []]));
-  r.rows.forEach(x => { if (por.has(x.codigo)) por.get(x.codigo).push(x); });
-  return por;
-}
+// EL FINAL DE kmPorVentanas CON FICHAJE (12/11/2026): el tiempo de un coche
+// dentro de un fichaje suyo es de quien fichó; el resto, por tramos como antes.
+// Necesita `lim`, `w`, `km_src` (con su `codigo`), `tramo_base` y `tramo_km`.
+const SOLAPE_CON_FICHAJE = `
+     -- LOS FICHAJES QUE TOCAN LAS VENTANAS, con el coche de Mapon. El coche se
+     -- busca por la unidad que guardó el fichaje y, si no casa, por la
+     -- matrícula. Abierto = hasta ahora (se recorta a la ventana más abajo).
+     fich AS (
+       SELECT DISTINCT ON (f.id)
+              f.id AS fichaje_id, f.tipo, f.conductor_id, f.usuario_id, f.telefono, f.nombre,
+              veh.matricula, veh.mapon_unit AS unit_id, f.inicio AS fi, COALESCE(f.fin, now()) AS ff
+         FROM fichaje_turno f
+         CROSS JOIN lim
+         JOIN fv_vehiculo veh ON veh.mapon_unit IS NOT NULL
+              AND (veh.mapon_unit::text = f.unit_id
+                   OR upper(regexp_replace(veh.matricula, '[^A-Za-z0-9]', '', 'g'))
+                    = upper(regexp_replace(f.matricula, '[^A-Za-z0-9]', '', 'g')))
+        -- La cota en constantes, por lo mismo que en can_raw: entra por índice.
+        WHERE f.inicio >= $1::date - interval '3 days'
+          AND f.inicio < lim.fin0 AND COALESCE(f.fin, now()) > lim.ini0
+        ORDER BY f.id, (veh.mapon_unit::text = f.unit_id) DESC
+     ),
+     fich_w AS (
+       SELECT w.codigo, fc.fichaje_id, fc.tipo, fc.conductor_id, fc.usuario_id, fc.telefono, fc.nombre,
+              fc.matricula, fc.unit_id, GREATEST(fc.fi, w.ini) AS a, LEAST(fc.ff, w.fin) AS b
+         FROM fich fc JOIN w ON fc.fi < w.fin AND fc.ff > w.ini
+     ),
+     -- Cada trozo de km del coche que cae dentro de un fichaje suyo.
+     fich_km AS (
+       SELECT row_number() OVER () AS kid, fw.codigo, fw.fichaje_id, fw.tipo, fw.conductor_id, fw.usuario_id,
+              fw.telefono, fw.nombre, fw.matricula, fw.unit_id, r.por_can,
+              r.metros / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS ritmo,
+              GREATEST(r.inicio, fw.a) AS x0, LEAST(r.fin, fw.b) AS x1
+         FROM km_src r
+         JOIN fich_w fw ON fw.codigo = r.codigo AND fw.unit_id = r.unit_id
+                       AND r.inicio < fw.b AND r.fin > fw.a
+     ),
+     -- De ese rato, cuánto tuvo el coche a alguien conectado en BOLT con él
+     -- (viaje o espera, la cuenta que fuera): esos son los km «en BOLT».
+     fich_bolt AS (
+       SELECT fk.kid,
+              sum(EXTRACT(EPOCH FROM (LEAST(tb.h0, fk.x1) - GREATEST(tb.d0, fk.x0)))) AS seg_bolt
+         FROM fich_km fk
+         JOIN tramo_base tb ON tb.unit_id = fk.unit_id AND tb.situacion IN ('viaje', 'espera')
+                           AND tb.d0 < fk.x1 AND tb.h0 > fk.x0
+        GROUP BY fk.kid
+     ),
+     fich_res AS (
+       SELECT fk.codigo, fk.fichaje_id, fk.tipo, fk.conductor_id, fk.usuario_id, fk.telefono, fk.nombre,
+              fk.matricula, fk.por_can,
+              COALESCE(fk.ritmo, 0) * EXTRACT(EPOCH FROM (fk.x1 - fk.x0)) AS metros,
+              -- Dos cuentas a la vez en el mismo coche no hacen el doble: tope en el rato.
+              COALESCE(fk.ritmo, 0) * LEAST(EXTRACT(EPOCH FROM (fk.x1 - fk.x0)), COALESCE(fb.seg_bolt, 0)) AS metros_bolt
+         FROM fich_km fk LEFT JOIN fich_bolt fb ON fb.kid = fk.kid
+        WHERE fk.x1 > fk.x0
+     ),
+     -- EL REPARTO POR TRAMOS, SIN EL TIEMPO FICHADO. Es el de siempre, trozo a
+     -- trozo; a cada trozo se le resta lo que se solapa con un fichaje del mismo
+     -- coche, que ya va arriba.
+     solape_p AS (
+       SELECT row_number() OVER () AS pid, tk.codigo, tk.uuid, tk.matricula, tk.unit_id, tk.situacion, r.por_can,
+              r.metros / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS ritmo,
+              GREATEST(r.inicio, tk.d) AS p0, LEAST(r.fin, tk.h) AS p1
+         FROM km_src r
+         JOIN tramo_km tk ON tk.unit_id = r.unit_id AND tk.codigo = r.codigo
+                         AND tk.d < r.fin AND tk.h > r.inicio
+        WHERE tk.h > tk.d
+     ),
+     solape AS (
+       SELECT sp.codigo, sp.uuid, sp.matricula, sp.situacion, sp.por_can,
+              -- EL FILTER NO SOBRA: LEAST y GREATEST se saltan los NULL, así que
+              -- sin él un trozo SIN fichaje (fw a NULL) daba LEAST(p1) - GREATEST(p0)
+              -- y se restaba entero. Pasó en la primera prueba (12/11/2026).
+              COALESCE(sp.ritmo, 0) * GREATEST(0, EXTRACT(EPOCH FROM (sp.p1 - sp.p0))
+                - COALESCE(sum(GREATEST(0, EXTRACT(EPOCH FROM (LEAST(sp.p1, fw.b) - GREATEST(sp.p0, fw.a)))))
+                    FILTER (WHERE fw.fichaje_id IS NOT NULL), 0))
+                AS metros_trozo
+         FROM solape_p sp
+         LEFT JOIN fich_w fw ON fw.codigo = sp.codigo AND fw.unit_id = sp.unit_id
+                            AND fw.a < sp.p1 AND fw.b > sp.p0
+        GROUP BY sp.pid, sp.codigo, sp.uuid, sp.matricula, sp.situacion, sp.por_can, sp.ritmo, sp.p0, sp.p1
+     )
+     SELECT 'cuenta' AS fila, codigo, uuid, matricula,
+            NULL::bigint AS fichaje_id, NULL::text AS tipo, NULL::bigint AS conductor_id, NULL::bigint AS usuario_id,
+            NULL::text AS telefono, NULL::text AS nombre,
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera,
+            bool_or(por_can AND metros_trozo > 0)       AS hay_can,
+            bool_or(NOT por_can AND metros_trozo > 0)   AS hay_gps
+       FROM solape GROUP BY codigo, uuid, matricula
+     UNION ALL
+     SELECT 'fichaje' AS fila, codigo, NULL::text AS uuid, matricula,
+            fichaje_id, tipo::text, conductor_id, usuario_id::bigint, telefono::text, nombre::text,
+            round(COALESCE(sum(metros_bolt), 0)::numeric / 1000.0, 1)            AS km,
+            round(COALESCE(sum(metros - metros_bolt), 0)::numeric / 1000.0, 1)   AS km_fuera,
+            bool_or(por_can AND metros > 0)       AS hay_can,
+            bool_or(NOT por_can AND metros > 0)   AS hay_gps
+       FROM fich_res GROUP BY codigo, fichaje_id, tipo, conductor_id, usuario_id, telefono, nombre, matricula`;
 
 /**
  * LA ACTIVIDAD DE VARIOS TURNOS DEL MISMO DÍA, LEYENDO LOS KM UNA SOLA VEZ.
@@ -1202,8 +1326,13 @@ async function kmPorVentanas(dia, ventanas) {
  *
  * Devuelve un Map de turno → el mismo objeto que devuelve `actividadPorConductor`,
  * para que quien lo use no tenga que aprender nada nuevo.
+ *
+ * Con `{ conFichaje: true }` (el reporte de horas) los km de cada cuenta son los
+ * que quedan FUERA de los fichajes, y cada turno lleva además `kmFichaje`: las
+ * filas de los fichajes (ver kmPorVentanas). Si los km no se pudieron calcular
+ * en una pasada, `kmFichaje` es null: quien lo pidió no puede fiarse del resto.
  */
-async function actividadDeVariosTurnos(dia, turnos) {
+async function actividadDeVariosTurnos(dia, turnos, { conFichaje = false } = {}) {
   const lista = [...new Set(turnos)].filter(t => TURNOS[t]);
   if (!lista.length) return new Map();
 
@@ -1215,7 +1344,7 @@ async function actividadDeVariosTurnos(dia, turnos) {
   // SIN `await`: los km se piden y, mientras llegan, cada turno ya va leyendo
   // sus tramos, que no los necesitan. Esperar a los km antes de empezar era
   // poner en fila dos cosas independientes: 500 ms → 365 ms (03/11/2026).
-  const km = kmPorVentanas(dia, ventanas).catch(e => {
+  const km = kmPorVentanas(dia, ventanas, { conFichaje }).catch(e => {
     // Si la pasada única falla, cada turno se lo pregunta por su cuenta: es más
     // lento, pero la pantalla sigue en pie. Un atajo que se lleva la pantalla
     // por delante cuando falla no es un atajo.
@@ -1223,8 +1352,13 @@ async function actividadDeVariosTurnos(dia, turnos) {
     return null;
   });
 
+  const deCuenta = filas => filas.filter(x => x.fila !== 'fichaje');
   const hechos = await Promise.all(lista.map(t =>
-    actividadPorConductor(dia, t, km.then(m => (m ? (m.get(t) || []) : null)))));
+    actividadPorConductor(dia, t, km.then(m => (m ? deCuenta(m.get(t) || []) : null)))));
+  if (conFichaje) {
+    const m = await km;
+    hechos.forEach((h, i) => { h.kmFichaje = m ? (m.get(lista[i]) || []).filter(x => x.fila === 'fichaje') : null; });
+  }
   return new Map(lista.map((t, i) => [t, hechos[i]]));
 }
 

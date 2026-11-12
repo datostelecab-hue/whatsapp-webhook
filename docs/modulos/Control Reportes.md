@@ -50,9 +50,35 @@ Quien libraba y no trabajó no sale: no es una falta.
 | **Turno** | el de **su plaza** ese día, libre o no |
 | **Horas** | las efectivas de la jornada. Es la única celda con color |
 | **Observaciones** | la banda automática + el aviso (*Fuera del cuadrante*, *Trabajó en su libranza*, *Solo en BOLT · sin ficha*), o el motivo de la J con sus horas delante |
-| **Matrícula** | los coches que llevó |
-| **KM BOLT** | km rodados trabajando |
-| **KM descon.** | km rodados en descanso o desconectado |
+| **Matrícula** | los coches que llevó; **primero el que fichó** |
+| **Fichaje** | a qué horas fichó por WhatsApp («05:02–17:10», «desde 05:02» si sigue abierto; varios del mismo coche, «06:28–21:10 (5 fichajes)»), o **Sin fichar** en negrita ámbar si trabajó o movió un coche sin fichar |
+| **KM BOLT** | km del coche con alguien conectado en BOLT |
+| **KM fuera BOLT** | km del coche con BOLT cerrado (hasta el 12/11/2026, «KM descon.») |
+
+### Los km: el fichaje es el punto de referencia (12/11/2026)
+
+Camilo: *«Como ahora fichan por WhatsApp, que ese sea el punto de referencia. Si a alguien se le olvidó fichar, los KM del coche van para el que estaba conectado en BOLT, pero los KM por fuera de BOLT van para el que se le olvidó fichar»*. Y eligió:
+
+- **Con fichaje**, todos los km del coche mientras dura el turno fichado (de «Iniciar turno» a «Terminar», el relevo incluido) son de quien lo fichó, **aunque en BOLT saliera otra cuenta** con ese coche.
+  - «KM BOLT» son los que el coche hizo con alguien conectado en BOLT con él (viaje o espera, la cuenta que fuera).
+  - «KM fuera BOLT», el resto.
+  - Los viajes de la oficina también son fichajes: sus km van a esa persona (fila «Oficina · viaje fichado»), no al último conductor.
+- **Sin fichaje**, como hasta ahora.
+  - Los km de BOLT son de quien estaba conectado.
+  - Los de fuera de BOLT, del **último que estuvo en BOLT con el coche**, hasta que otro se conecta con él, aparece en otro coche o pasan 12 h (`FIN_KM` en `rutas.js`).
+- **Quien fichó y no hizo nada en BOLT** sale igual, con sus km. Quien solo fichó coches de Barcelona no sale: es el reporte de Madrid.
+- **El resumen** cuenta cuántos ficharon y cuántos **trabajaron sin fichar**.
+
+Cómo se hace: `kmPorVentanas(dia, ventanas, { conFichaje: true })` en `services/flotaViva/rutas.js` (solo lo pide el reporte; En directo no cambia).
+- A cada trozo de km del reparto por tramos se le **resta** el tiempo que se solapa con un fichaje del mismo coche.
+- Ese tiempo va a una fila del fichaje, que separa lo que el coche estuvo con BOLT abierto.
+- Los km se conservan: el 22/10 de la copia local, 31.751 km antes y 31.873 después. Lo de más son km que antes no eran de nadie y ahora son de quien tenía fichado el coche.
+
+> [!warning] La trampa del primer intento
+> `LEAST` y `GREATEST` de Postgres **se saltan los NULL**. Restando el solape con un `LEFT JOIN` a los fichajes, un trozo sin fichaje daba `LEAST(p1, NULL) − GREATEST(p0, NULL) = p1 − p0` y se restaba entero: el 22/10 se «perdían» 15.000 km. Va con `FILTER (WHERE fw.fichaje_id IS NOT NULL)`.
+
+> [!note] El fichaje que se cierra solo
+> Si nadie pulsa «Terminar», el fichaje se cierra solo a las 14 h, y mientras tanto el coche es de quien fichó. El 22/10, Israel Muñoz Maya fichó el 5912LBZ a las 15:47 (se cerró solo a las 05:47) y en BOLT quien estaba conectado con ese coche era Angel Perez Rojo, con quien se lo turna. Los km se los lleva Israel. Puede ser una cuenta prestada —y entonces el fichaje acierta— o que no terminó; el reporte sigue la regla elegida.
 
 **Los km de un coche de Barcelona no se cuentan** (24/09/2026). La flota que se vigila es la de Madrid (ver [[Vehiculos#La sede manda, y ahora se puede cambiar|la sede]]). Las horas no se tocan —Control sigue igual—; lo que cambia es el apartado de km:
 
