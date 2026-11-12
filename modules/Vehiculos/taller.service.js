@@ -170,7 +170,7 @@ const resumen = () => repo.resumen();
 module.exports = {
   // Los catálogos que la pantalla necesita para pintarse.
   INTERVALO: repo.INTERVALO, TIPOS: repo.TIPOS, ESTADOS: repo.ESTADOS,
-  CATEGORIAS: repo.CATEGORIAS,
+  CATEGORIAS: repo.CATEGORIAS, PARTES: repo.PARTES,
   cuadro, resumen, estadoDeLaFlota, ficha, registrar, anular, anclar, intervalo,
   historial, mantenimiento, deCoche,
   puedeApuntar, informe, FORMATOS_INFORME,

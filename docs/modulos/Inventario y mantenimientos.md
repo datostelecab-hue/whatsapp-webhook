@@ -39,6 +39,12 @@ Tres pestañas: **Mantenimientos** (la de entrada), **Revisión por km** (el est
 
 - **Mantenimientos** es un Listado: cada paso por taller de cada coche, con lo que se hizo (categorías y resumen de las piezas), los km, el taller, la factura y el coste sin IVA. Se filtra por categoría, taller y origen. Arriba: los últimos 30 días, su gasto, el gasto del año y cuántos no traen km. La ficha de uno trae sus líneas de la factura, «Ver el coche» y «Anular».
 - **La pestaña que se ve va en `?vista=`** (`flota`, `citas`), no en el `#`: el `#id` es del Listado, que abre con él la ficha de un mantenimiento. El `#citas` de antes (los enlaces de Control) se pasa a `?vista=citas` antes de montar el Listado, que si no lo tomaría por un id.
+- **Las cifras siguen a los filtros** (12/11/2026). Camilo: *«que se actualice el contador de euros cuando se filtre algo […] si filtro por Discom, que me muestre lo que hemos gastado en total históricamente, y también en lo que va del año, asimismo con los tipos de mantenimientos y de partes»*.
+  - Las tarjetas se calculan con lo que se ve: el gasto total, el del año y el de los últimos 30 días, sin IVA.
+  - Con una **pieza** elegida, la cuarta tarjeta dice lo facturado solo en las líneas de esa pieza, que no es el mantenimiento entero. En Discom muchas piezas van a 0 € porque las pone Telecab, y ahí se paga la mano de obra.
+  - Para esto el Listado tiene una opción nueva, `kpisDeLoVisible`.
+- **Las piezas** (`PARTES`, en `taller.repo`) se reconocen en la descripción de cada línea, por palabras y en orden: filtro de habitáculo, de aceite, de aire, aceite de motor, pastillas, discos, neumáticos, pinchazos, lámparas, batería, paragolpes, diagnosis, mano de obra… La lista del historial trae, por mantenimiento, sus piezas y lo facturado en cada una.
+- **El taller se filtra sin distinguir mayúsculas.** Los apuntes a mano decían «DISCOM» y las facturas «Discom», y filtrar por uno dejaba fuera el gasto del otro.
 - La ficha de un coche en Revisión por km enseña sus mantenimientos con el mismo componente que la ficha del vehículo.
 - **Barcelona** (`/barcelona/mantenimientos`) es la misma pantalla con sus coches: también tiene la pestaña, con `/api/historial` en su controlador.
 

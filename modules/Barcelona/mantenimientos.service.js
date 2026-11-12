@@ -74,7 +74,7 @@ module.exports = {
   SEDE, SEDE_NOMBRE,
   // Los catálogos con los que se pinta la pantalla: los del taller, tal cual.
   INTERVALO: taller.INTERVALO, TIPOS: taller.TIPOS, ESTADOS: taller.ESTADOS,
-  CATEGORIAS: taller.CATEGORIAS,
+  CATEGORIAS: taller.CATEGORIAS, PARTES: taller.PARTES,
   estadoDeLaFlota, ficha, historial, mantenimiento, informe, registrar, anular, anclar, intervalo,
   citas, cita, cochesParaCita, crearCita, importarCitas, anularCita,
   // La misma llave que en Madrid: '/taller/apuntar'.

@@ -452,9 +452,14 @@
 
     // --- pintado de la lista ---
 
+    // Con `kpisDeLoVisible: true` (12/11/2026) las tarjetas se calculan con lo
+    // que se está VIENDO —filtros y búsqueda— y se repintan con cada cambio, como
+    // las cifras. Sin la opción, con todas las filas y una vez, como siempre.
+    // Reciben además los filtros puestos y todas las filas.
     pintarKpis() {
       if (!this.cfg.kpis) { this.el.kpis.classList.add('hidden'); return; }
-      const tarjetas = this.cfg.kpis(this.filas, this.extra) || [];
+      const base = this.cfg.kpisDeLoVisible ? this.visibles() : this.filas;
+      const tarjetas = this.cfg.kpis(base, this.extra, this.filtros, this.filas) || [];
       this.el.kpis.innerHTML = '';
       tarjetas.forEach(k => {
         const t = nodo(`
@@ -624,6 +629,7 @@
       // recarga). Colgarlas de cada sitio que cambia algo es como se olvida uno.
       this.pintarCifras();
       this.pintarNota();
+      if (this.cfg.kpisDeLoVisible) this.pintarKpis();
       const todas = this.visibles();
       const c = this.cfg;
 

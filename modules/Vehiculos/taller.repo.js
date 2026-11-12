@@ -425,7 +425,63 @@ async function historial({ sedes, desde, hasta, limite = 5000 } = {}) {
   const r = await db.consulta(`${SELECT_MANT} ${w}
      ORDER BY m.fecha DESC NULLS LAST, v.matricula, m.id DESC
      LIMIT $${par.length}`, par);
-  return r.rows.map(aMant);
+  const filas = r.rows.map(aMant);
+
+  // LAS PARTES DE CADA UNO (12/11/2026): qué piezas lleva y cuánto se facturó en
+  // cada una, para filtrar por pieza y sumar lo gastado en ella. Una consulta
+  // para todos, no una por mantenimiento.
+  const porMant = new Map(filas.map(f => [f.id, {}]));
+  if (filas.length) {
+    const p = await db.consulta(`
+      SELECT mantenimiento_id, descripcion, importe_cent
+        FROM mantenimiento_pieza
+       WHERE mantenimiento_id = ANY($1::bigint[])`, [filas.map(f => f.id)]);
+    for (const x of p.rows) {
+      const parte = parteDe(x.descripcion);
+      if (!parte) continue;
+      const m = porMant.get(Number(x.mantenimiento_id));
+      m[parte] = Math.round(((m[parte] || 0) + (Number(x.importe_cent) || 0) / 100) * 100) / 100;
+    }
+  }
+  return filas.map(f => ({ ...f, partes: porMant.get(f.id) || {} }));
+}
+
+/**
+ * LAS PARTES: las piezas de las facturas, agrupadas por lo que son (12/11/2026).
+ * Camilo quiere filtrar «por los tipos de mantenimientos y de partes» y ver lo
+ * gastado. La descripción es la del papel («FILTRO DE ACEITE TOYOTA ++»,
+ * «PASTILLAS DEL Y TRS»…): se reconoce por palabras, en este orden (la primera
+ * que encaja). Lo que no encaja en ninguna no es una parte: no sale en el filtro.
+ */
+const PARTES = [
+  { codigo: 'filtro_habitaculo', etiqueta: 'Filtro de habitáculo', re: /HABITACULO|POLEN/ },
+  { codigo: 'filtro_aceite',     etiqueta: 'Filtro de aceite',     re: /FIL?T?RO.*ACEITE/ },
+  { codigo: 'filtro_combustible', etiqueta: 'Filtro de combustible', re: /FILTRO.*(GASOIL|COMBUSTIBLE|GASOLINA)/ },
+  { codigo: 'filtro_aire',       etiqueta: 'Filtro de aire',       re: /FILTRO.*AIRE/ },
+  { codigo: 'aceite_motor',      etiqueta: 'Aceite de motor',      re: /ACEITE|\bATF\b/ },
+  { codigo: 'pastillas',         etiqueta: 'Pastillas de freno',   re: /PASTILL/ },
+  { codigo: 'discos',            etiqueta: 'Discos de freno',      re: /DISCO/ },
+  { codigo: 'liquido_frenos',    etiqueta: 'Líquido de frenos',    re: /LIQUIDO.*FRENO/ },
+  { codigo: 'pinchazo',          etiqueta: 'Pinchazos',            re: /PINCHAZO/ },
+  { codigo: 'neumaticos',        etiqueta: 'Neumáticos',           re: /\bCUB\b|CUB\.|CUBIERTA|NEUMATIC/ },
+  { codigo: 'equilibrado',       etiqueta: 'Montaje y equilibrado', re: /EQUILIBR|MONTAJE RUEDA|ALINEAC|PARALELO/ },
+  { codigo: 'lamparas',          etiqueta: 'Lámparas',             re: /LAMPARA|BOMBILLA/ },
+  { codigo: 'faros',             etiqueta: 'Faros y pilotos',      re: /\bFARO|PILOTO/ },
+  { codigo: 'bateria',           etiqueta: 'Batería',              re: /BATERIA/ },
+  { codigo: 'amortiguadores',    etiqueta: 'Amortiguadores',       re: /AMORT/ },
+  { codigo: 'suspension',        etiqueta: 'Bieletas, rótulas y brazos', re: /BIELETA|ROTULA|BRAZO|TIRANT|SILENT|TRAPECIO/ },
+  { codigo: 'escobillas',        etiqueta: 'Escobillas',           re: /ESCOBILLA|RAQUETA/ },
+  { codigo: 'anticongelante',    etiqueta: 'Anticongelante',       re: /ANTICONGEL|REFRIGERANT|REFRI/ },
+  { codigo: 'paragolpes',        etiqueta: 'Paragolpes',           re: /PARAGOLPE|PARACHOQ/ },
+  { codigo: 'pintura',           etiqueta: 'Pintura',              re: /PINTUR|PINTAR/ },
+  { codigo: 'diagnosis',         etiqueta: 'Diagnosis',            re: /DIAGNOSI|DIAGONISI/ },
+  { codigo: 'mano_obra',         etiqueta: 'Mano de obra',         re: /MANO DE OBRA|^M\.? ?O\b/ },
+];
+const plano = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+function parteDe(descripcion) {
+  const d = plano(descripcion);
+  const p = PARTES.find(x => x.re.test(d));
+  return p ? p.codigo : null;
 }
 
 /** Un mantenimiento con sus piezas. Con `sedes`, solo si el coche es de una de ellas. */
@@ -613,6 +669,7 @@ async function todo({ sedes } = {}) {
 
 module.exports = {
   INTERVALO, TIPOS, ESTADOS, CODIGOS, CUENTAN, IMPOSIBLE, CATEGORIAS,
+  PARTES: PARTES.map(({ codigo, etiqueta }) => ({ codigo, etiqueta })),
   cuadro, resumen, ficha, todo, sedeDe, registrar, anular, anclar, intervalo,
   historial, mantenimientoFicha, deCoche, piezasDe,
 };

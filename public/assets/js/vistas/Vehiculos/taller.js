@@ -396,6 +396,7 @@
     return x.toISOString().slice(0, 10);
   };
   const queSeHizo = f => ((f.categoriasEtiqueta && f.categoriasEtiqueta.length) ? f.categoriasEtiqueta : [f.tipoEtiqueta]);
+  const claveTaller = t => String(t || '').trim().replace(/\s+/g, ' ').toLowerCase();
   let HIST = null;
 
   function montarHistorial() {
@@ -416,24 +417,46 @@
         ? `${todas.length} mantenimientos`
         : `${visibles.length} de ${todas.length} mantenimientos`),
 
-      kpis: filas => {
+      // LAS CIFRAS SIGUEN A LOS FILTROS (12/11/2026). Camilo: «que se actualice el
+      // contador de euros cuando se filtre algo […] si filtro por Discom, que me
+      // muestre lo que hemos gastado en total históricamente, y también en lo que
+      // va del año, asimismo con los tipos de mantenimientos y de partes». Se
+      // calculan con lo que se ve (taller, qué se hizo, pieza, búsqueda…).
+      kpisDeLoVisible: true,
+      kpis: (filas, extra, filtros) => {
         const d30 = haceDias(30), anio = hoyIso.slice(0, 4);
         const suma = xs => xs.reduce((a, f) => a + (Number(f.coste) || 0), 0);
         const ult = filas.filter(f => f.fecha && f.fecha >= d30);
-        const delMes = ult;
         const delAnio = filas.filter(f => f.fecha && f.fecha.slice(0, 4) === anio);
-        return [
-          { etiqueta: 'Últimos 30 días', valor: ult.length, tono: 'gold',
-            pie: `en ${new Set(ult.map(f => f.vehiculoId)).size} coches`,
-            ayuda: 'Mantenimientos con fecha en los últimos 30 días, y en cuántos coches distintos' },
-          { etiqueta: 'Gasto de 30 días', valor: fEuros(suma(delMes)), pie: 'los mismos 30 días · sin IVA',
-            ayuda: 'Lo que cuestan los mantenimientos de los últimos 30 días, sin IVA' },
-          { etiqueta: 'Gasto del año', valor: fEuros(suma(delAnio)), pie: `${delAnio.length} mantenimientos · sin IVA`,
-            ayuda: 'Lo que cuestan los mantenimientos de este año, sin IVA' },
-          { etiqueta: 'Sin km', valor: filas.filter(f => f.km == null).length, tono: 'warn',
-            pie: 'el taller no los puso',
-            ayuda: 'Mantenimientos cuya factura no trae los km del coche (Discom imprime «1 Km» cuando no los mira)' },
+        const coches = new Set(filas.map(f => f.vehiculoId)).size;
+        const filtrado = Object.values(filtros || {}).some(v => v !== '' && v != null);
+        const tarjetas = [
+          { etiqueta: filtrado ? 'Gasto total (lo filtrado)' : 'Gasto total', valor: fEuros(suma(filas)), tono: 'gold',
+            pie: `${filas.length} mantenimientos · ${coches} coches · sin IVA`,
+            ayuda: 'Todo lo que han costado los mantenimientos que se ven, desde el primero que hay apuntado. Sin IVA' },
+          { etiqueta: `Gasto ${anio}`, valor: fEuros(suma(delAnio)), pie: `${delAnio.length} mantenimientos · sin IVA`,
+            ayuda: `Lo que han costado en lo que va de ${anio} los mantenimientos que se ven. Sin IVA` },
+          { etiqueta: 'Últimos 30 días', valor: fEuros(suma(ult)),
+            pie: `${ult.length} mantenimientos · ${new Set(ult.map(f => f.vehiculoId)).size} coches`,
+            ayuda: 'Lo que han costado los mantenimientos que se ven de los últimos 30 días. Sin IVA' },
         ];
+        // Con una pieza elegida, lo facturado en ESA pieza (sus líneas), que no es
+        // lo mismo que el mantenimiento entero: una revisión lleva filtros, aceite
+        // y mano de obra.
+        const pieza = (filtros || {}).pieza;
+        if (pieza) {
+          const nombre = ((extra && extra.partes) || []).find(x => x.codigo === pieza);
+          const enPieza = filas.reduce((a, f) => a + (Number((f.partes || {})[pieza]) || 0), 0);
+          const enPiezaAnio = delAnio.reduce((a, f) => a + (Number((f.partes || {})[pieza]) || 0), 0);
+          tarjetas.push({ etiqueta: `Solo en ${nombre ? nombre.etiqueta.toLowerCase() : 'esa pieza'}`, valor: fEuros(enPieza),
+            pie: `${fEuros(enPiezaAnio)} en ${anio} · sus líneas, sin IVA`,
+            ayuda: 'Lo facturado en las líneas de esa pieza, sin el resto del mantenimiento. En Discom muchas piezas van a 0 € porque las pone Telecab (las compra a Hergar): ahí se paga la mano de obra.' });
+        } else {
+          tarjetas.push({ etiqueta: 'Sin km', valor: filas.filter(f => f.km == null).length, tono: 'warn',
+            pie: 'el taller no los puso',
+            ayuda: 'Mantenimientos cuya factura no trae los km del coche (Discom imprime «1 Km» cuando no los mira)' });
+        }
+        return tarjetas;
       },
 
       filtros: [
@@ -446,9 +469,34 @@
           pasa: (f, v) => (f.categorias || []).includes(v) || f.tipo === v,
         },
         {
-          id: 'taller', campo: 'taller', etiqueta: 'Taller', textoTodos: 'Todos los talleres',
-          opciones: filas => [...new Set(filas.map(f => f.taller).filter(Boolean))].sort()
-            .map(t => ({ valor: t, texto: t, cuenta: filas.filter(f => f.taller === t).length })),
+          // Sin distinguir mayúsculas ni espacios (12/11/2026): los apuntes a mano
+          // dicen «DISCOM» y las facturas «Discom», y filtrar por uno dejaba fuera
+          // el gasto del otro. Se enseña el nombre más usado.
+          id: 'taller', etiqueta: 'Taller', textoTodos: 'Todos los talleres',
+          opciones: filas => {
+            const grupos = new Map();
+            filas.forEach(f => {
+              const k = claveTaller(f.taller);
+              if (!k) return;
+              const g = grupos.get(k) || { valor: k, cuenta: 0, nombres: new Map() };
+              g.cuenta++;
+              g.nombres.set(f.taller, (g.nombres.get(f.taller) || 0) + 1);
+              grupos.set(k, g);
+            });
+            return [...grupos.values()]
+              .map(g => ({ valor: g.valor, cuenta: g.cuenta, texto: [...g.nombres].sort((a, b) => b[1] - a[1])[0][0] }))
+              .sort((a, b) => a.texto.localeCompare(b.texto, 'es'));
+          },
+          pasa: (f, v) => claveTaller(f.taller) === v,
+        },
+        {
+          // Por pieza (12/11/2026): las partes de cada mantenimiento, reconocidas
+          // en las líneas de la factura (taller.repo, PARTES).
+          id: 'pieza', etiqueta: 'Pieza', textoTodos: 'Todas las piezas',
+          opciones: (filas, extra) => ((extra && extra.partes) || [])
+            .map(p => ({ valor: p.codigo, texto: p.etiqueta, cuenta: filas.filter(f => f.partes && p.codigo in f.partes).length }))
+            .filter(o => o.cuenta > 0),
+          pasa: (f, v) => !!(f.partes && v in f.partes),
         },
         {
           id: 'origen', campo: 'origen', etiqueta: 'De dónde sale', textoTodos: 'De todas partes',

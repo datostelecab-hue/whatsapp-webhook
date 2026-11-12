@@ -93,6 +93,8 @@ router.get('/api/ficha/:id', responde(async req => ({ ficha: await taller.ficha(
 // esa ruta está en RUTA_A_CLAVE con la llave de apuntar, mire el método que mire.
 router.get('/api/historial', responde(async req => ({
   filas: await taller.historial({ sedes: await sedesDe(req), desde: req.query.desde, hasta: req.query.hasta }),
+  // Las partes (para el filtro por pieza), con su nombre.
+  partes: taller.PARTES,
 })));
 router.get('/api/historial/:id', responde(async req => ({
   ficha: await taller.mantenimiento(req.params.id, { sedes: await sedesDe(req) }),

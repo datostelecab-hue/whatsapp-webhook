@@ -176,6 +176,12 @@ Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre l
 
 **Un botón de la ficha apagado según la ficha** (05/11/2026). En `detalle.acciones`, `activa` puede ser una función de la ficha (`activa: d => …`) y no solo `false` fijo; apagada, el botón sale gris y no se pulsa. Con **`ayuda(d)`** (o un texto) dice por qué en el `title` y el `aria-label`: un botón gris sin explicación no se entiende. Lo estrenó «Anular el alta» en [[Conductores]], encendido solo si el sistema sabe que el nuevo no ha trabajado.
 
+**Tarjetas que siguen a los filtros: `kpisDeLoVisible: true`** (12/11/2026). Sin la opción, `kpis(filas, extra)` se calcula una vez con todas las filas. Con ella:
+- recibe **lo que se está viendo** (`kpis(visibles, extra, filtros, todas)`);
+- se repinta con cada filtro y cada búsqueda, como las cifras.
+
+Lo estrenó la lista de Mantenimientos: filtrar por Discom tiene que decir lo gastado en Discom. → [[Inventario y mantenimientos]]
+
 **Teñir una fila: `claseFila(f)`** (23/10/2026). Devuelve unas clases para la fila (en [[Combustible]], el color de su auditoría: `bg-telecab-red/10`…). Si devuelve algo, **sustituye a la cebra**: el fondo de las filas pares ganaría por especificidad y media lista saldría sin teñir. Sin `claseFila`, nada cambia.
 
 **La nota puede ser varias, y con enlaces** (23/10/2026). `nota` puede devolver una o un array (las vacías se saltan), una debajo de otra; cada una con `texto` (se escapa) o con `html`, que el módulo ya escribe escapado. Combustible pone la última lectura del buzón y, aparte, los correos que no se pudieron leer, cada uno con el enlace a su ficha (`#id`: la ficha se abre aunque esa fila no esté en la lista).
