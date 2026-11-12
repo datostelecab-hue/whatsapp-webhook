@@ -8,12 +8,6 @@
 //   "Poco efectivo" · rojo <=6,3 "No cumplieron" · azul los J con su
 //   observación, al final. Ámbar en los KM = REVISAR.
 //
-// EL FICHAJE ES EL PUNTO DE REFERENCIA (12/11/2026): la columna «Fichaje» dice
-// a qué horas fichó cada uno por WhatsApp, o «Sin fichar» si trabajó sin
-// hacerlo. Los km de un coche mientras dura un turno fichado son de quien lo
-// fichó; sin fichaje, los de BOLT de quien estaba conectado y los de fuera del
-// último que estuvo en BOLT con el coche (repo/reporteHoras).
-//
 // Los DATOS los arma repo/reporteHoras, en PostgreSQL de punta a punta. Este
 // módulo llevaba además la escritura de las J en la hoja JUSTIFICANTES y en
 // VISTA_FINAL; eso se quedó sin uso cuando justificar pasó a la tabla
@@ -51,10 +45,8 @@ const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 
 // "Prom. mes" va pegada al nombre a propósito: es lo que convierte el dato del
 // día en un juicio. 6 h en alguien que promedia 9 es una caída; en alguien que
 // promedia 6, un martes normal.
-const CAB_REPORTE = ['Nº', 'Nombre', 'Prom. mes', 'Teléfono', 'Turno', 'Horas', 'Observaciones', 'Matrícula', 'Fichaje', 'KM BOLT', 'KM fuera BOLT'];
-const ANCHOS_REPORTE = [6, 34, 11, 16, 11, 12, 26, 15, 16, 12, 14];
-// Las columnas que más se tocan, por su número (1 = A).
-const COL_FICHAJE = 9, COL_KM_BOLT = 10, COL_KM_FUERA = 11;
+const CAB_REPORTE = ['Nº', 'Nombre', 'Prom. mes', 'Teléfono', 'Turno', 'Horas', 'Observaciones', 'Matrícula', 'KM BOLT', 'KM descon.'];
+const ANCHOS_REPORTE = [6, 34, 11, 16, 11, 12, 26, 15, 12, 12];
 const N_REPORTE = CAB_REPORTE.length;
 const ULTIMA_REPORTE = est.colLetra(N_REPORTE);
 
@@ -141,8 +133,7 @@ async function excelDia(reporte) {
     const row = ws.getRow(fila);
     [f.nro, f.nombre, f.promedioMes == null ? '' : f.promedioMes, f.telefono, f.turno || '',
      f.horasTexto, f.observacion,
-     f.matricula || '', f.fichaje || (f.sinFichar ? 'Sin fichar' : ''),
-     f.kmBolt == null ? '' : f.kmBolt, f.kmDesc == null ? '' : f.kmDesc].forEach((v, ci) => {
+     f.matricula || '', f.kmBolt == null ? '' : f.kmBolt, f.kmDesc == null ? '' : f.kmDesc].forEach((v, ci) => {
       const c = row.getCell(ci + 1);
       c.value = v;
       c.border = est.TODOS_BORDES;
@@ -153,17 +144,16 @@ async function excelDia(reporte) {
         c.numFmt = '0.0" h"';
         c.font = { size: 11, color: { argb: 'FF6B7280' } };
       }
-      // Las dos columnas de KM (índices 9 y 10, detrás del fichaje) en formato
-      // "0,0 km". La matrícula (7) y el fichaje (8) son texto.
-      const esKm = ci >= COL_KM_BOLT - 1;
-      if (esKm && typeof v === 'number') c.numFmt = '0.0" km"';
+      // Las dos columnas de KM (ahora índices 8 y 9) en formato "0,0 km". La
+      // matrícula (índice 7) es texto y no se toca.
+      if (ci >= 8 && typeof v === 'number') c.numFmt = '0.0" km"';
       // KM POR GPS. Los km buenos son los del ODÓMETRO del coche; unos pocos
       // coches llevan un equipo que no lee el CAN y de esos solo hay la
       // estimación del GPS, que corta las curvas y pierde lo que no ve. El
       // número sigue valiendo —por eso se deja como número y suma—, pero la
       // celda avisa de con qué vara está medido. Sin esto, dos filas iguales
       // parecen igual de firmes y no lo son.
-      if (esKm && typeof v === 'number' && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta')) {
+      if (ci >= 8 && typeof v === 'number' && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta')) {
         c.fill = est.relleno('FFFFF4D6');
         c.font = { size: 11, color: { argb: 'FF92610A' }, italic: true };
         c.note = {
@@ -175,7 +165,7 @@ async function excelDia(reporte) {
       // OJO AL ORDEN: la banda de filas alternas va después y pisaría el ámbar de
       // "KM POR GPS" —se comía la mitad de los avisos, los de las filas pares—.
       // Por eso no toca las dos columnas de km cuando ya están marcadas.
-      const marcada = esKm && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta') && typeof v === 'number';
+      const marcada = ci >= 8 && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta') && typeof v === 'number';
       if (i % 2 && !marcada) c.fill = est.relleno('FFFAFBFC');
     });
     // El COLOR va solo en la celda de horas, que con la columna nueva es la 6.
@@ -184,15 +174,8 @@ async function excelDia(reporte) {
     cel.font = { size: 11, bold: true, color: { argb: f.color === 'azul' ? 'FFFFFFFF' : 'FF1F2430' } };
     // REVISAR: las dos celdas de KM (8 y 9) en ámbar y negrita, para que salte a la
     // vista que ese km hay que cuadrarlo a mano (fichó con un coche sin traza de Mapon).
-    // SIN FICHAR: trabajó (o movió un coche) sin fichar por WhatsApp. Sus km son
-    // los de BOLT y, los de fuera, del último que estuvo en BOLT con el coche.
-    if (f.sinFichar) {
-      const fc = row.getCell(COL_FICHAJE);
-      fc.font = { size: 11, bold: true, color: { argb: 'FF92400E' } };
-      fc.note = { texts: [{ text: 'No fichó por WhatsApp. Sus km son los que hizo conectado en BOLT y, los de fuera de BOLT, los del coche con el que estuvo en BOLT hasta que lo cogió otro.' }] };
-    }
     if (f.revisar) {
-      [COL_KM_BOLT, COL_KM_FUERA].forEach(cn => {
+      [9, 10].forEach(cn => {
         const kc = row.getCell(cn);
         kc.fill = est.relleno(FILL.revisar);
         kc.font = { size: 11, bold: true, color: { argb: 'FF5A4600' } };
@@ -203,14 +186,14 @@ async function excelDia(reporte) {
     // coche de Barcelona no se cuentan y las dos celdas dicen «Barcelona». Si ese
     // día llevó también uno de Madrid, van sus km y una nota dice qué se apartó.
     if (f.otraSede) {
-      [COL_KM_BOLT, COL_KM_FUERA].forEach(cn => {
+      [9, 10].forEach(cn => {
         const kc = row.getCell(cn);
         kc.fill = est.relleno(FILL.sede);
         kc.font = { size: 11, italic: true, color: { argb: 'FF4B4466' } };
       });
-      row.getCell(COL_KM_BOLT).note = { texts: [{ text: `Coche de ${f.otraSede}: sus km no se cuentan aquí. La flota que se vigila es la de Madrid.` }] };
+      row.getCell(9).note = { texts: [{ text: `Coche de ${f.otraSede}: sus km no se cuentan aquí. La flota que se vigila es la de Madrid.` }] };
     } else if (f.kmAparte && f.kmAparte.km > 0) {
-      const kc = row.getCell(COL_KM_BOLT);
+      const kc = row.getCell(9);
       const antes = kc.note && kc.note.texts ? kc.note.texts.map(t => t.text).join('') + '\n\n' : '';
       kc.note = { texts: [{ text: antes + `No incluye ${String(f.kmAparte.km).replace('.', ',')} km de ${f.kmAparte.matriculas.join(', ')} (${f.kmAparte.sede}): la flota que se vigila es la de Madrid.` }] };
     }
@@ -245,9 +228,6 @@ async function excelDia(reporte) {
     fila = lineaResumen(ws, fila, 'De ellos, trabajaron EN SU LIBRANZA', r.enLibranza, { tenue: true });
     fila = lineaResumen(ws, fila, 'Horas trabajadas en libranza', r.horasEnLibranza, { horas: true, tenue: true });
   }
-  // El fichaje por WhatsApp es el punto de referencia de los km (12/11/2026).
-  fila = lineaResumen(ws, fila, 'Ficharon por WhatsApp', r.ficharon || 0);
-  if (r.sinFichar) fila = lineaResumen(ws, fila, 'Trabajaron (o movieron un coche) SIN FICHAR', r.sinFichar);
   fila++;
   // Son las horas de la GENTE de cada turno, no las de una franja horaria
   // (06/10/2026): el de día cuenta de 00:00 a 24:00 y el de noche de 12:00 a
@@ -271,20 +251,18 @@ async function excelDia(reporte) {
     ['azul', 'Justificado (J) — sus horas justificadas se SUMAN a las de BOLT'],
     ['gris', 'Sin dato de horas ese día'],
     ['revisar', 'REVISAR — fichó en BOLT con un coche sin traza de Mapon; lo cuadra Tráfico'],
-    ['sede', 'Barcelona — coche de otra sede: sus km no se cuentan (la flota que se vigila es la de Madrid)'],
-    [null, 'FICHAJE — los km de un coche mientras dura un turno fichado por WhatsApp son de quien lo fichó: «KM BOLT» los que el coche hizo con alguien conectado en BOLT, «KM fuera BOLT» el resto. ' +
-      'Sin fichar: los de BOLT, de quien estaba conectado; los de fuera de BOLT, del último que estuvo en BOLT con ese coche']
+    ['sede', 'Barcelona — coche de otra sede: sus km no se cuentan (la flota que se vigila es la de Madrid)']
   ].forEach(([color, texto]) => {
     ws.mergeCells(`B${fila}:${ULTIMA_REPORTE}${fila}`);
     const chip = ws.getCell(`A${fila}`);
-    if (color) chip.fill = est.relleno(FILL[color]);
+    chip.fill = est.relleno(FILL[color]);
     chip.border = est.TODOS_BORDES;
     const t = ws.getCell(`B${fila}`);
     t.value = texto;
     t.font = { size: 10, color: { argb: est.TEXTO } };
-    t.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
+    t.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
     t.border = est.TODOS_BORDES;
-    ws.getRow(fila).height = texto.length > 140 ? 44 : 18;
+    ws.getRow(fila).height = 18;
     fila++;
   });
 
