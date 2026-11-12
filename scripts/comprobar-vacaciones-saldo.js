@@ -106,8 +106,12 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   igual('Alta en 2023: se le calcula desde el 01/01/2026', [s.inicio, s.desdeElAlta, s.diasNaturales], ['2026-01-01', false, 287]);
   igual('…y los días de 2025 no cuentan: 31 de enero', [s.diasLaborados, s.generadas], [31, 1.82]);
   s = saldoDe({ alta: '2023-11-13' }, [vac('2025-08-01', '2025-08-20'), vac('2025-12-28', '2026-01-03')], [], new Map(), HOY);
-  igual('Las vacaciones de 2025 no restan; las que cruzan el 1 de enero, solo sus días de 2026 (3)',
-    [s.disfrutadas, s.detalle.vacaciones.length], [3, 1]);
+  // 12/11/2026, Camilo: las que empezaron en 2025 y acaban en 2026 tampoco
+  // restan: «empezó en 2025, que le reste 0». Hasta entonces restaban sus días de 2026.
+  igual('Las vacaciones de 2025 no restan, tampoco las que cruzan el 1 de enero (salen a 0, y se dice por qué)',
+    [s.disfrutadas, s.detalle.vacaciones.length, s.detalle.vacaciones[0].disfrutados, s.detalle.vacaciones[0].deAntes], [0, 1, 0, true]);
+  s = saldoDe({ alta: '2023-11-13' }, [vac('2026-01-01', '2026-01-03')], [], new Map(), HOY);
+  igual('…y las que empiezan el 1 de enero sí restan', s.disfrutadas, 3);
 
   const meses = L('2026-07-13', '2026-07-31', 8, L('2026-08-01', '2026-08-05', 3, L('2026-08-06', '2026-08-10', 9)));
   s = saldoDe({ alta: '2026-07-13' }, [], [], new Map(), HOY, meses);

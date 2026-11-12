@@ -161,6 +161,18 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
       // Solo los días que le tocaba trabajar: sus libranzas se mantienen (las
       // dos puestas a mano, si las lleva; si no, las del planificador).
       const libra = (t.libra_dias || []).length === 2 ? t.libra_dias.map(Number) : null;
+      // UNAS VACACIONES QUE EMPEZARON ANTES DE 2026 NO RESTAN NADA, tampoco los
+      // días que caen ya en 2026 (12/11/2026, Camilo, con las de Jorge Humberto
+      // Romero Gutierrez del 22/12/2025 al 16/01/2026: «Que esas −16 no existan
+      // … empezó en 2025, que le reste 0»). Son vacaciones del año pasado, y lo
+      // de antes de 2026 no cuenta para nada. Se enseñan, a 0, y se dice por qué.
+      if (t.desde < DESDE_HISTORICO) {
+        vacaciones.push({ ...linea, disfrutados: 0, programados: 0, libranzas: 0, sinCuadrante: 0, libraDias: libra,
+          deAntes: true, quien: t.quien || '', puesto: t.puesto || '',
+          ticket: t.ticket_id ? { id: t.ticket_id, codigo: t.ticket_codigo || '' } : null,
+          editable: false, empezadas: true });
+        continue;
+      }
       const ya = pasado ? deVacaciones(t.desde > inicio ? t.desde : inicio, hasta < hoy ? hasta : hoy, libra) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
       const va = futuro ? deVacaciones(t.desde > manana ? t.desde : manana, t.hasta, libra) : { cuentan: 0, libra: 0, sinCuadrante: 0 };
       disfrutadas += ya.cuentan; programadas += va.cuentan;

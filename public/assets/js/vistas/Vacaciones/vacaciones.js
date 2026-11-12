@@ -211,7 +211,9 @@
                   ? `<span class="block text-[11px] text-telecab-muted" title="Puestos a mano al aprobarlas">libra ${esc(nombresLibra(x.libraDias))}</span>` : '') + (x.sinCuadrante
                   ? `<span class="block text-[11px] text-telecab-muted" title="Antes del planificador (03/09/2026), o sin plaza: no se sabe qué libraba y el día cuenta.">${x.sinCuadrante} sin cuadrante</span>` : '') },
               { titulo: 'Cuentan', campo: 'disfrutados', clase: 'whitespace-nowrap tabular-nums',
-                pinta: (v, x) => (x.programados && !v ? '<span class="text-telecab-muted">programadas</span>'
+                pinta: (v, x) => (x.deAntes
+                  ? `<span class="text-telecab-muted" title="Empezaron antes del ${f(R.desde)}: son del año pasado y no restan, tampoco los días que caen en este">0 · empezaron en ${esc(String(x.desde).slice(0, 4))}</span>`
+                  : x.programados && !v ? '<span class="text-telecab-muted">programadas</span>'
                   : (v ? '−' + v : DASH) + (x.programados ? `<span class="block text-[11px] text-telecab-muted">y ${x.programados} programado(s)</span>` : '')) },
               // Sin motivo, lo único que dice de dónde sale es quién lo puso a mano.
               { titulo: 'De dónde sale', campo: 'motivo', pinta: (v, x) => (v ? `<span class="text-sm text-telecab-muted">${esc(v)}</span>`
