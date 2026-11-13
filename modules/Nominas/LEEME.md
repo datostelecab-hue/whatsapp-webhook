@@ -67,11 +67,12 @@ viaje + espera, así que quien pasa el mes con la app abierta y poca carrera acu
 igual que quien no para. El caso que lo destapó: 211,4 h en el mes y 35,4 de exceso sobre el
 objetivo… con un **52,7 % de utilización**. De sus 211 horas, 100 fueron espera.
 
-Así que hay **dos listones** (16/10/2026, editables desde el panel): quien llega al **75 %**
-de utilización (`utilUmbral`) no pierde nada; a quien **no** llega se le exige el **85 %**
-(`utilExigida`) y se le quitan horas **de espera** —nunca de viaje— hasta dejarlo
-exactamente ahí. Sale en su propia columna, *Horas de espera quitadas*. Hasta ese día había
-un solo listón del 65 %.
+Así que hay **dos listones**, editables desde el panel de configuración: quien llega al
+umbral de utilización (`utilUmbral`) no pierde nada; a quien **no** llega se le exige la
+utilización `utilExigida` y se le quitan horas **de espera** —nunca de viaje— hasta dejarlo
+exactamente ahí. Sale en su propia columna, *Horas de espera quitadas*. **Desde el 13/11/2026
+los dos son el 75 %.** Antes: un listón del 65 % hasta el 16/10; 75 % y 85 % hasta el 10/11;
+el 77 % (db/239) hasta el 13/11. Lo guardado en `nomina_config` manda sobre el código.
 
 ```
 utilización = viaje ÷ (viaje + espera)

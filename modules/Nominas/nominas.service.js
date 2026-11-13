@@ -58,17 +58,17 @@
 //    destapo: 211,4 h en el mes y 35,4 de exceso sobre el objetivo... con un
 //    52,7 % de utilizacion. De sus 211 horas, 100 fueron espera.
 //
-//    EL LISTON ES EL 77 % (10/11/2026, Camilo: «No vamos a ser tan agresivos,
-//    deja que todo mundo tenga al menos 77% de utilización, si tiene más de
-//    eso no le quitamos, si tiene menos de eso entonces le quitamos hasta
-//    llegar al 77%», tanto para la ETT como para la propia):
-//      · quien llega al 77 % de utilizacion (`utilUmbral`) no pierde nada;
-//      · a quien NO llega se le exige el 77 % (`utilExigida`): se le quitan
-//        horas DE ESPERA —nunca de viaje— hasta dejarlo exactamente en el 77.
-//    Siguen siendo dos parametros (se pueden volver a separar desde el panel),
-//    pero hoy valen lo mismo. Historia: hasta el 16/10/2026, un liston del
-//    65 %; del 16/10 al 10/11, dos (quien no llegaba al 75 se llevaba al 85,
-//    «mucho más estricto»). db/239 los dejo en el 77 en nomina_config.
+//    EL LISTON ES EL 75 % desde el 13/11/2026 (Camilo: «En vez de exigir 77%,
+//    que solo sea 75%, que se pueda configurar también este parámetro»), para
+//    la ETT y para la propia:
+//      · quien llega al 75 % de utilizacion (`utilUmbral`) no pierde nada;
+//      · a quien NO llega se le exige el 75 % (`utilExigida`): se le quitan
+//        horas DE ESPERA —nunca de viaje— hasta dejarlo exactamente en el 75.
+//    Los dos se cambian en el panel de configuración de /nominas, y LO GUARDADO
+//    EN nomina_config MANDA sobre lo de aquí. Siguen siendo dos parametros (se
+//    pueden separar), pero hoy valen lo mismo. Historia: hasta el 16/10/2026,
+//    un liston del 65 %; del 16/10 al 10/11, dos (quien no llegaba al 75 se
+//    llevaba al 85, «mucho más estricto»); del 10/11 al 13/11, el 77 (db/239).
 //
 //      utilizacion = viaje / (viaje + espera)
 //      X = (viaje + espera) - viaje / exigida          (solo si utilizacion < umbral)
@@ -189,9 +189,10 @@ const DEFAULTS = {
                         // Verificado reproduciendo junio: con 7 cuadra 164/164 al céntimo.
   // Los dos listones de utilización (regla 4, 16/10/2026). Sustituyen a
   // `utilMinima` (0,65) y a `lUtilizacion` (0,75, que era informativo).
-  // Desde el 10/11/2026 los dos son el 77 % (db/239; antes, 0,75 y 0,85).
-  utilUmbral: 0.77,     // USADO — quien llega a esta utilización no pierde ninguna hora
-  utilExigida: 0.77,    // USADO — a quien no llega se le exige esta: se le retiran horas
+  // Desde el 13/11/2026 los dos son el 75 % (del 10/11 al 13/11, el 77 de
+  // db/239; antes, 0,75 y 0,85). Manda lo guardado desde el panel.
+  utilUmbral: 0.75,     // USADO — quien llega a esta utilización no pierde ninguna hora
+  utilExigida: 0.75,    // USADO — a quien no llega se le exige esta: se le retiran horas
                         // de ESPERA hasta dejarlo exactamente aquí
   // USADO — a partir de este neto hay MBO FAS, según jornada. El de 32 h es
   // 3.750 desde el 19/10/2026 (Camilo: «es 40 h → 4.750, 32 h → 3.750, también
@@ -219,8 +220,8 @@ const CONFIG_CAMPOS = [
   { key: 'pctDiaVacaciones', label: 'Día de vacaciones: lo que vale de un día (0.73 = 73 %)', usado: true },
   { key: 'horasMetaMes40', label: 'Objetivo del mes con jornada de 40 h', usado: true },
   { key: 'eurHoraExtra', label: '€ por hora extra', usado: true },
-  { key: 'utilUmbral', label: 'Utilización con la que no se quitan horas (0.77 = 77 %)', usado: true },
-  { key: 'utilExigida', label: 'Utilización exigida a quien no llega (0.77 = 77 %)', usado: true },
+  { key: 'utilUmbral', label: 'Utilización con la que no se quitan horas (0.75 = 75 %)', usado: true },
+  { key: 'utilExigida', label: 'Utilización exigida a quien no llega (0.75 = 75 %)', usado: true },
   { key: 'umbralFAS40', label: 'Umbral FAS 40h (€)', usado: true },
   { key: 'umbralFAS32', label: 'Umbral FAS 32h (€)', usado: true },
   { key: 'pctMBOFAS', label: '% MBO FAS (fracción, 0.4 = 40%)', usado: true },
@@ -320,8 +321,8 @@ const objetivoDe = (jornada, cfg) => cfg.horasMetaMes40 * (jornada / 40);
 
 /**
  * LAS HORAS DE ESPERA QUE SE QUITAN por utilización (regla 4). Quien llega al
- * umbral (77 %) no pierde nada; a quien no llega se le retiran horas de ESPERA
- * hasta dejarlo en la exigida (77 %). El viaje no se toca nunca, y la propia
+ * umbral (75 %) no pierde nada; a quien no llega se le retiran horas de ESPERA
+ * hasta dejarlo en la exigida (75 %). El viaje no se toca nunca, y la propia
  * fórmula lo garantiza: X no puede pasar de la espera que tuvo. La usan las
  * variables (el mes de trabajo) y la base (del 26 al 25), cada una con su
  * periodo.
