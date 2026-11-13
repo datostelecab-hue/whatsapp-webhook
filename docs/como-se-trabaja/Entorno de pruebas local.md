@@ -70,6 +70,10 @@ La copia **solo lee** de producción: `pg_dump` no escribe, y además va con la 
 > [!warning] La copia tiene datos personales de verdad
 > DNI, email y teléfono de los conductores. Se quedan en el volumen de Docker de este PC (`telecab-pruebas_pg`); el fichero intermedio de la copia se borra al acabar. Lo eligió Camilo el 19/10/2026: con los correos encerrados en el buzón falso, se puede entrar al portal con el DNI de cualquiera y ver el código en Mailpit.
 
+## La otra base: la de los tests
+
+En el mismo contenedor vive, desde el 13/11/2026, **`telecab_pruebas`**: vacía, sintética y sin una sola persona de verdad. Es la de las [[Pruebas automáticas]] (`npm run pruebas:base` la rehace desde las migraciones y `npm test` corre contra ella). Los tests nunca usan esta copia: la convención 11 de la [[Hoja de ruta]] prohíbe probar con datos reales.
+
 ## No confundir con el laboratorio de seguridad
 
 El laboratorio de [[Seguridad]] (`Documents\lab-erp`) es otra cosa: **datos sintéticos** y claves ficticias, aislado en la red host-only para atacarlo con Kali. Este entorno es para **ver funcionar** el ERP con los datos de verdad, nunca para atacarlo.

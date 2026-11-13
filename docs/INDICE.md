@@ -17,7 +17,7 @@ El mapa del proyecto. Cada nota cuenta una pieza y enlaza con las de al lado; si
 - **[[Telecab]]** — El negocio y la forma en que se trabaja. Sin esto, la mitad de las decisiones del sistema no se entienden.
 - **[[Arquitectura]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
 - **[[Estado y pendientes]]** — Lo que está abierto hoy. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
-- **[[Hoja de ruta]]** — Los 21 desarrollos que pidió Ignacio el 10/11/2026 (tablero de tareas, chat, avisos, RR. HH., administración, flota), en qué orden y qué del ERP sirve para cada uno. Antes de nada, una fase de cimientos.
+- **[[Hoja de ruta]]** — Los 22 desarrollos que pide Ignacio (tablero de tareas, chat, avisos, RR. HH., administración, flota y el informe trimestral por persona), en qué orden, qué del ERP sirve para cada uno y qué falta decidir. Antes de nada, una fase de cimientos.
 
 ## Referencia de las APIs
 
@@ -93,7 +93,8 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 
 ## Cómo se trabaja aquí
 
-- **[[Comprobadores]]** — En este proyecto no hay pruebas automáticas, ni linter, ni npm scripts.
+- **[[Comprobadores]]** — Los scripts `scripts/comprobar-*.js`, que revisan el código o miran la copia de producción y salen con 1 si hay algo que arreglar.
+- **[[Pruebas automáticas]]** — `npm test` (13/11/2026): un test por criterio de aceptación, contra una base sintética sin datos de personas que se rehace con `npm run pruebas:base`.
 - **[[Entorno de pruebas local]]** — El ERP y el portal en el PC, contra una copia de producción, con los correos encerrados en un buzón falso (19/10/2026).
 - **[[Glosario]]** — El vocabulario de la casa. Son palabras que en este ERP significan una cosa
 - **[[Reglas de la casa]] · [[Componentes de la casa]]** — Lo que se respeta sí o sí en este repositorio.

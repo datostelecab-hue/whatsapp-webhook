@@ -6,7 +6,9 @@
     "postinstall": "node services/tailwind.js && node scripts/comprobar-al-instalar.js",
     "css": "node services/tailwind.js",
     "comprobar": "node scripts/comprobar-vistas.js",
-    "lint": "eslint public/assets/js"
+    "lint": "eslint public/assets/js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "pruebas:base": "node scripts/pruebas/crear-base.js"
   },
   "dependencies": {
     "compression": "^1.8.1",
