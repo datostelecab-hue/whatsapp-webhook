@@ -34,8 +34,8 @@
 // base. `de(sede)` lo monta con lo de la base, con caché de diez minutos.
 'use strict';
 
-const db = require('./db');
 const parametros = require('./parametros');
+const repo = require('./repo/calendario');
 
 const ZONA = 'Europe/Madrid';
 const TOPE_DIAS = 3700;   // diez años: ninguna cuenta legítima llega; un bucle roto sí
@@ -120,15 +120,20 @@ function crear({ festivos = [], horario, anos = null, sede = '' } = {}) {
     abre: aMinutos(horario.desde),
     cierra: aMinutos(horario.hasta),
     anos: anos ? new Set(anos.map(Number)) : null,
-    avisados: new Set(),
   };
 }
+
+// Los años sin festivos ya avisados, en todo el proceso: cada vuelta de las
+// tareas programadas monta un calendario nuevo, y el aviso tiene que salir una
+// vez, no cada diez minutos.
+const AVISADOS = new Set();
 
 function avisarSiFalta(cal, iso) {
   if (!cal.anos) return;
   const a = Number(iso.slice(0, 4));
-  if (cal.anos.has(a) || cal.avisados.has(a)) return;
-  cal.avisados.add(a);
+  const k = `${cal.sede}|${a}`;
+  if (cal.anos.has(a) || AVISADOS.has(k)) return;
+  AVISADOS.add(k);
   console.warn(`⚠️  [CALENDARIO] No hay festivos cargados de ${a}${cal.sede ? ' (' + cal.sede + ')' : ''}: ese año solo cuentan los fines de semana. Cárgalos con una migración.`);
 }
 
@@ -263,11 +268,7 @@ let cache = null;   // { at, filas: { festivo: [...], oficina: [...] } }
 
 async function festivosDeLaBase() {
   if (cache && Date.now() - cache.at < DURA_MS) return cache.filas;
-  const [f, o] = await Promise.all([
-    db.consulta(`SELECT to_char(fecha, 'YYYY-MM-DD') AS fecha, ambito FROM festivo`),
-    db.consulta(`SELECT sede, to_char(fecha, 'YYYY-MM-DD') AS fecha FROM festivo_oficina`),
-  ]);
-  cache = { at: Date.now(), filas: { festivo: f.rows, oficina: o.rows } };
+  cache = { at: Date.now(), filas: await repo.festivos() };
   return cache.filas;
 }
 

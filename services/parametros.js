@@ -24,7 +24,7 @@
 // (Camilo, 13/11/2026). La pantalla es modules/Parametros.
 'use strict';
 
-const db = require('./db');
+const repo = require('./repo/parametros');
 
 // ── Los tipos ──────────────────────────────────────────────────────────────
 // `entero` lleva su `unidad` (lo que se escribe detrás del número) y sus
@@ -216,14 +216,8 @@ let cache = null;   // { at, porClave: Map<clave, cambios ordenados por desde> }
 
 async function cargar() {
   if (cache && Date.now() - cache.at < DURA_MS) return cache.porClave;
-  const r = await db.consulta(
-    `SELECT c.id, c.clave, c.valor, c.desde, c.motivo, c.usuario_id, c.creado_at,
-            btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')) AS quien
-       FROM parametro_cambio c
-       LEFT JOIN usuario u ON u.id = c.usuario_id
-      ORDER BY c.clave, c.desde, c.id`);
   const porClave = new Map();
-  for (const f of r.rows) {
+  for (const f of await repo.cambios()) {
     if (!porClave.has(f.clave)) porClave.set(f.clave, []);
     porClave.get(f.clave).push(f);
   }
@@ -295,9 +289,9 @@ async function cambiar(clave, crudo, { usuarioId, motivo } = {}) {
   const nuevo = validar(p.clave, crudo);
   const actual = await valor(p.clave);
   if (JSON.stringify(nuevo) === JSON.stringify(actual)) throw new Error('Ese ya es el valor que tiene');
-  await db.consulta(
-    `INSERT INTO parametro_cambio (clave, valor, motivo, usuario_id) VALUES ($1, $2::jsonb, $3, $4)`,
-    [p.clave, JSON.stringify(nuevo), m.slice(0, 500), Number(usuarioId) || null]);
+  await repo.insertarCambio({
+    clave: p.clave, valorJson: JSON.stringify(nuevo), motivo: m.slice(0, 500), usuarioId: Number(usuarioId) || null,
+  });
   invalidar();
   return (await lista()).find(x => x.clave === p.clave);
 }
