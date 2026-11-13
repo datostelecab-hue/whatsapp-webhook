@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4 en su rama)
+estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4 y A10 en sus ramas)
 ---
 
 # Hoja de ruta
@@ -20,7 +20,8 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A2. Calendario laboral | **Hecha** (13/11/2026): `services/calendario.js` y los festivos de la oficina (db/244). Ver [[Calendario laboral]] |
 | A3. Parámetros | **Hecha** (13/11/2026): `services/parametros.js`, la pantalla `/parametros` y su historial (db/243). Ver [[Parametros]] |
 | A4. Libro de auditoría | **Hecha en la rama `fase-a/a4-auditoria`** (13/11/2026), a falta de probarla en el servidor de pruebas: la tabla `auditoria`, `auditoria_vigilar()` y `services/libro.js` (db/245). Ver [[Libro de auditoria]] |
-| A5 a A10 | Pendientes |
+| A10. Tareas programadas | **Hecha en la rama `fase-a/a10-tareas-programadas`** (13/11/2026, sale de la de A4), a falta de probarla: `services/tareasProgramadas.js` y `tarea_programada_vez` (db/246). Ver [[Tareas programadas]] |
+| A5 a A9 | Pendientes |
 
 ## Lo que Ignacio cerró en la última versión
 
@@ -83,9 +84,9 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A7. Tiempo real** | Nada: se sondea cada 3 s a 5 min | Una ruta SSE fuera de la compresión, con latido cada 25 s, reconexión que pide lo perdido y un cliente común que cae al sondeo. Con una sola instancia basta un bus en memoria; LISTEN/NOTIFY solo si hay más |
 | **A8. Notificaciones** | Nada: ni manifest, ni service worker, ni Web Push | Manifest, service worker en `/sw.js` (desde `/assets` no controlaría el ERP), claves VAPID, suscripciones por dispositivo y permiso pedido tras un clic. En iPhone solo funcionan con la web instalada |
 | **A9. Contadores del menú** | Tres contadores sueltos: la campana, los cuadros de tickets y la chapa de fichaje. Con el menú contraído solo se ve `#nav-pend-badge` | Un endpoint de recuentos por usuario, una marca por entrada, la suma por grupo y una clase CSS común |
-| **A10. Tareas programadas** | ~25 crons en `app.js` con `programar()`, que en pruebas no arrancan | Tabla de ejecuciones y una clave de idempotencia por tarea y periodo: en cada despliegue conviven dos procesos un rato |
+| **A10. Tareas programadas** | Hecha: una vuelta cada diez minutos hace las tareas de negocio que tengan su vez pendiente, una sola vez aunque haya dos procesos y recuperando la que se perdió por una caída (`services/tareasProgramadas.js`, db/246). Ver [[Tareas programadas]] | A quién se avisa si una falla (con el ítem 3). Una pantalla con los intentos. Los crons viejos de `app.js` siguen como estaban |
 
-Orden de lo que queda: A10 → A5 → A6 → A7, A8 y A9.
+Orden de lo que queda: A5 → A6 → A7, A8 y A9.
 
 **Desde el 13/11/2026 cada pieza va en su rama** (`fase-a/…`) y Camilo la prueba en el servidor de pruebas de Render (con `MODO_PRUEBAS`) antes de pasarla a `main`.
 

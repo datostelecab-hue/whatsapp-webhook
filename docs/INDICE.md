@@ -34,6 +34,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Ingesta]]** — La única puerta por la que entran datos externos.
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
 - **[[Libro de auditoria]]** — Un solo libro de quién hizo qué, cuándo, desde dónde y por qué (13/11/2026, db/245): lo escribe la base en cada tabla puesta bajo él con `auditoria_vigilar()`, y no se cambia ni se borra.
+- **[[Tareas programadas]]** — Las tareas de negocio que el ERP hace solo en su momento (13/11/2026, db/246): una vuelta cada diez minutos, una sola vez por periodo aunque haya dos procesos, y recupera la que se perdió por una caída.
 - **[[Calendario laboral]]** — Los días y las horas hábiles de la oficina (13/11/2026): un solo servicio para todos los plazos, con los festivos del convenio, los de Madrid capital y el horario de oficina como parámetro.
 - **[[Migraciones]]** — El esquema de la Base de datos no se toca a mano: se cambia añadiendo un fichero a db/.
 - **[[Sedes]]** — Madrid y Barcelona: qué hay de Barcelona en la base (coches, la empresa de BOLT y sus cuentas) y por qué ninguna pantalla de Madrid lo enseña.

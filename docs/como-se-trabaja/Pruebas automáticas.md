@@ -73,6 +73,7 @@ test('ítem 20: dar salida a un recambio baja las existencias', () =>
 | `test/inventario.test.js` | Ítem 20, que ya se cumple: dar salida a un recambio baja las existencias y suma su coste a la matrícula, y no se saca más de lo que hay |
 | `test/calendario.test.js` | El [[Calendario laboral]] y los criterios de la hoja de ruta que son cuenta de calendario (ítems 1, 5, 6, 7, 10 y 18) |
 | `test/libro.test.js` | El [[Libro de auditoria]], con una tabla inventada que se crea dentro del test: alta firmada, cambio de estado, anulación sin firmar, reasignación con motivo, columnas que no se apuntan, lecturas y que el libro no se toca |
+| `test/tareas-programadas.test.js` | Las [[Tareas programadas]]: una vez por periodo, otro proceso en curso, la que se quedó a medias, el reintento tras un fallo y el criterio del ítem 7 (el 20 o el hábil anterior) |
 | `test/parametros.test.js` | Los [[Parametros]]: valores por defecto, validación, historia y que el historial no se cambia ni se borra |
 
 Un servicio con caché (parámetros, calendario) exporta `invalidar()`: `conBase` la llama en todos los de `services/` antes de cada test, para que ninguno vea lo que dejó en caché el anterior.

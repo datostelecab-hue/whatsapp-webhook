@@ -686,6 +686,12 @@ programar('10 5 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// LAS TAREAS PROGRAMADAS DE NEGOCIO (13/11/2026, db/246, pieza A10 de la hoja
+// de ruta). Una sola vuelta cada diez minutos hace las que tengan su vez
+// pendiente, una vez cada una aunque haya dos procesos, y recupera la que se
+// perdió por una caída. Se registran en services/tareasProgramadas.js.
+require('./services/tareasProgramadas').arrancar(programar);
+
 // LAS BAJAS PROGRAMADAS (db/191, 13/10/2026). Quien se da de baja con fecha
 // futura sigue de alta y en su plaza hasta ese día; cuando la jornada de ese
 // día termina (05:00 del siguiente, por los turnos de noche), se le da de baja
