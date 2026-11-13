@@ -316,6 +316,9 @@ app.use('/usuarios', usuariosRoutes);
 // Los parámetros de negocio (db/243, convención 4 de la hoja de ruta): el
 // desarrollador o quien tenga la llave '/parametros' (de inicio, Ignacio).
 app.use('/parametros', require('./modules/Parametros/parametros.controller'));
+// La organización (db/248, pieza A5): áreas, superiores y funciones. Los mismos
+// que entran en Usuarios y permisos: el desarrollador o la llave '/usuarios'.
+app.use('/organizacion', require('./modules/Organizacion/organizacion.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)

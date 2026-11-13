@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4 y A10 en sus ramas)
+estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4, A10 y A5 en sus ramas)
 ---
 
 # Hoja de ruta
@@ -21,7 +21,8 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A3. Parámetros | **Hecha** (13/11/2026): `services/parametros.js`, la pantalla `/parametros` y su historial (db/243). Ver [[Parametros]] |
 | A4. Libro de auditoría | **Hecha en la rama `fase-a/a4-auditoria`** (13/11/2026), a falta de probarla en el servidor de pruebas: la tabla `auditoria`, `auditoria_vigilar()` y `services/libro.js` (db/245). Ver [[Libro de auditoria]] |
 | A10. Tareas programadas | **Hecha en la rama `fase-a/a10-tareas-programadas`** (13/11/2026, sale de la de A4), a falta de probarla: `services/tareasProgramadas.js` y `tarea_programada_vez` (db/246). Ver [[Tareas programadas]] |
-| A5 a A9 | Pendientes |
+| A5. Personas y organización | **Hecha en la rama `fase-a/a5-organizacion`** (13/11/2026, sale de la de A10), a falta de probarla: áreas, superiores y funciones por persona, la pantalla `/organizacion` y `services/organizacion.js` (db/248). Ver [[Organizacion]] |
+| A6 a A9 | Pendientes |
 
 ## Lo que Ignacio cerró en la última versión
 
@@ -79,14 +80,14 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A2. Calendario laboral** | Hecha: `services/calendario.js` (días y horas hábiles, semáforo, «hoy» en Madrid) con los festivos de `festivo` (db/197) y de `festivo_oficina` (db/244: San Isidro y la Almudena). Ver [[Calendario laboral]] | Barcelona (Camilo: más adelante; la tabla ya lleva la sede). **Los festivos de 2027** de la Comunidad y de Madrid capital (el servicio avisa en el log si un año no está cargado). Una pantalla de festivos. Usar el «hoy» común: hoy se calcula en más de 50 sitios con al menos 8 nombres, y en 6 ficheros en UTC (`vigencia.js`, la baja del conductor, el alta de un coche…) |
 | **A3. Parámetros** | Hecha: `services/parametros.js`, la pantalla `/parametros` y el historial intocable `parametro_cambio` (db/243). Ver [[Parametros]] | Pasar ahí los números de regla que siguen en el código o en variables de entorno, cuando se toque cada módulo (`DIA_CORTE`, los 2 días del aviso de citas, los 15 y 60 días de taller, la retención del chat de WhatsApp…) |
 | **A4. Auditoría** | Hecha: el libro `auditoria` (db/245), que se escribe por disparador en cada tabla puesta bajo él con `auditoria_vigilar()`, y `services/libro.js` para firmar, apuntar lecturas y leer la historia. Ver [[Libro de auditoria]] | El componente que pinta la historia en una ficha (con el ítem 1). Cuánto se guarda y quién lo consulta entero. Lo viejo (`cambio_campo`, `ticket_evento`) se queda como está |
-| **A5. Personas y organización** | Rol más llaves por usuario. Solo constan por id Ignacio (1), Víctor (3), Laura (4), Camilo (7) y Daiane (9) | Área y superior de cada usuario, y **responsables por función** con su `usuario.id` (supervisores, multas, caja, ITV, pólizas, taller). **Una matriz por rol con excepciones por persona**: la convención 6 pide la matriz por rol, pero varias reglas son de personas concretas (solo Laura, Ignacio y Fernando; solo Ignacio edita las pólizas; reciben efectivo Daiane, Ignacio y Fernando). Los datos sensibles se comprueban en el servicio, como hace `services/aprobarVacaciones.js` (`exigir`), también para superadmin y desarrollador |
+| **A5. Personas y organización** | Hecha: el área y el superior de cada usuario, y las funciones de cada persona con su suplente (`usuario_funcion`, db/248); `organizacion.quienes()` y `exigir()` para que ningún ítem escriba un nombre ni un id. La ficha enseña las llaves que se salen de las de su rol. Ver [[Organizacion]] | Área y superior de cada usuario, y **responsables por función** con su `usuario.id` (supervisores, multas, caja, ITV, pólizas, taller). **Una matriz por rol con excepciones por persona**: la convención 6 pide la matriz por rol, pero varias reglas son de personas concretas (solo Laura, Ignacio y Fernando; solo Ignacio edita las pólizas; reciben efectivo Daiane, Ignacio y Fernando). Los datos sensibles se comprueban en el servicio, como hace `services/aprobarVacaciones.js` (`exigir`), también para superadmin y desarrollador |
 | **A6. Adjuntos** | Cuatro almacenes distintos: `documento` (solo conductor o coche), `ticket.adjuntos` en JSONB, `whatsapp_adjunto` en la base y el adjunto de las facturas. Drive se descarga entero en memoria, sin Range. Casi todas las subidas van en base64 dentro del JSON (Selección usa multer en memoria); ninguna en streaming | **Decidir el almacén** antes del chat: Drive es un Gmail de 15 GB, y 5 años de chat, Slack y vídeos de siniestros no caben. Después, una tabla de adjuntos con cualquier dueño, subida multipart en streaming, descarga con Range y vista previa (PDF en iframe del mismo dominio, imágenes con VisorFoto, vídeo con `<video>`) |
 | **A7. Tiempo real** | Nada: se sondea cada 3 s a 5 min | Una ruta SSE fuera de la compresión, con latido cada 25 s, reconexión que pide lo perdido y un cliente común que cae al sondeo. Con una sola instancia basta un bus en memoria; LISTEN/NOTIFY solo si hay más |
 | **A8. Notificaciones** | Nada: ni manifest, ni service worker, ni Web Push | Manifest, service worker en `/sw.js` (desde `/assets` no controlaría el ERP), claves VAPID, suscripciones por dispositivo y permiso pedido tras un clic. En iPhone solo funcionan con la web instalada |
 | **A9. Contadores del menú** | Tres contadores sueltos: la campana, los cuadros de tickets y la chapa de fichaje. Con el menú contraído solo se ve `#nav-pend-badge` | Un endpoint de recuentos por usuario, una marca por entrada, la suma por grupo y una clase CSS común |
 | **A10. Tareas programadas** | Hecha: una vuelta cada diez minutos hace las tareas de negocio que tengan su vez pendiente, una sola vez aunque haya dos procesos y recuperando la que se perdió por una caída (`services/tareasProgramadas.js`, db/246). Ver [[Tareas programadas]] | A quién se avisa si una falla (con el ítem 3). Una pantalla con los intentos. Los crons viejos de `app.js` siguen como estaban |
 
-Orden de lo que queda: A5 → A6 → A7, A8 y A9.
+Orden de lo que queda: A6 → A7, A8 y A9.
 
 **Desde el 13/11/2026 cada pieza va en su rama** (`fase-a/…`) y Camilo la prueba en el servidor de pruebas de Render (con `MODO_PRUEBAS`) antes de pasarla a `main`.
 
@@ -418,7 +419,7 @@ Orden de lo que queda: A5 → A6 → A7, A8 y A9.
 
 **De Ignacio, cuanto antes:**
 - **El plan de Slack y quién es su Workspace Owner.** Si es Free, cada día se borra lo que cumple un año. Y si hay canales en los que no está él.
-- Los usuarios del ERP de Fernando, Ángel, William, Diana, Mercedes y Óscar, si Angie es externa, y las áreas y los superiores.
+- Si Angie es externa (no tiene usuario), y **las áreas, sus responsables y los superiores**: se ponen en `/organizacion` (A5). Y repasar el reparto de funciones que trae db/248.
 - El almacén de ficheros: seguir en Drive con más espacio o cambiar.
 - La objeción de la convención 6: #4-bajas-medicas, #6-nominas, #9-rrhh y #16-efectivo abiertos a toda la oficina.
 - Que acepte el orden de arriba.
