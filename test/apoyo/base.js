@@ -77,6 +77,15 @@ function actual() {
 
 const consulta = (sql, params) => actual().query(sql, params);
 
+// Lo que `set_config(…, true)` deja puesto hasta el final de una transacción:
+// la firma de los libros de auditoría (db/228 y db/245). En producción muere al
+// acabar la transacción del código; aquí esa transacción es un SAVEPOINT dentro
+// de la del test y seguiría viva, así que se borra a mano al acabar. Sin esto,
+// un servicio que firma en una transacción y escribe en otra pasaría los tests.
+const VARIABLES_DE_TRANSACCION = ['telecab.usuario_id', 'telecab.origen', 'telecab.accion',
+  'telecab.libro_accion', 'telecab.libro_motivo', 'telecab.libro_firmado'];
+const BORRAR_FIRMA = 'SELECT ' + VARIABLES_DE_TRANSACCION.map(v => `set_config('${v}', '', true)`).join(', ');
+
 /** El transaccion() del código probado: un SAVEPOINT dentro del test. */
 async function transaccion(fn) {
   const c = actual();
@@ -85,9 +94,11 @@ async function transaccion(fn) {
   try {
     const r = await fn(c);
     await c.query(`RELEASE SAVEPOINT ${p}`);
+    await c.query(BORRAR_FIRMA);
     return r;
   } catch (e) {
     await c.query(`ROLLBACK TO SAVEPOINT ${p}`);
+    await c.query(BORRAR_FIRMA);
     throw e;
   }
 }
