@@ -55,8 +55,8 @@ const deOtraSede = p => !!(p && p.sede && p.sede !== SEDE_FLOTA);
 // CON MAPON CAÍDO (05/10/2026, la cuenta suspendida por un pago) el turno se
 // apunta solo en nuestra base: ni motor ni puertas. Se dice al empezar, sin
 // tecnicismos, y con cada error se manda a Tráfico (Camilo).
-const AVISO_SIN_MAPON = '\n🔧 Ahora mismo no puedo tocar el motor ni las puertas por un problema con un proveedor externo, ' +
-  'ajeno a Telecab. Tu turno queda apuntado igual. Si el coche no arranca o no puedes entrar, comunícate con Tráfico.';
+const avisoSinMapon = w => '\n🔧 Ahora mismo no puedo tocar el motor ni las puertas por un problema con un proveedor externo, ' +
+  `ajeno a Telecab. ${w.apuntadoIgual} Si el coche no arranca o no puedes entrar, comunícate con Tráfico.`;
 const NO_DISPONIBLE = falta => `ℹ️ Por el momento esta opción no está disponible: Barcelona aún no tiene ${falta}.`;
 
 // Los botones del panel del conductor llevan LOS MISMOS ids que el panel de
@@ -119,10 +119,97 @@ function preguntaPorTurnos(texto) {
 // también el día (24/9, 12:46), que hace falta al empezar pero sobra aquí.
 const hora = ts => fichaje.horaES(ts).split(', ').pop();
 
-/** Las palabras de cada flujo: un conductor hace turnos; la oficina, viajes. */
-const W = tipo => (tipo === 'viaje'
-  ? { cosa: 'viaje', Cosa: 'Viaje', iniciar: '🟢 Iniciar viaje', terminar: '🔴 Terminar viaje', mi: '🕑 Mi viaje' }
-  : { cosa: 'turno', Cosa: 'Turno', iniciar: '🟢 Iniciar turno', terminar: '🔴 Terminar turno', mi: '🕑 Mi turno' });
+/**
+ * LAS PALABRAS DE CADA FLUJO. La oficina hace VIAJES. El conductor VINCULA el
+ * vehículo (13/11/2026; hasta ese día, «Iniciar turno» y «Terminar turno»).
+ * Camilo: «los conductores piensan que esto es un fichaje que se las pagará así
+ * estén 10 horas sin salir en BOLT». Por eso lo que lee el conductor sobre el
+ * coche no dice «turno» —ni «fichar»—. «Ver mis turnos» sí: eso es su cuadrante.
+ *
+ * Cada frase va entera en los dos flujos: «Ya estás en turno con el X» no se
+ * arregla cambiando una palabra. «Desvincular vehículo» va sin emoji porque
+ * WhatsApp corta los botones a 20 letras y tiene justo 20; `boton` es el nombre
+ * del botón tal y como se cita en un texto («pulsa *Desvincular vehículo*»).
+ */
+const PALABRAS = {
+  viaje: {
+    iniciar: '🟢 Iniciar viaje', terminar: '🔴 Terminar viaje', boton: 'Terminar viaje', mi: '🕑 Mi viaje',
+    paraEmpezar: 'Para empezar, escríbeme la *matrícula* del coche que vas a llevar',
+    desde: h => `🕐 En viaje desde las ${h}`,
+    ya: m => `Ya estás en viaje con el *${m}*.`,
+    sigues: m => `Sigues en viaje con el *${m}*.`,
+    tienes: m => `Tienes el viaje abierto con el *${m}*.`,
+    sinCerrar: 'Tienes un viaje sin cerrar.',
+    ninguno: 'No tienes ningún viaje abierto.',
+    yaTenias: 'Ya tenías un viaje abierto.',
+    empezar: 'empezar tu viaje',
+    terminarVerbo: 'terminar',
+    iniciado: pila => `✅ *Viaje iniciado*${pila ? ` — ¡buen viaje, ${pila}!` : ''}`,
+    apuntadoIgual: 'Tu viaje queda apuntado igual.',
+    cierraDe: n => `se cierra el viaje de *${n}*`,
+    suyoCerrado: 'su viaje queda cerrado',
+    tuCerrado: 'Tu viaje queda cerrado',
+    gracias: '¡Gracias y buen descanso! 👋',
+    tramo: '🕐 Tu viaje',
+    seCierraSolo: 'tu viaje se cierra solo',
+    llevaDesde: h => `en viaje desde las ${h}`,
+    seLeCierra: 'su viaje se cierra',
+    conElAbierto: m => `con el viaje abierto en *${m}*`,
+    abiertoAdj: 'abierto',
+    cerrareTu: 'cerraré tu viaje',
+    heCerrado: m => `he cerrado tu viaje en *${m}*`,
+    cerrarEl: m => `cerrar tu viaje en *${m}*`,
+    otraVez: 'y empiezas otro viaje',
+    sigueOk: m => `sigue tu viaje en *${m}*`,
+    loCerrare: 'lo cerraré',
+    durante: d => `🕐 ${d} de viaje`,
+    resumenSinKm: (m, d) => `📍 Viaje en ${m} · ${d}`,
+    alAcabar: 'Al terminar',
+    noTerminado: 'tu viaje no ha terminado',
+    sigueAbierto: 'Tu viaje sigue abierto: no has perdido nada.',
+    hastaProximo: 'hasta el próximo viaje',
+    terminado: '🔴 *Viaje terminado*',
+  },
+  turno: {
+    iniciar: '🟢 Vincular vehículo', terminar: 'Desvincular vehículo', boton: 'Desvincular vehículo', mi: '🚘 Mi vehículo',
+    paraEmpezar: 'Para vincular el vehículo que vas a llevar, escríbeme su *matrícula*',
+    desde: h => `🔗 Vinculado desde las ${h}`,
+    ya: m => `Ya tienes vinculado el *${m}*.`,
+    sigues: m => `Sigues con el *${m}* vinculado.`,
+    tienes: m => `Tienes vinculado el *${m}*.`,
+    sinCerrar: 'Tienes un vehículo sin desvincular.',
+    ninguno: 'No tienes ningún vehículo vinculado.',
+    yaTenias: 'Ya tenías un vehículo vinculado.',
+    empezar: 'vincular el vehículo',
+    terminarVerbo: 'desvincular el vehículo',
+    iniciado: pila => `✅ *Vehículo vinculado*${pila ? ` — ¡todo listo, ${pila}!` : ''}`,
+    apuntadoIgual: 'El vehículo queda vinculado igual.',
+    cierraDe: n => `se desvincula de *${n}*`,
+    suyoCerrado: 'ya no lo tiene vinculado',
+    tuCerrado: 'Ya no lo tienes vinculado',
+    gracias: '¡Gracias! 👋',
+    tramo: '🔗 Vinculado',
+    seCierraSolo: 'el coche se desvincula de ti solo',
+    llevaDesde: h => `vinculado desde las ${h}`,
+    seLeCierra: 'se le desvincula',
+    conElAbierto: m => `con el *${m}* vinculado`,
+    abiertoAdj: 'vinculado',
+    cerrareTu: 'lo desvincularé',
+    heCerrado: m => `he desvinculado el *${m}*`,
+    cerrarEl: m => `desvincular el *${m}*`,
+    otraVez: 'y lo vuelvo a vincular',
+    sigueOk: m => `el *${m}* sigue vinculado`,
+    loCerrare: 'lo desvincularé',
+    durante: d => `🔗 ${d} vinculado`,
+    resumenSinKm: (m, d) => `📍 ${m} vinculado · ${d}`,
+    alAcabar: 'Al desvincularlo',
+    noTerminado: 'no lo he desvinculado',
+    sigueAbierto: 'El vehículo sigue vinculado: no has perdido nada.',
+    hastaProximo: 'hasta que se vuelva a vincular',
+    terminado: '🔴 *Vehículo desvinculado*',
+  },
+};
+const W = tipo => (tipo === 'viaje' ? PALABRAS.viaje : PALABRAS.turno);
 // Los botones de abrir, cerrar y lavado de cada uno (ver BTN_V_*).
 const IDS = tipo => (tipo === 'viaje'
   ? { abrir: BTN_V_ABRIR, cerrar: BTN_V_CERRAR, lavado: BTN_V_LAVADO }
@@ -153,9 +240,9 @@ async function bienvenida(telefono, p, cabecera) {
   const hola = p.pila ? `👋 ¡Hola, ${p.pila}! Qué gusto saludarte.` : '👋 ¡Hola! Qué gusto saludarte.';
   const conTurnos = p.tipo === 'turno' && !deOtraSede(p) && !!p.conductorId;
   const texto = conCabecera(cabecera, `${hola}\n\n` +
-    `Para empezar, escríbeme la *matrícula* del coche que vas a llevar${deOtraSede(p) ? '' : ' y te desbloqueo el motor'}.\n\n` +
+    `${W(p.tipo).paraEmpezar}${deOtraSede(p) ? '' : ' y te desbloqueo el motor'}.\n\n` +
     '✍️ Escríbela todo junto, *sin espacios ni guiones*. Ejemplo: *1234ABC*' +
-    (conTurnos ? '\n\n📅 Si solo quieres ver tus turnos, pulsa *Ver mis turnos*: no hace falta empezar el turno.' : ''));
+    (conTurnos ? '\n\n📅 Si solo quieres ver tus turnos, pulsa *Ver mis turnos*: no hace falta vincular el vehículo.' : ''));
   if (conTurnos) await enviarBotones(telefono, texto, [{ id: BTN_TURNOS, titulo: '📅 Ver mis turnos' }]);
   else await enviarTexto(telefono, texto);
 }
@@ -171,7 +258,7 @@ async function mensajePuertas(telefono, t, cabecera, vehiculo) {
   const ids = IDS(t.tipo);
   await enviarBotones(telefono,
     conCabecera(cabecera, `🚘 *${t.matricula}*${vehiculo ? ` · ${vehiculo}` : ''}\n` +
-      `🕐 En ${W(t.tipo).cosa} desde las ${hora(t.inicio)}${estadoPuertas}${entrega}`),
+      `${W(t.tipo).desde(hora(t.inicio))}${estadoPuertas}${entrega}`),
     [{ id: ids.abrir, titulo: '🔓 Abrir puertas' }, { id: ids.cerrar, titulo: '🔒 Cerrar puertas' },
      { id: BTN_ENTREGAR, titulo: '🚗 Entregar coche' }]);
 }
@@ -208,8 +295,8 @@ async function textoCoche(telefono, t, p) {
   const w = W(abierto ? turno.tipo : p.tipo);
 
   if (p.soloCerrar) {
-    if (abierto) await panelTurno(telefono, turno, `Tienes un ${w.cosa} sin cerrar.`);
-    else await enviarTexto(telefono, `No tienes ningún ${w.cosa} abierto.`);
+    if (abierto) await panelTurno(telefono, turno, w.sinCerrar);
+    else await enviarTexto(telefono, w.ninguno);
     return true;
   }
 
@@ -231,20 +318,20 @@ async function textoCoche(telefono, t, p) {
       return true;
     }
     if (normMat(turno.matricula) === m) {
-      await panelTurno(telefono, turno, `Ya estás en ${w.cosa} con el *${turno.matricula}*.`);
+      await panelTurno(telefono, turno, w.ya(turno.matricula));
       return true;
     }
     // OTRO COCHE CON EL TURNO ABIERTO: no se cambia solo. Cambiar de coche es
     // cerrar un turno —y quizá bloquear un motor— y abrir otro; que lo decida él.
     await enviarTexto(telefono,
-      `⚠️ Tienes el ${w.cosa} abierto con el *${turno.matricula}*.\n\n` +
-      `Si has cambiado de coche, pulsa primero *${w.terminar.slice(3)}* y luego escríbeme la matrícula del nuevo (*${m}*).`);
+      `⚠️ ${w.tienes(turno.matricula)}\n\n` +
+      `Si has cambiado de coche, pulsa primero *${w.boton}* y luego escríbeme la matrícula del nuevo (*${m}*).`);
     await mensajeOpciones(telefono);
     return true;
   }
 
   if (abierto) {
-    await panelTurno(telefono, turno, `👋 Hola${p.pila ? ', ' + p.pila : ''}. Sigues en ${w.cosa} con el *${turno.matricula}*.`);
+    await panelTurno(telefono, turno, `👋 Hola${p.pila ? ', ' + p.pila : ''}. ${w.sigues(turno.matricula)}`);
   } else {
     await bienvenida(telefono, p);
   }
@@ -260,7 +347,7 @@ async function abrir(telefono, matricula) {
     r = await fichaje.iniciar({ telefono, matricula });
   } catch (e) {
     console.error('❌ [FICHAJE] iniciar:', e.message);
-    await enviarTexto(telefono, `❌ Ahora mismo no he podido empezar tu ${w.cosa}. Vuelve a escribirme la matrícula en un momento; si sigue igual, comunícate con Tráfico.`);
+    await enviarTexto(telefono, `❌ Ahora mismo no he podido ${w.empezar}. Vuelve a escribirme la matrícula en un momento; si sigue igual, comunícate con Tráfico.`);
     return;
   }
   if (!r.ok) {
@@ -296,19 +383,19 @@ async function abrir(telefono, matricula) {
     if (r.motivo === 'ocupado-encendido') {
       await enviarTexto(telefono,
         `🔑 El *${r.turno.matricula}* tiene el contacto puesto. *Apágalo* y vuelve a escribirme la matrícula: ` +
-        `se cierra el ${W(r.turno.tipo).cosa} de *${r.turno.nombre}* y el coche pasa a ser tuyo.`);
+        `${W(r.turno.tipo).cierraDe(r.turno.nombre)} y el coche pasa a ser tuyo.`);
       return;
     }
     // Solo si otro mensaje le ganó por milésimas al guardar: se reintenta y ya.
     if (r.motivo === 'coche-ocupado') {
       await enviarTexto(telefono,
         `⚠️ El *${r.turno.matricula}* figura todavía con *${r.turno.nombre}* desde las ${hora(r.turno.inicio)}.\n\n` +
-        `Pídele que pulse *Entregar coche* o *${W(r.turno.tipo).terminar.slice(3)}* y vuelve a escribirme la matrícula. ` +
+        `Pídele que pulse *Entregar coche* o *${W(r.turno.tipo).boton}* y vuelve a escribirme la matrícula. ` +
         'Si no puedes localizarle, avisa a Tráfico.');
       return;
     }
     if (r.motivo === 'ya-abierto') { await panel(telefono, '⚠️ Ya tenías algo abierto.'); return; }
-    await enviarTexto(telefono, `❌ No he podido empezar tu ${w.cosa}. Comunícate con Tráfico.`);
+    await enviarTexto(telefono, `❌ No he podido ${w.empezar}. Comunícate con Tráfico.`);
     return;
   }
 
@@ -329,14 +416,14 @@ async function abrir(telefono, matricula) {
     : m.hecho
       ? (m.yaEstaba ? '\n🔓 El motor ya está libre: puedes arrancar' : '\n🔓 *Motor desbloqueado*: ya puedes arrancar')
       : `\n🔒 *ATENCIÓN: el motor NO se ha desbloqueado*\n_${m.motivo || 'motivo desconocido'}_`;
-  const suyo = r.relevoDe ? W(r.relevoDe.tipo).cosa : '';
+  const suyo = r.relevoDe ? W(r.relevoDe.tipo).suyoCerrado : '';
   const relevo = !r.relevoDe ? ''
     : r.relevoDe.sinBoton
-      ? `\n🔄 El coche figuraba con *${r.relevoDe.nombre}*: su ${suyo} queda cerrado y desde ahora el responsable eres tú.`
-      : `\n🔄 *${r.relevoDe.nombre}* te ha dado el coche: su ${suyo} queda cerrado.`;
-  // MAPON CAÍDO (05/10/2026): el turno queda apuntado, pero ni motor ni puertas.
-  const sinMapon = r.sinMapon ? (t.tipo === 'turno' ? AVISO_SIN_MAPON : AVISO_SIN_MAPON.replace('Tu turno', 'Tu viaje')) : '';
-  const cabecera = `✅ *${wt.Cosa} iniciado*${p && p.pila ? ` — ¡buen ${wt.cosa}, ${p.pila}!` : ''}${motor}${sinMapon}${relevo}`;
+      ? `\n🔄 El coche figuraba con *${r.relevoDe.nombre}*: ${suyo} y desde ahora el responsable eres tú.`
+      : `\n🔄 *${r.relevoDe.nombre}* te ha dado el coche: ${suyo}.`;
+  // MAPON CAÍDO (05/10/2026): queda apuntado, pero ni motor ni puertas.
+  const sinMapon = r.sinMapon ? avisoSinMapon(wt) : '';
+  const cabecera = `${wt.iniciado(p && p.pila)}${motor}${sinMapon}${relevo}`;
 
   puertasDe.delete(tel9(telefono));
   if (sinMotor) {
@@ -362,11 +449,11 @@ async function avisarAlQueEntrega(t, quienEntra) {
   const km = t.km == null ? '' : `\n🛣️ ${t.km} km` + (t.kmRelevo == null ? '' : ` (${t.kmRelevo} del trayecto de entrega)`);
   const titulo = t.sinBoton ? `🔄 *${quien} ha cogido el ${t.matricula}*` : '🔄 *Coche entregado*';
   const pie = t.sinBoton
-    ? `Tu ${w.cosa} queda cerrado y el coche pasa a ser responsabilidad suya. Si no se lo has dado tú, avisa a Tráfico.`
-    : `Tu ${w.cosa} queda cerrado. ¡Gracias y buen descanso! 👋`;
+    ? `${w.tuCerrado} y el coche pasa a ser responsabilidad suya. Si no se lo has dado tú, avisa a Tráfico.`
+    : `${w.tuCerrado}. ${w.gracias}`;
   await enviarTexto(t.telefono,
     `${titulo}\n\n🚘 ${t.matricula} → lo tiene *${quien}* desde las ${hora(t.fin)}\n` +
-    `🕐 Tu ${w.cosa}: ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${fichaje.duracion(t.fin - t.inicio)})${km}\n\n` + pie);
+    `${w.tramo}: ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${fichaje.duracion(t.fin - t.inicio)})${km}\n\n` + pie);
 }
 
 /** Abrir o cerrar las puertas del coche del turno. */
@@ -414,19 +501,19 @@ async function entregar(telefono, si) {
   }
   if (!r.ok) {
     const p = await fichaje.participa(telefono);
-    return panel(telefono, `No tienes ningún ${W(p && p.tipo).cosa} abierto.`);
+    return panel(telefono, W(p && p.tipo).ninguno);
   }
   const t = r.turno;
   const w = W(t.tipo);
   if (!si) {
-    await mensajePuertas(telefono, t, `↩️ *Quitado.* Sigues en tu ${w.cosa} con el ${t.matricula}.`);
+    await mensajePuertas(telefono, t, `↩️ *Quitado.* ${w.sigues(t.matricula)}`);
     return;
   }
   await enviarBotones(telefono,
     `🚗 *Anotado: sales a entregar el coche* (${hora(t.relevo)}).\n` +
     'Desde ahora cuento los km hasta que se lo des.\n\n' +
-    `Cuando llegues, tu compañero solo tiene que escribirme la matrícula: tu ${w.cosa} se cierra solo. ` +
-    `Si no hay nadie a quien dárselo, *apaga el coche* y pulsa *${w.terminar.slice(3)}*.\n\n` +
+    `Cuando llegues, tu compañero solo tiene que escribirme la matrícula: ${w.seCierraSolo}. ` +
+    `Si no hay nadie a quien dárselo, *apaga el coche* y pulsa *${w.boton}*.\n\n` +
     '_Si lo has pulsado sin querer, pulsa *Aún no he salido*._',
     [{ id: BTN_ENTREGAR_NO, titulo: '↩️ Aún no he salido' }, { id: BTN_TERMINAR, titulo: w.terminar }]);
 }
@@ -477,8 +564,9 @@ async function botonConductor(telefono, id, p) {
   if (id === BTN_CAMBIAR) {
     // De mensajes viejos: cambiar de coche es terminar el turno y empezar otro.
     if (abierto) {
-      await enviarTexto(telefono, `Tienes el turno abierto con el *${turno.matricula}*. ` +
-        'Para cambiar de coche, pulsa primero *Terminar turno* y luego escríbeme la nueva matrícula.');
+      const w = W(turno.tipo);
+      await enviarTexto(telefono, `${w.tienes(turno.matricula)} ` +
+        `Para cambiar de coche, pulsa primero *${w.boton}* y luego escríbeme la nueva matrícula.`);
       return mensajeOpciones(telefono);
     }
     return bienvenida(telefono, p);
@@ -514,15 +602,15 @@ async function antesDelViaje(telefono, matricula) {
   if (ajena) return (await puertasDeOficina(telefono)) ? false : null;
   const otro = await fichaje.abiertoDeCoche(matricula, telefono).catch(() => null);
   if (!otro) return null;
-  const cosa = W(otro.tipo).cosa;
-  const quien = `⚠️ El *${otro.matricula}* lo lleva *${otro.nombre}*, en ${cosa} desde las ${fichaje.horaES(otro.inicio)}.`;
+  const wo = W(otro.tipo);
+  const quien = `⚠️ El *${otro.matricula}* lo lleva *${otro.nombre}*, ${wo.llevaDesde(fichaje.horaES(otro.inicio))}.`;
   if (await puertasDeOficina(telefono)) {
     await enviarTexto(telefono, `${quien}\n\nSi solo quieres abrirle o cerrarle el coche, usa los botones de abajo. ` +
-      `Si lo vas a coger tú, pulsa *Iniciar viaje*: su ${cosa} se cierra y el coche pasa a ser tuyo.`);
+      `Si lo vas a coger tú, pulsa *Iniciar viaje*: ${wo.seLeCierra} y el coche pasa a ser tuyo.`);
     return false;
   }
   await enviarBotones(telefono,
-    `${quien}\n\nSi lo vas a coger tú, pulsa *Coger el coche*: su ${cosa} se cierra y el coche pasa a ser tuyo.`,
+    `${quien}\n\nSi lo vas a coger tú, pulsa *Coger el coche*: ${wo.seLeCierra} y el coche pasa a ser tuyo.`,
     [{ id: BTN_INICIAR_EN + normMat(matricula), titulo: '🟢 Coger el coche' }]);
   return true;
 }
@@ -542,7 +630,7 @@ async function panel(telefono, cabecera) {
   // El conductor y la oficina, igual (29/10/2026): con algo abierto, sus
   // botones; sin nada, el saludo que pide la matrícula.
   if (abierto) await panelTurno(telefono, turno, cabecera);
-  else if (p.soloCerrar) await enviarTexto(telefono, conCabecera(cabecera, `No tienes ningún ${W(p.tipo).cosa} abierto.`));
+  else if (p.soloCerrar) await enviarTexto(telefono, conCabecera(cabecera, W(p.tipo).ninguno));
   else await bienvenida(telefono, p, cabecera);
   return true;
 }
@@ -611,7 +699,7 @@ async function manejarBoton(telefono, buttonId) {
   if (id.startsWith(BTN_INICIAR_EN)) { await abrir(telefono, id.slice(BTN_INICIAR_EN.length)); return true; }
   if (id === BTN_INICIAR || id === BTN_OTRO) {
     const { abierto } = await fichaje.estado(telefono);
-    if (abierto) { await panel(telefono, `⚠️ Ya tenías un ${W(p.tipo).cosa} abierto.`); return true; }
+    if (abierto) { await panel(telefono, `⚠️ ${W(p.tipo).yaTenias}`); return true; }
     await bienvenida(telefono, p);
     return true;
   }
@@ -639,28 +727,29 @@ const PREGUNTA_PORQUE = {
 function textoPregunta(a) {
   const t = a.turno;
   const pila = pilaDe(t);
-  const cosa = W(t.tipo).cosa;
-  return `👋 ${pila ? pila + ', l' : 'L'}levas más de ${fichaje.MAX_HORAS_TURNO} h con el ${cosa} abierto en *${t.matricula}*` +
+  const w = W(t.tipo);
+  return `👋 ${pila ? pila + ', l' : 'L'}levas más de ${fichaje.MAX_HORAS_TURNO} h ${w.conElAbierto(t.matricula)}` +
     `${PREGUNTA_PORQUE[a.porque] || ''}. ¿Sigues en el coche?\n\n` +
     'Si sigues, pulsa *Sigo en el coche* y lo dejo como está. ' +
-    `Si ya has acabado, aparca, apaga el coche y pulsa *Terminar ${cosa}*.\n\n` +
-    `Si no contestas y el coche se queda parado y apagado, cerraré tu ${cosa}${a.sinMotor ? '' : ' y bloquearé el motor'}.`;
+    `Si ya has acabado, aparca, apaga el coche y pulsa *${w.boton}*.\n\n` +
+    `Si no contestas y el coche se queda parado y apagado, ${w.cerrareTu}${a.sinMotor ? '' : ' y bloquearé el motor'}.`;
 }
 
 /** Lo que se le dice cuando el repaso le ha cerrado el turno. `a`: { turno, motor, sinSaber, tope }. */
 function textoCerrado(a) {
   const t = a.turno;
   const pila = pilaDe(t);
-  const cosa = W(t.tipo).cosa;
+  const w = W(t.tipo);
   const m = a.motor;
   const motor = !m || m.sinControl || m.seQuedaLibre || m.otraSede || m.motivo === 'desactivado' ? ''
     : m.hecho ? ' El motor ha quedado bloqueado.'
       : ' No he podido bloquear el motor: avisa a Tráfico si lo dejas aquí.';
-  const porque = a.tope ? 'llevaba más de 24 h abierto'
-    : a.sinSaber ? `llevaba más de ${fichaje.MAX_HORAS_TURNO} h abierto`
-      : `llevaba más de ${fichaje.MAX_HORAS_TURNO} h abierto y el coche estaba parado y apagado`;
-  return `🔴 ${pila ? pila + ', he' : 'He'} cerrado tu ${cosa} en *${t.matricula}*: ${porque}.${motor}\n\n` +
-    `Si sigues con él, escríbeme la matrícula y empiezas otro ${cosa}.`;
+  const porque = a.tope ? `llevaba más de 24 h ${w.abiertoAdj}`
+    : a.sinSaber ? `llevaba más de ${fichaje.MAX_HORAS_TURNO} h ${w.abiertoAdj}`
+      : `llevaba más de ${fichaje.MAX_HORAS_TURNO} h ${w.abiertoAdj} y el coche estaba parado y apagado`;
+  const he = w.heCerrado(t.matricula);
+  return `🔴 ${pila ? pila + ', ' + he : he.charAt(0).toUpperCase() + he.slice(1)}: ${porque}.${motor}\n\n` +
+    `Si sigues con él, escríbeme la matrícula ${w.otraVez}.`;
 }
 
 /**
@@ -706,16 +795,20 @@ async function sigo(telefono) {
     return;
   }
   if (!r.ok && r.motivo === 'cerrando') {
-    return enviarTexto(telefono, `🔴 Justo acabo de cerrar tu ${W(r.turno.tipo).cosa} en *${r.turno.matricula}*: ` +
-      'el coche estaba parado y apagado. Si sigues con él, escríbeme la matrícula y empiezas otro.');
+    const wc = W(r.turno.tipo);
+    return enviarTexto(telefono, `🔴 Justo acabo de ${wc.cerrarEl(r.turno.matricula)}: ` +
+      `el coche estaba parado y apagado. Si sigues con él, escríbeme la matrícula ${wc.otraVez}.`);
   }
-  if (!r.ok) return panel(telefono, 'No tienes ningún turno abierto. Si vas a coger el coche, escríbeme la matrícula.');
+  if (!r.ok) {
+    const p = await fichaje.participa(telefono);
+    return panel(telefono, `${W(p && p.tipo).ninguno} Si vas a coger el coche, escríbeme la matrícula.`);
+  }
   // Lo que pasa al acabar la prórroga, tal cual: en marcha se le vuelve a
   // preguntar, pero parado y apagado se cierra sin preguntar más.
   const w = W(r.turno.tipo);
-  return panel(telefono, `👍 Perfecto, sigue tu ${w.cosa} en *${r.turno.matricula}*. ` +
-    `Dentro de ${r.horas} h, si sigue abierto: con el coche en marcha te lo volveré a preguntar, ` +
-    `y con el coche parado y apagado lo cerraré. Cuando acabes, pulsa *Terminar ${w.cosa}*.`);
+  return panel(telefono, `👍 Perfecto, ${w.sigueOk(r.turno.matricula)}. ` +
+    `Dentro de ${r.horas} h, si sigue ${w.abiertoAdj}: con el coche en marcha te lo volveré a preguntar, ` +
+    `y con el coche parado y apagado ${w.loCerrare}. Cuando acabes, pulsa *${w.boton}*.`);
 }
 
 /**
@@ -760,19 +853,21 @@ async function verKm(telefono) {
   const km = await fichaje.kmDelTurno(turno);
   const dur = fichaje.duracion(Math.floor(Date.now() / 1000) - turno.inicio);
   const w = W(turno.tipo);
-  const texto = km ? `📍 *Llevas ${km.km} km* en ${turno.matricula}\n🕐 ${dur} de ${w.cosa} · ${km.trayectos} trayecto(s)`
-    : `📍 ${w.Cosa} en ${turno.matricula} · ${dur}\n(No he podido leer los km ahora mismo)`;
+  const texto = km ? `📍 *Llevas ${km.km} km* en ${turno.matricula}\n${w.durante(dur)} · ${km.trayectos} trayecto(s)`
+    : `${w.resumenSinKm(turno.matricula, dur)}\n(No he podido leer los km ahora mismo)`;
   await enviarTexto(telefono, texto);
   await mensajeOpciones(telefono);
 }
 
 async function cerrar(telefono) {
+  const p = await fichaje.participa(telefono);
   let r;
   try {
     r = await fichaje.terminar(telefono);
   } catch (e) {
     console.error('❌ [FICHAJE] terminar:', e.message);
-    await enviarTexto(telefono, '❌ Ahora mismo no he podido terminar. Inténtalo de nuevo en un momento; si sigue igual, comunícate con Tráfico.');
+    await enviarTexto(telefono, `❌ Ahora mismo no he podido ${W(p && p.tipo).terminarVerbo}. ` +
+      'Inténtalo de nuevo en un momento; si sigue igual, comunícate con Tráfico.');
     return;
   }
   const abiertoAhora = r.turno || {};
@@ -783,9 +878,9 @@ async function cerrar(telefono) {
   if (!r.ok && r.motivo === 'coche-en-marcha') {
     await enviarBotones(telefono,
       `🚗 *Estás en marcha* (${r.velocidad} km/h).\n\n` +
-      'Al terminar se bloquea el motor, así que *primero aparca* en un sitio seguro y apaga el coche. ' +
-      `Cuando estés parado, vuelve a pulsar *${w.terminar.slice(3)}*.\n\n` +
-      `_Tu ${w.cosa} sigue abierto: no has perdido nada._`, deNuevo);
+      `${w.alAcabar} se bloquea el motor, así que *primero aparca* en un sitio seguro y apaga el coche. ` +
+      `Cuando estés parado, vuelve a pulsar *${w.boton}*.\n\n` +
+      `_${w.sigueAbierto}_`, deNuevo);
     return;
   }
   // PARADO PERO ENCENDIDO: NO SE TERMINA, Y NO HAY ATAJO.
@@ -797,10 +892,10 @@ async function cerrar(telefono) {
   if (!r.ok && r.motivo === 'coche-encendido') {
     await enviarBotones(telefono,
       '🔑 *Apaga el coche primero*\n\n' +
-      `Tienes el contacto puesto, así que tu ${w.cosa} no ha terminado. Al cerrarlo se ` +
+      `Tienes el contacto puesto, así que ${w.noTerminado}. ${w.alAcabar} se ` +
       'bloquea el motor, y si lo hago ahora *te quedas sin poder apagarlo*.\n\n' +
-      `Apágalo del todo y vuelve a pulsar *${w.terminar.slice(3)}*.\n\n` +
-      `_Tu ${w.cosa} sigue abierto: no has perdido nada._`, deNuevo);
+      `Apágalo del todo y vuelve a pulsar *${w.boton}*.\n\n` +
+      `_${w.sigueAbierto}_`, deNuevo);
     return;
   }
   if (!r.ok) return panel(telefono, '⚠️ No tenías nada abierto.');
@@ -822,18 +917,18 @@ async function cerrar(telefono) {
       : m.cogidoPor && (!m.deshecho || m.suelto)
         ? `\n🔓 El motor se queda *libre*: el coche ya lo tiene *${m.cogidoPor}*.`
       : m.hecho
-        ? (m.yaEstaba ? '\n🔒 El motor ya estaba bloqueado' : `\n🔒 Motor bloqueado hasta el próximo ${w.cosa}`) +
+        ? (m.yaEstaba ? '\n🔒 El motor ya estaba bloqueado' : `\n🔒 Motor bloqueado ${w.hastaProximo}`) +
           (faltan ? `\n⚠️ Ojo: este coche lo lleva ${faltan}, sin el bloqueo encendido. Si lo necesita, Tráfico se lo suelta desde el planificador.` : '')
         // Desde el 30/09 no hay repaso: nadie lo reintenta. Lo ve Tráfico en el
         // ciclo de bloqueo de motor (21/10/2026; antes decía «se reintentará»).
         : `\n⚠️ El motor NO se ha bloqueado (_${m.motivo || 'motivo desconocido'}_)` +
           (m.reintentable ? '\n_Queda apuntado para Tráfico: no tienes que hacer nada más._' : '');
-  const resumen = `🔴 *${w.Cosa} terminado*\n\n🚘 ${t.matricula}\n🕐 ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${dur})\n` +
+  const resumen = `${w.terminado}\n\n🚘 ${t.matricula}\n🕐 ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${dur})\n` +
     `🛣️ *${t.km == null ? '—' : t.km} km* recorridos${entrega}${motor}`;
 
-  // La oficina, igual que el conductor (29/10/2026), sin el «buen descanso».
-  const p = await fichaje.participa(telefono);
-  await enviarTexto(telefono, `${resumen}\n\nGracias${p && p.pila ? ', ' + p.pila : ''}.${t.tipo === 'turno' ? ' ¡Buen descanso!' : ''} 👋\n` +
+  // Sin «¡Buen descanso!» desde el 13/11/2026: desvincular el coche no es
+  // acabar la jornada (ver PALABRAS).
+  await enviarTexto(telefono, `${resumen}\n\nGracias${p && p.pila ? ', ' + p.pila : ''}. 👋\n` +
     'Cuando vuelvas a coger un coche, escríbeme su matrícula.');
 }
 

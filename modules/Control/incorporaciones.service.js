@@ -273,7 +273,8 @@ const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'vier
 /**
  * EL TEXTO DE BIENVENIDA de un nuevo (15/10/2026). Pura. Va antes del vídeo del
  * bot y dice lo justo: su primer turno y cómo se usa el WhatsApp del coche, con
- * las palabras del bot (services/fichajeBot.js) y sin «fichar».
+ * las palabras del bot (services/fichajeBot.js): sin «fichar», y desde el
+ * 13/11/2026 el coche se VINCULA y se DESVINCULA («turno» es solo su cuadrante).
  *
  *   { pila, dia, hoy, turno, matriculas }
  */
@@ -288,10 +289,10 @@ function textoBienvenida({ pila, dia, hoy, turno, matriculas = [] } = {}) {
     `Tu primer turno es ${cuando}${de}${coche}.`,
     '',
     'Este WhatsApp es el de tu coche:',
-    '• Al llegar, escríbeme la *matrícula* todo junto (ejemplo: *1234ABC*): empieza tu turno y se desbloquea el motor.',
+    '• Al llegar, escríbeme la *matrícula* todo junto (ejemplo: *1234ABC*): se vincula el vehículo y se desbloquea el motor.',
     '• Desde aquí abres y cierras las *puertas*.',
     '• Pulsa *Entregar coche* justo antes de salir hacia donde está tu compañero.',
-    '• Al acabar, *Terminar turno* con el coche aparcado y apagado.',
+    '• Al acabar, *Desvincular vehículo* con el coche aparcado y apagado.',
     '• Para ver tus turnos, escríbeme «hola» y pulsa *Ver mis turnos*.',
     '',
     'Ahora te mando un vídeo de un minuto que lo explica. Si algo falla, llama a Tráfico.',

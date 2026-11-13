@@ -49,7 +49,7 @@ Las tarjetas de arriba cuentan cuántos entran, cuántos son nuevos y cuántos v
 ## Los botones
 
 - **Guion.**
-  - **Para los nuevos**, la llamada en diez pasos: presentarse y confirmar el día, el turno y el coche; su cuenta de BOLT; el WhatsApp de Telecab (guardar el número); «Ver mis turnos» (también escribiendo «¿qué turno tengo?»); escribir la matrícula al llegar; los botones del turno; **Entregar coche** justo antes de salir hacia el compañero; **Terminar turno** con el coche aparcado y apagado; qué hacer si falla; y apuntar la llamada.
+  - **Para los nuevos**, la llamada en diez pasos: presentarse y confirmar el día, el turno y el coche; su cuenta de BOLT; el WhatsApp de Telecab (guardar el número); «Ver mis turnos» (también escribiendo «¿qué turno tengo?»); escribir la matrícula al llegar (se vincula el vehículo); los botones del coche; **Entregar coche** justo antes de salir hacia el compañero; **Desvincular vehículo** con el coche aparcado y apagado (hasta el 13/11/2026, «Terminar turno»); qué hacer si falla; y apuntar la llamada.
   - **Para los que vuelven**, uno corto, y si cambia de coche, se dice.
   - **Está escrito con las palabras del bot** (`services/fichajeBot.js`) y sin «fichar» ni «fichaje», que con el conductor no se dicen.
 - **Sus turnos.** El texto **exacto** que verá al pulsar «Ver mis turnos» (`turnos.service.mensajeProximos`, de hoy a 7 días, con relevos y teléfonos), con las negritas de WhatsApp.
@@ -77,7 +77,7 @@ Las tarjetas de arriba cuentan cuántos entran, cuántos son nuevos y cuántos v
 Camilo pidió *«la plantilla con el vídeo para los nuevos, pero que se habilite siempre y cuando tengan la ventana activa»*, y eligió un **mensaje propio** y no una plantilla de Meta. Con la ventana abierta es gratis, no necesita aprobación y salía el mismo día.
 
 - **A los NUEVOS**, el botón es **«Bienvenida con vídeo»**: dos mensajes, primero un texto y luego el vídeo del bot. A los que vuelven de vacaciones, «Vídeo del bot».
-- **El texto** lo monta `incorporaciones.service.textoBienvenida` (pura): su nombre de pila, su primer turno («mañana, viernes 16/10», turno y coche), y cómo se usa el bot con sus palabras (matrícula, puertas, «Entregar coche», «Terminar turno», «Ver mis turnos»), sin «fichar». La pantalla lo enseña tal cual antes de mandarlo, con el vídeo.
+- **El texto** lo monta `incorporaciones.service.textoBienvenida` (pura): su nombre de pila, su primer turno («mañana, viernes 16/10», turno y coche), y cómo se usa el bot con sus palabras (matrícula, puertas, «Entregar coche», «Desvincular vehículo», «Ver mis turnos»), sin «fichar» ni «turno» para el coche. La pantalla lo enseña tal cual antes de mandarlo, con el vídeo.
 - **Con la ventana cerrada los dos botones salen en gris**, y el título dice cómo abrirla.
 - **El envío** va por `whatsapp.service.enviarVideo({ …, texto })`: el texto sale antes que el vídeo, con una sola comprobación de la ventana, y el bot no se pausa. Si no hay enlace https, no sale ni el texto.
 

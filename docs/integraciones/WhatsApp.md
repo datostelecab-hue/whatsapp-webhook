@@ -112,15 +112,15 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 
 1. **Saludo cálido, solo con el nombre de pila** («¡Hola, David! Qué gusto saludarte.»). El nombre sale de `nucleo.nombreDePila`: si la ficha tiene los apellidos en su casilla, `nombre`; si no (hay fichas con «POLO TENA DAVID» entero en `nombre`), la primera palabra del nombre de BOLT. Y en minúsculas, que en mayúsculas parece un grito.
 2. Que escriba la **matrícula** del coche que va a llevar, **todo junto, sin espacios ni guiones** (si los pone, se le entiende igual).
-3. Con la matrícula **empieza su turno** en ese coche —se le desbloquea el motor— y le salen **siempre los mismos botones**, en dos mensajes (WhatsApp no deja más de tres por mensaje):
+3. Con la matrícula **se vincula el vehículo** (hasta el 13/11/2026 se decía «empieza su turno») —se le desbloquea el motor— y le salen **siempre los mismos botones**, en dos mensajes (WhatsApp no deja más de tres por mensaje):
 
 | Mensaje | Botones |
 |---|---|
 | el coche, desde qué hora, puertas | 🔓 Abrir puertas · 🔒 Cerrar puertas · 🚗 Entregar coche |
-| «Más opciones» | 🧽 Código de lavado (hasta el 17/11) · 📅 Ver mis turnos · 🔴 Terminar turno |
+| «Más opciones» | 🧽 Código de lavado (hasta el 17/11) · 📅 Ver mis turnos · Desvincular vehículo |
 
 - **Entregar coche** = el antiguo «Voy al relevo» (mismo id de botón, `turno_relevo`). Se pulsa **justo antes de salir** hacia donde está el compañero, no al llegar: desde esa hora se cuentan los km del trayecto de entrega (`fichaje_turno.relevo_at` → `km_relevo`). Cuando el compañero escribe la matrícula, el turno del que entrega se cierra solo y **se le avisa** con sus km. Desde el 29/09 **lo pulsara o no**: quien escribe la matrícula se queda el coche (si al otro se le bloquearía el motor, con el coche parado y apagado). Ver [[Fichaje]].
-- **Terminar turno** cierra el turno y bloquea el motor — solo si esa persona tiene el bloqueo encendido (ver [[Fichaje]]).
+- **Desvincular vehículo** (antes «Terminar turno») cierra el turno y bloquea el motor — solo si esa persona tiene el bloqueo encendido (ver [[Fichaje]]).
 - **Las palabras**: al conductor **no se le dice «fichar» ni «fichaje»**. Esto no es el registro de jornada (ese es `/fichaje`): es quién lleva qué coche y cuántos km hace. Si se llamara igual, un turno abierto por WhatsApp sin trabajar se podría hacer pasar por horas fichadas.
 - Los ids de los botones son los de siempre (`abrir_puertas`, `ver_turnos`, `codigo_lavado`…): un botón de un mensaje viejo del chat sigue funcionando.
 

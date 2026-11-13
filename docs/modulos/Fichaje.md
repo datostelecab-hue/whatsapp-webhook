@@ -195,6 +195,30 @@ modules/Fichaje/fichaje.repo.js     pedir, listar, aprobar/rechazar y retirar, e
 >
 > **Al conductor no se le dice «fichar» ni «fichaje».** Esto no es el registro de jornada (la Parte 1, `/fichaje`): es quién lleva qué coche y cuántos km hace. Camilo lo planteó así: si se llamara fichaje, alguien podría abrir el turno por WhatsApp, no trabajar, cerrarlo a las 9 horas y reclamar esas horas «porque ahí consta que fichó». El nombre por sí solo no blinda nada —un registro con hora de inicio y fin puede aportarse como prueba se llame como se llame—, pero llamarlo igual que el registro oficial invita a confundirlos. Las horas trabajadas salen de BOLT y del registro de jornada; esto es custodia del coche. Si hay un conflicto, que lo mire la asesoría laboral.
 
+## Al conductor: «Vincular vehículo» y «Desvincular vehículo» (13/11/2026)
+
+Hasta el 13/11/2026 el bot le decía al conductor «Iniciar turno», «Terminar turno», «Turno iniciado»… Camilo: *«los conductores piensan que esto es un fichaje que se las pagará así estén 10 horas sin salir en BOLT»*. Desde ese día, todo lo que lee el conductor sobre el coche habla de **vincular** y **desvincular** el vehículo:
+
+| Antes | Ahora |
+|---|---|
+| Para empezar, escríbeme la matrícula | Para vincular el vehículo que vas a llevar, escríbeme su matrícula |
+| ✅ *Turno iniciado* — ¡buen turno, Ana! | ✅ *Vehículo vinculado* — ¡todo listo, Ana! |
+| 🕐 En turno desde las 08:00 | 🔗 Vinculado desde las 08:00 |
+| [ 🔴 Terminar turno ] | [ Desvincular vehículo ] |
+| 🔴 *Turno terminado* … ¡Buen descanso! | 🔴 *Vehículo desvinculado* (sin «buen descanso») |
+| tu turno se cierra solo | el coche se desvincula de ti solo |
+
+- **«Ver mis turnos» se queda:** eso es su cuadrante, no el coche. «Tu primer turno es mañana» (la bienvenida) también.
+- **La oficina no cambia:** sigue con sus viajes («Viaje iniciado», «Terminar viaje»).
+- **Por dentro todo sigue igual:** el libro `fichaje_turno`, los ids de los botones (`turno_terminar`…), los registros y las pantallas internas siguen diciendo «turno». Lo que cambia es solo lo que lee el conductor.
+- **«Desvincular vehículo» va sin emoji:** WhatsApp corta los botones a 20 letras, y tiene justo 20.
+- **Las frases están en `PALABRAS`** (`services/fichajeBot.js`), una por flujo y entera: «Ya estás en turno con el X» no se arregla cambiando una palabra.
+- **Lo mismo en:**
+  - la bienvenida de los nuevos (`incorporaciones.service.textoBienvenida`);
+  - el pie del vídeo «El WhatsApp del coche» (`services/videosWhatsapp.js`);
+  - el guion de la llamada de [[Proximas incorporaciones|Próximas incorporaciones]].
+- **El vídeo** (`public/assets/videos/bot-coche.mp4`) **enseña todavía «Terminar turno»**: está grabado, y hay que rehacerlo para que diga lo nuevo.
+
 ## Para qué existe
 
 [[BOLT]] solo sabe quién conduce **mientras su app está abierta**. En cuanto el conductor se pone inactivo dejan de existir logs — y justo ahí está el km que persigue la auditoría de flota. Con el fichaje sabemos **quién tenía el coche en cada momento** aunque BOLT esté cerrado, así que la auditoría puede pasar de señalar matrículas a **señalar personas**.
@@ -234,7 +258,7 @@ Si no se sabe su nombre, **el turno no se abre**: fichar sin nombre dejaría un 
 
 ## Los dos flujos del WhatsApp
 
-**El conductor (turno), desde el 28/09/2026.** Saludo con su nombre de pila → escribe la matrícula (todo junto) → empieza el turno y le salen siempre los mismos botones: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Ver mis turnos · Terminar turno*. Si escribe otra matrícula con el turno abierto, **no se cambia solo**: se le pide que termine primero (cambiar de coche es cerrar un turno —y quizá bloquear un motor— y abrir otro). Si el desbloqueo falla, le sale un botón **Reintentar** antes del panel (y la palabra `desbloquear` hace lo mismo). Probado de punta a punta con `Scripts de análisis/simular-bot-conductor.js` (todo en memoria).
+**El conductor (turno), desde el 28/09/2026.** Saludo con su nombre de pila → escribe la matrícula (todo junto) → se vincula el vehículo (hasta el 13/11/2026, «empieza el turno») y le salen siempre los mismos botones: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Ver mis turnos · Desvincular vehículo*. Si escribe otra matrícula con el turno abierto, **no se cambia solo**: se le pide que termine primero (cambiar de coche es cerrar un turno —y quizá bloquear un motor— y abrir otro). Si el desbloqueo falla, le sale un botón **Reintentar** antes del panel (y la palabra `desbloquear` hace lo mismo). Probado de punta a punta con `Scripts de análisis/simular-bot-conductor.js` (todo en memoria).
 
 **Ver sus turnos sin empezar turno (13/10/2026).** Camilo: *«déjales la opción siempre de ver turnos sin necesidad de iniciar el turno o escribir alguna matrícula, siempre y cuando estén en la base»*. Un conductor preguntó «Cuales es mi turno» y le volvió el saludo. Ahora:
 
@@ -248,7 +272,7 @@ Se prueba con la escena 12 de `Scripts de análisis/simular-bot-conductor.js`.
 **La oficina (viaje), como el conductor desde el 29/10/2026.** Camilo, con la conversación de Ignacio delante (escribió «0835mmz» y el bot le contestó «indica la matrícula», y la tuvo que escribir otra vez): *«la idea es que tengan algo parecido a los conductores, todo igual, hasta el código de lavado, pero turnos no»*, *«que cuando mande la matrícula automáticamente empiece el viaje, nada de saludar»* y *«para todos igual, los mismos botones y lógica, menos turnos para oficina»*. Ahora:
 
 - **La matrícula empieza el viaje**, sea el primer mensaje o no. A cualquier otra cosa sin nada abierto, el saludo del conductor sin el botón «Ver mis turnos».
-- **Los mismos botones** que el conductor, en los mismos dos mensajes: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Terminar viaje*. Las palabras `lavado`, `km` y `desbloquear` también. Se dice «viaje» donde al conductor «turno» (*Viaje iniciado — ¡buen viaje, Ignacio!*, *En viaje desde las 13:46*).
+- **Los mismos botones** que el conductor, en los mismos dos mensajes: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Terminar viaje*. Las palabras `lavado`, `km` y `desbloquear` también. Se dice «viaje» donde al conductor «vincular» (*Viaje iniciado — ¡buen viaje, Ignacio!*, *En viaje desde las 13:46*).
 - Abrir, cerrar y lavado llevan **ids propios** (`turno_abrir`, `turno_cerrar`, `turno_lavado`): los de siempre (`abrir_puertas`…) los sigue usando el panel de puertas de oficina con el coche que se escribió allí, y un mismo id no puede querer decir dos cosas. Los botones de los mensajes viejos del viaje (*Ver km ahora*, *Desbloquear*) siguen funcionando.
 - **«Entregar coche» también en el viaje** (db/224 abre `ck_ft_relevo` a los viajes). Antes de aplicarla, pulsarlo en un viaje contesta que no se ha podido apuntar.
 - **Dos casos en los que la matrícula no empieza el viaje sin más** (`fichajeBot.antesDelViaje`), porque a lo mejor solo quería abrirle o cerrarle el coche a alguien:

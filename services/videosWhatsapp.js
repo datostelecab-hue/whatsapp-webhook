@@ -18,12 +18,14 @@ const VIDEOS = [
     // De Documents/Claude/reel-bot-coche (07/10/2026): 72 s, vertical, 11 MB.
     // Cuenta el caso de la multa, cómo se usa el bot (matrícula, puertas,
     // «Entregar coche», «Terminar turno») y que sin matrícula el coche no arranca.
+    // OJO: el vídeo enseña los botones de antes del 13/11/2026 («Terminar
+    // turno»); el pie ya dice «Desvincular vehículo».
     ruta: '/assets/videos/bot-coche.mp4',
     portada: '/assets/videos/bot-coche.jpg',
     duracion: '1:12',
-    para: 'Para los nuevos, y para quien no se aclara con el bot: matrícula, puertas, entregar y terminar el turno, y el bloqueo del motor.',
-    pie: 'Así funciona el WhatsApp de Telecab con tu coche: escribe la matrícula para empezar tu turno y desbloquear el motor, '
-      + 'abre y cierra las puertas desde aquí, y al acabar pulsa «Terminar turno» con el coche aparcado y apagado.',
+    para: 'Para los nuevos, y para quien no se aclara con el bot: matrícula, puertas, entregar y desvincular el vehículo, y el bloqueo del motor.',
+    pie: 'Así funciona el WhatsApp de Telecab con tu coche: escribe la matrícula para vincular el vehículo y desbloquear el motor, '
+      + 'abre y cierra las puertas desde aquí, y al acabar pulsa «Desvincular vehículo» con el coche aparcado y apagado.',
   },
 ];
 

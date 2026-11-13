@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-11-10
+actualizado: 2026-11-13
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-11-13 · El conductor vincula el vehículo, no abre un turno
+
+*«Los conductores piensan que esto es un fichaje que se las pagará así estén 10 horas sin salir en BOLT»* (Camilo). El bot deja de decirle al conductor «Iniciar turno» y «Terminar turno»: escribe la matrícula y el vehículo queda **vinculado**, y al acabar pulsa **Desvincular vehículo**. Las horas salen de BOLT; esto es quién tiene el coche. «Ver mis turnos» (su cuadrante) se queda, y la oficina sigue con sus viajes. → [[Fichaje]]
 
 ## 2026-11-06 · Barcelona: el correturnos es una casilla del cuadrante, y el planificador se exporta a Excel
 

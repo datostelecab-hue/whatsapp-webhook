@@ -127,7 +127,8 @@ const resumen = r => r.map(e => [e.id, e.tipo, e.dia, e.sinPlaza]);
   igual('Bienvenida: su nombre, «mañana» con el día y el coche',
     [bien.startsWith('👋 ¡Hola, Unai!'), bien.includes('Tu primer turno es mañana, viernes 16/10, turno de día, con el coche *9528MMX*.')], [true, true]);
   igual('Bienvenida: con las palabras del bot y sin «fichar»',
-    [/matrícula/.test(bien), /Entregar coche/.test(bien), /Terminar turno/.test(bien), /Ver mis turnos/.test(bien), /fich/i.test(bien)], [true, true, true, true, false]);
+    [/matrícula/.test(bien), /Entregar coche/.test(bien), /Desvincular vehículo/.test(bien), /Ver mis turnos/.test(bien), /fich/i.test(bien),
+      /Terminar turno|empieza tu turno/.test(bien)], [true, true, true, true, false, false]);
   const sinCoche = S.textoBienvenida({ pila: '', dia: '2026-10-20', hoy: '2026-10-15', turno: '', matriculas: [] });
   igual('Bienvenida sin coche ni nombre: no se lo inventa', [sinCoche.startsWith('👋 ¡Hola! '), sinCoche.includes('Tu primer turno es el martes 20/10.')], [true, true]);
   igual('Dos coches (un correturnos)', S.textoBienvenida({ dia: '2026-10-16', hoy: '2026-10-15', matriculas: ['1096MJY', '5736LGK'] })

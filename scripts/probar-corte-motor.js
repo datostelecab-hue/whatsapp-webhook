@@ -889,14 +889,21 @@ const limpio = () => { ordenes.length = 0; };
   const bot = require(path.join(RAIZ, 'services/fichajeBot.js'));
   const tAna = { nombre: 'Ana Día', matricula: '3333CCC', tipo: 'turno', telefono: ANA };
   const preg = bot.textoPregunta({ turno: tAna, porque: 'en-marcha', sinMotor: false });
-  comprobar('la pregunta: su nombre, su coche, en marcha, los dos botones y que se bloqueará',
-    /^👋 Ana, llevas más de 14 h con el turno abierto en \*3333CCC\* y el coche está en marcha/.test(preg)
-      && /Sigo en el coche/.test(preg) && /Terminar turno/.test(preg) && /bloquearé el motor/.test(preg) && !/fich/i.test(preg), preg);
+  comprobar('la pregunta: su nombre, su coche, en marcha, los dos botones y que se bloqueará (sin «turno» ni «fichar»)',
+    /^👋 Ana, llevas más de 14 h con el \*3333CCC\* vinculado y el coche está en marcha/.test(preg)
+      && /Sigo en el coche/.test(preg) && /Desvincular vehículo/.test(preg) && /bloquearé el motor/.test(preg)
+      && !/fich|turno/i.test(preg), preg);
   comprobar('… sin el bloqueo, no promete bloquear', !/bloquearé/.test(bot.textoPregunta({ turno: tAna, porque: 'encendido', sinMotor: true })));
   const cer = bot.textoCerrado({ turno: tAna, motor: { hecho: true } });
-  comprobar('el cierre: que se cerró, por qué, el motor bloqueado y cómo seguir',
-    /^🔴 Ana, he cerrado tu turno en \*3333CCC\*: llevaba más de 14 h abierto y el coche estaba parado y apagado\. El motor ha quedado bloqueado\./.test(cer)
-      && /escríbeme la matrícula/.test(cer) && !/fich/i.test(cer), cer);
+  comprobar('el cierre: que se desvinculó, por qué, el motor bloqueado y cómo seguir',
+    /^🔴 Ana, he desvinculado el \*3333CCC\*: llevaba más de 14 h vinculado y el coche estaba parado y apagado\. El motor ha quedado bloqueado\./.test(cer)
+      && /escríbeme la matrícula y lo vuelvo a vincular/.test(cer) && !/fich|turno/i.test(cer), cer);
+  const viajeOf = { nombre: 'Ofi Cina', matricula: '3333CCC', tipo: 'viaje', telefono: ANA };
+  comprobar('… y a la oficina, con sus viajes como siempre',
+    /llevas más de 14 h con el viaje abierto en \*3333CCC\*/.test(bot.textoPregunta({ turno: viajeOf, porque: 'encendido', sinMotor: false }))
+      && /^🔴 Ofi, he cerrado tu viaje en \*3333CCC\*/.test(bot.textoCerrado({ turno: viajeOf, motor: { hecho: true } })));
+  comprobar('… sin nombre, la frase empieza en mayúscula',
+    /^🔴 He desvinculado el \*3333CCC\*/.test(bot.textoCerrado({ turno: { ...tAna, nombre: '' }, motor: { hecho: true } })));
   comprobar('… y si se quedó libre (un compañero sin el bloqueo), no habla del motor',
     !/motor/.test(bot.textoCerrado({ turno: tAna, motor: { hecho: false, seQuedaLibre: true } })));
   hayDb219 = false;

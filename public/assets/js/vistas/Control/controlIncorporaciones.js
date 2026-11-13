@@ -249,17 +249,17 @@
             : 'Cuando pulse «Ver mis turnos» (o escriba al bot) se abre su ventana de WhatsApp: mándale entonces «Bienvenida con vídeo». ' +
               di('Te mando un vídeo de un minuto que explica cómo se usa: míralo antes de tu primer turno.'))),
         paso(4, 'Ver sus turnos',
-          di('Para ver tus turnos cuando quieras, escribe "hola" y pulsa Ver mis turnos. No hace falta empezar el turno. También puedes preguntar "¿qué turno tengo?".')),
+          di('Para ver tus turnos cuando quieras, escribe "hola" y pulsa Ver mis turnos. No hace falta vincular el vehículo. También puedes preguntar "¿qué turno tengo?".')),
         paso(5, 'Al llegar al coche',
-          di('Escribe la matrícula todo junto, sin espacios ni guiones, por ejemplo 1234ABC. Con eso empieza tu turno y se desbloquea el motor.') +
-          '<br>Si el coche lo tiene otro compañero, primero tiene que soltarlo él (Entregar coche o Terminar turno).'),
-        paso(6, 'Los botones del turno',
-          di('Te salen siempre los mismos: Abrir puertas, Cerrar puertas y Entregar coche; y Ver mis turnos y Terminar turno.')),
+          di('Escribe la matrícula todo junto, sin espacios ni guiones, por ejemplo 1234ABC. Con eso se vincula el vehículo y se desbloquea el motor.') +
+          '<br>Si el coche lo tiene otro compañero, primero tiene que soltarlo él (Entregar coche o Desvincular vehículo).'),
+        paso(6, 'Los botones del coche',
+          di('Te salen siempre los mismos: Abrir puertas, Cerrar puertas y Entregar coche; y Ver mis turnos y Desvincular vehículo.')),
         paso(7, 'Entregar el coche al compañero',
-          di('Pulsa Entregar coche justo antes de salir hacia donde está tu compañero, no cuando ya se lo hayas dado. Cuando llegues, él escribe la matrícula y tu turno se cierra solo.')),
-        paso(8, 'Terminar el turno',
-          di('Pulsa Terminar turno con el coche aparcado y apagado. Si está encendido o en marcha no te deja, porque al terminar se bloquea el motor.') +
-          '<br>Si no hay a quién entregárselo, que lo apague y pulse Terminar turno.'),
+          di('Pulsa Entregar coche justo antes de salir hacia donde está tu compañero, no cuando ya se lo hayas dado. Cuando llegues, él escribe la matrícula y el vehículo se desvincula de ti solo.')),
+        paso(8, 'Desvincular el vehículo',
+          di('Pulsa Desvincular vehículo con el coche aparcado y apagado. Si está encendido o en marcha no te deja, porque al desvincularlo se bloquea el motor.') +
+          '<br>Si no hay a quién entregárselo, que lo apague y pulse Desvincular vehículo.'),
         paso(9, 'Si algo falla', di('Si el coche no abre, no arranca o el bot no te contesta, llama a Tráfico.')),
         paso(10, 'Al colgar', 'Apunta la llamada con «Apuntar llamada».'),
       ];
@@ -273,7 +273,7 @@
           (f.avisoTurnos && f.avisoTurnos.ok ? 'Ya se le mandaron por WhatsApp. ' : 'Mándaselos con «Enviar turnos». ') +
           di('Puedes verlos cuando quieras escribiendo "hola" al WhatsApp de Telecab y pulsando Ver mis turnos.')),
         paso(3, 'El bot, por si acaso',
-          di('Recuerda: al llegar al coche escribe la matrícula todo junto y empieza tu turno; al acabar, Terminar turno con el coche aparcado y apagado.') +
+          di('Recuerda: al llegar al coche escribe la matrícula todo junto y se vincula el vehículo; al acabar, Desvincular vehículo con el coche aparcado y apagado.') +
           (f.sinBolt ? aviso('No tiene cuenta de BOLT enlazada a su ficha: avisa a RRHH.') : '')),
         paso(4, 'Al colgar', 'Apunta la llamada con «Apuntar llamada».'),
       ];
@@ -323,7 +323,7 @@
     const ok = await Dialogo.confirmar({
       titulo: `Mandar el vídeo del bot a ${f.nombre}`,
       html: `<video controls preload="metadata" src="/assets/videos/bot-coche.mp4" poster="/assets/videos/bot-coche.jpg" class="w-full max-h-72 rounded-lg bg-black mb-2"></video>`
-        + `<p class="text-sm">Le llega por WhatsApp el vídeo de cómo funciona el bot del coche (1:12): la matrícula, las puertas, entregar y terminar el turno, y el bloqueo del motor.${
+        + `<p class="text-sm">Le llega por WhatsApp el vídeo de cómo funciona el bot del coche (1:12): la matrícula, las puertas, entregar y desvincular el vehículo, y el bloqueo del motor.${
           f.videoEnviado ? ` Ya se le mandó el ${esc(f.videoEnviado)}.` : ''}</p>`,
       si: 'Mandar', no: 'Cancelar',
     });
