@@ -260,3 +260,33 @@ test('lo que se cambia en /usuarios queda en el libro con quién lo hizo (db/248
   const ultimo = (await libro.historial('usuario', String(u.id))).at(-1);
   assert.deepEqual([ultimo.quien, ultimo.origen], [null, 'acceso']);
 }));
+
+// ── La segunda pasada del 13/11/2026 ────────────────────────────────────────
+
+test('tampoco un círculo que se cerraría al bloquear a alguien en /usuarios', () => conBase(async ({ fabrica, consulta }) => {
+  const bruno = await fabrica.usuario({ nombre: 'Bruno' });
+  const andres = await fabrica.usuario({ nombre: 'Andres' });
+  const rocio = await fabrica.usuario({ nombre: 'Rocio' });
+  await org.ponerArea(andres.id, { area: 'control', superiorId: bruno.id });
+  // Rocío pasa a llevar Control con Andrés de superior. Hoy no hay círculo
+  // (Andrés depende de Bruno), pero si se bloquea a Bruno, Andrés pasa a
+  // depender de Rocío: Rocío → Andrés → Rocío. Se para ya.
+  await assert.rejects(org.ponerArea(rocio.id, { area: 'control', superiorId: andres.id, responsable: true }),
+    /podría quedar un círculo de superiores: Rocio De Prueba → Andres De Prueba → Rocio De Prueba\. Pasaría al bloquear/);
+  // Sin ese superior, sí; y bloquear a Bruno ya no cierra nada.
+  await org.ponerArea(rocio.id, { area: 'control', responsable: true });
+  await consulta(`UPDATE usuario SET estado = 'bloqueado' WHERE id = $1`, [bruno.id]);
+  assert.equal((await org.superiorDe(andres.id)).id, rocio.id);
+  assert.equal(await org.superiorDe(rocio.id), null);
+}));
+
+test('ni uno que se cerraría al desbloquear a alguien', () => conBase(async ({ fabrica, consulta }) => {
+  const a = await fabrica.usuario({ nombre: 'A' });
+  const b = await fabrica.usuario({ nombre: 'B' });
+  const c = await fabrica.usuario({ nombre: 'C' });
+  await org.ponerArea(b.id, { superiorId: c.id });
+  await org.ponerArea(a.id, { superiorId: b.id });
+  await consulta(`UPDATE usuario SET estado = 'bloqueado' WHERE id = $1`, [b.id]);
+  // Con B bloqueado, A no depende de nadie; pero si se desbloquea a B: C → A → B → C.
+  await assert.rejects(org.ponerArea(c.id, { superiorId: a.id }), /podría quedar un círculo/);
+}));

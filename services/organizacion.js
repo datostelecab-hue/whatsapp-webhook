@@ -140,6 +140,36 @@ function superiorEn(gente, areas, id) {
 }
 
 /**
+ * Un camino de superiores que sale de `id` y vuelve a ella, contando los DOS
+ * enlaces de cada persona (su superior puesto y el responsable de su área), o
+ * null. → [id, …, id]. Los bloqueados cuentan: pueden desbloquearse.
+ */
+function circuloDesde(gente, areas, id) {
+  const porId = new Map(gente.map(p => [p.id, p]));
+  const resp = new Map(areas.filter(a => a.responsable_id).map(a => [a.codigo, a.responsable_id]));
+  const enlaces = x => {
+    const p = porId.get(x);
+    if (!p) return [];
+    const r = resp.get(p.area_codigo);
+    return [...new Set([p.superior_id, r].filter(y => y && y !== x))];
+  };
+  const padre = new Map([[id, null]]);
+  const pila = [id];
+  while (pila.length) {
+    const x = pila.pop();
+    for (const y of enlaces(x)) {
+      if (y === id) {
+        const camino = [id];
+        for (let z = x; z !== id; z = padre.get(z)) camino.splice(1, 0, z);
+        return [...camino, id];
+      }
+      if (!padre.has(y)) { padre.set(y, x); pila.push(y); }
+    }
+  }
+  return null;
+}
+
+/**
  * A quién ve una persona en el «Tablero del equipo» (ítem 1): todos, si tiene
  * «ve_todos_los_tableros»; si no, la gente de las áreas de las que es
  * responsable y quien la tenga puesta como superior.
@@ -232,32 +262,34 @@ async function ponerArea(usuarioId, { area, superiorId, responsable = false } = 
     // En fila y leyendo dentro de la transacción: dos cambios a la vez no
     // pueden cerrar un círculo entre los dos.
     await repo.bloquear(cli);
-    const gente = await repo.personas({ cli });
+    // Con los bloqueados: también cuentan para que no quede un círculo (abajo).
+    const todos = await repo.personas({ conBloqueados: true, cli });
+    const gente = todos.filter(p => p.estado !== 'bloqueado');
     const areas = await repo.areas(cli);
     if (!gente.some(p => p.id === id)) throw new Error('Esa persona no existe o está bloqueada');
     if (cod && !areas.some(a => a.codigo === cod && a.activa)) throw new Error(`No existe el área «${area}»`);
     if (sup && !gente.some(p => p.id === sup)) throw new Error('Ese superior no existe o está bloqueado');
 
-    // QUE NO SE CIERRE UN CÍRCULO, venga por donde venga: por el superior que
-    // se pone, o por el responsable del área (quien entra en un área sin
-    // superior puesto pasa a depender de su responsable; quien pasa a llevar un
-    // área tiene debajo a la gente de ella). Todo enlace que cambia aquí toca a
-    // esta persona, así que todo círculo nuevo pasa por ella: basta con subir
-    // desde su superior de verdad y ver si se vuelve a ella.
-    const simulada = gente.map(p => (p.id === id ? { ...p, area_codigo: cod, superior_id: sup } : p));
+    // QUE NO SE CIERRE UN CÍRCULO, ni ahora ni cuando alguien se bloquee o se
+    // desbloquee. Cada persona depende de su superior puesto o, si no lo tiene
+    // o está bloqueado, del responsable de su área: así que bloquear a alguien
+    // en /usuarios cambia de quién depende la gente que lo tenía puesto, sin
+    // pasar por aquí. Por eso se mira con LOS DOS enlaces de cada persona a la
+    // vez (el puesto y el del área), bloqueados incluidos: si con ellos no hay
+    // círculo, ningún bloqueo ni desbloqueo de después lo puede cerrar, porque
+    // cada persona solo usa uno de sus dos. Todo enlace que cambia aquí toca a
+    // esta persona, así que basta con buscar un camino que vuelva a ella.
+    const simulada = todos.map(p => (p.id === id ? { ...p, area_codigo: cod, superior_id: sup } : p));
     const areasSim = areas.map(a => (a.codigo === cod && responsable ? { ...a, responsable_id: id }
       : (a.responsable_id === id ? { ...a, responsable_id: null } : a)));
-    const cadena = [];
-    const vistos = new Set();
-    let s = superiorEn(simulada, areasSim, id);
-    while (s && !vistos.has(s.id)) {
-      cadena.push(s.nombre);
-      if (s.id === id) {
-        const yo = gente.find(p => p.id === id).nombre;
-        throw new Error(`Así quedaría un círculo de superiores: ${[yo, ...cadena].join(' → ')}`);
-      }
-      vistos.add(s.id);
-      s = superiorEn(simulada, areasSim, s.id);
+    const camino = circuloDesde(simulada, areasSim, id);
+    if (camino) {
+      const nombre = x => (simulada.find(p => p.id === x) || {}).nombre || `#${x}`;
+      const hoy = camino.slice(1).every((x, i) => (superiorEn(simulada, areasSim, camino[i]) || {}).id === x);
+      throw new Error(hoy
+        ? `Así quedaría un círculo de superiores: ${camino.map(nombre).join(' → ')}`
+        : `Así podría quedar un círculo de superiores: ${camino.map(nombre).join(' → ')}. ` +
+          'Pasaría al bloquear a alguien, porque entonces su gente depende del responsable de su área. Elige otro superior.');
     }
 
     await repo.ponerAreaYSuperior(cli, id, cod, sup);
