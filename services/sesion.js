@@ -413,7 +413,8 @@ async function sembrarSuperadmin() {
   try {
     if (await usuarios.buscarUsuario(email)) { console.log(`   Superadmin semilla: ${email} ya existe.`); return; }
     const nombre = (process.env.SUPERADMIN_NOMBRE || 'Superadmin').trim();
-    const { passwordProvisional } = await usuarios.crearUsuario({ email, nombre, rol: 'superadmin', creado_por: 'sistema' });
+    const { passwordProvisional } = await usuarios.crearUsuario({ email, nombre, rol: 'superadmin', creado_por: 'sistema' },
+      { origen: 'arranque' });
     console.log(`✅ [SESIÓN] Superadmin creado: ${email}`);
     const { enviarCorreo } = require('./correo');
     const asunto = 'Acceso a la plataforma Telecab';

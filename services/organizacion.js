@@ -113,7 +113,8 @@ async function exigir(usuarioId, codigo) {
 
 /**
  * El superior de una persona: el que tiene puesto; si no, el responsable de su
- * área (salvo que sea ella misma). Sin nada de eso, null. Bloqueados, nunca.
+ * área (salvo que sea ella misma). Sin nada de eso, null. Bloqueados, nunca: un
+ * superior puesto que está bloqueado no cuenta, y entonces manda el área.
  */
 async function superiorDe(usuarioId) {
   const id = entero(usuarioId);
@@ -128,7 +129,7 @@ function superiorEn(gente, areas, id) {
   const activo = uid => gente.find(x => x.id === uid && x.estado !== 'bloqueado');
   if (p.superior_id) {
     const s = activo(p.superior_id);
-    return s ? { id: s.id, nombre: s.nombre, porque: 'puesto' } : null;
+    if (s) return { id: s.id, nombre: s.nombre, porque: 'puesto' };
   }
   const a = areas.find(x => x.codigo === p.area_codigo);
   if (a && a.responsable_id && a.responsable_id !== id) {
@@ -163,7 +164,13 @@ async function excepcionesDeLlaves(usuarioId, rol) {
   const semilla = new Set(permisos.semillaDeRol(rol));
   const tiene_ = await permisos.clavesDe(id);
   const etiqueta = new Map();
-  for (const g of permisos.CATALOGO) for (const it of g.items) etiqueta.set(it.clave, `${g.grupo} · ${it.etiqueta}`);
+  for (const g of permisos.CATALOGO) {
+    for (const it of g.items) {
+      etiqueta.set(it.clave, `${g.grupo} · ${it.etiqueta}`);
+      // Las hijas ya llevan el nombre de su pantalla («Planificador · editar…»).
+      for (const h of it.hijos || []) etiqueta.set(h.clave, `${g.grupo} · ${h.etiqueta}`);
+    }
+  }
   const conEtiqueta = c => ({ clave: c, etiqueta: etiqueta.get(c) || c });
   return {
     accesoTotal: false,
@@ -215,32 +222,44 @@ async function ficha(usuarioId) {
 async function ponerArea(usuarioId, { area, superiorId, responsable = false } = {}, { quien } = {}) {
   const id = entero(usuarioId);
   if (!id) throw new Error('Falta la persona');
-  const [gente, areas] = await Promise.all([repo.personas(), repo.areas()]);
-  if (!gente.some(p => p.id === id)) throw new Error('Esa persona no existe o está bloqueada');
   const cod = area ? String(area) : null;
-  if (cod && !areas.some(a => a.codigo === cod && a.activa)) throw new Error(`No existe el área «${area}»`);
   const sup = superiorId ? entero(superiorId) : null;
   if (superiorId && !sup) throw new Error('Ese superior no se entiende');
   if (sup === id) throw new Error('Nadie es su propio superior');
-  if (sup && !gente.some(p => p.id === sup)) throw new Error('Ese superior no existe o está bloqueado');
   if (responsable && !cod) throw new Error('Para ser responsable de un área, primero hay que estar en ella');
 
-  // Que no se cierre un círculo: subiendo desde el superior nuevo no se puede llegar a esta persona.
-  if (sup) {
+  await libro.conFirma({ usuarioId: quien, origen: 'organizacion' }, async cli => {
+    // En fila y leyendo dentro de la transacción: dos cambios a la vez no
+    // pueden cerrar un círculo entre los dos.
+    await repo.bloquear(cli);
+    const gente = await repo.personas({ cli });
+    const areas = await repo.areas(cli);
+    if (!gente.some(p => p.id === id)) throw new Error('Esa persona no existe o está bloqueada');
+    if (cod && !areas.some(a => a.codigo === cod && a.activa)) throw new Error(`No existe el área «${area}»`);
+    if (sup && !gente.some(p => p.id === sup)) throw new Error('Ese superior no existe o está bloqueado');
+
+    // QUE NO SE CIERRE UN CÍRCULO, venga por donde venga: por el superior que
+    // se pone, o por el responsable del área (quien entra en un área sin
+    // superior puesto pasa a depender de su responsable; quien pasa a llevar un
+    // área tiene debajo a la gente de ella). Todo enlace que cambia aquí toca a
+    // esta persona, así que todo círculo nuevo pasa por ella: basta con subir
+    // desde su superior de verdad y ver si se vuelve a ella.
     const simulada = gente.map(p => (p.id === id ? { ...p, area_codigo: cod, superior_id: sup } : p));
     const areasSim = areas.map(a => (a.codigo === cod && responsable ? { ...a, responsable_id: id }
       : (a.responsable_id === id ? { ...a, responsable_id: null } : a)));
+    const cadena = [];
     const vistos = new Set();
-    let cur = sup;
-    while (cur && !vistos.has(cur)) {
-      if (cur === id) throw new Error('Así quedaría un círculo: esa persona ya depende de esta');
-      vistos.add(cur);
-      const s = superiorEn(simulada, areasSim, cur);
-      cur = s ? s.id : null;
+    let s = superiorEn(simulada, areasSim, id);
+    while (s && !vistos.has(s.id)) {
+      cadena.push(s.nombre);
+      if (s.id === id) {
+        const yo = gente.find(p => p.id === id).nombre;
+        throw new Error(`Así quedaría un círculo de superiores: ${[yo, ...cadena].join(' → ')}`);
+      }
+      vistos.add(s.id);
+      s = superiorEn(simulada, areasSim, s.id);
     }
-  }
 
-  await libro.conFirma({ usuarioId: quien, origen: 'organizacion' }, async cli => {
     await repo.ponerAreaYSuperior(cli, id, cod, sup);
     await repo.soltarResponsable(cli, id, responsable ? cod : null);
     if (responsable) await repo.ponerResponsable(cli, cod, id);
@@ -248,38 +267,61 @@ async function ponerArea(usuarioId, { area, superiorId, responsable = false } = 
   return ficha(id);
 }
 
-/** Da una función a una persona. */
+/**
+ * Da una función a una persona. Si es de una sola persona y su titular está
+ * BLOQUEADO (se fue, o ya no entra en el ERP), se le anula a él en la misma
+ * transacción, con su motivo: si no, al desbloquearlo habría dos titulares, y
+ * desde la pantalla no se le podría quitar (no enseña a los bloqueados).
+ */
 async function darFuncion(usuarioId, codigo, { suplente = false, nota = '' } = {}, { quien } = {}) {
   const id = entero(usuarioId);
   if (!id) throw new Error('Falta la persona');
   const f = funcion(codigo);
-  const gente = await repo.personas();
-  if (!gente.some(p => p.id === id)) throw new Error('Esa persona no existe o está bloqueada');
-  const ya = await quienes(codigo);
-  if (ya.some(p => p.id === id)) throw new Error(`Ya tiene «${f.etiqueta}»`);
-  if (!f.varias && !suplente && ya.some(p => !p.suplente)) {
-    throw new Error(`«${f.etiqueta}» es de una sola persona (${ya.filter(p => !p.suplente).map(p => p.nombre).join(', ')}): quítasela antes, o dásela como suplente`);
-  }
-  await libro.conFirma({ usuarioId: quien, origen: 'organizacion' }, cli =>
-    repo.darFuncion(cli, { usuarioId: id, funcion: codigo, suplente: !!suplente,
-      nota: String(nota || '').trim().slice(0, 500) || null, creadoPor: entero(quien) }));
+  await libro.conFirma({ usuarioId: quien, origen: 'organizacion' }, async cli => {
+    await repo.bloquear(cli);
+    const yo = (await repo.personas({ cli })).find(p => p.id === id);
+    if (!yo) throw new Error('Esa persona no existe o está bloqueada');
+    const vigentes = (await repo.funciones({ cli })).filter(x => x.funcion === codigo);
+    if (vigentes.some(x => x.usuario_id === id)) throw new Error(`Ya tiene «${f.etiqueta}»`);
+    if (!f.varias && !suplente) {
+      const titulares = vigentes.filter(x => !x.suplente);
+      const activos = titulares.filter(x => x.estado !== 'bloqueado');
+      if (activos.length) {
+        throw new Error(`«${f.etiqueta}» es de una sola persona (${activos.map(x => x.nombre).join(', ')}): quítasela antes, o dásela como suplente`);
+      }
+      for (const t of titulares) {
+        // El motivo firmado vale para la anulación (un UPDATE); el alta de
+        // abajo es siempre «alta».
+        const motivo = `Pasa a ${yo.nombre}: ${t.nombre} está bloqueado en el ERP`;
+        await libro.firmar(cli, { usuarioId: quien, origen: 'organizacion', motivo });
+        await repo.anularFuncion(cli, { id: t.id, motivo, anuladoPor: entero(quien) });
+      }
+    }
+    await repo.darFuncion(cli, { usuarioId: id, funcion: codigo, suplente: !!suplente,
+      nota: String(nota || '').trim().slice(0, 500) || null, creadoPor: entero(quien) });
+  });
   return ficha(id);
 }
 
-/** Quita una función: la anula, con motivo. */
+/**
+ * Quita una función: la anula, con motivo. Devuelve la ficha de la persona, o
+ * null si ya no se puede enseñar (la bloquearon mientras tanto): lo guardado,
+ * guardado está, y no se contesta un error por eso.
+ */
 async function quitarFuncion(asignacionId, motivo, { quien } = {}) {
   const id = entero(asignacionId);
   if (!id) throw new Error('Falta cuál');
   const m = String(motivo || '').trim();
   if (m.length < 3) throw new Error('Di por qué se le quita: queda en su historia');
-  const f = (await repo.funciones()).find(x => x.id === id);
-  if (!f) throw new Error('Esa función ya no la tiene');
-  await libro.conFirma({ usuarioId: quien, origen: 'organizacion', motivo: m }, async cli => {
-    if (!await repo.anularFuncion(cli, { id, motivo: m.slice(0, 500), anuladoPor: entero(quien) })) {
+  const dueno = await libro.conFirma({ usuarioId: quien, origen: 'organizacion', motivo: m }, async cli => {
+    await repo.bloquear(cli);
+    const f = (await repo.funciones({ cli })).find(x => x.id === id);
+    if (!f || !await repo.anularFuncion(cli, { id, motivo: m.slice(0, 500), anuladoPor: entero(quien) })) {
       throw new Error('Esa función ya no la tiene');
     }
+    return f.usuario_id;
   });
-  return ficha(f.usuario_id);
+  try { return await ficha(dueno); } catch (_) { return null; }
 }
 
 module.exports = {

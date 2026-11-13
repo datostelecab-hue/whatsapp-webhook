@@ -19,6 +19,8 @@ SELECT auditoria_vigilar('usuario', 'id',
        ARRAY['pass_hash', 'pass_correo_cifrada', 'token_reset', 'token_expira']);   -- lo que no se apunta
 ```
 
+**En la migración, ponla bajo el libro ANTES de sembrarla.** Lo que se inserta antes no deja su alta: le pasó a `cat_area` en db/248, cuyas siete áreas nacieron sin fila en el libro.
+
 Desde ahí, un disparador apunta **cada alta, cambio y borrado**, venga de donde venga: la aplicación, una migración o SQL a mano. Cada fila lleva la de antes, la de después y los campos que cambiaron (`{ campo: [antes, después] }`). Un cambio que no cambia nada no se apunta. **Si un cambio mueve la clave**, se apunta en la historia de la clave nueva y también en la de la vieja.
 
 **`auditoria_vigilar` no deja pasar lo que se quedaría mal para siempre**, porque lo que entra en el libro ya no sale:

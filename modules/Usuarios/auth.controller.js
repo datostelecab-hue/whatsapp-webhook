@@ -116,13 +116,15 @@ router.post('/cambiar-password', async (req, res) => {
     const u = await usuarios.buscarUsuario(email);
     if (!u) return res.redirect('/login');
     if (!primerAcceso && !usuarios.verificarHash(String(b.actual || ''), u.hash)) return fallo('La contraseña actual no es correcta.');
-    await usuarios.fijarPassword(email, b.nueva);
+    // En el libro (db/248): lo cambia el propio usuario, desde el acceso.
+    const yo = { usuarioId: req.usuario.id, origen: 'acceso' };
+    await usuarios.fijarPassword(email, b.nueva, yo);
     const actualizado = await usuarios.buscarUsuario(email);
     // Cambiar la contrasena echa a TODAS las demas sesiones: es lo que uno
     // espera de un cambio de contrasena, y es la unica forma de recuperar una
     // cuenta cuya sesion larga se quedo abierta en un ordenador ajeno.
     try {
-      if (actualizado.id) { await usuarios.cortarSesiones(actualizado.id); usuarios.olvidarCorte(actualizado.id); }
+      if (actualizado.id) { await usuarios.cortarSesiones(actualizado.id, yo); usuarios.olvidarCorte(actualizado.id); }
     } catch (e) { console.error('❌ [AUTH] no se pudieron cortar las sesiones:', e.message); }
     sesion.ponerSesion(res, actualizado, { recordar: !!(req.usuario && req.usuario.larga), sede: req.usuario.sede });
     return res.redirect('/');
@@ -154,7 +156,8 @@ router.post('/olvide-password', async (req, res) => {
     const u = await usuarios.buscarUsuario(email);
     if (u && u.estado !== usuarios.ESTADOS_U.BLOQUEADO) {
       const prov = usuarios.generarPasswordProvisional();
-      await usuarios.actualizarUsuario(email, { hash: usuarios.hashPassword(prov), debe_cambiar: 'si' });
+      // Sin sesión: en el libro, lo hace el sistema desde el acceso.
+      await usuarios.actualizarUsuario(email, { hash: usuarios.hashPassword(prov), debe_cambiar: 'si' }, { origen: 'acceso' });
       const r = await enviarCorreo({ to: email, subject: 'Recuperar acceso — Telecab',
         text: `Se ha solicitado recuperar el acceso de ${email}.\n\nTu nueva contraseña provisional es: ${prov}\n\nEntra en la plataforma y el sistema te pedirá crear una nueva. Si no lo has pedido tú, avisa al administrador.` });
       if (!r.enviado) console.log(`🔑 [AUTH] Provisional (reset) de ${email}: ${prov}`);

@@ -9,9 +9,22 @@ const db = require('../db');
 
 const NOMBRE = `btrim(u.nombre || ' ' || COALESCE(NULLIF(u.apellidos, '.'), ''))`;
 
+// Las lecturas aceptan la conexión de una transacción (`cli`): las escrituras
+// de la organización leen y deciden DENTRO de la suya, tras el candado.
+const consulta = (cli, sql, vals) => (cli ? cli.query(sql, vals) : db.consulta(sql, vals));
+
+/**
+ * Pone en fila las escrituras de la organización (dentro de su transacción):
+ * dos cambios a la vez no pueden cerrar entre los dos un círculo de superiores
+ * ni dar a dos personas una función que es de una sola.
+ */
+async function bloquear(cli) {
+  await cli.query(`SELECT pg_advisory_xact_lock(hashtext('organizacion'))`);
+}
+
 /** Las áreas, con su responsable. */
-async function areas() {
-  const r = await db.consulta(
+async function areas(cli = null) {
+  const r = await consulta(cli, 
     `SELECT a.codigo, a.etiqueta, a.orden, a.activa, a.responsable_id,
             CASE WHEN u.id IS NULL THEN NULL ELSE ${NOMBRE} END AS responsable
        FROM cat_area a
@@ -21,8 +34,8 @@ async function areas() {
 }
 
 /** Las personas (usuarios), con su rol, área, superior escrito y estado. */
-async function personas({ conBloqueados = false } = {}) {
-  const r = await db.consulta(
+async function personas({ conBloqueados = false, cli = null } = {}) {
+  const r = await consulta(cli, 
     `SELECT u.id, ${NOMBRE} AS nombre, u.email, u.estado, r.codigo AS rol, r.etiqueta AS rol_etiqueta,
             u.area_codigo, u.superior_id
        FROM usuario u
@@ -33,8 +46,8 @@ async function personas({ conBloqueados = false } = {}) {
 }
 
 /** Las funciones vigentes (o todas, con las anuladas), con quién las tiene. */
-async function funciones({ conAnuladas = false } = {}) {
-  const r = await db.consulta(
+async function funciones({ conAnuladas = false, cli = null } = {}) {
+  const r = await consulta(cli, 
     `SELECT f.id, f.usuario_id, f.funcion, f.suplente, f.nota, f.creado_at,
             f.anulado_at, f.anulado_motivo,
             ${NOMBRE} AS nombre, u.estado,
@@ -82,5 +95,5 @@ async function anularFuncion(cli, { id, motivo, anuladoPor }) {
 }
 
 module.exports = {
-  areas, personas, funciones, ponerAreaYSuperior, ponerResponsable, soltarResponsable, darFuncion, anularFuncion,
+  bloquear, areas, personas, funciones, ponerAreaYSuperior, ponerResponsable, soltarResponsable, darFuncion, anularFuncion,
 };

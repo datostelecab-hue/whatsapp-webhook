@@ -8,6 +8,7 @@
 'use strict';
 
 const { conBase } = require('./apoyo/base');   // primero: sustituye services/db
+const usuarios = require('../modules/Usuarios/usuarios.service');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const org = require('../services/organizacion');
@@ -70,8 +71,9 @@ test('ítems 1 y 5: «la aprueba un supervisor» sale de quién tiene la funció
 
 test('una función de una sola persona no se da dos veces, salvo como suplente; ni la misma a la misma persona', () =>
   conBase(async ({ fabrica }) => {
-    const diana = await fabrica.usuario({ nombre: 'Diana' });
-    const otra = await fabrica.usuario({ nombre: 'Otra' });
+    // La titular va DETRÁS por orden alfabético: así «primero los titulares» se prueba de verdad.
+    const diana = await fabrica.usuario({ nombre: 'Zoe' });
+    const otra = await fabrica.usuario({ nombre: 'Ana' });
     await org.darFuncion(diana.id, 'nomina');
     await assert.rejects(org.darFuncion(otra.id, 'nomina'), /una sola persona/);
     await org.darFuncion(otra.id, 'nomina', { suplente: true });
@@ -157,3 +159,104 @@ test('las funciones que siembra db/248 son todas del catálogo', async () => {
   assert.ok(usadas.length > 20);
   for (const u of usadas) assert.ok(org.FUNCIONES.some(f => f.codigo === u), `db/248 siembra «${u}», que no está en el catálogo`);
 });
+
+// ── Lo que encontró la revisión del 13/11/2026 ─────────────────────────────
+
+test('no se cierra un círculo por el responsable del área, aunque no se ponga superior', () => conBase(async ({ fabrica }) => {
+  const r = await fabrica.usuario({ nombre: 'Rocio' });
+  const m = await fabrica.usuario({ nombre: 'Mario' });
+  // Rocío lleva Control y tiene puesto como superior a Mario...
+  await org.ponerArea(r.id, { area: 'control', superiorId: m.id, responsable: true });
+  // ...y Mario entra en Control sin superior puesto: pasaría a depender de Rocío.
+  await assert.rejects(org.ponerArea(m.id, { area: 'control' }), /círculo de superiores: Mario De Prueba → Rocio De Prueba → Mario/);
+  // Lo normal sigue pasando: entrar sin superior en un área con responsable.
+  const ana = await fabrica.usuario({ nombre: 'Ana' });
+  await org.ponerArea(ana.id, { area: 'control' });
+  assert.equal((await org.superiorDe(ana.id)).id, r.id);
+  // Y una cadena más larga: Rocío → Sara → Bea, y Bea entra en Control.
+  const sara = await fabrica.usuario({ nombre: 'Sara' });
+  const bea = await fabrica.usuario({ nombre: 'Bea' });
+  await org.ponerArea(r.id, { area: 'control', superiorId: sara.id, responsable: true });
+  await org.ponerArea(sara.id, { area: 'rrhh', superiorId: bea.id });
+  await assert.rejects(org.ponerArea(bea.id, { area: 'control' }), /círculo/);
+}));
+
+test('si el superior puesto está bloqueado, manda el responsable del área', () => conBase(async ({ fabrica, consulta }) => {
+  const jefa = await fabrica.usuario({ nombre: 'Jefa' });
+  const ana = await fabrica.usuario({ nombre: 'Ana' });
+  const s = await fabrica.usuario({ nombre: 'Sebas' });
+  await org.ponerArea(jefa.id, { area: 'rrhh', responsable: true });
+  await org.ponerArea(ana.id, { area: 'rrhh', superiorId: s.id });
+  assert.equal((await org.superiorDe(ana.id)).id, s.id);
+  await consulta(`UPDATE usuario SET estado = 'bloqueado' WHERE id = $1`, [s.id]);
+  const sup = await org.superiorDe(ana.id);
+  assert.deepEqual([sup.id, sup.porque], [jefa.id, 'responsable del área']);
+}));
+
+test('una función de una sola persona cuyo titular está bloqueado: se le anula a él al darla, y al desbloquearlo no hay dos', () =>
+  conBase(async ({ fabrica, consulta }) => {
+    const ignacio = await fabrica.usuario({ nombre: 'Ignacio' });
+    const diana = await fabrica.usuario({ nombre: 'Diana' });
+    const mercedes = await fabrica.usuario({ nombre: 'Mercedes' });
+    await org.darFuncion(diana.id, 'nomina', {}, { quien: ignacio.id });
+    const suya = (await org.ficha(diana.id)).funciones[0];
+    await consulta(`UPDATE usuario SET estado = 'bloqueado' WHERE id = $1`, [diana.id]);
+    await org.darFuncion(mercedes.id, 'nomina', {}, { quien: ignacio.id });
+    await consulta(`UPDATE usuario SET estado = 'activo' WHERE id = $1`, [diana.id]);
+    assert.deepEqual((await org.quienes('nomina', { conSuplentes: false })).map(p => p.id), [mercedes.id]);
+    const h = await libro.historial('usuario_funcion', String(suya.id));
+    assert.deepEqual(h.map(x => x.accion), ['alta', 'anulacion']);
+    assert.equal(h[1].quien, 'Ignacio De Prueba');
+    assert.match(h[1].motivo, /Pasa a Mercedes De Prueba: Diana De Prueba está bloqueado/);
+    // Con la titular activa, sigue sin poder darse.
+    await assert.rejects(org.darFuncion(diana.id, 'nomina', {}, { quien: ignacio.id }), /una sola persona \(Mercedes De Prueba\)/);
+  }));
+
+test('quitar una función a alguien que acaban de bloquear la quita y no contesta error', () => conBase(async ({ fabrica, consulta }) => {
+  const pepe = await fabrica.usuario({ nombre: 'Pepe' });
+  await org.darFuncion(pepe.id, 'multas');
+  const f = (await org.ficha(pepe.id)).funciones[0];
+  await consulta(`UPDATE usuario SET estado = 'bloqueado' WHERE id = $1`, [pepe.id]);
+  assert.equal(await org.quitarFuncion(f.id, 'Se va de la empresa'), null, 'sin ficha que enseñar, pero sin error');
+  const fila = (await consulta('SELECT anulado_at IS NOT NULL AS anulada FROM usuario_funcion WHERE id = $1', [f.id])).rows[0];
+  assert.equal(fila.anulada, true);
+  await assert.rejects(org.quitarFuncion(f.id, 'Otra vez'), /ya no la tiene/);
+}));
+
+test('cambiar el área, el superior y el responsable queda en el libro con quién y desde dónde', () => conBase(async ({ fabrica }) => {
+  const ignacio = await fabrica.usuario({ nombre: 'Ignacio' });
+  const laura = await fabrica.usuario({ nombre: 'Laura' });
+  await org.ponerArea(laura.id, { area: 'rrhh', superiorId: ignacio.id, responsable: true }, { quien: ignacio.id });
+  const hu = (await libro.historial('usuario', String(laura.id))).at(-1);
+  assert.deepEqual([hu.accion, hu.quien, hu.origen], ['cambio', 'Ignacio De Prueba', 'organizacion']);
+  assert.deepEqual(hu.cambios.map(c => c.campo).sort(), ['area_codigo', 'superior_id']);
+  const ha = (await libro.historial('cat_area', 'rrhh')).at(-1);
+  assert.deepEqual([ha.quien, ha.origen, ha.cambios.map(c => c.campo)], ['Ignacio De Prueba', 'organizacion', ['responsable_id']]);
+}));
+
+test('las llaves hijas del catálogo salen con su nombre, no con la ruta', () => conBase(async ({ fabrica }) => {
+  const u = await fabrica.usuario({ nombre: 'Jefe', rol: 'jefe_trafico' });
+  const x = await org.excepcionesDeLlaves(u.id, 'jefe_trafico');
+  assert.ok(x.deMenos.length > 0);
+  assert.ok(x.deMenos.some(k => k.clave === '/planificador/editar'), 'una hija de su rol');
+  for (const k of x.deMenos) assert.notEqual(k.etiqueta, k.clave, `${k.clave} sin nombre`);
+}));
+
+test('lo que se cambia en /usuarios queda en el libro con quién lo hizo (db/248)', () => conBase(async ({ fabrica }) => {
+  const jefe = await fabrica.usuario({ nombre: 'Gestor' });
+  const u = await fabrica.usuario({ nombre: 'Laura' });
+  const firma = { usuarioId: jefe.id, origen: 'usuarios' };
+  await usuarios.actualizarUsuario(u.email, { rol: 'trafico' }, firma);
+  await usuarios.actualizarUsuario(u.email, { estado: 'bloqueado' }, firma);
+  await usuarios.cortarSesiones(u.id, firma);
+  await usuarios.fijarFichaObligatorio(u.id, true, firma);
+  const h = (await libro.historial('usuario', String(u.id))).slice(1);
+  assert.deepEqual(h.map(x => [x.accion, x.quien, x.origen]), [
+    ['cambio', 'Gestor De Prueba', 'usuarios'], ['estado', 'Gestor De Prueba', 'usuarios'],
+    ['cambio', 'Gestor De Prueba', 'usuarios'], ['cambio', 'Gestor De Prueba', 'usuarios'],
+  ]);
+  // Y el que no tiene sesión (olvidé mi contraseña) lo firma el sistema, sin «SQL a mano».
+  await usuarios.actualizarUsuario(u.email, { hash: 'otro', debe_cambiar: 'si' }, { origen: 'acceso' });
+  const ultimo = (await libro.historial('usuario', String(u.id))).at(-1);
+  assert.deepEqual([ultimo.quien, ultimo.origen], [null, 'acceso']);
+}));

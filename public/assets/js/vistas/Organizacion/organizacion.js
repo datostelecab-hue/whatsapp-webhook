@@ -212,6 +212,21 @@
         ayuda: 'Déjalo sin dato y su superior será el responsable de su área.' },
     ], { textoBoton: 'Guardar' });
     if (!v) return;
+    // El «Sí» de responsable viene de su área de ANTES y el formulario no lo
+    // recalcula al elegir otra: si va a llevar otra área, o a quitarle el puesto
+    // a quien la llevaba, se pregunta con los nombres antes de guardar.
+    const nueva = areas.find(a => a.codigo === v.area);
+    const otro = nueva && nueva.responsable_id && nueva.responsable_id !== d.id ? nueva.responsable : null;
+    if (v.responsable === 'si' && nueva && (v.area !== d.area || otro)) {
+      const frase = t => (/[.!?]$/.test(t) ? t : t + '.');   // «RR. HH.» ya trae su punto
+      const lineas = [frase(`${d.nombre} pasa a ser responsable de ${nueva.etiqueta}${otro ? `, en lugar de ${otro}` : ''}`)];
+      if (d.responsableDe.length && v.area !== d.area) {
+        lineas.push(`${d.areaEtiqueta} se queda sin responsable: quien no tenga superior puesto se queda sin superior.`);
+      }
+      const si = await Dialogo.confirmar({ titulo: '¿Cambiar de responsable?', texto: lineas.join(' '),
+        si: 'Sí, que sea la responsable', no: 'Volver' });
+      if (!si) return;
+    }
     await guardar(`${URL}/api/area/${d.id}`,
       { area: v.area || null, superiorId: v.superiorId || null, responsable: v.responsable === 'si' },
       'Guardado', d);

@@ -68,6 +68,9 @@ router.get('/api/datos', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
+// Lo que se cambia aquí queda en el libro de auditoría (db/248) con quién lo hizo.
+const firma = req => ({ usuarioId: req.usuario && req.usuario.id, origen: 'usuarios' });
+
 // Crear usuario → provisional por correo (o se dicta en persona si no salió el correo).
 router.post('/crear', async (req, res) => {
   try {
@@ -78,7 +81,7 @@ router.post('/crear', async (req, res) => {
     const { usuario, passwordProvisional } = await usuarios.crearUsuario({
       email: b.email, nombre: b.nombre, apellidos: b.apellidos, telefono: b.telefono, rol: b.rol,
       creado_por: req.usuario.email,
-    });
+    }, firma(req));
     const r = await enviarCorreo({
       to: usuario.email, subject: 'Acceso a la plataforma Telecab',
       text: `Hola ${usuario.nombre},\n\nSe ha creado tu acceso a la plataforma Telecab.\n\nUsuario: ${usuario.email}\nContraseña provisional: ${passwordProvisional}\n\nEntra y el sistema te pedirá crear tu propia contraseña.`
@@ -119,7 +122,7 @@ router.post('/rol', async (req, res) => {
     }
     const antes = await usuarios.buscarUsuario(email);
     if (!antes) throw new Error('No existe ese usuario');
-    const actualizado = await usuarios.actualizarUsuario(email, { rol: b.rol });
+    const actualizado = await usuarios.actualizarUsuario(email, { rol: b.rol }, firma(req));
     // Si baja de un rol de acceso total a uno normal y no tiene matriz, se le
     // siembra la de su rol nuevo para que no se quede mirando una pantalla vacía.
     if (antes.accesoTotal && !actualizado.accesoTotal) {
@@ -148,13 +151,13 @@ router.post('/estado', async (req, res) => {
         if (activos.length <= 1) throw new Error('Debe quedar al menos un administrador activo');
       }
     }
-    await usuarios.actualizarUsuario(email, { estado });
+    await usuarios.actualizarUsuario(email, { estado }, firma(req));
     // BLOQUEAR TIENE QUE ECHARLE YA. Sin esto, alguien con "mantener sesion
     // iniciada" seguiria entrando 30 dias despues de bloquearlo: su cookie va
     // firmada y el servidor no la consulta. El corte es lo que la mata.
     if (estado === usuarios.ESTADOS_U.BLOQUEADO) {
       const u = await usuarios.buscarUsuario(email);
-      if (u && u.id) { await usuarios.cortarSesiones(u.id); usuarios.olvidarCorte(u.id); }
+      if (u && u.id) { await usuarios.cortarSesiones(u.id, firma(req)); usuarios.olvidarCorte(u.id); }
     }
     console.log(`🚦 [Usuarios] ${email}: ${estado} — por ${req.usuario.email}`);
     res.json({ status: 'ok' });
@@ -169,12 +172,12 @@ router.post('/reset', async (req, res) => {
     if (!u) throw new Error('No existe ese usuario');
     await noEsDelDesarrollador(req, { email });
     const prov = usuarios.generarPasswordProvisional();
-    await usuarios.actualizarUsuario(email, { hash: usuarios.hashPassword(prov), debe_cambiar: 'si' });
+    await usuarios.actualizarUsuario(email, { hash: usuarios.hashPassword(prov), debe_cambiar: 'si' }, firma(req));
     const r = await enviarCorreo({
       to: email, subject: 'Nueva contraseña provisional — Telecab',
       text: `Se ha restablecido el acceso de ${email}.\n\nContraseña provisional: ${prov}\n\nEntra y el sistema te pedirá crear una nueva.`
     });
-    if (u.id) { await usuarios.cortarSesiones(u.id); usuarios.olvidarCorte(u.id); }
+    if (u.id) { await usuarios.cortarSesiones(u.id, firma(req)); usuarios.olvidarCorte(u.id); }
     console.log(`🔑 [Usuarios] Reset de ${email} — por ${req.usuario.email}`);
     res.json({ status: 'ok', correoEnviado: !!r.enviado, passwordProvisional: prov });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
@@ -187,7 +190,7 @@ router.post('/fichaje', async (req, res) => {
   try {
     const b = req.body || {};
     await noEsDelDesarrollador(req, { id: b.id });
-    const u = await usuarios.fijarFichaObligatorio(Number(b.id), b.debe === true || b.debe === 'si');
+    const u = await usuarios.fijarFichaObligatorio(Number(b.id), b.debe === true || b.debe === 'si', firma(req));
     console.log(`⏱️  [Usuarios] ${u.email}: ${u.fichaObligatorio ? 'SI ficha' : 'no ficha'} — por ${req.usuario.email}`);
     res.json({ status: 'ok', fichaObligatorio: u.fichaObligatorio });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
@@ -199,7 +202,7 @@ router.post('/fichaje-coche', async (req, res) => {
   try {
     const b = req.body || {};
     await noEsDelDesarrollador(req, { id: b.id });
-    const u = await usuarios.fijarFichaCoche(Number(b.id), b.puede === true || b.puede === 'si');
+    const u = await usuarios.fijarFichaCoche(Number(b.id), b.puede === true || b.puede === 'si', firma(req));
     console.log(`🔑 [Usuarios] ${u.email}: ${u.fichaCoche ? 'SI coge coches' : 'no coge coches'} — por ${req.usuario.email}`);
     res.json({ status: 'ok', fichaCoche: u.fichaCoche });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
@@ -213,7 +216,7 @@ router.post('/cerrar-sesiones', async (req, res) => {
     const u = await usuarios.buscarUsuario(email);
     if (!u) throw new Error('No existe ese usuario');
     await noEsDelDesarrollador(req, { email });
-    const r = await usuarios.cortarSesiones(u.id);
+    const r = await usuarios.cortarSesiones(u.id, firma(req));
     usuarios.olvidarCorte(u.id);
     console.log(`🔒 [Usuarios] Sesiones de ${email} cerradas — por ${req.usuario.email}`);
     res.json({ status: 'ok', ...r });
