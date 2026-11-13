@@ -15,6 +15,7 @@ Vive en `scripts/entorno-local/`, con su `LEEME.md`.
 |---|---|---|
 | `telecab-pg` | `127.0.0.1:5433` | PostgreSQL 18, la misma versión mayor que producción, con la copia |
 | `telecab-correo` | `http://localhost:8025` | Mailpit, un buzón falso: **todo correo del entorno cae aquí** |
+| `telecab-s3` | `127.0.0.1:9090` | s3mock, un S3 de mentira que hace de Cloudflare R2: los [[Adjuntos]] del entorno van aquí, nunca al R2 de verdad, y se pierden al parar el contenedor. Las imágenes de MinIO ya no son públicas (13/11/2026) |
 | El ERP | `http://erptelecab.localhost:3100` | `app.js` de siempre, arrancado por `arrancar.js` |
 | El portal | `http://conductorestelecab.localhost:3100` | el mismo servidor, por la dirección de los conductores |
 

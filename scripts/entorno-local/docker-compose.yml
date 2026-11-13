@@ -1,7 +1,7 @@
 # ============================================================
-# ENTORNO DE PRUEBAS LOCAL — la base y el buzón falso
+# ENTORNO DE PRUEBAS LOCAL — la base, el buzón falso y el R2 falso
 # ============================================================
-# Ver LEEME.md de esta carpeta. Dos contenedores, los dos solo en este PC
+# Ver LEEME.md de esta carpeta. Tres contenedores, todos solo en este PC
 # (127.0.0.1: nadie de la red los ve):
 #
 #   · telecab-pg      PostgreSQL 18, la misma versión mayor que producción, con
@@ -9,6 +9,10 @@
 #   · telecab-correo  Mailpit: un servidor de correo falso. Todo lo que el ERP
 #                     manda en pruebas cae aquí y se ve en http://localhost:8025.
 #                     No sale nada del PC.
+#   · telecab-s3      s3mock: un S3 de mentira que hace de Cloudflare R2 para los
+#                     adjuntos (db/249). Lo que se sube se queda aquí y se pierde
+#                     al parar el contenedor. Las imágenes de MinIO ya no son
+#                     públicas (13/11/2026): por eso este.
 #
 # Los datos de la base viven en el volumen `telecab-pruebas_pg`: sobreviven a
 # apagar Docker y se rehacen enteros con refrescar.js.
@@ -46,6 +50,15 @@ services:
     ports:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
+
+  s3:
+    image: adobe/s3mock:4.8.0
+    container_name: telecab-s3
+    restart: unless-stopped
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: telecab-adjuntos
+    ports:
+      - "127.0.0.1:9090:9090"
 
 volumes:
   pg:

@@ -36,6 +36,7 @@ const UNIDADES = {
   horas_habiles: { una: 'hora hábil', varias: 'horas hábiles' },
   dias: { una: 'día', varias: 'días' },
   anios: { una: 'año', varias: 'años' },
+  mb: { una: 'MB', varias: 'MB' },
   dia_mes: null,   // «el día 20 de cada mes»
 };
 
@@ -53,6 +54,13 @@ const CATALOGO = [
     defecto: { dias: [1, 2, 3, 4, 5], desde: '09:00', hasta: '18:00' },
     descripcion: 'Las horas que cuentan como hábiles. Fuera de este horario, en fin de semana o en un festivo, un plazo en horas hábiles se para y sigue al abrir la oficina.',
     usa: 'Los días y las horas hábiles de todos los plazos' },
+
+  // Adjuntos (A6)
+  { clave: 'adjuntos.max_mb', modulo: 'Adjuntos', tipo: 'entero', unidad: 'mb', min: 1, max: 95, defecto: 90,
+    etiqueta: 'Tamaño máximo de un adjunto',
+    descripcion: 'Lo más que puede pesar un fichero que se adjunta (una foto, un PDF, un vídeo). No pasa de 95 MB: '
+      + 'Cloudflare, que va delante del ERP, corta las subidas de más de 100 MB.',
+    usa: 'La subida de adjuntos (services/adjuntos.js)' },
 
   // Fase 1 — RR. HH.
   { clave: 'expedientes.despido.plazo_dias_habiles', modulo: 'RR. HH.', item: 4, tipo: 'entero', unidad: 'dias_habiles', min: 1, max: 30, defecto: 3,

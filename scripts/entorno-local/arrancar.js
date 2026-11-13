@@ -68,7 +68,15 @@ Object.assign(process.env, {
   // un secreto: solo firma cookies de este PC.
   SESSION_SECRET: 'entorno-local-de-pruebas-no-es-un-secreto',
   ENTORNO_LOCAL: '1',
+  // LOS ADJUNTOS (db/249) van al R2 de mentira del contenedor telecab-s3, nunca
+  // al de verdad aunque esté en el entorno de quien arranca.
+  ALMACEN: 'r2',
+  R2_ENDPOINT: 'http://127.0.0.1:9090',
+  R2_BUCKET: 'telecab-adjuntos',
+  R2_ACCESS_KEY_ID: 'local',
+  R2_SECRET_ACCESS_KEY: 'local',
 });
+delete process.env.R2_ACCOUNT_ID;
 
 (async () => {
   const { Client } = require('pg');

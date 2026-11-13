@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4, A10 y A5 en sus ramas)
+estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4, A10, A5 y A6 en sus ramas)
 ---
 
 # Hoja de ruta
@@ -22,7 +22,8 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A4. Libro de auditoría | **Hecha en la rama `fase-a/a4-auditoria`** (13/11/2026), a falta de probarla en el servidor de pruebas: la tabla `auditoria`, `auditoria_vigilar()` y `services/libro.js` (db/245). Ver [[Libro de auditoria]] |
 | A10. Tareas programadas | **Hecha en la rama `fase-a/a10-tareas-programadas`** (13/11/2026, sale de la de A4), a falta de probarla: `services/tareasProgramadas.js` y `tarea_programada_vez` (db/246). Ver [[Tareas programadas]] |
 | A5. Personas y organización | **Hecha en la rama `fase-a/a5-organizacion`** (13/11/2026, sale de la de A10), a falta de probarla: áreas, superiores y funciones por persona, la pantalla `/organizacion` y `services/organizacion.js` (db/248). Ver [[Organizacion]] |
-| A6 a A9 | Pendientes |
+| A6. Adjuntos | **Hecha en la rama `fase-a/a6-adjuntos`** (13/11/2026, sale de la de A5), a falta de probarla: el almacén en Cloudflare R2 (decidido por Camilo), la tabla `adjunto` de cualquier dueño, subida por trozos, Range y vista previa (db/249). Hace falta crear el bucket y poner sus variables en Render. Ver [[Adjuntos]] |
+| A7 a A9 | Pendientes |
 
 ## Lo que Ignacio cerró en la última versión
 
@@ -81,13 +82,13 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A3. Parámetros** | Hecha: `services/parametros.js`, la pantalla `/parametros` y el historial intocable `parametro_cambio` (db/243). Ver [[Parametros]] | Pasar ahí los números de regla que siguen en el código o en variables de entorno, cuando se toque cada módulo (`DIA_CORTE`, los 2 días del aviso de citas, los 15 y 60 días de taller, la retención del chat de WhatsApp…) |
 | **A4. Auditoría** | Hecha: el libro `auditoria` (db/245), que se escribe por disparador en cada tabla puesta bajo él con `auditoria_vigilar()`, y `services/libro.js` para firmar, apuntar lecturas y leer la historia. Ver [[Libro de auditoria]] | El componente que pinta la historia en una ficha (con el ítem 1). Cuánto se guarda y quién lo consulta entero. Lo viejo (`cambio_campo`, `ticket_evento`) se queda como está |
 | **A5. Personas y organización** | Hecha: el área y el superior de cada usuario, y las funciones de cada persona con su suplente (`usuario_funcion`, db/248); `organizacion.quienes()` y `exigir()` para que ningún ítem escriba un nombre ni un id. La ficha enseña las llaves que se salen de las de su rol. Ver [[Organizacion]] | Que Ignacio ponga en `/organizacion` las áreas, sus responsables y los superiores, y repase el reparto de funciones de db/248. El usuario de Angie. Las funciones que pida cada ítem al hacerse (la caja del 12, ver las multas del 10, emitir las cartas del 6) se añaden al catálogo con él |
-| **A6. Adjuntos** | Cuatro almacenes distintos: `documento` (solo conductor o coche), `ticket.adjuntos` en JSONB, `whatsapp_adjunto` en la base y el adjunto de las facturas. Drive se descarga entero en memoria, sin Range. Casi todas las subidas van en base64 dentro del JSON (Selección usa multer en memoria); ninguna en streaming | **Decidir el almacén** antes del chat: Drive es un Gmail de 15 GB, y 5 años de chat, Slack y vídeos de siniestros no caben. Después, una tabla de adjuntos con cualquier dueño, subida multipart en streaming, descarga con Range y vista previa (PDF en iframe del mismo dominio, imágenes con VisorFoto, vídeo con `<video>`) |
+| **A6. Adjuntos** | Hecha: el almacén es **Cloudflare R2** (Camilo, 13/11/2026), con la tabla `adjunto` de cualquier dueño (db/249). Tiene subida multipart por trozos, con huella y tope (`adjuntos.max_mb`), descarga con Range y vista previa (foto en VisorFoto, PDF en la página, vídeo y audio con su reproductor), y lo demás se descarga. El componente es `Adjuntos.montar`. Lo que ya estaba (`documento`, `ticket.adjuntos`, `whatsapp_adjunto`, las facturas) se queda donde está. Ver [[Adjuntos]] | Crear el bucket en Cloudflare y poner `R2_*` en Render. Subir directo a R2 con enlace firmado los vídeos de más de 90 MB (siniestros). Mudar lo de antes al tocar cada módulo |
 | **A7. Tiempo real** | Nada: se sondea cada 3 s a 5 min | Una ruta SSE fuera de la compresión, con latido cada 25 s, reconexión que pide lo perdido y un cliente común que cae al sondeo. Con una sola instancia basta un bus en memoria; LISTEN/NOTIFY solo si hay más |
 | **A8. Notificaciones** | Nada: ni manifest, ni service worker, ni Web Push | Manifest, service worker en `/sw.js` (desde `/assets` no controlaría el ERP), claves VAPID, suscripciones por dispositivo y permiso pedido tras un clic. En iPhone solo funcionan con la web instalada |
 | **A9. Contadores del menú** | Tres contadores sueltos: la campana, los cuadros de tickets y la chapa de fichaje. Con el menú contraído solo se ve `#nav-pend-badge` | Un endpoint de recuentos por usuario, una marca por entrada, la suma por grupo y una clase CSS común |
 | **A10. Tareas programadas** | Hecha: una vuelta cada diez minutos hace las tareas de negocio que tengan su vez pendiente, una sola vez aunque haya dos procesos y recuperando la que se perdió por una caída (`services/tareasProgramadas.js`, db/246). Ver [[Tareas programadas]] | A quién se avisa si una falla (con el ítem 3). Una pantalla con los intentos. Los crons viejos de `app.js` siguen como estaban |
 
-Orden de lo que queda: A6 → A7, A8 y A9.
+Orden de lo que queda: A7, A8 y A9.
 
 **Desde el 13/11/2026 cada pieza va en su rama** (`fase-a/…`) y Camilo la prueba en el servidor de pruebas de Render (con `MODO_PRUEBAS`) antes de pasarla a `main`.
 
@@ -420,7 +421,7 @@ Orden de lo que queda: A6 → A7, A8 y A9.
 **De Ignacio, cuanto antes:**
 - **El plan de Slack y quién es su Workspace Owner.** Si es Free, cada día se borra lo que cumple un año. Y si hay canales en los que no está él.
 - Si Angie es externa (no tiene usuario), y **las áreas, sus responsables y los superiores**: se ponen en `/organizacion` (A5). Y repasar el reparto de funciones que trae db/248.
-- El almacén de ficheros: seguir en Drive con más espacio o cambiar.
+- ~~El almacén de ficheros~~: Cloudflare R2, decidido por Camilo el 13/11/2026 (A6).
 - La objeción de la convención 6: #4-bajas-medicas, #6-nominas, #9-rrhh y #16-efectivo abiertos a toda la oficina.
 - Que acepte el orden de arriba.
 - Las fichas de puesto para el ítem 22.

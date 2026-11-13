@@ -319,6 +319,9 @@ app.use('/parametros', require('./modules/Parametros/parametros.controller'));
 // La organización (db/248, pieza A5): áreas, superiores y funciones. Los mismos
 // que entran en Usuarios y permisos: el desarrollador o la llave '/usuarios'.
 app.use('/organizacion', require('./modules/Organizacion/organizacion.controller'));
+// Los adjuntos de cualquier dueño (db/249, pieza A6): subir por trozos, servir con
+// Range y anular. Quién ve y quién adjunta lo dice cada módulo dueño.
+app.use('/adjuntos', require('./modules/Adjuntos/adjuntos.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
