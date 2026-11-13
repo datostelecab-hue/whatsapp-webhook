@@ -33,6 +33,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[El ahora de la flota]]** — La foto única de qué hace cada coche y cada conductor en BOLT ahora mismo: la leen el mapa, En directo e Inicio, se hace una vez y se rehace solo cuando entra algo nuevo. Desde el 28/10/2026, con la lista de conectados de la API v2 de BOLT.
 - **[[Ingesta]]** — La única puerta por la que entran datos externos.
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
+- **[[Calendario laboral]]** — Los días y las horas hábiles de la oficina (13/11/2026): un solo servicio para todos los plazos, con los festivos del convenio, los de Madrid capital y el horario de oficina como parámetro.
 - **[[Migraciones]]** — El esquema de la Base de datos no se toca a mano: se cambia añadiendo un fichero a db/.
 - **[[Sedes]]** — Madrid y Barcelona: qué hay de Barcelona en la base (coches, la empresa de BOLT y sus cuentas) y por qué ninguna pantalla de Madrid lo enseña.
 
@@ -57,6 +58,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Operaciones]]** — Qué hace la flota cuando nadie mira: los avisos del coche, los kilómetros que no cuadran, quién corre de más y el calendario de lo que de verdad pasó cada día.
 - **[[Barcelona]]** — La sede de Barcelona: se elige en el login. Su planificador (conductores de BOLT en matrículas de BOLT, de día o de noche, fijo hasta que se cambia; desde el 06/11/2026 el de Madrid, con zonas, libranzas, promedio, los correturnos como casillas del cuadrante y exportar a Excel), su reporte de horas y su Visibilidad, con sus datos aparte de Madrid.
 - **[[Planificacion]]** — Quién conduce qué coche, qué día y en qué turno. Empieza por las cinco bases, y los cuadrantes de cada una salen de mejor a peor (el iceberg).
+- **[[Parametros]]** — /parametros (13/11/2026): los números de las reglas de la hoja de ruta (plazos, topes, días del mes) y el horario de la oficina, con su historia intocable. Ignacio y el desarrollador.
 - **[[Vacaciones]]** — El saldo de vacaciones de cada conductor: 0,0821 días por día natural desde el alta (o desde el 01/01/2026; hasta el 19/10/2026, el 01/01/2025), + festivos trabajados más de 6 h, − vacaciones y permisos. Debajo de cada nombre, y en la ficha de dónde sale. Desde el 16/10/2026, solo plantilla propia, y quien las aprueba cambia las fechas de las ya aprobadas solo a futuro (también en Plantilla) y sin soltarlas de su ticket.
 - **[[RRHH]]** — Lo que el convenio VTC obliga a llevar: la jornada de cada trabajador contra su objetivo, el cierre del periodo, la nómina que se manda a la gestoría y el cuadro de absentismo.
 - **[[Menos J]]** — La −J (30/10/2026, db/227): constancia de un perjuicio a la empresa («Alex no le dio el coche a tiempo a Carlos»), con motivo y compañero perjudicado; no toca horas, nómina ni letra y se aprueba en /justificantes. Y la auditoría de TODAS las J y −J (db/228): cada cambio, con quién, desde dónde y qué cambió, lo apunta la base y no se borra.

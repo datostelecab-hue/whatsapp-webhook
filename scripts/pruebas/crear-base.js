@@ -136,7 +136,9 @@ async function limpiarYComprobar(db) {
     [COLUMNA_DE_PERSONA])).rows;
   for (const { table_name: t, column_name: c } of cols) {
     if (DE_EMPRESAS.has(`${t}.${c}`)) continue;
-    const k = await n(`SELECT count(*) n FROM "${t}" WHERE "${c}" IS NOT NULL`);
+    // Vacío no es un dato: `conductor.naf` es una columna calculada que vale ''
+    // en el centinela.
+    const k = await n(`SELECT count(*) n FROM "${t}" WHERE "${c}" IS NOT NULL AND btrim("${c}"::text) <> ''`);
     if (k) problemas.push(`${t}.${c} tiene ${k} valores`);
   }
   if (problemas.length) {

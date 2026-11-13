@@ -375,6 +375,26 @@ async function requiereGestorUsuarios(req, res, next) {
   return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
 }
 
+// EL DESARROLLADOR, O QUIEN TENGA UNA LLAVE CONCRETA (13/11/2026). Lo mismo que
+// requiereGestorUsuarios, para cualquier llave: la llave se mira en las filas de
+// verdad de la persona, así que el superadmin NO entra por serlo. Lo estrenan
+// los parámetros de negocio ('/parametros'; Camilo: «Llave propia: Ignacio y
+// desarrollador»).
+function requiereDesarrolladorOLlave(llave, que) {
+  return async function (req, res, next) {
+    const u = req.usuario;
+    if (u && u.rol === 'desarrollador') return next();
+    try {
+      const id = u ? await idDeSesion(u) : null;
+      if (id && (await permisos.clavesDe(id)).has(llave)) return next();
+    } catch (e) {
+      console.error(`❌ [SESIÓN] llave ${llave}:`, e.message);
+    }
+    if (esApi(req)) return res.status(403).json({ status: 'error', msg: `Sin permiso para ${que}` });
+    return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
+  };
+}
+
 // Solo el desarrollador (excluye incluso al superadmin): para "Tickets Telecab".
 function requiereDesarrollador(req, res, next) {
   if (req.usuario && req.usuario.rol === 'desarrollador') return next();
@@ -410,6 +430,6 @@ module.exports = {
   ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
   dispositivoDe, olvidarSesion,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
-  requiereSuperadmin, requiereDesarrollador, requiereGestorUsuarios,
+  requiereSuperadmin, requiereDesarrollador, requiereGestorUsuarios, requiereDesarrolladorOLlave,
   sembrarSuperadmin
 };

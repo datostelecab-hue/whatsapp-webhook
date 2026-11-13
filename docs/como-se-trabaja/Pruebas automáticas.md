@@ -71,3 +71,7 @@ test('ítem 20: dar salida a un recambio baja las existencias', () =>
 |---|---|
 | `test/base-de-pruebas.test.js` | El banco de pruebas: que es la base sintética, que un test no ve lo de otro, que el `transaccion()` se deshace, que no se consulta fuera de `conBase`, que las fábricas valen y que el reloj se fija |
 | `test/inventario.test.js` | Ítem 20, que ya se cumple: dar salida a un recambio baja las existencias y suma su coste a la matrícula, y no se saca más de lo que hay |
+| `test/calendario.test.js` | El [[Calendario laboral]] y los criterios de la hoja de ruta que son cuenta de calendario (ítems 1, 5, 6, 7, 10 y 18) |
+| `test/parametros.test.js` | Los [[Parametros]]: valores por defecto, validación, historia y que el historial no se cambia ni se borra |
+
+Un servicio con caché (parámetros, calendario) exporta `invalidar()`: `conBase` la llama en todos los de `services/` antes de cada test, para que ninguno vea lo que dejó en caché el anterior.

@@ -122,12 +122,28 @@ sustituir('services/flotaViva/db', {
 });
 
 /**
+ * Un servicio con caché (parámetros, calendario) guardaría lo que vio un test
+ * y se lo enseñaría al siguiente, aunque la base ya lo haya deshecho. La
+ * convención: un servicio de services/ con caché exporta `invalidar()`; aquí se
+ * llama a todos los que estén cargados antes de cada test.
+ */
+const DIR_SERVICIOS = path.join(RAIZ, 'services') + path.sep;
+function tirarCaches() {
+  for (const [f, m] of Object.entries(require.cache)) {
+    if (f.startsWith(DIR_SERVICIOS) && m && m.exports && typeof m.exports.invalidar === 'function') {
+      m.exports.invalidar();
+    }
+  }
+}
+
+/**
  * Ejecuta fn dentro de una transacción que se deshace siempre al acabar.
  * @param {(h: { consulta: Function, fabrica: object }) => Promise<any>} fn
  */
 async function conBase(fn) {
   await conectar();
   if (enCurso) throw new Error('conBase() no se anida: cada test abre la suya');
+  tirarCaches();
   enCurso = true;
   await cliente.query('BEGIN');
   try {

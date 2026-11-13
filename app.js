@@ -313,6 +313,9 @@ app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller
 // tenga la llave '/avisos/efectivo' (Víctor y Daiane, db/220).
 app.use('/avisos/efectivo', require('./modules/Administracion/avisoEfectivo.controller'));
 app.use('/usuarios', usuariosRoutes);
+// Los parámetros de negocio (db/243, convención 4 de la hoja de ruta): el
+// desarrollador o quien tenga la llave '/parametros' (de inicio, Ignacio).
+app.use('/parametros', require('./modules/Parametros/parametros.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
