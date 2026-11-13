@@ -106,6 +106,13 @@ test/adjuntos.test.js                     12 pruebas; la de R2 con S3_PRUEBAS
 
 ## Pendiente
 
+- **La revisión a fondo quedó a medias** (13/11/2026, se apagó el PC). Hay que relanzarla antes de subir la rama. Son cuatro revisores y un escéptico por cada uno:
+  - la seguridad al servir y subir;
+  - la subida y la descarga por trozos;
+  - la pantalla;
+  - la migración, las pruebas, la documentación y la configuración de R2.
+
+  Si cambia la base, se corrige la 249, que aún no está publicada.
 - Que Camilo cree el bucket y ponga las variables en Render.
 - Subir directo a R2 con un enlace firmado para los vídeos de más de 90 MB, cuando llegue el ítem de los siniestros.
 - Mudar a esta tabla lo de antes (documentos, tickets, facturas, WhatsApp) al tocar cada módulo.

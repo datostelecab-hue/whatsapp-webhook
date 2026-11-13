@@ -22,7 +22,7 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A4. Libro de auditoría | **Hecha en la rama `fase-a/a4-auditoria`** (13/11/2026), a falta de probarla en el servidor de pruebas: la tabla `auditoria`, `auditoria_vigilar()` y `services/libro.js` (db/245). Ver [[Libro de auditoria]] |
 | A10. Tareas programadas | **Hecha en la rama `fase-a/a10-tareas-programadas`** (13/11/2026, sale de la de A4), a falta de probarla: `services/tareasProgramadas.js` y `tarea_programada_vez` (db/246). Ver [[Tareas programadas]] |
 | A5. Personas y organización | **Hecha en la rama `fase-a/a5-organizacion`** (13/11/2026, sale de la de A10), a falta de probarla: áreas, superiores y funciones por persona, la pantalla `/organizacion` y `services/organizacion.js` (db/248). Ver [[Organizacion]] |
-| A6. Adjuntos | **Hecha en la rama `fase-a/a6-adjuntos`** (13/11/2026, sale de la de A5), a falta de probarla: el almacén en Cloudflare R2 (decidido por Camilo), la tabla `adjunto` de cualquier dueño, subida por trozos, Range y vista previa (db/249). Hace falta crear el bucket y poner sus variables en Render. Ver [[Adjuntos]] |
+| A6. Adjuntos | **Hecha en la rama `fase-a/a6-adjuntos`** (13/11/2026, sale de la de A5), a falta de probarla: el almacén en Cloudflare R2 (decidido por Camilo), la tabla `adjunto` de cualquier dueño, subida por trozos, Range y vista previa (db/249). Hace falta crear el bucket y poner sus variables en Render. **Sin subir: la revisión a fondo quedó a medias el 13/11 y hay que relanzarla.** Ver [[Adjuntos]] |
 | A7 a A9 | Pendientes |
 
 ## Lo que Ignacio cerró en la última versión
