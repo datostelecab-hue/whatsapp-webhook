@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 hechas)
+estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4 en su rama)
 ---
 
 # Hoja de ruta
@@ -19,7 +19,8 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A1. Pruebas | **Hecha** (13/11/2026): `npm test` y la base sintética. Ver [[Pruebas automáticas]] |
 | A2. Calendario laboral | **Hecha** (13/11/2026): `services/calendario.js` y los festivos de la oficina (db/244). Ver [[Calendario laboral]] |
 | A3. Parámetros | **Hecha** (13/11/2026): `services/parametros.js`, la pantalla `/parametros` y su historial (db/243). Ver [[Parametros]] |
-| A4 a A10 | Pendientes |
+| A4. Libro de auditoría | **Hecha en la rama `fase-a/a4-auditoria`** (13/11/2026), a falta de probarla en el servidor de pruebas: la tabla `auditoria`, `auditoria_vigilar()` y `services/libro.js` (db/245). Ver [[Libro de auditoria]] |
+| A5 a A10 | Pendientes |
 
 ## Lo que Ignacio cerró en la última versión
 
@@ -76,7 +77,7 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A1. Pruebas** | Hecha. Ver [[Pruebas automáticas]] | — |
 | **A2. Calendario laboral** | Hecha: `services/calendario.js` (días y horas hábiles, semáforo, «hoy» en Madrid) con los festivos de `festivo` (db/197) y de `festivo_oficina` (db/244: San Isidro y la Almudena). Ver [[Calendario laboral]] | Barcelona (Camilo: más adelante; la tabla ya lleva la sede). **Los festivos de 2027** de la Comunidad y de Madrid capital (el servicio avisa en el log si un año no está cargado). Una pantalla de festivos. Usar el «hoy» común: hoy se calcula en más de 50 sitios con al menos 8 nombres, y en 6 ficheros en UTC (`vigencia.js`, la baja del conductor, el alta de un coche…) |
 | **A3. Parámetros** | Hecha: `services/parametros.js`, la pantalla `/parametros` y el historial intocable `parametro_cambio` (db/243). Ver [[Parametros]] | Pasar ahí los números de regla que siguen en el código o en variables de entorno, cuando se toque cada módulo (`DIA_CORTE`, los 2 días del aviso de citas, los 15 y 60 días de taller, la retención del chat de WhatsApp…) |
-| **A4. Auditoría** | `cambio_campo` (genérica, desde el código) y `justificante_auditoria` (db/228: por disparador e intocable) | Un libro único para lo nuevo **al estilo de db/228**: quién, acción, sobre qué, antes y después, motivo y origen. Debe guardar también las lecturas de avisos. `cambio_campo` no sirve tal cual: no falla si falla y convierte fechas con `toISOString` |
+| **A4. Auditoría** | Hecha: el libro `auditoria` (db/245), que se escribe por disparador en cada tabla puesta bajo él con `auditoria_vigilar()`, y `services/libro.js` para firmar, apuntar lecturas y leer la historia. Ver [[Libro de auditoria]] | El componente que pinta la historia en una ficha (con el ítem 1). Cuánto se guarda y quién lo consulta entero. Lo viejo (`cambio_campo`, `ticket_evento`) se queda como está |
 | **A5. Personas y organización** | Rol más llaves por usuario. Solo constan por id Ignacio (1), Víctor (3), Laura (4), Camilo (7) y Daiane (9) | Área y superior de cada usuario, y **responsables por función** con su `usuario.id` (supervisores, multas, caja, ITV, pólizas, taller). **Una matriz por rol con excepciones por persona**: la convención 6 pide la matriz por rol, pero varias reglas son de personas concretas (solo Laura, Ignacio y Fernando; solo Ignacio edita las pólizas; reciben efectivo Daiane, Ignacio y Fernando). Los datos sensibles se comprueban en el servicio, como hace `services/aprobarVacaciones.js` (`exigir`), también para superadmin y desarrollador |
 | **A6. Adjuntos** | Cuatro almacenes distintos: `documento` (solo conductor o coche), `ticket.adjuntos` en JSONB, `whatsapp_adjunto` en la base y el adjunto de las facturas. Drive se descarga entero en memoria, sin Range. Casi todas las subidas van en base64 dentro del JSON (Selección usa multer en memoria); ninguna en streaming | **Decidir el almacén** antes del chat: Drive es un Gmail de 15 GB, y 5 años de chat, Slack y vídeos de siniestros no caben. Después, una tabla de adjuntos con cualquier dueño, subida multipart en streaming, descarga con Range y vista previa (PDF en iframe del mismo dominio, imágenes con VisorFoto, vídeo con `<video>`) |
 | **A7. Tiempo real** | Nada: se sondea cada 3 s a 5 min | Una ruta SSE fuera de la compresión, con latido cada 25 s, reconexión que pide lo perdido y un cliente común que cae al sondeo. Con una sola instancia basta un bus en memoria; LISTEN/NOTIFY solo si hay más |
@@ -84,7 +85,9 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A9. Contadores del menú** | Tres contadores sueltos: la campana, los cuadros de tickets y la chapa de fichaje. Con el menú contraído solo se ve `#nav-pend-badge` | Un endpoint de recuentos por usuario, una marca por entrada, la suma por grupo y una clase CSS común |
 | **A10. Tareas programadas** | ~25 crons en `app.js` con `programar()`, que en pruebas no arrancan | Tabla de ejecuciones y una clave de idempotencia por tarea y periodo: en cada despliegue conviven dos procesos un rato |
 
-Orden de lo que queda: A4 y A10 → A5 → A6 → A7, A8 y A9.
+Orden de lo que queda: A10 → A5 → A6 → A7, A8 y A9.
+
+**Desde el 13/11/2026 cada pieza va en su rama** (`fase-a/…`) y Camilo la prueba en el servidor de pruebas de Render (con `MODO_PRUEBAS`) antes de pasarla a `main`.
 
 ## Fase 0 — Base
 
@@ -398,6 +401,7 @@ Orden de lo que queda: A4 y A10 → A5 → A6 → A7, A8 y A9.
 
 - **Cada módulo nuevo se puede medir:** guarda la fecha límite ya calculada, la fecha de cumplimiento, el responsable con `usuario_id`, el motivo de demora y un enlace por id. Si no, el ítem 22 no tiene de dónde sacar sus indicadores.
 - **Los plazos con el calendario y los números con los parámetros:** `services/calendario.js` y `services/parametros.js`, nunca a mano.
+- **Toda tabla nueva bajo el libro:** `SELECT auditoria_vigilar('…')` en su migración, y las escrituras firmadas con `libro.conFirma`.
 - **Nada se borra:** lo nuevo se anula con motivo y su historia no cae en cascada. Hoy hay 49 `DELETE FROM` en el código y muchas claves `ON DELETE CASCADE`; no se copian.
 - **Vocabulario ocupado:** expediente, sanción, `notificacion`, aviso, MBO, meta y «Estado de la flota» ya significan otra cosa. Lo nuevo lleva otros nombres o se aclara en el [[Glosario]].
 - **Sedes:** la flota vigilada es Madrid y Barcelona tiene sus tablas. Cada ítem dice si incluye Barcelona.
@@ -407,7 +411,7 @@ Orden de lo que queda: A4 y A10 → A5 → A6 → A7, A8 y A9.
 
 **De Camilo:**
 1. ~~El orden~~: aprobado el 13/11/2026 (falta que lo acepte Ignacio, arriba).
-2. **Rama y PR por ítem.** La especificación los pide (convención 2), y hasta ahora se trabaja en `main`. Mientras Camilo no diga otra cosa, `main`; seguir así lo tiene que aceptar Ignacio.
+2. ~~Rama y PR por ítem~~: **por ramas desde el 13/11/2026** (Camilo: «Vamos a hacerlo por ramas entonces»). Cada rama terminada se prueba en el servidor de pruebas de Render antes de pasar a `main`.
 3. ~~La base de pruebas sintética~~: hecha. **Las pruebas no corren en Render** (allí no hay Docker): se pasan en local antes de subir.
 4. Seguridad antes del chat y de los datos sensibles.
 
@@ -416,7 +420,7 @@ Orden de lo que queda: A4 y A10 → A5 → A6 → A7, A8 y A9.
 - Los usuarios del ERP de Fernando, Ángel, William, Diana, Mercedes y Óscar, si Angie es externa, y las áreas y los superiores.
 - El almacén de ficheros: seguir en Drive con más espacio o cambiar.
 - La objeción de la convención 6: #4-bajas-medicas, #6-nominas, #9-rrhh y #16-efectivo abiertos a toda la oficina.
-- Que acepte el orden de arriba y, si se sigue en `main`, que no haya rama y PR por ítem.
+- Que acepte el orden de arriba.
 - Las fichas de puesto para el ítem 22.
 
 Ya decidido el 13/11/2026 (Camilo): horario de la oficina de Madrid de lunes a viernes de 09:00 a 18:00; los festivos de Madrid capital, sí; Barcelona, más adelante; los parámetros, con llave propia para Ignacio y el desarrollador.

@@ -33,6 +33,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[El ahora de la flota]]** — La foto única de qué hace cada coche y cada conductor en BOLT ahora mismo: la leen el mapa, En directo e Inicio, se hace una vez y se rehace solo cuando entra algo nuevo. Desde el 28/10/2026, con la lista de conectados de la API v2 de BOLT.
 - **[[Ingesta]]** — La única puerta por la que entran datos externos.
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
+- **[[Libro de auditoria]]** — Un solo libro de quién hizo qué, cuándo, desde dónde y por qué (13/11/2026, db/245): lo escribe la base en cada tabla puesta bajo él con `auditoria_vigilar()`, y no se cambia ni se borra.
 - **[[Calendario laboral]]** — Los días y las horas hábiles de la oficina (13/11/2026): un solo servicio para todos los plazos, con los festivos del convenio, los de Madrid capital y el horario de oficina como parámetro.
 - **[[Migraciones]]** — El esquema de la Base de datos no se toca a mano: se cambia añadiendo un fichero a db/.
 - **[[Sedes]]** — Madrid y Barcelona: qué hay de Barcelona en la base (coches, la empresa de BOLT y sus cuentas) y por qué ninguna pantalla de Madrid lo enseña.
