@@ -110,6 +110,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Reglas de la casa]] · [[Componentes de la casa]]** — Lo que se respeta sí o sí en este repositorio.
 - **[[Identidad visual]]** — **Telecab V3** desde el 16/11/2026: azul vivo sobre azul marino (o blanco limpio en claro), estados con el color entero, Plus Jakarta Sans, temas con otro acento, menú con el elegido relleno y el acceso partido en dos con el Corolla de noche. Sin emojis; la marca en SVG y la carga animada que sigue al tema.
 - **[[Novedades]]** — La ventana que avisa de cada versión (una vez por persona, db/253): lo nuevo y lo que ya tiene cada uno según su menú, y un recorrido guiado opcional (`Recorrido`, pieza global). V3, 16/11/2026.
+- **[[Avisos]]** — Los avisos entre módulos (ítem 3, db/254): van a un área de Organización, cada uno lee los suyos y resolver es de todos; la campana es su bandeja. El primero: cada cita del taller avisa a Control.
 - **[[Trampas conocidas]]** — Lo que ya costó tiempo, con su cifra y su remedio.
 - **[[Seguridad]]** — Cómo se prueba la seguridad (laboratorio Kali aislado) y el endurecimiento que lleva puesto.
 

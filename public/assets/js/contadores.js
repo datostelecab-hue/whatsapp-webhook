@@ -8,6 +8,9 @@
 //
 //   · Con 0 se esconde; con más de 99 dice «99+». `tono: 'info'` (azul) o el
 //     de siempre (rojo). El título, el que mande el servidor.
+//   · UNA MARCA PUEDE SUMAR VARIAS CLAVES, separadas por espacios:
+//     data-contador="avisos.sin_leer pendientes" (la campana, ítem 3). En
+//     azul solo si todas lo son.
 //   · CADA GRUPO DEL MENÚ suma los de sus entradas, en su marca
 //     `data-contador-grupo`: con el grupo cerrado, o el menú plegado, se ve
 //     que dentro hay algo.
@@ -37,15 +40,31 @@
     if (v && v.titulo) el.title = v.titulo; else el.removeAttribute('title');
   }
 
+  // El valor de una marca: una clave, o la suma de varias separadas por espacios.
+  function valorDe(clave) {
+    const ks = String(clave || '').split(/\s+/).filter(Boolean);
+    if (ks.length < 2) return valores[ks[0]] || null;
+    let n = 0, info = true;
+    const titulos = [];
+    ks.forEach(k => {
+      const v = valores[k];
+      if (!v || !(v.n > 0)) return;
+      n += v.n;
+      if (v.tono !== 'info') info = false;
+      if (v.titulo) titulos.push(v.titulo);
+    });
+    return { n, tono: info ? 'info' : 'aviso', titulo: titulos.join(' · ') };
+  }
+
   function pintar() {
-    document.querySelectorAll('[data-contador]').forEach(el => pintarMarca(el, valores[el.getAttribute('data-contador')]));
+    document.querySelectorAll('[data-contador]').forEach(el => pintarMarca(el, valorDe(el.getAttribute('data-contador'))));
     // La suma de cada grupo: rojo si alguno de dentro lo es; si no, azul.
     document.querySelectorAll('.nav-grupo').forEach(g => {
       const marca = g.querySelector('[data-contador-grupo]');
       if (!marca) return;
       let n = 0, aviso = false;
       g.querySelectorAll('.grupo-items [data-contador]').forEach(el => {
-        const v = valores[el.getAttribute('data-contador')];
+        const v = valorDe(el.getAttribute('data-contador'));
         if (!v || !(v.n > 0)) return;
         n += v.n;
         if (v.tono !== 'info') aviso = true;
@@ -81,7 +100,7 @@
 
   global.Contadores = {
     refrescar,
-    valor: clave => valores[clave] || null,
+    valor: clave => valorDe(clave),
     alCambiar(fn) { avisos.add(fn); if (Object.keys(valores).length) fn(valores); return () => avisos.delete(fn); },
   };
 

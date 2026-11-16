@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entregas 1a, 1b y 1c hechas (`tablero/1a-datos`, `tablero/1b-pantallas`, `tablero/1c-colas`)
+estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entregas 1a, 1b y 1c hechas (`tablero/1a-datos`, `tablero/1b-pantallas`, `tablero/1c-colas`); Telecab V3 y las novedades en `v3/rediseno`; ítem 3 hecho en `avisos/3-avisos` (db/254)
 ---
 
 # Hoja de ruta
@@ -138,10 +138,13 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - Los nombres `notificacion`, `/notificaciones`, `aviso_turnos` y `/avisos/efectivo` ya están ocupados.
   - «Perfil» no existe: hay un rol por usuario y llaves por persona.
   - Las alertas de Control son varios cientos al día: a principios de octubre salían 600-700 plantillas, dos por alerta. Hay que medirlo antes de decidir cuáles entran, o ahogarían el contador.
-- **Decidir:**
-  - qué es «perfil» y quiénes son «todos los perfiles de Control»;
-  - si los avisos se resuelven solos;
-  - qué avisos de hoy pasan al sistema nuevo y cuándo.
+- **Decidido (Camilo, 16/11/2026):**
+  - **perfil = un área de Organización** (y su responsable); un aviso puede ir además a una persona. Un área vacía se la queda quien reparte (Ignacio);
+  - **leído, cada uno el suyo; resuelto, de todos**, con quién, cuándo y la nota;
+  - **se resuelve solo si se puede**, si no a mano con nota; con hora, caduca;
+  - **la campana pasa a ser la bandeja de avisos** (arriba los avisos, debajo los pendientes de hoy); el número también en la entrada del módulo y los urgentes al móvil;
+  - **fuera**: las alertas de Control (unas 375 al día), los cumpleaños y el efectivo.
+- **Hecho (16/11/2026, rama `avisos/3-avisos`, db/254):** el servicio `services/avisos.js`, la bandeja en la campana y el primer emisor: cada cita del taller de Madrid avisa a Control, con su número en Mantenimientos. Pasar el resto de avisos de hoy va aparte, uno a uno. Ver [[Avisos]].
 
 ### 2. Chat interno (XL, en cuatro entregas)
 - **Hay:**

@@ -705,11 +705,22 @@ async function cambiarEstado(id, { estado, nota } = {}, quien = {}, { sede } = {
   return { ok: true };
 }
 
+// LOS AVISOS A CONTROL (ítem 3, db/254): cada cita pendiente de Madrid es un
+// aviso al área Control (./avisosCitas.js). Lo que cambia una cita pide un
+// repaso de esos avisos al acabar; el repaso no lanza nunca: la cita ya está.
+const avisosCitas = () => require('./avisosCitas');
+const conAviso = fn => async (...args) => { const r = await fn(...args); await avisosCitas().pedir(); return r; };
+
 module.exports = {
   PLANTILLA, DIAS_ANTES, ESTADOS, CONFIRMACIONES, RESULTADOS_LLAMADA,
-  importar, cochesParaCita, crear, lista, proximas, proximaPorCoche, deCoche, ficha, avisar, marcarAvisado, avisarLasDeDentroDeDos,
-  respuestaDelConductor, apuntarLlamada, cambiarEstado,
+  importar: conAviso(importar), cochesParaCita, crear: conAviso(crear), lista, proximas, proximaPorCoche, deCoche, ficha,
+  avisar, marcarAvisado, avisarLasDeDentroDeDos,
+  respuestaDelConductor: conAviso(respuestaDelConductor), apuntarLlamada: conAviso(apuntarLlamada), cambiarEstado: conAviso(cambiarEstado),
   // Sueltas para las pruebas.
   leerExcel, fechaDe, horaDe, turnoDeLaCita, motivoIgnorada, fechaLarga, textoAviso, valoresAviso,
   botonDeCita, sumarDias, cuandoSeAvisa, esAgenda,
 };
+
+// El tipo de aviso «cita_taller» se registra al cargar las citas: así existe en
+// cuanto arranca el ERP, y el repaso diario lo encuentra.
+require('./avisosCitas');

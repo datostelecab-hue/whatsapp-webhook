@@ -984,3 +984,47 @@ body .tc-selector.tc-selector-compacto button {
   .tc-novedades-fondo, .tc-novedades { animation: none; }
   .tc-recorrido-foco, .tc-recorrido-globo, .tc-recorrido-progreso span { transition: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   LA BANDEJA DE AVISOS (la campana, ítem 3, db/254)
+   ══════════════════════════════════════════════════════════════
+   Arriba los avisos de su área (sin leer en negrita y con su punto, urgentes
+   con el filo rojo), debajo los pendientes de hoy. La pinta
+   public/assets/js/layout/pendientes.js. */
+.tc-bandeja {
+  position: absolute; right: 0; margin-top: .5rem; z-index: 50;
+  width: 25rem; max-width: calc(100vw - 1.5rem); max-height: 75vh; overflow-y: auto;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem; box-shadow: var(--tc-sombra-alta);
+}
+.tc-bandeja.hidden { display: none; }
+.tc-bandeja-cabeza {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .7rem .9rem .45rem; background: rgb(var(--tc-card));
+}
+.tc-bandeja-cabeza p { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); }
+.tc-bandeja-cabeza button { font-size: .75rem; font-weight: 600; color: rgb(var(--tc-gold)); }
+.tc-bandeja-cabeza button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tc-bandeja-avisos { display: flex; flex-direction: column; gap: .4rem; padding: 0 .55rem .6rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-bandeja-pendientes { padding: 0 .55rem .55rem; }
+.tc-bandeja-vacia { font-size: .75rem; color: rgb(var(--tc-muted)); text-align: center; padding: .9rem .5rem; }
+
+.tc-aviso {
+  position: relative; display: flex; gap: .7rem; align-items: flex-start; padding: .7rem .75rem; border-radius: .8rem;
+  background: rgb(var(--tc-card2) / .45); border: 1px solid rgb(var(--tc-border) / .8);
+}
+.tc-aviso--sin-leer { background: rgb(var(--tc-gold) / .07); border-color: rgb(var(--tc-gold) / .3); }
+.tc-aviso--urgente { box-shadow: inset 3px 0 0 rgb(var(--tc-red)); }
+.tc-aviso-icono {
+  flex: none; width: 2rem; height: 2rem; border-radius: .6rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .8rem; background: rgb(var(--tc-gold) / .14); color: rgb(var(--tc-gold));
+}
+.tc-aviso--urgente .tc-aviso-icono { background: rgb(var(--tc-red) / .14); color: rgb(var(--tc-red)); }
+.tc-aviso-cuerpo { flex: 1; min-width: 0; padding-right: .75rem; }
+.tc-aviso-titulo { display: block; font-size: .8125rem; font-weight: 500; line-height: 1.35; color: rgb(var(--tc-text)); }
+a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline; text-underline-offset: 3px; }
+.tc-aviso--sin-leer .tc-aviso-titulo { font-weight: 700; }
+.tc-aviso-texto { margin-top: .2rem; font-size: .75rem; line-height: 1.45; color: rgb(var(--tc-muted)); }
+.tc-aviso-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .35rem; margin-top: .35rem; font-size: .6875rem; color: rgb(var(--tc-muted)); }
+.tc-aviso-acciones { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+.tc-aviso-punto { position: absolute; top: .8rem; right: .75rem; width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--tc-gold)); }
+.tc-aviso--urgente .tc-aviso-punto { background: rgb(var(--tc-red)); }

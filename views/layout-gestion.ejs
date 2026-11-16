@@ -213,7 +213,8 @@
           ] },
           { nombre: 'Taller', icono: 'fa-car-side', rol: 'trafico', items: [
             { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' },
-            { href: '/taller',    icono: 'fa-screwdriver-wrench', texto: 'Mantenimientos', id: 'taller' },
+            // Su número: los avisos del módulo taller (ítem 3: las citas, que avisan a Control).
+            { href: '/taller',    icono: 'fa-screwdriver-wrench', texto: 'Mantenimientos', id: 'taller', contador: 'avisos.taller' },
             { href: '/inspecciones', icono: 'fa-clipboard-check', texto: 'Inspección de vehículos', id: 'inspecciones' },
             // Lo que hay en el almacén sin matrícula (Hergar), db/241.
             { href: '/inventario', icono: 'fa-boxes-stacked', texto: 'Inventario', id: 'inventario' },
@@ -488,14 +489,21 @@
 
         <!-- Buzón de pendientes -->
         <div class="relative">
-          <%# aria-label además del title: ayuda.js se lleva el title al enfocar, y sin él la campana se quedaba sin nombre. %>
-          <button id="notif-btn" title="Pendientes" aria-label="Pendientes" aria-controls="notif-panel" aria-expanded="false" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
+          <%# LA CAMPANA (ítem 3, db/254): la bandeja de avisos de su área y, debajo, los
+              pendientes de hoy. Su número suma los dos (layout/pendientes.js).
+              aria-label además del title: ayuda.js se lleva el title al enfocar. %>
+          <button id="notif-btn" title="Avisos y pendientes" aria-label="Avisos y pendientes" aria-controls="notif-panel" aria-expanded="false" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
             <i class="fa-solid fa-bell text-telecab-text" aria-hidden="true"></i>
-            <span id="notif-badge" class="tc-contador tc-contador-campana" data-contador="pendientes" hidden></span>
+            <span id="notif-badge" class="tc-contador tc-contador-campana" data-contador="avisos.sin_leer pendientes" hidden></span>
           </button>
-          <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto bg-telecab-card border border-telecab-border rounded-xl shadow-soft z-50 p-2">
-            <p class="text-[11px] uppercase tracking-wide font-semibold text-telecab-muted px-2 py-1">Buzón de pendientes</p>
-            <div id="notif-lista" class="space-y-0.5"></div>
+          <div id="notif-panel" class="tc-bandeja hidden">
+            <div class="tc-bandeja-cabeza">
+              <p>Avisos</p>
+              <button type="button" id="notif-leidos" hidden>Marcar todo como leído</button>
+            </div>
+            <div id="notif-avisos" class="tc-bandeja-avisos"></div>
+            <div class="tc-bandeja-cabeza"><p>Pendientes de hoy</p></div>
+            <div id="notif-lista" class="tc-bandeja-pendientes"></div>
           </div>
         </div>
 

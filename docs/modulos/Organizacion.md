@@ -43,6 +43,10 @@ await organizacion.equipo(usuarioId);               // a quién ve en el «Table
   - quien la tenga puesta como superior;
   - toda la oficina, si tiene «Ve el tablero de todos».
 
+## Las áreas como destino de los avisos (ítem 3)
+
+Desde el 16/11/2026 un **área es el destino de los [[Avisos]]**: «todos los perfiles de Control» son la gente del área Control y su responsable. `organizacion.deArea(codigo)` dice a quién le llega lo de un área y `organizacion.areasDeAvisos(id)` de qué áreas recibe una persona. **Un área sin nadie** se la queda quien reparte las tareas (`tareas_asigna`): por eso conviene rellenar las áreas.
+
 ## Las reglas
 
 - **El catálogo de funciones está en el código** (`FUNCIONES` en `services/organizacion.js`): 22 funciones. Cada una lleva el ítem de la hoja de ruta que la usa y si la pueden tener varias personas a la vez. En la base solo está quién tiene cada una (`usuario_funcion`). Una función nueva se añade al catálogo con el ítem que la necesita.

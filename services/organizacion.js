@@ -203,6 +203,46 @@ async function equipo(usuarioId) {
   return { todos, personas };
 }
 
+// ── LAS ÁREAS COMO DESTINO DE LOS AVISOS (ítem 3, db/254) ──────────────────
+// «Todos los perfiles de Control» = la gente del área Control y su responsable
+// (Camilo, 16/11/2026). Un área sin nadie no se queda sin leer: sus avisos le
+// llegan a quien reparte las tareas (`tareas_asigna`, Ignacio), que es quien
+// tiene que poner gente en ella.
+
+/** Quién recibe lo que va a un área. → [ids] (sin bloqueados). */
+async function deArea(codigo) {
+  const [gente, areas] = await Promise.all([repo.personas(), repo.areas()]);
+  const a = areas.find(x => x.codigo === codigo);
+  if (!a) return [];
+  const ids = new Set(gente.filter(p => p.area_codigo === codigo).map(p => p.id));
+  if (a.responsable_id && gente.some(p => p.id === a.responsable_id)) ids.add(a.responsable_id);
+  if (!ids.size) (await quienes('tareas_asigna')).forEach(p => ids.add(p.id));
+  return [...ids];
+}
+
+/** Las áreas cuyos avisos le llegan a una persona: la suya, las que lleva y, a quien reparte, las vacías. */
+async function areasDeAvisos(usuarioId) {
+  const id = entero(usuarioId);
+  if (!id) return [];
+  const [gente, areas, reparte] = await Promise.all([repo.personas(), repo.areas(), tiene(id, 'tareas_asigna')]);
+  const yo = gente.find(p => p.id === id);
+  const salida = new Set();
+  if (yo && yo.area_codigo) salida.add(yo.area_codigo);
+  areas.filter(a => a.responsable_id === id).forEach(a => salida.add(a.codigo));
+  if (reparte) {
+    const conGente = new Set(gente.map(p => p.area_codigo).filter(Boolean));
+    const vivo = uid => gente.some(p => p.id === uid);
+    areas.filter(a => !conGente.has(a.codigo) && !(a.responsable_id && vivo(a.responsable_id))).forEach(a => salida.add(a.codigo));
+  }
+  return [...salida];
+}
+
+/** El nombre de un área, para la pantalla. */
+async function etiquetaDeArea(codigo) {
+  const a = (await repo.areas()).find(x => x.codigo === codigo);
+  return a ? a.etiqueta : codigo;
+}
+
 /**
  * Las llaves de una persona que se salen de las de su rol: la «matriz de
  * permisos por rol» de la convención 6, con sus excepciones por persona.
@@ -378,4 +418,5 @@ async function quitarFuncion(asignacionId, motivo, { quien } = {}) {
 module.exports = {
   FUNCIONES, funcion, quienes, tiene, exigir, superiorDe, equipo, excepcionesDeLlaves,
   organigrama, ficha, ponerArea, darFuncion, quitarFuncion,
+  deArea, areasDeAvisos, etiquetaDeArea,
 };

@@ -46,6 +46,7 @@ En una entrada del menú basta con `contador: 'la.clave'` en `layout-gestion.ejs
 
 - **Una sola petición** (`GET /contadores/api`) trae todos los números de quien mira, y `public/assets/js/contadores.js` los pinta en cada `data-contador`.
 - **Con 0 se esconde**; con más de 99 dice «99+».
+- **Una marca puede sumar varias claves**, separadas por espacios (16/11/2026, ítem 3): la campana lleva `data-contador="avisos.sin_leer pendientes"`. Va en azul solo si todas lo son.
 - **Cada grupo del menú suma los de sus entradas** (`data-contador-grupo`). Así, con el grupo cerrado se ve que dentro hay algo. Va en rojo si alguno de dentro lo es; si no, en azul.
 - **Con el menú plegado**, cada contador va sobre la esquina de su icono: el de cada entrada suelta y la suma de cada grupo.
 - **Se refrescan al momento** cuando una fuente avisa de un cambio, por el [[Tiempo real]] (canal `contadores`). Si no avisa, cada 2 minutos con la pestaña a la vista y al volver a ella.
