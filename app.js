@@ -217,6 +217,9 @@ process.on('uncaughtException', (error) => {
   process.on(senal, () => {
     const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
     console.error(`🛑 Recibida ${senal}: el contenedor se está deteniendo (RSS ${mb} MB)`);
+    // Las pantallas con el tiempo real abierto se enteran de que es un apagado
+    // y vuelven solas al servidor nuevo (A7).
+    try { require('./services/tiempoReal').cerrarTodas('apagado'); } catch (_) { /* sin tiempo real */ }
     process.exit(0);
   });
 });
@@ -322,6 +325,9 @@ app.use('/organizacion', require('./modules/Organizacion/organizacion.controller
 // Los adjuntos de cualquier dueño (db/249, pieza A6): subir por trozos, servir con
 // Range y anular. Quién ve y quién adjunta lo dice cada módulo dueño.
 app.use('/adjuntos', require('./modules/Adjuntos/adjuntos.controller'));
+// El tiempo real (pieza A7): la conexión que la pantalla deja abierta para que
+// el servidor le avise. Quién oye cada canal lo dice el módulo que lo abre.
+app.use('/tiempo-real', require('./modules/TiempoReal/tiempoReal.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)

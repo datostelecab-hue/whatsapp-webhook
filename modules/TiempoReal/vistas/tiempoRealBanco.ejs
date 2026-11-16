@@ -1,0 +1,22 @@
+<%#
+  EL BANCO DE TIEMPO REAL (pieza A7) — solo el desarrollador.
+
+  Abre el directo aunque sea en local (HTTP/1.1, donde las pantallas van por
+  sondeo), manda avisos a uno mismo por el canal «prueba», mide cuánto tardan y
+  prueba que al cortar y volver llega lo que se perdió.
+%>
+
+<div class="max-w-4xl mx-auto space-y-5">
+  <div>
+    <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-tower-broadcast text-telecab-gold" aria-hidden="true"></i> Banco de tiempo real
+    </h1>
+    <p class="text-sm text-telecab-muted mt-1">
+      Para comprobar que los avisos del servidor llegan al momento, y que al cortar y volver no se pierde ninguno. Los avisos de aquí solo te llegan a ti.
+    </p>
+  </div>
+  <div id="estado"></div>
+  <div id="registro"></div>
+</div>
+
+<script src="<%= est('/assets/js/vistas/TiempoReal/banco.js') %>"></script>

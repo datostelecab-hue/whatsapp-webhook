@@ -203,6 +203,28 @@ async function sesionAbierta(sid) {
 /** Olvida lo cacheado de un sid: lo llama quien acaba de cerrar una sesión. */
 const olvidarSesion = sid => { if (sid) _vivas.delete(sid); };
 
+/**
+ * ¿SIGUE VALIENDO la sesión con la que se abrió una conexión que dura horas (el
+ * tiempo real, A7, 16/11/2026)? Lo mismo que mira cargarSesion en cada
+ * petición: la firma y la fecha, el corte del servidor en las largas y que la
+ * sesión siga abierta. Si la base no contesta, sí, como allí: no se echa a nadie
+ * por un fallo de red. → el usuario de la cookie, o null.
+ */
+async function sesionVigente(req) {
+  const u = verificar(leerCookie(req, COOKIE));
+  if (!u) return null;
+  if (u.larga && u.id) {
+    try {
+      const usuarios = require('../modules/Usuarios/usuarios.service');
+      if (!await usuarios.sesionSigueValiendo(u.id, u.iat)) return null;
+    } catch (e) {
+      console.error('❌ [SESIÓN] no se pudo comprobar el corte:', e.message);
+    }
+  }
+  if (u.sid && !await sesionAbierta(u.sid)) return null;
+  return u;
+}
+
 // ── Middlewares ─────────────────────────────────────────────────────────────
 // Decodifica la cookie (si hay) y la deja en req.usuario / res.locals. Nunca corta.
 async function cargarSesion(req, res, next) {
@@ -429,7 +451,7 @@ async function sembrarSuperadmin() {
 module.exports = {
   COOKIE, SEDES, sedeValida,
   ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
-  dispositivoDe, olvidarSesion,
+  dispositivoDe, olvidarSesion, sesionVigente,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
   requiereSuperadmin, requiereDesarrollador, requiereGestorUsuarios, requiereDesarrolladorOLlave,
   sembrarSuperadmin

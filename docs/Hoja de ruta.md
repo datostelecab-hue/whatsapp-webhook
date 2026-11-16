@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4, A10, A5 y A6 en sus ramas)
+estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4, A10, A5, A6 y A7 en sus ramas)
 ---
 
 # Hoja de ruta
@@ -23,7 +23,8 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A10. Tareas programadas | **Hecha en la rama `fase-a/a10-tareas-programadas`** (13/11/2026, sale de la de A4), a falta de probarla: `services/tareasProgramadas.js` y `tarea_programada_vez` (db/246). Ver [[Tareas programadas]] |
 | A5. Personas y organización | **Hecha en la rama `fase-a/a5-organizacion`** (13/11/2026, sale de la de A10), a falta de probarla: áreas, superiores y funciones por persona, la pantalla `/organizacion` y `services/organizacion.js` (db/248). Ver [[Organizacion]] |
 | A6. Adjuntos | **En la rama `fase-a/a6-adjuntos`, a prueba en el servidor de pruebas** (13/11/2026, sale de la de A5): el almacén en Cloudflare R2 (decidido por Camilo), la tabla `adjunto` de cualquier dueño, subida por trozos, Range y vista previa (db/249, ya aplicada). Revisada a fondo el 16/11: 19 hallazgos, todos arreglados. El bucket de pruebas ya está; el de producción, al pasar a `main`. Ver [[Adjuntos]] |
-| A7 a A9 | Pendientes |
+| A7. Tiempo real | **Hecha en la rama `fase-a/a7-tiempo-real`** (16/11/2026, sale de la de A6), a falta de probarla: el servidor avisa a las pantallas por Server-Sent Events, con canales y su permiso, lo perdido al volver, latido y sondeo cuando no hay directo (`services/tiempoReal.js`, `TiempoReal.escuchar`). Sin migración. Ver [[Tiempo real]] |
+| A8 y A9 | Pendientes |
 
 ## Lo que Ignacio cerró en la última versión
 
@@ -83,7 +84,7 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A4. Auditoría** | Hecha: el libro `auditoria` (db/245), que se escribe por disparador en cada tabla puesta bajo él con `auditoria_vigilar()`, y `services/libro.js` para firmar, apuntar lecturas y leer la historia. Ver [[Libro de auditoria]] | El componente que pinta la historia en una ficha (con el ítem 1). Cuánto se guarda y quién lo consulta entero. Lo viejo (`cambio_campo`, `ticket_evento`) se queda como está |
 | **A5. Personas y organización** | Hecha: el área y el superior de cada usuario, y las funciones de cada persona con su suplente (`usuario_funcion`, db/248); `organizacion.quienes()` y `exigir()` para que ningún ítem escriba un nombre ni un id. La ficha enseña las llaves que se salen de las de su rol. Ver [[Organizacion]] | Que Ignacio ponga en `/organizacion` las áreas, sus responsables y los superiores, y repase el reparto de funciones de db/248. El usuario de Angie. Las funciones que pida cada ítem al hacerse (la caja del 12, ver las multas del 10, emitir las cartas del 6) se añaden al catálogo con él |
 | **A6. Adjuntos** | Hecha: el almacén es **Cloudflare R2** (Camilo, 13/11/2026), con la tabla `adjunto` de cualquier dueño (db/249). Tiene subida multipart por trozos, con huella y tope (`adjuntos.max_mb`), descarga con Range y vista previa (foto en VisorFoto, PDF en la página, vídeo y audio con su reproductor), y lo demás se descarga. El componente es `Adjuntos.montar`. Lo que ya estaba (`documento`, `ticket.adjuntos`, `whatsapp_adjunto`, las facturas) se queda donde está. Ver [[Adjuntos]] | El bucket y la clave de producción al pasar a `main` (uno aparte del de pruebas). Subir directo a R2 con enlace firmado los vídeos de más de 90 MB (siniestros). Mudar lo de antes al tocar cada módulo |
-| **A7. Tiempo real** | Nada: se sondea cada 3 s a 5 min | Una ruta SSE fuera de la compresión, con latido cada 25 s, reconexión que pide lo perdido y un cliente común que cae al sondeo. Con una sola instancia basta un bus en memoria; LISTEN/NOTIFY solo si hay más |
+| **A7. Tiempo real** | Hecha: `GET /tiempo-real/eventos` (Server-Sent Events) sin comprimir, con latido cada 25 s, lo perdido al volver (Last-Event-ID, 10 minutos) o «reinicio», la sesión revisada cada dos minutos, y `TiempoReal.escuchar` que cae al sondeo. Bus en memoria (una instancia). Ver [[Tiempo real]] | Que lo usen los contadores (A9), el tablero y el chat. Pasar los sondeos de hoy al tocar cada pantalla. `LISTEN/NOTIFY` solo si hay más de una instancia |
 | **A8. Notificaciones** | Nada: ni manifest, ni service worker, ni Web Push | Manifest, service worker en `/sw.js` (desde `/assets` no controlaría el ERP), claves VAPID, suscripciones por dispositivo y permiso pedido tras un clic. En iPhone solo funcionan con la web instalada |
 | **A9. Contadores del menú** | Tres contadores sueltos: la campana, los cuadros de tickets y la chapa de fichaje. Con el menú contraído solo se ve `#nav-pend-badge` | Un endpoint de recuentos por usuario, una marca por entrada, la suma por grupo y una clase CSS común |
 | **A10. Tareas programadas** | Hecha: una vuelta cada diez minutos hace las tareas de negocio que tengan su vez pendiente, una sola vez aunque haya dos procesos y recuperando la que se perdió por una caída (`services/tareasProgramadas.js`, db/246). Ver [[Tareas programadas]] | A quién se avisa si una falla (con el ítem 3). Una pantalla con los intentos. Los crons viejos de `app.js` siguen como estaban |

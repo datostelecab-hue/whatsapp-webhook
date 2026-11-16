@@ -51,6 +51,8 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
   <%# Api.pedir/get/post: la forma de la casa de hablar con el servidor, y el aviso de los errores de JavaScript que nadie captura. Pronto, para oírlos desde el principio. %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/api.js') : '/assets/js/api.js' %>"></script>
+  <%# TiempoReal.escuchar: el servidor avisa a la pantalla en cuanto algo cambia (A7). No conecta nada hasta que una pantalla escucha. %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/tiempoReal.js') : '/assets/js/tiempoReal.js' %>"></script>
   <%# Horas y minutos de una J, en vez de un decimal (HorasMin; también `tipo: 'horas'` de Dialogo.formulario). %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/horasMin.js') : '/assets/js/horasMin.js' %>"></script>
   <%# El formulario de la −J (MenosJ.poner): Bitácora, Control y Justificantes piden lo mismo. %>
@@ -235,6 +237,8 @@
             { href: '/organizacion', icono: 'fa-sitemap',   texto: 'Organización', id: 'organizacion', solo: 'desarrollador', oLlave: '/usuarios' },
             // El banco de adjuntos (db/249): dónde se guardan los ficheros y una prueba.
             { href: '/adjuntos/banco', icono: 'fa-paperclip', texto: 'Banco de adjuntos', id: 'adjuntos', solo: 'desarrollador' },
+            // El banco de tiempo real (A7): que los avisos llegan, y al volver, lo perdido.
+            { href: '/tiempo-real/banco', icono: 'fa-tower-broadcast', texto: 'Banco de tiempo real', id: 'tiempo-real', solo: 'desarrollador' },
             { href: '/explorador',  icono: 'fa-database',    texto: 'Base de datos', id: 'explorador', solo: 'desarrollador' },
             { href: '/migraciones', icono: 'fa-code-branch', texto: 'Migraciones', id: 'migraciones', solo: 'desarrollador' }
           ] }
