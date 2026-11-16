@@ -91,9 +91,13 @@ const BTN_SIGO = 'turno_sigo';
 // «No tengo yo el coche» (16/11/2026): se le olvidó desvincularlo y el coche ya
 // lo lleva otro. 20 letras justas: sin emoji (WhatsApp corta en 20).
 const BTN_NOLOTENGO = 'turno_nolotengo';
-const NOLOTENGO = { id: BTN_NOLOTENGO, titulo: 'No tengo yo el coche' };
+// El botón lleva la matrícula (turno_nolotengo:1234ABC): uno de un mensaje de
+// ayer no desvincula el coche de hoy. El que no la lleva (los primeros, del
+// 16/11) vale para el coche que tenga.
+const botonNoLoTengo = matricula => ({ id: `${BTN_NOLOTENGO}:${normMat(matricula)}`, titulo: 'No tengo yo el coche' });
 const PISTA_NOLOTENGO = 'Si el coche ya lo lleva un compañero, pulsa *No tengo yo el coche*.';
-const NOLOTENGO_PALABRA = /^no\s+(lo\s+)?tengo(\s+yo)?(\s+el\s+coche)?\.?$/i;
+// Escrito, con «el coche»: un «no tengo» a secas contestando a otra cosa no desvincula nada.
+const NOLOTENGO_PALABRA = /^no\s+(lo\s+)?tengo(\s+yo)?\s+el\s+coche\.?$/i;
 
 // Cómo dejó las puertas cada uno. En memoria y solo para enseñarlo: si Render
 // reinicia no se dice nada, que es mejor que decir algo que no se sabe.
@@ -712,7 +716,10 @@ async function manejarBoton(telefono, buttonId) {
   }
   if (id === BTN_PANEL) { await panel(telefono); return true; }
   if (id === BTN_SIGO) { await sigo(telefono); return true; }
-  if (id === BTN_NOLOTENGO) { await noLoTengo(telefono); return true; }
+  if (id === BTN_NOLOTENGO || id.startsWith(BTN_NOLOTENGO + ':')) {
+    await noLoTengo(telefono, id.slice(BTN_NOLOTENGO.length + 1));
+    return true;
+  }
   if (id === BTN_TERMINAR) { await cerrar(telefono); return true; }
   if (id === BTN_KM) { await verKm(telefono); return true; }
   if (id === BTN_MOTOR) { await desbloquear(telefono); return true; }
@@ -739,7 +746,7 @@ function textoPregunta(a) {
   return `👋 ${pila ? pila + ', l' : 'L'}levas más de ${fichaje.MAX_HORAS_TURNO} h ${w.conElAbierto(t.matricula)}` +
     `${PREGUNTA_PORQUE[a.porque] || ''}. ¿Sigues en el coche?\n\n` +
     'Si sigues, pulsa *Sigo en el coche* y lo dejo como está. ' +
-    `Si ya has acabado, aparca, apaga el coche y pulsa *${w.boton}*. ${PISTA_NOLOTENGO}\n\n` +
+    `Si ya has acabado, aparca, apaga el coche y pulsa *${w.boton}*.${a.sinNoLoTengo ? '' : ' ' + PISTA_NOLOTENGO}\n\n` +
     `Si no contestas y el coche se queda parado y apagado, ${w.cerrareTu}${a.sinMotor ? '' : ' y bloquearé el motor'}.`;
 }
 
@@ -773,8 +780,11 @@ async function repasarTurnosLargos() {
     try {
       if (a.tipo === 'preguntar') {
         c.preguntados++;
-        r = await enviarBotones(a.turno.telefono, textoPregunta(a),
-          [{ id: BTN_SIGO, titulo: '✅ Sigo en el coche' }, { id: BTN_TERMINAR, titulo: W(a.turno.tipo).terminar }, NOLOTENGO]);
+        // «No tengo yo el coche», solo en los coches de Madrid: de Barcelona no hay BOLT aquí.
+        const ajena = await otraSede.sedeAjena({ matricula: a.turno.matricula, unitId: a.turno.unitId }).catch(() => null);
+        r = await enviarBotones(a.turno.telefono, textoPregunta({ ...a, sinNoLoTengo: !!ajena }),
+          [{ id: BTN_SIGO, titulo: '✅ Sigo en el coche' }, { id: BTN_TERMINAR, titulo: W(a.turno.tipo).terminar },
+            ...(ajena ? [] : [botonNoLoTengo(a.turno.matricula)])]);
       } else {
         c.cerrados++;
         if (a.motor && a.motor.hecho) c.bloqueados++;
@@ -824,8 +834,16 @@ async function sigo(telefono) {
  * coche pasa a quien lo lleva en BOLT ahora (o al último que salió con él desde
  * que lo vinculó). Ver fichaje.noLoTengo. A quien se le pasa se le dice, con su
  * panel: si no está dentro de las 24 h de WhatsApp no le llega, y no pasa nada.
+ * `matricula`: la del botón pulsado; si ya no es la de su coche, no se toca nada.
  */
-async function noLoTengo(telefono) {
+async function noLoTengo(telefono, matricula) {
+  const { abierto, turno } = await fichaje.estado(telefono);
+  if (abierto && matricula && normMat(matricula) !== normMat(turno.matricula)) {
+    await enviarBotones(telefono,
+      `Ese botón era del *${matricula}*, y ahora tienes vinculado el *${turno.matricula}*. ` +
+      `Si el *${turno.matricula}* no lo tienes tú, pulsa aquí:`, [botonNoLoTengo(turno.matricula)]);
+    return;
+  }
   let r;
   try { r = await fichaje.noLoTengo(telefono); }
   catch (e) {
@@ -834,6 +852,21 @@ async function noLoTengo(telefono) {
     return;
   }
   if (!r.ok) {
+    if (r.motivo === 'cerrando') {
+      const wc = W(r.turno.tipo);
+      return enviarTexto(telefono, `🔴 Justo acabo de ${wc.cerrarEl(r.turno.matricula)}: ` +
+        `el coche estaba parado y apagado. Si sigues con él, escríbeme la matrícula ${wc.otraVez}.`);
+    }
+    if (r.motivo === 'en-curso') return enviarTexto(telefono, '⏳ Un momento: ya lo estoy desvinculando.');
+    if (r.motivo === 'lo-llevas-tu') {
+      // En BOLT va él conduciendo con este coche: no se desvincula (revisión del 16/11).
+      const wl = W(r.turno.tipo);
+      return enviarBotones(telefono,
+        `🚗 En BOLT sales tú conectado con el *${r.turno.matricula}*${r.bolt.situacion === 'viaje' ? ', en un viaje' : ''}.\n\n` +
+        `Si lo llevas tú, aparca, apágalo y pulsa *${wl.boton}*. ` +
+        'Si no lo llevas tú, desconéctate de BOLT y vuelve a pulsar *No tengo yo el coche*, o avisa a Tráfico.',
+        [{ id: BTN_TERMINAR, titulo: wl.terminar }, botonNoLoTengo(r.turno.matricula)]);
+    }
     const p = await fichaje.participa(telefono);
     return panel(telefono, W(p && p.tipo).ninguno);
   }
@@ -844,13 +877,27 @@ async function noLoTengo(telefono) {
   const quien = (r.otro && r.otro.nombre) || (r.bolt && r.bolt.nombre) || '';
   const comoBolt = r.bolt && r.bolt.porque === 'ahora' ? 'lo lleva ahora en BOLT' : 'fue el último en BOLT con él';
 
+  if (r.yaLoTiene) {
+    await enviarTexto(telefono,
+      `🔄 *Coche desvinculado*\n\n🚘 ${t.matricula} → ya lo tiene vinculado *${r.yaLoTiene}*\n${tramo}\n\n` +
+      `${w.tuCerrado}. El motor no se ha tocado. ${w.gracias}`);
+    return;
+  }
   if (r.pasa && r.pasa.ok) {
+    const m = r.pasa.motor || {};
+    const motor = m.hecho && !m.yaEstaba ? `El motor estaba cortado: se ha soltado para ${quien}.` : 'El motor no se ha tocado.';
     await enviarTexto(telefono,
       `🔄 *Coche desvinculado*\n\n🚘 ${t.matricula} → ahora lo tiene vinculado *${quien}*, que ${comoBolt}\n${tramo}\n\n` +
-      `${w.tuCerrado}. El motor no se ha tocado. ${w.gracias}`);
-    // Al compañero, su panel, con por qué tiene el coche.
+      `${w.tuCerrado}. ${motor} ${w.gracias}`);
+    // Al compañero, su panel, con por qué tiene el coche; y si el motor no se
+    // pudo soltar, que lo sepa antes de girar la llave (como al vincular).
     const pila = (await fichaje.participa(telefono) || {}).pila || 'Tu compañero';
     try {
+      if (r.pasa.bloqueoActivo && !m.hecho) {
+        await enviarBotones(r.pasa.telefono,
+          `🔒 *ATENCIÓN: el motor del ${t.matricula} NO se ha desbloqueado*\n_${m.motivo || 'motivo desconocido'}_\n\n` +
+          'Pulsa *Reintentar* en un momento; si sigue igual, avisa a Tráfico.', [{ id: BTN_MOTOR, titulo: '🔓 Reintentar' }]);
+      }
       await panelTurno(r.pasa.telefono, r.pasa.turno,
         `🔗 *Te he vinculado el ${t.matricula}*: ${pila} dice que no lo tiene y en BOLT ${r.bolt.porque === 'ahora' ? 'lo llevas tú' : 'fuiste el último con él'}. ` +
         'Si no lo tienes tú, avisa a Tráfico.', r.pasa.vehiculo);
@@ -868,8 +915,9 @@ async function noLoTengo(telefono) {
     'de-baja': 'está de baja',
     'sin-telefono': 'no tiene un teléfono en su ficha con el que use el bot',
   }[r.porQueNo] || 'algo ha fallado al vincularlo';
-  if (!r.bolt) porque = 'Nadie ha salido en BOLT con este coche desde que lo vinculaste.';
-  else if (r.esEl) porque = r.bolt.porque === 'ahora' ? '⚠️ Ojo: en BOLT sales tú conectado con este coche.' : 'En BOLT, el último con este coche fuiste tú.';
+  if (r.otraSede) porque = `De los coches de ${r.otraSede} no compruebo quién lo lleva en BOLT: si lo lleva un compañero, que me escriba la matrícula.`;
+  else if (!r.bolt) porque = 'Nadie ha salido en BOLT con este coche desde que lo vinculaste.';
+  else if (r.esEl) porque = r.bolt.porque === 'ahora' ? '⚠️ Ojo: en BOLT sigues conectado con este coche.' : 'En BOLT, el último con este coche fuiste tú.';
   else if (r.porQueNo === 'otro-coche') porque = `${enBolt}, pero tiene vinculado el *${r.otro.matriculaSuya}*: avisa a Tráfico.`;
   else porque = `${enBolt}, pero no se lo he podido vincular (${razon}): avisa a Tráfico.`;
   await enviarTexto(telefono,
@@ -940,7 +988,7 @@ async function cerrar(telefono) {
   const w = W(abiertoAhora.tipo);
   // Con «No tengo yo el coche»: si va en marcha o encendido porque lo lleva un
   // compañero, este es justo el mensaje que le dejaba atrapado (16/11/2026).
-  const deNuevo = [{ id: BTN_TERMINAR, titulo: w.terminar }, NOLOTENGO];
+  const deNuevo = [{ id: BTN_TERMINAR, titulo: w.terminar }, botonNoLoTengo(abiertoAhora.matricula)];
   // Va conduciendo. Se queda ABIERTO a propósito: terminar es lo que corta el
   // motor, y hacerlo rodando lo inmovilizaría donde quiera que pare.
   if (!r.ok && r.motivo === 'coche-en-marcha') {

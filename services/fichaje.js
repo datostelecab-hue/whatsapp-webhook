@@ -870,6 +870,8 @@ async function cerrarSoloYBloquear(t, info, s) {
   const fin = finSeguro(t, info && info.segParado > 0 ? ahoraSeg() - Math.round(info.segParado) : ahoraSeg(), s);
   const km = await kmDelTurno(t, fin);
   if (!(await sigueSinConfirmar(t))) return null;
+  // Lo está desvinculando ahora mismo «No tengo yo el coche»: no se corta.
+  if (desvinculandoAhora.has(t.filaId)) return null;
   cerrandoAhora.add(t.filaId);
   try {
     const mot = dec.bloquear
@@ -1023,7 +1025,7 @@ async function estado(telefono) {
  * Abre turno: resuelve la matrícula en Mapon, comprueba que nadie más la tenga,
  * asigna el conductor en Mapon y apunta el turno en el libro.
  */
-async function iniciar({ telefono, nombre, matricula }) {
+async function iniciar({ telefono, nombre, matricula, soloSiLibre = false }) {
   await cerrarOlvidados();
 
   const yaAbierto = await abiertoDe(telefono);
@@ -1089,6 +1091,9 @@ async function iniciar({ telefono, nombre, matricula }) {
   // que es lo que Tráfico querrá mirar si algo no cuadra.
   let relevoDe = null;
   const ocupado = await abiertoDeCoche(unidad.matricula, telefono);
+  // «No tengo yo el coche» abre el turno del compañero SOLO SI EL COCHE ESTÁ
+  // LIBRE: si mientras tanto alguien lo ha vinculado, se le respeta (16/11/2026).
+  if (ocupado && soloSiLibre) return { ok: false, motivo: 'coche-ocupado', turno: ocupado };
   if (ocupado) {
     if (BLOQUEO_ACTIVO && (await decidirBloqueo(ocupado)).bloquear) {
       const m = await estadoMotor(unidad.unitId);
@@ -1212,36 +1217,68 @@ async function cerrarPorRelevo(t, quienEntra, { sinBoton = false, fueraDelPlan =
  *   · Quién lo lleva AHORA lo dice la foto del ahora (services/flotaViva/ahora):
  *     conectado en BOLT con ese coche. Si nadie, el ÚLTIMO que salió en BOLT con
  *     él DESDE QUE ESTA PERSONA LO VINCULÓ: lo de antes no dice quién lo tiene.
+ *   · SI EL QUE CONDUCE AHORA EN BOLT ES ÉL (en viaje o en espera), NO SE
+ *     DESVINCULA: sería saltarse la regla de que en marcha no se desvincula, con
+ *     un botón que sale justo en el mensaje de «Estás en marcha». Se le dice que
+ *     se desconecte de BOLT o que aparque y desvincule (revisión del 16/11).
  *   · El suyo se cierra SIN TOCAR EL MOTOR (el coche puede ir rodando con el
- *     compañero): «relevado» si pasa a otro, «cerrado» si se queda sin nadie, y
+ *     compañero), A LA HORA EN QUE EL OTRO COGIÓ EL COCHE EN BOLT, no a la de
+ *     ahora: si no, los km fuera de BOLT y los repostajes de esas horas se le
+ *     cargarían a él (como `cerrarDesdeOficina`, que cierra a la hora de la
+ *     entrega). «relevado» si pasa a otro, «cerrado» si se queda sin nadie, y
  *     la nota dice lo que dijo y lo que decía BOLT.
  *   · Al otro se le abre su turno como si hubiera escrito la matrícula
- *     (`iniciar`, con su teléfono de la ficha). Si no se puede —su cuenta de
- *     BOLT no está enlazada, no tiene teléfono, está de baja o ya tiene otro
- *     coche—, el coche se queda sin nadie y se dice por qué, para Tráfico.
+ *     (`iniciar`, con su teléfono de la ficha), pero SOLO SI EL COCHE ESTÁ LIBRE:
+ *     si mientras tanto lo ha vinculado alguien, se le respeta. Si no se puede
+ *     —su cuenta de BOLT no está enlazada, no tiene teléfono, está de baja o ya
+ *     tiene otro coche—, el coche se queda sin nadie y se dice por qué.
  *   · Si se queda sin nadie y a esta persona se le habría bloqueado el motor al
  *     terminar, se apunta en el ciclo de bloqueo que NO se bloqueó: Tráfico lo ve
  *     en /bloqueo-motor, como cualquier corte que no se hizo.
+ *   · Si el cierre de las 14 h está cortando este coche en ese momento, se para
+ *     (`cerrandoAhora`); y mientras esto trabaja, el cierre de las 14 h no lo
+ *     corta (`desvinculandoAhora`).
+ *   · Los coches de OTRA SEDE (Barcelona) no se miran en BOLT: de allí no hay
+ *     datos aquí. Se desvincula sin más y se dice.
  *
- * → { ok, turno (el suyo, cerrado), bolt: { uuid, nombre, porque: 'ahora'|'ultimo' } | null,
- *     esEl, otro: { nombre, conductorId } | null, pasa: { ok, turno, vehiculo, telefono, motivo } | null }
+ * → { ok, motivo?, turno (el suyo), bolt: { uuid, nombre, porque, situacion } | null,
+ *     esEl, otro, porQueNo, otraSede, yaLoTiene, pasa: { ok, turno, vehiculo, telefono, motor, bloqueoActivo } | null }
  */
+const desvinculandoAhora = new Set();
+
 async function noLoTengo(telefono) {
   await cerrarOlvidados();
   const t = await abiertoDe(telefono);
   if (!t) return { ok: false, motivo: 'sin-turno' };
+  if (cerrandoAhora.has(t.filaId)) return { ok: false, motivo: 'cerrando', turno: t };
+  if (desvinculandoAhora.has(t.filaId)) return { ok: false, motivo: 'en-curso', turno: t };
+  desvinculandoAhora.add(t.filaId);
+  try {
+    return await noLoTengoYa(t);
+  } finally {
+    desvinculandoAhora.delete(t.filaId);
+  }
+}
+
+async function noLoTengoYa(t) {
+  // 0. Un coche de otra sede: aquí no hay datos de su BOLT.
+  const ajena = await otraSede.sedeAjena({ matricula: t.matricula, unitId: t.unitId }).catch(() => null);
 
   // 1. Quién lo lleva en BOLT: ahora, o el último desde que lo vinculó.
   let bolt = null;
-  try {
-    const f = await require('./flotaViva/ahora').foto();
-    const c = f && f.porMatricula && f.porMatricula.get(normMat(t.matricula));
-    if (c && c.conectado && c.conductor_uuid) bolt = { uuid: c.conductor_uuid, nombre: c.conductor || '', porque: 'ahora' };
-  } catch (e) { console.error('⚠️ [FICHAJE] no tengo el coche: la foto de BOLT:', e.message); }
-  if (!bolt) {
-    const u = await repo.ultimoEnBoltDesde(t.matricula, t.inicio)
-      .catch(e => { console.error('⚠️ [FICHAJE] no tengo el coche: el último en BOLT:', e.message); return null; });
-    if (u) bolt = { uuid: u.uuid, nombre: u.nombre, porque: 'ultimo', a: u.hasta };
+  if (!ajena) {
+    try {
+      const f = await require('./flotaViva/ahora').foto();
+      const c = f && f.porMatricula && f.porMatricula.get(normMat(t.matricula));
+      if (c && c.conectado && c.conductor_uuid) {
+        bolt = { uuid: c.conductor_uuid, nombre: c.conductor || '', porque: 'ahora', situacion: c.situacion || null };
+      }
+    } catch (e) { console.error('⚠️ [FICHAJE] no tengo el coche: la foto de BOLT:', e.message); }
+    if (!bolt) {
+      const u = await repo.ultimoEnBoltDesde(t.matricula, t.inicio)
+        .catch(e => { console.error('⚠️ [FICHAJE] no tengo el coche: el último en BOLT:', e.message); return null; });
+      if (u) bolt = { uuid: u.uuid, nombre: u.nombre, porque: 'ultimo', situacion: null };
+    }
   }
 
   // 2. ¿Quién es, y se le puede vincular?
@@ -1250,6 +1287,10 @@ async function noLoTengo(telefono) {
     const ficha = await repo.personaDeCuentaBolt(bolt.uuid).catch(() => null);
     if (ficha) otro = { nombre: ficha.nombre || bolt.nombre, conductorId: ficha.conductorId };
     esEl = !!(ficha && t.conductorId && String(ficha.conductorId) === String(t.conductorId));
+    // Va él conduciendo en BOLT ahora mismo: no se desvincula (revisión del 16/11).
+    if (esEl && bolt.porque === 'ahora' && ['viaje', 'espera'].includes(bolt.situacion)) {
+      return { ok: false, motivo: 'lo-llevas-tu', turno: t, bolt };
+    }
     if (!esEl) {
       if (!ficha) porQueNo = 'sin-ficha';
       else if (!ficha.empleoVigente) porQueNo = 'de-baja';
@@ -1267,40 +1308,61 @@ async function noLoTengo(telefono) {
     }
   }
 
-  // 3. El suyo se cierra, sin tocar el motor.
+  // 3. La hora a la que lo dejó de tener: cuando el otro lo cogió en BOLT (si
+  // fue otro), nunca antes de que lo vinculara ni de su «Entregar coche».
+  const ahora = ahoraSeg();
+  let entrega = null;
+  if (bolt && !esEl) {
+    entrega = await repo.entregaEnBolt(t.matricula, bolt.uuid, t.inicio)
+      .catch(e => { console.error('⚠️ [FICHAJE] no tengo el coche: la hora de la entrega:', e.message); return null; });
+  }
+  const fin = Math.min(ahora, Math.max(entrega || ahora, t.inicio + 1, t.relevo || 0));
+
+  // 4. El suyo se cierra, sin tocar el motor.
   const pasaA = !!aQuien;
   const quienBolt = (otro && otro.nombre) || (bolt && bolt.nombre) || '';
-  const dijo = 'Dijo que no tenía el coche';
-  const segunBolt = !bolt ? 'nadie salió en BOLT con él desde que lo vinculó'
-    : `${bolt.porque === 'ahora' ? 'en BOLT lo llevaba' : 'el último en BOLT con él fue'} ${esEl ? 'él mismo' : quienBolt || 'una cuenta sin nombre'}`;
-  const fin = Math.max(ahoraSeg(), t.inicio + 1, t.relevo || 0);
+  const segunBolt = ajena ? `coche de ${otraSede.nombreSede(ajena)}: no se mira en BOLT`
+    : !bolt ? 'nadie salió en BOLT con él desde que lo vinculó'
+      : `${bolt.porque === 'ahora' ? 'en BOLT lo llevaba' : 'el último en BOLT con él fue'} ${esEl ? 'él mismo' : quienBolt || 'una cuenta sin nombre'}` +
+        (fin < ahora ? ` desde las ${horaES(fin)}` : '');
   const km = await kmDelTurno(t, fin);
   const cerrado = {
     ...t, fin, estado: pasaA ? 'relevado' : 'cerrado',
     km: km ? km.km : t.km, trayectos: km ? km.trayectos : t.trayectos, atribuidos: km ? km.conConductor : t.atribuidos,
-    notas: `${t.notas ? t.notas + ' · ' : ''}${dijo}: ${segunBolt}` +
+    notas: `${t.notas ? t.notas + ' · ' : ''}Dijo que no tenía el coche: ${segunBolt}` +
       (pasaA ? ` · Pasa a ${quienBolt}` : ' · Se queda sin nadie') + ' (el motor no se toca)',
   };
   if (!(await guardarCierre(cerrado))) return { ok: false, motivo: 'sin-turno' };
   try { await soltarEnMapon(t); } catch (e) { /* cerrado igual */ }
   olvidar(t.telefono);
 
-  // 4. Al otro, su turno; o, si se queda sin nadie, que Tráfico vea que no se bloqueó.
-  let pasa = null;
+  // 5. Al otro, su turno, solo si el coche sigue libre.
+  let pasa = null, yaLoTiene = null;
   if (pasaA) {
-    try {
-      const r = await iniciar({ telefono: aQuien, matricula: t.matricula });
-      pasa = r.ok ? { ok: true, turno: r.turno, vehiculo: r.vehiculo, telefono: aQuien } : { ok: false, motivo: r.motivo };
-    } catch (e) {
-      pasa = { ok: false, motivo: e.message };
+    let r;
+    try { r = await iniciar({ telefono: aQuien, matricula: t.matricula, soloSiLibre: true }); }
+    catch (e) { r = { ok: false, motivo: e.message }; }
+    const deEsteCoche = r.turno && normMat(r.turno.matricula) === normMat(t.matricula);
+    if (r.ok) {
+      pasa = { ok: true, turno: r.turno, vehiculo: r.vehiculo, telefono: aQuien, motor: r.motor || {}, bloqueoActivo: !!r.bloqueoActivo };
+    } else if ((r.motivo === 'coche-ocupado' || r.motivo === 'ya-abierto') && deEsteCoche) {
+      // Mientras tanto lo ha vinculado alguien (el compañero escribió la matrícula): se le respeta.
+      yaLoTiene = r.turno.nombre || quienBolt;
+    } else {
+      pasa = { ok: false, motivo: r.motivo };
     }
-    if (!pasa.ok) {
-      console.error(`⚠️ [FICHAJE] ${t.matricula}: no se le pudo vincular a ${quienBolt}: ${pasa.motivo}`);
-      await repo.actualizar({ ...cerrado, estado: 'cerrado',
-        notas: `${cerrado.notas} · No se le pudo vincular a ${quienBolt} (${pasa.motivo}): se queda sin nadie` }).catch(() => {});
+    const corregido = yaLoTiene
+      ? `${cerrado.notas} · Ya lo tenía vinculado ${yaLoTiene}`
+      : pasa && !pasa.ok ? `${cerrado.notas} · No se le pudo vincular a ${quienBolt} (${pasa.motivo}): se queda sin nadie` : null;
+    if (corregido) {
+      await repo.corregirCierre({ referencia: t.id, estadoAntes: 'relevado', notasAntes: cerrado.notas,
+        estado: yaLoTiene ? 'relevado' : 'cerrado', notas: corregido })
+        .catch(e => console.error('⚠️ [FICHAJE] no tengo el coche: corregir la nota:', e.message));
+      if (pasa && !pasa.ok) console.error(`⚠️ [FICHAJE] ${t.matricula}: no se le pudo vincular a ${quienBolt}: ${pasa.motivo}`);
     }
   }
-  if (!(pasa && pasa.ok) && BLOQUEO_ACTIVO) {
+  const sinNadie = !(pasa && pasa.ok) && !yaLoTiene;
+  if (sinNadie && BLOQUEO_ACTIVO && !ajena) {
     const dec = await decidirBloqueo(t).catch(() => ({ bloquear: false }));
     if (dec.bloquear) {
       await apuntarCiclo(t, 'bloquear', { hecho: false, motivo: 'dijo que no tenía el coche: el motor no se toca' },
@@ -1308,8 +1370,8 @@ async function noLoTengo(telefono) {
     }
   }
   console.log(`🙅 [FICHAJE] ${t.nombre} dice que no tiene el ${t.matricula}: ${segunBolt}` +
-    (pasa && pasa.ok ? ` → vinculado a ${quienBolt}` : ' → sin nadie') + ' (el motor no se toca)');
-  return { ok: true, turno: cerrado, bolt, esEl, otro, porQueNo, pasa };
+    (pasa && pasa.ok ? ` → vinculado a ${quienBolt}` : yaLoTiene ? ` → ya lo tenía ${yaLoTiene}` : ' → sin nadie') + ' (el motor no se toca)');
+  return { ok: true, turno: cerrado, bolt, esEl, otro, porQueNo, otraSede: ajena ? otraSede.nombreSede(ajena) : null, yaLoTiene, pasa };
 }
 
 /**

@@ -387,19 +387,24 @@ Camilo: *«a veces se les olvida desfichar, el compañero se lleva el coche y la
 - en «Apaga el coche primero»;
 - en la pregunta de las 14 h, junto a *Sigo en el coche* y *Desvincular vehículo*.
 
-También vale escribirlo: «no tengo el coche». Al pulsarlo (`fichaje.noLoTengo`):
+También vale escribirlo, con «el coche»: «no tengo el coche». Un «no tengo» a secas no hace nada. El botón lleva la matrícula (`turno_nolotengo:9999XYZ`): si se pulsa uno de un mensaje de ayer y hoy tiene otro coche, no se toca nada y se le ofrece el de hoy. En los coches de Barcelona no sale en la pregunta de las 14 h. Al pulsarlo (`fichaje.noLoTengo`):
 
-1. **Quién lo lleva en BOLT ahora**, por la [[El ahora de la flota|foto del ahora]]: la cuenta conectada (viaje, espera o descanso) con esa matrícula. Si no hay nadie, el **último que salió en BOLT con ese coche desde que esta persona lo vinculó**. Lo de antes no dice quién lo tiene ahora. La consulta va coche a coche por su índice y con un tope de dos días: 0,09 ms en el peor caso medido.
-2. **El suyo se cierra sin tocar el motor**, porque el coche puede ir rodando con el compañero. Queda «relevado» si pasa a otro y «cerrado» si se queda sin nadie. La nota dice lo que dijo y lo que decía BOLT: «Dijo que no tenía el coche: en BOLT lo llevaba Luis Gómez Ruiz · Pasa a Luis Gómez Ruiz (el motor no se toca)».
-3. **Al otro se le abre su turno** como si hubiera escrito la matrícula (`iniciar`, con un teléfono vigente de su ficha). Se le manda su panel: «Te he vinculado el 9999XYZ: Pedro dice que no lo tiene y en BOLT lo llevas tú. Si no lo tienes tú, avisa a Tráfico». Si no está dentro de las 24 h de WhatsApp, no le llega, y no pasa nada.
-4. **Se queda sin nadie** y se le dice por qué cuando:
-   - el de BOLT es él mismo: «En BOLT, el último con este coche fuiste tú» (o «Ojo: en BOLT sales tú conectado»);
+1. **Quién lo lleva en BOLT ahora**, por la [[El ahora de la flota|foto del ahora]]: la cuenta conectada (viaje, espera o descanso) con esa matrícula. Si no hay nadie, el **último que salió en BOLT con ese coche desde que esta persona lo vinculó**. Lo de antes no dice quién lo tiene ahora. La consulta va coche a coche y con un tope de dos días: 0,09 ms en el peor caso medido.
+2. **Si el que conduce ahora en BOLT es él mismo** (en viaje o en espera), **no se desvincula**: sería saltarse la regla de que en marcha no se desvincula. Se le dice que, si lo lleva él, aparque y desvincule; y si no, que se desconecte de BOLT o avise a Tráfico.
+3. **El suyo se cierra sin tocar el motor**, porque el coche puede ir rodando con el compañero, y **a la hora en que el otro cogió el coche en BOLT**, no a la de ahora (`entregaEnBolt`): su primer tramo con el coche después del último de otra cuenta. Si se cerrara ahora, los km fuera de BOLT y los repostajes de esas horas se le cargarían a él. Nunca antes de que lo vinculara ni de su «Entregar coche». Queda «relevado» si pasa a otro y «cerrado» si se queda sin nadie, con una nota como «Dijo que no tenía el coche: en BOLT lo llevaba Luis Gómez Ruiz desde las 16/11, 11:12 · Pasa a Luis Gómez Ruiz (el motor no se toca)».
+4. **Al otro se le abre su turno** como si hubiera escrito la matrícula (`iniciar`, con un teléfono vigente de su ficha), **solo si el coche sigue libre** (`soloSiLibre`). Si mientras tanto lo ha vinculado alguien escribiendo la matrícula, se le respeta («ya lo tiene vinculado X»). Se le manda su panel: «Te he vinculado el 9999XYZ: Pedro dice que no lo tiene y en BOLT lo llevas tú. Si no lo tienes tú, avisa a Tráfico». Si el motor no se pudo soltar, antes le llega el aviso con *Reintentar*. Si estaba cortado y se soltó, a quien lo dejó se le dice. Si no está dentro de las 24 h de WhatsApp, no le llega, y no pasa nada.
+5. **Se queda sin nadie** y se le dice por qué cuando:
+   - el de BOLT es él mismo, pero ya no conduciendo: «En BOLT, el último con este coche fuiste tú»;
    - nadie salió en BOLT con el coche desde que lo vinculó;
    - la cuenta de BOLT no está enlazada a ninguna ficha, esa persona está de baja o no tiene teléfono;
-   - el otro ya tiene vinculado otro coche: «En BOLT lo lleva Ana Ruiz, pero tiene vinculado el 5678KLM: avisa a Tráfico».
-5. **Si se queda sin nadie** y a esa persona se le habría bloqueado el motor al terminar, se apunta en el [[Ciclo de bloqueo de motor|ciclo de bloqueo]] que **no se bloqueó** («dijo que no tenía el coche: el motor no se toca»). Así Tráfico lo ve, como cualquier corte que no se hizo.
+   - el otro ya tiene vinculado otro coche: «En BOLT lo lleva Ana Ruiz, pero tiene vinculado el 5678KLM: avisa a Tráfico»;
+   - es un **coche de Barcelona**: de allí no hay datos de BOLT aquí, y se dice así.
+6. **Si se queda sin nadie** y a esa persona se le habría bloqueado el motor al terminar, se apunta en el [[Ciclo de bloqueo de motor|ciclo de bloqueo]] que **no se bloqueó** («dijo que no tenía el coche: el motor no se toca»). Así Tráfico lo ve, como cualquier corte que no se hizo.
+7. **Con el cierre de las 14 h, en fila:** si el repaso está cortando ese coche, se contesta como a «Sigo en el coche» (`cerrandoAhora`); y mientras esto trabaja, el repaso no lo corta (`desvinculandoAhora`).
 
-Se simula de punta a punta con `Scripts de análisis/simular-bot-conductor.js`, en las escenas 13A a 13E: pasa al compañero, el último fue él, cuenta sin ficha, el otro ya tiene otro coche, y la pregunta de las 14 h.
+Lo revisaron dos agentes y dos escépticos el mismo 16/11, ya en producción. De ahí salieron las reglas de los puntos 2, 3, 4 y 7, la del botón con la matrícula, la de la frase con «el coche» y la de Barcelona.
+
+Se simula de punta a punta con `Scripts de análisis/simular-bot-conductor.js`, en las escenas 13A a 13H: pasa al compañero a la hora de la entrega, el último fue él, cuenta sin ficha, el otro ya tiene otro coche, él mismo conduciendo, un botón viejo y un «no tengo» a secas, Barcelona, y la pregunta de las 14 h.
 
 ## Una orden de motor por coche, y mirar después de cortar (11/10/2026)
 

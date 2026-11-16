@@ -590,6 +590,48 @@ async function ultimoEnBoltDesde(matricula, desdeSeg) {
 }
 
 /**
+ * A qué hora cogió el coche la cuenta `uuid` en BOLT, desde `desdeSeg`: su primer
+ * tramo con el coche después del último de cualquier OTRA cuenta (o desde que
+ * se vinculó), en segundos; o null. Es la hora de la entrega: a quien dice
+ * «no tengo yo el coche» se le cierra ahí, no ahora.
+ */
+async function entregaEnBolt(matricula, uuid, desdeSeg) {
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT uuid FROM fv_vehiculo
+        WHERE upper(regexp_replace(COALESCE(matricula, ''), '[^A-Za-z0-9]', '', 'g')) = $1),
+     otro AS (
+       SELECT max(COALESCE(o.hasta, now())) AS hasta
+         FROM v JOIN fv_tramo o ON o.vehiculo_uuid = v.uuid
+        WHERE o.conductor_uuid IS NOT NULL AND o.conductor_uuid <> $2
+          AND o.situacion IN ('viaje', 'espera', 'descanso')
+          AND o.desde > to_timestamp($3) - interval '2 days'
+          AND COALESCE(o.hasta, now()) > to_timestamp($3))
+     SELECT extract(epoch FROM min(t.desde))::bigint AS desde
+       FROM v JOIN fv_tramo t ON t.vehiculo_uuid = v.uuid
+      WHERE t.conductor_uuid = $2
+        AND t.situacion IN ('viaje', 'espera', 'descanso')
+        AND t.desde > to_timestamp($3) - interval '2 days'
+        AND COALESCE(t.hasta, now()) > GREATEST(to_timestamp($3), COALESCE((SELECT hasta FROM otro), to_timestamp($3)))`,
+    [normMat(matricula), String(uuid || ''), Number(desdeSeg) || 0]);
+  const d = r.rows[0] && r.rows[0].desde;
+  return d == null ? null : Number(d);
+}
+
+/**
+ * Corrige el estado y la nota de un turno YA CERRADO, solo si siguen como se
+ * dejaron (`estadoAntes`, `notasAntes`): si otro camino lo ha tocado mientras
+ * tanto, no se pisa. → true si lo ha corregido.
+ */
+async function corregirCierre({ referencia, estadoAntes, notasAntes, estado, notas }) {
+  const r = await db.consulta(
+    `UPDATE fichaje_turno SET estado = $4, notas = $5
+      WHERE referencia = $1 AND estado = $2 AND COALESCE(notas, '') = $3`,
+    [referencia, estadoAntes, notasAntes || '', estado, notas]);
+  return r.rowCount > 0;
+}
+
+/**
  * La persona de una cuenta de BOLT: { conductorId, nombre, empleoVigente,
  * telefonos: [sufijo9, …] } (el principal primero), o null si la cuenta no
  * está enlazada a ninguna ficha.
@@ -616,5 +658,5 @@ module.exports = {
   crear, actualizar, quienLlevaba,
   personaPorTelefono, cuentaDeOtraSede, cocheDeLaBase, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
   fijarFichaCoche, activados, marcarRelevo, registrarOrdenMotor,
-  ultimoEnBoltDesde, personaDeCuentaBolt,
+  ultimoEnBoltDesde, personaDeCuentaBolt, entregaEnBolt, corregirCierre,
 };
