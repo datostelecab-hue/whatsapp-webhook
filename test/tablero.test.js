@@ -51,6 +51,9 @@ test('1. la tarea a mano espera la aprobación de Ignacio, y el plazo cuenta des
   assert.equal(t.estado, 'por_aprobar');
   assert.equal(t.plazo.venceEl, null, 'por aprobar, el plazo aún no corre');
   assert.deepEqual(enviadas.map(e => [e.ids, e.titulo]), [[[p.ignacio], 'Tarea por aprobar']], 'se le notifica a Ignacio');
+  assert.ok((await tablero.listar(p.ignacio, { vista: 'mias' })).some(x => x.id === t.id), 'y la tiene en «Mi tablero», por aprobar');
+  assert.equal((await tablero.listar(p.diana, { vista: 'mias' })).some(x => x.id === t.id), true, 'la lleva Diana: también la ve');
+  assert.equal((await tablero.listar(p.otra, { vista: 'mias' })).some(x => x.id === t.id), false, 'a otra persona, no');
 
   await assert.rejects(tablero.aprobar(p.diana, t.id, {}), e => e.status === 403, 'solo quien tiene la función');
   enviadas = [];

@@ -160,14 +160,17 @@ function publica(ctx, t, sem) {
 
 /**
  * Las tarjetas de una vista: 'mias' (de las que es responsable, creó o
- * colabora), 'equipo' (las de su gente; todas si ve todos los tableros) o
- * 'pendientes' (las que esperan su aprobación o su asignación).
+ * colabora, y a quien aprueba, todas las que esperan aprobación), 'equipo'
+ * (las de su gente; todas si ve todos los tableros) o 'pendientes' (las que
+ * esperan su aprobación o su asignación).
  */
 async function listar(usuarioId, { vista = 'mias', acabadasDias = 14 } = {}) {
   const ctx = await contexto(usuarioId);
   const dias = Math.min(Math.max(Number(acabadasDias) || 14, 0), 90);
   let filas;
-  if (vista === 'mias') filas = await repo.listar({ usuarioId: ctx.id, acabadasDias: dias });
+  // En «Mi tablero» de quien aprueba van también TODAS las que esperan su
+  // aprobación: a él no le aprueba nadie, y son su trabajo (Camilo, 16/11/2026).
+  if (vista === 'mias') filas = await repo.listar({ usuarioId: ctx.id, estados: ctx.aprueba ? ['por_aprobar'] : null, acabadasDias: dias });
   else if (vista === 'equipo') {
     filas = ctx.todos ? await repo.listar({ todas: true, acabadasDias: dias })
       : await repo.listar({ responsables: [...ctx.equipo], acabadasDias: dias });
