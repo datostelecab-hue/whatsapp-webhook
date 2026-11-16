@@ -553,6 +553,62 @@ async function confirmarSigue(filaId, hastaSeg) {
     [Number(filaId), Math.floor(hastaSeg)]);
 }
 
+// ── «NO TENGO YO EL COCHE» (16/11/2026): quién lo lleva en BOLT ─────────────
+
+/**
+ * El último que salió en BOLT con ese coche (en viaje, en espera o en
+ * descanso) desde `desdeSeg`: { uuid, nombre, desde, hasta } (segundos), o
+ * null. Va por el índice del coche (idx_fv_tramo_veh) y solo mira desde que se
+ * vinculó: lo de antes no dice quién lo tiene ahora.
+ */
+async function ultimoEnBoltDesde(matricula, desdeSeg) {
+  // LATERAL: coche a coche por SU índice (vehiculo_uuid, desde). Sin él, el
+  // planificador recorría hacia atrás el índice de fechas de TODOS los coches
+  // hasta dar con uno de este: rápido si acababa de moverse, media tabla si
+  // llevaba días parado (no consultas pesadas en producción: 12/11/2026).
+  const r = await db.consulta(
+    `SELECT t.conductor_uuid AS uuid, fc.nombre,
+            extract(epoch FROM t.desde)::bigint AS desde,
+            extract(epoch FROM COALESCE(t.hasta, now()))::bigint AS hasta
+       FROM (SELECT uuid FROM fv_vehiculo
+              WHERE upper(regexp_replace(COALESCE(matricula, ''), '[^A-Za-z0-9]', '', 'g')) = $1) v
+      CROSS JOIN LATERAL (
+        SELECT x.conductor_uuid, x.desde, x.hasta
+          FROM fv_tramo x
+         WHERE x.vehiculo_uuid = v.uuid
+           AND x.conductor_uuid IS NOT NULL
+           AND x.situacion IN ('viaje', 'espera', 'descanso')
+           AND x.desde > to_timestamp($2) - interval '2 days'
+           AND COALESCE(x.hasta, now()) > to_timestamp($2)
+         ORDER BY x.desde DESC
+         LIMIT 1) t
+       LEFT JOIN fv_conductor fc ON fc.uuid = t.conductor_uuid
+      ORDER BY t.desde DESC
+      LIMIT 1`, [normMat(matricula), Number(desdeSeg) || 0]);
+  const x = r.rows[0];
+  return x ? { uuid: x.uuid, nombre: x.nombre || '', desde: Number(x.desde), hasta: Number(x.hasta) } : null;
+}
+
+/**
+ * La persona de una cuenta de BOLT: { conductorId, nombre, empleoVigente,
+ * telefonos: [sufijo9, …] } (el principal primero), o null si la cuenta no
+ * está enlazada a ninguna ficha.
+ */
+async function personaDeCuentaBolt(uuid) {
+  const r = await db.consulta(
+    `SELECT c.id, c.empleo_vigente,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+            COALESCE(array_agg(t.sufijo9 ORDER BY t.principal DESC, t.id) FILTER (WHERE t.sufijo9 IS NOT NULL), '{}') AS telefonos
+       FROM conductor_externo ce
+       JOIN conductor c ON c.id = ce.conductor_id AND NOT c.es_centinela
+       LEFT JOIN conductor_telefono t ON t.conductor_id = c.id AND t.vigente_hasta IS NULL
+      WHERE ce.sistema = 'bolt' AND ce.externo_id = $1
+      GROUP BY c.id
+      LIMIT 1`, [String(uuid || '')]);
+  const x = r.rows[0];
+  return x ? { conductorId: String(x.id), nombre: x.nombre, empleoVigente: !!x.empleo_vigente, telefonos: x.telefonos || [] } : null;
+}
+
 module.exports = {
   cochesDelCuadrante, haySeguimiento, seguimientos, apuntarPregunta, confirmarSigue, cerrarSiAbierto,
   ultimaOrdenPorCoche, ultimoTurnoPorCoche, historiaDelCoche,
@@ -560,4 +616,5 @@ module.exports = {
   crear, actualizar, quienLlevaba,
   personaPorTelefono, cuentaDeOtraSede, cocheDeLaBase, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
   fijarFichaCoche, activados, marcarRelevo, registrarOrdenMotor,
+  ultimoEnBoltDesde, personaDeCuentaBolt,
 };

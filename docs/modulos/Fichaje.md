@@ -380,6 +380,27 @@ Camilo, tras ver a Carlos Mario Cavadia terminar con el **0698MMZ** encendido: *
 
 Las pruebas no lo veían: el Mapon de mentira de `scripts/probar-corte-motor.js` no traía la hora del contacto. Ahora la trae como el de verdad (cinco horas encendido por defecto), y la sección 18 repite el caso del 0698MMZ.
 
+## «No tengo yo el coche» (16/11/2026)
+
+Camilo: *«a veces se les olvida desfichar, el compañero se lleva el coche y la persona, al dar terminar turno, el bot no lo deja»*. No le deja porque el coche va en marcha con el compañero y desvincular corta el motor (ver arriba). Le pasaba también a las 14 h: con el coche rodando se le vuelve a preguntar una y otra vez. Ahora tiene el botón **No tengo yo el coche** (20 letras justas, sin emoji) en tres sitios:
+- en «Estás en marcha»;
+- en «Apaga el coche primero»;
+- en la pregunta de las 14 h, junto a *Sigo en el coche* y *Desvincular vehículo*.
+
+También vale escribirlo: «no tengo el coche». Al pulsarlo (`fichaje.noLoTengo`):
+
+1. **Quién lo lleva en BOLT ahora**, por la [[El ahora de la flota|foto del ahora]]: la cuenta conectada (viaje, espera o descanso) con esa matrícula. Si no hay nadie, el **último que salió en BOLT con ese coche desde que esta persona lo vinculó**. Lo de antes no dice quién lo tiene ahora. La consulta va coche a coche por su índice y con un tope de dos días: 0,09 ms en el peor caso medido.
+2. **El suyo se cierra sin tocar el motor**, porque el coche puede ir rodando con el compañero. Queda «relevado» si pasa a otro y «cerrado» si se queda sin nadie. La nota dice lo que dijo y lo que decía BOLT: «Dijo que no tenía el coche: en BOLT lo llevaba Luis Gómez Ruiz · Pasa a Luis Gómez Ruiz (el motor no se toca)».
+3. **Al otro se le abre su turno** como si hubiera escrito la matrícula (`iniciar`, con un teléfono vigente de su ficha). Se le manda su panel: «Te he vinculado el 9999XYZ: Pedro dice que no lo tiene y en BOLT lo llevas tú. Si no lo tienes tú, avisa a Tráfico». Si no está dentro de las 24 h de WhatsApp, no le llega, y no pasa nada.
+4. **Se queda sin nadie** y se le dice por qué cuando:
+   - el de BOLT es él mismo: «En BOLT, el último con este coche fuiste tú» (o «Ojo: en BOLT sales tú conectado»);
+   - nadie salió en BOLT con el coche desde que lo vinculó;
+   - la cuenta de BOLT no está enlazada a ninguna ficha, esa persona está de baja o no tiene teléfono;
+   - el otro ya tiene vinculado otro coche: «En BOLT lo lleva Ana Ruiz, pero tiene vinculado el 5678KLM: avisa a Tráfico».
+5. **Si se queda sin nadie** y a esa persona se le habría bloqueado el motor al terminar, se apunta en el [[Ciclo de bloqueo de motor|ciclo de bloqueo]] que **no se bloqueó** («dijo que no tenía el coche: el motor no se toca»). Así Tráfico lo ve, como cualquier corte que no se hizo.
+
+Se simula de punta a punta con `Scripts de análisis/simular-bot-conductor.js`, en las escenas 13A a 13E: pasa al compañero, el último fue él, cuenta sin ficha, el otro ya tiene otro coche, y la pregunta de las 14 h.
+
 ## Una orden de motor por coche, y mirar después de cortar (11/10/2026)
 
 **Lo que pasó con el 1067MJY.** A las 07:56:55 Hamid pulsó «Terminar turno» y a las 07:57:04 Javier escribió la matrícula. Bloquear tarda unos 14 s: los km, la orden y esperar a que el coche la confirme. Mientras tanto el turno de Hamid seguía abierto. El «soltar» de Javier miró el relé en medio, lo vio **todavía libre** y no mandó nada; a Javier le llegó «el motor ya está libre». Tres segundos después entró el corte de Hamid, con Javier ya en turno. Según `fv_ruta`, Javier empezó a rodar a las 07:57:51, con el corte puesto. Trabajó todo el día, y a las 19:13 el coche no se dejaba apagar para terminar: el bot le contestaba «estás en marcha (6 km/h)», como al 5646MDM. Camilo lo soltó desde Mapon y a las 19:56 Javier pudo terminar. Era la primera vez: de las 105 órdenes apuntadas desde el 28/09, es el único corte que entró con otro conductor ya en turno.

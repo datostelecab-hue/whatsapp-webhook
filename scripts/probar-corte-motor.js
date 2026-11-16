@@ -892,6 +892,7 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('la pregunta: su nombre, su coche, en marcha, los dos botones y que se bloqueará (sin «turno» ni «fichar»)',
     /^👋 Ana, llevas más de 14 h con el \*3333CCC\* vinculado y el coche está en marcha/.test(preg)
       && /Sigo en el coche/.test(preg) && /Desvincular vehículo/.test(preg) && /bloquearé el motor/.test(preg)
+      && /No tengo yo el coche/.test(preg)
       && !/fich|turno/i.test(preg), preg);
   comprobar('… sin el bloqueo, no promete bloquear', !/bloquearé/.test(bot.textoPregunta({ turno: tAna, porque: 'encendido', sinMotor: true })));
   const cer = bot.textoCerrado({ turno: tAna, motor: { hecho: true } });

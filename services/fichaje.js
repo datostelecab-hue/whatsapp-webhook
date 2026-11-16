@@ -1201,6 +1201,118 @@ async function cerrarPorRelevo(t, quienEntra, { sinBoton = false, fueraDelPlan =
 }
 
 /**
+ * «NO TENGO YO EL COCHE» (16/11/2026). Camilo: «a veces se les olvida
+ * desfichar, el compañero se lleva el coche y la persona, al dar terminar turno,
+ * el bot no lo deja» (el coche va en marcha con el otro: `hayQueApagar`). «Que
+ * el bot tenga la opción de "No tengo yo el coche" y que automáticamente lo
+ * desvincule y vincule al que tenga el coche en BOLT en ese momento; si no hay
+ * nadie, al último que sale en BOLT usando el coche; si el último es él, que
+ * diga "Coche desvinculado" y ya, queda sin la persona».
+ *
+ *   · Quién lo lleva AHORA lo dice la foto del ahora (services/flotaViva/ahora):
+ *     conectado en BOLT con ese coche. Si nadie, el ÚLTIMO que salió en BOLT con
+ *     él DESDE QUE ESTA PERSONA LO VINCULÓ: lo de antes no dice quién lo tiene.
+ *   · El suyo se cierra SIN TOCAR EL MOTOR (el coche puede ir rodando con el
+ *     compañero): «relevado» si pasa a otro, «cerrado» si se queda sin nadie, y
+ *     la nota dice lo que dijo y lo que decía BOLT.
+ *   · Al otro se le abre su turno como si hubiera escrito la matrícula
+ *     (`iniciar`, con su teléfono de la ficha). Si no se puede —su cuenta de
+ *     BOLT no está enlazada, no tiene teléfono, está de baja o ya tiene otro
+ *     coche—, el coche se queda sin nadie y se dice por qué, para Tráfico.
+ *   · Si se queda sin nadie y a esta persona se le habría bloqueado el motor al
+ *     terminar, se apunta en el ciclo de bloqueo que NO se bloqueó: Tráfico lo ve
+ *     en /bloqueo-motor, como cualquier corte que no se hizo.
+ *
+ * → { ok, turno (el suyo, cerrado), bolt: { uuid, nombre, porque: 'ahora'|'ultimo' } | null,
+ *     esEl, otro: { nombre, conductorId } | null, pasa: { ok, turno, vehiculo, telefono, motivo } | null }
+ */
+async function noLoTengo(telefono) {
+  await cerrarOlvidados();
+  const t = await abiertoDe(telefono);
+  if (!t) return { ok: false, motivo: 'sin-turno' };
+
+  // 1. Quién lo lleva en BOLT: ahora, o el último desde que lo vinculó.
+  let bolt = null;
+  try {
+    const f = await require('./flotaViva/ahora').foto();
+    const c = f && f.porMatricula && f.porMatricula.get(normMat(t.matricula));
+    if (c && c.conectado && c.conductor_uuid) bolt = { uuid: c.conductor_uuid, nombre: c.conductor || '', porque: 'ahora' };
+  } catch (e) { console.error('⚠️ [FICHAJE] no tengo el coche: la foto de BOLT:', e.message); }
+  if (!bolt) {
+    const u = await repo.ultimoEnBoltDesde(t.matricula, t.inicio)
+      .catch(e => { console.error('⚠️ [FICHAJE] no tengo el coche: el último en BOLT:', e.message); return null; });
+    if (u) bolt = { uuid: u.uuid, nombre: u.nombre, porque: 'ultimo', a: u.hasta };
+  }
+
+  // 2. ¿Quién es, y se le puede vincular?
+  let otro = null, esEl = false, aQuien = null, porQueNo = null;
+  if (bolt) {
+    const ficha = await repo.personaDeCuentaBolt(bolt.uuid).catch(() => null);
+    if (ficha) otro = { nombre: ficha.nombre || bolt.nombre, conductorId: ficha.conductorId };
+    esEl = !!(ficha && t.conductorId && String(ficha.conductorId) === String(t.conductorId));
+    if (!esEl) {
+      if (!ficha) porQueNo = 'sin-ficha';
+      else if (!ficha.empleoVigente) porQueNo = 'de-baja';
+      else {
+        for (const tel of ficha.telefonos) {
+          const p = await participa(tel);
+          if (!p || p.soloCerrar || p.tipo !== 'turno') continue;
+          const suyo = await abiertoDe(tel);
+          if (suyo) { porQueNo = 'otro-coche'; otro.matriculaSuya = suyo.matricula; break; }
+          aQuien = tel;
+          break;
+        }
+        if (!aQuien && !porQueNo) porQueNo = 'sin-telefono';
+      }
+    }
+  }
+
+  // 3. El suyo se cierra, sin tocar el motor.
+  const pasaA = !!aQuien;
+  const quienBolt = (otro && otro.nombre) || (bolt && bolt.nombre) || '';
+  const dijo = 'Dijo que no tenía el coche';
+  const segunBolt = !bolt ? 'nadie salió en BOLT con él desde que lo vinculó'
+    : `${bolt.porque === 'ahora' ? 'en BOLT lo llevaba' : 'el último en BOLT con él fue'} ${esEl ? 'él mismo' : quienBolt || 'una cuenta sin nombre'}`;
+  const fin = Math.max(ahoraSeg(), t.inicio + 1, t.relevo || 0);
+  const km = await kmDelTurno(t, fin);
+  const cerrado = {
+    ...t, fin, estado: pasaA ? 'relevado' : 'cerrado',
+    km: km ? km.km : t.km, trayectos: km ? km.trayectos : t.trayectos, atribuidos: km ? km.conConductor : t.atribuidos,
+    notas: `${t.notas ? t.notas + ' · ' : ''}${dijo}: ${segunBolt}` +
+      (pasaA ? ` · Pasa a ${quienBolt}` : ' · Se queda sin nadie') + ' (el motor no se toca)',
+  };
+  if (!(await guardarCierre(cerrado))) return { ok: false, motivo: 'sin-turno' };
+  try { await soltarEnMapon(t); } catch (e) { /* cerrado igual */ }
+  olvidar(t.telefono);
+
+  // 4. Al otro, su turno; o, si se queda sin nadie, que Tráfico vea que no se bloqueó.
+  let pasa = null;
+  if (pasaA) {
+    try {
+      const r = await iniciar({ telefono: aQuien, matricula: t.matricula });
+      pasa = r.ok ? { ok: true, turno: r.turno, vehiculo: r.vehiculo, telefono: aQuien } : { ok: false, motivo: r.motivo };
+    } catch (e) {
+      pasa = { ok: false, motivo: e.message };
+    }
+    if (!pasa.ok) {
+      console.error(`⚠️ [FICHAJE] ${t.matricula}: no se le pudo vincular a ${quienBolt}: ${pasa.motivo}`);
+      await repo.actualizar({ ...cerrado, estado: 'cerrado',
+        notas: `${cerrado.notas} · No se le pudo vincular a ${quienBolt} (${pasa.motivo}): se queda sin nadie` }).catch(() => {});
+    }
+  }
+  if (!(pasa && pasa.ok) && BLOQUEO_ACTIVO) {
+    const dec = await decidirBloqueo(t).catch(() => ({ bloquear: false }));
+    if (dec.bloquear) {
+      await apuntarCiclo(t, 'bloquear', { hecho: false, motivo: 'dijo que no tenía el coche: el motor no se toca' },
+        `No tenía el coche: ${t.nombre}`);
+    }
+  }
+  console.log(`🙅 [FICHAJE] ${t.nombre} dice que no tiene el ${t.matricula}: ${segunBolt}` +
+    (pasa && pasa.ok ? ` → vinculado a ${quienBolt}` : ' → sin nadie') + ' (el motor no se toca)');
+  return { ok: true, turno: cerrado, bolt, esEl, otro, porQueNo, pasa };
+}
+
+/**
  * «ENTREGAR COCHE» (antes «Voy al relevo»). Se pulsa JUSTO ANTES de arrancar
  * hacia el sitio donde se le da el coche al compañero: desde esa hora se cuentan
  * los km del trayecto de entrega. `si = false` lo deshace, por si se pulsó sin querer.
@@ -1456,7 +1568,7 @@ async function soltarCoche({ matricula, motivo }, quien = {}) {
 module.exports = {
   participa, olvidar, decidirBloqueo, marcarRelevo, cochesDelPlan,
   activarConductor, estadoParaPanel, soltarCoche, cerrarDesdeOficina,
-  quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno, abiertoDeCoche,
+  quienFicha, nombreParaSaludar, estado, iniciar, terminar, noLoTengo, kmDelTurno, abiertoDeCoche,
   revisarTurnosLargos, confirmarSigue, PRORROGA_HORAS,
   conductorMapon,
   liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, hayQueApagar, liberarConocidos, maponDisponible,
