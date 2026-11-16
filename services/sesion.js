@@ -273,6 +273,9 @@ async function cargarSesion(req, res, next) {
   res.locals.ayudas = u ? (u.ayudas !== false) : true;
   res.locals.sede = u ? sedeValida(u.sede) : null; // Madrid o Barcelona: el menú y la portada
   res.locals.v = ARRANQUE;                         // versión de assets (cache-bust por despliegue)
+  // Una huella de la sesión (no el sid): las notificaciones (A8) saben así si
+  // ya confirmaron este navegador con la sesión de ahora.
+  res.locals.sesionHuella = u && u.sid ? crypto.createHash('sha256').update(String(u.sid)).digest('hex').slice(0, 12) : '';
   next();
 }
 

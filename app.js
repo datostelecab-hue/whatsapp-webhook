@@ -143,6 +143,36 @@ require('./services/tailwind').alArrancar();
 // caché, el navegador seguiría con el viejo; así revalida (un 304 si no cambió).
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: process.env.RENDER ? '1d' : 0 }));
 
+// LAS NOTIFICACIONES AL DISPOSITIVO (A8, db/250). El service worker va en la
+// RAÍZ: desde /assets solo controlaría /assets. No guarda nada en caché ni
+// intercepta peticiones: solo enseña las notificaciones (public/sw.js). Y el
+// manifiesto, que hace el ERP instalable: en el iPhone las notificaciones solo
+// llegan con la web instalada. Los dos sin sesión: el navegador los pide solo.
+app.get('/sw.js', (req, res) => {
+  res.set({ 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' });
+  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+const MANIFIESTO = JSON.stringify({
+  id: '/',
+  name: 'Telecab · Gestión de flota',
+  short_name: 'Telecab',
+  lang: 'es',
+  start_url: '/inicio',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#0e1013',
+  theme_color: '#0e1013',
+  icons: [
+    { src: '/assets/iconos/icono-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/assets/iconos/icono-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/assets/iconos/icono-mascara-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ],
+});
+app.get('/manifest.webmanifest', (req, res) => {
+  res.set({ 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+  res.send(MANIFIESTO);
+});
+
 // Configurar EJS con layouts
 app.use(expressLayouts);
 app.set('view engine', 'ejs');
@@ -328,6 +358,9 @@ app.use('/adjuntos', require('./modules/Adjuntos/adjuntos.controller'));
 // El tiempo real (pieza A7): la conexión que la pantalla deja abierta para que
 // el servidor le avise. Quién oye cada canal lo dice el módulo que lo abre.
 app.use('/tiempo-real', require('./modules/TiempoReal/tiempoReal.controller'));
+// Las notificaciones al dispositivo (db/250, pieza A8): cada uno activa, confirma
+// y quita las suyas. Mandarlas es cosa de cada módulo, desde el servidor.
+app.use('/push', require('./modules/NotificacionesPush/notificacionesPush.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)

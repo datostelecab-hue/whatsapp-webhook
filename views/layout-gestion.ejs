@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Telecab · <%= titulo || 'Gestión' %></title>
   <link rel="icon" type="image/png" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
-  <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
+  <%# El ERP instalable (A8): el manifiesto, su icono en el iPhone y el color de la barra. %>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/iconos/icono-apple-180.png') : '/assets/iconos/icono-apple-180.png' %>">
+  <meta name="theme-color" content="#0e1013">
+  <%# Huella de la sesión: las notificaciones confirman este navegador una vez por sesión. %>
+  <meta name="tc-s" content="<%= typeof sesionHuella !== 'undefined' ? sesionHuella : '' %>">
 
   <!-- Tema del PERFIL (lo inyecta el servidor) ANTES de pintar, sin parpadeo. Si no
        hay (o falla), cae al localStorage del dispositivo. -->
@@ -53,6 +58,8 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/api.js') : '/assets/js/api.js' %>"></script>
   <%# TiempoReal.escuchar: el servidor avisa a la pantalla en cuanto algo cambia (A7). No conecta nada hasta que una pantalla escucha. %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/tiempoReal.js') : '/assets/js/tiempoReal.js' %>"></script>
+  <%# NotificacionesPush: confirma este navegador con la sesión de ahora; Configuración las activa (A8). %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/notificacionesPush.js') : '/assets/js/notificacionesPush.js' %>"></script>
   <%# Horas y minutos de una J, en vez de un decimal (HorasMin; también `tipo: 'horas'` de Dialogo.formulario). %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/horasMin.js') : '/assets/js/horasMin.js' %>"></script>
   <%# El formulario de la −J (MenosJ.poner): Bitácora, Control y Justificantes piden lo mismo. %>

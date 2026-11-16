@@ -91,6 +91,15 @@
     </div>
   </div>
 
+  <!-- Notificaciones en el móvil o el ordenador (A8, db/250): las de cada uno. -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-notificaciones">
+    <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-bell text-telecab-gold"></i> Notificaciones</h2>
+    <p class="text-xs text-telecab-muted mb-4">
+      Avisos en tu móvil o tu ordenador aunque no tengas el ERP abierto. Te llegan a cada dispositivo mientras tu sesión en él siga abierta.
+    </p>
+    <div id="n-cuerpo"><p class="text-xs text-telecab-muted">Cargando…</p></div>
+  </div>
+
   <!-- Gestión de usuarios (solo el desarrollador; la matriz completa está en /usuarios) -->
   <% if (typeof rol !== 'undefined' && rol === 'desarrollador') { %>
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-usuarios">
@@ -175,5 +184,7 @@
 <script src="<%= est('/assets/js/vistas/configuracion/perfil.js') %>"></script>
 
 <script src="<%= est('/assets/js/vistas/configuracion/sesiones.js') %>"></script>
+
+<script src="<%= est('/assets/js/vistas/configuracion/notificaciones.js') %>"></script>
 
 <script src="<%= est('/assets/js/vistas/configuracion/ayudas.js') %>"></script>

@@ -35,6 +35,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
 - **[[Libro de auditoria]]** — Un solo libro de quién hizo qué, cuándo, desde dónde y por qué (13/11/2026, db/245): lo escribe la base en cada tabla puesta bajo él con `auditoria_vigilar()`, y no se cambia ni se borra.
 - **[[Tareas programadas]]** — Las tareas de negocio que el ERP hace solo en su momento (13/11/2026, db/246): una vuelta cada diez minutos, una sola vez por periodo aunque haya dos procesos, y recupera la que se perdió por una caída.
+- **[[Notificaciones al dispositivo]]** — Avisar en el móvil o el ordenador aunque no se tenga el ERP abierto (16/11/2026, A8, db/250): Web Push, «Activar» en Configuración, solo mientras la sesión siga abierta. El ERP, instalable como app.
 - **[[Tiempo real]]** — El servidor avisa a las pantallas en cuanto algo cambia (16/11/2026, A7): canales con su permiso, lo perdido al volver, y sondeo cuando no hay directo (en local va por sondeo). `TiempoReal.escuchar`.
 - **[[Adjuntos]]** — Un fichero de cualquier cosa, en un solo sitio (13/11/2026, db/249): los bytes en Cloudflare R2, subida por trozos con tope, vídeos por rangos, y solo se abren en la página fotos, PDF, vídeo y audio. Quitar es anular.
 - **[[Calendario laboral]]** — Los días y las horas hábiles de la oficina (13/11/2026): un solo servicio para todos los plazos, con los festivos del convenio, los de Madrid capital y el horario de oficina como parámetro.

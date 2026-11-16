@@ -19,6 +19,8 @@ Vive en `scripts/entorno-local/`, con su `LEEME.md`.
 | El ERP | `http://erptelecab.localhost:3100` | `app.js` de siempre, arrancado por `arrancar.js` |
 | El portal | `http://conductorestelecab.localhost:3100` | el mismo servidor, por la dirección de los conductores |
 
+Las [[Notificaciones al dispositivo]] usan unas claves VAPID solo de este PC: `arrancar.js` las hace la primera vez y las guarda en `scripts/entorno-local/push.env` (fuera de git). Lo activado aquí no vale en Render, ni al revés.
+
 Los `*.localhost` los resuelve el navegador solo: no hay que tocar el fichero `hosts`. Dos direcciones distintas porque así será en producción (`erptelecab.es` y `conductorestelecab.es`, ver [[Historial de decisiones]]), y cada una lleva sus cookies.
 
 ## Cómo se usa

@@ -18,3 +18,5 @@ scripts/datos/
 scripts/entorno-local/correo.env
 # El usuario de pruebas del ERP local (scripts/entorno-local/usuario-de-prueba.js)
 scripts/entorno-local/usuario.env
+# Las claves de las notificaciones del entorno local (scripts/entorno-local/arrancar.js)
+scripts/entorno-local/push.env
