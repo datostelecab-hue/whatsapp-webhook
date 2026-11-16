@@ -228,6 +228,8 @@
     return new Promise(resolver => {
       const fondo = document.createElement('div');
       fondo.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm';
+      // Para quien esté debajo (el Panel lateral): con un formulario abierto, Escape es suyo.
+      fondo.setAttribute('data-formulario', '');
       fondo.innerHTML = `
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full ${ancho} my-8">
           <div class="px-5 py-4 border-b border-telecab-border flex items-start gap-3">

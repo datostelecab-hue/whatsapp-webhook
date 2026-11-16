@@ -274,6 +274,15 @@
         <span class="text-sm flex-1">Inicio</span>
       </a>
 
+      <%# El tablero de tareas (ítem 1): de todos, como Inicio. Qué ve cada uno lo
+          decide el tablero (sus funciones de Organización), no la llave. %>
+      <a href="/tablero" class="nav-item <%= seccionActiva === 'tablero' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'tablero' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-table-columns w-5 text-center <%= seccionActiva === 'tablero' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Tablero</span>
+        <span class="tc-contador tc-contador-menu" data-contador="tareas.menu" hidden></span>
+      </a>
+
       <% if (puedeVer({ href: '/pendientes' })) { %>
       <a href="/pendientes" class="nav-item <%= seccionActiva === 'pendientes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'pendientes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">

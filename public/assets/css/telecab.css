@@ -637,3 +637,110 @@ body .tc-selector.tc-selector-compacto button {
   border-radius: .6rem;
   font-size: .75rem;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   PIEZAS GLOBALES DEL TABLERO (ítem 1, 16/11/2026) — y de lo que venga
+   ══════════════════════════════════════════════════════════════
+   Todo con los tokens: el rediseño (Telecab V3) se hará cambiando esto, no
+   pantalla por pantalla. Las pantallas nuevas usan estas clases y no repiten
+   cadenas largas de Tailwind. */
+
+/* ── La pantalla: su margen y su ancho (lo que cada vista ponía con p-4 lg:p-6) ── */
+.tc-pantalla { padding: 1rem; margin-inline: auto; max-width: 1600px; }
+@media (min-width: 1024px) { .tc-pantalla { padding: 1.5rem; } }
+
+/* ── Botones ── */
+.tc-boton {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  min-height: 2.25rem; padding: 0 .9rem; border-radius: .75rem;
+  font-size: .8125rem; font-weight: 600; line-height: 1; white-space: nowrap;
+  background: rgb(var(--tc-card2)); color: rgb(var(--tc-text));
+  border: 1px solid rgb(var(--tc-border));
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.tc-boton:hover { border-color: rgb(var(--tc-gold) / .55); }
+.tc-boton:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .6); outline-offset: 2px; }
+.tc-boton:disabled { opacity: .5; cursor: not-allowed; }
+.tc-boton--principal { background: rgb(var(--tc-gold)); color: rgb(var(--tc-on-gold)); border-color: rgb(var(--tc-gold)); }
+.tc-boton--principal:hover { background: rgb(var(--tc-gold-deep)); border-color: rgb(var(--tc-gold-deep)); }
+.tc-boton--peligro { color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .4); background: rgb(var(--tc-red) / .08); }
+.tc-boton--peligro:hover { border-color: rgb(var(--tc-red)); }
+.tc-boton--chico { min-height: 1.875rem; padding: 0 .65rem; font-size: .75rem; border-radius: .6rem; }
+
+/* ── Pestañas (pestanas.js) ── */
+.tc-pestanas { display: flex; flex-wrap: wrap; gap: .4rem; }
+.tc-pestana {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border-radius: .75rem;
+  font-size: .875rem; font-weight: 600; color: rgb(var(--tc-muted));
+  border: 1px solid transparent; transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+}
+.tc-pestana:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-card2)); }
+.tc-pestana:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .6); outline-offset: 2px; }
+.tc-pestana[aria-selected="true"] { color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .1); border-color: rgb(var(--tc-gold) / .35); }
+
+/* ── Pastilla (estado, tipo) ── */
+.tc-pastilla {
+  display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap;
+  padding: .125rem .5rem; border-radius: .5rem; font-size: .6875rem; font-weight: 600;
+  background: rgb(var(--tc-muted) / .14); color: rgb(var(--tc-muted)); border: 1px solid rgb(var(--tc-muted) / .25);
+}
+.tc-pastilla--oro { background: rgb(var(--tc-gold) / .14); color: rgb(var(--tc-gold)); border-color: rgb(var(--tc-gold) / .3); }
+.tc-pastilla--azul { background: rgb(var(--tc-azul) / .14); color: rgb(var(--tc-azul)); border-color: rgb(var(--tc-azul) / .3); }
+.tc-pastilla--verde { background: rgb(var(--tc-green) / .14); color: rgb(var(--tc-green)); border-color: rgb(var(--tc-green) / .3); }
+.tc-pastilla--aviso { background: rgb(var(--tc-warn) / .14); color: rgb(var(--tc-warn)); border-color: rgb(var(--tc-warn) / .3); }
+.tc-pastilla--rojo { background: rgb(var(--tc-red) / .14); color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .3); }
+
+/* ── El semáforo de un plazo: verde, amarillo el último día, rojo vencido ── */
+.tc-semaforo { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.tc-semaforo::before { content: ''; width: .5rem; height: .5rem; border-radius: 9999px; background: currentColor; }
+.tc-semaforo--verde { color: rgb(var(--tc-green)); }
+.tc-semaforo--amarillo { color: rgb(var(--tc-warn)); }
+.tc-semaforo--rojo { color: rgb(var(--tc-red)); }
+
+/* ── Kanban (kanban.js): columnas que se desplazan de lado en pantalla estrecha ── */
+.tc-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(16rem, 1fr); gap: .75rem; overflow-x: auto; padding-bottom: .25rem; }
+.tc-kanban-columna {
+  display: flex; flex-direction: column; min-height: 12rem; max-height: calc(100vh - 15rem);
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem; box-shadow: var(--tc-sombra);
+}
+.tc-kanban-cabeza { display: flex; align-items: center; gap: .5rem; padding: .7rem .85rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-kanban-titulo { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: rgb(var(--tc-muted)); flex: 1; }
+.tc-kanban-cuenta { font-size: .75rem; font-weight: 700; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+.tc-kanban-lista { flex: 1; min-height: 0; overflow-y: auto; padding: .6rem; display: flex; flex-direction: column; gap: .5rem; }
+.tc-kanban-vacia { font-size: .75rem; color: rgb(var(--tc-muted)); text-align: center; padding: 1.25rem .5rem; }
+.tc-kanban-columna[data-soltar="si"] { border-color: rgb(var(--tc-gold) / .7); background: rgb(var(--tc-gold) / .05); }
+.tc-kanban-columna[data-soltar="no"] { opacity: .55; }
+
+.tc-tarjeta {
+  display: block; width: 100%; text-align: left; padding: .7rem .75rem; border-radius: .75rem;
+  background: rgb(var(--tc-card2)); border: 1px solid rgb(var(--tc-border));
+  transition: border-color .15s ease, box-shadow .15s ease; cursor: pointer;
+}
+.tc-tarjeta:hover { border-color: rgb(var(--tc-gold) / .45); }
+.tc-tarjeta:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .6); outline-offset: 2px; }
+.tc-tarjeta[draggable="true"] { cursor: grab; }
+.tc-tarjeta.tc-tarjeta--arrastrando { opacity: .4; }
+.tc-tarjeta-titulo {
+  font-size: .8125rem; font-weight: 600; line-height: 1.3; color: rgb(var(--tc-text));
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tc-tarjeta-pie { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin-top: .5rem; font-size: .6875rem; color: rgb(var(--tc-muted)); }
+.tc-iniciales {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 9999px;
+  font-size: .625rem; font-weight: 700; background: rgb(var(--tc-gold) / .16); color: rgb(var(--tc-gold));
+}
+
+/* ── Panel lateral (panel.js): la ficha que se abre al lado, sin dejar la pantalla ── */
+/* Encima del menú (z-40) y debajo de los formularios y avisos del Dialogo (z-50 y más). */
+.tc-panel-fondo { position: fixed; inset: 0; z-index: 44; background: rgb(0 0 0 / .45); }
+.tc-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 45; width: min(34rem, 100vw);
+  display: flex; flex-direction: column; background: rgb(var(--tc-card)); border-left: 1px solid rgb(var(--tc-border));
+  box-shadow: var(--tc-sombra-alta);
+  transform: translateX(0); transition: transform .22s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tc-panel--saliendo { transform: translateX(100%); }
+.tc-panel-cabeza { display: flex; align-items: flex-start; gap: .75rem; padding: 1rem 1.25rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-panel-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 1.1rem; }
+.tc-panel-seccion > h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }
+@media (prefers-reduced-motion: reduce) { .tc-panel { transition: none; } }

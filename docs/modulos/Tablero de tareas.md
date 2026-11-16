@@ -7,7 +7,7 @@ actualizado: 2026-11-16
 
 El **lugar único del trabajo pendiente** (ítem 1 de la [[Hoja de ruta]]). Una tarjeta es algo que alguien tiene que hacer: tiene responsable, plazo en días hábiles e historia. Se hace en tres entregas, cada una en su rama:
 - **1a — datos y servicio** (16/11/2026, rama `tablero/1a-datos`, db/251): esta nota.
-- **1b — pantallas:** Mi tablero con arrastrar y soltar, el del equipo, la lista y los contadores del menú.
+- **1b — pantallas** (16/11/2026, rama `tablero/1b-pantallas`): ver «La pantalla» abajo.
 - **1c — las colas:** J, −J, correcciones de fichaje y vacaciones, y el paso de todo lo abierto de una vez.
 
 ## Lo que decidieron Camilo e Ignacio (16/11/2026)
@@ -101,7 +101,32 @@ await tablero.cerrarPorOrigen(cli, { tipo: 'j', origenId: j.id, autorId, nota: '
 - `tarea_evento`: su historia en palabras del tablero. Un disparador impide cambiarla o borrarla.
 - Las tres primeras, bajo el [[Libro de auditoria]].
 
-## La API (`/tablero/api`, sin pantallas hasta la 1b)
+## La pantalla (`/tablero`, entrega 1b)
+
+**Tablero** en el menú, para todos, como Inicio; qué ve cada uno lo decide el tablero. Su número (`tareas.menu`) suma las tarjetas que lleva y, a quien reparte o aprueba, lo que espera por él. Va en rojo si hay algo vencido o esperando.
+
+Hay cuatro pestañas, y la elegida va en `?vista=`:
+
+| Pestaña | Qué enseña |
+|---|---|
+| **Mi tablero** | Lo que lleva, lo que pidió y donde colabora, en columnas: por aprobar, por hacer, en curso, bloqueada y cerrada (los últimos 14 días) |
+| **Mi equipo** / **Todo el equipo** | Lo mismo con lo de su gente (todo, si reparte o lo ve todo) |
+| **Por repartir** | Solo a quien aprueba o reparte: por aprobar y por asignar, con su contador |
+| **Lista** | Todas las que ve, en el [[Componentes de la casa\|Listado]]: buscador, filtros (estado, responsable, tipo, plazo), KPIs y Excel |
+
+- **La tarjeta** lleva el título, el tipo, el semáforo («Quedan 3 días», «Vence hoy», «Vencida (14/11)»), los comentarios, quién colabora y las iniciales de quien la lleva. Las de datos sensibles, con un candado.
+- **Arrastrar** entre por hacer, en curso y bloqueada la mueve; a cerrada, la cierra. Bloquear pide el motivo; cerrar pide en qué quedó, cómo queda el ticket y, si venció, por qué se cierra tarde. Las columnas donde no se puede soltar se apagan. Arrastrar es un atajo: con el teclado o en el móvil, la ficha tiene **«Mover a…»**.
+- **La ficha se abre al lado** (Panel) al pulsar la tarjeta, también con `?tarjeta=ID`, que es el enlace de las notificaciones. Lleva:
+  - los botones de lo que puede hacer (los dice el servidor en `puede`);
+  - los datos y el origen («Abrir el ticket»);
+  - quién colabora, los comentarios y la historia.
+- **Nueva tarea:** qué hay que hacer, el detalle, quién la hace y el plazo (en días hábiles o una fecha). Si la crea quien aprueba, empieza ya; si no, le llega a él.
+- **Se actualiza sola** por el [[Tiempo real]] (canal `tablero`): el tablero y la ficha abierta. Sin directo, cada minuto.
+- **Una lectura vieja no pinta encima de un cambio:** se vio al probarlo. Unas lecturas de la ficha pedidas antes de asignar llegaban después y la dejaban en «Por asignar». Cada lectura lleva su turno, y una recarga pedida mientras otra está en marcha se repite al acabar.
+
+Todo con las **piezas globales de la casa** (Pestanas, Kanban, Panel, Listado, Dialogo y las clases `.tc-*`), como pidió Camilo para el rediseño de Telecab V3. Ver [[Componentes de la casa]].
+
+## La API (`/tablero/api`)
 
 ```
 GET  /tablero/api/tarjetas?vista=mias|equipo|pendientes
@@ -111,6 +136,7 @@ POST /tablero/api/tarjetas/:id/aprobar | rechazar | asignar | reasignar | plazo 
 POST /tablero/api/tarjetas/:id/comentarios | colaboradores
 POST /tablero/api/comentarios/:id/anular
 GET  /tablero/api/personas
+GET  /tablero/api/yo                               si aprueba, si reparte, si lo ve todo
 ```
 
 ## Ficheros
@@ -120,6 +146,8 @@ db/251-tablero-de-tareas.sql               las tablas, las funciones de Ignacio,
 services/tablero.js                        los tipos, quién ve y puede qué, el plazo, los avisos, las vencidas
 services/repo/tablero.js                   el SQL
 modules/Ticketera/tarjetas.js              los tickets en el tablero, en los dos sentidos
-modules/Tablero/tablero.controller.js      /tablero/api
-test/tablero.test.js                       11 pruebas, una por decisión
+modules/Tablero/tablero.controller.js      /tablero (la pantalla) y /tablero/api
+modules/Tablero/vistas/tablero.ejs         la pantalla
+public/assets/js/vistas/Tablero/tablero.js las vistas, la ficha, los formularios
+test/tablero.test.js                       12 pruebas, una por decisión
 ```

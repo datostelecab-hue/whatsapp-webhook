@@ -1,8 +1,8 @@
 // ============================================================
 // EL TABLERO DE TAREAS — sus rutas (/tablero, db/251, ítem 1)
 // ============================================================
-// La entrega 1a es la API; las pantallas (Mi tablero, el del equipo y la
-// lista) llegan en la 1b. Quién ve y quién puede qué lo decide
+// La API (1a) y la pantalla (1b): Mi tablero, el del equipo, lo que hay por
+// repartir y la lista. Quién ve y quién puede qué lo decide
 // services/tablero.js con las funciones de Organización (A5), no esta ruta:
 // por eso /tablero no está en el catálogo de permisos (entra cualquiera con
 // sesión, y cada tarjeta se comprueba).
@@ -17,6 +17,8 @@
 //   POST /tablero/api/comentarios/:id/anular                    el suyo
 //   POST /tablero/api/tarjetas/:id/colaboradores                { usuarioId, quitar }
 //   GET  /tablero/api/personas                                  a quién se le puede dar una
+//   GET  /tablero/api/yo                                        si aprueba, si reparte, si lo ve todo
+//   GET  /tablero                                               la pantalla (1b)
 'use strict';
 
 const express = require('express');
@@ -38,6 +40,14 @@ const responde = fn => async (req, res) => {
   }
 };
 const cuerpo = req => req.body || {};
+
+// ── La pantalla (entrega 1b) ───────────────────────────────────────────────
+router.get('/', (req, res) => {
+  res.render('tablero', { titulo: 'Tablero de tareas', seccion: 'tablero', layout: 'layout-gestion' });
+});
+
+// Qué hace quien mira en el tablero: si aprueba, si reparte, si lo ve todo.
+router.get('/api/yo', responde(async id => ({ yo: await tablero.quienSoy(id) })));
 
 router.get('/api/tarjetas', responde(async (id, req) => ({
   tarjetas: await tablero.listar(id, { vista: req.query.vista || 'mias', acabadasDias: req.query.acabadas }),

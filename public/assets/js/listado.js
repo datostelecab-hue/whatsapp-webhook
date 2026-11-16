@@ -689,6 +689,13 @@
           // la misma fila, y abrir una ficha al marcar es de las cosas que hacen
           // que la gente deje de usar la casilla.
           if (e.target.closest('input[type=checkbox]')) return;
+          // `alAbrir(fila)` (16/11/2026): la fila abre algo propio (el panel
+          // lateral del tablero) en vez de la ficha que sustituye a la lista.
+          if (typeof this.cfg.alAbrir === 'function') {
+            const f = this.filas.find(x => String(x[this.clave]) === tr.dataset.clave);
+            if (f) this.cfg.alAbrir(f);
+            return;
+          }
           this.abrir(tr.dataset.clave, { historial: true });
         });
       });

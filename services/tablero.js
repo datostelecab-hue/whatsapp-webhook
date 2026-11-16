@@ -104,7 +104,7 @@ function permisos(ctx, t) {
     cerrar: (lleva || ctx.asigna) && TRABAJANDO.includes(t.estado) && tipo.cierreManual,
     anular: viva && (ctx.asigna || (t.creada_por === ctx.id && t.estado === 'por_aprobar')),
     comentar: puedeVer(ctx, t),
-    colaboradores: (lleva || ctx.asigna) && viva,
+    colaboradores: (lleva || ctx.asigna) && TRABAJANDO.includes(t.estado),
   };
 }
 
@@ -526,6 +526,12 @@ async function colaborador(usuarioId, id, { usuarioId: otro, quitar = false } = 
   return ficha(ctx.id, r.id);
 }
 
+/** Para la pantalla: qué hace quien mira (si aprueba, si reparte, si lo ve todo). */
+async function quienSoy(usuarioId) {
+  const ctx = await contexto(usuarioId);
+  return { id: ctx.id, aprueba: ctx.aprueba, asigna: ctx.asigna, todos: ctx.todos, equipo: ctx.equipo.size };
+}
+
 // ── Los números del menú (A9) ──────────────────────────────────────────────
 contadores.registrarFuente('tareas', {
   async contar(quien) {
@@ -540,6 +546,13 @@ contadores.registrarFuente('tareas', {
     };
     if (aprueba) salida['tareas.por_aprobar'] = { n: c.por_aprobar, titulo: `${c.por_aprobar} por aprobar` };
     if (asigna) salida['tareas.por_asignar'] = { n: c.por_asignar, titulo: `${c.por_asignar} por asignar` };
+    // La entrada «Tablero» del menú: las suyas y, a quien reparte o aprueba, lo
+    // que espera por él. En rojo si hay algo vencido o esperándole.
+    const espera = (aprueba ? c.por_aprobar : 0) + (asigna ? c.por_asignar : 0);
+    salida['tareas.menu'] = {
+      n: c.mias + espera, tono: c.vencidas || espera ? 'aviso' : 'info',
+      titulo: [salida['tareas.mias'].titulo, espera ? `${espera} esperando que las apruebes o las repartas` : ''].filter(Boolean).join(' · '),
+    };
     return salida;
   },
 });
@@ -587,7 +600,7 @@ module.exports = {
   TRABAJANDO, ABIERTAS, FINALES, ETIQUETA_ESTADO,
   registrarTipo, listar, ficha, crear, nacer, aprobar, rechazar, asignar, reasignar, cambiarPlazo, mover,
   cerrar, cerrarPorOrigen, asignarPorOrigen, anular, comentar, anularComentario, colaborador, avisar,
-  personas: () => repo.personas(),
+  personas: () => repo.personas(), quienSoy,
   // Para las pruebas:
   plazoDe, avisarVencidas, contexto, permisos,
 };

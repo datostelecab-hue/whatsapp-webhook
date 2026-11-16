@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entrega 1a hecha en `tablero/1a-datos`
+estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entregas 1a y 1b hechas (`tablero/1a-datos`, `tablero/1b-pantallas`)
 ---
 
 # Hoja de ruta
@@ -119,7 +119,7 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - **Ninguna tarjeta pide aprobación** para cerrarse: va a «cerrada» y ya.
   - **Las colas** (J, −J, fichaje, vacaciones) pasan **de una vez**.
   - Aceptado también: los tickets abiertos de antes pasan con las colas; las bajas médicas sin nombre en la tarjeta; plazo obligatorio al asignar; aprobar y asignar como funciones de Organización (`tareas_aprueba`, `tareas_asigna`).
-- **Entregas:** **1a** datos y servicio (hecha el 16/11/2026, rama `tablero/1a-datos`, db/251); **1b** las pantallas; **1c** las colas y lo abierto. Ver [[Tablero de tareas]].
+- **Entregas:** **1a** datos y servicio (hecha el 16/11/2026, rama `tablero/1a-datos`, db/251); **1b** las pantallas (hecha el 16/11/2026, rama `tablero/1b-pantallas`, sin migración); **1c** las colas y lo abierto. Ver [[Tablero de tareas]].
 
 ### 3. Avisos entre módulos (M)
 - **Hay:** muchos avisos sueltos que se calculan al momento y no se guardan:

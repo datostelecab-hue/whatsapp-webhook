@@ -1,0 +1,28 @@
+<%#
+  EL TABLERO DE TAREAS (ítem 1, entrega 1b) — el lugar único del trabajo pendiente.
+
+  Cuatro vistas en pestañas (?vista=):
+    · Mi tablero: lo que llevo, lo que pedí y donde colaboro;
+    · Equipo: lo de mi gente (todo, si reparto o lo veo todo);
+    · Por repartir: lo que espera mi aprobación o mi asignación (solo a quien le toca);
+    · Lista: todas las que veo, con buscador, filtros y Excel (Listado).
+  La ficha de una tarjeta se abre al lado (Panel), también por enlace (?tarjeta=ID,
+  el que llevan las notificaciones). Todo con las piezas globales de la casa:
+  Pestanas, Kanban, Panel, Listado, Dialogo y las clases .tc-*.
+%>
+
+<div class="tc-pantalla space-y-4">
+  <div class="flex flex-wrap items-center gap-3">
+    <nav id="t-pestanas" aria-label="Vistas del tablero" class="flex-1 min-w-0"></nav>
+    <button type="button" id="t-nueva" class="tc-boton tc-boton--principal">
+      <i class="fa-solid fa-plus" aria-hidden="true"></i> Nueva tarea
+    </button>
+  </div>
+  <div id="t-tablero" aria-live="polite"></div>
+  <div id="t-lista" class="hidden"></div>
+</div>
+
+<script src="<%= est('/assets/js/pestanas.js') %>"></script>
+<script src="<%= est('/assets/js/kanban.js') %>"></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Tablero/tablero.js') %>"></script>

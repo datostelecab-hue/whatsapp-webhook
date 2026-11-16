@@ -216,6 +216,22 @@ test('los números del menú: las suyas (en rojo si hay vencidas), y por aprobar
   assert.equal('tareas.por_aprobar' in deLaura, false);
   const deIgnacio = await contadores.recuentos({ id: p.ignacio, rol: 'oficina', permisos: [] });
   assert.deepEqual([deIgnacio['tareas.por_aprobar'].n, deIgnacio['tareas.por_asignar'].n], [1, 1]);
+  // La entrada «Tablero» del menú: las suyas y lo que espera por él, en rojo si hay algo.
+  assert.deepEqual([deLaura['tareas.menu'].n, deLaura['tareas.menu'].tono], [1, 'aviso']);
+  assert.deepEqual([deIgnacio['tareas.menu'].n, deIgnacio['tareas.menu'].tono], [2, 'aviso']);
+}));
+
+test('la pantalla: quién soy en el tablero, y no se añade a nadie a una tarjeta que nadie lleva', () => conBase(async h => {
+  const p = await gente(h);
+  assert.deepEqual(await tablero.quienSoy(p.ignacio), { id: p.ignacio, aprueba: true, asigna: true, todos: true, equipo: 0 });
+  const yoLaura = await tablero.quienSoy(p.laura);
+  assert.deepEqual([yoLaura.aprueba, yoLaura.asigna, yoLaura.todos], [false, false, false]);
+  await ticket(h.consulta);
+  await tarjetas.deNuevos();
+  const [card] = await tablero.listar(p.ignacio, { vista: 'pendientes' });
+  assert.equal(card.puede.colaboradores, false, 'por asignar: aún no la lleva nadie');
+  const t = await tablero.asignar(p.ignacio, card.id, { responsableId: p.laura, plazoDias: 2 });
+  assert.equal(t.puede.colaboradores, true);
 }));
 
 test('por HTTP: la API responde con la tarjeta y los errores en JSON, sin enseñar los de la base', () => conBase(async h => {
