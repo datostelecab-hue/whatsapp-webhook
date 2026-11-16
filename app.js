@@ -367,6 +367,8 @@ app.use('/contadores', require('./modules/Contadores/contadores.controller'));
 // El tablero de tareas (ítem 1, db/251): el lugar único del trabajo pendiente.
 // Quién ve y quién puede qué lo deciden las funciones de Organización (A5).
 app.use('/tablero', require('./modules/Tablero/tablero.controller'));
+// Las novedades de cada versión (V3, db/253): la ventana, una vez por persona.
+app.use('/novedades', require('./modules/Novedades/novedades.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)

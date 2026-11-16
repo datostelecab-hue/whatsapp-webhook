@@ -488,22 +488,23 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
   :root[data-menu="corto"] #menu,
   :root[data-menu="corto"] #menu-panel { width: 4.5rem; }
   :root[data-menu="corto"] #menu:hover #menu-panel,
-  :root[data-menu="corto"] #menu:focus-within #menu-panel {
+  :root[data-menu="corto"] #menu:focus-within #menu-panel,
+  :root[data-menu="corto"] #menu.tc-recorrido-abierto #menu-panel {
     width: 16rem;
     box-shadow: var(--tc-sombra-alta);
   }
   #menu-panel span, #menu-panel p, #menu-panel .grupo-chev { transition: opacity .12s ease; }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(.tc-contador-menu),
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel p,
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel .grupo-chev {
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) #menu-panel span:not(.tc-contador-menu),
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) #menu-panel p,
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) #menu-panel .grupo-chev {
     opacity: 0; pointer-events: none;
   }
   #menu-panel nav a, #menu-panel .grupo-btn { position: relative; }
   /* Con el menú plegado, cada contador sobre la esquina de su icono (A9). */
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .tc-contador-menu {
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) .tc-contador-menu {
     position: absolute; top: .35rem; left: 1.9rem; opacity: 1; pointer-events: none;
   }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .grupo-items { display: none; }
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) .grupo-items { display: none; }
 }
 #menu-corto { display: none; }
 @media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
@@ -855,3 +856,131 @@ body .tc-selector.tc-selector-compacto button {
 .tc-panel-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1.1rem 1.35rem; display: flex; flex-direction: column; gap: 1.2rem; }
 .tc-panel-seccion > h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }
 @media (prefers-reduced-motion: reduce) { .tc-panel, .tc-tarjeta { transition: none; } }
+
+/* ══════════════════════════════════════════════════════════════
+   NOVEDADES (novedades.js, V3, db/253) — la ventana de cada versión
+   ══════════════════════════════════════════════════════════════
+   Sale una vez a cada persona después de una actualización: lo nuevo y lo que
+   ya tiene a mano, y la invitación al recorrido. Encima del menú, de la ficha
+   lateral y de los diálogos; debajo de la carga y del recorrido. */
+.tc-novedades-fondo {
+  position: fixed; inset: 0; z-index: 140; display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: rgb(3 6 14 / .64); animation: tcnFondo .18s ease-out;
+}
+.tc-novedades-fondo--saliendo { animation: tcnFondo .15s ease-in reverse forwards; }
+.tc-novedades {
+  position: relative; width: min(58rem, 100%); max-height: min(47rem, calc(100svh - 2rem));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1.25rem;
+  box-shadow: var(--tc-sombra-alta); animation: tcnCaja .32s cubic-bezier(.23, 1, .32, 1);
+}
+.tc-novedades-cabeza {
+  position: relative; padding: 1.6rem 1.75rem 0;
+  background:
+    radial-gradient(40rem 16rem at 0% 0%, rgb(var(--tc-boton) / .28), transparent 70%),
+    radial-gradient(30rem 14rem at 100% 0%, rgb(var(--tc-violet) / .16), transparent 70%);
+}
+.tc-novedades-cerrar {
+  position: absolute; top: 1rem; right: 1rem; width: 2.2rem; height: 2.2rem; border-radius: .65rem;
+  display: inline-flex; align-items: center; justify-content: center; color: rgb(var(--tc-muted));
+}
+.tc-novedades-cerrar:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-text) / .07); }
+.tc-novedades-sello {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .75rem; border-radius: 9999px;
+  font-size: .75rem; font-weight: 700; color: rgb(var(--tc-on-gold)); background: rgb(var(--tc-boton));
+  box-shadow: 0 8px 18px -8px rgb(var(--tc-boton) / .7);
+}
+.tc-novedades-titulo { margin-top: .9rem; font-size: clamp(1.45rem, 3vw, 2rem); line-height: 1.12; font-weight: 800; letter-spacing: -.025em; }
+.tc-novedades-bajada { margin-top: .45rem; max-width: 60ch; font-size: .95rem; line-height: 1.5; color: rgb(var(--tc-muted)); }
+.tc-novedades-pestanas { margin-top: 1.1rem; }
+.tc-novedades-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem 1.75rem 1.4rem; }
+.tc-novedades-rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+.tc-novedades-rejilla[hidden] { display: none; }
+.tc-novedad {
+  display: flex; gap: .9rem; align-items: flex-start; padding: 1rem 1.05rem; border-radius: 1rem;
+  background: rgb(var(--tc-card2) / .6); border: 1px solid rgb(var(--tc-border));
+}
+.tc-novedad h3 { font-size: .95rem; font-weight: 700; line-height: 1.3; }
+.tc-novedad p { margin-top: .3rem; font-size: .84rem; line-height: 1.5; color: rgb(var(--tc-muted)); }
+.tc-novedad-enlace { display: inline-flex; align-items: center; gap: .35rem; margin-top: .55rem; font-size: .8125rem; font-weight: 600; color: rgb(var(--tc-gold)); }
+.tc-novedad-enlace:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tc-novedad-icono {
+  flex: none; width: 2.6rem; height: 2.6rem; border-radius: .8rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1rem; background: rgb(var(--tc-gold) / .15); color: rgb(var(--tc-gold));
+}
+.tc-novedad-icono[data-tono='verde'] { background: rgb(var(--tc-green) / .15); color: rgb(var(--tc-green)); }
+.tc-novedad-icono[data-tono='ambar'] { background: rgb(var(--tc-warn) / .15); color: rgb(var(--tc-warn)); }
+.tc-novedad-icono[data-tono='violeta'] { background: rgb(var(--tc-violet) / .15); color: rgb(var(--tc-violet)); }
+.tc-novedad-icono[data-tono='celeste'] { background: rgb(var(--tc-azul) / .15); color: rgb(var(--tc-azul)); }
+.tc-novedades-nota { font-size: .84rem; color: rgb(var(--tc-muted)); margin-bottom: 1rem; }
+.tc-novedades-grupo + .tc-novedades-grupo { margin-top: 1.2rem; }
+.tc-novedades-grupo h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); margin-bottom: .5rem; }
+.tc-novedades-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; }
+.tc-novedades-item {
+  display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .7rem; border-radius: .75rem;
+  border: 1px solid transparent; transition: background-color .15s ease, border-color .15s ease;
+}
+.tc-novedades-item:hover { background: rgb(var(--tc-gold) / .07); border-color: rgb(var(--tc-gold) / .25); }
+.tc-novedades-item b { display: block; font-size: .875rem; font-weight: 600; color: rgb(var(--tc-text)); }
+.tc-novedades-item small { display: block; margin-top: .1rem; font-size: .78rem; line-height: 1.4; color: rgb(var(--tc-muted)); }
+.tc-novedades-item-icono {
+  flex: none; width: 2rem; height: 2rem; border-radius: .6rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .85rem; background: rgb(var(--tc-card2)); color: rgb(var(--tc-gold));
+}
+.tc-novedades-pie {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem;
+  padding: .9rem 1.75rem; border-top: 1px solid rgb(var(--tc-border)); background: rgb(var(--tc-card2) / .35);
+}
+.tc-novedades-pie p { margin-right: auto; font-size: .78rem; color: rgb(var(--tc-muted)); }
+/* El puntito de «hay novedades sin ver», junto a «Novedades» en el menú. */
+.tc-novedades-punto { width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--tc-gold)); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .25); }
+.tc-novedades-punto[hidden] { display: none; }
+@media (max-width: 720px) {
+  .tc-novedades-fondo { padding: .5rem; align-items: stretch; }
+  .tc-novedades { max-height: calc(100svh - 1rem); }
+  .tc-novedades-cabeza, .tc-novedades-cuerpo { padding-left: 1.1rem; padding-right: 1.1rem; }
+  .tc-novedades-pie { padding: .8rem 1.1rem; }
+  .tc-novedades-pie p { flex-basis: 100%; }
+  .tc-novedades-rejilla, .tc-novedades-lista { grid-template-columns: minmax(0, 1fr); }
+}
+@keyframes tcnFondo { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tcnCaja { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* ══════════════════════════════════════════════════════════════
+   RECORRIDO (recorrido.js, V3) — el paseo guiado
+   ══════════════════════════════════════════════════════════════
+   Una capa que no deja tocar la pantalla, un foco que ilumina lo que se
+   explica (el resto queda en penumbra con una sombra enorme) y el globo al
+   lado. Por encima de todo; las ayudas se apagan mientras dura. */
+.tc-recorrido-capa { position: fixed; inset: 0; z-index: 250; background: transparent; }
+.tc-recorrido-foco {
+  position: fixed; z-index: 251; pointer-events: none; border-radius: .9rem;
+  box-shadow: 0 0 0 2px rgb(var(--tc-gold)), 0 0 0 6px rgb(var(--tc-gold) / .25), 0 0 0 9999px rgb(3 6 14 / .68);
+  transition: left .3s cubic-bezier(.23, 1, .32, 1), top .3s cubic-bezier(.23, 1, .32, 1),
+              width .3s cubic-bezier(.23, 1, .32, 1), height .3s cubic-bezier(.23, 1, .32, 1);
+}
+.tc-recorrido-foco--centro { box-shadow: 0 0 0 9999px rgb(3 6 14 / .68); }
+.tc-recorrido-globo {
+  position: fixed; z-index: 252; width: min(22rem, calc(100vw - 24px)); overflow: hidden;
+  padding: 1.05rem 1.15rem .95rem; border-radius: 1rem; outline: none;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra-alta);
+  transition: left .3s cubic-bezier(.23, 1, .32, 1), top .3s cubic-bezier(.23, 1, .32, 1);
+}
+.tc-recorrido-cabeza { display: flex; align-items: center; gap: .65rem; }
+.tc-recorrido-icono {
+  flex: none; width: 2.1rem; height: 2.1rem; border-radius: .65rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .9rem; color: rgb(var(--tc-on-gold)); background: rgb(var(--tc-boton));
+}
+.tc-recorrido-titulo { font-size: 1rem; font-weight: 700; line-height: 1.25; }
+.tc-recorrido-texto { margin-top: .6rem; font-size: .875rem; line-height: 1.55; color: rgb(var(--tc-text) / .85); }
+.tc-recorrido-pie { display: flex; align-items: center; gap: .4rem; margin-top: 1rem; }
+.tc-recorrido-cuenta { margin-right: auto; font-size: .75rem; font-weight: 600; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+.tc-recorrido-saltar { padding: .35rem .5rem; border-radius: .5rem; font-size: .75rem; font-weight: 600; color: rgb(var(--tc-muted)); }
+.tc-recorrido-saltar:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-text) / .06); }
+.tc-recorrido-progreso { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgb(var(--tc-border)); }
+.tc-recorrido-progreso span { display: block; height: 100%; background: rgb(var(--tc-gold)); transition: width .3s ease; }
+:root.tc-recorriendo .ayuda-globo { display: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tc-novedades-fondo, .tc-novedades { animation: none; }
+  .tc-recorrido-foco, .tc-recorrido-globo, .tc-recorrido-progreso span { transition: none; }
+}

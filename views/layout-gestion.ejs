@@ -89,6 +89,9 @@
   <!-- El selector de la casa para formularios montados a mano: el valor vive en
        un input oculto, así que quien lo use sigue leyendo `.value` de siempre. -->
   <script src="<%= typeof est === 'function' ? est('/assets/js/selector.js') : '/assets/js/selector.js' %>"></script>
+  <%# El recorrido guiado (Recorrido.empezar) y la ventana de novedades de cada versión (V3, db/253). %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/recorrido.js') : '/assets/js/recorrido.js' %>" defer></script>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/novedades.js') : '/assets/js/novedades.js' %>" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -374,6 +377,12 @@
         <span>Soporte técnico</span>
       </a>
       <% } %>
+      <%# Las novedades de la versión y el recorrido guiado, cuando se quiera (novedades.js). %>
+      <a href="#" data-novedades-abrir class="nav-item flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm mb-1 text-telecab-text hover:bg-telecab-card2">
+        <i class="fa-solid fa-wand-magic-sparkles w-5 text-center text-telecab-muted"></i>
+        <span class="flex-1">Novedades</span>
+        <span class="tc-novedades-punto" hidden></span>
+      </a>
       <a href="/configuracion" class="nav-item <%= seccionActiva === 'configuracion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm
                 <%= seccionActiva === 'configuracion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-muted hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-gear w-5 text-center"></i>
@@ -499,7 +508,7 @@
         <%# El avatar con sus iniciales (V3): quién tiene la sesión, de un vistazo. %>
         <% const _nombreSesion = (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '';
            const _iniciales = _nombreSesion.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p.charAt(0)).join('').toUpperCase(); %>
-        <div class="flex items-center gap-2.5 pl-3 ml-1 border-l border-telecab-border">
+        <div id="sesion-usuario" class="flex items-center gap-2.5 pl-3 ml-1 border-l border-telecab-border">
           <span class="tc-avatar" aria-hidden="true"><%= _iniciales || '·' %></span>
           <div class="hidden sm:block leading-tight whitespace-nowrap">
             <span class="block text-[13px] text-telecab-text font-semibold"><%= _nombreSesion %></span>
