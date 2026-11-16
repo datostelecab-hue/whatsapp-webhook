@@ -60,6 +60,8 @@ await organizacion.equipo(usuarioId);               // a quién ve en el «Table
   Del usuario no se apuntan la contraseña ni sus tokens, ni lo que cambia solo o a gusto de cada uno: el último acceso, el tema y las ayudas.
 
 > **Desde el 16/11/2026 (db/251):** dos funciones nuevas del [[Tablero de tareas]], `tareas_aprueba` (aprueba las tareas que se piden a mano) y `tareas_asigna` (asigna las tarjetas de los tickets), las dos de Ignacio.
+>
+> **Y desde db/252 (1c del tablero):** quién lleva las J de cada tipo y las −J: `j_trafico`, `j_bolt`, `j_companero` y `menos_j` (William), `j_taller` (Óscar) y `j_rrhh` (Laura). A su titular le nace la tarjeta de cada J pendiente de su tipo; aprobarla sigue siendo de quien tenga la llave `/justificantes`.
 
 ## Lo que trae db/248
 

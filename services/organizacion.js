@@ -38,6 +38,21 @@ const FUNCIONES = [
     descripcion: 'Cada ticket nuevo crea su tarjeta «por asignar», y le pone responsable y plazo. Ignacio (16/11/2026).' },
   { codigo: 've_todos_los_tableros', etiqueta: 'Ve el tablero de todos', item: 1, varias: true,
     descripcion: 'En el «Tablero del equipo» ve el de toda la oficina, no solo el de su área.' },
+  // Las colas del tablero (1c, 16/11/2026): cada J nace como tarjeta a nombre del
+  // titular de la función de su tipo; sin titular, «por asignar». Aprobar la J
+  // sigue siendo de quien tenga la llave '/justificantes'.
+  { codigo: 'j_trafico', etiqueta: 'Lleva las J de Tráfico', item: 1, varias: true,
+    descripcion: 'Le nace en el tablero la tarjeta de cada J de Tráfico pendiente. William (16/11/2026).' },
+  { codigo: 'j_bolt', etiqueta: 'Lleva las J de BOLT', item: 1, varias: true,
+    descripcion: 'Le nace en el tablero la tarjeta de cada J de BOLT pendiente. William (16/11/2026).' },
+  { codigo: 'j_companero', etiqueta: 'Lleva las J «Por compañero»', item: 1, varias: true,
+    descripcion: 'Le nace en el tablero la tarjeta de cada J por compañero pendiente. William (16/11/2026).' },
+  { codigo: 'j_taller', etiqueta: 'Lleva las J de Taller', item: 1, varias: true,
+    descripcion: 'Le nace en el tablero la tarjeta de cada J de Taller pendiente. Óscar (16/11/2026).' },
+  { codigo: 'j_rrhh', etiqueta: 'Lleva las J de RR. HH.', item: 1, varias: true,
+    descripcion: 'Le nace en el tablero la tarjeta de cada J de RR. HH. pendiente. Laura (16/11/2026).' },
+  { codigo: 'menos_j', etiqueta: 'Lleva las −J', item: 1, varias: true,
+    descripcion: 'Le nace en el tablero la tarjeta de cada −J pendiente. William (16/11/2026).' },
   { codigo: 'direccion', etiqueta: 'Dirección: valida', item: 4, varias: true,
     descripcion: 'Valida las propuestas de despido antes de que lleguen a RR. HH.' },
   { codigo: 'expedientes', etiqueta: 'Lleva los expedientes laborales', item: 4, varias: false,

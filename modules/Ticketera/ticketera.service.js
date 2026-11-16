@@ -559,7 +559,7 @@ module.exports = {
   reclasificar: avisaTras(reclasificar, 'tickets'),
   aplicar: avisaTras(aplicar, 'tickets', () => true, trasCambiarTicket),
   diagnostico,
-  abiertosPorArea: repo.abiertosPorArea, pendientes,
+  abiertosPorArea: repo.abiertosPorArea, pendientes, desdeCuando,
 };
 
 // El tipo de tarjeta «ticket» del tablero se registra al cargar la ticketera:

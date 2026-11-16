@@ -62,6 +62,12 @@ const CATALOGO = [
       + 'Cloudflare, que va delante del ERP, corta las subidas de más de 100 MB.',
     usa: 'La subida de adjuntos (services/adjuntos.js)' },
 
+  // Tablero de tareas (ítem 1, entrega 1c)
+  { clave: 'tablero.plazo_colas_dias_habiles', modulo: 'Tablero', item: 1, tipo: 'entero', unidad: 'dias_habiles', min: 0, max: 30, defecto: 2,
+    etiqueta: 'Plazo de las tarjetas de las colas',
+    descripcion: 'Las J, las −J, las correcciones de fichaje y las vacaciones nacen en el tablero ya asignadas a quien las resuelve, '
+      + 'con este plazo desde que entran. Con 0, vencen el mismo día.',
+    usa: 'Las tarjetas de las colas (services/tableroColas.js y modules/Ticketera/tarjetas.js)' },
   // Fase 1 — RR. HH.
   { clave: 'expedientes.despido.plazo_dias_habiles', modulo: 'RR. HH.', item: 4, tipo: 'entero', unidad: 'dias_habiles', min: 1, max: 30, defecto: 3,
     etiqueta: 'Plazo para aplicar un despido',

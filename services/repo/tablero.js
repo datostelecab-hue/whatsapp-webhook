@@ -78,7 +78,7 @@ async function insertar(cli, x) {
   return Number(r.rows[0].id);
 }
 
-const EDITABLES = new Set(['estado', 'responsable_id', 'plazo_dias', 'vence_el', 'plazo_desde', 'aprobada_at', 'aprobada_por',
+const EDITABLES = new Set(['titulo', 'estado', 'responsable_id', 'plazo_dias', 'vence_el', 'plazo_desde', 'aprobada_at', 'aprobada_por',
   'asignada_at', 'asignada_por', 'bloqueo_motivo', 'cerrada_at', 'cerrada_por', 'cierre_nota', 'motivo_demora', 'vencida_avisada_at']);
 
 /** Cambia las columnas dadas (solo las de EDITABLES) y la marca de actualizada. */
@@ -180,7 +180,26 @@ async function vencidasSinAviso(cli, hoyIso) {
   return r.rows;
 }
 
+// ── Para las colas (entrega 1c, services/tableroColas.js) ──────────────────
+/** Las tarjetas vivas de un tipo, con el id de su origen. */
+async function vivasDe(tipo) {
+  const r = await db.consulta(
+    `SELECT id, origen_id FROM tarea
+      WHERE tipo = $1 AND origen_id IS NOT NULL AND estado NOT IN ('cerrada', 'rechazada', 'anulada')`, [tipo]);
+  return r.rows;
+}
+
+/** La última tarjeta (en cualquier estado) de cada uno de esos orígenes. */
+async function deOrigenes(tipo, origenIds) {
+  if (!origenIds.length) return [];
+  const r = await db.consulta(
+    `SELECT DISTINCT ON (origen_id) id, origen_id, estado, titulo, responsable_id, asignada_por
+       FROM tarea WHERE tipo = $1 AND origen_id = ANY($2::text[])
+      ORDER BY origen_id, id DESC`, [tipo, origenIds.map(String)]);
+  return r.rows;
+}
+
 module.exports = {
   una, porOrigen, listar, insertar, cambiar, evento, eventos, comentar, comentario, anularComentario, comentarios,
-  ponerColaborador, quitarColaborador, persona, personas, cuentas, vencidasSinAviso,
+  ponerColaborador, quitarColaborador, persona, personas, cuentas, vencidasSinAviso, vivasDe, deOrigenes,
 };

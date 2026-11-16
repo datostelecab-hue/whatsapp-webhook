@@ -39,6 +39,7 @@ El valor se pide **cada vez** (hay una caché de un minuto): guardarlo en una co
 - **En uso:**
   - el horario de la oficina de Madrid, que lee el [[Calendario laboral]];
   - `adjuntos.max_mb`, lo máximo que se puede adjuntar (90 MB; entre 1 y 95, porque Cloudflare corta a los 100). Ver [[Adjuntos]].
+  - `tablero.plazo_colas_dias_habiles`, el plazo de las tarjetas de las colas: J, −J, correcciones de fichaje y vacaciones (2 días hábiles, desde 16/11/2026). Ver [[Tablero de tareas]].
 - **Aún sin usar:** los números de los ítems 2, 4 a 8, 10, 14 a 19, ya con el valor de la hoja de ruta. Están para que Ignacio los vea y los revise desde ya; la pantalla avisa de que cambiarlos no cambia nada hasta que se haga su ítem.
 
 ## Quién entra

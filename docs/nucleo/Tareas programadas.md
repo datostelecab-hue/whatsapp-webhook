@@ -8,6 +8,7 @@ actualizado: 2026-11-13
 Desde el 13/11/2026 (db/246) las **tareas de negocio** que el ERP hace solo en su momento se registran en `services/tareasProgramadas.js`. Es la pieza A10 de la [[Hoja de ruta]]. Las tareas que la usarán:
 - el informe de pendientes de nómina del día 20 (ítem 7);
 - los vencimientos del tablero (ítem 1);
+- el repaso diario de las colas del tablero (`tablero.colas`, 05:00; la primera vez pasa lo pendiente de una vez);
 - las ITV a 30 días (ítem 14);
 - las pólizas a 60 días (ítem 19);
 - las alarmas de mantenimiento (ítem 20).

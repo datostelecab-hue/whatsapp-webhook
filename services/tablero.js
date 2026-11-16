@@ -18,6 +18,8 @@
 //
 // LOS TIPOS de tarjeta los registra cada módulo (`registrarTipo`): si pide
 // aprobación, si se puede cerrar a mano y qué hace al cerrarse en su origen.
+// LAS COLAS (entrega 1c: J, −J, correcciones de fichaje) nacen ya asignadas y
+// las cierra su origen: services/tableroColas.js.
 //
 // QUIÉN VE QUÉ: cada uno, las suyas (de las que es responsable, las que creó y
 // en las que colabora); quien lleva un área o es superior, las de su gente
@@ -63,12 +65,13 @@ const TIPOS = new Map();
  *                cerrarla desde el tablero (un ticket: cerrar el ticket, que a
  *                su vez cierra la tarjeta). Sin él, se cierra aquí.
  *   alAsignar(tarea, { responsable, quien }): lo que hace en su origen.
+ *   abrir        el texto del enlace a su origen en la ficha («Abrir la J»).
  */
-function registrarTipo(tipo, { etiqueta, aprobacion = false, cierreManual = true, alCerrar = null, alAsignar = null } = {}) {
+function registrarTipo(tipo, { etiqueta, aprobacion = false, cierreManual = true, alCerrar = null, alAsignar = null, abrir = null } = {}) {
   if (!/^[a-z][a-z_]{0,23}$/.test(String(tipo || ''))) throw new Error(`Tipo de tarjeta no válido: «${tipo}»`);
-  TIPOS.set(tipo, { tipo, etiqueta: etiqueta || tipo, aprobacion, cierreManual, alCerrar, alAsignar });
+  TIPOS.set(tipo, { tipo, etiqueta: etiqueta || tipo, aprobacion, cierreManual, alCerrar, alAsignar, abrir: abrir || 'Abrir' });
 }
-const tipoDe = t => TIPOS.get(t) || { tipo: t, etiqueta: t, aprobacion: false, cierreManual: true };
+const tipoDe = t => TIPOS.get(t) || { tipo: t, etiqueta: t, aprobacion: false, cierreManual: true, abrir: 'Abrir' };
 
 registrarTipo('manual', { etiqueta: 'Tarea', aprobacion: true });
 
@@ -147,6 +150,8 @@ function publica(ctx, t, sem) {
   return {
     id: Number(t.id), tipo: t.tipo, tipoEtiqueta: tipoDe(t.tipo).etiqueta, origenId: t.origen_id,
     titulo: t.titulo, descripcion: t.sensible ? null : t.descripcion, enlace: t.enlace, sensible: t.sensible,
+    // Lo que dice el enlace a su origen, y si se cierra allí (las colas).
+    abrir: tipoDe(t.tipo).abrir, seCierraEnSuOrigen: !tipoDe(t.tipo).cierreManual,
     estado: t.estado, estadoEtiqueta: ETIQUETA_ESTADO[t.estado],
     responsable: t.responsable_id ? { id: t.responsable_id, nombre: t.responsable_nombre } : null,
     creadaPor: t.creada_por ? { id: t.creada_por, nombre: t.creada_por_nombre } : null,
@@ -285,16 +290,68 @@ async function crear(usuarioId, { titulo, descripcion, responsableId, plazoDias,
 }
 
 /**
- * Una tarjeta que nace de otra cosa (un ticket), sin pasar por nadie:
- * «por asignar», sin responsable ni plazo. Si ya tiene una viva, esa.
- * Va dentro de la transacción de quien la crea (`cli`). → id
+ * Una tarjeta que nace de otra cosa (un ticket, una J), sin pasar por nadie.
+ * Va dentro de la transacción de quien la crea (`cli`). → { id, nueva, reabierta }
+ *   · sin `responsableId`: «por asignar», sin plazo (la reparte quien asigna);
+ *   · con él (las colas de la 1c y las vacaciones): «por hacer», a su nombre y
+ *     con `plazoDias` hábiles desde hoy.
+ * Si ya tiene una viva, esa. Si la tenía CERRADA y su origen vuelve a estar
+ * pendiente (una J aprobada que se edita, un ticket que se reabre), se reabre
+ * la misma: su historia sigue en un sitio. Si la anularon, no vuelve a nacer:
+ * alguien decidió que eso no es una tarjeta (lo mira quien llama).
  */
-async function nacer(cli, { tipo, origenId, titulo, enlace, sensible = false, descripcion = null }) {
+async function nacer(cli, { tipo, origenId, titulo, enlace, sensible = false, descripcion = null, responsableId = null, plazoDias = null, creadaPor = null }) {
   const ya = await repo.porOrigen(cli, tipo, origenId);
-  if (ya) return { id: Number(ya.id), nueva: false };
-  const id = await repo.insertar(cli, { tipo, origenId, titulo: texto(titulo, 200) || tipoDe(tipo).etiqueta, enlace, sensible, descripcion, estado: 'por_asignar' });
-  await repo.evento(cli, id, { tipo: 'creada', datos: { origen: tipo, origenId: String(origenId) } });
+  if (ya && ya.estado !== 'cerrada') return { id: Number(ya.id), nueva: false };
+  const resp = entero(responsableId);
+  const plazo = resp ? await plazoDe({ plazoDias: plazoDias == null ? 0 : plazoDias }) : { plazoDias: null, venceEl: null };
+  const ahora = new Date();
+  const reparto = resp
+    ? { estado: 'por_hacer', responsable_id: resp, plazo_dias: plazo.plazoDias, vence_el: plazo.venceEl, plazo_desde: ahora, asignada_at: ahora }
+    : { estado: 'por_asignar', responsable_id: null, plazo_dias: null, vence_el: null, plazo_desde: null, asignada_at: null };
+  const datos = resp ? { responsable: (await repo.persona(resp) || {}).nombre || null, plazoDias: plazo.plazoDias, venceEl: plazo.venceEl } : {};
+  if (ya) {
+    await repo.cambiar(cli, ya.id, {
+      ...reparto, asignada_por: null, cerrada_at: null, cerrada_por: null, cierre_nota: null, motivo_demora: null,
+      bloqueo_motivo: null, vencida_avisada_at: null, titulo: texto(titulo, 200) || ya.titulo,
+    });
+    await repo.evento(cli, ya.id, { tipo: 'reabierta', datos: { porSuOrigen: true, ...datos } });
+    return { id: Number(ya.id), nueva: false, reabierta: true };
+  }
+  const id = await repo.insertar(cli, {
+    tipo, origenId, titulo: texto(titulo, 200) || tipoDe(tipo).etiqueta, enlace, sensible, descripcion,
+    estado: reparto.estado, responsableId: resp, creadaPor: entero(creadaPor), plazoDias: plazo.plazoDias,
+    venceEl: plazo.venceEl, plazoDesde: reparto.plazo_desde, asignadaAt: reparto.asignada_at,
+  });
+  await repo.evento(cli, id, { tipo: 'creada', datos: { origen: tipo, origenId: String(origenId), ...datos } });
   return { id, nueva: true };
+}
+
+/**
+ * Su origen cambió mientras espera (una J pendiente que pasa de RRHH a
+ * Tráfico): el título nuevo y, si nadie la ha repartido a mano, el responsable
+ * que le toca ahora. Lo que repartió una persona no se pisa. → id si cambió.
+ */
+async function ajustarPorOrigen(cli, { tipo, origenId, titulo, responsableId = null }) {
+  const t = await repo.porOrigen(cli, tipo, origenId);
+  if (!t || FINALES.includes(t.estado)) return null;
+  const cambios = {};
+  const tit = texto(titulo, 200);
+  if (tit && tit !== t.titulo) cambios.titulo = tit;
+  const resp = entero(responsableId);
+  let de = null;
+  if (resp && !t.asignada_por && TRABAJANDO.includes(t.estado) && t.responsable_id !== resp) {
+    de = t.responsable_nombre;
+    cambios.responsable_id = resp;
+    cambios.asignada_at = new Date();
+  }
+  if (!Object.keys(cambios).length) return null;
+  await repo.cambiar(cli, t.id, cambios);
+  if (cambios.responsable_id) {
+    const a = (await repo.persona(resp) || {}).nombre || null;
+    await repo.evento(cli, t.id, { tipo: 'reasignada', motivo: 'Cambió en su origen', datos: { de, a, porSuOrigen: true } });
+  }
+  return Number(t.id);
 }
 
 // ── Aprobar o rechazar (las de a mano) ─────────────────────────────────────
@@ -601,7 +658,7 @@ tareasProgramadas.registrar({
 
 module.exports = {
   TRABAJANDO, ABIERTAS, FINALES, ETIQUETA_ESTADO,
-  registrarTipo, listar, ficha, crear, nacer, aprobar, rechazar, asignar, reasignar, cambiarPlazo, mover,
+  registrarTipo, listar, ficha, crear, nacer, ajustarPorOrigen, aprobar, rechazar, asignar, reasignar, cambiarPlazo, mover,
   cerrar, cerrarPorOrigen, asignarPorOrigen, anular, comentar, anularComentario, colaborador, avisar,
   personas: () => repo.personas(), quienSoy,
   // Para las pruebas:

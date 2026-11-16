@@ -119,10 +119,11 @@ test('2b. cerrar el ticket en su bandeja cierra la tarjeta, y cerrar la tarjeta 
 
 test('2c. «me hago cargo» en la bandeja le pasa la tarjeta; una baja médica no lleva nombre; los tickets de antes, no', () => conBase(async h => {
   const p = await gente(h);
+  // Pedido antes del corte de las bandejas (24/09/2026): se queda en la ticketera (1c).
   const viejo = await ticket(h.consulta);
-  await h.consulta(`UPDATE config_app SET valor = $1 WHERE clave = 'tablero.tickets_desde_id'`, [String(viejo.id)]);
+  await h.consulta(`UPDATE ticket SET creado_at = '2026-09-01 10:00+02', marca_form = NULL WHERE id = $1`, [viejo.id]);
   const baja = await ticket(h.consulta, { subtipo: 'BAJA_AUSENCIA', nombre: 'Ana Ruiz' });
-  assert.equal(await tarjetas.deNuevos(), 1, 'el de antes del tablero no crea tarjeta');
+  assert.equal(await tarjetas.deNuevos(), 1, 'el de antes del corte no crea tarjeta');
   const [card] = await tablero.listar(p.ignacio, { vista: 'pendientes' });
   assert.equal(card.titulo, `Baja o ausencia · ${baja.codigo}`, 'sin el nombre');
   assert.equal(card.sensible, true);

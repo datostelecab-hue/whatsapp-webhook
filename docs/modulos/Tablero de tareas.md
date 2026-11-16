@@ -8,7 +8,7 @@ actualizado: 2026-11-16
 El **lugar único del trabajo pendiente** (ítem 1 de la [[Hoja de ruta]]). Una tarjeta es algo que alguien tiene que hacer: tiene responsable, plazo en días hábiles e historia. Se hace en tres entregas, cada una en su rama:
 - **1a — datos y servicio** (16/11/2026, rama `tablero/1a-datos`, db/251): esta nota.
 - **1b — pantallas** (16/11/2026, rama `tablero/1b-pantallas`): ver «La pantalla» abajo.
-- **1c — las colas:** J, −J, correcciones de fichaje y vacaciones, y el paso de todo lo abierto de una vez.
+- **1c — las colas** (16/11/2026, rama `tablero/1c-colas`, db/252): J, −J, correcciones de fichaje y vacaciones, y el paso de lo abierto de una vez. Ver «Las colas» abajo.
 
 ## Lo que decidieron Camilo e Ignacio (16/11/2026)
 
@@ -17,6 +17,13 @@ El **lugar único del trabajo pendiente** (ítem 1 de la [[Hoja de ruta]]). Una 
 3. **El responsable de la tarjeta de un ticket lo pone Ignacio**, que es quien las asigna.
 4. **Ninguna tarjeta pide aprobación para cerrarse:** pasa a «cerrada» y ya.
 5. **Las colas de hoy pasan de una vez** (entrega 1c).
+
+Y para la 1c (16/11/2026), con lo que hacía cada uno en los últimos 60 días:
+
+6. **Las J, por su tipo, «como hoy»:** Tráfico, BOLT y Por compañero, William; Taller, Óscar; RR. HH., Laura. Las −J, William.
+7. **De los tickets abiertos pasan solo los pedidos desde el corte de las bandejas** (24/09/2026): 8 en producción. Los 578 de antes se quedan en la ticketera.
+8. **Las vacaciones, directas a quien las aprueba** (la llave de vacaciones, Laura); Ignacio puede reasignarlas.
+9. **Plazo de las colas: 2 días hábiles**, un parámetro.
 
 Y lo propuesto y aceptado:
 - los tickets abiertos de antes también pasan en la 1c;
@@ -62,13 +69,38 @@ Lo que no puede ver le da un 404 (no un 403): ni sabe que existe.
 
 ## Los tickets (`modules/Ticketera/tarjetas.js`)
 
-- **Nacen** los tickets abiertos que entran desde que existe el tablero. `config_app.tablero.tickets_desde_id`, que pone db/251, dice desde cuál. Se crean al traer el formulario y al abrir uno de soporte, «por asignar».
+- **Nacen** los tickets abiertos pedidos desde el **corte de las bandejas** (`ticketera_desde`, 24/09/2026 si nadie lo cambia): lo que ellas enseñan como pendiente. Se crean al traer el formulario, al abrir uno de soporte y en el repaso diario, «por asignar». Hasta la 1c miraba desde qué id (`tablero.tickets_desde_id`, que quitó db/252).
+- **Las vacaciones** nacen ya **a nombre de quien tiene la llave de aprobarlas** (`/vacaciones/aprobar`), con el plazo de las colas. Ignacio puede reasignarlas.
+- **Un ticket que se reabre** reabre su tarjeta cerrada. Una tarjeta **anulada** no vuelve a nacer: alguien decidió que ese ticket no es una tarjeta.
 - **La tarjeta lleva** el tipo, el nombre de quien lo pide y el código, y enlaza a su bandeja (`?ticket=CÓDIGO`). Las **bajas médicas** (`BAJA_AUSENCIA`) no llevan nombre ni descripción: se miran en el ticket, con sus permisos.
 - **Al asignarla**, el ticket queda a cargo de esa persona (`ticketera.asignarA`) y pasa a «en curso».
 - **«Me hago cargo» en la bandeja** le pasa la tarjeta a quien lo pulsó, sin plazo; el plazo lo pone Ignacio.
 - **Cerrarla en el tablero cierra el ticket**, con las reglas del ticket (en qué quedó, la llave de vacaciones, «aplicar» en las ausencias), y el ticket cerrado cierra la tarjeta. **Cerrar el ticket en su bandeja** también la cierra.
 
 Los enganches van en lo que **exporta** `ticketera.service`: así no se olvidan en ninguna ruta. Y no lanzan nunca, porque el ticket ya está hecho.
+
+## Las colas (entrega 1c, `services/tableroColas.js`)
+
+Lo que espera en una cola de hoy tiene su tarjeta, **ya asignada** a quien lo resuelve y con el plazo de las colas (`tablero.plazo_colas_dias_habiles`, 2 días hábiles, en [[Parametros]]). **La cierra su cola**: desde el tablero no se cierra (la ficha dice «Se cierra sola al resolverla allí» y no hay «Cerrar»).
+
+| Cola | La lleva | Se cierra al | Enlace |
+|---|---|---|---|
+| **J** pendiente (`j`) | El titular de la función de su tipo: `j_trafico`, `j_bolt`, `j_companero` (William), `j_taller` (Óscar), `j_rrhh` (Laura) | Aprobarla o rechazarla (o anularla), desde donde sea | `/justificantes?tipo=…&dia=…` |
+| **−J** pendiente (`menos_j`) | El titular de `menos_j` (William) | Aprobarla o rechazarla | `/justificantes?tipo=menos_j&dia=…` |
+| **Corrección de fichaje** (`correccion_fichaje`) | Quien tiene la llave `/fichaje/revisar` (en producción, Ignacio) | Aprobarla, rechazarla o retirarla | `/fichaje` |
+| **Vacaciones** (un ticket) | Quien tiene la llave `/vacaciones/aprobar` (Laura) | Cerrar el ticket | Su bandeja |
+
+- **Sin nadie a quien darla** (la función sin titular, la llave sin dueño, una persona bloqueada), nace «por asignar» y la reparte Ignacio.
+- **«La pidió»** es quien puso la J o la −J, o quien pidió la corrección: la ve en su tablero y sabe en qué quedó.
+- **Si cambia su origen mientras espera** (una J pendiente que pasa de RR. HH. a Taller), cambia el título y pasa a quien le toca ahora, salvo que la haya repartido una persona: eso no se pisa.
+- **Una J aprobada que se edita** vuelve a pendiente: su tarjeta se reabre (la misma, con su historia). Una sola tarjeta por cosa en toda su vida.
+- **Al nacer no hay notificación al móvil:** son el trabajo de cada día de quien las lleva (unas 5 J al día a William), y las ve en su contador. Al vencer, sí, como todas.
+
+**No se engancha a cada ruta.** Cada cola dice qué tiene pendiente (`abiertas`) y cómo acabó lo que ya no (`comoAcabaron`), y el repaso (`sincronizar`) lo compara con sus tarjetas. Así una J aprobada desde la bitácora, desde /justificantes o desde Control cierra su tarjeta igual, y una ruta nueva no se puede olvidar de avisar. Se repasa:
+- **al cambiar algo en la cola**: los repos de J y −J avisan (`avisarCambios`), y el fichaje lo pide tras pedir, retirar o resolver (`pedir`). Si ya hay un repaso en marcha, se repite al acabar;
+- **cada día a las 05:00** (tarea programada `tablero.colas`, [[Tareas programadas]]), por si algo cambió por otro camino. **La primera vez es el paso «de una vez»**: lo que ya esperaba (en producción, el 16/11: 4 J, 2 −J, 6 correcciones y 8 tickets, 4 de vacaciones).
+
+Repasar dos veces no hace nada. Una cola nueva (las del chat, las de los ítems que vienen) es otro `colas.registrar(tipo, { etiqueta, abrir, abiertas, responsable, comoAcabaron })`.
 
 ## Los avisos
 
@@ -79,27 +111,36 @@ Cada cambio, ya fuera de la transacción:
 
 La notificación de una tarjeta sensible no lleva el título.
 
-## Cómo se usa desde un módulo (para la 1c y los ítems que vienen)
+## Cómo se usa desde un módulo (para los ítems que vienen)
+
+Una **cola** (lo que espera en una pantalla y se resuelve allí), como las J:
 
 ```js
-const tablero = require('../../services/tablero');
-tablero.registrarTipo('j', {
-  etiqueta: 'J por aprobar',
-  cierreManual: false,     // se cierra sola al aprobarla en su pantalla; la API rechaza el «Hecha» a mano
+const colas = require('../../services/tableroColas');
+colas.registrar('j', {
+  etiqueta: 'J por aprobar', abrir: 'Abrir la J',            // registra el tipo, con cierreManual: false
+  abiertas: async () => [{ origenId, titulo, enlace, creadaPor, reparto }],
+  responsable: it => colas.titularDe(`j_${it.reparto}`),     // o null: por asignar
+  comoAcabaron: async ids => new Map([[id, { autorId, nota: 'J aprobada' }]]),
 });
-// Nace, dentro de la transacción de quien la crea:
-await tablero.nacer(cli, { tipo: 'j', origenId: j.id, titulo: '…', enlace: '/justificantes?j=…' });
-// Y su origen la cierra:
-await tablero.cerrarPorOrigen(cli, { tipo: 'j', origenId: j.id, autorId, nota: 'Aprobada' });
+repoJ.avisarCambios(() => { colas.pedir('j'); });            // cada cambio, un repaso
 ```
 
-## Las tablas (db/251)
+Una tarjeta suelta, dentro de la transacción de quien la crea:
+
+```js
+await tablero.nacer(cli, { tipo, origenId, titulo, enlace, responsableId, plazoDias, creadaPor });
+await tablero.cerrarPorOrigen(cli, { tipo, origenId, autorId, nota: 'Aprobada' });
+```
+
+## Las tablas (db/251 y db/252)
 
 - `tarea`: la tarjeta, que se puede medir para el ítem 22 (fecha límite, cumplimiento, responsable por id, motivo de demora y enlace por id).
 - `tarea_colaborador`.
 - `tarea_comentario`: se anula, no se borra.
 - `tarea_evento`: su historia en palabras del tablero. Un disparador impide cambiarla o borrarla.
 - Las tres primeras, bajo el [[Libro de auditoria]].
+- db/252 da a William, Óscar y Laura las funciones de las J y las −J (por id y nombre: en otra base no le toca a nadie) y quita `tablero.tickets_desde_id`.
 
 ## La pantalla (`/tablero`, entrega 1b)
 
@@ -142,12 +183,17 @@ GET  /tablero/api/yo                               si aprueba, si reparte, si lo
 ## Ficheros
 
 ```
-db/251-tablero-de-tareas.sql               las tablas, las funciones de Ignacio, desde qué ticket
+db/251-tablero-de-tareas.sql               las tablas, las funciones de Ignacio
+db/252-tablero-colas.sql                   quién lleva las J y las −J (1c)
 services/tablero.js                        los tipos, quién ve y puede qué, el plazo, los avisos, las vencidas
+services/tableroColas.js                   las colas: el repaso, cuándo se pide y el diario (1c)
 services/repo/tablero.js                   el SQL
-modules/Ticketera/tarjetas.js              los tickets en el tablero, en los dos sentidos
+modules/Ticketera/tarjetas.js              los tickets en el tablero, en los dos sentidos, y las vacaciones
+modules/Control/tarjetas.js                las J y las −J (1c)
+modules/Fichaje/tarjetas.js                las correcciones de fichaje (1c)
 modules/Tablero/tablero.controller.js      /tablero (la pantalla) y /tablero/api
 modules/Tablero/vistas/tablero.ejs         la pantalla
 public/assets/js/vistas/Tablero/tablero.js las vistas, la ficha, los formularios
 test/tablero.test.js                       12 pruebas, una por decisión
+test/tablero-colas.test.js                 6 pruebas de las colas (1c)
 ```

@@ -336,11 +336,14 @@
 
   // ── La ficha (Panel) ────────────────────────────────────────────────────
   const HISTORIA = {
-    creada: e => (e.datos && e.datos.origen ? 'Nació de su origen' : `La pidió ${e.autor || 'alguien'}`),
+    creada: e => (e.datos && e.datos.origen
+      ? `Nació de su origen${e.datos.responsable ? `, a nombre de ${e.datos.responsable}` : ''}` : `La pidió ${e.autor || 'alguien'}`),
+    reabierta: e => `Volvió a estar pendiente en su origen: se reabrió${e.datos && e.datos.responsable ? ` a nombre de ${e.datos.responsable}` : ''}`,
     aprobada: e => (e.datos && e.datos.porQuienLaCrea ? 'Aprobada al crearla' : `${e.autor || 'Alguien'} la aprobó`),
     rechazada: e => `${e.autor || 'Alguien'} no la aprobó`,
     asignada: e => (e.datos && e.datos.porSuOrigen ? 'Se hizo cargo desde su bandeja' : `${e.autor || 'Alguien'} la asignó a ${e.datos.responsable || '—'}`),
-    reasignada: e => `${e.autor || 'Alguien'} la pasó de ${e.datos.de || '—'} a ${e.datos.a || '—'}`,
+    reasignada: e => (e.datos && e.datos.porSuOrigen ? `Cambió en su origen: pasó de ${e.datos.de || '—'} a ${e.datos.a || '—'}`
+      : `${e.autor || 'Alguien'} la pasó de ${e.datos.de || '—'} a ${e.datos.a || '—'}`),
     plazo: e => `${e.autor || 'Alguien'} cambió el plazo al ${dia(e.datos.venceEl)}`,
     estado: e => `${e.autor || 'Alguien'} la movió de «${(COLUMNAS.trabajo.find(c => c.id === e.datos.de) || {}).titulo || e.datos.de}» a «${(COLUMNAS.trabajo.find(c => c.id === e.datos.a) || {}).titulo || e.datos.a}»`,
     cerrada: e => (e.datos && e.datos.porSuOrigen ? 'Se cerró en su origen' : `${e.autor || 'Alguien'} la cerró${e.datos && e.datos.tarde ? ' (tarde)' : ''}`),
@@ -365,7 +368,9 @@
         ${fila('Plazo', t.plazo.venceEl ? `${esc(dia(t.plazo.venceEl))}${t.plazo.dias != null ? ` <span class="text-telecab-muted">(${t.plazo.dias} días hábiles)</span>` : ''}`
           : t.plazo.dias != null ? `${t.plazo.dias} días hábiles <span class="text-telecab-muted">desde que se apruebe</span>` : '<span class="text-telecab-muted">Sin plazo</span>')}
         ${fila(t.tipo === 'manual' ? 'La pidió' : 'Nació', `${t.creadaPor ? esc(t.creadaPor.nombre) + ' · ' : ''}${esc(fechaHora(t.creadaAt))}`)}
-        ${t.enlace ? fila('Origen', `<a class="text-telecab-gold hover:underline" href="${esc(t.enlace)}">${t.tipo === 'ticket' ? 'Abrir el ticket' : 'Abrir'} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>`) : ''}
+        ${t.enlace ? fila('Origen', `<a class="text-telecab-gold hover:underline" href="${esc(t.enlace)}">${esc(t.abrir || 'Abrir')} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>`
+          + (t.seCierraEnSuOrigen && !['cerrada', 'rechazada', 'anulada'].includes(t.estado)
+            ? '<span class="block text-xs text-telecab-muted mt-0.5">Se cierra sola al resolverla allí.</span>' : '')) : ''}
         ${t.bloqueoMotivo ? fila('La bloquea', `<span class="text-telecab-red">${esc(t.bloqueoMotivo)}</span>`) : ''}
         ${t.cierreNota ? fila(t.estado === 'cerrada' ? 'En qué quedó' : 'Motivo', esc(t.cierreNota)) : ''}
         ${t.motivoDemora ? fila('Por qué tarde', esc(t.motivoDemora)) : ''}
