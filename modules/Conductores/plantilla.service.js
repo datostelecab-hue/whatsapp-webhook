@@ -494,8 +494,9 @@ const aPropia = (id, datos, quien) => alta.convertirAPropia(Number(id), datos, q
 
 /** Las horas del contrato abierto (32, 40…). No abre periodo: es una novación. */
 const cambiarJornada = (id, datos, quien) => con.cambiarJornada(Number(id), datos, quien);
-// La fecha de alta de su contrato, solo a quien aún no ha trabajado (ver
-// con.cambiarAlta). Es dato de RRHH, como la ficha de alta: Tráfico no la toca.
+// La fecha de alta de su contrato: si ya ha trabajado, como mucho hasta su
+// primer día con horas (ver con.cambiarAlta). Es dato de RRHH, como la ficha de
+// alta: Tráfico no la toca.
 const cambiarAlta = (id, datos, quien = {}) => {
   if (quien.rol === 'trafico') throw new Error('La fecha de alta es cosa de RRHH');
   return con.cambiarAlta(Number(id), { alta: (datos || {}).alta }, quien);

@@ -291,7 +291,7 @@ router.post('/api/conductor/:id/foto', responde(async req =>
   plantilla.subirFoto(req.params.id, req.body || {}, await quien(req))));
 
 // La ficha de alta, OPCIONAL: se genera y queda en sus documentos.
-// La fecha de alta de su contrato abierto, a quien aún no ha trabajado.
+// La fecha de alta de su contrato abierto: como mucho hasta su primer día con horas.
 router.post('/api/conductor/:id/fecha-alta', responde(async req =>
   plantilla.cambiarAlta(req.params.id, req.body || {}, await quien(req))));
 
