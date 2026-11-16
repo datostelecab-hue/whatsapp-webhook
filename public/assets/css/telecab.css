@@ -1,59 +1,66 @@
 /* ============================================================
-   TELECAB — identidad visual: tokens globales + base + componentes
+   TELECAB V3 — identidad visual: tokens globales + base + componentes
    ============================================================
    La app entera se pinta desde aquí. Las vistas usan clases de Tailwind que
-   apuntan a estos tokens (bg-telecab-card, text-telecab-gold, …), así que
-   cambiar la identidad es cambiar este fichero: NINGUNA vista lleva colores
-   propios.
+   apuntan a estos tokens (bg-telecab-card, text-telecab-gold, …) y las piezas
+   globales `.tc-*`, así que cambiar la identidad es cambiar este fichero:
+   NINGUNA vista lleva colores propios.
 
    Los colores van como CANALES RGB ("r g b") para que Tailwind pueda aplicarles
    opacidad (bg-telecab-gold/15, border-telecab-red/40) vía rgb(var(--tc-*) /
    <alpha-value>).
 
-   LA IDEA VISUAL (27/09/2026, sustituye a la del 05/09): CORPORATIVA. Camilo:
-   «más moderna, elegante y un poco más minimalista, no quiero tanto emoji ni
-   colores combinados». Sale de los colores del logo —negro, oro y plata— y de
-   tres reglas:
-     1. UN SOLO ACENTO. El oro del logo marca lo que se puede pulsar o lo que
-        está elegido, y nada más. El resto es gris: grafito en oscuro, gris
-        claro en claro. Los colores de estado (rojo, verde, naranja) quedan
-        para lo que de verdad es un estado.
-     2. SUPERFICIES LISAS. Sin cristal, sin resplandor de fondo, sin grano, sin
-        degradados, sin sombras de color. Una tarjeta es una superficie con un
-        borde fino; lo que flota (menús, diálogos) lleva una sombra neutra.
-     3. LA TIPOGRAFÍA ORDENA. IBM Plex Sans: sobria, con cifras tabulares,
-        pensada para pantallas de gestión.
-   Las superficies son iguales en todos los temas; lo que cambia de un tema a
-   otro es el acento. Así cada uno conserva su color sin que la pantalla se
-   convierta en un arcoíris. */
+   LA IDEA VISUAL (V3, 16/11/2026; sustituye a la corporativa del 27/09). Camilo
+   trajo tres paneles de referencia y lo dijo así: «tal cual así quiero que se
+   vea el sistema… algo con más vida, los colores que hay ahora están muy
+   apagados». De ahí salen las reglas:
+     1. AZUL SOBRE AZUL MARINO. En oscuro, la página es azul noche y las
+        tarjetas un punto más claras; en claro, página gris muy claro y
+        tarjetas blancas. El acento es un azul vivo.
+     2. LOS ESTADOS, CON SU COLOR ENTERO. Verde, rojo, ámbar y violeta salen
+        saturados: una pastilla se tiene que ver de lejos.
+     3. FORMAS AMABLES. Esquinas de 12–16 px, pastillas redondas, el botón
+        principal con su sombra del color, el elegido del menú relleno.
+     4. LA TIPOGRAFÍA: Plus Jakarta Sans, con las cifras grandes en negrita.
+   Las superficies son iguales en todos los temas de una familia (oscuros o
+   claros); de un tema a otro cambia el acento.
 
-/* ===== OSCURO (grafito): el tema por defecto ===== */
+   EL NOMBRE DE LOS TOKENS NO CAMBIA: `--tc-gold` sigue siendo «el acento»
+   (hoy azul), porque lo usan cientos de clases en las vistas. Lo nuevo de la
+   V3: `--tc-boton` / `--tc-boton-hover` (el relleno de un botón principal: más
+   hondo que el acento, para que el texto blanco se lea) y `--tc-menu` (el
+   fondo del menú y de la barra de arriba). */
+
+/* ===== OSCURO (azul noche): el tema por defecto ===== */
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --tc-dark: 14 16 19;          /* el fondo de la página */
-  --tc-card: 22 24 28;          /* superficie: tarjetas, menú */
-  --tc-card2: 31 34 39;         /* superficie elevada / hover */
-  --tc-border: 44 48 55;        /* la línea fina */
-  --tc-campo: 14 16 19;         /* el interior de un campo: hundido, del color de la página */
-  --tc-gold: 227 178 60;        /* EL ACENTO: el oro del logo */
-  --tc-gold-soft: 238 202 118;
-  --tc-gold-deep: 192 146 34;
-  --tc-on-gold: 20 17 10;       /* el texto sobre el acento */
-  --tc-azul: 112 150 208;       /* informativo: azul acero, apagado */
-  --tc-red: 224 92 84;
-  --tc-red-hover: 198 72 66;
-  --tc-green: 76 178 130;
-  --tc-warn: 222 142 62;        /* naranja de aviso: distinto del acento a propósito */
-  --tc-violet: 146 132 204;     /* reincidencia / escalado */
-  --tc-text: 232 234 237;
-  --tc-muted: 142 148 158;
-  --tc-scroll: 52 56 64;
-  --tc-scroll-hover: 88 94 104;
-  --tc-sombra: 0 1px 2px rgb(0 0 0 / .35);
-  --tc-sombra-alta: 0 16px 40px -12px rgb(0 0 0 / .65), 0 2px 6px rgb(0 0 0 / .3);
-  /* Del diseño anterior, que tenía resplandor y cristal. Se quedan como
-     variables (alguna vista las lee) pero ya no pintan nada. */
+  --tc-dark: 8 12 24;           /* el fondo de la página */
+  --tc-card: 15 22 40;          /* superficie: tarjetas */
+  --tc-card2: 23 33 58;         /* superficie elevada / hover */
+  --tc-border: 36 48 78;        /* la línea fina */
+  --tc-campo: 10 15 30;         /* el interior de un campo: hundido */
+  --tc-menu: 11 16 31;          /* el menú lateral y la barra de arriba */
+  --tc-gold: 59 130 246;        /* EL ACENTO: azul vivo (texto, filos, tintes) */
+  --tc-gold-soft: 96 165 250;
+  --tc-gold-deep: 37 99 235;
+  --tc-on-gold: 255 255 255;    /* el texto sobre el acento */
+  --tc-boton: 37 99 235;        /* el relleno del botón principal */
+  --tc-boton-hover: 29 78 216;
+  --tc-azul: 56 189 248;        /* informativo: celeste, distinto del acento */
+  --tc-red: 239 68 68;
+  --tc-red-hover: 220 38 38;
+  --tc-green: 34 197 94;
+  --tc-warn: 245 158 11;        /* ámbar de aviso */
+  --tc-violet: 167 139 250;     /* reincidencia / escalado */
+  --tc-text: 233 238 248;
+  --tc-muted: 139 150 174;
+  --tc-scroll: 40 52 84;
+  --tc-scroll-hover: 66 82 124;
+  --tc-sombra: 0 1px 2px rgb(0 0 0 / .4);
+  --tc-sombra-alta: 0 20px 48px -12px rgb(0 0 0 / .7), 0 2px 8px rgb(0 0 0 / .35);
+  /* De diseños anteriores (resplandor y cristal). Se quedan como variables
+     (alguna vista las lee) pero ya no pintan nada. */
   --tc-halo1: 0 0 0; --tc-halo1-a: 0;
   --tc-halo2: 0 0 0; --tc-halo2-a: 0;
   --tc-halo3: 0 0 0; --tc-halo3-a: 0;
@@ -61,18 +68,45 @@
   --tc-brillo: 255 255 255;
 }
 
-/* ===== Temas oscuros con otro acento: las MISMAS superficies, otro acento ===== */
-:root[data-theme='azul']    { --tc-gold: 104 152 228; --tc-gold-soft: 148 184 238; --tc-gold-deep: 70 118 200; --tc-azul: 150 160 176; }
-:root[data-theme='verde']   { --tc-gold: 76 186 138;  --tc-gold-soft: 124 212 174; --tc-gold-deep: 46 150 106; --tc-green: 120 196 150; }
-:root[data-theme='purpura'] { --tc-gold: 152 134 226; --tc-gold-soft: 186 172 240; --tc-gold-deep: 118 98 200; }
-:root[data-theme='rosa']    { --tc-gold: 222 116 162; --tc-gold-soft: 238 162 196; --tc-gold-deep: 190 76 128; }
-:root[data-theme='cian']    { --tc-gold: 64 188 184;  --tc-gold-soft: 122 214 210; --tc-gold-deep: 34 150 146; --tc-azul: 150 160 176; }
-:root[data-theme='naranja'] { --tc-gold: 228 136 62;  --tc-gold-soft: 240 176 118; --tc-gold-deep: 194 102 32; --tc-warn: 220 170 60; }
+/* ===== Temas oscuros con otro acento: las MISMAS superficies, otro acento =====
+   Cada uno: el acento (texto y tintes), su versión suave y honda, y el relleno
+   del botón (más hondo, para el texto blanco). Colores enteros, no apagados
+   (Camilo, 16/11/2026). */
+:root[data-theme='azul'] {      /* celeste */
+  --tc-gold: 56 189 248; --tc-gold-soft: 125 211 252; --tc-gold-deep: 14 165 233;
+  --tc-boton: 2 132 199; --tc-boton-hover: 3 105 161; --tc-azul: 129 140 248;
+}
+:root[data-theme='verde'] {
+  --tc-gold: 52 211 153; --tc-gold-soft: 110 231 183; --tc-gold-deep: 16 185 129;
+  --tc-boton: 4 120 87; --tc-boton-hover: 6 95 70; --tc-green: 163 230 53;
+}
+:root[data-theme='purpura'] {
+  --tc-gold: 167 139 250; --tc-gold-soft: 196 181 253; --tc-gold-deep: 139 92 246;
+  --tc-boton: 124 58 237; --tc-boton-hover: 109 40 217; --tc-violet: 232 121 249;
+}
+:root[data-theme='rosa'] {
+  --tc-gold: 244 114 182; --tc-gold-soft: 249 168 212; --tc-gold-deep: 236 72 153;
+  --tc-boton: 219 39 119; --tc-boton-hover: 190 24 93;
+}
+:root[data-theme='cian'] {
+  --tc-gold: 34 211 238; --tc-gold-soft: 103 232 249; --tc-gold-deep: 6 182 212;
+  --tc-boton: 14 116 144; --tc-boton-hover: 21 94 117; --tc-azul: 129 140 248;
+}
+:root[data-theme='naranja'] {
+  --tc-gold: 251 146 60; --tc-gold-soft: 253 186 116; --tc-gold-deep: 249 115 22;
+  --tc-boton: 194 65 12; --tc-boton-hover: 154 52 18; --tc-warn: 250 204 21;
+}
+/* El oro del logo, para quien lo quiera de vuelta: fue el acento hasta la V3. */
+:root[data-theme='oro'] {
+  --tc-gold: 245 190 60; --tc-gold-soft: 250 212 116; --tc-gold-deep: 217 160 30;
+  --tc-boton: 245 190 60; --tc-boton-hover: 217 160 30; --tc-on-gold: 26 20 6; --tc-warn: 251 146 60;
+}
 :root[data-theme='contraste'] {
   color-scheme: dark;
-  --tc-dark: 0 0 0; --tc-card: 12 12 12; --tc-card2: 28 28 28; --tc-border: 110 110 110; --tc-campo: 0 0 0;
+  --tc-dark: 0 0 0; --tc-card: 12 12 12; --tc-card2: 28 28 28; --tc-border: 110 110 110; --tc-campo: 0 0 0; --tc-menu: 0 0 0;
   --tc-text: 255 255 255; --tc-muted: 210 210 210;
   --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0; --tc-on-gold: 0 0 0;
+  --tc-boton: 255 214 10; --tc-boton-hover: 224 179 0;
   --tc-azul: 120 180 255; --tc-green: 74 222 128; --tc-red: 248 113 113;
 }
 
@@ -80,133 +114,170 @@
 :root[data-theme='light'],
 :root[data-theme^='claro-'] {
   color-scheme: light;
-  --tc-dark: 244 245 247;       /* la página: gris muy claro */
+  --tc-dark: 243 245 249;       /* la página: gris muy claro */
   --tc-card: 255 255 255;
-  --tc-card2: 241 243 245;
-  --tc-border: 222 226 231;
+  --tc-card2: 241 244 249;
+  --tc-border: 226 231 240;
   --tc-campo: 255 255 255;
-  --tc-gold: 150 106 0;         /* oro oscurecido: legible como texto sobre blanco (4,8:1) */
-  --tc-gold-soft: 196 145 20;
-  --tc-gold-deep: 120 84 0;
+  --tc-menu: 255 255 255;
+  --tc-gold: 37 99 235;         /* azul vivo, legible como texto sobre blanco (5,2:1) */
+  --tc-gold-soft: 59 130 246;
+  --tc-gold-deep: 29 78 216;
   --tc-on-gold: 255 255 255;
-  --tc-azul: 44 98 170;
-  --tc-red: 196 50 46;
-  --tc-red-hover: 170 40 38;
-  --tc-green: 22 122 82;
-  --tc-warn: 176 90 10;
-  --tc-violet: 104 76 190;
-  --tc-text: 24 28 34;
-  --tc-muted: 98 106 118;
-  --tc-scroll: 206 211 218;
-  --tc-scroll-hover: 160 166 175;
-  --tc-sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .06);
-  --tc-sombra-alta: 0 16px 40px -12px rgb(16 24 40 / .22), 0 2px 6px rgb(16 24 40 / .08);
+  --tc-boton: 37 99 235;
+  --tc-boton-hover: 29 78 216;
+  --tc-azul: 2 132 199;
+  --tc-red: 220 38 38;
+  --tc-red-hover: 185 28 28;
+  --tc-green: 4 135 95;
+  --tc-warn: 194 89 6;
+  --tc-violet: 124 58 237;
+  --tc-text: 16 24 40;
+  --tc-muted: 99 110 132;
+  --tc-scroll: 203 210 224;
+  --tc-scroll-hover: 152 162 182;
+  --tc-sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .07);
+  --tc-sombra-alta: 0 20px 48px -12px rgb(16 24 40 / .18), 0 4px 10px rgb(16 24 40 / .06);
 }
-:root[data-theme='claro-azul']    { --tc-gold: 29 78 170;  --tc-gold-soft: 64 112 200; --tc-gold-deep: 20 60 140; --tc-azul: 90 100 115; }
-:root[data-theme='claro-verde']   { --tc-gold: 20 110 70;  --tc-gold-soft: 44 140 96;  --tc-gold-deep: 12 86 54; }
-:root[data-theme='claro-rosa']    { --tc-gold: 170 30 90;  --tc-gold-soft: 200 72 130; --tc-gold-deep: 140 20 72; }
-:root[data-theme='claro-purpura'] { --tc-gold: 100 60 190; --tc-gold-soft: 132 96 216; --tc-gold-deep: 80 44 160; }
-:root[data-theme='claro-naranja'] { --tc-gold: 176 70 12;  --tc-gold-soft: 210 106 46; --tc-gold-deep: 144 54 8; }
+:root[data-theme='claro-azul'] {    /* celeste */
+  --tc-gold: 3 105 161; --tc-gold-soft: 2 132 199; --tc-gold-deep: 7 89 133;
+  --tc-boton: 3 105 161; --tc-boton-hover: 7 89 133; --tc-azul: 79 70 229;
+}
+:root[data-theme='claro-verde'] {
+  --tc-gold: 4 120 87; --tc-gold-soft: 5 150 105; --tc-gold-deep: 6 95 70;
+  --tc-boton: 4 120 87; --tc-boton-hover: 6 95 70; --tc-green: 77 124 15;
+}
+:root[data-theme='claro-rosa'] {
+  --tc-gold: 190 24 93; --tc-gold-soft: 219 39 119; --tc-gold-deep: 157 23 77;
+  --tc-boton: 219 39 119; --tc-boton-hover: 190 24 93;
+}
+:root[data-theme='claro-purpura'] {
+  --tc-gold: 109 40 217; --tc-gold-soft: 124 58 237; --tc-gold-deep: 91 33 182;
+  --tc-boton: 124 58 237; --tc-boton-hover: 109 40 217; --tc-violet: 192 38 211;
+}
+:root[data-theme='claro-naranja'] {
+  --tc-gold: 194 65 12; --tc-gold-soft: 234 88 12; --tc-gold-deep: 154 52 18;
+  --tc-boton: 194 65 12; --tc-boton-hover: 154 52 18; --tc-warn: 161 98 7;
+}
 
 /* ============================================================
    BASE
    ============================================================ */
 html { font-size: 15px; }
 body {
-  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-h1, h2, h3 { letter-spacing: -0.01em; text-wrap: balance; }
+h1, h2, h3 { letter-spacing: -0.02em; text-wrap: balance; }
 .tabular-nums, body table { font-variant-numeric: tabular-nums; }
+::selection { background: rgb(var(--tc-gold) / .35); }
 
-/* EL FONDO: liso. El resplandor y el grano del diseño anterior se apagan aquí
-   (las pseudocapas se quedan sin contenido) para no tener que tocar el body de
-   ninguna vista. */
+/* EL FONDO: liso. Las pseudocapas de diseños anteriores se quedan sin
+   contenido para no tener que tocar el body de ninguna vista. */
 .app-bg { background: rgb(var(--tc-dark)); }
 .app-bg::before, .app-bg::after { content: none; }
 
 /* El foco del teclado se VE siempre, en el color del acento. */
 body a:focus-visible, body button:focus-visible, body [tabindex]:focus-visible, body summary:focus-visible {
-  outline: 2px solid rgb(var(--tc-gold) / .7);
+  outline: 2px solid rgb(var(--tc-gold) / .8);
   outline-offset: 2px;
 }
+body input[type='checkbox'], body input[type='radio'] { accent-color: rgb(var(--tc-boton)); }
 
 /* ============================================================
    SUPERFICIES — todas las tarjetas de la app, de golpe
    ============================================================
-   Tailwind (CDN) pinta sus utilidades DESPUÉS de esta hoja, así que para ganarle
-   hay que subir la especificidad: por eso "body .clase". Se toca el aspecto de
-   la superficie, no su geometría, y las vistas no se enteran. */
+   Se sube la especificidad con "body .clase" para ganar a las utilidades de
+   Tailwind donde hace falta. Se toca el aspecto de la superficie, no su
+   geometría, y las vistas no se enteran. Las esquinas son las de Tailwind
+   (rounded-xl 12 px, rounded-2xl 16 px): la V3 ya no las encoge. */
 body .bg-telecab-card { background-color: rgb(var(--tc-card)); box-shadow: var(--tc-sombra); }
 body .bg-telecab-card2 { background-color: rgb(var(--tc-card2)); }
 body .border-telecab-border { border-color: rgb(var(--tc-border)); }
-/* Esquinas más contenidas: redondeadas, no blandas. */
-body .rounded-2xl { border-radius: .75rem; }
-body .rounded-xl  { border-radius: .5rem; }
 body .shadow-soft { box-shadow: var(--tc-sombra-alta); }
 body .shadow-lg, body .shadow-xl { box-shadow: var(--tc-sombra-alta); }
-/* Sin cristal: el desenfoque de fondo cuesta en cada fotograma y es justo el
-   efecto que se quita. Los velos de los diálogos se quedan oscuros y quietos. */
+/* Sin cristal: el desenfoque de fondo cuesta en cada fotograma. Los velos de
+   los diálogos se quedan oscuros y quietos. */
 body .backdrop-blur-sm, body .backdrop-blur, body .backdrop-blur-md,
 body .backdrop-blur-lg, body .backdrop-blur-xl {
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 
-/* El menú y la barra superior: lisos, separados por una línea. */
+/* El menú y la barra superior: una misma superficie, separada por una línea. */
 #menu-panel {
-  background-color: rgb(var(--tc-card)) !important;
+  background-color: rgb(var(--tc-menu)) !important;
   border-right-color: rgb(var(--tc-border)) !important;
 }
 body > div > div > header.sticky {
-  background-color: rgb(var(--tc-dark)) !important;
+  background-color: rgb(var(--tc-menu)) !important;
   border-bottom-color: rgb(var(--tc-border)) !important;
 }
 
 /* ============================================================
    MENÚ LATERAL
    ============================================================ */
-#menu-panel nav a, #menu-panel nav .grupo-btn { border-radius: .5rem; }
-#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover { background-color: rgb(var(--tc-text) / .05) !important; }
-/* El ítem activo: fondo apenas teñido, texto normal, icono y una raya a la
-   izquierda en el acento. Se lee sin gritar. */
-#menu .nav-item.activo {
-  background-color: rgb(var(--tc-gold) / .12) !important;
+#menu-panel nav a, #menu-panel nav .grupo-btn, #menu-panel > div:last-child a { border-radius: .7rem; }
+#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover, #menu-panel > div:last-child a:hover {
+  background-color: rgb(var(--tc-gold) / .09) !important;
   color: rgb(var(--tc-text)) !important;
-  box-shadow: inset 2px 0 0 rgb(var(--tc-gold));
+}
+/* EL ELEGIDO. En oscuro va RELLENO del color del botón, con el texto y el
+   icono en blanco y una sombra de su color: se ve de un vistazo dónde se
+   está. En claro, teñido y con el texto en el acento. */
+#menu .nav-item.activo, #menu .nav-item.activo:hover {
+  background-color: rgb(var(--tc-boton)) !important;
+  color: rgb(var(--tc-on-gold)) !important;
+  box-shadow: 0 8px 18px -8px rgb(var(--tc-boton) / .7);
   font-weight: 600;
 }
-#menu .nav-item.activo i { color: rgb(var(--tc-gold)) !important; }
+#menu .nav-item.activo i { color: rgb(var(--tc-on-gold)) !important; }
+:root[data-theme='light'] #menu .nav-item.activo, :root[data-theme^='claro-'] #menu .nav-item.activo,
+:root[data-theme='light'] #menu .nav-item.activo:hover, :root[data-theme^='claro-'] #menu .nav-item.activo:hover {
+  background-color: rgb(var(--tc-gold) / .1) !important;
+  color: rgb(var(--tc-gold)) !important;
+  box-shadow: none;
+}
+:root[data-theme='light'] #menu .nav-item.activo i, :root[data-theme^='claro-'] #menu .nav-item.activo i { color: rgb(var(--tc-gold)) !important; }
 #menu-panel .grupo-items { border-left-color: rgb(var(--tc-border)) !important; }
 #menu-panel > a:first-child { border-bottom-color: rgb(var(--tc-border)) !important; }
 #menu-panel > div:last-child { border-top-color: rgb(var(--tc-border)) !important; }
 
+/* El avatar de quien tiene la sesión (la barra de arriba): sus iniciales. */
+.tc-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 2.25rem; height: 2.25rem; border-radius: 9999px;
+  font-size: .75rem; font-weight: 700; letter-spacing: .02em;
+  color: rgb(var(--tc-on-gold));
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-boton)));
+}
+
 /* ============================================================
    BOTONES, CAMPOS, PASTILLAS
    ============================================================ */
-/* Botón principal: el acento, liso. Al pasar el ratón, un punto más hondo. */
+/* Botón principal: el relleno del acento, con su sombra del color. */
 body button.bg-telecab-gold, body a.bg-telecab-gold, body .btn-primario {
-  background: rgb(var(--tc-gold));
+  background: rgb(var(--tc-boton));
   color: rgb(var(--tc-on-gold)) !important;
-  box-shadow: none;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18), 0 8px 18px -8px rgb(var(--tc-boton) / .65);
   border: 0;
-  transition: background-color .15s ease;
+  transition: background-color .15s ease, box-shadow .15s ease;
 }
-body button.bg-telecab-gold:hover:not(:disabled), body a.bg-telecab-gold:hover, body .btn-primario:hover { background: rgb(var(--tc-gold-deep)); }
+body button.bg-telecab-gold:hover:not(:disabled), body a.bg-telecab-gold:hover, body .btn-primario:hover { background: rgb(var(--tc-boton-hover)); }
 /* Botones secundarios: los que llevan borde y fondo de tarjeta. */
 body button.border.bg-telecab-card, body a.border.bg-telecab-card, body button.border-telecab-border.bg-telecab-card {
   background-color: rgb(var(--tc-card));
   border-color: rgb(var(--tc-border));
-  box-shadow: none;
+  box-shadow: var(--tc-sombra);
   transition: background-color .15s ease, border-color .15s ease;
 }
 body button.border.bg-telecab-card:hover, body a.border.bg-telecab-card:hover {
   background-color: rgb(var(--tc-card2));
-  border-color: rgb(var(--tc-muted) / .45);
+  border-color: rgb(var(--tc-gold) / .45);
 }
-body button:active:not(:disabled) { transform: scale(.99); }
+body button:active:not(:disabled) { transform: scale(.985); }
 
-/* Campos: del color de la página por dentro, borde fino, el acento al enfocar. */
+/* Campos: hundidos, borde fino, el acento al enfocar. */
 body input.bg-telecab-dark, body select.bg-telecab-dark, body textarea.bg-telecab-dark, .inp {
   background-color: rgb(var(--tc-campo)) !important;
   border-color: rgb(var(--tc-border)) !important;
@@ -215,8 +286,8 @@ body input.bg-telecab-dark, body select.bg-telecab-dark, body textarea.bg-teleca
 }
 body input.bg-telecab-dark:focus, body select.bg-telecab-dark:focus, body textarea.bg-telecab-dark:focus, .inp:focus {
   outline: none;
-  border-color: rgb(var(--tc-gold) / .75) !important;
-  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16);
+  border-color: rgb(var(--tc-gold) / .85) !important;
+  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .2);
 }
 
 /* ── LOS DESPLEGABLES ──────────────────────────────────────────────────────
@@ -280,16 +351,18 @@ body select optgroup {
 
 ::placeholder { color: rgb(var(--tc-muted) / .8); }
 
-/* Las pastillas de estado (chips): un poco más redondas y con su filo. */
-body span.rounded-md.text-xs.font-medium { border-radius: .55rem; padding-top: .2rem; padding-bottom: .2rem; }
+/* Las pastillas de estado (chips): redondas del todo, como las .tc-pastilla. */
+body span.rounded-md.text-xs.font-medium { border-radius: 9999px; padding: .2rem .6rem; }
 
 /* ============================================================
    TABLAS
-   ============================================================ */
+   ============================================================
+   La cabecera va sobre una banda (si la vista no le pone fondo propio) y la
+   fila se tiñe del acento al pasar por encima. */
 body thead tr { border-bottom-color: rgb(var(--tc-border)) !important; }
-body thead th { font-weight: 600; letter-spacing: .04em; color: rgb(var(--tc-muted)); }
+body thead th { font-weight: 600; letter-spacing: .03em; color: rgb(var(--tc-muted)); background-color: rgb(var(--tc-card2) / .55); }
 body tbody tr { transition: background-color .12s ease; }
-body tbody tr:hover { background-color: rgb(var(--tc-text) / .035); }
+body tbody tr:hover { background-color: rgb(var(--tc-gold) / .06); }
 body tbody tr.border-b { border-bottom-color: rgb(var(--tc-border) / .7) !important; }
 
 /* ============================================================
@@ -346,7 +419,7 @@ body tbody tr.border-b { border-bottom-color: rgb(var(--tc-border) / .7) !import
 @keyframes tc-carril { to { stroke-dashoffset: -8; } }
 
 /* El telón de carga: casi opaco y quieto, con la marca en el centro. */
-#cargando-overlay { background-color: rgb(var(--tc-dark) / .95); }
+#cargando-overlay { background-color: rgb(var(--tc-dark) / .96); }
 #cargando-overlay .tc-carga-texto { color: rgb(var(--tc-muted)); letter-spacing: .08em; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -513,7 +586,7 @@ body .tc-ojo .tc-ojo-ver     { opacity: 1; transform: none; }
 body .tc-ojo .tc-ojo-tapar   { opacity: 0; transform: scale(.5) rotate(-25deg); }
 body .tc-ojo[aria-pressed="true"] .tc-ojo-ver   { opacity: 0; transform: scale(.5) rotate(25deg); }
 body .tc-ojo[aria-pressed="true"] .tc-ojo-tapar { opacity: 1; transform: none; }
-/* Cerrado se queda dorado: es un aviso de que hay algo tapado, no un botón más. */
+/* Cerrado se queda del acento: es un aviso de que hay algo tapado, no un botón más. */
 body .tc-ojo[aria-pressed="true"] {
   color: rgb(var(--tc-gold));
   border-color: rgb(var(--tc-gold) / .4);
@@ -617,11 +690,11 @@ body .tc-selector button:focus-visible {
   outline: 2px solid rgb(var(--tc-gold) / .7);
   outline-offset: 2px;
 }
-/* La elegida en oro sólido: es la única del grupo, así que tiene que leerse
+/* La elegida, rellena del acento: es la única del grupo, así que tiene que leerse
    sin comparar con las de al lado. */
 body .tc-selector button[aria-pressed="true"] {
-  background: rgb(var(--tc-gold));
-  border-color: rgb(var(--tc-gold));
+  background: rgb(var(--tc-boton));
+  border-color: rgb(var(--tc-boton));
   color: rgb(var(--tc-on-gold));
 }
 @media (prefers-reduced-motion: reduce) {
@@ -639,11 +712,11 @@ body .tc-selector.tc-selector-compacto button {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   PIEZAS GLOBALES DEL TABLERO (ítem 1, 16/11/2026) — y de lo que venga
+   PIEZAS GLOBALES (.tc-*) — lo nuevo se hace con ellas
    ══════════════════════════════════════════════════════════════
-   Todo con los tokens: el rediseño (Telecab V3) se hará cambiando esto, no
-   pantalla por pantalla. Las pantallas nuevas usan estas clases y no repiten
-   cadenas largas de Tailwind. */
+   Todo con los tokens: cambiar la identidad es cambiar esto, no pantalla por
+   pantalla. Las pantallas nuevas usan estas clases y no repiten cadenas
+   largas de Tailwind. (Nacieron con el tablero, ítem 1; la V3 las viste.) */
 
 /* ── La pantalla: su margen y su ancho (lo que cada vista ponía con p-4 lg:p-6) ── */
 .tc-pantalla { padding: 1rem; margin-inline: auto; max-width: 1600px; }
@@ -651,88 +724,126 @@ body .tc-selector.tc-selector-compacto button {
 
 /* ── Botones ── */
 .tc-boton {
-  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
-  min-height: 2.25rem; padding: 0 .9rem; border-radius: .75rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+  min-height: 2.375rem; padding: 0 1rem; border-radius: .7rem;
   font-size: .8125rem; font-weight: 600; line-height: 1; white-space: nowrap;
-  background: rgb(var(--tc-card2)); color: rgb(var(--tc-text));
-  border: 1px solid rgb(var(--tc-border));
-  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  background: rgb(var(--tc-card)); color: rgb(var(--tc-text));
+  border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
 }
-.tc-boton:hover { border-color: rgb(var(--tc-gold) / .55); }
-.tc-boton:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .6); outline-offset: 2px; }
+.tc-boton:hover { background: rgb(var(--tc-card2)); border-color: rgb(var(--tc-gold) / .5); }
+.tc-boton:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
 .tc-boton:disabled { opacity: .5; cursor: not-allowed; }
-.tc-boton--principal { background: rgb(var(--tc-gold)); color: rgb(var(--tc-on-gold)); border-color: rgb(var(--tc-gold)); }
-.tc-boton--principal:hover { background: rgb(var(--tc-gold-deep)); border-color: rgb(var(--tc-gold-deep)); }
-.tc-boton--peligro { color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .4); background: rgb(var(--tc-red) / .08); }
-.tc-boton--peligro:hover { border-color: rgb(var(--tc-red)); }
-.tc-boton--chico { min-height: 1.875rem; padding: 0 .65rem; font-size: .75rem; border-radius: .6rem; }
-
-/* ── Pestañas (pestanas.js) ── */
-.tc-pestanas { display: flex; flex-wrap: wrap; gap: .4rem; }
-.tc-pestana {
-  display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border-radius: .75rem;
-  font-size: .875rem; font-weight: 600; color: rgb(var(--tc-muted));
-  border: 1px solid transparent; transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+.tc-boton--principal {
+  background: rgb(var(--tc-boton)); color: rgb(var(--tc-on-gold)); border-color: rgb(var(--tc-boton));
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18), 0 8px 18px -8px rgb(var(--tc-boton) / .65);
 }
-.tc-pestana:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-card2)); }
-.tc-pestana:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .6); outline-offset: 2px; }
-.tc-pestana[aria-selected="true"] { color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .1); border-color: rgb(var(--tc-gold) / .35); }
+.tc-boton--principal:hover { background: rgb(var(--tc-boton-hover)); border-color: rgb(var(--tc-boton-hover)); }
+.tc-boton--peligro { color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .4); background: rgb(var(--tc-red) / .1); box-shadow: none; }
+.tc-boton--peligro:hover { border-color: rgb(var(--tc-red)); background: rgb(var(--tc-red) / .16); }
+.tc-boton--chico { min-height: 1.875rem; padding: 0 .7rem; font-size: .75rem; border-radius: .55rem; }
 
-/* ── Pastilla (estado, tipo) ── */
+/* ── Pestañas (pestanas.js): subrayadas, la elegida en el acento ── */
+.tc-pestanas { display: flex; flex-wrap: wrap; gap: 0 1.5rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-pestana {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .7rem .15rem; margin-bottom: -1px;
+  font-size: .875rem; font-weight: 600; color: rgb(var(--tc-muted));
+  border-bottom: 2px solid transparent; transition: color .15s ease, border-color .15s ease;
+}
+.tc-pestana:hover { color: rgb(var(--tc-text)); border-bottom-color: rgb(var(--tc-muted) / .4); }
+.tc-pestana:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; border-radius: .35rem; }
+.tc-pestana[aria-selected="true"] { color: rgb(var(--tc-gold)); border-bottom-color: rgb(var(--tc-gold)); }
+
+/* ── Pastilla (estado, tipo): redonda y con el color entero ── */
 .tc-pastilla {
   display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap;
-  padding: .125rem .5rem; border-radius: .5rem; font-size: .6875rem; font-weight: 600;
-  background: rgb(var(--tc-muted) / .14); color: rgb(var(--tc-muted)); border: 1px solid rgb(var(--tc-muted) / .25);
+  padding: .15rem .6rem; border-radius: 9999px; font-size: .6875rem; font-weight: 600;
+  background: rgb(var(--tc-muted) / .16); color: rgb(var(--tc-muted)); border: 1px solid rgb(var(--tc-muted) / .22);
 }
-.tc-pastilla--oro { background: rgb(var(--tc-gold) / .14); color: rgb(var(--tc-gold)); border-color: rgb(var(--tc-gold) / .3); }
-.tc-pastilla--azul { background: rgb(var(--tc-azul) / .14); color: rgb(var(--tc-azul)); border-color: rgb(var(--tc-azul) / .3); }
-.tc-pastilla--verde { background: rgb(var(--tc-green) / .14); color: rgb(var(--tc-green)); border-color: rgb(var(--tc-green) / .3); }
-.tc-pastilla--aviso { background: rgb(var(--tc-warn) / .14); color: rgb(var(--tc-warn)); border-color: rgb(var(--tc-warn) / .3); }
-.tc-pastilla--rojo { background: rgb(var(--tc-red) / .14); color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .3); }
+.tc-pastilla--oro { background: rgb(var(--tc-gold) / .16); color: rgb(var(--tc-gold)); border-color: rgb(var(--tc-gold) / .3); }
+.tc-pastilla--azul { background: rgb(var(--tc-azul) / .16); color: rgb(var(--tc-azul)); border-color: rgb(var(--tc-azul) / .3); }
+.tc-pastilla--verde { background: rgb(var(--tc-green) / .16); color: rgb(var(--tc-green)); border-color: rgb(var(--tc-green) / .3); }
+.tc-pastilla--aviso { background: rgb(var(--tc-warn) / .16); color: rgb(var(--tc-warn)); border-color: rgb(var(--tc-warn) / .3); }
+.tc-pastilla--rojo { background: rgb(var(--tc-red) / .16); color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .3); }
 
 /* ── El semáforo de un plazo: verde, amarillo el último día, rojo vencido ── */
 .tc-semaforo { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-.tc-semaforo::before { content: ''; width: .5rem; height: .5rem; border-radius: 9999px; background: currentColor; }
+.tc-semaforo::before { content: ''; width: .5rem; height: .5rem; border-radius: 9999px; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
 .tc-semaforo--verde { color: rgb(var(--tc-green)); }
 .tc-semaforo--amarillo { color: rgb(var(--tc-warn)); }
 .tc-semaforo--rojo { color: rgb(var(--tc-red)); }
 
+/* ── La tarjeta de una cifra (los KPI del Listado y de donde haga falta) ── */
+.tc-kpi {
+  position: relative; display: flex; flex-direction: column; gap: .15rem; padding: 1rem 1.1rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem; box-shadow: var(--tc-sombra);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.tc-kpi--pulsable { cursor: pointer; }
+.tc-kpi--pulsable:hover { border-color: rgb(var(--tc-gold) / .5); box-shadow: var(--tc-sombra-alta); }
+.tc-kpi-etiqueta { font-size: .78rem; font-weight: 500; color: rgb(var(--tc-muted)); }
+.tc-kpi--con-icono .tc-kpi-etiqueta { padding-right: 2.6rem; }
+.tc-kpi-valor { font-size: 1.75rem; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: rgb(var(--tc-text)); }
+.tc-kpi-pie { font-size: .75rem; color: rgb(var(--tc-muted)); }
+/* El icono, arriba a la derecha, sobre un cuadro teñido del tono de la cifra. */
+.tc-kpi-icono {
+  position: absolute; top: .9rem; right: .9rem; width: 2.1rem; height: 2.1rem; border-radius: .65rem;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .9rem;
+  background: rgb(var(--tc-gold) / .14); color: rgb(var(--tc-gold));
+}
+.tc-kpi[data-tono='green'] .tc-kpi-valor { color: rgb(var(--tc-green)); }
+.tc-kpi[data-tono='red'] .tc-kpi-valor { color: rgb(var(--tc-red)); }
+.tc-kpi[data-tono='warn'] .tc-kpi-valor { color: rgb(var(--tc-warn)); }
+.tc-kpi[data-tono='azul'] .tc-kpi-valor { color: rgb(var(--tc-azul)); }
+.tc-kpi[data-tono='violet'] .tc-kpi-valor { color: rgb(var(--tc-violet)); }
+.tc-kpi[data-tono='gold'] .tc-kpi-valor { color: rgb(var(--tc-gold)); }
+.tc-kpi[data-tono='muted'] .tc-kpi-valor { color: rgb(var(--tc-muted)); }
+.tc-kpi[data-tono='green'] .tc-kpi-icono { background: rgb(var(--tc-green) / .14); color: rgb(var(--tc-green)); }
+.tc-kpi[data-tono='red'] .tc-kpi-icono { background: rgb(var(--tc-red) / .14); color: rgb(var(--tc-red)); }
+.tc-kpi[data-tono='warn'] .tc-kpi-icono { background: rgb(var(--tc-warn) / .14); color: rgb(var(--tc-warn)); }
+.tc-kpi[data-tono='azul'] .tc-kpi-icono { background: rgb(var(--tc-azul) / .14); color: rgb(var(--tc-azul)); }
+.tc-kpi[data-tono='violet'] .tc-kpi-icono { background: rgb(var(--tc-violet) / .14); color: rgb(var(--tc-violet)); }
+
 /* ── Kanban (kanban.js): columnas que se desplazan de lado en pantalla estrecha ── */
-.tc-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(16rem, 1fr); gap: .75rem; overflow-x: auto; padding-bottom: .25rem; }
+.tc-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(16rem, 1fr); gap: .85rem; overflow-x: auto; padding-bottom: .25rem; }
 .tc-kanban-columna {
   display: flex; flex-direction: column; min-height: 12rem; max-height: calc(100vh - 15rem);
-  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem; box-shadow: var(--tc-sombra);
+  background: rgb(var(--tc-card2) / .5); border: 1px solid rgb(var(--tc-border) / .7); border-radius: 1rem;
 }
-.tc-kanban-cabeza { display: flex; align-items: center; gap: .5rem; padding: .7rem .85rem; border-bottom: 1px solid rgb(var(--tc-border)); }
-.tc-kanban-titulo { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: rgb(var(--tc-muted)); flex: 1; }
-.tc-kanban-cuenta { font-size: .75rem; font-weight: 700; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
-.tc-kanban-lista { flex: 1; min-height: 0; overflow-y: auto; padding: .6rem; display: flex; flex-direction: column; gap: .5rem; }
+.tc-kanban-cabeza { display: flex; align-items: center; gap: .5rem; padding: .8rem .9rem .5rem; }
+.tc-kanban-titulo { font-size: .8125rem; font-weight: 700; color: rgb(var(--tc-text)); flex: 1; }
+.tc-kanban-cuenta {
+  min-width: 1.5rem; height: 1.5rem; padding: 0 .4rem; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .6875rem; font-weight: 700; color: rgb(var(--tc-muted)); background: rgb(var(--tc-muted) / .16); font-variant-numeric: tabular-nums;
+}
+.tc-kanban-lista { flex: 1; min-height: 0; overflow-y: auto; padding: .35rem .6rem .6rem; display: flex; flex-direction: column; gap: .55rem; }
 .tc-kanban-vacia { font-size: .75rem; color: rgb(var(--tc-muted)); text-align: center; padding: 1.25rem .5rem; }
-.tc-kanban-columna[data-soltar="si"] { border-color: rgb(var(--tc-gold) / .7); background: rgb(var(--tc-gold) / .05); }
-.tc-kanban-columna[data-soltar="no"] { opacity: .55; }
+.tc-kanban-columna[data-soltar="si"] { border-color: rgb(var(--tc-gold) / .8); background: rgb(var(--tc-gold) / .08); }
+.tc-kanban-columna[data-soltar="no"] { opacity: .5; }
 
 .tc-tarjeta {
-  display: block; width: 100%; text-align: left; padding: .7rem .75rem; border-radius: .75rem;
-  background: rgb(var(--tc-card2)); border: 1px solid rgb(var(--tc-border));
-  transition: border-color .15s ease, box-shadow .15s ease; cursor: pointer;
+  display: block; width: 100%; text-align: left; padding: .8rem .85rem; border-radius: .85rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; cursor: pointer;
 }
-.tc-tarjeta:hover { border-color: rgb(var(--tc-gold) / .45); }
-.tc-tarjeta:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .6); outline-offset: 2px; }
+.tc-tarjeta:hover { border-color: rgb(var(--tc-gold) / .55); box-shadow: 0 10px 22px -12px rgb(var(--tc-gold) / .45), var(--tc-sombra); }
+.tc-tarjeta:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
 .tc-tarjeta[draggable="true"] { cursor: grab; }
 .tc-tarjeta.tc-tarjeta--arrastrando { opacity: .4; }
 .tc-tarjeta-titulo {
-  font-size: .8125rem; font-weight: 600; line-height: 1.3; color: rgb(var(--tc-text));
+  font-size: .8125rem; font-weight: 600; line-height: 1.35; color: rgb(var(--tc-text));
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
-.tc-tarjeta-pie { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin-top: .5rem; font-size: .6875rem; color: rgb(var(--tc-muted)); }
+.tc-tarjeta-pie { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin-top: .55rem; font-size: .6875rem; color: rgb(var(--tc-muted)); }
 .tc-iniciales {
-  display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 9999px;
-  font-size: .625rem; font-weight: 700; background: rgb(var(--tc-gold) / .16); color: rgb(var(--tc-gold));
+  display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 9999px;
+  font-size: .625rem; font-weight: 700; color: rgb(var(--tc-on-gold));
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-boton)));
 }
 
 /* ── Panel lateral (panel.js): la ficha que se abre al lado, sin dejar la pantalla ── */
 /* Encima del menú (z-40) y debajo de los formularios y avisos del Dialogo (z-50 y más). */
-.tc-panel-fondo { position: fixed; inset: 0; z-index: 44; background: rgb(0 0 0 / .45); }
+.tc-panel-fondo { position: fixed; inset: 0; z-index: 44; background: rgb(3 6 14 / .6); }
 .tc-panel {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 45; width: min(34rem, 100vw);
   display: flex; flex-direction: column; background: rgb(var(--tc-card)); border-left: 1px solid rgb(var(--tc-border));
@@ -740,7 +851,7 @@ body .tc-selector.tc-selector-compacto button {
   transform: translateX(0); transition: transform .22s cubic-bezier(0.23, 1, 0.32, 1);
 }
 .tc-panel--saliendo { transform: translateX(100%); }
-.tc-panel-cabeza { display: flex; align-items: flex-start; gap: .75rem; padding: 1rem 1.25rem; border-bottom: 1px solid rgb(var(--tc-border)); }
-.tc-panel-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 1.1rem; }
+.tc-panel-cabeza { display: flex; align-items: flex-start; gap: .75rem; padding: 1.1rem 1.35rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-panel-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1.1rem 1.35rem; display: flex; flex-direction: column; gap: 1.2rem; }
 .tc-panel-seccion > h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }
-@media (prefers-reduced-motion: reduce) { .tc-panel { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tc-panel, .tc-tarjeta { transition: none; } }

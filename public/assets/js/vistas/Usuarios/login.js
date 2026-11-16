@@ -35,7 +35,7 @@
       const radio = guardada && document.querySelector('input[name="sede"][value="' + guardada + '"]');
       if (radio) radio.checked = true;
     } catch (e) { /* sin almacenamiento: Madrid */ }
-    // Y la imagen de fondo es la de la sede: al cambiarla, se cruzan (layout-auth).
+    // La sede queda también en <html data-sede> (hasta la V3 cambiaba la foto de fondo).
     const ponSede = v => document.documentElement.setAttribute('data-sede', v === 'barcelona' ? 'barcelona' : 'madrid');
     const marcada = document.querySelector('input[name="sede"]:checked');
     if (marcada) ponSede(marcada.value);

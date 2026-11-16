@@ -42,7 +42,7 @@ module.exports = {
   safelist: require('./scripts/tailwind-safelist'),
   theme: {
     extend: {
-      fontFamily: { sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
+      fontFamily: { sans: ['Plus Jakarta Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
       colors: {
         // Apuntan a los tokens CSS (public/assets/css/telecab.css). El
         // <alpha-value> conserva los modificadores de opacidad (bg-…/15,
@@ -63,6 +63,10 @@ module.exports = {
           azul: tok('azul'),
           text: tok('text'),
           muted: tok('muted'),
+          // V3 (16/11/2026): el relleno del botón principal y el fondo del menú.
+          boton: tok('boton'),
+          'boton-hover': tok('boton-hover'),
+          menu: tok('menu'),
         },
         // Los colores crudos de Tailwind que usan las vistas se redirigen a los
         // tokens, EN TODOS SUS TONOS: text-red-300 ES el rojo de la marca,

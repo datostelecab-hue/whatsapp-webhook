@@ -8,7 +8,7 @@
   <%# El ERP instalable (A8): el manifiesto, su icono en el iPhone y el color de la barra. %>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/iconos/icono-apple-180.png') : '/assets/iconos/icono-apple-180.png' %>">
-  <meta name="theme-color" content="#0e1013">
+  <meta name="theme-color" content="#080c18">
   <%# Huella de la sesión: las notificaciones confirman este navegador una vez por sesión. %>
   <meta name="tc-s" content="<%= typeof sesionHuella !== 'undefined' ? sesionHuella : '' %>">
 
@@ -91,7 +91,7 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/selector.js') : '/assets/js/selector.js' %>"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
   <!-- Tailwind COMPILADO (tailwind.config.js, services/tailwind.js), no la CDN
@@ -142,7 +142,7 @@
           panel (los textos), y la marca tiene que seguir viéndose. %>
       <div class="w-10 flex justify-center shrink-0"><%- include('partials/marca', { tam: 'w-9 h-9' }) %></div>
       <span class="leading-tight whitespace-nowrap">
-        <span class="block text-base font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
+        <span class="block text-lg font-extrabold tracking-tight">tele<span class="gold-text">cab</span></span>
         <span class="block text-[11px] text-telecab-muted"><%= sedeSesion === 'barcelona' ? 'Barcelona' : 'Gestión de flota' %></span>
       </span>
     </a>
@@ -404,7 +404,7 @@
               aria-label="Contraer el menú" title="Contraer el menú (Ctrl+B)">
         <i class="fa-solid fa-angles-left" aria-hidden="true"></i>
       </button>
-      <h1 class="font-semibold text-telecab-text shrink-0"><%= titulo || 'Gestión' %></h1>
+      <h1 class="text-[1.05rem] font-bold text-telecab-text shrink-0"><%= titulo || 'Gestión' %></h1>
 
       <%# ── LOS TICKETS DE CADA DEPARTAMENTO (25/09/2026) ──────────────────────
           Un cuadro por bandeja, con su nombre y sus PENDIENTES (los pedidos desde
@@ -496,10 +496,14 @@
         </span>
 
         <!-- Usuario en sesión + salir -->
-        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
-          <div class="hidden sm:block text-right leading-tight whitespace-nowrap">
-            <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
-            <span class="block text-[10px] uppercase tracking-wide text-telecab-muted"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
+        <%# El avatar con sus iniciales (V3): quién tiene la sesión, de un vistazo. %>
+        <% const _nombreSesion = (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '';
+           const _iniciales = _nombreSesion.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p.charAt(0)).join('').toUpperCase(); %>
+        <div class="flex items-center gap-2.5 pl-3 ml-1 border-l border-telecab-border">
+          <span class="tc-avatar" aria-hidden="true"><%= _iniciales || '·' %></span>
+          <div class="hidden sm:block leading-tight whitespace-nowrap">
+            <span class="block text-[13px] text-telecab-text font-semibold"><%= _nombreSesion %></span>
+            <span class="block text-[11px] text-telecab-muted"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
           </div>
           <a href="/logout" title="Salir" aria-label="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
             <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>

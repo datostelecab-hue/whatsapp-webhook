@@ -1,6 +1,6 @@
 <form method="POST" action="/login" id="f-login" class="form-acceso" novalidate>
-  <h1>Entrar</h1>
-  <p class="bajada">Con tu correo de la empresa.</p>
+  <h1>Hola de nuevo</h1>
+  <p class="bajada">Entra con tu correo de la empresa.</p>
 
   <% if (error) { %>
     <div role="alert" class="aviso error">
@@ -41,10 +41,14 @@
     </button>
   </div>
 
-  <label class="casilla mb-4">
-    <input id="recordar" name="recordar" type="checkbox" value="si">
-    Mantener la sesión iniciada (30 días)
-  </label>
+  <%# V3: la casilla y «¿Olvidaste…?» en una línea, y debajo el botón a todo el ancho. %>
+  <div class="fila-recordar">
+    <label class="casilla">
+      <input id="recordar" name="recordar" type="checkbox" value="si">
+      Mantener la sesión (30 días)
+    </label>
+    <a href="/olvide-password" class="enlace">¿Olvidaste tu contraseña?</a>
+  </div>
 
   <!-- El aviso sale SOLO al marcar la casilla: puesto siempre, se lee una vez y
        deja de verse. Y va aquí porque la decisión se toma justo en este momento. -->
@@ -54,10 +58,7 @@
     sesión en todos los dispositivos.</span>
   </p>
 
-  <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-    <button type="submit" class="btn-entrar" id="btn-entrar"><span id="btn-txt">Entrar</span></button>
-    <a href="/olvide-password" class="enlace">¿Olvidaste tu contraseña?</a>
-  </div>
+  <button type="submit" class="btn-entrar" id="btn-entrar"><span id="btn-txt">Entrar</span></button>
 
   <p class="nota">Acceso restringido al personal de Telecab.<br>Lo que hagas dentro queda a tu nombre.</p>
 </form>
