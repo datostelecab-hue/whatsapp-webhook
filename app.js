@@ -1192,7 +1192,7 @@ if (process.env.MAPA_CRON === 'on') {
 // ============================================================
 // INICIAR SERVIDOR
 // ============================================================
-app.listen(port, () => {
+const servidor = app.listen(port, () => {
   console.log(`🚀 Servidor escuchando en puerto ${port}`);
   console.log(`   Dashboard: http://localhost:${port}/dashboard`);
   console.log(`   Bot puertas: POST /`);
@@ -1215,3 +1215,8 @@ app.listen(port, () => {
     //  el 15/09/2026: ya no hay filas de hoja que construir.)
   }
 });
+// UNA SUBIDA LENTA NO SE CORTA A LOS 5 MINUTOS (16/11/2026). Node corta con un
+// 408 la petición cuyo cuerpo no ha llegado entero en `requestTimeout` (300 s de
+// serie): un vídeo de 90 MB desde un 4G flojo (1-2 Mbit/s) tarda 6-12 minutos.
+// Las cabeceras siguen teniendo 60 s (headersTimeout). Ver docs/nucleo/Adjuntos.md.
+servidor.requestTimeout = 15 * 60 * 1000;

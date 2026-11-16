@@ -35,7 +35,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { Transform } = require('stream');
+const { Transform, pipeline } = require('stream');
 const repo = require('./repo/adjuntos');
 const almacen = require('./almacen');
 const libro = require('./libro');
@@ -104,10 +104,15 @@ const POR_EXTENSION = {
   csv: 'text/csv', txt: 'text/plain', zip: 'application/zip',
 };
 
-/** El nombre del fichero, sin carpetas ni caracteres que rompan una cabecera. */
+/**
+ * El nombre del fichero, sin carpetas ni caracteres que rompan una cabecera.
+ * Fuera también los de control C1 (U+0080-U+009F) y los invisibles de formato
+ * (\p{Cf}): con U+202E «foto‮gpj.exe» se leía en la lista «fotoexe.jpg», con
+ * el icono de foto (revisión del 16/11/2026).
+ */
 function nombreLimpio(nombre) {
   const base = String(nombre || '').split(/[\\/]/).pop();
-  const limpio = base.replace(/[\u0000-\u001f\u007f<>:"|?*]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const limpio = base.replace(/[\u0000-\u001f\u007f-\u009f\p{Cf}<>:"|?*]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
   return limpio || 'adjunto';
 }
 
@@ -117,7 +122,15 @@ function mimeDe(declarado, nombre) {
   if (ENLINEA.has(m)) return m;
   const ext = (String(nombre || '').toLowerCase().match(/\.([a-z0-9]{1,5})$/) || [])[1];
   if (ext && POR_EXTENSION[ext]) return POR_EXTENSION[ext];
-  return /^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/.test(m) ? m : 'application/octet-stream';
+  // Con tope de largo: la columna es VARCHAR(120), y uno más largo daba un 500
+  // DESPUÉS de haber subido el fichero entero.
+  return m.length <= 100 && /^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/.test(m) ? m : 'application/octet-stream';
+}
+
+/** El id de un adjunto, o null si no puede serlo (ni texto ni más allá de bigint). */
+function idDeAdjunto(v) {
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
 /** Cómo se enseña: 'imagen', 'pdf', 'video', 'audio' o 'otro' (se descarga). */
@@ -146,6 +159,20 @@ async function maxBytes() {
  *   → el adjunto, como lo enseña la pantalla.
  */
 async function subir({ tipo, duenoId, nombre, mime, cuerpo, quien }) {
+  // El cuerpo puede romperse mientras se mira el permiso y el tope (un
+  // formulario mal cerrado): sin quien escuche, ese error tumbaba el proceso y
+  // la subida se quedaba colgada (revisión del 16/11/2026). Se guarda y se mira.
+  let rotoAntes = null;
+  const guardia = e => { if (!rotoAntes) rotoAntes = e; };
+  cuerpo.on('error', guardia);
+  try {
+    return await subirYa({ tipo, duenoId, nombre, mime, cuerpo, quien }, () => rotoAntes);
+  } finally {
+    cuerpo.off('error', guardia);
+  }
+}
+
+async function subirYa({ tipo, duenoId, nombre, mime, cuerpo, quien }, rotoAntes) {
   const id = idDeDueno(duenoId);
   await permiso('adjuntar', tipo, id, quien);
   const donde = almacen.cual();
@@ -153,6 +180,7 @@ async function subir({ tipo, duenoId, nombre, mime, cuerpo, quien }) {
     throw conEstado(new Error('No hay almacén de ficheros: falta configurar Cloudflare R2 en el servidor. Avisa al desarrollador.'), 503);
   }
   const tope = await maxBytes();
+  if (rotoAntes()) throw conEstado(rotoAntes(), rotoAntes().status || 400);
   const limpio = nombreLimpio(nombre);
   const tipoFichero = mimeDe(mime, limpio);
   const ruta = almacen.rutaNueva();
@@ -169,8 +197,9 @@ async function subir({ tipo, duenoId, nombre, mime, cuerpo, quien }) {
       sigue(null, trozo);
     },
   });
-  cuerpo.on('error', e => contador.destroy(e));
-  cuerpo.pipe(contador);
+  // pipeline y no pipe: si el cuerpo se rompe (o ya venía roto), el contador se
+  // rompe con él y el almacén suelta la subida.
+  pipeline(cuerpo, contador, e => { if (e) contador.destroy(e); });
 
   const a = almacen.de(donde);
   await a.subir(ruta, contador, { mime: tipoFichero });
@@ -228,9 +257,9 @@ function rangoDe(cabecera, total) {
  * Lo que hace falta para servir un adjunto: { estado, cabeceras, cuerpo }.
  * `cuerpo` es un stream, o null (304, 416 o HEAD). Comprueba que puede verlo.
  */
-async function servir(adjuntoId, quien, { rango, siNoCoincide, siRango, descargar = false, soloCabeceras = false } = {}) {
-  const n = Number(adjuntoId);
-  const a = Number.isInteger(n) && n > 0 ? await repo.porId(n) : null;
+async function servir(adjuntoId, quien, { rango, siNoCoincide, siRango, descargar = false, soloCabeceras = false, senal } = {}) {
+  const n = idDeAdjunto(adjuntoId);
+  const a = n ? await repo.porId(n) : null;
   if (!a || a.anulado_at) throw conEstado(new Error('Ese adjunto no existe o lo han quitado'), 404);
   await permiso('ver', a.dueno_tipo, a.dueno_id, quien);
 
@@ -241,8 +270,13 @@ async function servir(adjuntoId, quien, { rango, siNoCoincide, siRango, descarga
     'Content-Type': enLinea ? a.mime : 'application/octet-stream',
     'Content-Disposition': disposicion(a.nombre, enLinea),
     'X-Content-Type-Options': 'nosniff',
-    // `no-transform`: que la compresión no toque un fichero servido por trozos.
-    'Cache-Control': 'private, max-age=86400, no-transform',
+    // `no-cache`: el navegador puede guardarlo, pero PREGUNTA cada vez (con la
+    // huella, If-None-Match) y aquí se mira el permiso antes del 304. Con
+    // `max-age` lo reusaba 24 h sin preguntar: en un PC compartido, otro usuario,
+    // o el mismo tras cerrar sesión o anularse el adjunto, lo seguía viendo
+    // (revisión del 16/11/2026). `no-transform`: que la compresión no toque un
+    // fichero servido por trozos.
+    'Cache-Control': 'private, no-cache, no-transform',
     'Accept-Ranges': 'bytes',
     ETag: etag,
     // Sin scripts. Un PDF no puede ir con `sandbox` (el visor de Chrome no abre
@@ -262,19 +296,21 @@ async function servir(adjuntoId, quien, { rango, siNoCoincide, siRango, descarga
   const largo = r ? r.hasta - r.desde + 1 : a.bytes;
   const fin = { ...cabeceras, 'Content-Length': String(largo) };
   if (r) fin['Content-Range'] = `bytes ${r.desde}-${r.hasta}/${a.bytes}`;
-  const cuerpo = soloCabeceras || largo === 0 ? null : await almacen.de(a.almacen).leer(a.ruta, r || {});
+  const cuerpo = soloCabeceras || largo === 0 ? null : await almacen.de(a.almacen).leer(a.ruta, { ...(r || {}), senal });
   return { estado: r ? 206 : 200, cabeceras: fin, cuerpo };
 }
 
 // ── Quitar ─────────────────────────────────────────────────────────────────
 /** Anula un adjunto, con motivo. El fichero se queda en el almacén. */
+const MOTIVO_MINIMO = 3;
+
 async function anular(adjuntoId, motivo, quien) {
-  const n = Number(adjuntoId);
-  const a = Number.isInteger(n) && n > 0 ? await repo.porId(n) : null;
+  const n = idDeAdjunto(adjuntoId);
+  const a = n ? await repo.porId(n) : null;
   if (!a) throw conEstado(new Error('Ese adjunto no existe'), 404);
   await permiso('anular', a.dueno_tipo, a.dueno_id, quien);
   const m = String(motivo || '').trim();
-  if (m.length < 3) throw conEstado(new Error('Di por qué se quita: queda en su historia'), 400);
+  if (m.length < MOTIVO_MINIMO) throw conEstado(new Error(`Di por qué se quita (al menos ${MOTIVO_MINIMO} letras): queda en su historia`), 400);
   await libro.conFirma({ usuarioId: quien.id, origen: 'adjuntos', motivo: m }, async cli => {
     if (!await repo.anular(cli, { id: n, motivo: m.slice(0, 500), anuladoPor: quien.id })) {
       throw conEstado(new Error('Ese adjunto ya estaba quitado'), 409);
@@ -298,7 +334,7 @@ function publico(a) {
 function conEstado(e, status) { e.status = status; return e; }
 
 module.exports = {
-  registrarDueno, exigirAdjuntar, subir, lista, servir, anular, maxBytes,
+  registrarDueno, exigirAdjuntar, subir, lista, servir, anular, maxBytes, MOTIVO_MINIMO,
   // Para las pruebas y la pantalla de pruebas:
   ENLINEA, nombreLimpio, mimeDe, claseDe, rangoDe, disposicion, tipos: () => [...DUENOS.keys()],
 };

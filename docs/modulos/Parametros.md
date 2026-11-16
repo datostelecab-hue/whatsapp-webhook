@@ -22,7 +22,7 @@ Los tipos:
 
 | Tipo | Ejemplo |
 |---|---|
-| Entero, con unidad | días hábiles, horas hábiles, días, años, día del mes |
+| Entero, con unidad | días hábiles, horas hábiles, días, años, día del mes, MB |
 | Importe | el tope de 100 € de los reintegros |
 | Texto | el acuse fijo del taller |
 | Horario | los días de la semana y la hora de abrir y cerrar |
@@ -36,7 +36,9 @@ El valor se pide **cada vez** (hay una caché de un minuto): guardarlo en una co
 
 ## Lo que hay hoy
 
-- **En uso:** el horario de la oficina de Madrid, que lee el [[Calendario laboral]].
+- **En uso:**
+  - el horario de la oficina de Madrid, que lee el [[Calendario laboral]];
+  - `adjuntos.max_mb`, lo máximo que se puede adjuntar (90 MB; entre 1 y 95, porque Cloudflare corta a los 100). Ver [[Adjuntos]].
 - **Aún sin usar:** los números de los ítems 2, 4 a 8, 10, 14 a 19, ya con el valor de la hoja de ruta. Están para que Ignacio los vea y los revise desde ya; la pantalla avisa de que cambiarlos no cambia nada hasta que se haga su ítem.
 
 ## Quién entra

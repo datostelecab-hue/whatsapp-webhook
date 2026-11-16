@@ -21,7 +21,7 @@ actualizado: 2026-10-23
 | Avisar de algo | `Dialogo.aviso({titulo, texto\|html, tono, ancho})` | `alert()` |
 | Preguntar sí/no | `Dialogo.confirmar({titulo, texto, si, no, tono})` (`si` y `no` son los textos de los botones; `textoBoton` es de `formulario` y aquí no hace nada: sale «Aceptar»). Para lo que no tiene vuelta atrás, `tono: 'peligro'` y el número en el botón («Borrar la nómina de 159 conductores»): el botón sale en rojo y **Enter y el foco van a «Cancelar»** (en todo diálogo cuya opción de Enter sea roja, desde el 03/11/2026). `enterCancela: true` hace lo mismo sin pintarlo en rojo | `confirm()` (desde el 03/11/2026 no queda ninguno) |
 | Elegir de una lista | `Dialogo.elegir({titulo, texto, opciones})` | `prompt()` con números |
-| Pedir varios datos | `Dialogo.formulario(titulo, campos, opciones)` | `prompt()` encadenados |
+| Pedir varios datos | `Dialogo.formulario(titulo, campos, opciones)`. En un texto, `minimo: 3` pide al menos esas letras sin cerrar la ventana (16/11/2026) | `prompt()` encadenados |
 | Confirmación breve | `Dialogo.hecho(texto, {tono, segundos})` | — |
 | **Una fecha** | `<input class="js-fecha">` | **`<input type="date">`** |
 | **Unas horas (las de una J)** | horas y minutos: `HorasMin.html/leer/poner` (`horasMin.js`), o `tipo: 'horas'` en `Dialogo.formulario` | una casilla de horas en decimal («7,5») |
@@ -32,7 +32,7 @@ actualizado: 2026-10-23
 | Tapar mientras carga | `#cargando-overlay` de `layout-gestion`: **solo en la carga inicial** de la pantalla (desde el 03/11/2026 ya no sale al pulsar). Para una acción que no se puede tocar a medias, `Api.post(…, { bloquea: true })` o `telecabCarga.abrir()/cerrar()` | un spinner propio |
 | **Que un botón no guarde dos veces** | `Api.post(url, datos, { boton })`: lo apaga mientras dura y lo deja como estaba. Antes lo paraba el velo sin que nadie lo hubiera decidido; ya no está | confiar en que nadie pulse dos veces |
 | **Ver una foto en grande** | `VisorFoto.abrir({ src, titulo, pie, original })` (`visorFoto.js`) | abrirla en otra pestaña |
-| **Adjuntar ficheros y verlos** | `Adjuntos.montar(caja, { tipo, dueno, puedeQuitar })` (`adjuntos.js`, 13/11/2026, se carga en la vista que lo use): la lista, «Adjuntar» con barra de progreso y arrastrar y soltar, ver (foto, PDF, vídeo, audio) y quitar con motivo. El módulo se registra antes como dueño. Ver [[Adjuntos]] | un `<input type="file">` que manda el fichero en base64 dentro de un JSON |
+| **Adjuntar ficheros y verlos** | `Adjuntos.montar(caja, { tipo, dueno, puedeQuitar, maxMb })` (`adjuntos.js`, 13/11/2026, se carga en la vista que lo use): la lista, «Adjuntar» con barra de progreso y arrastrar y soltar, ver (foto, PDF, vídeo, audio) y quitar con motivo. El módulo se registra antes como dueño. Ver [[Adjuntos]] | un `<input type="file">` que manda el fichero en base64 dentro de un JSON |
 | **La marca de Telecab** | `<%- include('partials/marca', { tam, anima }) %>` (SVG con los colores del tema) | el PNG del logo o un vídeo |
 | Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |
 | **Que un control tenga nombre** (para el lector de pantalla) | `<label for>`, `aria-label` en los botones de solo icono, el nombre de la fila en lo que se repite; Listado, Dialogo y Selector se nombran solos → [[#Nombres para el lector de pantalla]] | un `placeholder` como única etiqueta; N botones «Borrar» iguales |

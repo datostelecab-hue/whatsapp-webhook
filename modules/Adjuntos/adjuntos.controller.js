@@ -11,6 +11,7 @@
 //   POST /adjuntos/api/:id/anular         quitarlo, con motivo (nada se borra)
 //   GET  /adjuntos/:id/fichero            el fichero (con Range; ?descargar=1 lo baja)
 //   GET  /adjuntos/banco                  el banco de pruebas (solo el desarrollador)
+//   POST /adjuntos/api/probar             «Probar conexión» del banco (solo el desarrollador)
 //
 // Quién lo hace sale de la sesión, nunca del cuerpo de la petición.
 'use strict';
@@ -36,11 +37,22 @@ const quienEs = async req => {
 
 const conEstado = (e, status) => { e.status = status; return e; };
 
+// Lo que no trae estado es un fallo que no esperábamos (de PostgreSQL, de la
+// red…): su mensaje va al log, no a la pantalla, que no tiene por qué ver el
+// esquema de la base. Los nuestros (con estado, también los 503 de R2, que
+// dicen qué revisar) sí se enseñan.
 function fallo(res, e, que) {
   if (!e.status || e.status >= 500) console.error(`❌ [Adjuntos] ${que}:`, e.stack || e.message);
-  if (res.headersSent) return res.destroy();
-  res.status(e.status || 500).json({ status: 'error', msg: e.message });
+  if (res.headersSent || res.destroyed) return res.destroy();
+  const msg = e.status ? e.message : 'No se ha podido hacer: ha fallado algo en el servidor. Si se repite, avisa al desarrollador.';
+  res.status(e.status || 500).json({ status: 'error', msg });
 }
+
+// SUBIDAS A LA VEZ: como mucho cuatro en todo el servidor. Cada una a R2 tiene
+// en memoria sus trozos (unos 10-15 MB); diez vídeos a la vez llevaban la
+// instancia de Render al límite y la reiniciaba (revisión del 16/11/2026).
+const MAX_SUBIDAS = 4;
+let subiendo = 0;
 
 /**
  * El primer fichero del formulario, en cuanto empieza a llegar: { nombre, mime,
@@ -62,6 +74,10 @@ function primerFichero(req) {
     bb.on('file', (_campo, stream, info) => {
       if (cuerpo) { stream.resume(); return; }   // solo uno por subida
       cuerpo = stream;
+      // Desde el primer momento alguien escucha sus errores: un formulario mal
+      // cerrado lo rompe en el siguiente tick, antes de que subir() llegue a
+      // engancharlo, y un error sin dueño tumba el proceso. subir() lo recoge.
+      stream.on('error', () => {});
       resolve({ nombre: info.filename, mime: info.mimeType, cuerpo: stream });
     });
     bb.on('error', e => {
@@ -87,6 +103,14 @@ router.get('/api/estado', sesion.requiereDesarrollador, async (req, res) => {
   } catch (e) { fallo(res, e, 'estado'); }
 });
 
+// Escribe, lee y borra una sonda: dice en español qué falla (la dirección, la
+// clave, el secreto, el bucket, el permiso) en vez del mensaje de OpenSSL.
+router.post('/api/probar', sesion.requiereDesarrollador, async (req, res) => {
+  try {
+    res.json({ status: 'ok', ...(await almacen.probar()) });
+  } catch (e) { fallo(res, e, 'probar'); }
+});
+
 // ── Quitar (antes que la de subir: «/api/123/anular» también casaría con ella) ──
 router.post('/api/:id(\\d+)/anular', async (req, res) => {
   try {
@@ -105,6 +129,7 @@ router.get('/api/:tipo/:dueno', async (req, res) => {
 
 // ── Subir ───────────────────────────────────────────────────────────────────
 router.post('/api/:tipo/:dueno', async (req, res) => {
+  let ocupa = false;
   try {
     const quien = await quienEs(req);
     // El permiso y el tamaño, ANTES de leer nada: si no puede, no se sube nada.
@@ -114,6 +139,11 @@ router.post('/api/:tipo/:dueno', async (req, res) => {
     if (largo > tope + 1024 * 1024) {
       throw conEstado(new Error(`El fichero pasa de ${Math.round(tope / 1048576)} MB, que es lo máximo que se puede adjuntar`), 413);
     }
+    if (subiendo >= MAX_SUBIDAS) {
+      throw conEstado(new Error('Ahora mismo se están subiendo otros ficheros. Prueba otra vez en un momento.'), 503);
+    }
+    subiendo++;
+    ocupa = true;
     const f = await primerFichero(req);
     const adjunto = await adjuntos.subir({
       tipo: req.params.tipo, duenoId: req.params.dueno, nombre: f.nombre, mime: f.mime, cuerpo: f.cuerpo, quien,
@@ -124,11 +154,26 @@ router.post('/api/:tipo/:dueno', async (req, res) => {
     req.unpipe();
     req.resume();
     fallo(res, e, `subir ${req.params.tipo} ${req.params.dueno}`);
+  } finally {
+    if (ocupa) subiendo--;
   }
 });
 
 // ── El fichero ──────────────────────────────────────────────────────────────
 async function fichero(req, res) {
+  // SI EL NAVEGADOR SE VA, SE SUELTA EL ALMACÉN. Pasa a menudo: al cerrar el
+  // vídeo nada más abrirlo, al arrastrar su barra (cada salto cancela la
+  // petición anterior) o al pasar fotos deprisa. Puede irse ANTES de que R2
+  // conteste: entonces el 'close' ya pasó y, si no se mira aquí, la conexión
+  // con R2 se quedaba colgada para siempre. Con 50 así se paraba R2 entero,
+  // también las subidas (revisión del 16/11/2026).
+  const corte = new AbortController();
+  let cuerpo = null;
+  res.on('close', () => {
+    if (res.writableFinished) return;
+    corte.abort();
+    if (cuerpo && typeof cuerpo.destroy === 'function') cuerpo.destroy();
+  });
   try {
     const r = await adjuntos.servir(req.params.id, await quienEs(req), {
       rango: req.headers.range,
@@ -136,22 +181,30 @@ async function fichero(req, res) {
       siRango: req.headers['if-range'],
       descargar: req.query.descargar === '1',
       soloCabeceras: req.method === 'HEAD',
+      senal: corte.signal,
     });
+    if (res.destroyed) {   // se fue mientras se esperaba al almacén
+      if (r.cuerpo && typeof r.cuerpo.destroy === 'function') r.cuerpo.destroy();
+      return;
+    }
+    cuerpo = r.cuerpo;
     res.status(r.estado).set(r.cabeceras);
     if (!r.cuerpo) return res.end();
     r.cuerpo.on('error', e => {
       console.error(`❌ [Adjuntos] leer ${req.params.id}:`, e.message);
       res.destroy(e);
     });
-    // Si el navegador deja de pedir (salta a otro punto del vídeo), se suelta el almacén.
-    res.on('close', () => { if (!res.writableFinished && typeof r.cuerpo.destroy === 'function') r.cuerpo.destroy(); });
     r.cuerpo.pipe(res);
   } catch (e) {
+    if (res.destroyed || corte.signal.aborted) return;   // ya no hay a quién contestar
     const falta = e.name === 'NoSuchKey' || e.code === 'ENOENT';
     fallo(res, falta ? conEstado(new Error('El fichero no está en el almacén'), 404) : e, `fichero ${req.params.id}`);
   }
 }
 // Express contesta también los HEAD con esta (sin cuerpo: `soloCabeceras`).
 router.get('/:id(\\d+)/fichero', fichero);
+
+// Para las pruebas: cuántas subidas van ahora.
+router.subiendoAhora = () => subiendo;
 
 module.exports = router;

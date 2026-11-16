@@ -144,5 +144,8 @@
     });
   });
 
-  global.Api = { pedir, get, post, Error: ApiError };
+  // `irAlLogin` también fuera: la subida de adjuntos va con XMLHttpRequest (por
+  // la barra de progreso) y las descargas con un enlace, y con la sesión caducada
+  // tienen que llevar al login igual que una petición de Api (16/11/2026).
+  global.Api = { pedir, get, post, irAlLogin, Error: ApiError };
 })(window);

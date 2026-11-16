@@ -54,8 +54,15 @@
       x.onload = () => {
         let r = null;
         try { r = JSON.parse(x.responseText); } catch (_) { /* no es JSON */ }
-        if (x.status >= 200 && x.status < 300 && r && r.status === 'ok') resolve(r.adjunto);
-        else reject(new Error((r && r.msg) || (x.status === 401 ? 'La sesión ha caducado: vuelve a entrar.' : `No se ha podido subir (error ${x.status}).`)));
+        if (x.status >= 200 && x.status < 300 && r && r.status === 'ok') { resolve(r.adjunto); return; }
+        if (x.status === 401) {
+          // Sesión caducada: lo mismo que cualquier petición de Api (aviso y al
+          // login, que devuelve aquí). Su «Sesión requerida» no se enseña.
+          if (global.Api && global.Api.irAlLogin) global.Api.irAlLogin();
+          reject(new Error('La sesión ha caducado: vuelve a entrar y súbelo otra vez.'));
+          return;
+        }
+        reject(new Error((r && r.msg) || `No se ha podido subir (error ${x.status}).`));
       };
       x.onerror = () => reject(new Error('Se cortó la conexión mientras subía el fichero. Inténtalo de nuevo.'));
       x.send(datos);
@@ -63,9 +70,25 @@
   }
 
   // ── Ver ─────────────────────────────────────────────────────────────────
-  function descargar(a) {
+  /**
+   * Lo baja. Antes pregunta con un HEAD (no trae el fichero): un enlace de
+   * descarga con la sesión caducada recibía el 401 y el navegador cancelaba la
+   * descarga sin decir nada (revisión del 16/11/2026). Así, con la sesión
+   * caducada va al login como Api, y si ya no está o no puede verlo, lo dice.
+   */
+  async function descargar(a) {
+    const url = urlDe(a, { descargar: true });
+    let r = null;
+    try { r = await fetch(url, { method: 'HEAD', credentials: 'same-origin' }); } catch (_) { /* sin red: que lo intente el navegador */ }
+    if (r && r.status === 401) { if (global.Api && global.Api.irAlLogin) global.Api.irAlLogin(); return; }
+    if (r && !r.ok) {
+      const texto = { 403: 'No tienes permiso para ver este fichero.', 404: 'Este fichero ya no está: lo han quitado.' }[r.status]
+        || `No se ha podido descargar (error ${r.status}).`;
+      if (global.Dialogo) global.Dialogo.aviso({ titulo: 'No se puede descargar', texto, tono: 'error' });
+      return;
+    }
     const enlace = document.createElement('a');
-    enlace.href = urlDe(a, { descargar: true });
+    enlace.href = url;
     enlace.download = a.nombre || '';
     document.body.appendChild(enlace);
     enlace.click();
@@ -99,9 +122,14 @@
    * Monta la lista de adjuntos de un dueño en `caja`, con el botón de adjuntar
    * (y arrastrar ficheros encima). → { recargar, lista }
    */
-  function montar(caja, { tipo, dueno, titulo = 'Adjuntos', puedeAdjuntar = true, puedeQuitar = false, alCambiar } = {}) {
+  function montar(caja, { tipo, dueno, titulo = 'Adjuntos', puedeAdjuntar = true, puedeQuitar = false, alCambiar, maxMb: maxDeFuera = null } = {}) {
     let lista = [];
-    let maxMb = null;
+    // El tope llega con la lista; la pantalla que ya lo sepa (el banco) lo pasa.
+    let maxMb = maxDeFuera;
+    // Hasta la primera respuesta no se sabe si hay adjuntos: «Cargando…», no
+    // «Sin adjuntos.», que en un móvil lento se veía unos segundos (16/11/2026).
+    let cargado = false;
+    let errorCarga = null;
     const subiendo = new Map();   // id local → { nombre, progreso, error }
     let siguiente = 1;
 
@@ -137,7 +165,7 @@
               <span class="block text-[11px] text-telecab-muted tabular-nums">${esc(tamano(a.bytes))}${
                 a.creadoPor ? ' · ' + esc(a.creadoPor) : ''}${a.creadoAt ? ' · ' + esc(fecha(a.creadoAt)) : ''}</span>
             </div>
-            <a href="${esc(urlDe(a, { descargar: true }))}" download class="w-7 h-7 grid place-items-center rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold/50 hover:text-telecab-gold"
+            <a href="${esc(urlDe(a, { descargar: true }))}" download data-bajar class="w-7 h-7 grid place-items-center rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold/50 hover:text-telecab-gold"
                aria-label="Descargar ${esc(a.nombre)}" title="Descargar"><i class="fa-solid fa-download text-xs" aria-hidden="true"></i></a>
             ${puedeQuitar ? `<button type="button" data-quitar class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold/50 hover:text-telecab-gold"
                aria-label="Quitar ${esc(a.nombre)}" title="Quitar"><i class="fa-solid fa-xmark text-xs" aria-hidden="true"></i></button>` : ''}
@@ -160,28 +188,55 @@
                aria-label="Quitar el aviso de ${esc(s.nombre)}"><i class="fa-solid fa-xmark text-xs" aria-hidden="true"></i></button>` : ''}
           </li>`);
       }
-      ul.innerHTML = filas.length ? filas.join('')
-        : '<li class="px-5 py-4 text-sm text-telecab-muted">Sin adjuntos.</li>';
+      const vacia = errorCarga
+        ? `<li class="px-5 py-4 text-sm text-telecab-warn">No se han podido cargar los adjuntos: ${esc(errorCarga)}</li>`
+        : `<li class="px-5 py-4 text-sm text-telecab-muted">${cargado ? 'Sin adjuntos.' : 'Cargando…'}</li>`;
+      ul.innerHTML = (errorCarga && filas.length ? vacia : '') + (filas.length ? filas.join('') : vacia);
       caja.querySelector('[data-cuenta]').textContent = lista.length ? `(${lista.length})` : '';
     }
+
+    // EL FOCO NO SE PIERDE al rehacer la lista (16/11/2026). Quitar un adjunto o
+    // cerrar el aviso de una subida borraba el botón que lo tenía y el foco caía
+    // al <body>: el siguiente Tab empezaba por el menú. Se lleva a la fila que
+    // queda en ese sitio (o a la de antes), o a «Adjuntar» si no queda ninguna.
+    function enfocarEn(indice) {
+      const filas = [...ul.children].filter(li => li.dataset.id || li.dataset.subida);
+      const li = filas.length ? filas[Math.min(Math.max(indice, 0), filas.length - 1)] : null;
+      const destino = (li && li.querySelector('button, a')) || caja.querySelector('[data-input]');
+      if (destino) destino.focus();
+    }
+    const indiceDe = li => [...ul.children].filter(x => x.dataset.id || x.dataset.subida).indexOf(li);
 
     async function recargar() {
       try {
         const r = await global.Api.get(`/adjuntos/api/${encodeURIComponent(tipo)}/${encodeURIComponent(dueno)}`);
         lista = r.adjuntos || [];
-        maxMb = r.maxMb || null;
+        if (r.maxMb) maxMb = r.maxMb;
+        errorCarga = null;
       } catch (e) {
-        ul.innerHTML = `<li class="px-5 py-4 text-sm text-telecab-warn">No se han podido cargar los adjuntos: ${esc(e.message)}</li>`;
-        return lista;
+        errorCarga = e.message;
       }
+      cargado = true;
       pintar();
       return lista;
     }
 
+    let primera = null;   // la primera carga: la subida espera a saber el tope
+
     async function subirVarios(ficheros) {
+      // Sin el tope no se sube a ciegas: se espera a la lista y, si no llegó, se
+      // vuelve a pedir. Un vídeo de 200 MB elegido mientras cargaba se mandaba
+      // entero para que el servidor lo rechazara al final.
+      if (primera) await primera;
+      if (!maxMb) await recargar();
       for (const f of ficheros) {
         const id = siguiente++;
-        if (maxMb && f.size > maxMb * 1048576) {
+        if (!maxMb) {
+          subiendo.set(id, { nombre: f.name, error: 'No se ha podido saber el tamaño máximo. Recarga la página y vuelve a probar.' });
+          pintar();
+          continue;
+        }
+        if (f.size > maxMb * 1048576) {
           subiendo.set(id, { nombre: f.name, error: `Pasa de ${maxMb} MB, que es lo máximo que se puede adjuntar.` });
           pintar();
           continue;
@@ -214,30 +269,44 @@
       }
     }
 
-    async function quitar(a) {
+    async function quitar(a, li) {
+      const indice = indiceDe(li);
       const v = await global.Dialogo.formulario(`Quitar · ${a.nombre}`, [
-        { id: 'motivo', etiqueta: 'Por qué se quita', tipo: 'texto-largo', obligatorio: true, max: 500,
+        // `minimo`: lo mismo que pide el servidor. Con menos, la ventana se queda
+        // abierta con lo escrito en vez de cerrarse y perderlo.
+        { id: 'motivo', etiqueta: 'Por qué se quita', tipo: 'texto-largo', obligatorio: true, max: 500, minimo: 3,
           marcador: 'Ej.: es de otro siniestro; estaba repetido', ayuda: 'Queda en su historia, con tu nombre. El fichero no se borra.' },
       ], { textoBoton: 'Quitar el adjunto' });
-      if (!v) return;
+      if (!v) { const b = li && li.isConnected && li.querySelector('[data-quitar]'); if (b) b.focus(); return; }
       try {
         await global.Api.post(`/adjuntos/api/${a.id}/anular`, { motivo: v.motivo });
         global.Dialogo.hecho('Adjunto quitado');
         await recargar();
         if (alCambiar) alCambiar(lista);
+        enfocarEn(indice);
       } catch (e) {
+        if (e.estado === 401) return;   // Api ya lo ha dicho y lleva al login
         await global.Dialogo.aviso({ titulo: 'No se ha quitado', texto: e.message, tono: 'error' });
+        const b = li && li.isConnected && li.querySelector('[data-quitar]');
+        if (b) b.focus();
       }
     }
 
     ul.addEventListener('click', e => {
       const li = e.target.closest('li');
       if (!li) return;
-      if (e.target.closest('[data-cerrar]')) { subiendo.delete(Number(li.dataset.subida)); pintar(); return; }
+      if (e.target.closest('[data-cerrar]')) {
+        const indice = indiceDe(li);
+        subiendo.delete(Number(li.dataset.subida));
+        pintar();
+        enfocarEn(indice);
+        return;
+      }
       const a = lista.find(x => String(x.id) === li.dataset.id);
       if (!a) return;
       if (e.target.closest('[data-ver]')) ver(a);
-      else if (e.target.closest('[data-quitar]')) quitar(a);
+      else if (e.target.closest('[data-quitar]')) quitar(a, li);
+      else if (e.target.closest('[data-bajar]')) { e.preventDefault(); descargar(a); }
     });
 
     if (puedeAdjuntar) {
@@ -258,7 +327,7 @@
     }
 
     pintar();
-    recargar();
+    primera = recargar();
     return { recargar, lista: () => lista };
   }
 
