@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A (A1, A2 y A3 en main; A4, A10, A5, A6, A7 y A8 en sus ramas)
+estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4, A10, A5, A6, A7, A8 y A9 en sus ramas)
 ---
 
 # Hoja de ruta
@@ -25,7 +25,7 @@ Sale de un repaso del repositorio entero, ítem por ítem, en solo lectura, revi
 | A6. Adjuntos | **En la rama `fase-a/a6-adjuntos`, a prueba en el servidor de pruebas** (13/11/2026, sale de la de A5): el almacén en Cloudflare R2 (decidido por Camilo), la tabla `adjunto` de cualquier dueño, subida por trozos, Range y vista previa (db/249, ya aplicada). Revisada a fondo el 16/11: 19 hallazgos, todos arreglados. El bucket de pruebas ya está; el de producción, al pasar a `main`. Ver [[Adjuntos]] |
 | A7. Tiempo real | **Hecha en la rama `fase-a/a7-tiempo-real`** (16/11/2026, sale de la de A6), a falta de probarla: el servidor avisa a las pantallas por Server-Sent Events, con canales y su permiso, lo perdido al volver, latido y sondeo cuando no hay directo (`services/tiempoReal.js`, `TiempoReal.escuchar`). Sin migración. Ver [[Tiempo real]] |
 | A8. Notificaciones | **Hecha en la rama `fase-a/a8-notificaciones`** (16/11/2026, sale de la de A7), a falta de probarla: Web Push con su service worker, el ERP instalable, «Activar» en Configuración y solo a los dispositivos con la sesión abierta (db/250). Hacen falta las claves VAPID en Render. Ver [[Notificaciones al dispositivo]] |
-| A9 | Pendiente |
+| A9. Contadores del menú | **Hecha en la rama `fase-a/a9-contadores`** (16/11/2026, sale de la de A8), a falta de probarla: todos los números en una petición, una marca por entrada, la suma por grupo (también con el menú plegado) y al momento por el tiempo real. La campana, los cuadros de tickets y la chapa de fichaje ya van por aquí. Sin migración. Ver [[Contadores]] |
 
 ## Lo que Ignacio cerró en la última versión
 
@@ -87,10 +87,10 @@ La seguridad pendiente de la revisión de octubre se cierra **antes del chat y d
 | **A6. Adjuntos** | Hecha: el almacén es **Cloudflare R2** (Camilo, 13/11/2026), con la tabla `adjunto` de cualquier dueño (db/249). Tiene subida multipart por trozos, con huella y tope (`adjuntos.max_mb`), descarga con Range y vista previa (foto en VisorFoto, PDF en la página, vídeo y audio con su reproductor), y lo demás se descarga. El componente es `Adjuntos.montar`. Lo que ya estaba (`documento`, `ticket.adjuntos`, `whatsapp_adjunto`, las facturas) se queda donde está. Ver [[Adjuntos]] | El bucket y la clave de producción al pasar a `main` (uno aparte del de pruebas). Subir directo a R2 con enlace firmado los vídeos de más de 90 MB (siniestros). Mudar lo de antes al tocar cada módulo |
 | **A7. Tiempo real** | Hecha: `GET /tiempo-real/eventos` (Server-Sent Events) sin comprimir, con latido cada 25 s, lo perdido al volver (Last-Event-ID, 10 minutos) o «reinicio», la sesión revisada cada dos minutos, y `TiempoReal.escuchar` que cae al sondeo. Bus en memoria (una instancia). Ver [[Tiempo real]] | Que lo usen los contadores (A9), el tablero y el chat. Pasar los sondeos de hoy al tocar cada pantalla. `LISTEN/NOTIFY` solo si hay más de una instancia |
 | **A8. Notificaciones** | Hecha: `push_suscripcion` (db/250), `services/notificacionesPush.js` (`enviar`), el service worker en `/sw.js` (sin caché), el manifiesto y los iconos, y la tarjeta de Configuración. Solo a los servicios de los navegadores, solo a páginas del ERP, y solo mientras la sesión de ese dispositivo siga abierta. Ver [[Notificaciones al dispositivo]] | Las claves VAPID en Render (`scripts/generar-claves-push.js`, un par por servicio). Los primeros avisos de verdad (tablero, A9). Elegir qué avisos van al móvil |
-| **A9. Contadores del menú** | Tres contadores sueltos: la campana, los cuadros de tickets y la chapa de fichaje. Con el menú contraído solo se ve `#nav-pend-badge` | Un endpoint de recuentos por usuario, una marca por entrada, la suma por grupo y una clase CSS común |
+| **A9. Contadores del menú** | Hecha: `services/contadores.js` (fuentes, `cambio`), `GET /contadores/api`, `Contadores` y la clase `.tc-contador`. Las fuentes `pendientes`, `tickets` y `fichaje`; la suma de cada grupo y los contadores sobre los iconos con el menú plegado. Ver [[Contadores]] | Los contadores de cada módulo al tocarlo (vacaciones por aprobar, justificantes, alertas). Quitar `/bandejas/api/pendientes` |
 | **A10. Tareas programadas** | Hecha: una vuelta cada diez minutos hace las tareas de negocio que tengan su vez pendiente, una sola vez aunque haya dos procesos y recuperando la que se perdió por una caída (`services/tareasProgramadas.js`, db/246). Ver [[Tareas programadas]] | A quién se avisa si una falla (con el ítem 3). Una pantalla con los intentos. Los crons viejos de `app.js` siguen como estaban |
 
-Orden de lo que queda: A7, A8 y A9.
+Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. Sigue el ítem 1.
 
 **Desde el 13/11/2026 cada pieza va en su rama** (`fase-a/…`) y Camilo la prueba en el servidor de pruebas de Render (con `MODO_PRUEBAS`) antes de pasarla a `main`.
 

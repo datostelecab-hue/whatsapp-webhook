@@ -60,6 +60,8 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/tiempoReal.js') : '/assets/js/tiempoReal.js' %>"></script>
   <%# NotificacionesPush: confirma este navegador con la sesión de ahora; Configuración las activa (A8). %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/notificacionesPush.js') : '/assets/js/notificacionesPush.js' %>"></script>
+  <%# Contadores: todos los números del menú y de la barra en una petición (A9). Pinta las marcas data-contador. %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/contadores.js') : '/assets/js/contadores.js' %>"></script>
   <%# Horas y minutos de una J, en vez de un decimal (HorasMin; también `tipo: 'horas'` de Dialogo.formulario). %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/horasMin.js') : '/assets/js/horasMin.js' %>"></script>
   <%# El formulario de la −J (MenosJ.poner): Bitácora, Control y Justificantes piden lo mismo. %>
@@ -259,6 +261,7 @@
           ? (rolSesion === it.solo || !!(it.oLlave && misPermisos && misPermisos.has(it.oLlave)))
           : (!misPermisos || misPermisos.has(it.href));
         const gruposVisibles = grupos
+          // `contador` en una entrada (A9): la clave de su número (services/contadores.js).
           .map(g => ({ nombre: g.nombre, icono: g.icono, rol: g.rol, items: g.items.filter(puedeVer) }))
           .filter(g => g.items.length);
       %>
@@ -276,7 +279,7 @@
                 <%= seccionActiva === 'pendientes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-inbox w-5 text-center <%= seccionActiva === 'pendientes' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Pendientes</span>
-        <span id="nav-pend-badge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center"></span>
+        <span id="nav-pend-badge" class="tc-contador tc-contador-menu" data-contador="pendientes" hidden></span>
       </a>
       <% } %>
 
@@ -303,6 +306,7 @@
                 <%= seccionActiva === 'fichaje' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-clock w-5 text-center <%= seccionActiva === 'fichaje' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Fichar jornada</span>
+        <span class="tc-contador tc-contador-menu" data-contador="fichaje.correcciones" hidden></span>
       </a>
 
       <% if (puedeVer({ href: '/recaudacion' })) { %>
@@ -326,6 +330,8 @@
           <button type="button" aria-expanded="<%= abierto ? 'true' : 'false' %>" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
             <i class="fa-solid <%= g.icono %> w-5 text-center text-telecab-muted"></i>
             <span class="text-sm font-semibold flex-1 text-left"><%= g.nombre %></span>
+            <%# La suma de los contadores de sus entradas (A9): se ve con el grupo cerrado y con el menú plegado. %>
+            <span class="tc-contador tc-contador-menu" data-contador-grupo hidden></span>
             <i class="fa-solid fa-chevron-down text-[10px] text-telecab-muted grupo-chev transition <%= abierto ? 'rotate-180' : '' %>"></i>
           </button>
           <div class="grupo-items <%= abierto ? '' : 'hidden' %> mt-0.5 ml-3 pl-3 border-l border-telecab-border/60 space-y-0.5">
@@ -334,7 +340,8 @@
                  class="nav-item <%= on ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition
                         <%= on ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
                 <i class="fa-solid <%= e.icono %> w-5 text-center <%= on ? '' : 'text-telecab-muted' %>"></i>
-                <span class="text-sm"><%= e.texto %></span>
+                <span class="text-sm flex-1"><%= e.texto %></span>
+                <% if (e.contador) { %><span class="tc-contador tc-contador-menu" data-contador="<%= e.contador %>" hidden></span><% } %>
               </a>
             <% }); %>
           </div>
@@ -466,7 +473,7 @@
           <%# aria-label además del title: ayuda.js se lleva el title al enfocar, y sin él la campana se quedaba sin nombre. %>
           <button id="notif-btn" title="Pendientes" aria-label="Pendientes" aria-controls="notif-panel" aria-expanded="false" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
             <i class="fa-solid fa-bell text-telecab-text" aria-hidden="true"></i>
-            <span id="notif-badge" class="hidden absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center">0</span>
+            <span id="notif-badge" class="tc-contador tc-contador-campana" data-contador="pendientes" hidden></span>
           </button>
           <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto bg-telecab-card border border-telecab-border rounded-xl shadow-soft z-50 p-2">
             <p class="text-[11px] uppercase tracking-wide font-semibold text-telecab-muted px-2 py-1">Buzón de pendientes</p>

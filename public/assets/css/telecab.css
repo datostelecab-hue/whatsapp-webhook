@@ -420,19 +420,37 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
     box-shadow: var(--tc-sombra-alta);
   }
   #menu-panel span, #menu-panel p, #menu-panel .grupo-chev { transition: opacity .12s ease; }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(#nav-pend-badge),
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(.tc-contador-menu),
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel p,
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel .grupo-chev {
     opacity: 0; pointer-events: none;
   }
-  #menu-panel nav a { position: relative; }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #nav-pend-badge {
+  #menu-panel nav a, #menu-panel .grupo-btn { position: relative; }
+  /* Con el menú plegado, cada contador sobre la esquina de su icono (A9). */
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .tc-contador-menu {
     position: absolute; top: .35rem; left: 1.9rem; opacity: 1; pointer-events: none;
   }
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .grupo-items { display: none; }
 }
 #menu-corto { display: none; }
 @media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
+
+/* ══════════════════════════════════════════════════════════════
+   LOS CONTADORES (A9): una sola marca para todos los números
+   ══════════════════════════════════════════════════════════════
+   Los pinta public/assets/js/contadores.js en todo lo que lleve
+   data-contador (o data-contador-grupo, la suma de un grupo del menú).
+   Rojo por defecto: hay algo por hacer. Azul (tc-contador--info): algo
+   que mirar, sin urgencia. */
+.tc-contador {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 .3rem; border-radius: 9999px;
+  font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  background: rgb(var(--tc-red)); color: #fff;
+}
+.tc-contador[hidden] { display: none !important; }
+.tc-contador--info { background: rgb(var(--tc-azul) / .22); color: rgb(var(--tc-azul)); }
+.tc-contador-campana { position: absolute; top: .125rem; right: .125rem; min-width: 16px; height: 16px; padding: 0 .25rem; }
 
 /* Diálogos (public/assets/js/dialogo.js): velo oscuro y quieto, sin cristal. */
 .dialogo { animation: dlgFondo .12s ease-out; backdrop-filter: none; }

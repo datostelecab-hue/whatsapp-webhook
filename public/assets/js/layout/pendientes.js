@@ -4,7 +4,6 @@
 (function () {
   const btn = document.getElementById('notif-btn');
   const panel = document.getElementById('notif-panel');
-  const badge = document.getElementById('notif-badge');
   const lista = document.getElementById('notif-lista');
 
   // QUÉ BANDEJAS VE CADA ROL LO DECIDE EL SERVIDOR (DEPS_ROL de
@@ -24,11 +23,9 @@
   function pintar() {
     if (!datos || datos.status !== 'ok') return;
     const deps = ORDEN.filter(k => datos[k]);
-    let total = 0;
     lista.innerHTML = '';
     deps.forEach(dep => {
       const d = datos[dep] || { total: 0, items: [] };
-      total += d.total;
       (d.items || []).forEach(it => {
         const a = document.createElement('a');
         // Solo enlaces de la casa (una ruta que empieza por «/»): el servidor
@@ -51,17 +48,25 @@
       });
     });
     if (!lista.children.length) lista.innerHTML = '<p class="text-xs text-telecab-muted px-2 py-4 text-center">Sin pendientes</p>';
-    const txt = total > 99 ? '99+' : String(total);
-    [badge, document.getElementById('nav-pend-badge')].forEach(b => {
-      if (!b) return;
-      if (total > 0) { b.textContent = txt; b.classList.remove('hidden'); } else b.classList.add('hidden');
-    });
-    // El número también en el nombre de la campana: su aria-label tapa el del globo rojo.
-    if (btn) btn.setAttribute('aria-label', total > 0 ? 'Pendientes: ' + txt : 'Pendientes');
   }
 
+  // EL NÚMERO ES UN CONTADOR (A9): «pendientes», el mismo total, lo pinta
+  // contadores.js en la campana y en la entrada del menú. Aquí solo el nombre
+  // de la campana, que su aria-label tapa el del globo rojo.
+  if (window.Contadores && btn) {
+    window.Contadores.alCambiar(() => {
+      const v = window.Contadores.valor('pendientes');
+      const n = v ? v.n : 0;
+      btn.setAttribute('aria-label', n > 0 ? 'Pendientes: ' + (n > 99 ? '99+' : n) : 'Pendientes');
+    });
+  }
+
+  // LA LISTA, AL ABRIRLA: es cuando hace falta, y así sale al día. Antes se
+  // pedía cada dos minutos aunque nadie abriera la campana.
   async function cargar() {
-    try { const r = await fetch('/notificaciones'); datos = await r.json(); pintar(); } catch (_) {}
+    lista.innerHTML = '<p class="text-xs text-telecab-muted px-2 py-4 text-center">Cargando…</p>';
+    try { const r = await fetch('/notificaciones'); datos = await r.json(); pintar(); }
+    catch (_) { lista.innerHTML = '<p class="text-xs text-telecab-warn px-2 py-4 text-center">No se han podido cargar</p>'; }
   }
 
   if (btn) {
@@ -69,6 +74,7 @@
       e.stopPropagation();
       const oculto = panel.classList.toggle('hidden');
       btn.setAttribute('aria-expanded', String(!oculto));
+      if (!oculto) cargar();
     });
     document.addEventListener('click', e => {
       if (panel && !panel.contains(e.target) && !btn.contains(e.target)) { panel.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false'); }
@@ -76,7 +82,4 @@
   }
 
   aplicarRolNav();
-  // Con retraso para que la campana NO entre en el overlay de carga inicial.
-  setTimeout(cargar, 1500);
-  setInterval(cargar, 120000);   // refresca cada 2 min (en segundo plano)
 })();

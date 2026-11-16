@@ -118,9 +118,26 @@ const DEPS_ROL = {
   trafico: ['trafico']
 };
 
+async function alDia() {
+  if (!cache || Date.now() - cacheTs > TTL) { cache = await calcular(); cacheTs = Date.now(); }
+  return cache;
+}
+
+// LOS CONTADORES (A9): el total de la campana es el número de «Pendientes» del
+// menú y de la campana. El mismo cálculo y la misma caché de un minuto.
+require('../services/contadores').registrarFuente('pendientes', {
+  async contar(quien) {
+    const permitidos = DEPS_ROL[quien.rol] || [];
+    if (!permitidos.length) return {};
+    const c = await alDia();
+    const n = permitidos.reduce((s, k) => s + ((c[k] && c[k].total) || 0), 0);
+    return { pendientes: { n, titulo: n ? `${n} ${n === 1 ? 'pendiente' : 'pendientes'}` : 'Sin pendientes' } };
+  },
+});
+
 router.get('/', async (req, res) => {
   try {
-    if (!cache || Date.now() - cacheTs > TTL) { cache = await calcular(); cacheTs = Date.now(); }
+    await alDia();
     const permitidos = DEPS_ROL[req.usuario && req.usuario.rol] || [];
     const salida = {};
     permitidos.forEach(k => { if (cache[k]) salida[k] = cache[k]; });

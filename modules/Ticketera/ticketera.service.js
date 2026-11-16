@@ -511,10 +511,30 @@ async function anotarCambioDeVacaciones(ticketId, { nota, resolucion }, quien = 
 /** Si quien mira aprueba vacaciones, y quién lo hace: para la bandeja. */
 const vacacionesParaLaPantalla = usuarioId => aprobarVac.paraLaPantalla(usuarioId);
 
+// LOS CONTADORES (A9): lo que cambia lo que está pendiente avisa, y las
+// pantallas vuelven a pedir sus números al momento (los cuadros de la barra y,
+// los de IT, la campana del desarrollador). Envuelto aquí, en lo que se
+// exporta: así no se olvida en ninguna ruta.
+const contadores = require('../../services/contadores');
+const avisaTras = (fn, fuentes, si = () => true) => async (...args) => {
+  const r = await fn(...args);
+  if (si(r)) contadores.cambio(fuentes);
+  return r;
+};
+
 module.exports = {
   vacacionesParaLaPantalla, anotarCambioDeVacaciones,
-  sincronizar, datos, ficha, asignar, cambiarEstado, observaciones,
-  crearSoporte, mios, notas, adjuntos, bandejaIT, estadoIT, TIPOS_IT, PRIORIDADES,
-  enlazar, reclasificar, aplicar, diagnostico,
+  sincronizar: avisaTras(sincronizar, 'tickets', r => !!(r && r.nuevas)),
+  datos, ficha, asignar,
+  cambiarEstado: avisaTras(cambiarEstado, 'tickets'),
+  observaciones,
+  crearSoporte: avisaTras(crearSoporte, 'pendientes'),
+  mios, notas, adjuntos, bandejaIT,
+  estadoIT: avisaTras(estadoIT, 'pendientes'),
+  TIPOS_IT, PRIORIDADES,
+  enlazar,
+  reclasificar: avisaTras(reclasificar, 'tickets'),
+  aplicar: avisaTras(aplicar, 'tickets'),
+  diagnostico,
   abiertosPorArea: repo.abiertosPorArea, pendientes,
 };

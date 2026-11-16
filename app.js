@@ -361,6 +361,9 @@ app.use('/tiempo-real', require('./modules/TiempoReal/tiempoReal.controller'));
 // Las notificaciones al dispositivo (db/250, pieza A8): cada uno activa, confirma
 // y quita las suyas. Mandarlas es cosa de cada módulo, desde el servidor.
 app.use('/push', require('./modules/NotificacionesPush/notificacionesPush.controller'));
+// Los contadores del menú y de la barra (pieza A9): todos los números en una
+// petición. Cada módulo registra su fuente (services/contadores.js).
+app.use('/contadores', require('./modules/Contadores/contadores.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
