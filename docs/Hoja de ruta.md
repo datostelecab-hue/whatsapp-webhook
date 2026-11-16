@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4, A10, A5, A6, A7, A8 y A9 en sus ramas)
+estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entrega 1a hecha en `tablero/1a-datos`
 ---
 
 # Hoja de ruta
@@ -112,12 +112,14 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - Las bandejas cuentan desde un corte: el 24/09/2026 por defecto, ajustable en `config_app.ticketera_desde`.
   - Un circuito de aprobación parecido se quitó el 15/09/2026 porque «añadía un paso» (db/115 y db/116).
   - La bandeja de RRHH lleva bajas médicas: una tarjeta que copie su texto las enseñaría en el tablero del equipo.
-- **Decidir:**
-  - qué es una tarea manual (¿solo para uno mismo?) y si la creada desde el chat pasa por aprobación;
-  - qué tickets generan tarjeta y con qué plazo por subtipo;
-  - quién es el responsable de la tarjeta de un ticket;
-  - qué tarjetas piden aprobación;
-  - **cuándo** pasan a tarjetas las colas de hoy (J, fichaje, vacaciones): el tablero es el lugar único del trabajo pendiente, así que pasan. La campana son avisos (ítem 3), no tareas.
+- **Decidido (Camilo, 16/11/2026):**
+  - **Tarea a mano** (y desde el chat): la crea cualquiera, se notifica a Ignacio y él la aprueba o no.
+  - **Todos los tickets** generan tarjeta al crearse; el plazo y el responsable se ponen a mano.
+  - **El responsable** de la tarjeta de un ticket lo pone Ignacio, que es quien asigna.
+  - **Ninguna tarjeta pide aprobación** para cerrarse: va a «cerrada» y ya.
+  - **Las colas** (J, −J, fichaje, vacaciones) pasan **de una vez**.
+  - Aceptado también: los tickets abiertos de antes pasan con las colas; las bajas médicas sin nombre en la tarjeta; plazo obligatorio al asignar; aprobar y asignar como funciones de Organización (`tareas_aprueba`, `tareas_asigna`).
+- **Entregas:** **1a** datos y servicio (hecha el 16/11/2026, rama `tablero/1a-datos`, db/251); **1b** las pantallas; **1c** las colas y lo abierto. Ver [[Tablero de tareas]].
 
 ### 3. Avisos entre módulos (M)
 - **Hay:** muchos avisos sueltos que se calculan al momento y no se guardan:

@@ -321,6 +321,19 @@ async function asignar(id, { responsable }, quien = {}) {
   return repo.una(id);
 }
 
+/**
+ * Lo deja a cargo de OTRA persona (lo hace el tablero al asignar su tarjeta,
+ * ítem 1). «asignar» es «me hago cargo»: el responsable es quien lo pulsa.
+ */
+async function asignarA(id, { responsableId, nombre }, quien = {}) {
+  const antes = await repo.una(id);
+  if (!antes) throw new Error('No existe ese ticket');
+  const r = await repo.asignar(id, { responsable: nombre || '', responsableId: responsableId || null });
+  await repo.apuntar(id, { antes: antes.estado, despues: r.estado,
+    nota: `Lo asigna el tablero a ${nombre}`, usuarioId: quien.usuarioId, quien: quien.nombre || '' });
+  return repo.una(id);
+}
+
 async function cambiarEstado(id, { estado, resolucion }, quien = {}) {
   const antes = await repo.una(id);
   if (!antes) throw new Error('No existe ese ticket');
@@ -516,25 +529,39 @@ const vacacionesParaLaPantalla = usuarioId => aprobarVac.paraLaPantalla(usuarioI
 // los de IT, la campana del desarrollador). Envuelto aquí, en lo que se
 // exporta: así no se olvida en ninguna ruta.
 const contadores = require('../../services/contadores');
-const avisaTras = (fn, fuentes, si = () => true) => async (...args) => {
+const avisaTras = (fn, fuentes, si = () => true, despues = null) => async (...args) => {
   const r = await fn(...args);
   if (si(r)) contadores.cambio(fuentes);
+  if (despues) await despues(r, args);
   return r;
 };
 
+// EL TABLERO (ítem 1): cada ticket nuevo crea su tarjeta; cerrar o asignar el
+// ticket mueve su tarjeta. Los hooks no lanzan: el ticket ya está hecho.
+const tarjetas = () => require('./tarjetas');
+const nuevasTarjetas = async () => { await tarjetas().deNuevos(); };
+const trasCambiarTicket = async (r, [id, , quien]) => { await tarjetas().alCambiar(Number(id), (quien || {}).usuarioId); };
+const trasAsignarTicket = async (r, [id, , quien]) => { await tarjetas().alAsignar(Number(id), (quien || {}).usuarioId); };
+
 module.exports = {
   vacacionesParaLaPantalla, anotarCambioDeVacaciones,
-  sincronizar: avisaTras(sincronizar, 'tickets', r => !!(r && r.nuevas)),
-  datos, ficha, asignar,
-  cambiarEstado: avisaTras(cambiarEstado, 'tickets'),
+  sincronizar: avisaTras(sincronizar, 'tickets', r => !!(r && r.nuevas), async r => { if (r && r.nuevas) await nuevasTarjetas(); }),
+  datos, ficha,
+  asignar: avisaTras(asignar, 'tickets', () => false, trasAsignarTicket),
+  asignarA,
+  cambiarEstado: avisaTras(cambiarEstado, 'tickets', () => true, trasCambiarTicket),
   observaciones,
-  crearSoporte: avisaTras(crearSoporte, 'pendientes'),
+  crearSoporte: avisaTras(crearSoporte, 'pendientes', () => true, nuevasTarjetas),
   mios, notas, adjuntos, bandejaIT,
   estadoIT: avisaTras(estadoIT, 'pendientes'),
   TIPOS_IT, PRIORIDADES,
   enlazar,
   reclasificar: avisaTras(reclasificar, 'tickets'),
-  aplicar: avisaTras(aplicar, 'tickets'),
+  aplicar: avisaTras(aplicar, 'tickets', () => true, trasCambiarTicket),
   diagnostico,
   abiertosPorArea: repo.abiertosPorArea, pendientes,
 };
+
+// El tipo de tarjeta «ticket» del tablero se registra al cargar la ticketera:
+// así existe en cuanto arranca el ERP (ítem 1).
+require('./tarjetas');

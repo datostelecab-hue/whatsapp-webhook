@@ -32,6 +32,10 @@ const permisos = require('./permisos');
 const FUNCIONES = [
   { codigo: 'supervisor', etiqueta: 'Supervisor: aprueba tarjetas', item: 1, varias: true,
     descripcion: 'Aprueba las tarjetas que lo necesitan (una suspensión que detecta Control, una sanción); el plazo cuenta desde su aprobación.' },
+  { codigo: 'tareas_aprueba', etiqueta: 'Aprueba las tareas que se piden a mano', item: 1, varias: true,
+    descripcion: 'Le llega cada tarea creada a mano (o desde el chat) y dice si sí o no; el plazo cuenta desde que la aprueba. Ignacio (16/11/2026).' },
+  { codigo: 'tareas_asigna', etiqueta: 'Asigna las tarjetas de los tickets', item: 1, varias: true,
+    descripcion: 'Cada ticket nuevo crea su tarjeta «por asignar», y le pone responsable y plazo. Ignacio (16/11/2026).' },
   { codigo: 've_todos_los_tableros', etiqueta: 'Ve el tablero de todos', item: 1, varias: true,
     descripcion: 'En el «Tablero del equipo» ve el de toda la oficina, no solo el de su área.' },
   { codigo: 'direccion', etiqueta: 'Dirección: valida', item: 4, varias: true,

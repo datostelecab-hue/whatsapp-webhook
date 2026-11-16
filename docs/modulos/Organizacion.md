@@ -59,6 +59,8 @@ await organizacion.equipo(usuarioId);               // a quién ve en el «Table
 
   Del usuario no se apuntan la contraseña ni sus tokens, ni lo que cambia solo o a gusto de cada uno: el último acceso, el tema y las ayudas.
 
+> **Desde el 16/11/2026 (db/251):** dos funciones nuevas del [[Tablero de tareas]], `tareas_aprueba` (aprueba las tareas que se piden a mano) y `tareas_asigna` (asigna las tarjetas de los tickets), las dos de Ignacio.
+
 ## Lo que trae db/248
 
 - **Las áreas:** Dirección, RR. HH., Administración, Planificación, Control, Taller y Sistemas. **Sin responsables**: los decide Ignacio.
