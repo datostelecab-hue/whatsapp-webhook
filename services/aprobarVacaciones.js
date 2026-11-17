@@ -42,6 +42,16 @@ async function quien() {
   } catch (_) { return null; }
 }
 
+/** El id de quien la tiene, o null (el tablero le da las tarjetas de vacaciones). */
+async function quienId() {
+  try {
+    const r = await db.consulta(
+      `SELECT u.id FROM usuario_permiso p JOIN usuario u ON u.id = p.usuario_id
+        WHERE p.clave = $1 AND u.estado <> 'bloqueado' LIMIT 1`, [LLAVE]);
+    return r.rows[0] ? Number(r.rows[0].id) : null;
+  } catch (_) { return null; }
+}
+
 /** Lo que necesita una pantalla: si quien mira aprueba, y quién lo hace. */
 async function paraLaPantalla(usuarioId) {
   const [p, q] = await Promise.all([puede(usuarioId), quien()]);
@@ -57,4 +67,4 @@ async function exigir(usuarioId) {
     : 'Nadie tiene la llave de aprobar vacaciones: hay que dársela a alguien en Usuarios y permisos.');
 }
 
-module.exports = { LLAVE, ESTADO, SUBTIPO, puede, quien, paraLaPantalla, exigir };
+module.exports = { LLAVE, ESTADO, SUBTIPO, puede, quien, quienId, paraLaPantalla, exigir };

@@ -1,0 +1,172 @@
+---
+tags: [modulo, organizacion, permisos, hoja-de-ruta]
+actualizado: 2026-11-17
+---
+
+# Organización
+
+`/organizacion` (13/11/2026, db/248): el **área**, el **superior** y las **funciones** de cada persona de la oficina. Es la pieza A5 de la [[Hoja de ruta]]. Lo necesitan muchos ítems:
+- «la aprueba un supervisor (Ángel, William o Ignacio)» (ítems 1 y 5);
+- «una tarea para Daiane» (ítems 8, 10, 12, 14 y 15);
+- «avisa al responsable y a su superior» y «cada responsable de área ve el suyo» (ítem 1);
+- «solo lo ven Laura, Ignacio y Fernando» (ítem 4, convención 6).
+
+Con esto, ningún ítem escribe un nombre ni un id en el código: pregunta quién tiene la función.
+
+## Por puestos, no por nombres (db/255, 17/11/2026)
+
+Camilo: *«no lo veas tanto por nombres sino por roles: si mañana se va una Karen, puede que venga otra persona y tome su rol»*. Hasta db/255 el área, el superior y las funciones se ponían persona a persona; **ahora cuelgan de un PUESTO**:
+
+- cada puesto está en un **área** y **reporta a** otro puesto;
+- lleva sus **funciones** (quién aprueba, quién reparte, quién lleva cada cola);
+- cada área la **dirige** un puesto (`cat_area.responsable_puesto`).
+
+A cada persona se le pone su puesto («Cambiar el puesto», en su ficha), y **de él le vienen su área, su superior y sus funciones**. Si alguien se va, quien ocupe su puesto lo hereda todo sin tocar nada más. Lo que se le pone **a mano** a una persona (otra área, otro superior, una función de más o de suplente) sigue valiendo, como excepción encima de su puesto.
+
+| Puesto | Área | Reporta a | Quién (17/11/2026) | Funciones |
+|---|---|---|---|---|
+| CEO | Dirección (la dirige) | — | Fernando | ve todos los tableros, ve los expedientes, caja (suplente y testigo) |
+| Dirección de operaciones | Dirección | CEO | Ignacio | supervisor, dirección, aprueba y reparte las tareas, ve todos los tableros, expedientes, multas escaladas, caja, combustible, reintegros por encima del tope, pólizas. Dirige RR. HH., Selección, Legal, Administración y Sistemas |
+| Dirección de Barcelona | Dirección | CEO | Carlos | — |
+| Administración de personal y nómina | RR. HH. | Dirección de operaciones | Diana | nómina, cartas (consulta), desactiva por baja voluntaria |
+| Selección y ETT | Selección | Dirección de operaciones | Víctor | desactiva por fin de ETT |
+| Legal | Legal | Dirección de operaciones | Laura | expedientes, desactiva por suspensión o despido, J de RR. HH. |
+| Administración | Administración | Dirección de operaciones | Daiane | combustible, multas, caja, documentación de coches, reintegros |
+| Captación, documentación y altas | Administración | Dirección de operaciones | Mercedes | cartas (consulta) |
+| Jefe de planificación | Planificación (la dirige) | Dirección de operaciones | William | supervisor, sustituciones, J de Tráfico, BOLT y Por compañero, −J |
+| Jefe de control | Control (la dirige) | Dirección de operaciones | Ángel y Lorenzo | supervisor |
+| Controlador | Control | Jefe de control | Karen, Gabriel y Gabriela | — |
+| Responsable de taller | Taller (la dirige) | Dirección de operaciones | Óscar (Guti, sin usuario) | taller, J de Taller |
+| Desarrollo y sistemas | Sistemas | Dirección de operaciones | Camilo | — |
+
+Sale de los descriptivos de puesto y los ciclos de trabajo de RR. HH., Administración y Flota (11 y 12/11/2026) y de lo que contestó Camilo el 17/11/2026.
+
+**RR. HH., Selección y Legal, cada uno su área (db/258, 17/11/2026).** Camilo: *«Hay que separar RR. HH. (Diana) de legal (Laura) y selección (Víctor); a Mercedes déjala en administración junto con Daiane»*. Se movieron los **puestos**, no las personas: quien los ocupe mañana va con ellos.
+
+- **Legal** y **Selección** son áreas nuevas, con su color en el organigrama; las dirige, como RR. HH., la Dirección de operaciones.
+- El puesto de Laura pasa a llamarse **Legal**. Camilo decidió que **siga reportando a Ignacio** y que **conserve las J de RR. HH.**, además de los expedientes.
+- El puesto de Mercedes («Captación, documentación y altas») pasa a **Administración**, al lado del de Daiane, con sus mismas funciones.
+- A quien tuviera «RR. HH.» puesto a mano en uno de esos puestos se le quitó la excepción: va con su puesto.
+- Ninguna pantalla depende del área salvo los [[Avisos]], que hoy solo mandan a Control: el cambio no deja a nadie sin nada.
+
+- **El superior** de una persona es: el puesto a mano, si lo tiene; si no, **quien ocupe el puesto al que reporta el suyo** (si son dos, los dos: los jefes de Control); si ese puesto está vacío, el de encima; y si no, quien dirija su área. `organizacion.superioresDe(id)` los da todos (el aviso de vencidas del tablero llega a todos).
+- **Dos jefes a la vez:** Laura reporta a Fernando (lo legal, 80 %) y a Ignacio (lo laboral, 20 %), y Daiane a Ignacio y a Carlos. Cada puesto reporta a uno: se pone a quien **evalúa** (Ignacio en los dos).
+- **Las funciones del puesto no se le quitan a la persona**: se le cambia el puesto, o se le quita la función al puesto. db/255 anuló las que cada persona tenía a mano y ahora le vienen del puesto, con su motivo.
+- **Ángel**: db/248 le buscaba como «Huarcayaculqui» y en producción es «Huarcaya», así que allí no le daba la función de supervisor. db/255 lo busca con los dos y se la da su puesto.
+- **Un puesto vacío** sale en la pantalla como aviso («Puestos sin nadie»): sus funciones no le llegan a nadie y quien reportaba a él sube al de encima.
+
+### El organigrama (17/11/2026)
+
+La pestaña **Organigrama** de /organizacion (`?vista=organigrama`) pinta los puestos en árbol: cada uno colgando del puesto al que reporta, los de un mismo nivel **agrupados por área** (RR. HH. sale como un bloque con sus cuatro puestos) y cada área con su color. Dentro de cada puesto, quien lo ocupa; un puesto sin nadie sale como **vacante**.
+
+- **Se arrastra a la gente**: soltar a una persona en otro puesto dice qué le cambia (área, superior y funciones) y, si se confirma, se lo cambia. Soltarla en **«Sin puesto»** se lo quita.
+- **Pulsar a una persona** abre su ficha en la pestaña Personas. En el móvil, donde no se arrastra, es la forma de cambiarle el puesto («Cambiar el puesto»).
+- **Más grande, más pequeño o «Ajustar»** a lo ancho; se recuerda en cada navegador.
+- Es la pieza global `Organigrama` (`public/assets/js/organigrama.js`, clases `.tc-org*`): ver [[Componentes de la casa]].
+
+## Función no es llave
+
+| | La **llave** ([[Usuarios y permisos]]) | La **función** (aquí) |
+|---|---|---|
+| Qué dice | Qué pantalla abre alguien | Qué le toca hacer: a quién le llega una tarea, quién aprueba |
+| De dónde sale | Las de su rol, con las excepciones de cada persona | Solo de las que tenga dadas |
+| Superadmin y desarrollador | Abren todo | **No tienen ninguna por su rol**, como la llave de aprobar vacaciones |
+| Dónde se cambia | `/usuarios` | `/organizacion` |
+
+La ficha de cada persona enseña también **las llaves que se salen de las de su rol**: las que tiene de más y las que le faltan. Es la «matriz por rol con excepciones por persona» que pide la convención 6. Se cambian en `/usuarios`.
+
+## Cómo se usa desde un ítem
+
+```js
+const organizacion = require('../../services/organizacion');
+
+await organizacion.quienes('multas');               // [{ id: 9, nombre: 'Daiane Alves', suplente: false }]
+await organizacion.exigir(usuarioId, 'expedientes_ver');  // lanza «"Ve los expedientes laborales" es de …»
+await organizacion.superiorDe(usuarioId);           // { id, nombre, porque } o null
+await organizacion.equipo(usuarioId);               // a quién ve en el «Tablero del equipo»
+```
+
+- **`quienes`** da primero los titulares y después los suplentes. Nunca da un usuario bloqueado ni una función quitada.
+- **`exigir`** es la puerta de los datos sensibles. Se comprueba en el servicio, también para el superadmin y el desarrollador. Si nadie tiene la función, lo dice: «Nadie tiene la función …: hay que dársela a alguien en Organización».
+- **El superior** es el que se le ponga a mano. Si no tiene, es el responsable de su área, salvo que sea ella misma. Un superior puesto que está bloqueado no cuenta: entonces manda el responsable de su área.
+- **El equipo** de alguien:
+  - la gente de su área, si es la responsable;
+  - quien la tenga puesta como superior;
+  - toda la oficina, si tiene «Ve el tablero de todos».
+
+## Las áreas como destino de los avisos (ítem 3)
+
+Desde el 16/11/2026 un **área es el destino de los [[Avisos]]**: «todos los perfiles de Control» son la gente del área Control y su responsable. `organizacion.deArea(codigo)` dice a quién le llega lo de un área y `organizacion.areasDeAvisos(id)` de qué áreas recibe una persona. **Un área sin nadie** se la queda quien reparte las tareas (`tareas_asigna`): por eso conviene rellenar las áreas.
+
+## Las reglas
+
+- **El catálogo de funciones está en el código** (`FUNCIONES` en `services/organizacion.js`): 22 funciones. Cada una lleva el ítem de la hoja de ruta que la usa y si la pueden tener varias personas a la vez. En la base solo está quién tiene cada una (`usuario_funcion`). Una función nueva se añade al catálogo con el ítem que la necesita.
+- **De una sola persona:** «Lleva los expedientes laborales» y «Lleva la nómina». Para dársela a otra, primero se le quita a quien la tiene, o se le da a la otra como suplente. **Si quien la tiene está bloqueado**, al dársela a otra se le anula a él en el acto, con su motivo («Pasa a X: Y está bloqueado en el ERP»). Si no, al desbloquearlo habría dos titulares, y la pantalla no enseña a los bloqueados para quitársela.
+- **Cada persona está en una sola área y solo puede ser responsable de esa.** Si se cambia de área, o se le quita la marca de responsable, deja de serlo de la que llevaba. Si el área ya tenía responsable, pasa a ser la nueva persona. La pantalla **lo pregunta con los nombres** antes de guardar, cuando alguien va a llevar otra área o a quitarle el puesto a quien la llevaba.
+- **Nadie es su propio superior**, y no se puede cerrar un círculo (A depende de B y B de A). Tampoco **por el responsable del área**: quien entra sin superior puesto en un área pasa a depender de su responsable, y eso también se mira. El error dice el círculo: «Así quedaría un círculo de superiores: Mario → Rocío → Mario».
+  **Y tampoco uno que se cerraría al bloquear o desbloquear a alguien** en `/usuarios`, que no pasa por aquí. Quien tiene un superior puesto que se bloquea pasa a depender del responsable de su área. Por eso al guardar se miran los dos enlaces de cada persona a la vez —el puesto y el del área—, bloqueados incluidos. Así se rechaza, por ejemplo, que Rocío lleve Control con Andrés de superior si Andrés está en Control con otro jefe: al bloquear a ese jefe quedaría Rocío → Andrés → Rocío. El error lo dice: «Así podría quedar un círculo… Pasaría al bloquear a alguien».
+- **Los cambios van en fila:** cada uno toma un candado en la base y decide dentro de su transacción. Dos a la vez no pueden cerrar un círculo entre los dos, ni dar a dos personas una función que es de una sola.
+- **Quitar una función es anularla con motivo:** la fila se queda. Si a la persona la bloquearon mientras tanto, se quita igual.
+- **Todo pasa por el [[Libro de auditoria]]**, con quién y por qué:
+  - dar y quitar funciones;
+  - cambiar áreas y responsables;
+  - cambiar el rol, el área o el superior de un usuario. Lo que se cambia en `/usuarios` firma con quién lo hizo desde el 13/11/2026: ver [[Usuarios y permisos]].
+
+  Del usuario no se apuntan la contraseña ni sus tokens, ni lo que cambia solo o a gusto de cada uno: el último acceso, el tema y las ayudas.
+
+> **Desde el 16/11/2026 (db/251):** dos funciones nuevas del [[Tablero de tareas]], `tareas_aprueba` (aprueba las tareas que se piden a mano) y `tareas_asigna` (asigna las tarjetas de los tickets), las dos de Ignacio.
+>
+> **Y desde db/252 (1c del tablero):** quién lleva las J de cada tipo y las −J: `j_trafico`, `j_bolt`, `j_companero` y `menos_j` (William), `j_taller` (Óscar) y `j_rrhh` (Laura). A su titular le nace la tarjeta de cada J pendiente de su tipo; aprobarla sigue siendo de quien tenga la llave `/justificantes`.
+
+## Lo que trae db/248
+
+- **Las áreas:** Dirección, RR. HH., Administración, Planificación, Control, Taller y Sistemas. **Sin responsables**: los decide Ignacio.
+- **Áreas y superiores de cada persona:** vacíos. También los decide Ignacio, en la pantalla.
+- **Las funciones que el PDF de la hoja de ruta reparte con nombre.** Cada una se busca por id **y** por nombre: si el usuario de ese id no se llama así, no se le da. Por ejemplo:
+  - supervisores: Ignacio, William y Ángel;
+  - expedientes: Laura; los ven Laura, Ignacio y Fernando;
+  - nómina: Diana;
+  - multas, documentación de los coches y reintegros: Daiane;
+  - caja: Daiane e Ignacio, y Fernando de suplente;
+  - taller: Óscar.
+- **El alta de las áreas no está en el libro:** la 248 las siembra antes de poner `cat_area` bajo él. La historia de un área empieza en su primer cambio, que lleva entera la fila con la que nació. Las 30 funciones sí tienen su alta.
+- **Angie (Formentera)** no tiene usuario. Las funciones que el PDF le da a ella también («Recibe las multas que no se pueden identificar», «Testigo del arqueo») quedan solo en los demás hasta que lo tenga.
+
+## Quién entra
+
+Los mismos que en [[Usuarios y permisos]]: el desarrollador por su rol, o quien tenga la llave `/usuarios` (Ignacio, db/168). Entrar no da ninguna función.
+
+## Ficheros
+
+```
+db/248-organizacion.sql                     cat_area, usuario.area_codigo/superior_id, usuario_funcion
+db/255-puestos.sql                          los puestos, sus funciones y quién ocupa cada uno
+db/258-areas-legal-seleccion.sql            RR. HH., Selección y Legal, cada uno su área; Captación, a Administración
+services/organizacion.js                    el catálogo y las reglas (lo usa todo el ERP)
+services/repo/organizacion.js               el SQL
+modules/Organizacion/                       la pantalla /organizacion y su API
+public/assets/js/vistas/Organizacion/       la pantalla (Listado)
+test/organizacion.test.js                   las reglas, con la base sintética
+```
+
+## Pendiente
+
+- Que Ignacio ponga las áreas, los responsables y los superiores.
+- Los usuarios que faltan (Angie) y repasar con él el reparto de funciones.
+- El «Tablero del equipo» (ítem 1) es el primero que usará `equipo()` y `superiorDe()`.
+- Las funciones que pidan los ítems al hacerse se añaden al catálogo con su ítem. Por ejemplo, la caja del 12 (quién cuenta el lunes y quién firma), ver las multas del 10 (Diana) o emitir las cartas del 6 (Laura).
+
+## La revisión del 13/11/2026
+
+Ocho agentes revisaron la rama (la migración contra los datos reales, la lógica, la pantalla y la seguridad, las pruebas y el reparto contra el PDF), y otros cuatro intentaron tumbar cada hallazgo. Se arregló lo que se sostuvo, sin migración nueva:
+- el círculo que se cerraba por el responsable del área;
+- el superior puesto bloqueado que dejaba a la persona sin superior;
+- los dos titulares de una función de una sola persona al desbloquear a quien la tenía;
+- quitar una función a alguien recién bloqueado contestaba «No se ha guardado» aunque se guardaba;
+- las llaves hijas salían con la ruta en vez del nombre;
+- el «Sí» de responsable heredado del área de antes;
+- y lo que se cambiaba en `/usuarios` entraba en el libro sin autor y como «SQL a mano».
+
+Cada uno tiene su prueba en `test/organizacion.test.js`, y todas fallaban con el código de antes.
+
+Una segunda pasada sobre esos arreglos (dos revisores y un escéptico) no encontró nada en el acceso ni en `/usuarios`. En Organización encontró que, con «el superior bloqueado no cuenta», bloquear a alguien podía cerrar un círculo sin pasar por la comprobación (y desbloquear ya podía antes). Se arregló mirando los dos enlaces de cada persona, con dos pruebas más.

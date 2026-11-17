@@ -54,7 +54,11 @@ const BANDEJAS = [
  * al pincharlo es peor que no tenerlo. `permisos` en null es acceso total.
  */
 function visibles(res) {
-  const mias = res.locals.permisos;
+  return visiblesDe(res.locals.permisos);
+}
+
+/** Las bandejas que puede abrir quien tiene esas llaves (null = las ve todas). */
+function visiblesDe(mias) {
   return BANDEJAS.filter(b => {
     if (mias == null) return true;
     const clave = permisos.claveDeRuta(b.href, 'GET');
@@ -195,5 +199,33 @@ function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {})
 
   return router;
 }
+
+// ── LOS CONTADORES (A9): los números de los cuadros de la barra ────────────
+// Los mismos que daba /bandejas/api/pendientes, por el sitio de todos los
+// contadores: «tickets.RRHH», sus partes («tickets.RRHH.nomina»…) y «Otros».
+require('../../services/contadores').registrarFuente('tickets', {
+  async contar(quien) {
+    const mias = visiblesDe(quien.permisos);
+    if (!mias.length) return {};
+    const r = await ticketera.pendientes(mias.map(b => b.area));
+    const salida = {};
+    const titulo = (nombre, n) => `${nombre}: ${n ? n + (n === 1 ? ' ticket pendiente' : ' tickets pendientes') : 'nada pendiente'} desde el ${r.desde}`;
+    for (const b of mias) {
+      const total = r.pendientes[b.area] || 0;
+      salida[`tickets.${b.area}`] = { n: total, titulo: titulo(b.etiqueta, total) };
+      if (!b.partes) continue;
+      const tipos = r.porSubtipo[b.area] || {};
+      let enPartes = 0;
+      for (const p of b.partes) {
+        const n = p.subtipos.reduce((s, x) => s + (tipos[x] || 0), 0);
+        enPartes += n;
+        salida[`tickets.${b.area}.${p.clave}`] = { n, titulo: titulo(p.etiqueta, n) };
+      }
+      const otros = Math.max(0, total - enPartes);
+      salida[`tickets.${b.area}.${OTROS.clave}`] = { n: otros, titulo: titulo(OTROS.etiqueta, otros) };
+    }
+    return salida;
+  },
+});
 
 module.exports = { para, resumen, enLaBarra, BANDEJAS };

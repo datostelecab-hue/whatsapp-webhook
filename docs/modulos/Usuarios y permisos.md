@@ -179,6 +179,18 @@ Las reglas que el controlador defiende:
 
 Bloquear o resetear cortan las sesiones en el acto (ver arriba).
 
+**Todo queda en el [[Libro de auditoria]]** desde db/248 (13/11/2026): la tabla `usuario` está bajo él, y cada escritura del servicio acepta una firma (`{ usuarioId, origen }`) que dice quién lo hizo y desde dónde.
+
+| Origen | Quién | Qué |
+|---|---|---|
+| `usuarios` | quien usa esta pantalla | crear, rol, estado, resetear, cerrar sesiones, quién ficha, quién coge coches |
+| `mi-cuenta` | el propio usuario | su nombre, apellidos, teléfono y fecha de nacimiento |
+| `acceso` | el propio usuario al cambiar su contraseña; **nadie** (lo hace el sistema) en «Olvidé mi contraseña» | la contraseña nueva y el corte de sesiones |
+| `arranque` | nadie | el primer superadmin, si la base no tiene ninguno |
+| `organizacion` | quien usa `/organizacion` | el área y el superior (ver [[Organizacion]]) |
+
+No dejan fila el último acceso (cada entrada), el tema, las ayudas, la contraseña y sus tokens, ni la contraseña del correo. Una escritura nueva en `usuario` lleva su firma: sin ella se apunta igual, pero «sin decir (SQL a mano o migración)».
+
 ## Quién tiene que fichar
 
 La empresa quiere que los empleados fichen por el ERP, **pero no todos**: la directiva y la gerencia no fichan.

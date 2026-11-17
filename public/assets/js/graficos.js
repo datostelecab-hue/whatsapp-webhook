@@ -130,7 +130,7 @@
       if (!items.length) return;
       const ctx = chart.ctx;
       ctx.save();
-      ctx.font = '600 10.5px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.font = '600 10.5px "Plus Jakarta Sans", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       const { top, bottom } = chart.chartArea;
       // Las de fuera (a la derecha) se reparten para no pisarse; la de dentro va sola.

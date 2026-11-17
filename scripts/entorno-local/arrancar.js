@@ -68,7 +68,37 @@ Object.assign(process.env, {
   // un secreto: solo firma cookies de este PC.
   SESSION_SECRET: 'entorno-local-de-pruebas-no-es-un-secreto',
   ENTORNO_LOCAL: '1',
+  // LOS ADJUNTOS (db/249) van al R2 de mentira del contenedor telecab-s3, nunca
+  // al de verdad aunque esté en el entorno de quien arranca.
+  ALMACEN: 'r2',
+  R2_ENDPOINT: 'http://127.0.0.1:9090',
+  R2_BUCKET: 'telecab-adjuntos',
+  R2_ACCESS_KEY_ID: 'local',
+  R2_SECRET_ACCESS_KEY: 'local',
 });
+delete process.env.R2_ACCOUNT_ID;
+
+// LAS NOTIFICACIONES (A8): unas claves VAPID SOLO de este PC, hechas la primera
+// vez y guardadas en push.env (fuera de git). No son las de Render: lo que se
+// active aquí no vale allí, ni al revés.
+{
+  const fs = require('fs');
+  const fichero = path.join(__dirname, 'push.env');
+  let claves = {};
+  try {
+    fs.readFileSync(fichero, 'utf8').split(/\r?\n/).forEach(l => {
+      const m = /^\s*(VAPID_[A-Z]+)\s*=\s*(.*?)\s*$/.exec(l);
+      if (m) claves[m[1]] = m[2];
+    });
+  } catch (_) { /* la primera vez */ }
+  if (!claves.VAPID_PUBLICA || !claves.VAPID_PRIVADA) {
+    const k = require('web-push').generateVAPIDKeys();
+    claves = { VAPID_PUBLICA: k.publicKey, VAPID_PRIVADA: k.privateKey };
+    fs.writeFileSync(fichero, '# Claves VAPID SOLO del entorno local (scripts/entorno-local/arrancar.js las hizo).\n'
+      + `VAPID_PUBLICA=${claves.VAPID_PUBLICA}\nVAPID_PRIVADA=${claves.VAPID_PRIVADA}\n`);
+  }
+  Object.assign(process.env, { VAPID_PUBLICA: claves.VAPID_PUBLICA, VAPID_PRIVADA: claves.VAPID_PRIVADA, VAPID_CONTACTO: 'https://erptelecab.es' });
+}
 
 (async () => {
   const { Client } = require('pg');

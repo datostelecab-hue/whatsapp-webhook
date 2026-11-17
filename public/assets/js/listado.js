@@ -463,11 +463,12 @@
       this.el.kpis.innerHTML = '';
       tarjetas.forEach(k => {
         const t = nodo(`
-          <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 shadow-soft ${k.filtro ? 'cursor-pointer hover:border-telecab-gold/40 transition' : ''}"${
+          <div class="tc-kpi ${k.filtro ? 'tc-kpi--pulsable' : ''} ${k.icono ? 'tc-kpi--con-icono' : ''}" data-tono="${esc(k.tono || 'text')}"${
             k.ayuda ? ` title="${esc(k.ayuda)}"` : ''}>
-            <p class="text-xs text-telecab-muted uppercase tracking-wide">${esc(k.etiqueta || '')}</p>
-            <p class="text-2xl font-bold mt-1 text-telecab-${esc(k.tono || 'text')}">${esc(k.valor)}</p>
-            ${k.pie ? `<p class="text-xs text-telecab-muted mt-1">${esc(k.pie)}</p>` : ''}
+            ${k.icono ? `<span class="tc-kpi-icono" aria-hidden="true"><i class="fa-solid ${esc(k.icono)}"></i></span>` : ''}
+            <p class="tc-kpi-etiqueta">${esc(k.etiqueta || '')}</p>
+            <p class="tc-kpi-valor">${esc(k.valor)}</p>
+            ${k.pie ? `<p class="tc-kpi-pie">${esc(k.pie)}</p>` : ''}
           </div>`);
         // Una tarjeta puede ser un atajo al filtro que representa.
         if (k.filtro) {
@@ -689,6 +690,13 @@
           // la misma fila, y abrir una ficha al marcar es de las cosas que hacen
           // que la gente deje de usar la casilla.
           if (e.target.closest('input[type=checkbox]')) return;
+          // `alAbrir(fila)` (16/11/2026): la fila abre algo propio (el panel
+          // lateral del tablero) en vez de la ficha que sustituye a la lista.
+          if (typeof this.cfg.alAbrir === 'function') {
+            const f = this.filas.find(x => String(x[this.clave]) === tr.dataset.clave);
+            if (f) this.cfg.alAbrir(f);
+            return;
+          }
           this.abrir(tr.dataset.clave, { historial: true });
         });
       });

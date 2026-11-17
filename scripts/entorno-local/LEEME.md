@@ -17,6 +17,7 @@ node scripts/entorno-local/arrancar.js
 | ERP | http://erptelecab.localhost:3100 |
 | Portal de conductores | http://conductorestelecab.localhost:3100 |
 | Buzón de pruebas (Mailpit) | http://localhost:8025 |
+| S3 de mentira (los adjuntos, hace de Cloudflare R2) | http://127.0.0.1:9090 — lo adjuntado se pierde al parar el contenedor, y las filas siguen en la base |
 | Base local | `postgresql://telecab:pruebas@127.0.0.1:5433/telecab` |
 
 Para entrar al portal sin el DNI de nadie de verdad, `node scripts/entorno-local/conductor-de-prueba.js [id_de_ficha]`

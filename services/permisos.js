@@ -236,6 +236,12 @@ const CATALOGO = [
     // ningún rol, ni siquiera los que llevan todo el catálogo. El superadmin NO
     // entra por serlo: o eres el desarrollador o tienes esta llave.
     { clave: '/usuarios', etiqueta: 'Usuarios y permisos (una sola persona, además del desarrollador)', manual: true },
+    // LOS PARÁMETROS DE NEGOCIO (13/11/2026, db/243): plazos, topes, días del
+    // mes y el horario de la oficina (convención 4 de la hoja de ruta). Camilo:
+    // «Llave propia: Ignacio y desarrollador». `manual`: no la reparte ningún
+    // rol; de inicio la tiene Ignacio y se puede dar a más gente aquí. El
+    // superadmin NO entra por serlo (sesion.requiereDesarrolladorOLlave).
+    { clave: '/parametros', etiqueta: 'Parámetros de negocio (plazos, topes y horario de oficina)', manual: true },
   ] },
 ];
 

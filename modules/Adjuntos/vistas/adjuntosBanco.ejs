@@ -1,0 +1,24 @@
+<%#
+  EL BANCO DE ADJUNTOS (db/249, pieza A6) — solo el desarrollador.
+
+  Dice dónde se están guardando los ficheros (R2, el disco local o ninguno) y
+  deja subir, ver y quitar ficheros de prueba con el mismo componente que usarán
+  los módulos (public/assets/js/adjuntos.js). Sirve para comprobar el almacén en
+  local, en el servidor de pruebas y en Render.
+%>
+
+<div class="max-w-4xl mx-auto space-y-5">
+  <div>
+    <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-paperclip text-telecab-gold" aria-hidden="true"></i> Banco de adjuntos
+    </h1>
+    <p class="text-sm text-telecab-muted mt-1">
+      Para comprobar que los ficheros se guardan y se ven bien. Lo que subas aquí es solo tuyo y no lo ve nadie más.
+    </p>
+  </div>
+  <div id="estado"></div>
+  <div id="adjuntos"></div>
+</div>
+
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Adjuntos/banco.js') %>"></script>

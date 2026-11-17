@@ -181,7 +181,11 @@
   // y devolverlos es de aqui.
   //
   // `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'opciones'|'semana'|'texto-largo'|'horas',
-  //               opciones, valor, ayuda, grupo, obligatorio, marcador }]
+  //               opciones, valor, ayuda, grupo, obligatorio, marcador, minimo }]
+  //
+  // `minimo` (en 'texto' y 'texto-largo'): cuántas letras como poco. Si no
+  // llega, la ventana se queda abierta y lo dice, con lo escrito: un motivo de
+  // dos letras que el servidor iba a rechazar ya no se pierde (16/11/2026).
   //
   // 'semana' son los siete días (L…D) para marcar: devuelve [1…7]; `exactos: 2`
   // obliga a marcar justo esos (los dos que libra en unas vacaciones).
@@ -224,6 +228,8 @@
     return new Promise(resolver => {
       const fondo = document.createElement('div');
       fondo.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm';
+      // Para quien esté debajo (el Panel lateral): con un formulario abierto, Escape es suyo.
+      fondo.setAttribute('data-formulario', '');
       fondo.innerHTML = `
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full ${ancho} my-8">
           <div class="px-5 py-4 border-b border-telecab-border flex items-start gap-3">
@@ -632,6 +638,10 @@
             // y cada pantalla tenía que comprobarlo después, a mano y con su propio
             // aviso —o no lo comprobaba—. Ahora se queda abierta y lo dice.
             fallos.push(`Rellena «${c.etiqueta}».`);
+          }
+          if (c.minimo && (c.tipo === 'texto' || c.tipo === 'texto-largo' || !c.tipo)) {
+            const t = String(salida[c.id] == null ? '' : salida[c.id]).trim();
+            if (t && t.length < c.minimo) fallos.push(`Escribe al menos ${c.minimo} letras en «${c.etiqueta}».`);
           }
         });
 

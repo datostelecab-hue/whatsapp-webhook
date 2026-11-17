@@ -17,6 +17,7 @@ El mapa del proyecto. Cada nota cuenta una pieza y enlaza con las de al lado; si
 - **[[Telecab]]** — El negocio y la forma en que se trabaja. Sin esto, la mitad de las decisiones del sistema no se entienden.
 - **[[Arquitectura]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
 - **[[Estado y pendientes]]** — Lo que está abierto hoy. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
+- **[[Hoja de ruta]]** — Los 22 desarrollos que pide Ignacio (tablero de tareas, chat, avisos, RR. HH., administración, flota y el informe trimestral por persona), en qué orden, qué del ERP sirve para cada uno y qué falta decidir. Antes de nada, una fase de cimientos.
 
 ## Referencia de las APIs
 
@@ -32,6 +33,14 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[El ahora de la flota]]** — La foto única de qué hace cada coche y cada conductor en BOLT ahora mismo: la leen el mapa, En directo e Inicio, se hace una vez y se rehace solo cuando entra algo nuevo. Desde el 28/10/2026, con la lista de conectados de la API v2 de BOLT.
 - **[[Ingesta]]** — La única puerta por la que entran datos externos.
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
+- **[[Libro de auditoria]]** — Un solo libro de quién hizo qué, cuándo, desde dónde y por qué (13/11/2026, db/245): lo escribe la base en cada tabla puesta bajo él con `auditoria_vigilar()`, y no se cambia ni se borra.
+- **[[Tareas programadas]]** — Las tareas de negocio que el ERP hace solo en su momento (13/11/2026, db/246): una vuelta cada diez minutos, una sola vez por periodo aunque haya dos procesos, y recupera la que se perdió por una caída.
+- **[[Tablero de tareas]]** — El lugar único del trabajo pendiente (ítem 1, 16/11/2026, db/251): tareas a mano que aprueba Ignacio, una tarjeta por ticket que asigna él, plazo en días hábiles con aviso al vencer, historia intocable. Entregas 1a (datos, servicio, API), 1b (la pantalla: Mi tablero con arrastrar, equipo, por repartir y lista) y 1c (las colas: J, −J, correcciones de fichaje y vacaciones, ya asignadas y cerradas por su cola, db/252).
+- **[[Contadores]]** — Los números del menú y de la barra en una sola petición (16/11/2026, A9): una marca por entrada, la suma por grupo, visibles con el menú plegado y al momento por el tiempo real. Cada módulo registra su fuente.
+- **[[Notificaciones al dispositivo]]** — Avisar en el móvil o el ordenador aunque no se tenga el ERP abierto (16/11/2026, A8, db/250): Web Push, «Activar» en Configuración, solo mientras la sesión siga abierta. El ERP, instalable como app.
+- **[[Tiempo real]]** — El servidor avisa a las pantallas en cuanto algo cambia (16/11/2026, A7): canales con su permiso, lo perdido al volver, y sondeo cuando no hay directo (en local va por sondeo). `TiempoReal.escuchar`.
+- **[[Adjuntos]]** — Un fichero de cualquier cosa, en un solo sitio (13/11/2026, db/249): los bytes en Cloudflare R2, subida por trozos con tope, vídeos por rangos, y solo se abren en la página fotos, PDF, vídeo y audio. Quitar es anular.
+- **[[Calendario laboral]]** — Los días y las horas hábiles de la oficina (13/11/2026): un solo servicio para todos los plazos, con los festivos del convenio, los de Madrid capital y el horario de oficina como parámetro.
 - **[[Migraciones]]** — El esquema de la Base de datos no se toca a mano: se cambia añadiendo un fichero a db/.
 - **[[Sedes]]** — Madrid y Barcelona: qué hay de Barcelona en la base (coches, la empresa de BOLT y sus cuentas) y por qué ninguna pantalla de Madrid lo enseña.
 
@@ -56,6 +65,8 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Operaciones]]** — Qué hace la flota cuando nadie mira: los avisos del coche, los kilómetros que no cuadran, quién corre de más y el calendario de lo que de verdad pasó cada día.
 - **[[Barcelona]]** — La sede de Barcelona: se elige en el login. Su planificador (conductores de BOLT en matrículas de BOLT, de día o de noche, fijo hasta que se cambia; desde el 06/11/2026 el de Madrid, con zonas, libranzas, promedio, los correturnos como casillas del cuadrante y exportar a Excel), su reporte de horas y su Visibilidad, con sus datos aparte de Madrid.
 - **[[Planificacion]]** — Quién conduce qué coche, qué día y en qué turno. Empieza por las cinco bases, y los cuadrantes de cada una salen de mejor a peor (el iceberg).
+- **[[Organizacion]]** — /organizacion (13/11/2026, db/248; por puestos desde db/255, 17/11/2026): cada persona tiene un puesto, y de él le vienen su área, su superior y sus funciones —quién aprueba, a quién le llega cada tarea—; si alguien se va, quien ocupe su puesto lo hereda. Lo de a mano va encima. Una función no es una llave.
+- **[[Parametros]]** — /parametros (13/11/2026): los números de las reglas de la hoja de ruta (plazos, topes, días del mes) y el horario de la oficina, con su historia intocable. Ignacio y el desarrollador.
 - **[[Vacaciones]]** — El saldo de vacaciones de cada conductor: 0,0821 días por día natural desde el alta (o desde el 01/01/2026; hasta el 19/10/2026, el 01/01/2025), + festivos trabajados más de 6 h, − vacaciones y permisos. Debajo de cada nombre, y en la ficha de dónde sale. Desde el 16/10/2026, solo plantilla propia, y quien las aprueba cambia las fechas de las ya aprobadas solo a futuro (también en Plantilla) y sin soltarlas de su ticket.
 - **[[RRHH]]** — Lo que el convenio VTC obliga a llevar: la jornada de cada trabajador contra su objetivo, el cierre del periodo, la nómina que se manda a la gestoría y el cuadro de absentismo.
 - **[[Menos J]]** — La −J (30/10/2026, db/227): constancia de un perjuicio a la empresa («Alex no le dio el coche a tiempo a Carlos»), con motivo y compañero perjudicado; no toca horas, nómina ni letra y se aprueba en /justificantes. Y la auditoría de TODAS las J y −J (db/228): cada cambio, con quién, desde dónde y qué cambió, lo apunta la base y no se borra.
@@ -92,11 +103,15 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 
 ## Cómo se trabaja aquí
 
-- **[[Comprobadores]]** — En este proyecto no hay pruebas automáticas, ni linter, ni npm scripts.
+- **[[Comprobadores]]** — Los scripts `scripts/comprobar-*.js`, que revisan el código o miran la copia de producción y salen con 1 si hay algo que arreglar.
+- **[[Pruebas automáticas]]** — `npm test` (13/11/2026): un test por criterio de aceptación, contra una base sintética sin datos de personas que se rehace con `npm run pruebas:base`.
 - **[[Entorno de pruebas local]]** — El ERP y el portal en el PC, contra una copia de producción, con los correos encerrados en un buzón falso (19/10/2026).
 - **[[Glosario]]** — El vocabulario de la casa. Son palabras que en este ERP significan una cosa
 - **[[Reglas de la casa]] · [[Componentes de la casa]]** — Lo que se respeta sí o sí en este repositorio.
-- **[[Identidad visual]]** — Corporativa desde el 27/09/2026: un solo acento (el oro del logo), superficies lisas, IBM Plex Sans, sin emojis; la marca en SVG y la carga animada que sigue al tema.
+- **[[Identidad visual]]** — **Telecab V3** desde el 16/11/2026: azul vivo sobre azul marino (o blanco limpio en claro), estados con el color entero, Plus Jakarta Sans, temas con otro acento, menú con el elegido relleno y el acceso partido en dos con el Corolla de noche. Sin emojis; la marca en SVG y la carga animada que sigue al tema.
+- **[[Novedades]]** — La ventana que avisa de cada versión (una vez por persona, db/253): lo nuevo y lo que ya tiene cada uno según su menú, y un recorrido guiado opcional (`Recorrido`, pieza global). V3, 16/11/2026.
+- **[[Avisos]]** — Los avisos entre módulos (ítem 3, db/254): van a un área de Organización, cada uno lee los suyos y resolver es de todos; la campana es su bandeja. El primero: cada cita del taller avisa a Control.
+- **[[Chat]]** — El chat interno (ítem 2, db/256 y db/257): canales públicos y privados, mensajes directos, hilos y menciones, al momento y con sus no leídos; ficheros, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces y convertir un mensaje en tarea. Entregas 2a y 2b; búsqueda, «no molestar» y la migración de Slack, en las siguientes.
 - **[[Trampas conocidas]]** — Lo que ya costó tiempo, con su cifra y su remedio.
 - **[[Seguridad]]** — Cómo se prueba la seguridad (laboratorio Kali aislado) y el endurecimiento que lleva puesto.
 

@@ -1,0 +1,13 @@
+<%#
+  PARÁMETROS DE NEGOCIO (db/243) — los números de las reglas, editables y con
+  su historia (convención 4 de la hoja de ruta).
+
+  Lista → ficha → atrás con el Listado de la casa: un parámetro por fila, con
+  su valor de hoy y si alguien lo ha cambiado. En la ficha, qué es, quién lo usa
+  y la historia de sus cambios; «Cambiar» pide el valor nuevo y el porqué.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ diasSemana: diasSemana || [] }) %></script>
+<script src="<%= est('/assets/js/vistas/Parametros/parametros.js') %>"></script>

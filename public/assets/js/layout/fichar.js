@@ -57,23 +57,8 @@
           const nav = document.getElementById('nav-fichaje');
           if (nav) nav.classList.remove('hidden');
         }
-        // A quien aprueba, cuántas correcciones de fichaje le esperan. Solo lo
-        // manda el servidor a quien tiene la llave; al resto no le sale nada.
-        const nav = document.getElementById('nav-fichaje');
-        if (nav) {
-          let chapa = nav.querySelector('[data-corr]');
-          const n = Number(r.correccionesPorAprobar || 0);
-          if (n > 0) {
-            if (!chapa) {
-              chapa = document.createElement('span');
-              chapa.setAttribute('data-corr', '');
-              chapa.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-telecab-azul/20 text-telecab-azul';
-              nav.appendChild(chapa);
-            }
-            chapa.textContent = n;
-            chapa.title = n + ' corrección(es) de fichaje esperando a que las apruebes';
-          } else if (chapa) chapa.remove();
-        }
+        // Las correcciones por aprobar ya no se pintan aquí: son el contador
+        // «fichaje.correcciones» de la entrada del menú (A9, contadores.js).
       }
     } catch (_) { /* si falla, el botón simplemente no sale */ }
   }
@@ -81,7 +66,11 @@
   // La pantalla de fichaje avisa por aquí en cuanto alguien ficha. Sin esto, se
   // ficha la entrada y la barra sigue diciendo "Fichar entrada" hasta el
   // siguiente refresco: parece que no ha funcionado y la gente vuelve a pulsar.
-  window.__refrescarFichaje = cargar;
+  // Y los contadores: pedir o resolver una corrección cambia el número del menú.
+  window.__refrescarFichaje = () => {
+    cargar();
+    if (window.Contadores) window.Contadores.refrescar();
+  };
 
   // Con retraso, por lo mismo que la campana: no entra en la carga inicial.
   setTimeout(cargar, 1200);
@@ -94,9 +83,10 @@
 })();
 
 // ── LOS PENDIENTES DE CADA BANDEJA, EN SU CUADRO ─────────────────────────────
-// Los pedidos desde el corte y sin cerrar. Se piden al cargar, cada dos minutos y al volver
-// a la pestaña; la bandeja los pide también al tocar un ticket
-// (window.__refrescarBandejas), para que el número baje en el momento.
+// Los pedidos desde el corte y sin cerrar. Desde el 16/11/2026 (A9) son los
+// contadores «tickets.<área>» y sus partes: llegan con todos los demás
+// (contadores.js), al momento cuando un ticket cambia y cada dos minutos si no.
+// La bandeja los pide también al tocar un ticket (window.__refrescarBandejas).
 (function () {
   const barra = document.getElementById('tk-barra');
   if (!barra) return;
@@ -112,40 +102,28 @@
     if (aqui(u.pathname) && grupo && u.searchParams.get('grupo') === grupo) marcar(a);
   });
   const BASE = 'min-w-[22px] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums flex items-center justify-center ';
-  let pidiendo = false;
-  async function cargar() {
-    if (pidiendo) return;
-    pidiendo = true;
-    try {
-      const r = await fetch('/bandejas/api/pendientes').then(x => x.json());
-      if (r.status !== 'ok') return;
-      (r.bandejas || []).forEach(b => {
-        const a = barra.querySelector('[data-tk-area="' + b.area + '"]');
-        if (!a) return;
-        const pinta = (el, n, nombre) => {
-          const c = el.querySelector('[data-tk-n]');
-          c.textContent = n;
-          c.className = BASE + (n ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
-          el.title = nombre + ': ' + (n ? n + (n === 1 ? ' ticket pendiente' : ' tickets pendientes') : 'nada pendiente') +
-            ' desde el ' + r.desde;
-        };
-        pinta(a, b.pendientes, b.etiqueta);
-        // Las partes (RRHH en pantalla grande). «Otros» solo se enseña si tiene algo.
-        (b.partes || []).forEach(p => {
-          const el = barra.querySelector('[data-tk-parte="' + b.area + '|' + p.clave + '"]');
-          if (!el) return;
-          pinta(el, p.pendientes, el.querySelector('span').textContent);
-          if (el.hasAttribute('data-tk-otros')) {
-            el.classList.toggle('hidden', !p.pendientes);
-            el.classList.toggle('flex', !!p.pendientes);
-          }
-        });
-      });
-    } catch (_) { /* si falla, los cuadros siguen sin número */ }
-    finally { pidiendo = false; }
+  // Aquí el 0 sí se enseña (el cuadro está siempre), y en oro lo que tiene algo.
+  const pinta = (el, v) => {
+    if (!v) return;   // sin número todavía: se queda el «·»
+    const c = el.querySelector('[data-tk-n]');
+    c.textContent = v.n > 99 ? '99+' : v.n;
+    c.className = BASE + (v.n ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
+    if (v.titulo) el.title = v.titulo;
+  };
+  function pintarBarra(valores) {
+    barra.querySelectorAll('[data-tk-area]').forEach(a => pinta(a, valores['tickets.' + a.getAttribute('data-tk-area')]));
+    barra.querySelectorAll('[data-tk-parte]').forEach(el => {
+      const [area, clave] = el.getAttribute('data-tk-parte').split('|');
+      const v = valores['tickets.' + area + '.' + clave];
+      pinta(el, v);
+      // «Otros» solo sale si tiene algo.
+      if (el.hasAttribute('data-tk-otros')) {
+        const hay = !!(v && v.n);
+        el.classList.toggle('hidden', !hay);
+        el.classList.toggle('flex', hay);
+      }
+    });
   }
-  window.__refrescarBandejas = cargar;
-  cargar();
-  setInterval(cargar, 120000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(); });
+  if (window.Contadores) window.Contadores.alCambiar(pintarBarra);
+  window.__refrescarBandejas = () => (window.Contadores ? window.Contadores.refrescar() : null);
 })();

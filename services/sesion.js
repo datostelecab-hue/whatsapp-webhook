@@ -203,6 +203,28 @@ async function sesionAbierta(sid) {
 /** Olvida lo cacheado de un sid: lo llama quien acaba de cerrar una sesión. */
 const olvidarSesion = sid => { if (sid) _vivas.delete(sid); };
 
+/**
+ * ¿SIGUE VALIENDO la sesión con la que se abrió una conexión que dura horas (el
+ * tiempo real, A7, 16/11/2026)? Lo mismo que mira cargarSesion en cada
+ * petición: la firma y la fecha, el corte del servidor en las largas y que la
+ * sesión siga abierta. Si la base no contesta, sí, como allí: no se echa a nadie
+ * por un fallo de red. → el usuario de la cookie, o null.
+ */
+async function sesionVigente(req) {
+  const u = verificar(leerCookie(req, COOKIE));
+  if (!u) return null;
+  if (u.larga && u.id) {
+    try {
+      const usuarios = require('../modules/Usuarios/usuarios.service');
+      if (!await usuarios.sesionSigueValiendo(u.id, u.iat)) return null;
+    } catch (e) {
+      console.error('❌ [SESIÓN] no se pudo comprobar el corte:', e.message);
+    }
+  }
+  if (u.sid && !await sesionAbierta(u.sid)) return null;
+  return u;
+}
+
 // ── Middlewares ─────────────────────────────────────────────────────────────
 // Decodifica la cookie (si hay) y la deja en req.usuario / res.locals. Nunca corta.
 async function cargarSesion(req, res, next) {
@@ -251,6 +273,9 @@ async function cargarSesion(req, res, next) {
   res.locals.ayudas = u ? (u.ayudas !== false) : true;
   res.locals.sede = u ? sedeValida(u.sede) : null; // Madrid o Barcelona: el menú y la portada
   res.locals.v = ARRANQUE;                         // versión de assets (cache-bust por despliegue)
+  // Una huella de la sesión (no el sid): las notificaciones (A8) saben así si
+  // ya confirmaron este navegador con la sesión de ahora.
+  res.locals.sesionHuella = u && u.sid ? crypto.createHash('sha256').update(String(u.sid)).digest('hex').slice(0, 12) : '';
   next();
 }
 
@@ -375,6 +400,26 @@ async function requiereGestorUsuarios(req, res, next) {
   return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
 }
 
+// EL DESARROLLADOR, O QUIEN TENGA UNA LLAVE CONCRETA (13/11/2026). Lo mismo que
+// requiereGestorUsuarios, para cualquier llave: la llave se mira en las filas de
+// verdad de la persona, así que el superadmin NO entra por serlo. Lo estrenan
+// los parámetros de negocio ('/parametros'; Camilo: «Llave propia: Ignacio y
+// desarrollador»).
+function requiereDesarrolladorOLlave(llave, que) {
+  return async function (req, res, next) {
+    const u = req.usuario;
+    if (u && u.rol === 'desarrollador') return next();
+    try {
+      const id = u ? await idDeSesion(u) : null;
+      if (id && (await permisos.clavesDe(id)).has(llave)) return next();
+    } catch (e) {
+      console.error(`❌ [SESIÓN] llave ${llave}:`, e.message);
+    }
+    if (esApi(req)) return res.status(403).json({ status: 'error', msg: `Sin permiso para ${que}` });
+    return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
+  };
+}
+
 // Solo el desarrollador (excluye incluso al superadmin): para "Tickets Telecab".
 function requiereDesarrollador(req, res, next) {
   if (req.usuario && req.usuario.rol === 'desarrollador') return next();
@@ -393,7 +438,8 @@ async function sembrarSuperadmin() {
   try {
     if (await usuarios.buscarUsuario(email)) { console.log(`   Superadmin semilla: ${email} ya existe.`); return; }
     const nombre = (process.env.SUPERADMIN_NOMBRE || 'Superadmin').trim();
-    const { passwordProvisional } = await usuarios.crearUsuario({ email, nombre, rol: 'superadmin', creado_por: 'sistema' });
+    const { passwordProvisional } = await usuarios.crearUsuario({ email, nombre, rol: 'superadmin', creado_por: 'sistema' },
+      { origen: 'arranque' });
     console.log(`✅ [SESIÓN] Superadmin creado: ${email}`);
     const { enviarCorreo } = require('./correo');
     const asunto = 'Acceso a la plataforma Telecab';
@@ -408,8 +454,8 @@ async function sembrarSuperadmin() {
 module.exports = {
   COOKIE, SEDES, sedeValida,
   ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
-  dispositivoDe, olvidarSesion,
+  dispositivoDe, olvidarSesion, sesionVigente,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
-  requiereSuperadmin, requiereDesarrollador, requiereGestorUsuarios,
+  requiereSuperadmin, requiereDesarrollador, requiereGestorUsuarios, requiereDesarrolladorOLlave,
   sembrarSuperadmin
 };

@@ -9,10 +9,16 @@ tags:
 
 # Comprobadores
 
-En este proyecto **no hay pruebas automáticas, ni linter, ni `npm scripts`**. La
-red de seguridad son los scripts de `scripts/comprobar-*.js`: no necesitan nada
-instalado, se ejecutan con `node`, devuelven código de salida 1 cuando hay algo
-que arreglar, y están escritos para **equivocarse por defecto hacia no acusar**.
+Una de las dos redes de seguridad del proyecto: los scripts de
+`scripts/comprobar-*.js`. No necesitan nada instalado, se ejecutan con `node`,
+devuelven código de salida 1 cuando hay algo que arreglar, y están escritos para
+**equivocarse por defecto hacia no acusar**.
+
+La otra son las [[Pruebas automáticas]] (`npm test`, desde el 13/11/2026): los
+comprobadores revisan el código o miran la copia de producción; los tests prueban
+que una regla se cumple, con datos inventados. Además hay `npm run comprobar`
+(comprobar-vistas) y `npm run lint` (ESLint del JavaScript del navegador), que
+son los que pasa Render al instalar.
 
 Ninguno sustituye a probar contra la realidad. Todos documentan en su cabecera
 hasta dónde llegan, porque *una herramienta que promete más de lo que da es peor

@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Telecab · <%= titulo || 'Gestión' %></title>
   <link rel="icon" type="image/png" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
-  <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
+  <%# El ERP instalable (A8): el manifiesto, su icono en el iPhone y el color de la barra. %>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/iconos/icono-apple-180.png') : '/assets/iconos/icono-apple-180.png' %>">
+  <meta name="theme-color" content="#080c18">
+  <%# Huella de la sesión: las notificaciones confirman este navegador una vez por sesión. %>
+  <meta name="tc-s" content="<%= typeof sesionHuella !== 'undefined' ? sesionHuella : '' %>">
 
   <!-- Tema del PERFIL (lo inyecta el servidor) ANTES de pintar, sin parpadeo. Si no
        hay (o falla), cae al localStorage del dispositivo. -->
@@ -51,6 +56,12 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
   <%# Api.pedir/get/post: la forma de la casa de hablar con el servidor, y el aviso de los errores de JavaScript que nadie captura. Pronto, para oírlos desde el principio. %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/api.js') : '/assets/js/api.js' %>"></script>
+  <%# TiempoReal.escuchar: el servidor avisa a la pantalla en cuanto algo cambia (A7). No conecta nada hasta que una pantalla escucha. %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/tiempoReal.js') : '/assets/js/tiempoReal.js' %>"></script>
+  <%# NotificacionesPush: confirma este navegador con la sesión de ahora; Configuración las activa (A8). %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/notificacionesPush.js') : '/assets/js/notificacionesPush.js' %>"></script>
+  <%# Contadores: todos los números del menú y de la barra en una petición (A9). Pinta las marcas data-contador. %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/contadores.js') : '/assets/js/contadores.js' %>"></script>
   <%# Horas y minutos de una J, en vez de un decimal (HorasMin; también `tipo: 'horas'` de Dialogo.formulario). %>
   <script src="<%= typeof est === 'function' ? est('/assets/js/horasMin.js') : '/assets/js/horasMin.js' %>"></script>
   <%# El formulario de la −J (MenosJ.poner): Bitácora, Control y Justificantes piden lo mismo. %>
@@ -78,9 +89,12 @@
   <!-- El selector de la casa para formularios montados a mano: el valor vive en
        un input oculto, así que quien lo use sigue leyendo `.value` de siempre. -->
   <script src="<%= typeof est === 'function' ? est('/assets/js/selector.js') : '/assets/js/selector.js' %>"></script>
+  <%# El recorrido guiado (Recorrido.empezar) y la ventana de novedades de cada versión (V3, db/253). %>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/recorrido.js') : '/assets/js/recorrido.js' %>" defer></script>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/novedades.js') : '/assets/js/novedades.js' %>" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
   <!-- Tailwind COMPILADO (tailwind.config.js, services/tailwind.js), no la CDN
@@ -131,7 +145,7 @@
           panel (los textos), y la marca tiene que seguir viéndose. %>
       <div class="w-10 flex justify-center shrink-0"><%- include('partials/marca', { tam: 'w-9 h-9' }) %></div>
       <span class="leading-tight whitespace-nowrap">
-        <span class="block text-base font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
+        <span class="block text-lg font-extrabold tracking-tight">tele<span class="gold-text">cab</span></span>
         <span class="block text-[11px] text-telecab-muted"><%= sedeSesion === 'barcelona' ? 'Barcelona' : 'Gestión de flota' %></span>
       </span>
     </a>
@@ -199,7 +213,8 @@
           ] },
           { nombre: 'Taller', icono: 'fa-car-side', rol: 'trafico', items: [
             { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' },
-            { href: '/taller',    icono: 'fa-screwdriver-wrench', texto: 'Mantenimientos', id: 'taller' },
+            // Su número: los avisos del módulo taller (ítem 3: las citas, que avisan a Control).
+            { href: '/taller',    icono: 'fa-screwdriver-wrench', texto: 'Mantenimientos', id: 'taller', contador: 'avisos.taller' },
             { href: '/inspecciones', icono: 'fa-clipboard-check', texto: 'Inspección de vehículos', id: 'inspecciones' },
             // Lo que hay en el almacén sin matrícula (Hergar), db/241.
             { href: '/inventario', icono: 'fa-boxes-stacked', texto: 'Inventario', id: 'inventario' },
@@ -227,6 +242,16 @@
             // persona: Ignacio, db/168). `oLlave` NO vale para el acceso total:
             // el superadmin no tiene esa fila y no la ve.
             { href: '/usuarios',    icono: 'fa-users-gear',  texto: 'Usuarios y permisos', id: 'usuarios', solo: 'desarrollador', oLlave: '/usuarios' },
+            // Los parámetros de negocio (db/243): igual, el desarrollador o la
+            // llave '/parametros' (de inicio, Ignacio).
+            { href: '/parametros',  icono: 'fa-sliders',     texto: 'Parámetros', id: 'parametros', solo: 'desarrollador', oLlave: '/parametros' },
+            // La organización (db/248): áreas, superiores y funciones. Quien
+            // entra en Usuarios y permisos.
+            { href: '/organizacion', icono: 'fa-sitemap',   texto: 'Organización', id: 'organizacion', solo: 'desarrollador', oLlave: '/usuarios' },
+            // El banco de adjuntos (db/249): dónde se guardan los ficheros y una prueba.
+            { href: '/adjuntos/banco', icono: 'fa-paperclip', texto: 'Banco de adjuntos', id: 'adjuntos', solo: 'desarrollador' },
+            // El banco de tiempo real (A7): que los avisos llegan, y al volver, lo perdido.
+            { href: '/tiempo-real/banco', icono: 'fa-tower-broadcast', texto: 'Banco de tiempo real', id: 'tiempo-real', solo: 'desarrollador' },
             { href: '/explorador',  icono: 'fa-database',    texto: 'Base de datos', id: 'explorador', solo: 'desarrollador' },
             { href: '/migraciones', icono: 'fa-code-branch', texto: 'Migraciones', id: 'migraciones', solo: 'desarrollador' }
           ] }
@@ -240,6 +265,7 @@
           ? (rolSesion === it.solo || !!(it.oLlave && misPermisos && misPermisos.has(it.oLlave)))
           : (!misPermisos || misPermisos.has(it.href));
         const gruposVisibles = grupos
+          // `contador` en una entrada (A9): la clave de su número (services/contadores.js).
           .map(g => ({ nombre: g.nombre, icono: g.icono, rol: g.rol, items: g.items.filter(puedeVer) }))
           .filter(g => g.items.length);
       %>
@@ -252,12 +278,30 @@
         <span class="text-sm flex-1">Inicio</span>
       </a>
 
+      <%# El tablero de tareas (ítem 1): de todos, como Inicio. Qué ve cada uno lo
+          decide el tablero (sus funciones de Organización), no la llave. %>
+      <a href="/tablero" class="nav-item <%= seccionActiva === 'tablero' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'tablero' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-table-columns w-5 text-center <%= seccionActiva === 'tablero' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Tablero</span>
+        <span class="tc-contador tc-contador-menu" data-contador="tareas.menu" hidden></span>
+      </a>
+
+      <%# El chat interno (ítem 2, db/256): de toda la oficina. En rojo, los directos
+          y las menciones; si no, en azul, lo que haya sin leer en los canales. %>
+      <a href="/chat" class="nav-item <%= seccionActiva === 'chat' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'chat' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-message w-5 text-center <%= seccionActiva === 'chat' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Chat</span>
+        <span class="tc-contador tc-contador-menu" data-contador="chat.menu" hidden></span>
+      </a>
+
       <% if (puedeVer({ href: '/pendientes' })) { %>
       <a href="/pendientes" class="nav-item <%= seccionActiva === 'pendientes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'pendientes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-inbox w-5 text-center <%= seccionActiva === 'pendientes' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Pendientes</span>
-        <span id="nav-pend-badge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center"></span>
+        <span id="nav-pend-badge" class="tc-contador tc-contador-menu" data-contador="pendientes" hidden></span>
       </a>
       <% } %>
 
@@ -284,6 +328,7 @@
                 <%= seccionActiva === 'fichaje' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-clock w-5 text-center <%= seccionActiva === 'fichaje' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Fichar jornada</span>
+        <span class="tc-contador tc-contador-menu" data-contador="fichaje.correcciones" hidden></span>
       </a>
 
       <% if (puedeVer({ href: '/recaudacion' })) { %>
@@ -307,6 +352,8 @@
           <button type="button" aria-expanded="<%= abierto ? 'true' : 'false' %>" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
             <i class="fa-solid <%= g.icono %> w-5 text-center text-telecab-muted"></i>
             <span class="text-sm font-semibold flex-1 text-left"><%= g.nombre %></span>
+            <%# La suma de los contadores de sus entradas (A9): se ve con el grupo cerrado y con el menú plegado. %>
+            <span class="tc-contador tc-contador-menu" data-contador-grupo hidden></span>
             <i class="fa-solid fa-chevron-down text-[10px] text-telecab-muted grupo-chev transition <%= abierto ? 'rotate-180' : '' %>"></i>
           </button>
           <div class="grupo-items <%= abierto ? '' : 'hidden' %> mt-0.5 ml-3 pl-3 border-l border-telecab-border/60 space-y-0.5">
@@ -315,7 +362,8 @@
                  class="nav-item <%= on ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition
                         <%= on ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
                 <i class="fa-solid <%= e.icono %> w-5 text-center <%= on ? '' : 'text-telecab-muted' %>"></i>
-                <span class="text-sm"><%= e.texto %></span>
+                <span class="text-sm flex-1"><%= e.texto %></span>
+                <% if (e.contador) { %><span class="tc-contador tc-contador-menu" data-contador="<%= e.contador %>" hidden></span><% } %>
               </a>
             <% }); %>
           </div>
@@ -339,6 +387,12 @@
         <span>Soporte técnico</span>
       </a>
       <% } %>
+      <%# Las novedades de la versión y el recorrido guiado, cuando se quiera (novedades.js). %>
+      <a href="#" data-novedades-abrir class="nav-item flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm mb-1 text-telecab-text hover:bg-telecab-card2">
+        <i class="fa-solid fa-wand-magic-sparkles w-5 text-center text-telecab-muted"></i>
+        <span class="flex-1">Novedades</span>
+        <span class="tc-novedades-punto" hidden></span>
+      </a>
       <a href="/configuracion" class="nav-item <%= seccionActiva === 'configuracion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm
                 <%= seccionActiva === 'configuracion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-muted hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-gear w-5 text-center"></i>
@@ -369,7 +423,7 @@
               aria-label="Contraer el menú" title="Contraer el menú (Ctrl+B)">
         <i class="fa-solid fa-angles-left" aria-hidden="true"></i>
       </button>
-      <h1 class="font-semibold text-telecab-text shrink-0"><%= titulo || 'Gestión' %></h1>
+      <h1 class="text-[1.05rem] font-bold text-telecab-text shrink-0"><%= titulo || 'Gestión' %></h1>
 
       <%# ── LOS TICKETS DE CADA DEPARTAMENTO (25/09/2026) ──────────────────────
           Un cuadro por bandeja, con su nombre y sus PENDIENTES (los pedidos desde
@@ -444,14 +498,21 @@
 
         <!-- Buzón de pendientes -->
         <div class="relative">
-          <%# aria-label además del title: ayuda.js se lleva el title al enfocar, y sin él la campana se quedaba sin nombre. %>
-          <button id="notif-btn" title="Pendientes" aria-label="Pendientes" aria-controls="notif-panel" aria-expanded="false" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
+          <%# LA CAMPANA (ítem 3, db/254): la bandeja de avisos de su área y, debajo, los
+              pendientes de hoy. Su número suma los dos (layout/pendientes.js).
+              aria-label además del title: ayuda.js se lleva el title al enfocar. %>
+          <button id="notif-btn" title="Avisos y pendientes" aria-label="Avisos y pendientes" aria-controls="notif-panel" aria-expanded="false" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
             <i class="fa-solid fa-bell text-telecab-text" aria-hidden="true"></i>
-            <span id="notif-badge" class="hidden absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center">0</span>
+            <span id="notif-badge" class="tc-contador tc-contador-campana" data-contador="avisos.sin_leer pendientes" hidden></span>
           </button>
-          <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto bg-telecab-card border border-telecab-border rounded-xl shadow-soft z-50 p-2">
-            <p class="text-[11px] uppercase tracking-wide font-semibold text-telecab-muted px-2 py-1">Buzón de pendientes</p>
-            <div id="notif-lista" class="space-y-0.5"></div>
+          <div id="notif-panel" class="tc-bandeja hidden">
+            <div class="tc-bandeja-cabeza">
+              <p>Avisos</p>
+              <button type="button" id="notif-leidos" hidden>Marcar todo como leído</button>
+            </div>
+            <div id="notif-avisos" class="tc-bandeja-avisos"></div>
+            <div class="tc-bandeja-cabeza"><p>Pendientes de hoy</p></div>
+            <div id="notif-lista" class="tc-bandeja-pendientes"></div>
           </div>
         </div>
 
@@ -461,10 +522,14 @@
         </span>
 
         <!-- Usuario en sesión + salir -->
-        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
-          <div class="hidden sm:block text-right leading-tight whitespace-nowrap">
-            <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
-            <span class="block text-[10px] uppercase tracking-wide text-telecab-muted"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
+        <%# El avatar con sus iniciales (V3): quién tiene la sesión, de un vistazo. %>
+        <% const _nombreSesion = (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '';
+           const _iniciales = _nombreSesion.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p.charAt(0)).join('').toUpperCase(); %>
+        <div id="sesion-usuario" class="flex items-center gap-2.5 pl-3 ml-1 border-l border-telecab-border">
+          <span class="tc-avatar" aria-hidden="true"><%= _iniciales || '·' %></span>
+          <div class="hidden sm:block leading-tight whitespace-nowrap">
+            <span class="block text-[13px] text-telecab-text font-semibold"><%= _nombreSesion %></span>
+            <span class="block text-[11px] text-telecab-muted"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
           </div>
           <a href="/logout" title="Salir" aria-label="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
             <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>

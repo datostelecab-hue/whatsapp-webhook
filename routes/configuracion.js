@@ -55,14 +55,15 @@ router.post('/mi-perfil', async (req, res) => {
     const b = req.body || {};
     const nombre = String(b.nombre || '').trim();
     if (!nombre) throw new Error('Falta el nombre');
+    const yo = { usuarioId: req.usuario.id, origen: 'mi-cuenta' };   // el libro (db/248)
     const actualizado = await usuarios.actualizarUsuario(req.usuario.email, {
       nombre, apellidos: String(b.apellidos || '').trim(), telefono: String(b.telefono || '').trim()
-    });
+    }, yo);
     // Contraseña de correo (CIFRADA) — solo si el usuario ha escrito una nueva.
     if (b.pass_correo) await usuarios.guardarPassCorreo(req.usuario.email, b.pass_correo);
     // La fecha de nacimiento, para su cumpleaños (db/204). Solo si viene.
     if ('fecha_nacimiento' in b) {
-      await usuarios.ponerFechaNacimiento(req.usuario.id, b.fecha_nacimiento);
+      await usuarios.ponerFechaNacimiento(req.usuario.id, b.fecha_nacimiento, yo);
       require('../modules/Cumpleanos/cumpleanos.service').olvidar();   // si cumple hoy, que salga ya
     }
     sesion.renovarSesion(res, actualizado, req.usuario);   // refresca la firma, conservando si era larga

@@ -1,0 +1,21 @@
+<%#
+  LA ORGANIZACIÓN (db/248, por puestos desde db/255) — quién está en qué puesto
+  y, de él, su área, su superior y sus funciones.
+
+  Dos vistas en pestañas (?vista=):
+    · Personas: el Listado de la casa (lista → ficha → atrás), una persona por
+      fila. En la ficha, «Cambiar el puesto», lo de a mano y las llaves que se
+      salen de su rol.
+    · Organigrama: los puestos en árbol, agrupados por área, con la gente
+      dentro; se la arrastra de un puesto a otro (Organigrama, pieza global).
+%>
+
+<div class="tc-pantalla pb-0">
+  <nav id="org-pestanas" aria-label="Vistas de la organización"></nav>
+</div>
+<div id="modulo"></div>
+<div id="org-organigrama" class="tc-pantalla hidden" aria-live="polite"></div>
+
+<script src="<%= est('/assets/js/pestanas.js') %>"></script>
+<script src="<%= est('/assets/js/organigrama.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Organizacion/organizacion.js') %>"></script>

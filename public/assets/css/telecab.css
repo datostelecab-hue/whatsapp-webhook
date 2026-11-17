@@ -1,59 +1,66 @@
 /* ============================================================
-   TELECAB — identidad visual: tokens globales + base + componentes
+   TELECAB V3 — identidad visual: tokens globales + base + componentes
    ============================================================
    La app entera se pinta desde aquí. Las vistas usan clases de Tailwind que
-   apuntan a estos tokens (bg-telecab-card, text-telecab-gold, …), así que
-   cambiar la identidad es cambiar este fichero: NINGUNA vista lleva colores
-   propios.
+   apuntan a estos tokens (bg-telecab-card, text-telecab-gold, …) y las piezas
+   globales `.tc-*`, así que cambiar la identidad es cambiar este fichero:
+   NINGUNA vista lleva colores propios.
 
    Los colores van como CANALES RGB ("r g b") para que Tailwind pueda aplicarles
    opacidad (bg-telecab-gold/15, border-telecab-red/40) vía rgb(var(--tc-*) /
    <alpha-value>).
 
-   LA IDEA VISUAL (27/09/2026, sustituye a la del 05/09): CORPORATIVA. Camilo:
-   «más moderna, elegante y un poco más minimalista, no quiero tanto emoji ni
-   colores combinados». Sale de los colores del logo —negro, oro y plata— y de
-   tres reglas:
-     1. UN SOLO ACENTO. El oro del logo marca lo que se puede pulsar o lo que
-        está elegido, y nada más. El resto es gris: grafito en oscuro, gris
-        claro en claro. Los colores de estado (rojo, verde, naranja) quedan
-        para lo que de verdad es un estado.
-     2. SUPERFICIES LISAS. Sin cristal, sin resplandor de fondo, sin grano, sin
-        degradados, sin sombras de color. Una tarjeta es una superficie con un
-        borde fino; lo que flota (menús, diálogos) lleva una sombra neutra.
-     3. LA TIPOGRAFÍA ORDENA. IBM Plex Sans: sobria, con cifras tabulares,
-        pensada para pantallas de gestión.
-   Las superficies son iguales en todos los temas; lo que cambia de un tema a
-   otro es el acento. Así cada uno conserva su color sin que la pantalla se
-   convierta en un arcoíris. */
+   LA IDEA VISUAL (V3, 16/11/2026; sustituye a la corporativa del 27/09). Camilo
+   trajo tres paneles de referencia y lo dijo así: «tal cual así quiero que se
+   vea el sistema… algo con más vida, los colores que hay ahora están muy
+   apagados». De ahí salen las reglas:
+     1. AZUL SOBRE AZUL MARINO. En oscuro, la página es azul noche y las
+        tarjetas un punto más claras; en claro, página gris muy claro y
+        tarjetas blancas. El acento es un azul vivo.
+     2. LOS ESTADOS, CON SU COLOR ENTERO. Verde, rojo, ámbar y violeta salen
+        saturados: una pastilla se tiene que ver de lejos.
+     3. FORMAS AMABLES. Esquinas de 12–16 px, pastillas redondas, el botón
+        principal con su sombra del color, el elegido del menú relleno.
+     4. LA TIPOGRAFÍA: Plus Jakarta Sans, con las cifras grandes en negrita.
+   Las superficies son iguales en todos los temas de una familia (oscuros o
+   claros); de un tema a otro cambia el acento.
 
-/* ===== OSCURO (grafito): el tema por defecto ===== */
+   EL NOMBRE DE LOS TOKENS NO CAMBIA: `--tc-gold` sigue siendo «el acento»
+   (hoy azul), porque lo usan cientos de clases en las vistas. Lo nuevo de la
+   V3: `--tc-boton` / `--tc-boton-hover` (el relleno de un botón principal: más
+   hondo que el acento, para que el texto blanco se lea) y `--tc-menu` (el
+   fondo del menú y de la barra de arriba). */
+
+/* ===== OSCURO (azul noche): el tema por defecto ===== */
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --tc-dark: 14 16 19;          /* el fondo de la página */
-  --tc-card: 22 24 28;          /* superficie: tarjetas, menú */
-  --tc-card2: 31 34 39;         /* superficie elevada / hover */
-  --tc-border: 44 48 55;        /* la línea fina */
-  --tc-campo: 14 16 19;         /* el interior de un campo: hundido, del color de la página */
-  --tc-gold: 227 178 60;        /* EL ACENTO: el oro del logo */
-  --tc-gold-soft: 238 202 118;
-  --tc-gold-deep: 192 146 34;
-  --tc-on-gold: 20 17 10;       /* el texto sobre el acento */
-  --tc-azul: 112 150 208;       /* informativo: azul acero, apagado */
-  --tc-red: 224 92 84;
-  --tc-red-hover: 198 72 66;
-  --tc-green: 76 178 130;
-  --tc-warn: 222 142 62;        /* naranja de aviso: distinto del acento a propósito */
-  --tc-violet: 146 132 204;     /* reincidencia / escalado */
-  --tc-text: 232 234 237;
-  --tc-muted: 142 148 158;
-  --tc-scroll: 52 56 64;
-  --tc-scroll-hover: 88 94 104;
-  --tc-sombra: 0 1px 2px rgb(0 0 0 / .35);
-  --tc-sombra-alta: 0 16px 40px -12px rgb(0 0 0 / .65), 0 2px 6px rgb(0 0 0 / .3);
-  /* Del diseño anterior, que tenía resplandor y cristal. Se quedan como
-     variables (alguna vista las lee) pero ya no pintan nada. */
+  --tc-dark: 8 12 24;           /* el fondo de la página */
+  --tc-card: 15 22 40;          /* superficie: tarjetas */
+  --tc-card2: 23 33 58;         /* superficie elevada / hover */
+  --tc-border: 36 48 78;        /* la línea fina */
+  --tc-campo: 10 15 30;         /* el interior de un campo: hundido */
+  --tc-menu: 11 16 31;          /* el menú lateral y la barra de arriba */
+  --tc-gold: 59 130 246;        /* EL ACENTO: azul vivo (texto, filos, tintes) */
+  --tc-gold-soft: 96 165 250;
+  --tc-gold-deep: 37 99 235;
+  --tc-on-gold: 255 255 255;    /* el texto sobre el acento */
+  --tc-boton: 37 99 235;        /* el relleno del botón principal */
+  --tc-boton-hover: 29 78 216;
+  --tc-azul: 56 189 248;        /* informativo: celeste, distinto del acento */
+  --tc-red: 239 68 68;
+  --tc-red-hover: 220 38 38;
+  --tc-green: 34 197 94;
+  --tc-warn: 245 158 11;        /* ámbar de aviso */
+  --tc-violet: 167 139 250;     /* reincidencia / escalado */
+  --tc-text: 233 238 248;
+  --tc-muted: 139 150 174;
+  --tc-scroll: 40 52 84;
+  --tc-scroll-hover: 66 82 124;
+  --tc-sombra: 0 1px 2px rgb(0 0 0 / .4);
+  --tc-sombra-alta: 0 20px 48px -12px rgb(0 0 0 / .7), 0 2px 8px rgb(0 0 0 / .35);
+  /* De diseños anteriores (resplandor y cristal). Se quedan como variables
+     (alguna vista las lee) pero ya no pintan nada. */
   --tc-halo1: 0 0 0; --tc-halo1-a: 0;
   --tc-halo2: 0 0 0; --tc-halo2-a: 0;
   --tc-halo3: 0 0 0; --tc-halo3-a: 0;
@@ -61,18 +68,45 @@
   --tc-brillo: 255 255 255;
 }
 
-/* ===== Temas oscuros con otro acento: las MISMAS superficies, otro acento ===== */
-:root[data-theme='azul']    { --tc-gold: 104 152 228; --tc-gold-soft: 148 184 238; --tc-gold-deep: 70 118 200; --tc-azul: 150 160 176; }
-:root[data-theme='verde']   { --tc-gold: 76 186 138;  --tc-gold-soft: 124 212 174; --tc-gold-deep: 46 150 106; --tc-green: 120 196 150; }
-:root[data-theme='purpura'] { --tc-gold: 152 134 226; --tc-gold-soft: 186 172 240; --tc-gold-deep: 118 98 200; }
-:root[data-theme='rosa']    { --tc-gold: 222 116 162; --tc-gold-soft: 238 162 196; --tc-gold-deep: 190 76 128; }
-:root[data-theme='cian']    { --tc-gold: 64 188 184;  --tc-gold-soft: 122 214 210; --tc-gold-deep: 34 150 146; --tc-azul: 150 160 176; }
-:root[data-theme='naranja'] { --tc-gold: 228 136 62;  --tc-gold-soft: 240 176 118; --tc-gold-deep: 194 102 32; --tc-warn: 220 170 60; }
+/* ===== Temas oscuros con otro acento: las MISMAS superficies, otro acento =====
+   Cada uno: el acento (texto y tintes), su versión suave y honda, y el relleno
+   del botón (más hondo, para el texto blanco). Colores enteros, no apagados
+   (Camilo, 16/11/2026). */
+:root[data-theme='azul'] {      /* celeste */
+  --tc-gold: 56 189 248; --tc-gold-soft: 125 211 252; --tc-gold-deep: 14 165 233;
+  --tc-boton: 2 132 199; --tc-boton-hover: 3 105 161; --tc-azul: 129 140 248;
+}
+:root[data-theme='verde'] {
+  --tc-gold: 52 211 153; --tc-gold-soft: 110 231 183; --tc-gold-deep: 16 185 129;
+  --tc-boton: 4 120 87; --tc-boton-hover: 6 95 70; --tc-green: 163 230 53;
+}
+:root[data-theme='purpura'] {
+  --tc-gold: 167 139 250; --tc-gold-soft: 196 181 253; --tc-gold-deep: 139 92 246;
+  --tc-boton: 124 58 237; --tc-boton-hover: 109 40 217; --tc-violet: 232 121 249;
+}
+:root[data-theme='rosa'] {
+  --tc-gold: 244 114 182; --tc-gold-soft: 249 168 212; --tc-gold-deep: 236 72 153;
+  --tc-boton: 219 39 119; --tc-boton-hover: 190 24 93;
+}
+:root[data-theme='cian'] {
+  --tc-gold: 34 211 238; --tc-gold-soft: 103 232 249; --tc-gold-deep: 6 182 212;
+  --tc-boton: 14 116 144; --tc-boton-hover: 21 94 117; --tc-azul: 129 140 248;
+}
+:root[data-theme='naranja'] {
+  --tc-gold: 251 146 60; --tc-gold-soft: 253 186 116; --tc-gold-deep: 249 115 22;
+  --tc-boton: 194 65 12; --tc-boton-hover: 154 52 18; --tc-warn: 250 204 21;
+}
+/* El oro del logo, para quien lo quiera de vuelta: fue el acento hasta la V3. */
+:root[data-theme='oro'] {
+  --tc-gold: 245 190 60; --tc-gold-soft: 250 212 116; --tc-gold-deep: 217 160 30;
+  --tc-boton: 245 190 60; --tc-boton-hover: 217 160 30; --tc-on-gold: 26 20 6; --tc-warn: 251 146 60;
+}
 :root[data-theme='contraste'] {
   color-scheme: dark;
-  --tc-dark: 0 0 0; --tc-card: 12 12 12; --tc-card2: 28 28 28; --tc-border: 110 110 110; --tc-campo: 0 0 0;
+  --tc-dark: 0 0 0; --tc-card: 12 12 12; --tc-card2: 28 28 28; --tc-border: 110 110 110; --tc-campo: 0 0 0; --tc-menu: 0 0 0;
   --tc-text: 255 255 255; --tc-muted: 210 210 210;
   --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0; --tc-on-gold: 0 0 0;
+  --tc-boton: 255 214 10; --tc-boton-hover: 224 179 0;
   --tc-azul: 120 180 255; --tc-green: 74 222 128; --tc-red: 248 113 113;
 }
 
@@ -80,133 +114,170 @@
 :root[data-theme='light'],
 :root[data-theme^='claro-'] {
   color-scheme: light;
-  --tc-dark: 244 245 247;       /* la página: gris muy claro */
+  --tc-dark: 243 245 249;       /* la página: gris muy claro */
   --tc-card: 255 255 255;
-  --tc-card2: 241 243 245;
-  --tc-border: 222 226 231;
+  --tc-card2: 241 244 249;
+  --tc-border: 226 231 240;
   --tc-campo: 255 255 255;
-  --tc-gold: 150 106 0;         /* oro oscurecido: legible como texto sobre blanco (4,8:1) */
-  --tc-gold-soft: 196 145 20;
-  --tc-gold-deep: 120 84 0;
+  --tc-menu: 255 255 255;
+  --tc-gold: 37 99 235;         /* azul vivo, legible como texto sobre blanco (5,2:1) */
+  --tc-gold-soft: 59 130 246;
+  --tc-gold-deep: 29 78 216;
   --tc-on-gold: 255 255 255;
-  --tc-azul: 44 98 170;
-  --tc-red: 196 50 46;
-  --tc-red-hover: 170 40 38;
-  --tc-green: 22 122 82;
-  --tc-warn: 176 90 10;
-  --tc-violet: 104 76 190;
-  --tc-text: 24 28 34;
-  --tc-muted: 98 106 118;
-  --tc-scroll: 206 211 218;
-  --tc-scroll-hover: 160 166 175;
-  --tc-sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .06);
-  --tc-sombra-alta: 0 16px 40px -12px rgb(16 24 40 / .22), 0 2px 6px rgb(16 24 40 / .08);
+  --tc-boton: 37 99 235;
+  --tc-boton-hover: 29 78 216;
+  --tc-azul: 2 132 199;
+  --tc-red: 220 38 38;
+  --tc-red-hover: 185 28 28;
+  --tc-green: 4 135 95;
+  --tc-warn: 194 89 6;
+  --tc-violet: 124 58 237;
+  --tc-text: 16 24 40;
+  --tc-muted: 99 110 132;
+  --tc-scroll: 203 210 224;
+  --tc-scroll-hover: 152 162 182;
+  --tc-sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .07);
+  --tc-sombra-alta: 0 20px 48px -12px rgb(16 24 40 / .18), 0 4px 10px rgb(16 24 40 / .06);
 }
-:root[data-theme='claro-azul']    { --tc-gold: 29 78 170;  --tc-gold-soft: 64 112 200; --tc-gold-deep: 20 60 140; --tc-azul: 90 100 115; }
-:root[data-theme='claro-verde']   { --tc-gold: 20 110 70;  --tc-gold-soft: 44 140 96;  --tc-gold-deep: 12 86 54; }
-:root[data-theme='claro-rosa']    { --tc-gold: 170 30 90;  --tc-gold-soft: 200 72 130; --tc-gold-deep: 140 20 72; }
-:root[data-theme='claro-purpura'] { --tc-gold: 100 60 190; --tc-gold-soft: 132 96 216; --tc-gold-deep: 80 44 160; }
-:root[data-theme='claro-naranja'] { --tc-gold: 176 70 12;  --tc-gold-soft: 210 106 46; --tc-gold-deep: 144 54 8; }
+:root[data-theme='claro-azul'] {    /* celeste */
+  --tc-gold: 3 105 161; --tc-gold-soft: 2 132 199; --tc-gold-deep: 7 89 133;
+  --tc-boton: 3 105 161; --tc-boton-hover: 7 89 133; --tc-azul: 79 70 229;
+}
+:root[data-theme='claro-verde'] {
+  --tc-gold: 4 120 87; --tc-gold-soft: 5 150 105; --tc-gold-deep: 6 95 70;
+  --tc-boton: 4 120 87; --tc-boton-hover: 6 95 70; --tc-green: 77 124 15;
+}
+:root[data-theme='claro-rosa'] {
+  --tc-gold: 190 24 93; --tc-gold-soft: 219 39 119; --tc-gold-deep: 157 23 77;
+  --tc-boton: 219 39 119; --tc-boton-hover: 190 24 93;
+}
+:root[data-theme='claro-purpura'] {
+  --tc-gold: 109 40 217; --tc-gold-soft: 124 58 237; --tc-gold-deep: 91 33 182;
+  --tc-boton: 124 58 237; --tc-boton-hover: 109 40 217; --tc-violet: 192 38 211;
+}
+:root[data-theme='claro-naranja'] {
+  --tc-gold: 194 65 12; --tc-gold-soft: 234 88 12; --tc-gold-deep: 154 52 18;
+  --tc-boton: 194 65 12; --tc-boton-hover: 154 52 18; --tc-warn: 161 98 7;
+}
 
 /* ============================================================
    BASE
    ============================================================ */
 html { font-size: 15px; }
 body {
-  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-h1, h2, h3 { letter-spacing: -0.01em; text-wrap: balance; }
+h1, h2, h3 { letter-spacing: -0.02em; text-wrap: balance; }
 .tabular-nums, body table { font-variant-numeric: tabular-nums; }
+::selection { background: rgb(var(--tc-gold) / .35); }
 
-/* EL FONDO: liso. El resplandor y el grano del diseño anterior se apagan aquí
-   (las pseudocapas se quedan sin contenido) para no tener que tocar el body de
-   ninguna vista. */
+/* EL FONDO: liso. Las pseudocapas de diseños anteriores se quedan sin
+   contenido para no tener que tocar el body de ninguna vista. */
 .app-bg { background: rgb(var(--tc-dark)); }
 .app-bg::before, .app-bg::after { content: none; }
 
 /* El foco del teclado se VE siempre, en el color del acento. */
 body a:focus-visible, body button:focus-visible, body [tabindex]:focus-visible, body summary:focus-visible {
-  outline: 2px solid rgb(var(--tc-gold) / .7);
+  outline: 2px solid rgb(var(--tc-gold) / .8);
   outline-offset: 2px;
 }
+body input[type='checkbox'], body input[type='radio'] { accent-color: rgb(var(--tc-boton)); }
 
 /* ============================================================
    SUPERFICIES — todas las tarjetas de la app, de golpe
    ============================================================
-   Tailwind (CDN) pinta sus utilidades DESPUÉS de esta hoja, así que para ganarle
-   hay que subir la especificidad: por eso "body .clase". Se toca el aspecto de
-   la superficie, no su geometría, y las vistas no se enteran. */
+   Se sube la especificidad con "body .clase" para ganar a las utilidades de
+   Tailwind donde hace falta. Se toca el aspecto de la superficie, no su
+   geometría, y las vistas no se enteran. Las esquinas son las de Tailwind
+   (rounded-xl 12 px, rounded-2xl 16 px): la V3 ya no las encoge. */
 body .bg-telecab-card { background-color: rgb(var(--tc-card)); box-shadow: var(--tc-sombra); }
 body .bg-telecab-card2 { background-color: rgb(var(--tc-card2)); }
 body .border-telecab-border { border-color: rgb(var(--tc-border)); }
-/* Esquinas más contenidas: redondeadas, no blandas. */
-body .rounded-2xl { border-radius: .75rem; }
-body .rounded-xl  { border-radius: .5rem; }
 body .shadow-soft { box-shadow: var(--tc-sombra-alta); }
 body .shadow-lg, body .shadow-xl { box-shadow: var(--tc-sombra-alta); }
-/* Sin cristal: el desenfoque de fondo cuesta en cada fotograma y es justo el
-   efecto que se quita. Los velos de los diálogos se quedan oscuros y quietos. */
+/* Sin cristal: el desenfoque de fondo cuesta en cada fotograma. Los velos de
+   los diálogos se quedan oscuros y quietos. */
 body .backdrop-blur-sm, body .backdrop-blur, body .backdrop-blur-md,
 body .backdrop-blur-lg, body .backdrop-blur-xl {
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 
-/* El menú y la barra superior: lisos, separados por una línea. */
+/* El menú y la barra superior: una misma superficie, separada por una línea. */
 #menu-panel {
-  background-color: rgb(var(--tc-card)) !important;
+  background-color: rgb(var(--tc-menu)) !important;
   border-right-color: rgb(var(--tc-border)) !important;
 }
 body > div > div > header.sticky {
-  background-color: rgb(var(--tc-dark)) !important;
+  background-color: rgb(var(--tc-menu)) !important;
   border-bottom-color: rgb(var(--tc-border)) !important;
 }
 
 /* ============================================================
    MENÚ LATERAL
    ============================================================ */
-#menu-panel nav a, #menu-panel nav .grupo-btn { border-radius: .5rem; }
-#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover { background-color: rgb(var(--tc-text) / .05) !important; }
-/* El ítem activo: fondo apenas teñido, texto normal, icono y una raya a la
-   izquierda en el acento. Se lee sin gritar. */
-#menu .nav-item.activo {
-  background-color: rgb(var(--tc-gold) / .12) !important;
+#menu-panel nav a, #menu-panel nav .grupo-btn, #menu-panel > div:last-child a { border-radius: .7rem; }
+#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover, #menu-panel > div:last-child a:hover {
+  background-color: rgb(var(--tc-gold) / .09) !important;
   color: rgb(var(--tc-text)) !important;
-  box-shadow: inset 2px 0 0 rgb(var(--tc-gold));
+}
+/* EL ELEGIDO. En oscuro va RELLENO del color del botón, con el texto y el
+   icono en blanco y una sombra de su color: se ve de un vistazo dónde se
+   está. En claro, teñido y con el texto en el acento. */
+#menu .nav-item.activo, #menu .nav-item.activo:hover {
+  background-color: rgb(var(--tc-boton)) !important;
+  color: rgb(var(--tc-on-gold)) !important;
+  box-shadow: 0 8px 18px -8px rgb(var(--tc-boton) / .7);
   font-weight: 600;
 }
-#menu .nav-item.activo i { color: rgb(var(--tc-gold)) !important; }
+#menu .nav-item.activo i { color: rgb(var(--tc-on-gold)) !important; }
+:root[data-theme='light'] #menu .nav-item.activo, :root[data-theme^='claro-'] #menu .nav-item.activo,
+:root[data-theme='light'] #menu .nav-item.activo:hover, :root[data-theme^='claro-'] #menu .nav-item.activo:hover {
+  background-color: rgb(var(--tc-gold) / .1) !important;
+  color: rgb(var(--tc-gold)) !important;
+  box-shadow: none;
+}
+:root[data-theme='light'] #menu .nav-item.activo i, :root[data-theme^='claro-'] #menu .nav-item.activo i { color: rgb(var(--tc-gold)) !important; }
 #menu-panel .grupo-items { border-left-color: rgb(var(--tc-border)) !important; }
 #menu-panel > a:first-child { border-bottom-color: rgb(var(--tc-border)) !important; }
 #menu-panel > div:last-child { border-top-color: rgb(var(--tc-border)) !important; }
 
+/* El avatar de quien tiene la sesión (la barra de arriba): sus iniciales. */
+.tc-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 2.25rem; height: 2.25rem; border-radius: 9999px;
+  font-size: .75rem; font-weight: 700; letter-spacing: .02em;
+  color: rgb(var(--tc-on-gold));
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-boton)));
+}
+
 /* ============================================================
    BOTONES, CAMPOS, PASTILLAS
    ============================================================ */
-/* Botón principal: el acento, liso. Al pasar el ratón, un punto más hondo. */
+/* Botón principal: el relleno del acento, con su sombra del color. */
 body button.bg-telecab-gold, body a.bg-telecab-gold, body .btn-primario {
-  background: rgb(var(--tc-gold));
+  background: rgb(var(--tc-boton));
   color: rgb(var(--tc-on-gold)) !important;
-  box-shadow: none;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18), 0 8px 18px -8px rgb(var(--tc-boton) / .65);
   border: 0;
-  transition: background-color .15s ease;
+  transition: background-color .15s ease, box-shadow .15s ease;
 }
-body button.bg-telecab-gold:hover:not(:disabled), body a.bg-telecab-gold:hover, body .btn-primario:hover { background: rgb(var(--tc-gold-deep)); }
+body button.bg-telecab-gold:hover:not(:disabled), body a.bg-telecab-gold:hover, body .btn-primario:hover { background: rgb(var(--tc-boton-hover)); }
 /* Botones secundarios: los que llevan borde y fondo de tarjeta. */
 body button.border.bg-telecab-card, body a.border.bg-telecab-card, body button.border-telecab-border.bg-telecab-card {
   background-color: rgb(var(--tc-card));
   border-color: rgb(var(--tc-border));
-  box-shadow: none;
+  box-shadow: var(--tc-sombra);
   transition: background-color .15s ease, border-color .15s ease;
 }
 body button.border.bg-telecab-card:hover, body a.border.bg-telecab-card:hover {
   background-color: rgb(var(--tc-card2));
-  border-color: rgb(var(--tc-muted) / .45);
+  border-color: rgb(var(--tc-gold) / .45);
 }
-body button:active:not(:disabled) { transform: scale(.99); }
+body button:active:not(:disabled) { transform: scale(.985); }
 
-/* Campos: del color de la página por dentro, borde fino, el acento al enfocar. */
+/* Campos: hundidos, borde fino, el acento al enfocar. */
 body input.bg-telecab-dark, body select.bg-telecab-dark, body textarea.bg-telecab-dark, .inp {
   background-color: rgb(var(--tc-campo)) !important;
   border-color: rgb(var(--tc-border)) !important;
@@ -215,8 +286,8 @@ body input.bg-telecab-dark, body select.bg-telecab-dark, body textarea.bg-teleca
 }
 body input.bg-telecab-dark:focus, body select.bg-telecab-dark:focus, body textarea.bg-telecab-dark:focus, .inp:focus {
   outline: none;
-  border-color: rgb(var(--tc-gold) / .75) !important;
-  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16);
+  border-color: rgb(var(--tc-gold) / .85) !important;
+  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .2);
 }
 
 /* ── LOS DESPLEGABLES ──────────────────────────────────────────────────────
@@ -280,16 +351,18 @@ body select optgroup {
 
 ::placeholder { color: rgb(var(--tc-muted) / .8); }
 
-/* Las pastillas de estado (chips): un poco más redondas y con su filo. */
-body span.rounded-md.text-xs.font-medium { border-radius: .55rem; padding-top: .2rem; padding-bottom: .2rem; }
+/* Las pastillas de estado (chips): redondas del todo, como las .tc-pastilla. */
+body span.rounded-md.text-xs.font-medium { border-radius: 9999px; padding: .2rem .6rem; }
 
 /* ============================================================
    TABLAS
-   ============================================================ */
+   ============================================================
+   La cabecera va sobre una banda (si la vista no le pone fondo propio) y la
+   fila se tiñe del acento al pasar por encima. */
 body thead tr { border-bottom-color: rgb(var(--tc-border)) !important; }
-body thead th { font-weight: 600; letter-spacing: .04em; color: rgb(var(--tc-muted)); }
+body thead th { font-weight: 600; letter-spacing: .03em; color: rgb(var(--tc-muted)); background-color: rgb(var(--tc-card2) / .55); }
 body tbody tr { transition: background-color .12s ease; }
-body tbody tr:hover { background-color: rgb(var(--tc-text) / .035); }
+body tbody tr:hover { background-color: rgb(var(--tc-gold) / .06); }
 body tbody tr.border-b { border-bottom-color: rgb(var(--tc-border) / .7) !important; }
 
 /* ============================================================
@@ -346,7 +419,7 @@ body tbody tr.border-b { border-bottom-color: rgb(var(--tc-border) / .7) !import
 @keyframes tc-carril { to { stroke-dashoffset: -8; } }
 
 /* El telón de carga: casi opaco y quieto, con la marca en el centro. */
-#cargando-overlay { background-color: rgb(var(--tc-dark) / .95); }
+#cargando-overlay { background-color: rgb(var(--tc-dark) / .96); }
 #cargando-overlay .tc-carga-texto { color: rgb(var(--tc-muted)); letter-spacing: .08em; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -415,24 +488,43 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
   :root[data-menu="corto"] #menu,
   :root[data-menu="corto"] #menu-panel { width: 4.5rem; }
   :root[data-menu="corto"] #menu:hover #menu-panel,
-  :root[data-menu="corto"] #menu:focus-within #menu-panel {
+  :root[data-menu="corto"] #menu:focus-within #menu-panel,
+  :root[data-menu="corto"] #menu.tc-recorrido-abierto #menu-panel {
     width: 16rem;
     box-shadow: var(--tc-sombra-alta);
   }
   #menu-panel span, #menu-panel p, #menu-panel .grupo-chev { transition: opacity .12s ease; }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(#nav-pend-badge),
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel p,
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel .grupo-chev {
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) #menu-panel span:not(.tc-contador-menu),
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) #menu-panel p,
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) #menu-panel .grupo-chev {
     opacity: 0; pointer-events: none;
   }
-  #menu-panel nav a { position: relative; }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #nav-pend-badge {
+  #menu-panel nav a, #menu-panel .grupo-btn { position: relative; }
+  /* Con el menú plegado, cada contador sobre la esquina de su icono (A9). */
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) .tc-contador-menu {
     position: absolute; top: .35rem; left: 1.9rem; opacity: 1; pointer-events: none;
   }
-  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .grupo-items { display: none; }
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within):not(.tc-recorrido-abierto) .grupo-items { display: none; }
 }
 #menu-corto { display: none; }
 @media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
+
+/* ══════════════════════════════════════════════════════════════
+   LOS CONTADORES (A9): una sola marca para todos los números
+   ══════════════════════════════════════════════════════════════
+   Los pinta public/assets/js/contadores.js en todo lo que lleve
+   data-contador (o data-contador-grupo, la suma de un grupo del menú).
+   Rojo por defecto: hay algo por hacer. Azul (tc-contador--info): algo
+   que mirar, sin urgencia. */
+.tc-contador {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 .3rem; border-radius: 9999px;
+  font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  background: rgb(var(--tc-red)); color: #fff;
+}
+.tc-contador[hidden] { display: none !important; }
+.tc-contador--info { background: rgb(var(--tc-azul) / .22); color: rgb(var(--tc-azul)); }
+.tc-contador-campana { position: absolute; top: .125rem; right: .125rem; min-width: 16px; height: 16px; padding: 0 .25rem; }
 
 /* Diálogos (public/assets/js/dialogo.js): velo oscuro y quieto, sin cristal. */
 .dialogo { animation: dlgFondo .12s ease-out; backdrop-filter: none; }
@@ -495,7 +587,7 @@ body .tc-ojo .tc-ojo-ver     { opacity: 1; transform: none; }
 body .tc-ojo .tc-ojo-tapar   { opacity: 0; transform: scale(.5) rotate(-25deg); }
 body .tc-ojo[aria-pressed="true"] .tc-ojo-ver   { opacity: 0; transform: scale(.5) rotate(25deg); }
 body .tc-ojo[aria-pressed="true"] .tc-ojo-tapar { opacity: 1; transform: none; }
-/* Cerrado se queda dorado: es un aviso de que hay algo tapado, no un botón más. */
+/* Cerrado se queda del acento: es un aviso de que hay algo tapado, no un botón más. */
 body .tc-ojo[aria-pressed="true"] {
   color: rgb(var(--tc-gold));
   border-color: rgb(var(--tc-gold) / .4);
@@ -599,11 +691,11 @@ body .tc-selector button:focus-visible {
   outline: 2px solid rgb(var(--tc-gold) / .7);
   outline-offset: 2px;
 }
-/* La elegida en oro sólido: es la única del grupo, así que tiene que leerse
+/* La elegida, rellena del acento: es la única del grupo, así que tiene que leerse
    sin comparar con las de al lado. */
 body .tc-selector button[aria-pressed="true"] {
-  background: rgb(var(--tc-gold));
-  border-color: rgb(var(--tc-gold));
+  background: rgb(var(--tc-boton));
+  border-color: rgb(var(--tc-boton));
   color: rgb(var(--tc-on-gold));
 }
 @media (prefers-reduced-motion: reduce) {
@@ -618,4 +710,728 @@ body .tc-selector.tc-selector-compacto button {
   padding: .3rem .6rem;
   border-radius: .6rem;
   font-size: .75rem;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PIEZAS GLOBALES (.tc-*) — lo nuevo se hace con ellas
+   ══════════════════════════════════════════════════════════════
+   Todo con los tokens: cambiar la identidad es cambiar esto, no pantalla por
+   pantalla. Las pantallas nuevas usan estas clases y no repiten cadenas
+   largas de Tailwind. (Nacieron con el tablero, ítem 1; la V3 las viste.) */
+
+/* ── La pantalla: su margen y su ancho (lo que cada vista ponía con p-4 lg:p-6) ── */
+.tc-pantalla { padding: 1rem; margin-inline: auto; max-width: 1600px; }
+@media (min-width: 1024px) { .tc-pantalla { padding: 1.5rem; } }
+
+/* ── Botones ── */
+.tc-boton {
+  display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+  min-height: 2.375rem; padding: 0 1rem; border-radius: .7rem;
+  font-size: .8125rem; font-weight: 600; line-height: 1; white-space: nowrap;
+  background: rgb(var(--tc-card)); color: rgb(var(--tc-text));
+  border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.tc-boton:hover { background: rgb(var(--tc-card2)); border-color: rgb(var(--tc-gold) / .5); }
+.tc-boton:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
+.tc-boton:disabled { opacity: .5; cursor: not-allowed; }
+.tc-boton--principal {
+  background: rgb(var(--tc-boton)); color: rgb(var(--tc-on-gold)); border-color: rgb(var(--tc-boton));
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18), 0 8px 18px -8px rgb(var(--tc-boton) / .65);
+}
+.tc-boton--principal:hover { background: rgb(var(--tc-boton-hover)); border-color: rgb(var(--tc-boton-hover)); }
+.tc-boton--peligro { color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .4); background: rgb(var(--tc-red) / .1); box-shadow: none; }
+.tc-boton--peligro:hover { border-color: rgb(var(--tc-red)); background: rgb(var(--tc-red) / .16); }
+.tc-boton--chico { min-height: 1.875rem; padding: 0 .7rem; font-size: .75rem; border-radius: .55rem; }
+
+/* ── Pestañas (pestanas.js): subrayadas, la elegida en el acento ── */
+.tc-pestanas { display: flex; flex-wrap: wrap; gap: 0 1.5rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-pestana {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .7rem .15rem; margin-bottom: -1px;
+  font-size: .875rem; font-weight: 600; color: rgb(var(--tc-muted));
+  border-bottom: 2px solid transparent; transition: color .15s ease, border-color .15s ease;
+}
+.tc-pestana:hover { color: rgb(var(--tc-text)); border-bottom-color: rgb(var(--tc-muted) / .4); }
+.tc-pestana:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; border-radius: .35rem; }
+.tc-pestana[aria-selected="true"] { color: rgb(var(--tc-gold)); border-bottom-color: rgb(var(--tc-gold)); }
+
+/* ── Pastilla (estado, tipo): redonda y con el color entero ── */
+.tc-pastilla {
+  display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap;
+  padding: .15rem .6rem; border-radius: 9999px; font-size: .6875rem; font-weight: 600;
+  background: rgb(var(--tc-muted) / .16); color: rgb(var(--tc-muted)); border: 1px solid rgb(var(--tc-muted) / .22);
+}
+.tc-pastilla--oro { background: rgb(var(--tc-gold) / .16); color: rgb(var(--tc-gold)); border-color: rgb(var(--tc-gold) / .3); }
+.tc-pastilla--azul { background: rgb(var(--tc-azul) / .16); color: rgb(var(--tc-azul)); border-color: rgb(var(--tc-azul) / .3); }
+.tc-pastilla--verde { background: rgb(var(--tc-green) / .16); color: rgb(var(--tc-green)); border-color: rgb(var(--tc-green) / .3); }
+.tc-pastilla--aviso { background: rgb(var(--tc-warn) / .16); color: rgb(var(--tc-warn)); border-color: rgb(var(--tc-warn) / .3); }
+.tc-pastilla--rojo { background: rgb(var(--tc-red) / .16); color: rgb(var(--tc-red)); border-color: rgb(var(--tc-red) / .3); }
+
+/* ── El semáforo de un plazo: verde, amarillo el último día, rojo vencido ── */
+.tc-semaforo { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.tc-semaforo::before { content: ''; width: .5rem; height: .5rem; border-radius: 9999px; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
+.tc-semaforo--verde { color: rgb(var(--tc-green)); }
+.tc-semaforo--amarillo { color: rgb(var(--tc-warn)); }
+.tc-semaforo--rojo { color: rgb(var(--tc-red)); }
+
+/* ── La tarjeta de una cifra (los KPI del Listado y de donde haga falta) ── */
+.tc-kpi {
+  position: relative; display: flex; flex-direction: column; gap: .15rem; padding: 1rem 1.1rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem; box-shadow: var(--tc-sombra);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.tc-kpi--pulsable { cursor: pointer; }
+.tc-kpi--pulsable:hover { border-color: rgb(var(--tc-gold) / .5); box-shadow: var(--tc-sombra-alta); }
+.tc-kpi-etiqueta { font-size: .78rem; font-weight: 500; color: rgb(var(--tc-muted)); }
+.tc-kpi--con-icono .tc-kpi-etiqueta { padding-right: 2.6rem; }
+.tc-kpi-valor { font-size: 1.75rem; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: rgb(var(--tc-text)); }
+.tc-kpi-pie { font-size: .75rem; color: rgb(var(--tc-muted)); }
+/* El icono, arriba a la derecha, sobre un cuadro teñido del tono de la cifra. */
+.tc-kpi-icono {
+  position: absolute; top: .9rem; right: .9rem; width: 2.1rem; height: 2.1rem; border-radius: .65rem;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .9rem;
+  background: rgb(var(--tc-gold) / .14); color: rgb(var(--tc-gold));
+}
+.tc-kpi[data-tono='green'] .tc-kpi-valor { color: rgb(var(--tc-green)); }
+.tc-kpi[data-tono='red'] .tc-kpi-valor { color: rgb(var(--tc-red)); }
+.tc-kpi[data-tono='warn'] .tc-kpi-valor { color: rgb(var(--tc-warn)); }
+.tc-kpi[data-tono='azul'] .tc-kpi-valor { color: rgb(var(--tc-azul)); }
+.tc-kpi[data-tono='violet'] .tc-kpi-valor { color: rgb(var(--tc-violet)); }
+.tc-kpi[data-tono='gold'] .tc-kpi-valor { color: rgb(var(--tc-gold)); }
+.tc-kpi[data-tono='muted'] .tc-kpi-valor { color: rgb(var(--tc-muted)); }
+.tc-kpi[data-tono='green'] .tc-kpi-icono { background: rgb(var(--tc-green) / .14); color: rgb(var(--tc-green)); }
+.tc-kpi[data-tono='red'] .tc-kpi-icono { background: rgb(var(--tc-red) / .14); color: rgb(var(--tc-red)); }
+.tc-kpi[data-tono='warn'] .tc-kpi-icono { background: rgb(var(--tc-warn) / .14); color: rgb(var(--tc-warn)); }
+.tc-kpi[data-tono='azul'] .tc-kpi-icono { background: rgb(var(--tc-azul) / .14); color: rgb(var(--tc-azul)); }
+.tc-kpi[data-tono='violet'] .tc-kpi-icono { background: rgb(var(--tc-violet) / .14); color: rgb(var(--tc-violet)); }
+
+/* ── Kanban (kanban.js): columnas que se desplazan de lado en pantalla estrecha ── */
+.tc-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(16rem, 1fr); gap: .85rem; overflow-x: auto; padding-bottom: .25rem; }
+.tc-kanban-columna {
+  display: flex; flex-direction: column; min-height: 12rem; max-height: calc(100vh - 15rem);
+  background: rgb(var(--tc-card2) / .5); border: 1px solid rgb(var(--tc-border) / .7); border-radius: 1rem;
+}
+.tc-kanban-cabeza { display: flex; align-items: center; gap: .5rem; padding: .8rem .9rem .5rem; }
+.tc-kanban-titulo { font-size: .8125rem; font-weight: 700; color: rgb(var(--tc-text)); flex: 1; }
+.tc-kanban-cuenta {
+  min-width: 1.5rem; height: 1.5rem; padding: 0 .4rem; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .6875rem; font-weight: 700; color: rgb(var(--tc-muted)); background: rgb(var(--tc-muted) / .16); font-variant-numeric: tabular-nums;
+}
+.tc-kanban-lista { flex: 1; min-height: 0; overflow-y: auto; padding: .35rem .6rem .6rem; display: flex; flex-direction: column; gap: .55rem; }
+.tc-kanban-vacia { font-size: .75rem; color: rgb(var(--tc-muted)); text-align: center; padding: 1.25rem .5rem; }
+.tc-kanban-columna[data-soltar="si"] { border-color: rgb(var(--tc-gold) / .8); background: rgb(var(--tc-gold) / .08); }
+.tc-kanban-columna[data-soltar="no"] { opacity: .5; }
+
+.tc-tarjeta {
+  display: block; width: 100%; text-align: left; padding: .8rem .85rem; border-radius: .85rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; cursor: pointer;
+}
+.tc-tarjeta:hover { border-color: rgb(var(--tc-gold) / .55); box-shadow: 0 10px 22px -12px rgb(var(--tc-gold) / .45), var(--tc-sombra); }
+.tc-tarjeta:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
+.tc-tarjeta[draggable="true"] { cursor: grab; }
+.tc-tarjeta.tc-tarjeta--arrastrando { opacity: .4; }
+.tc-tarjeta-titulo {
+  font-size: .8125rem; font-weight: 600; line-height: 1.35; color: rgb(var(--tc-text));
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tc-tarjeta-pie { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin-top: .55rem; font-size: .6875rem; color: rgb(var(--tc-muted)); }
+.tc-iniciales {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 9999px;
+  font-size: .625rem; font-weight: 700; color: rgb(var(--tc-on-gold));
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-boton)));
+}
+
+/* ── Panel lateral (panel.js): la ficha que se abre al lado, sin dejar la pantalla ── */
+/* Encima del menú (z-40) y debajo de los formularios y avisos del Dialogo (z-50 y más). */
+.tc-panel-fondo { position: fixed; inset: 0; z-index: 44; background: rgb(3 6 14 / .6); }
+.tc-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 45; width: min(34rem, 100vw);
+  display: flex; flex-direction: column; background: rgb(var(--tc-card)); border-left: 1px solid rgb(var(--tc-border));
+  box-shadow: var(--tc-sombra-alta);
+  transform: translateX(0); transition: transform .22s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tc-panel--saliendo { transform: translateX(100%); }
+.tc-panel-cabeza { display: flex; align-items: flex-start; gap: .75rem; padding: 1.1rem 1.35rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-panel-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1.1rem 1.35rem; display: flex; flex-direction: column; gap: 1.2rem; }
+.tc-panel-seccion > h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }
+@media (prefers-reduced-motion: reduce) { .tc-panel, .tc-tarjeta { transition: none; } }
+
+/* ══════════════════════════════════════════════════════════════
+   NOVEDADES (novedades.js, V3, db/253) — la ventana de cada versión
+   ══════════════════════════════════════════════════════════════
+   Sale una vez a cada persona después de una actualización: lo nuevo y lo que
+   ya tiene a mano, y la invitación al recorrido. Encima del menú, de la ficha
+   lateral y de los diálogos; debajo de la carga y del recorrido. */
+.tc-novedades-fondo {
+  position: fixed; inset: 0; z-index: 140; display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: rgb(3 6 14 / .64); animation: tcnFondo .18s ease-out;
+}
+.tc-novedades-fondo--saliendo { animation: tcnFondo .15s ease-in reverse forwards; }
+.tc-novedades {
+  position: relative; width: min(58rem, 100%); max-height: min(47rem, calc(100svh - 2rem));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1.25rem;
+  box-shadow: var(--tc-sombra-alta); animation: tcnCaja .32s cubic-bezier(.23, 1, .32, 1);
+}
+.tc-novedades-cabeza {
+  position: relative; padding: 1.6rem 1.75rem 0;
+  background:
+    radial-gradient(40rem 16rem at 0% 0%, rgb(var(--tc-boton) / .28), transparent 70%),
+    radial-gradient(30rem 14rem at 100% 0%, rgb(var(--tc-violet) / .16), transparent 70%);
+}
+.tc-novedades-cerrar {
+  position: absolute; top: 1rem; right: 1rem; width: 2.2rem; height: 2.2rem; border-radius: .65rem;
+  display: inline-flex; align-items: center; justify-content: center; color: rgb(var(--tc-muted));
+}
+.tc-novedades-cerrar:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-text) / .07); }
+.tc-novedades-sello {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .75rem; border-radius: 9999px;
+  font-size: .75rem; font-weight: 700; color: rgb(var(--tc-on-gold)); background: rgb(var(--tc-boton));
+  box-shadow: 0 8px 18px -8px rgb(var(--tc-boton) / .7);
+}
+.tc-novedades-titulo { margin-top: .9rem; font-size: clamp(1.45rem, 3vw, 2rem); line-height: 1.12; font-weight: 800; letter-spacing: -.025em; }
+.tc-novedades-bajada { margin-top: .45rem; max-width: 60ch; font-size: .95rem; line-height: 1.5; color: rgb(var(--tc-muted)); }
+.tc-novedades-pestanas { margin-top: 1.1rem; }
+.tc-novedades-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem 1.75rem 1.4rem; }
+.tc-novedades-rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+.tc-novedades-rejilla[hidden] { display: none; }
+.tc-novedad {
+  display: flex; gap: .9rem; align-items: flex-start; padding: 1rem 1.05rem; border-radius: 1rem;
+  background: rgb(var(--tc-card2) / .6); border: 1px solid rgb(var(--tc-border));
+}
+.tc-novedad h3 { font-size: .95rem; font-weight: 700; line-height: 1.3; }
+.tc-novedad p { margin-top: .3rem; font-size: .84rem; line-height: 1.5; color: rgb(var(--tc-muted)); }
+.tc-novedad-enlace { display: inline-flex; align-items: center; gap: .35rem; margin-top: .55rem; font-size: .8125rem; font-weight: 600; color: rgb(var(--tc-gold)); }
+.tc-novedad-enlace:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tc-novedad-icono {
+  flex: none; width: 2.6rem; height: 2.6rem; border-radius: .8rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1rem; background: rgb(var(--tc-gold) / .15); color: rgb(var(--tc-gold));
+}
+.tc-novedad-icono[data-tono='verde'] { background: rgb(var(--tc-green) / .15); color: rgb(var(--tc-green)); }
+.tc-novedad-icono[data-tono='ambar'] { background: rgb(var(--tc-warn) / .15); color: rgb(var(--tc-warn)); }
+.tc-novedad-icono[data-tono='violeta'] { background: rgb(var(--tc-violet) / .15); color: rgb(var(--tc-violet)); }
+.tc-novedad-icono[data-tono='celeste'] { background: rgb(var(--tc-azul) / .15); color: rgb(var(--tc-azul)); }
+.tc-novedades-nota { font-size: .84rem; color: rgb(var(--tc-muted)); margin-bottom: 1rem; }
+.tc-novedades-grupo + .tc-novedades-grupo { margin-top: 1.2rem; }
+.tc-novedades-grupo h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); margin-bottom: .5rem; }
+.tc-novedades-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; }
+.tc-novedades-item {
+  display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .7rem; border-radius: .75rem;
+  border: 1px solid transparent; transition: background-color .15s ease, border-color .15s ease;
+}
+.tc-novedades-item:hover { background: rgb(var(--tc-gold) / .07); border-color: rgb(var(--tc-gold) / .25); }
+.tc-novedades-item b { display: block; font-size: .875rem; font-weight: 600; color: rgb(var(--tc-text)); }
+.tc-novedades-item small { display: block; margin-top: .1rem; font-size: .78rem; line-height: 1.4; color: rgb(var(--tc-muted)); }
+.tc-novedades-item-icono {
+  flex: none; width: 2rem; height: 2rem; border-radius: .6rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .85rem; background: rgb(var(--tc-card2)); color: rgb(var(--tc-gold));
+}
+.tc-novedades-pie {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem;
+  padding: .9rem 1.75rem; border-top: 1px solid rgb(var(--tc-border)); background: rgb(var(--tc-card2) / .35);
+}
+.tc-novedades-pie p { margin-right: auto; font-size: .78rem; color: rgb(var(--tc-muted)); }
+/* El puntito de «hay novedades sin ver», junto a «Novedades» en el menú. */
+.tc-novedades-punto { width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--tc-gold)); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .25); }
+.tc-novedades-punto[hidden] { display: none; }
+@media (max-width: 720px) {
+  .tc-novedades-fondo { padding: .5rem; align-items: stretch; }
+  .tc-novedades { max-height: calc(100svh - 1rem); }
+  .tc-novedades-cabeza, .tc-novedades-cuerpo { padding-left: 1.1rem; padding-right: 1.1rem; }
+  .tc-novedades-pie { padding: .8rem 1.1rem; }
+  .tc-novedades-pie p { flex-basis: 100%; }
+  .tc-novedades-rejilla, .tc-novedades-lista { grid-template-columns: minmax(0, 1fr); }
+}
+@keyframes tcnFondo { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tcnCaja { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* ══════════════════════════════════════════════════════════════
+   RECORRIDO (recorrido.js, V3) — el paseo guiado
+   ══════════════════════════════════════════════════════════════
+   Una capa que no deja tocar la pantalla, un foco que ilumina lo que se
+   explica (el resto queda en penumbra con una sombra enorme) y el globo al
+   lado. Por encima de todo; las ayudas se apagan mientras dura. */
+.tc-recorrido-capa { position: fixed; inset: 0; z-index: 250; background: transparent; }
+.tc-recorrido-foco {
+  position: fixed; z-index: 251; pointer-events: none; border-radius: .9rem;
+  box-shadow: 0 0 0 2px rgb(var(--tc-gold)), 0 0 0 6px rgb(var(--tc-gold) / .25), 0 0 0 9999px rgb(3 6 14 / .68);
+  transition: left .3s cubic-bezier(.23, 1, .32, 1), top .3s cubic-bezier(.23, 1, .32, 1),
+              width .3s cubic-bezier(.23, 1, .32, 1), height .3s cubic-bezier(.23, 1, .32, 1);
+}
+.tc-recorrido-foco--centro { box-shadow: 0 0 0 9999px rgb(3 6 14 / .68); }
+.tc-recorrido-globo {
+  position: fixed; z-index: 252; width: min(22rem, calc(100vw - 24px)); overflow: hidden;
+  padding: 1.05rem 1.15rem .95rem; border-radius: 1rem; outline: none;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra-alta);
+  transition: left .3s cubic-bezier(.23, 1, .32, 1), top .3s cubic-bezier(.23, 1, .32, 1);
+}
+.tc-recorrido-cabeza { display: flex; align-items: center; gap: .65rem; }
+.tc-recorrido-icono {
+  flex: none; width: 2.1rem; height: 2.1rem; border-radius: .65rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .9rem; color: rgb(var(--tc-on-gold)); background: rgb(var(--tc-boton));
+}
+.tc-recorrido-titulo { font-size: 1rem; font-weight: 700; line-height: 1.25; }
+.tc-recorrido-texto { margin-top: .6rem; font-size: .875rem; line-height: 1.55; color: rgb(var(--tc-text) / .85); }
+.tc-recorrido-pie { display: flex; align-items: center; gap: .4rem; margin-top: 1rem; }
+.tc-recorrido-cuenta { margin-right: auto; font-size: .75rem; font-weight: 600; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+.tc-recorrido-saltar { padding: .35rem .5rem; border-radius: .5rem; font-size: .75rem; font-weight: 600; color: rgb(var(--tc-muted)); }
+.tc-recorrido-saltar:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-text) / .06); }
+.tc-recorrido-progreso { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgb(var(--tc-border)); }
+.tc-recorrido-progreso span { display: block; height: 100%; background: rgb(var(--tc-gold)); transition: width .3s ease; }
+:root.tc-recorriendo .ayuda-globo { display: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tc-novedades-fondo, .tc-novedades { animation: none; }
+  .tc-recorrido-foco, .tc-recorrido-globo, .tc-recorrido-progreso span { transition: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LA BANDEJA DE AVISOS (la campana, ítem 3, db/254)
+   ══════════════════════════════════════════════════════════════
+   Arriba los avisos de su área (sin leer en negrita y con su punto, urgentes
+   con el filo rojo), debajo los pendientes de hoy. La pinta
+   public/assets/js/layout/pendientes.js. */
+.tc-bandeja {
+  position: absolute; right: 0; margin-top: .5rem; z-index: 50;
+  width: 25rem; max-width: calc(100vw - 1.5rem); max-height: 75vh; overflow-y: auto;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem; box-shadow: var(--tc-sombra-alta);
+}
+.tc-bandeja.hidden { display: none; }
+.tc-bandeja-cabeza {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .7rem .9rem .45rem; background: rgb(var(--tc-card));
+}
+.tc-bandeja-cabeza p { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); }
+.tc-bandeja-cabeza button { font-size: .75rem; font-weight: 600; color: rgb(var(--tc-gold)); }
+.tc-bandeja-cabeza button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tc-bandeja-avisos { display: flex; flex-direction: column; gap: .4rem; padding: 0 .55rem .6rem; border-bottom: 1px solid rgb(var(--tc-border)); }
+.tc-bandeja-pendientes { padding: 0 .55rem .55rem; }
+.tc-bandeja-vacia { font-size: .75rem; color: rgb(var(--tc-muted)); text-align: center; padding: .9rem .5rem; }
+
+.tc-aviso {
+  position: relative; display: flex; gap: .7rem; align-items: flex-start; padding: .7rem .75rem; border-radius: .8rem;
+  background: rgb(var(--tc-card2) / .45); border: 1px solid rgb(var(--tc-border) / .8);
+}
+.tc-aviso--sin-leer { background: rgb(var(--tc-gold) / .07); border-color: rgb(var(--tc-gold) / .3); }
+.tc-aviso--urgente { box-shadow: inset 3px 0 0 rgb(var(--tc-red)); }
+.tc-aviso-icono {
+  flex: none; width: 2rem; height: 2rem; border-radius: .6rem; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .8rem; background: rgb(var(--tc-gold) / .14); color: rgb(var(--tc-gold));
+}
+.tc-aviso--urgente .tc-aviso-icono { background: rgb(var(--tc-red) / .14); color: rgb(var(--tc-red)); }
+.tc-aviso-cuerpo { flex: 1; min-width: 0; padding-right: .75rem; }
+.tc-aviso-titulo { display: block; font-size: .8125rem; font-weight: 500; line-height: 1.35; color: rgb(var(--tc-text)); }
+a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline; text-underline-offset: 3px; }
+.tc-aviso--sin-leer .tc-aviso-titulo { font-weight: 700; }
+.tc-aviso-texto { margin-top: .2rem; font-size: .75rem; line-height: 1.45; color: rgb(var(--tc-muted)); }
+.tc-aviso-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .35rem; margin-top: .35rem; font-size: .6875rem; color: rgb(var(--tc-muted)); }
+.tc-aviso-acciones { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+.tc-aviso-punto { position: absolute; top: .8rem; right: .75rem; width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--tc-gold)); }
+.tc-aviso--urgente .tc-aviso-punto { background: rgb(var(--tc-red)); }
+
+/* ══════════════════════════════════════════════════════════════
+   ORGANIGRAMA (organigrama.js, 17/11/2026) — los puestos en árbol
+   ══════════════════════════════════════════════════════════════
+   Los puestos de db/255 colgando del puesto al que reportan, agrupados por
+   área, y dentro de cada puesto las personas que lo ocupan, que se arrastran
+   de un puesto a otro. Cada área con su color: un color de CATEGORÍA, que no
+   es el acento ni un estado. */
+:root, :root[data-theme='dark'], :root:not([data-theme^='claro-']):not([data-theme='light']) {
+  --tc-area-direccion: 167 139 250;
+  --tc-area-rrhh: 244 114 182;
+  --tc-area-seleccion: 163 230 53;
+  --tc-area-legal: 251 191 36;
+  --tc-area-administracion: 34 211 238;
+  --tc-area-planificacion: 74 222 128;
+  --tc-area-control: 96 165 250;
+  --tc-area-taller: 251 146 60;
+  --tc-area-sistemas: 148 163 184;
+}
+:root[data-theme='light'], :root[data-theme^='claro-'] {
+  --tc-area-direccion: 124 58 237;
+  --tc-area-rrhh: 219 39 119;
+  --tc-area-seleccion: 77 124 15;
+  --tc-area-legal: 161 98 7;
+  --tc-area-administracion: 14 116 144;
+  --tc-area-planificacion: 21 128 61;
+  --tc-area-control: 37 99 235;
+  --tc-area-taller: 194 65 12;
+  --tc-area-sistemas: 71 85 105;
+}
+
+.tc-avatar--chico { width: 1.6rem; height: 1.6rem; font-size: .625rem; }
+
+.tc-org { display: flex; flex-direction: column; gap: .85rem; }
+.tc-org-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
+.tc-org-ayuda { display: flex; align-items: center; gap: .45rem; font-size: .8125rem; color: rgb(var(--tc-muted)); }
+.tc-org-zoom { display: flex; align-items: center; gap: .35rem; }
+.tc-org-zoom-valor { min-width: 3.2rem; text-align: center; font-size: .75rem; font-weight: 600; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+
+/* La bandeja de quien no tiene puesto: también se suelta aquí (le quita el puesto). */
+.tc-org-sin {
+  padding: .65rem .75rem; border-radius: 1rem; border: 1px dashed rgb(var(--tc-border)); background: rgb(var(--tc-card) / .6);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.tc-org-sin h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }
+.tc-org-sin .tc-org-gente { flex-direction: row; flex-wrap: wrap; }
+.tc-org-sin .tc-org-persona { width: auto; max-width: 16rem; }
+
+/* El marco se desplaza; el lienzo se acerca o se aleja (zoom). */
+.tc-org-marco {
+  overflow: auto; max-height: calc(100vh - 15rem); border-radius: 1rem;
+  border: 1px solid rgb(var(--tc-border)); background: rgb(var(--tc-card2) / .35);
+}
+.tc-org-lienzo { display: inline-block; min-width: 100%; padding: 1rem 1.25rem 1.5rem; }
+
+/* El árbol: cada nivel en fila, con las líneas de la casa (el borde). */
+.tc-org-nivel { position: relative; display: flex; justify-content: center; margin: 0; padding: 1.25rem 0 0; list-style: none; }
+.tc-org-lienzo > .tc-org-nivel { padding-top: 0; }
+.tc-org-nivel .tc-org-nivel::before {
+  content: ''; position: absolute; top: 0; left: 50%; height: 1.25rem; border-left: 2px solid rgb(var(--tc-border));
+}
+.tc-org-rama { position: relative; display: flex; flex-direction: column; align-items: center; padding: 1.25rem .45rem 0; }
+.tc-org-rama::before, .tc-org-rama::after {
+  content: ''; position: absolute; top: 0; width: 50%; height: 1.25rem; border-top: 2px solid rgb(var(--tc-border));
+}
+.tc-org-rama::before { right: 50%; }
+.tc-org-rama::after { left: 50%; border-left: 2px solid rgb(var(--tc-border)); }
+.tc-org-rama:only-child { padding-top: 0; }
+.tc-org-rama:only-child::before, .tc-org-rama:only-child::after { display: none; }
+.tc-org-rama:first-child::before, .tc-org-rama:last-child::after { border: 0 none; }
+.tc-org-rama:last-child::before { border-right: 2px solid rgb(var(--tc-border)); border-top-right-radius: .7rem; }
+.tc-org-rama:first-child::after { border-top-left-radius: .7rem; }
+
+/* El bloque de un área: sus puestos de ese nivel, uno debajo de otro. */
+.tc-org-grupo {
+  --org-area: var(--tc-muted);
+  display: flex; flex-direction: column; gap: .5rem; padding: .55rem; border-radius: 1rem;
+  border: 1px solid rgb(var(--org-area) / .4); background: rgb(var(--org-area) / .07);
+}
+.tc-org-grupo[data-area='direccion'] { --org-area: var(--tc-area-direccion); }
+.tc-org-grupo[data-area='rrhh'] { --org-area: var(--tc-area-rrhh); }
+.tc-org-grupo[data-area='seleccion'] { --org-area: var(--tc-area-seleccion); }
+.tc-org-grupo[data-area='legal'] { --org-area: var(--tc-area-legal); }
+.tc-org-grupo[data-area='administracion'] { --org-area: var(--tc-area-administracion); }
+.tc-org-grupo[data-area='planificacion'] { --org-area: var(--tc-area-planificacion); }
+.tc-org-grupo[data-area='control'] { --org-area: var(--tc-area-control); }
+.tc-org-grupo[data-area='taller'] { --org-area: var(--tc-area-taller); }
+.tc-org-grupo[data-area='sistemas'] { --org-area: var(--tc-area-sistemas); }
+.tc-org-area {
+  display: inline-flex; align-items: center; gap: .4rem; padding: 0 .2rem;
+  font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--org-area));
+}
+.tc-org-area::before { content: ''; width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--org-area)); }
+
+/* Un puesto: su nombre, quien lo ocupa y cuántas funciones lleva. */
+.tc-org-puesto {
+  width: 13.5rem; display: flex; flex-direction: column; gap: .45rem; padding: .6rem .65rem; border-radius: .85rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.tc-org-puesto--vacante { border-style: dashed; }
+.tc-org-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: .4rem; }
+.tc-org-cabeza h4 { font-size: .8125rem; font-weight: 700; line-height: 1.3; color: rgb(var(--tc-text)); }
+.tc-org-gente { display: flex; flex-direction: column; gap: .3rem; }
+.tc-org-persona {
+  display: flex; align-items: center; gap: .5rem; width: 100%; padding: .3rem .5rem .3rem .3rem; border-radius: .65rem;
+  background: rgb(var(--tc-card2)); border: 1px solid transparent; color: rgb(var(--tc-text));
+  font-size: .8125rem; font-weight: 500; text-align: left; cursor: grab;
+  transition: border-color .15s ease, background-color .15s ease, opacity .15s ease;
+}
+.tc-org-persona:hover { border-color: rgb(var(--tc-gold) / .5); }
+.tc-org-persona:active { cursor: grabbing; }
+.tc-org-persona:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
+.tc-org-persona--arrastrando { opacity: .4; }
+.tc-org-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-org-vacio { padding: .25rem .2rem; font-size: .75rem; font-style: italic; color: rgb(var(--tc-muted)); }
+.tc-org-pie { display: flex; align-items: center; gap: .35rem; font-size: .6875rem; color: rgb(var(--tc-muted)); cursor: help; }
+
+/* Mientras se arrastra: dónde se puede soltar, y dónde se va a soltar. */
+.tc-org--arrastrando .tc-org-puesto, .tc-org--arrastrando .tc-org-sin { border-style: dashed; }
+.tc-org .tc-org-soltar {
+  border-color: rgb(var(--tc-gold)); border-style: solid;
+  background: rgb(var(--tc-gold) / .1); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .22);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-org-puesto, .tc-org-persona, .tc-org-sin { transition: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EL CHAT INTERNO (vistas/Chat/chat.js, ítem 2, db/256)
+   ══════════════════════════════════════════════════════════════
+   A la izquierda los canales y los directos, a la derecha la conversación, y
+   los hilos al lado (Panel). Ocupa el alto de la pantalla menos la barra de
+   arriba (--tc-cabecera, que mide la propia pantalla). En el móvil, una cosa
+   o la otra (data-vista). */
+.tc-chat {
+  display: grid; grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  height: calc(100dvh - var(--tc-cabecera, 3.5rem)); min-height: 24rem;
+}
+.tc-chat-lado { display: flex; flex-direction: column; min-height: 0; background: rgb(var(--tc-menu)); border-right: 1px solid rgb(var(--tc-border)); }
+.tc-chat-lado-cabeza { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .9rem 1rem .5rem; }
+.tc-chat-lado-cabeza h2 { font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; }
+.tc-chat-buscar {
+  display: flex; align-items: center; gap: .5rem; height: 2.25rem; margin: .25rem .75rem .5rem; padding: 0 .7rem;
+  border-radius: .7rem; background: rgb(var(--tc-campo)); border: 1px solid rgb(var(--tc-border)); color: rgb(var(--tc-muted)); font-size: .8rem;
+}
+.tc-chat-buscar:focus-within { border-color: rgb(var(--tc-gold) / .8); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18); }
+.tc-chat-buscar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: rgb(var(--tc-text)); font-size: .8125rem; }
+.tc-chat-lista { flex: 1; min-height: 0; overflow-y: auto; padding: .25rem .5rem 1rem; }
+.tc-chat-seccion + .tc-chat-seccion { margin-top: .9rem; }
+.tc-chat-seccion h3 { padding: .2rem .55rem .35rem; font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); }
+.tc-chat-nada { padding: .3rem .55rem; font-size: .75rem; color: rgb(var(--tc-muted)); }
+.tc-chat-item {
+  display: flex; align-items: center; gap: .55rem; width: 100%; padding: .4rem .55rem; border-radius: .6rem;
+  font-size: .875rem; text-align: left; color: rgb(var(--tc-muted)); transition: background-color .12s ease, color .12s ease;
+}
+.tc-chat-item:hover { background: rgb(var(--tc-gold) / .08); color: rgb(var(--tc-text)); }
+.tc-chat-item:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
+.tc-chat-item--sin-leer { color: rgb(var(--tc-text)); font-weight: 700; }
+.tc-chat-item--activo, .tc-chat-item--activo:hover { background: rgb(var(--tc-boton)); color: rgb(var(--tc-on-gold)); }
+:root[data-theme='light'] .tc-chat-item--activo, :root[data-theme^='claro-'] .tc-chat-item--activo,
+:root[data-theme='light'] .tc-chat-item--activo:hover, :root[data-theme^='claro-'] .tc-chat-item--activo:hover {
+  background: rgb(var(--tc-gold) / .12); color: rgb(var(--tc-gold));
+}
+.tc-chat-item-icono { width: 1rem; text-align: center; font-size: .78rem; opacity: .8; }
+.tc-chat-item-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tc-chat-conversacion { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: rgb(var(--tc-dark)); }
+.tc-chat-cabeza {
+  display: flex; align-items: center; gap: .6rem; padding: .75rem 1.1rem;
+  background: rgb(var(--tc-card)); border-bottom: 1px solid rgb(var(--tc-border));
+}
+.tc-chat-cabeza h2 { display: flex; align-items: center; gap: .45rem; font-size: 1rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-chat-cabeza h2 i { font-size: .82rem; color: rgb(var(--tc-muted)); }
+.tc-chat-cabeza p { font-size: .78rem; color: rgb(var(--tc-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-chat-volver { display: none; }
+.tc-chat-mensajes { flex: 1; min-height: 0; overflow-y: auto; padding: .75rem 0 1rem; }
+.tc-chat-mensajes:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .5); outline-offset: -2px; }
+.tc-chat-mas { display: flex; margin: .25rem auto .5rem; }
+
+/* El día y la raya de lo nuevo. */
+.tc-chat-dia, .tc-chat-nuevos { display: flex; align-items: center; gap: .75rem; margin: 1rem 1.1rem .4rem; font-size: .72rem; font-weight: 700; color: rgb(var(--tc-muted)); }
+.tc-chat-dia::before, .tc-chat-dia::after, .tc-chat-nuevos::before, .tc-chat-nuevos::after { content: ''; flex: 1; height: 1px; background: rgb(var(--tc-border)); }
+.tc-chat-nuevos { color: rgb(var(--tc-red)); margin-top: .5rem; }
+.tc-chat-nuevos::before, .tc-chat-nuevos::after { background: rgb(var(--tc-red) / .5); }
+
+/* Un mensaje. */
+.tc-chat-msj { position: relative; display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); gap: .65rem; padding: .35rem 1.1rem; }
+.tc-chat-msj:hover { background: rgb(var(--tc-text) / .03); }
+.tc-chat-msj--seguido { padding-top: .1rem; padding-bottom: .1rem; }
+.tc-chat-msj--mencion { background: rgb(var(--tc-gold) / .08); box-shadow: inset 3px 0 0 rgb(var(--tc-gold)); }
+.tc-chat-msj-lado { display: flex; justify-content: center; padding-top: .15rem; }
+.tc-chat-msj-lado .tc-avatar { width: 2.1rem; height: 2.1rem; font-size: .7rem; }
+.tc-chat-msj-hora { padding-top: .2rem; font-size: .65rem; color: rgb(var(--tc-muted)); opacity: 0; font-variant-numeric: tabular-nums; }
+.tc-chat-msj:hover .tc-chat-msj-hora { opacity: 1; }
+.tc-chat-msj-cuerpo header { display: flex; align-items: baseline; gap: .5rem; }
+.tc-chat-msj-cuerpo header b { font-size: .875rem; font-weight: 700; color: rgb(var(--tc-text)); }
+.tc-chat-msj-cuerpo header time { font-size: .7rem; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+.tc-chat-texto { font-size: .9rem; line-height: 1.5; color: rgb(var(--tc-text)); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tc-chat-texto a { color: rgb(var(--tc-gold)); text-decoration: underline; text-underline-offset: 2px; }
+.tc-chat-mencion { padding: 0 .2rem; border-radius: .3rem; font-weight: 600; background: rgb(var(--tc-azul) / .15); color: rgb(var(--tc-azul)); }
+.tc-chat-mencion--yo { background: rgb(var(--tc-gold) / .2); color: rgb(var(--tc-gold)); }
+.tc-chat-mencion--todos { background: rgb(var(--tc-warn) / .15); color: rgb(var(--tc-warn)); }
+.tc-chat-anulado { font-style: italic; color: rgb(var(--tc-muted)); }
+.tc-chat-editado { font-size: .7rem; color: rgb(var(--tc-muted)); }
+.tc-chat-respuestas {
+  display: inline-flex; align-items: center; gap: .4rem; margin-top: .3rem; padding: .2rem .5rem; border-radius: .5rem;
+  font-size: .78rem; font-weight: 600; color: rgb(var(--tc-gold));
+}
+.tc-chat-respuestas:hover { background: rgb(var(--tc-gold) / .08); }
+.tc-chat-respuestas span { font-weight: 500; color: rgb(var(--tc-muted)); }
+.tc-chat-msj-acciones { position: absolute; top: -.85rem; right: 1.1rem; z-index: 2; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+.tc-chat-msj:hover .tc-chat-msj-acciones, .tc-chat-msj:focus-within .tc-chat-msj-acciones { opacity: 1; pointer-events: auto; }
+
+/* Escribir, con las sugerencias de @. */
+.tc-chat-escribir { position: relative; padding: .5rem 1.1rem .75rem; }
+.tc-chat-caja {
+  display: flex; align-items: flex-end; gap: .5rem; padding: .45rem .45rem .45rem .8rem; border-radius: .9rem;
+  background: rgb(var(--tc-campo)); border: 1px solid rgb(var(--tc-border));
+}
+.tc-chat-caja:focus-within { border-color: rgb(var(--tc-gold) / .8); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18); }
+.tc-chat-caja textarea {
+  flex: 1; min-width: 0; max-height: 11rem; padding: .35rem 0; resize: none; background: transparent; border: 0; outline: none;
+  font: inherit; font-size: .9rem; line-height: 1.45; color: rgb(var(--tc-text));
+}
+.tc-chat-pista { margin-top: .3rem; font-size: .7rem; color: rgb(var(--tc-muted)); }
+.tc-chat-sugerencias {
+  position: absolute; left: 1.1rem; right: 1.1rem; bottom: calc(100% - .25rem); z-index: 5; max-height: 15rem; overflow-y: auto;
+  margin: 0; padding: .3rem; list-style: none; background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border));
+  border-radius: .8rem; box-shadow: var(--tc-sombra-alta);
+}
+.tc-chat-sugerencias li { display: flex; align-items: center; gap: .55rem; padding: .4rem .5rem; border-radius: .55rem; font-size: .85rem; cursor: pointer; }
+.tc-chat-sugerencias li[aria-selected='true'], .tc-chat-sugerencias li:hover { background: rgb(var(--tc-gold) / .12); }
+.tc-chat-sugerencias li i { width: 1.6rem; text-align: center; color: rgb(var(--tc-warn)); }
+.tc-chat-sugerencias small { margin-left: auto; font-size: .72rem; color: rgb(var(--tc-muted)); }
+
+.tc-chat-vacio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; padding: 3rem 1rem; text-align: center; color: rgb(var(--tc-muted)); }
+.tc-chat-vacio i { font-size: 2rem; opacity: .6; }
+
+/* El hilo, en el Panel. */
+.tc-chat-hilo .tc-chat-msj { padding-left: 0; padding-right: 0; }
+.tc-chat-hilo .tc-chat-msj:hover { background: transparent; }
+.tc-chat-hilo .tc-chat-dia { margin-left: 0; margin-right: 0; }
+.tc-panel-cuerpo .tc-chat-escribir { position: sticky; bottom: -1.1rem; padding: .5rem 0 .25rem; background: rgb(var(--tc-card)); }
+.tc-panel-cuerpo .tc-chat-sugerencias { left: 0; right: 0; }
+.tc-chat-miembros { list-style: none; margin: 0; padding: 0; }
+.tc-chat-miembros li { display: flex; align-items: center; gap: .6rem; padding: .55rem 0; border-bottom: 1px solid rgb(var(--tc-border) / .6); }
+.tc-chat-miembros b { display: block; font-size: .85rem; }
+.tc-chat-miembros small { display: block; font-size: .72rem; color: rgb(var(--tc-muted)); }
+
+/* ── Chat 2b: la barra de cada mensaje, reacciones, ficheros, enlaces, tareas, fijado y guardado ── */
+.tc-chat-texto p { margin: 0; }
+.tc-chat-texto > * + * { margin-top: .3rem; }
+.tc-chat-texto ul, .tc-chat-texto ol { padding-left: 1.3rem; white-space: normal; }
+.tc-chat-texto ul { list-style: disc; }
+.tc-chat-texto ol { list-style: decimal; }
+.tc-chat-texto blockquote { padding: .1rem 0 .1rem .7rem; border-left: 3px solid rgb(var(--tc-border)); color: rgb(var(--tc-muted)); }
+.tc-chat-texto code { padding: .05rem .3rem; border-radius: .3rem; font-size: .82em; background: rgb(var(--tc-text) / .08); color: rgb(var(--tc-text)); }
+.tc-chat-codigo {
+  padding: .55rem .7rem; overflow-x: auto; border-radius: .55rem; white-space: pre;
+  font-size: .8rem; line-height: 1.45; background: rgb(var(--tc-campo)); border: 1px solid rgb(var(--tc-border));
+}
+.tc-chat-anulado { display: flex; align-items: center; gap: .4rem; }
+.tc-chat-anulado i { font-size: .75rem; }
+
+/* La barra de cada mensaje: sale al pasar por encima (o al tocarlo en el móvil). */
+.tc-chat-msj-acciones {
+  display: flex; gap: .1rem; padding: .15rem; border-radius: .6rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+}
+.tc-chat-accion {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.9rem; height: 1.9rem; border-radius: .45rem;
+  font-size: .8rem; color: rgb(var(--tc-muted)); transition: background-color .12s ease, color .12s ease;
+}
+.tc-chat-accion:hover { background: rgb(var(--tc-gold) / .12); color: rgb(var(--tc-text)); }
+.tc-chat-accion:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
+.tc-chat-accion--activa, .tc-chat-accion--activa:hover { color: rgb(var(--tc-gold)); }
+.tc-chat-accion--peligro:hover { background: rgb(var(--tc-red) / .12); color: rgb(var(--tc-red)); }
+/* Durante el recorrido, la barra del mensaje que se explica se ve sin pasar el ratón. */
+.tc-recorriendo .tc-chat-msj--mostrar .tc-chat-msj-acciones { display: flex; opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .tc-chat-msj-acciones { display: none; position: static; opacity: 1; pointer-events: auto; grid-column: 2; justify-self: start; margin-top: .3rem; }
+  .tc-chat-msj--elegido .tc-chat-msj-acciones { display: flex; }
+  .tc-chat-accion { width: 2.5rem; height: 2.5rem; font-size: .9rem; }
+}
+
+/* Lo fijado, lo guardado y lo que pone el sistema. */
+.tc-chat-marcas { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .8rem; margin: 0 0 .1rem 2.9rem; font-size: .7rem; font-weight: 600; color: rgb(var(--tc-warn)); }
+.tc-chat-marcas span { display: inline-flex; align-items: center; gap: .3rem; }
+.tc-chat-marcas .tc-chat-marca-guardado { color: rgb(var(--tc-gold)); }
+.tc-chat-msj--fijado { background: rgb(var(--tc-warn) / .07); }
+.tc-chat-msj--sistema .tc-chat-texto { color: rgb(var(--tc-text) / .9); }
+.tc-chat-sistema-icono {
+  display: inline-flex; align-items: center; justify-content: center; width: 2.1rem; height: 2.1rem; border-radius: 999px;
+  background: rgb(var(--tc-green) / .16); color: rgb(var(--tc-green)); font-size: .8rem;
+}
+.tc-chat-msj--destacado { animation: tc-chat-destello 1.6s ease-out; }
+@keyframes tc-chat-destello { 0%, 30% { background: rgb(var(--tc-gold) / .22); } 100% { background: transparent; } }
+
+/* Las reacciones. */
+.tc-chat-reacciones { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+.tc-chat-reaccion {
+  display: inline-flex; align-items: center; gap: .3rem; height: 1.6rem; padding: 0 .5rem; border-radius: 999px;
+  font-size: .78rem; background: rgb(var(--tc-text) / .05); border: 1px solid rgb(var(--tc-border)); color: rgb(var(--tc-text));
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.tc-chat-reaccion b { font-weight: 700; font-variant-numeric: tabular-nums; color: rgb(var(--tc-muted)); }
+.tc-chat-reaccion:not(:disabled):hover { border-color: rgb(var(--tc-gold) / .6); }
+.tc-chat-reaccion--mia { background: rgb(var(--tc-gold) / .14); border-color: rgb(var(--tc-gold) / .55); }
+.tc-chat-reaccion--mia b { color: rgb(var(--tc-gold)); }
+.tc-chat-reaccion--mas { color: rgb(var(--tc-muted)); }
+.tc-chat-reaccion:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
+.tc-chat-tira {
+  position: fixed; z-index: 130; display: flex; gap: .15rem; padding: .25rem; border-radius: 999px;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra-alta);
+}
+.tc-chat-tira button { width: 2.2rem; height: 2.2rem; border-radius: 999px; font-size: 1.15rem; line-height: 1; transition: background-color .12s ease, transform .12s ease; }
+.tc-chat-tira button:hover, .tc-chat-tira button:focus-visible { background: rgb(var(--tc-gold) / .14); outline: none; transform: scale(1.12); }
+
+/* Los ficheros de un mensaje. */
+.tc-chat-adjuntos { display: flex; flex-direction: column; gap: .35rem; margin-top: .35rem; }
+.tc-chat-fotos { display: flex; flex-wrap: wrap; gap: .35rem; }
+.tc-chat-foto { overflow: hidden; border-radius: .6rem; border: 1px solid rgb(var(--tc-border)); background: rgb(var(--tc-campo)); }
+.tc-chat-foto img { display: block; max-width: min(18rem, 100%); max-height: 14rem; object-fit: cover; }
+.tc-chat-foto:focus-visible, .tc-chat-fichero:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
+.tc-chat-fichero {
+  display: flex; align-items: center; gap: .6rem; max-width: 22rem; padding: .5rem .7rem; border-radius: .6rem; text-align: left;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); transition: border-color .12s ease;
+}
+.tc-chat-fichero:hover { border-color: rgb(var(--tc-gold) / .55); }
+.tc-chat-fichero > i { font-size: 1.15rem; color: rgb(var(--tc-gold)); }
+.tc-chat-fichero span { min-width: 0; }
+.tc-chat-fichero b { display: block; font-size: .82rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-chat-fichero small { display: block; font-size: .7rem; color: rgb(var(--tc-muted)); }
+
+/* La vista previa de un enlace. */
+.tc-chat-previa {
+  display: flex; flex-direction: column; gap: .1rem; max-width: 30rem; margin-top: .4rem; padding: .45rem .75rem; border-radius: .2rem .6rem .6rem .2rem;
+  border-left: 3px solid rgb(var(--tc-gold)); background: rgb(var(--tc-card)); text-decoration: none; color: rgb(var(--tc-text));
+}
+.tc-chat-previa:hover b { text-decoration: underline; text-underline-offset: 2px; }
+.tc-chat-previa small { font-size: .7rem; font-weight: 600; color: rgb(var(--tc-muted)); }
+.tc-chat-previa b { font-size: .85rem; font-weight: 700; color: rgb(var(--tc-gold)); }
+.tc-chat-previa span { font-size: .78rem; color: rgb(var(--tc-muted)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* El sello de la tarea. */
+.tc-chat-tarea { display: inline-flex; align-items: center; gap: .35rem; margin-top: .4rem; text-decoration: none; }
+.tc-chat-tarea:hover { filter: brightness(1.12); }
+
+/* Escribir: los ficheros que van a subir y la edición en el sitio. */
+.tc-chat-adjuntar {
+  display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; flex: none; border-radius: .5rem;
+  color: rgb(var(--tc-muted)); transition: background-color .12s ease, color .12s ease;
+}
+.tc-chat-adjuntar:hover { background: rgb(var(--tc-gold) / .12); color: rgb(var(--tc-text)); }
+.tc-chat-adjuntar:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
+.tc-chat-caja { padding-left: .35rem; }
+.tc-chat-por-subir { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .4rem; padding: 0; list-style: none; }
+.tc-chat-por-subir li {
+  display: inline-flex; align-items: center; gap: .4rem; max-width: 16rem; padding: .25rem .3rem .25rem .6rem; border-radius: .55rem;
+  font-size: .75rem; background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border));
+}
+.tc-chat-por-subir li i { color: rgb(var(--tc-gold)); }
+.tc-chat-por-subir li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-chat-por-subir li small { color: rgb(var(--tc-muted)); white-space: nowrap; }
+.tc-chat-por-subir li button { width: 1.5rem; height: 1.5rem; border-radius: .4rem; color: rgb(var(--tc-muted)); }
+.tc-chat-por-subir li button:hover { background: rgb(var(--tc-red) / .12); color: rgb(var(--tc-red)); }
+/* Lo que va subiendo se va llenando de color; lo que falló, en rojo. */
+.tc-chat-por-subir li.tc-chat-por-subir--subiendo {
+  background: linear-gradient(to right, rgb(var(--tc-gold) / .16) var(--pct, 0%), rgb(var(--tc-card)) var(--pct, 0%));
+}
+.tc-chat-por-subir li.tc-chat-por-subir--subiendo small { font-variant-numeric: tabular-nums; color: rgb(var(--tc-gold)); }
+.tc-chat-por-subir li.tc-chat-por-subir--error { border-color: rgb(var(--tc-red) / .55); }
+.tc-chat-por-subir .tc-chat-por-subir-error { color: rgb(var(--tc-red)); font-weight: 600; }
+.tc-chat--soltando { outline: 2px dashed rgb(var(--tc-gold) / .8); outline-offset: -6px; }
+.tc-chat-editar { margin-top: .15rem; }
+.tc-chat-editar textarea {
+  width: 100%; max-height: 16rem; padding: .5rem .7rem; resize: none; border-radius: .7rem; outline: none;
+  font: inherit; font-size: .9rem; line-height: 1.45; color: rgb(var(--tc-text));
+  background: rgb(var(--tc-campo)); border: 1px solid rgb(var(--tc-gold) / .8); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18);
+}
+.tc-chat-editar-botones { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; margin-top: .35rem; }
+.tc-chat-editar-botones .tc-chat-pista { margin: 0 auto 0 0; }
+
+/* Lo fijado y lo guardado, en el Panel. */
+.tc-chat-en-lista { padding: .6rem 0; border-bottom: 1px solid rgb(var(--tc-border) / .6); }
+.tc-chat-en-lista .tc-chat-msj { padding-left: 0; padding-right: 0; }
+.tc-chat-en-lista .tc-chat-msj:hover { background: transparent; }
+.tc-chat-en-lista .tc-chat-marcas { margin-left: 2.9rem; }
+.tc-chat-en-lista-canal { display: flex; align-items: center; gap: .35rem; margin-bottom: .2rem; font-size: .72rem; font-weight: 700; color: rgb(var(--tc-muted)); }
+.tc-chat-en-lista-botones { display: flex; gap: .4rem; margin: .3rem 0 0 2.9rem; }
+@media (prefers-reduced-motion: reduce) {
+  .tc-chat-accion, .tc-chat-reaccion, .tc-chat-tira button, .tc-chat-fichero, .tc-chat-adjuntar { transition: none; }
+  .tc-chat-tira button:hover, .tc-chat-tira button:focus-visible { transform: none; }
+  .tc-chat-msj--destacado { animation: none; background: rgb(var(--tc-gold) / .14); }
+}
+
+@media (max-width: 1023px) {
+  .tc-chat { grid-template-columns: minmax(0, 1fr); }
+  .tc-chat[data-vista='lista'] .tc-chat-conversacion { display: none; }
+  .tc-chat[data-vista='conversacion'] .tc-chat-lado { display: none; }
+  .tc-chat-lado { border-right: 0; }
+  .tc-chat-volver { display: inline-flex; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-chat-item, .tc-chat-msj-acciones { transition: none; }
 }

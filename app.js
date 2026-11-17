@@ -143,6 +143,36 @@ require('./services/tailwind').alArrancar();
 // caché, el navegador seguiría con el viejo; así revalida (un 304 si no cambió).
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: process.env.RENDER ? '1d' : 0 }));
 
+// LAS NOTIFICACIONES AL DISPOSITIVO (A8, db/250). El service worker va en la
+// RAÍZ: desde /assets solo controlaría /assets. No guarda nada en caché ni
+// intercepta peticiones: solo enseña las notificaciones (public/sw.js). Y el
+// manifiesto, que hace el ERP instalable: en el iPhone las notificaciones solo
+// llegan con la web instalada. Los dos sin sesión: el navegador los pide solo.
+app.get('/sw.js', (req, res) => {
+  res.set({ 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' });
+  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+const MANIFIESTO = JSON.stringify({
+  id: '/',
+  name: 'Telecab · Gestión de flota',
+  short_name: 'Telecab',
+  lang: 'es',
+  start_url: '/inicio',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#080c18',
+  theme_color: '#080c18',
+  icons: [
+    { src: '/assets/iconos/icono-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/assets/iconos/icono-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/assets/iconos/icono-mascara-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ],
+});
+app.get('/manifest.webmanifest', (req, res) => {
+  res.set({ 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+  res.send(MANIFIESTO);
+});
+
 // Configurar EJS con layouts
 app.use(expressLayouts);
 app.set('view engine', 'ejs');
@@ -217,6 +247,9 @@ process.on('uncaughtException', (error) => {
   process.on(senal, () => {
     const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
     console.error(`🛑 Recibida ${senal}: el contenedor se está deteniendo (RSS ${mb} MB)`);
+    // Las pantallas con el tiempo real abierto se enteran de que es un apagado
+    // y vuelven solas al servidor nuevo (A7).
+    try { require('./services/tiempoReal').cerrarTodas('apagado'); } catch (_) { /* sin tiempo real */ }
     process.exit(0);
   });
 });
@@ -313,6 +346,33 @@ app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller
 // tenga la llave '/avisos/efectivo' (Víctor y Daiane, db/220).
 app.use('/avisos/efectivo', require('./modules/Administracion/avisoEfectivo.controller'));
 app.use('/usuarios', usuariosRoutes);
+// Los parámetros de negocio (db/243, convención 4 de la hoja de ruta): el
+// desarrollador o quien tenga la llave '/parametros' (de inicio, Ignacio).
+app.use('/parametros', require('./modules/Parametros/parametros.controller'));
+// La organización (db/248, pieza A5): áreas, superiores y funciones. Los mismos
+// que entran en Usuarios y permisos: el desarrollador o la llave '/usuarios'.
+app.use('/organizacion', require('./modules/Organizacion/organizacion.controller'));
+// Los adjuntos de cualquier dueño (db/249, pieza A6): subir por trozos, servir con
+// Range y anular. Quién ve y quién adjunta lo dice cada módulo dueño.
+app.use('/adjuntos', require('./modules/Adjuntos/adjuntos.controller'));
+// El tiempo real (pieza A7): la conexión que la pantalla deja abierta para que
+// el servidor le avise. Quién oye cada canal lo dice el módulo que lo abre.
+app.use('/tiempo-real', require('./modules/TiempoReal/tiempoReal.controller'));
+// Las notificaciones al dispositivo (db/250, pieza A8): cada uno activa, confirma
+// y quita las suyas. Mandarlas es cosa de cada módulo, desde el servidor.
+app.use('/push', require('./modules/NotificacionesPush/notificacionesPush.controller'));
+// Los contadores del menú y de la barra (pieza A9): todos los números en una
+// petición. Cada módulo registra su fuente (services/contadores.js).
+app.use('/contadores', require('./modules/Contadores/contadores.controller'));
+// El tablero de tareas (ítem 1, db/251): el lugar único del trabajo pendiente.
+// Quién ve y quién puede qué lo deciden las funciones de Organización (A5).
+app.use('/tablero', require('./modules/Tablero/tablero.controller'));
+// Las novedades de cada versión (V3, db/253): la ventana, una vez por persona.
+app.use('/novedades', require('./modules/Novedades/novedades.controller'));
+// Los avisos entre módulos (ítem 3, db/254): la bandeja de la campana.
+app.use('/avisos', require('./modules/Avisos/avisos.controller'));
+// El chat interno (ítem 2, db/256): canales, directos, hilos y menciones.
+app.use('/chat', require('./modules/Chat/chat.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
@@ -682,6 +742,12 @@ programar('10 5 * * *', async () => {
     console.error(`⚠️  [Eventos] repaso diario: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
+
+// LAS TAREAS PROGRAMADAS DE NEGOCIO (13/11/2026, db/246, pieza A10 de la hoja
+// de ruta). Una sola vuelta cada diez minutos hace las que tengan su vez
+// pendiente, una vez cada una aunque haya dos procesos, y recupera la que se
+// perdió por una caída. Se registran en services/tareasProgramadas.js.
+require('./services/tareasProgramadas').arrancar(programar);
 
 // LAS BAJAS PROGRAMADAS (db/191, 13/10/2026). Quien se da de baja con fecha
 // futura sigue de alta y en su plaza hasta ese día; cuando la jornada de ese
@@ -1177,7 +1243,7 @@ if (process.env.MAPA_CRON === 'on') {
 // ============================================================
 // INICIAR SERVIDOR
 // ============================================================
-app.listen(port, () => {
+const servidor = app.listen(port, () => {
   console.log(`🚀 Servidor escuchando en puerto ${port}`);
   console.log(`   Dashboard: http://localhost:${port}/dashboard`);
   console.log(`   Bot puertas: POST /`);
@@ -1200,3 +1266,8 @@ app.listen(port, () => {
     //  el 15/09/2026: ya no hay filas de hoja que construir.)
   }
 });
+// UNA SUBIDA LENTA NO SE CORTA A LOS 5 MINUTOS (16/11/2026). Node corta con un
+// 408 la petición cuyo cuerpo no ha llegado entero en `requestTimeout` (300 s de
+// serie): un vídeo de 90 MB desde un 4G flojo (1-2 Mbit/s) tarda 6-12 minutos.
+// Las cabeceras siguen teniendo 60 s (headersTimeout). Ver docs/nucleo/Adjuntos.md.
+servidor.requestTimeout = 15 * 60 * 1000;

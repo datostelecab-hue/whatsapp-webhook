@@ -15,8 +15,11 @@ Vive en `scripts/entorno-local/`, con su `LEEME.md`.
 |---|---|---|
 | `telecab-pg` | `127.0.0.1:5433` | PostgreSQL 18, la misma versión mayor que producción, con la copia |
 | `telecab-correo` | `http://localhost:8025` | Mailpit, un buzón falso: **todo correo del entorno cae aquí** |
+| `telecab-s3` | `127.0.0.1:9090` | s3mock, un S3 de mentira que hace de Cloudflare R2: los [[Adjuntos]] del entorno van aquí, nunca al R2 de verdad, y se pierden al parar el contenedor. Las imágenes de MinIO ya no son públicas (13/11/2026) |
 | El ERP | `http://erptelecab.localhost:3100` | `app.js` de siempre, arrancado por `arrancar.js` |
 | El portal | `http://conductorestelecab.localhost:3100` | el mismo servidor, por la dirección de los conductores |
+
+Las [[Notificaciones al dispositivo]] usan unas claves VAPID solo de este PC: `arrancar.js` las hace la primera vez y las guarda en `scripts/entorno-local/push.env` (fuera de git). Lo activado aquí no vale en Render, ni al revés.
 
 Los `*.localhost` los resuelve el navegador solo: no hay que tocar el fichero `hosts`. Dos direcciones distintas porque así será en producción (`erptelecab.es` y `conductorestelecab.es`, ver [[Historial de decisiones]]), y cada una lleva sus cookies.
 
@@ -69,6 +72,10 @@ La copia **solo lee** de producción: `pg_dump` no escribe, y además va con la 
 
 > [!warning] La copia tiene datos personales de verdad
 > DNI, email y teléfono de los conductores. Se quedan en el volumen de Docker de este PC (`telecab-pruebas_pg`); el fichero intermedio de la copia se borra al acabar. Lo eligió Camilo el 19/10/2026: con los correos encerrados en el buzón falso, se puede entrar al portal con el DNI de cualquiera y ver el código en Mailpit.
+
+## La otra base: la de los tests
+
+En el mismo contenedor vive, desde el 13/11/2026, **`telecab_pruebas`**: vacía, sintética y sin una sola persona de verdad. Es la de las [[Pruebas automáticas]] (`npm run pruebas:base` la rehace desde las migraciones y `npm test` corre contra ella). Los tests nunca usan esta copia: la convención 11 de la [[Hoja de ruta]] prohíbe probar con datos reales.
 
 ## No confundir con el laboratorio de seguridad
 

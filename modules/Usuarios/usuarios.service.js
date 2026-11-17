@@ -16,6 +16,7 @@
 const crypto = require('crypto');
 const cripto = require('../../services/cripto');   // cifrado reversible (AES) para la contraseña de correo
 const db = require('../../services/db');
+const libro = require('../../services/libro');   // firma de lo que cambia en `usuario` (db/248)
 const permisos = require('../../services/permisos');
 
 const TZ = 'Europe/Madrid';
@@ -181,8 +182,20 @@ async function rolId(codigo) {
   return r.rows[0].id;
 }
 
+// ── El libro de auditoría (db/248) ─────────────────────────────────────────
+// Desde la 248 la tabla `usuario` está bajo el libro: cada alta y cada cambio
+// (el rol, el estado, la contraseña, cortar sesiones…) deja su fila. Las
+// escrituras de aquí aceptan una FIRMA opcional — { usuarioId, origen } — para
+// que esa fila diga quién lo hizo y desde dónde; sin firma se apunta igual,
+// pero «sin decir». Quien llama la saca de la sesión, nunca del cuerpo de la
+// petición. Lo que no deja fila (el último acceso, el tema, las ayudas, la
+// contraseña del correo) no hace falta firmarlo.
+const escribir = (firma, sql, vals) => (firma
+  ? libro.conFirma(firma, cli => cli.query(sql, vals))
+  : db.consulta(sql, vals));
+
 /** Da de alta un usuario y devuelve { usuario, passwordProvisional } (para el correo). */
-async function crearUsuario({ email, nombre, apellidos, telefono, rol, creado_por }) {
+async function crearUsuario({ email, nombre, apellidos, telefono, rol, creado_por }, firma = null) {
   const e = normalizarEmail(email);
   if (!esEmail(e)) throw new Error('Email no válido');
   if (!await esRol(rol)) throw new Error(`Rol no válido: "${rol}"`);
@@ -191,7 +204,7 @@ async function crearUsuario({ email, nombre, apellidos, telefono, rol, creado_po
 
   const provisional = generarPasswordProvisional();
   const creador = await buscarUsuario(creado_por);
-  const r = await db.consulta(
+  const r = await escribir(firma,
     `INSERT INTO usuario (email, nombre, apellidos, telefono, rol_id, pass_hash, estado, debe_cambiar, creado_por)
      VALUES ($1, $2, $3, $4, $5, $6, 'provisional', TRUE, $7)
      RETURNING id`,
@@ -211,7 +224,7 @@ const CAMPO_COL = {
 };
 
 /** Aplica cambios a un usuario existente (por email) y devuelve el actualizado. */
-async function actualizarUsuario(email, cambios = {}) {
+async function actualizarUsuario(email, cambios = {}, firma = null) {
   const e = normalizarEmail(email);
   const u = await buscarUsuario(e);
   if (!u) throw new Error('No existe ese usuario');
@@ -229,19 +242,19 @@ async function actualizarUsuario(email, cambios = {}) {
 
   if (sets.length) {
     vals.push(u.id);
-    await db.consulta(`UPDATE usuario SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
+    await escribir(firma, `UPDATE usuario SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
   }
   return buscarUsuario(e);
 }
 
 /** Fija la contraseña definitiva del usuario (primer acceso o cambio). */
-async function fijarPassword(email, nueva) {
+async function fijarPassword(email, nueva, firma = null) {
   const pwd = String(nueva || '');
   if (pwd.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
   return actualizarUsuario(email, {
     hash: hashPassword(pwd), estado: ESTADOS_U.ACTIVO,
     debe_cambiar: '', token_reset: '', token_expira: ''
-  });
+  }, firma);
 }
 
 // «Olvidé mi contraseña» manda una contraseña PROVISIONAL por correo y obliga a
@@ -274,7 +287,7 @@ async function fechaNacimientoDe(id) {
  * Pone (o borra, con vacío) la fecha de nacimiento de alguien. 'AAAA-MM-DD'.
  * Entre 16 y 90 años: lo de fuera es una fecha mal tecleada.
  */
-async function ponerFechaNacimiento(id, iso) {
+async function ponerFechaNacimiento(id, iso, firma = null) {
   const v = String(iso || '').trim();
   let fecha = null;
   if (v) {
@@ -287,7 +300,7 @@ async function ponerFechaNacimiento(id, iso) {
     fecha = v;
   }
   try {
-    await db.consulta('UPDATE usuario SET fecha_nacimiento = $2 WHERE id = $1', [Number(id), fecha]);
+    await escribir(firma, 'UPDATE usuario SET fecha_nacimiento = $2 WHERE id = $1', [Number(id), fecha]);
   } catch (e) {
     if (e.code === '42703') throw new Error('Todavía no se puede guardar: falta aplicar la migración db/204');
     throw e;
@@ -316,8 +329,8 @@ const tienePassCorreo = u => !!(u && u.pass_correo);
  * sí ficha y otro que no, la regla del rol se rompe y hay que inventar
  * excepciones. Aquí lo decide una persona marcando una casilla.
  */
-async function fijarFichaObligatorio(id, debe) {
-  const r = await db.consulta(
+async function fijarFichaObligatorio(id, debe, firma = null) {
+  const r = await escribir(firma,
     'UPDATE usuario SET ficha_obligatorio = $2 WHERE id = $1 RETURNING email',
     [Number(id), !!debe]);
   if (!r.rowCount) throw new Error('No existe ese usuario');
@@ -334,8 +347,8 @@ async function fijarFichaObligatorio(id, debe) {
  * matrícula, se le suelta el motor y al terminar se bloquea (db/148). Se da
  * persona a persona, como el otro.
  */
-async function fijarFichaCoche(id, puede) {
-  const r = await db.consulta(
+async function fijarFichaCoche(id, puede, firma = null) {
+  const r = await escribir(firma,
     'UPDATE usuario SET ficha_coche = $2 WHERE id = $1 RETURNING email',
     [Number(id), !!puede]);
   if (!r.rowCount) throw new Error('No existe ese usuario');
@@ -368,8 +381,8 @@ async function losQueFichan() {
  * No se guardan sesiones en ningún sitio: se guarda LA FECHA DEL CORTE, y toda
  * cookie emitida antes deja de valer. Una columna en vez de una tabla.
  */
-async function cortarSesiones(id) {
-  const r = await db.consulta(
+async function cortarSesiones(id, firma = null) {
+  const r = await escribir(firma,
     'UPDATE usuario SET sesiones_desde = now() WHERE id = $1 RETURNING email, sesiones_desde',
     [Number(id)]);
   if (!r.rowCount) throw new Error('No existe ese usuario');
