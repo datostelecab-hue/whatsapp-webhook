@@ -370,7 +370,7 @@ async function informe({ mes, hoy = hoyMadrid() } = {}) {
 function zonasDiaADia(r, per, hist) {
   const acc = new Map();
   const de = zona => {
-    if (!acc.has(zona)) acc.set(zona, { zona, coches: new Set(), debian: 0, llevan: 0, mes: 0, diasParado: 0, sinNadie: 0 });
+    if (!acc.has(zona)) acc.set(zona, { zona, coches: new Set(), debian: 0, llevan: 0, mes: 0, diasParado: 0, sinNadie: 0, sinCt: 0 });
     return acc.get(zona);
   };
   r.grupos.forEach(g => g.coches.forEach(x => {
@@ -386,21 +386,48 @@ function zonasDiaADia(r, per, hist) {
       z.debian += dia.obj;
       if (dia.parado) z.diasParado++; else z.llevan += dia.h || 0;
       z.sinNadie += dia.sin;
+      z.sinCt += dia.sinCt || 0;
     });
   }));
   // El orden de las zonas del informe (el del planificador); los cuadrantes libres, al final.
   const orden = r.zonas.map(z => z.zona);
   const pos = z => (z === LIBRES ? 1e9 : orden.indexOf(z) < 0 ? 1e6 : orden.indexOf(z));
-  const cerrar = z => ({ zona: z.zona, coches: z.coches.size, debian: z.debian, llevan: z.llevan, mes: z.mes,
-    pct: z.debian ? z.llevan / z.debian : null, diasParado: z.diasParado, sinNadie: z.sinNadie, perdidas: z.sinNadie * HORAS_TURNO });
+  const cerrar = z => conCausa({ zona: z.zona, coches: z.coches.size, debian: z.debian, llevan: z.llevan, mes: z.mes,
+    pct: z.debian ? z.llevan / z.debian : null, diasParado: z.diasParado, sinNadie: z.sinNadie, sinCt: z.sinCt, perdidas: z.sinNadie * HORAS_TURNO });
   const zonas = [...acc.values()].filter(z => z.mes > 0 || z.llevan > 0)
     .sort((a, b) => pos(a.zona) - pos(b.zona) || a.zona.localeCompare(b.zona)).map(cerrar);
   const todos = new Set([...acc.values()].flatMap(z => [...z.coches]));
   const suma = k => zonas.reduce((s, z) => s + z[k], 0);
-  const total = { zona: 'Total', coches: todos.size, debian: suma('debian'), llevan: suma('llevan'), mes: suma('mes'),
-    diasParado: suma('diasParado'), sinNadie: suma('sinNadie'), perdidas: suma('perdidas') };
-  total.pct = total.debian ? total.llevan / total.debian : null;
+  const total = conCausa({ zona: 'Total', coches: todos.size, debian: suma('debian'), llevan: suma('llevan'), mes: suma('mes'),
+    diasParado: suma('diasParado'), sinNadie: suma('sinNadie'), sinCt: suma('sinCt'), perdidas: suma('perdidas'),
+    pct: suma('debian') ? suma('llevan') / suma('debian') : null });
   return { zonas, total };
+}
+
+/**
+ * DE DÓNDE SALE EL DÉFICIT (17/11/2026, Camilo: «pon el déficit mayor de cada
+ * uno, si es por culpa de falta de personal (muchos turnos vacíos) o si en la
+ * zona los conductores son malos y por eso perdemos muchas horas»). Lo que
+ * falta hasta ayer se parte como en el ejecutivo (causas()):
+ *   · FALTA DE PERSONAL: los turnos que tocaban y no tenían a nadie, a 8 h. De
+ *     ellos, los del día que libra el fijo son falta de CT; el resto, de fijo.
+ *   · LOS CONDUCTORES: lo demás, turnos con alguien que no llegó a sus 8 h.
+ *     Si sale negativo (otros hicieron de más), es 0: cumplen, y lo que
+ *     sobra es lo que COMPENSAN de los turnos vacíos.
+ * La causa es la que más horas se lleva. Con las horas de los turnos con
+ * alguien, cuánto hace de media cada turno cubierto.
+ */
+function conCausa(z) {
+  const HT = HORAS_TURNO;
+  const deficit = Math.max(0, z.debian - z.llevan);
+  const hCt = z.sinCt * HT, hFijo = (z.sinNadie - z.sinCt) * HT;
+  const hPersonal = hCt + hFijo;
+  const hConductores = Math.max(0, z.debian - z.llevan - hPersonal);
+  const cubiertos = z.debian / HT - z.sinNadie;
+  const causa = deficit <= 0 ? null : hPersonal >= hConductores ? 'personal' : 'conductores';
+  const compensan = Math.max(0, hPersonal - (z.debian - z.llevan));
+  return { ...z, deficit, hPersonal, hCt, hFijo, hConductores, compensan, causa,
+    turnosCubiertos: cubiertos, porTurno: cubiertos > 0 ? z.llevan / cubiertos : null };
 }
 
 /** vehiculo_zona del periodo: Map(vehiculoId → [{ d, h, zona }]). null sin db/264. */

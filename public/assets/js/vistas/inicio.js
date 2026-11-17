@@ -455,6 +455,26 @@
   // agrupa 2400, y al lado de «12.000» se lee mal).
   const miles = v => String(Math.round(Number(v) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
+  // DE DÓNDE SALE EL DÉFICIT (17/11/2026): la causa que más horas se lleva, en
+  // su pastilla, y las dos cifras. Falta de personal = turnos sin nadie (de
+  // fijo o de CT); los conductores = turnos con alguien que no llegó a 8 h.
+  const decimal = v => Number(v).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  function causa(z) {
+    if (!z.deficit) return '<p class="mt-1.5 text-xs"><span class="tc-pastilla tc-pastilla--verde">Sin déficit</span></p>';
+    const pastilla = z.causa === 'personal'
+      ? '<span class="tc-pastilla tc-pastilla--aviso">Sobre todo, falta de personal</span>'
+      : '<span class="tc-pastilla tc-pastilla--rojo">Sobre todo, los conductores no llegan</span>';
+    const personal = z.hPersonal
+      ? `${miles(z.hPersonal)} h de ${miles(z.sinNadie)} turnos sin nadie${z.sinCt ? ` (${miles(z.sinCt)} de CT)` : ''}`
+      : 'ningún turno sin nadie';
+    const conductores = z.hConductores
+      ? `${miles(z.hConductores)} h de conductores por debajo de 8 h`
+      : z.compensan ? `los conductores cumplen y compensan ${miles(z.compensan)} h` : 'los conductores cumplen';
+    const media = z.porTurno == null ? '' : ` · ${decimal(z.porTurno)} h por turno cubierto`;
+    return `<p class="mt-1.5 text-xs text-telecab-muted flex flex-wrap items-center gap-x-2 gap-y-1">${pastilla}
+      <span>Faltan ${miles(z.deficit)} h: ${personal} · ${conductores}${media}</span></p>`;
+  }
+
   function pintarZonas(caja, j) {
     const per = j.per || {};
     const nota = per.enCurso
@@ -471,7 +491,6 @@
       const detalle = [
         `${z.coches} ${z.coches === 1 ? 'coche' : 'coches'}`,
         per.enCurso ? `en el mes debe ${miles(z.mes)} h` : '',
-        z.perdidas ? `${miles(z.perdidas)} h de turnos sin nadie` : '',
         z.diasParado ? `${z.diasParado} ${z.diasParado === 1 ? 'día' : 'días'} de taller o parado, no cuentan` : '',
       ].filter(Boolean).join(' · ');
       return `<div class="px-4 py-3 flex items-center gap-4${total ? ' bg-telecab-card2/40 rounded-b-2xl' : ''}">
@@ -483,6 +502,7 @@
             <div class="h-full rounded-full" style="width:${Math.min(100, pct || 0)}%;background:${color}"></div>
           </div>
           <p class="text-[11px] text-telecab-muted mt-1">${detalle}</p>
+          ${causa(z)}
         </div>
         <p class="shrink-0 text-lg font-bold tabular-nums" style="color:${color}">${pct == null ? '—' : num(pct) + ' %'}</p>
       </div>`;

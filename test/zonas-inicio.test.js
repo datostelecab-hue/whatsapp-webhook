@@ -49,6 +49,14 @@ test('cada día de un coche va a la zona que tenía ese día; el taller no cuent
   // Alcobendas: coche 1 los días 1 y 2 (32 debía, 31 hizo) + coche 2 los cuatro cerrados (56 debía, 45 hizo).
   assert.deepEqual([de('Alcobendas').debian, de('Alcobendas').llevan, de('Alcobendas').coches], [88, 76, 2]);
   assert.equal(de('Alcobendas').perdidas, 8, 'un turno sin nadie: 8 h perdidas');
+  // De dónde sale el déficit: Alcobendas debía 88 e hizo 76 (faltan 12): 8 por el
+  // turno sin nadie y 4 de conductores que no llegan. Canillejas: 4, todo de conductores.
+  assert.deepEqual([de('Alcobendas').deficit, de('Alcobendas').hPersonal, de('Alcobendas').hConductores, de('Alcobendas').causa], [12, 8, 4, 'personal']);
+  assert.deepEqual([de('Canillejas').deficit, de('Canillejas').hPersonal, de('Canillejas').hConductores, de('Canillejas').causa], [4, 0, 4, 'conductores']);
+  assert.equal(de('Canillejas').porTurno, 12 / 2, 'el día 3, dos turnos cubiertos con 12 h: 6 h por turno');
+  // Turnos vacíos que pesan más que lo que falta: los que salen hacen de más y compensan.
+  const z = rend.zonasDiaADia({ zonas: [{ zona: 'Aravaca' }], grupos: [{ zona: 'Aravaca', coches: [coche(3, [['2026-11-01', 2, 12, null, 1], ['2026-11-02', 2, 18]])] }] }, per, null).zonas[0];
+  assert.deepEqual([z.deficit, z.hPersonal, z.hConductores, z.compensan, z.causa], [2, 8, 0, 6, 'personal']);
   // Canillejas: coche 1 el día 3 (16, 12); el 4 en taller no cuenta; del 5 en adelante, solo lo del mes.
   assert.deepEqual([de('Canillejas').debian, de('Canillejas').llevan, de('Canillejas').diasParado, de('Canillejas').mes], [16, 12, 1, 48]);
   assert.deepEqual(zonas.map(z => z.zona), ['Alcobendas', 'Canillejas'], 'en el orden del planificador');
