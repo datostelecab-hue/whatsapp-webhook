@@ -142,7 +142,19 @@ require('./services/tailwind').alArrancar();
 // EN LOCAL, SIN CACHÉ FIJA: la marca ?v= solo cambia al reiniciar, y el CSS de
 // Tailwind se recompila sin reiniciar al guardar una vista. Con un día de
 // caché, el navegador seguiría con el viejo; así revalida (un 304 si no cambió).
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: process.env.RENDER ? '1d' : 0 }));
+//
+// UNA MARCA QUE NO ES LA MÍA NO SE GUARDA (17/11/2026). En un despliegue, Render
+// tiene un rato las dos máquinas: la página nueva pide `telecab.css?v=NUEVA` y,
+// si esa petición cae en la máquina vieja, se lleva el CSS VIEJO con la marca
+// nueva, y el navegador lo guarda un día. Pasó con «Vacaciones por meses»: el
+// script nuevo con el CSS viejo, la parrilla sin estilos hasta Ctrl+Mayús+R.
+// Ahora, si la marca no es la de esta máquina, se sirve sin dejar guardarlo
+// (`no-store`): la siguiente carga ya trae el bueno. `send` no pisa un
+// Cache-Control puesto antes.
+app.use('/assets', (req, res, next) => {
+  if (req.query.v && req.query.v !== app.locals.v) res.set('Cache-Control', 'no-store');
+  next();
+}, express.static(path.join(__dirname, 'public', 'assets'), { maxAge: process.env.RENDER ? '1d' : 0 }));
 
 // LAS NOTIFICACIONES AL DISPOSITIVO (A8, db/250). El service worker va en la
 // RAÍZ: desde /assets solo controlaría /assets. No guarda nada en caché ni
