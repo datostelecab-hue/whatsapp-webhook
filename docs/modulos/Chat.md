@@ -39,6 +39,10 @@ actualizado: 2026-11-17
 - **En el móvil**, la lista o la conversación, con un botón para volver.
 - **Nada se borra**: los canales y los mensajes están bajo el [[Libro de auditoria]].
 
+### El recorrido, la primera vez
+
+La primera vez que alguien entra en el chat le sale un recorrido de un minuto (Camilo, 17/11/2026): los canales, escribir, la barra de cada mensaje y **el flujo de una tarea**, de convertir el mensaje a la respuesta en su hilo. Se repite con el botón de la ruta, arriba a la izquierda. Ver [[Novedades]].
+
 ### Lo de la 2b
 
 - **La barra de cada mensaje** sale al pasar por encima (en el móvil, al tocarlo): reaccionar, responder en un hilo, guardar, fijar, convertir en tarea y, si es tuyo, editar y anular.

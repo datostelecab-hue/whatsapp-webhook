@@ -149,6 +149,10 @@ await tablero.crear(usuarioId, { titulo, descripcion, responsableId, plazoDias }
 - Las tres primeras, bajo el [[Libro de auditoria]].
 - db/252 da a William, Óscar y Laura las funciones de las J y las −J (por id y nombre: en otra base no le toca a nadie) y quita `tablero.tickets_desde_id`.
 
+## El recorrido, la primera vez (17/11/2026)
+
+La primera vez que alguien entra en el tablero le sale un recorrido de un minuto: las vistas, «Nueva tarea», las columnas, el semáforo del plazo y lo que se cierra solo. Se repite con el botón de la ruta, al lado de «Nueva tarea». Ver [[Novedades]].
+
 ## La pantalla (`/tablero`, entrega 1b)
 
 **Tablero** en el menú, para todos, como Inicio; qué ve cada uno lo decide el tablero. Su número (`tareas.menu`) suma las tarjetas que lleva y, a quien reparte o aprueba, lo que espera por él. Va en rojo si hay algo vencido o esperando.

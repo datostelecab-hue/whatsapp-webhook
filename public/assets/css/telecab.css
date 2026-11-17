@@ -1306,6 +1306,8 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-chat-accion:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
 .tc-chat-accion--activa, .tc-chat-accion--activa:hover { color: rgb(var(--tc-gold)); }
 .tc-chat-accion--peligro:hover { background: rgb(var(--tc-red) / .12); color: rgb(var(--tc-red)); }
+/* Durante el recorrido, la barra del mensaje que se explica se ve sin pasar el ratón. */
+.tc-recorriendo .tc-chat-msj--mostrar .tc-chat-msj-acciones { display: flex; opacity: 1; pointer-events: auto; }
 @media (hover: none) {
   .tc-chat-msj-acciones { display: none; position: static; opacity: 1; pointer-events: auto; grid-column: 2; justify-self: start; margin-top: .3rem; }
   .tc-chat-msj--elegido .tc-chat-msj-acciones { display: flex; }

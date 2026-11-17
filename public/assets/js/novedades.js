@@ -28,7 +28,7 @@
   // `tono`: el color del icono (acento, verde, ambar, violeta, celeste).
   const VERSIONES = {
     v3: {
-      titulo: 'Telecab se ha puesto al día',
+      titulo: 'Novedades Telecab',
       sello: 'Telecab V3',
       bajada: 'Un diseño nuevo, un tablero para todo lo que hay que hacer y avisos que llegan solos.',
       novedades: [
@@ -348,5 +348,40 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', alEntrar);
   else alEntrar();
 
-  global.Novedades = { abrir, recorrido, PASOS };
+  // ── El recorrido de una pantalla, la primera vez que se entra ────────────
+  // Camilo (17/11/2026): «un recorrido del chat por primera vez para que sepan
+  // cómo es el flujo de creación de tareas, y también un recorrido por el
+  // tablero». La pantalla lo pide con sus pasos (una función: se miran al
+  // empezar, cuando ya está pintada):
+  //
+  //   Novedades.primeraVez('chat', () => [{ sel, titulo, texto }, …]);
+  //   Novedades.recorridoDe('chat', pasos);      // otra vez, cuando se quiera
+  //
+  // Sale una vez por persona (lo guarda el servidor, /novedades/api/pantalla),
+  // cuando la pantalla está quieta: después de la ventana de novedades, sin un
+  // diálogo ni una ficha abierta. Se deja con Escape, y no vuelve a salir solo.
+  const clavePantalla = p => `recorrido-${p}`;
+  function recorridoDe(pantalla, pasos) {
+    if (!global.Recorrido) return;
+    global.Recorrido.empezar(typeof pasos === 'function' ? pasos() : pasos, {
+      alAcabar: como => {
+        apuntarLS(clavePantalla(pantalla));
+        Api.post(`/novedades/api/pantalla/${encodeURIComponent(pantalla)}`, { como }).catch(() => {});
+      },
+    });
+  }
+  async function primeraVez(pantalla, pasos) {
+    if (leerLS().includes(clavePantalla(pantalla))) return;
+    let e = null;
+    try { e = await Api.get(`/novedades/api/pantalla/${encodeURIComponent(pantalla)}`); } catch (_) { return; }
+    if (!e || e.visto) { apuntarLS(clavePantalla(pantalla)); return; }
+    let intentos = 0;
+    const probar = () => {
+      if (abierta || ocupada()) { if (++intentos < 40) setTimeout(probar, 1500); return; }
+      recorridoDe(pantalla, pasos);
+    };
+    setTimeout(probar, 1200);
+  }
+
+  global.Novedades = { abrir, recorrido, PASOS, primeraVez, recorridoDe };
 })(window);

@@ -1076,6 +1076,52 @@
     cada: 15000,
   });
 
+  // ── El recorrido, la primera vez (y con el botón, cuando se quiera) ───────
+  // Camilo (17/11/2026): «un recorrido del chat por primera vez para que sepan
+  // cómo es el flujo de creación de tareas». Los pasos se miran al empezar: con
+  // un mensaje en pantalla se ilumina su barra; sin él (los chats arrancan
+  // vacíos), el paso sale en el centro. Lo que no se ve (el móvil), se salta.
+  const ULTIMO = '[data-serie] > article.tc-chat-msj:last-of-type';
+  const mostrarBarra = el => { const a = el.closest('.tc-chat-msj'); if (a) a.classList.add('tc-chat-msj--mostrar'); };
+  function pasosChat() {
+    // Solo si el mensaje se ve y la barra sale al pasar el ratón (en el móvil sale
+    // al tocarlo): si no, esos pasos van en el centro, para no saltárselos.
+    const art = document.querySelector(ULTIMO);
+    const hayMensaje = !!(art && art.getClientRects().length && art.querySelector('.tc-chat-msj-acciones') && !tocar.matches);
+    const haySello = !!document.querySelector('.tc-chat-mensajes .tc-chat-tarea');
+    const enMensaje = (sel, paso) => (hayMensaje ? { sel: `${ULTIMO} ${sel}`, antes: mostrarBarra, ...paso } : paso);
+    return [
+      { icono: 'fa-message', titulo: 'El chat de la oficina',
+        texto: 'Lo que antes iba por Slack, ahora dentro de Telecab: los canales de siempre y los mensajes directos. En un minuto te enseño cómo se usa y cómo un mensaje se convierte en una tarea del tablero.' },
+      { sel: '#chat-lista', icono: 'fa-hashtag', titulo: 'Canales y mensajes directos',
+        texto: 'Arriba, los canales; debajo, tus mensajes directos. En negrita, lo que no has leído. En el menú, el número rojo son los directos y las veces que te nombran.' },
+      { sel: '[data-escribir="canal"]', icono: 'fa-pen', titulo: 'Escribir',
+        texto: 'Intro envía y Mayús + Intro hace otra línea. Con @ nombras a alguien (le llega el aviso) y con @canal, a todos. El clip adjunta ficheros: se suben antes y el mensaje sale cuando están arriba.' },
+      enMensaje('.tc-chat-msj-acciones', { icono: 'fa-hand-pointer', titulo: 'Lo que se hace con un mensaje',
+        texto: `${tocar.matches ? 'Al tocar un mensaje' : 'Al pasar por encima de un mensaje'} sale su barra: reaccionar, responder en un hilo, guardarlo para luego, fijarlo en el canal, convertirlo en tarea y, si es tuyo, editarlo o anularlo.` }),
+      enMensaje('[data-accion="tarea"]', { icono: 'fa-list-check', titulo: 'Convertir un mensaje en tarea',
+        texto: 'Con el botón de la lista de la barra. El título y el detalle salen ya del mensaje; tú eliges quién la hace y el plazo, en días hábiles (sin fines de semana ni festivos).' }),
+      { icono: 'fa-user-check', titulo: 'Quién la aprueba',
+        texto: 'Si tú no apruebas tareas, la tarea le llega primero a Ignacio, y el plazo empieza a contar cuando la aprueba. Si la creas tú y apruebas, empieza a contar ya.' },
+      { sel: '.tc-chat-mensajes .tc-chat-tarea', icono: 'fa-tag', titulo: 'El sello de la tarea',
+        texto: 'El mensaje lleva el sello de su tarea: en qué estado está, quién la hace y cuándo vence. Pulsándolo vas a su tarjeta en el tablero.' },
+      { icono: 'fa-circle-check', titulo: 'Cuando se cierra',
+        texto: `${haySello ? '' : 'Desde ese momento el mensaje lleva el sello de su tarea (su estado, quién la hace y cuándo vence), que te lleva al tablero. '}Cuando quien la hace la cierra allí, la respuesta sale en el hilo del mensaje y quien la pidió recibe una mención: todo el canal sabe que está hecha.` },
+      { sel: '#menu a[href="/tablero"]', icono: 'fa-table-columns', titulo: 'Tus tareas, en el tablero',
+        texto: 'Todas las tareas, con su plazo y su semáforo, están en el tablero. Allí se aprueban, se mueven y se cierran.' },
+      { sel: '#chat-guardados', icono: 'fa-bookmark', titulo: 'Guardados',
+        texto: 'Lo que guardas para luego, de todos los canales. Solo lo ves tú.' },
+      { sel: '#chat-recorrido', icono: 'fa-route', titulo: 'Otra vez',
+        texto: 'Este recorrido, cuando quieras.' },
+    ];
+  }
+  // novedades.js se carga con `defer`: puede llegar después que esta pantalla.
+  const conNovedades = fn => {
+    if (window.Novedades) fn(window.Novedades);
+    else addEventListener('DOMContentLoaded', () => { if (window.Novedades) fn(window.Novedades); });
+  };
+  document.getElementById('chat-recorrido').addEventListener('click', () => conNovedades(N => N.recorridoDe('chat', pasosChat)));
+
   // ── Arranque ─────────────────────────────────────────────────────────────
   (async () => {
     const [p] = await Promise.all([Api.get(`${API}/personas`).catch(() => null), cargarLista()]);
@@ -1090,6 +1136,8 @@
       const r = await Api.get(`${API}/mensajes/${pedidoMensaje}`, { aviso: 'Ese mensaje no existe o no está en un canal tuyo' }).catch(() => null);
       if (r) { await irAlMensaje(r.mensaje.canalId, r.mensaje.id, r.mensaje.padreId); return; }
     }
-    if (primero) abrir(primero.id);
+    if (primero) await abrir(primero.id);
+    // La primera vez que entra, el recorrido (cuando la pantalla ya está pintada).
+    conNovedades(N => N.primeraVez('chat', pasosChat));
   })();
 })();

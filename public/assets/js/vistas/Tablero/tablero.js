@@ -467,6 +467,38 @@
     if (r) { turnoFicha++; pintarFicha(r.tarjeta); recargarPronto(); }
   }
 
+  // ── El recorrido, la primera vez (y con el botón, cuando se quiera) ───────
+  // Camilo (17/11/2026): «un recorrido por el tablero de tareas». Los pasos se
+  // miran al empezar; una columna que no está en la vista de ahora se salta.
+  function pasosTablero() {
+    return [
+      { icono: 'fa-table-columns', titulo: 'El tablero de tareas',
+        texto: 'Todo lo que hay que hacer en la oficina, en un solo sitio: lo que te piden, lo que pides y lo que llega solo de otras pantallas. Te lo enseño en un minuto.' },
+      { sel: '#t-pestanas', icono: 'fa-layer-group', titulo: 'Las vistas',
+        texto: '«Mi tablero»: lo que llevas, lo que pediste y donde colaboras. «Mi equipo»: lo de tu gente. «Por repartir», solo a quien aprueba o reparte. «Lista»: todo, con buscador, filtros y Excel.' },
+      { sel: '#t-nueva', icono: 'fa-plus', titulo: 'Nueva tarea',
+        texto: 'Para ti o para otra persona: qué hay que hacer, quién la hace y el plazo en días hábiles (sin fines de semana ni festivos). También nace desde un mensaje del chat, con «Convertir en tarea».' },
+      { sel: '[data-columna="por_aprobar"]', icono: 'fa-user-check', titulo: 'Por aprobar',
+        texto: 'Si no apruebas tareas, la que pides espera aquí a que Ignacio la apruebe; su plazo empieza a contar cuando la aprueba. Si la rechaza, te llega el porqué.' },
+      { sel: '[data-columna="por_hacer"]', icono: 'fa-arrows-left-right', titulo: 'Por hacer y en curso',
+        texto: 'Cuando empieces, arrastra la tarjeta a «En curso» (o ábrela y cámbiala). Con el teclado, Intro la abre.' },
+      { sel: ['#t-tablero .tc-tarjeta', '[data-columna="en_curso"]'], icono: 'fa-traffic-light', titulo: 'El semáforo del plazo',
+        texto: 'Verde: queda plazo. Amarillo: vence hoy. Rojo: vencida. Si vence, os llega un aviso a ti y a tu superior. Al abrir la tarjeta ves su ficha: comentarios, quién colabora y toda su historia.' },
+      { sel: '[data-columna="bloqueada"]', icono: 'fa-hand', titulo: 'Bloqueada',
+        texto: 'Si algo te frena, bloquéala diciendo qué: se avisa a quien reparte las tareas para que pueda desbloquearla.' },
+      { sel: '[data-columna="cerrada"]', icono: 'fa-circle-check', titulo: 'Cerrada',
+        texto: 'Al cerrarla dices en qué quedó (y, si va tarde, por qué). Las que llegan solas (las J, las −J, las correcciones de fichaje, las vacaciones y los tickets) se cierran solas al resolverlas en su pantalla. La que nació en el chat responde en el hilo de su mensaje.' },
+      { sel: '#t-recorrido', icono: 'fa-route', titulo: 'Otra vez',
+        texto: 'Este recorrido, cuando quieras.' },
+    ];
+  }
+  // novedades.js se carga con `defer`: puede llegar después que esta pantalla.
+  const conNovedades = fn => {
+    if (window.Novedades) fn(window.Novedades);
+    else addEventListener('DOMContentLoaded', () => { if (window.Novedades) fn(window.Novedades); });
+  };
+  document.querySelector('#t-recorrido').addEventListener('click', () => conNovedades(N => N.recorridoDe('tablero', pasosTablero)));
+
   // ── Arranque ────────────────────────────────────────────────────────────
   (async function () {
     try {
@@ -496,5 +528,7 @@
     // ?tarjeta=ID: la que trae una notificación o un enlace.
     const id = Number(new URLSearchParams(location.search).get('tarjeta'));
     if (Number.isSafeInteger(id) && id > 0) abrirFicha(id);
+    // La primera vez que entra, el recorrido (espera a que no haya una ficha abierta).
+    conNovedades(N => N.primeraVez('tablero', pasosTablero));
   })();
 })();

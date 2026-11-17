@@ -1,6 +1,6 @@
 ---
 tags: [modulo, novedades, recorrido, v3]
-actualizado: 2026-11-16
+actualizado: 2026-11-17
 ---
 
 # Novedades
@@ -15,6 +15,7 @@ actualizado: 2026-11-16
   - **Lo que ya tienes**: las pantallas de **su menú**, por departamento, con una línea de qué es cada una. Sale del menú que ya se ha pintado con sus permisos, así que nunca enseña algo que no puede abrir.
 - **«Hacer el recorrido»** o **«Ahora no»**. Cerrarla de cualquier forma (la X, Escape, «Ahora no» o pulsar un enlace de dentro) la da por vista.
 - **«Novedades»**, en el pie del menú, la vuelve a abrir cuando se quiera, con un puntito mientras está sin ver.
+- **El título es «Novedades Telecab»** (Camilo, 17/11/2026: «que no diga Telecab se ha puesto al día; que solo diga Novedades Telecab y ya»).
 
 ## El recorrido
 
@@ -24,6 +25,22 @@ Un paseo de un minuto por lo que está siempre a mano: el menú, el tablero, los
 - **Con el menú plegado**, lo despliega mientras ilumina algo suyo.
 - **Teclado**: → o Intro sigue, ← vuelve, Escape lo deja; el foco no sale del globo y vuelve a su sitio al acabar.
 - Queda apuntado si se hizo entero (`hecho`) o se dejó (`saltado`). Un «hecho» no se pisa con un «saltado» posterior.
+
+## El recorrido de una pantalla, la primera vez que se entra (17/11/2026)
+
+Camilo: *«un recorrido del chat por primera vez para que sepan cómo es el flujo de creación de tareas, y también un recorrido por el tablero de tareas»*. Sale **solo, una vez por persona** (en cualquier dispositivo), la primera vez que entra en esa pantalla, cuando está quieta: después de la ventana de novedades y sin un diálogo ni una ficha abierta. Dejarlo con Escape también cuenta: no vuelve a salir solo. Cada pantalla tiene un botón con la ruta (`fa-route`) para repetirlo.
+
+- **[[Chat]]**: los canales y los directos, escribir (menciones y ficheros), la barra de cada mensaje y **el flujo de una tarea**: convertir el mensaje, quién la aprueba, el sello en el mensaje y la respuesta en el hilo al cerrarla. Con un mensaje en pantalla ilumina su barra; sin él (los chats arrancan vacíos) o en el móvil, esos pasos salen en el centro.
+- **[[Tablero de tareas]]**: las vistas, «Nueva tarea», las columnas (por aprobar, por hacer y en curso, bloqueada, cerrada), el semáforo del plazo y lo que se cierra solo.
+
+Desde una pantalla:
+
+```js
+Novedades.primeraVez('chat', () => [{ sel, icono, titulo, texto, antes }, …]);   // los pasos se miran al empezar
+Novedades.recorridoDe('chat', pasos);                                           // el botón de repetirlo
+```
+
+Va en la misma tabla, con la «versión» `recorrido-<pantalla>`, y las pantallas que lo tienen están en `PANTALLAS` (`novedades.service.js`): una nueva se añade allí.
 
 ## Para la versión siguiente
 
@@ -45,6 +62,8 @@ Un paseo de un minuto por lo que está siempre a mano: el menú, el tablero, los
 ```
 GET  /novedades/api/estado   → { version, pendiente, recorrido }
 POST /novedades/api/visto    { version, recorrido? }
+GET  /novedades/api/pantalla/:p    → { pantalla, visto, recorrido }   (chat, tablero)
+POST /novedades/api/pantalla/:p    { como: 'hecho' | 'saltado' }
 ```
 
 De todos los que tienen sesión, como `/contadores`: no está en el catálogo de permisos y cada uno marca lo suyo.
@@ -57,7 +76,7 @@ modules/Novedades/novedades.service.js  la versión de ahora, quién la vio
 modules/Novedades/novedades.controller.js
 public/assets/js/novedades.js           la ventana, lo que dice cada versión, el recorrido de la V3
 public/assets/js/recorrido.js           el recorrido guiado (pieza global)
-test/novedades.test.js                  2 pruebas
+test/novedades.test.js                  3 pruebas
 ```
 
 Relacionado: [[Identidad visual]] · [[Componentes de la casa]]

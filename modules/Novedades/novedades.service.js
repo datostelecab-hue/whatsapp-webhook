@@ -47,6 +47,41 @@ async function marcar(usuarioId, { version, recorrido = null } = {}) {
   return estado(id);
 }
 
+// ── El recorrido de una pantalla, la primera vez que se entra (17/11/2026) ──
+// Camilo: «un recorrido del chat por primera vez para que sepan cómo es el flujo
+// de creación de tareas, y también un recorrido por el tablero de tareas». Va en
+// la misma tabla, con la «versión» `recorrido-<pantalla>`: sale una vez por
+// persona, en el dispositivo que sea.
+const PANTALLAS = new Set(['chat', 'tablero']);
+const clavePantalla = p => {
+  if (!PANTALLAS.has(String(p))) throw conEstado(new Error('Esa pantalla no tiene recorrido'), 404);
+  return `recorrido-${p}`;
+};
+
+/** Si esta persona ya vio el recorrido de esa pantalla: { pantalla, visto, recorrido }. */
+async function pantalla(usuarioId, p) {
+  const id = entero(usuarioId);
+  if (!id) throw conEstado(new Error('Sesión requerida'), 401);
+  const clave = clavePantalla(p);
+  const r = await db.consulta('SELECT recorrido FROM novedad_vista WHERE usuario_id = $1 AND version = $2', [id, clave]);
+  return { pantalla: p, visto: r.rows.length > 0, recorrido: r.rows[0] ? r.rows[0].recorrido : null };
+}
+
+/** Lo vio: «hecho» (llegó al final) o «saltado». Un «hecho» no se pisa después. */
+async function marcarPantalla(usuarioId, p, como) {
+  const id = entero(usuarioId);
+  if (!id) throw conEstado(new Error('Sesión requerida'), 401);
+  const clave = clavePantalla(p);
+  if (!RECORRIDO.has(como)) throw conEstado(new Error('El recorrido acaba «hecho» o «saltado»'), 400);
+  await db.consulta(
+    `INSERT INTO novedad_vista (usuario_id, version, recorrido, recorrido_at) VALUES ($1, $2, $3, now())
+     ON CONFLICT (usuario_id, version) DO UPDATE SET
+       recorrido = CASE WHEN novedad_vista.recorrido = 'hecho' THEN 'hecho' ELSE EXCLUDED.recorrido END,
+       recorrido_at = CASE WHEN novedad_vista.recorrido = 'hecho' THEN novedad_vista.recorrido_at ELSE now() END`,
+    [id, clave, como]);
+  return pantalla(id, p);
+}
+
 /** Para quien la mida: cuántos la han visto y cuántos hicieron el recorrido. */
 async function cuentas(version = ACTUAL) {
   const r = await db.consulta(
@@ -57,4 +92,4 @@ async function cuentas(version = ACTUAL) {
   return r.rows[0];
 }
 
-module.exports = { ACTUAL, estado, marcar, cuentas };
+module.exports = { ACTUAL, estado, marcar, cuentas, pantalla, marcarPantalla, PANTALLAS };
