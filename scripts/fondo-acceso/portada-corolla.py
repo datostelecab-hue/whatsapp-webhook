@@ -4,9 +4,10 @@
 # La pantalla de acceso de la V3 (16/11/2026) lleva a la izquierda una foto de
 # un Toyota Corolla —el coche de la flota— con el tono azul de noche de la
 # referencia que trajo Camilo. La foto de partida la eligió él: es de la web de
-# Toyota (la serie del Corolla Hybrid en ciudad) y NO va en el repositorio, que
-# es público: este guion la prepara en local y deja el resultado en
-# public/assets/acceso/portada.webp (y portada-900.webp para el móvil).
+# Toyota (la serie del Corolla Hybrid en ciudad) y esa, la original, NO va en el
+# repositorio. Este guion la prepara en local y deja el resultado en
+# public/assets/acceso/portada.webp (y portada-900.webp para el móvil), que sí
+# está en el repositorio desde el 17/11/2026 (lo decidió Camilo).
 #
 # Lo que hace:
 #   1. RECORTA por la izquierda de la persona que cruza la foto: el coche se
