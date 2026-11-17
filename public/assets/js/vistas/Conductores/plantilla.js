@@ -1064,15 +1064,16 @@
   }
 
   /**
-   * LA FECHA DE ALTA (08/10/2026): corregirla a quien ya se dio de alta y todavía
-   * no ha trabajado, de plantilla propia o de la ETT. El servidor lo comprueba con
-   * sus horas de BOLT y, si ya ha trabajado, dice desde cuándo y no la cambia.
+   * LA FECHA DE ALTA (08/10/2026): corregirla a quien ya se dio de alta, de
+   * plantilla propia o de la ETT. Desde el 16/11/2026, también a quien ya ha
+   * trabajado: como mucho hasta su primer día con horas. El servidor lo comprueba
+   * con sus horas de BOLT y, si la fecha deja días trabajados fuera, dice cuál.
    */
   async function accionFechaAlta(d) {
     const v = await pedirDatos(`Fecha de alta de ${d.nombre_completo}`, [
       { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha', obligatorio: true, valor: d.alta ? fecha(d.alta) : '' },
     ], { textoBoton: 'Cambiar la fecha',
-         nota: 'Solo se puede si todavía no ha trabajado. Su turno y sus plazas del planificador se mueven con ella. '
+         nota: 'Si ya ha trabajado, puede ir como mucho hasta su primer día con horas. Su turno y sus plazas del planificador se mueven con ella. '
              + 'Queda en su historial quién la cambió y de qué a qué. '
              + 'Si ya tiene ficha de alta, vuelve a generarla para que salga con la nueva.' });
     if (!v || !v.alta) return;
@@ -1214,7 +1215,7 @@
       ayuda: ett
         ? 'Viene por la ETT: la ficha es la de su paso a plantilla propia. La fecha solo va en la ficha; el paso se hace con «Pasar a propia», con esta misma fecha.'
         : propia
-          ? 'Es la fecha de alta de su contrato. Si la cambias, se cambia también en su contrato: solo se puede si todavía no ha trabajado.'
+          ? 'Es la fecha de alta de su contrato. Si la cambias, se cambia también en su contrato: si ya ha trabajado, como mucho hasta su primer día con horas.'
           : 'No tiene contrato abierto: la fecha solo va en la ficha.',
     }], { textoBoton: 'Generar la ficha' });
     if (!v || !v.fecha) return;
@@ -1552,7 +1553,8 @@
           onClick: d => accionDatos(d) },
         // Solo a quien está de alta POR UNA ETT: al de plantilla propia no hay
         // nada que convertirle.
-        // Corregir la fecha de alta a quien aún no ha trabajado (08/10/2026).
+        // Corregir la fecha de alta (08/10/2026); a quien ya ha trabajado, como
+        // mucho hasta su primer día con horas (16/11/2026).
         { texto: 'Fecha de alta', icono: 'fa-calendar-day',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: d => accionFechaAlta(d) },
         { texto: 'Pasar a propia', icono: 'fa-building-user',

@@ -327,13 +327,17 @@ Camilo: *«a Deisy la pasaron de la ETT a propia y la ficha sale con la fecha de
 
 Al pulsar el botón, primero se pide la fecha:
 
-- **Plantilla propia**: es la fecha de alta de su contrato. Si se cambia, **se cambia también en el contrato** (`conductores.repo.cambiarAlta`) y la ficha sale con la nueva: ficha y sistema dicen lo mismo. Solo si todavía no ha trabajado.
+- **Plantilla propia**: es la fecha de alta de su contrato. Si se cambia, **se cambia también en el contrato** (`conductores.repo.cambiarAlta`) y la ficha sale con la nueva: ficha y sistema dicen lo mismo. Si ya ha trabajado, como mucho hasta su primer día con horas (ver abajo).
 - **ETT**: la ficha es la de su **paso a plantilla propia**, así que la fecha es el primer día de su contrato propio. **Solo va en la ficha**; el paso se hace aparte con «Pasar a propia» y esa misma fecha.
 - Sin contrato abierto: solo va en la ficha.
 
 **«Fecha de alta»**, en las acciones de la ficha, cambia la del contrato abierto (propia o ETT) sin generar nada. Las reglas de `cambiarAlta`:
 
-- **«Ha trabajado» es lo mismo que en la nómina**: tiempo efectivo en BOLT (viaje o espera) con alguna de sus cuentas. Si ha trabajado desde la fecha más temprana de las dos, no se cambia y se dice desde cuándo. El 08/10, a los dos de alta del 26/09 que salían en el planificador ya no se les puede mover: trabajaron ese mismo día.
+- **«Ha trabajado» es lo mismo que en la nómina**: tiempo efectivo en BOLT (viaje o espera) con alguna de sus cuentas.
+- **Hasta su primer día con horas (16/11/2026).** Hasta ese día solo se cambiaba a quien no había trabajado nada. Camilo: *«Alejandro, dado de alta el 12/11/2026, pero trabajó a partir del 15/11/2026: la fecha de modificación puede ser válida hasta el 15/11/2026, a partir de ahí no»*. Ahora:
+  - **retrasarla** vale hasta su primer día con horas, incluido. Si la nueva fecha deja algún día trabajado fuera, no se cambia y se dice cuál («Trabajó el 15/11/2026: la fecha de alta puede ir como mucho hasta ese día»);
+  - **adelantarla** se puede siempre, porque lo trabajado sigue dentro del contrato.
+  - El día cuenta en hora de Madrid, de 00:00 a 24:00, como antes.
 - **Si viene de la ETT** (su contrato anterior acaba justo el día antes), la frontera se mueve con ella: la ETT acaba el día antes del nuevo alta, y lo único que no puede haber es trabajo en los días que cambiarían de contrato. Nunca antes del alta en la ETT. La antigüedad sigue siendo la de la ETT.
 - Un alta suelta no puede caer dentro de un contrato anterior, y su antigüedad se mueve con ella si era la misma fecha.
 - Queda en el historial de la ficha quién lo cambió y de qué a qué (también la baja de la ETT). Tráfico no lo cambia: es de RRHH, como la ficha.

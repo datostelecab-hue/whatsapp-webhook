@@ -1570,12 +1570,15 @@ const aEs = iso => String(iso || '').slice(0, 10).split('-').reverse().join('/')
  * para regenerar la ficha»).
  *
  * Es corregir un dato, no un contrato nuevo: se toca la misma fila, como la
- * jornada. Y solo si NO HA TRABAJADO: moverle el alta a quien ya ha rodado
- * dejaría días trabajados fuera de su contrato, o un contrato que empieza
- * después de su primer día. Dos casos:
+ * jornada. Lo que no puede es dejar días trabajados FUERA de su contrato. Dos
+ * casos:
  *
- *   · Un alta suelta: no puede haber trabajado desde la fecha más temprana de
- *     las dos. Si tenía un contrato anterior, la nueva no puede caer dentro.
+ *   · Un alta suelta: la nueva fecha puede ir COMO MUCHO HASTA SU PRIMER DÍA CON
+ *     HORAS (16/11/2026; hasta entonces, solo a quien no había trabajado nada).
+ *     Camilo: «Alejandro, dado de alta el 12/11, trabajó a partir del 15/11: la
+ *     fecha puede ser válida hasta el 15/11, a partir de ahí no». Adelantarla se
+ *     puede siempre: lo trabajado sigue dentro. Si tenía un contrato anterior,
+ *     la nueva no puede caer dentro.
  *   · El paso de la ETT a plantilla propia (el contrato anterior acaba justo el
  *     día antes): la frontera se mueve con él —el de la ETT acaba el día antes
  *     del nuevo alta— y lo que no puede tener es trabajo en los días que
@@ -1609,8 +1612,14 @@ async function cambiarAlta(id, { alta }, { usuarioId } = {}) {
       if (w && w.dia) throw new Error(`Trabajó el ${w.dia}, entre una fecha y otra: ese día cambiaría de contrato. No se puede mover el alta.`);
     } else {
       if (prev && dia <= prev.baja) throw new Error(`No puede ser el ${aEs(prev.baja)} ni antes: ese día aún seguía su contrato anterior.`);
-      const w = (await cli.query(SQL_PRIMER_TRABAJO, [id, menor, null])).rows[0];
-      if (w && w.dia) throw new Error(`Ya ha trabajado (el ${w.dia}): la fecha de alta solo se puede cambiar a quien todavía no ha trabajado.`);
+      // Retrasarla: ningún día trabajado puede quedarse antes de la nueva fecha,
+      // así que vale hasta su primer día con horas, incluido. Adelantarla, siempre.
+      if (dia > e.alta) {
+        const w = (await cli.query(SQL_PRIMER_TRABAJO, [id, e.alta, dia])).rows[0];
+        if (w && w.dia) {
+          throw new Error(`Trabajó el ${w.dia}: la fecha de alta puede ir como mucho hasta ese día, para que lo trabajado quede dentro de su contrato.`);
+        }
+      }
     }
 
     const conAntiguedad = !seguido && e.antiguedad != null && e.antiguedad === e.alta;
