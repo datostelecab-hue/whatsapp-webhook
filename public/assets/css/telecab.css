@@ -1405,7 +1405,9 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-chat-por-subir li.tc-chat-por-subir--error { border-color: rgb(var(--tc-red) / .55); }
 .tc-chat-por-subir .tc-chat-por-subir-error { color: rgb(var(--tc-red)); font-weight: 600; }
 .tc-chat--soltando { outline: 2px dashed rgb(var(--tc-gold) / .8); outline-offset: -6px; }
-.tc-chat-editar { margin-top: .15rem; }
+.tc-chat-editar { position: relative; margin-top: .15rem; }
+/* Las menciones al editar (17/11/2026): el desplegable, encima de la caja de editar. */
+.tc-chat-editar .tc-chat-sugerencias { left: 0; right: 0; bottom: calc(100% + .25rem); }
 .tc-chat-editar textarea {
   width: 100%; max-height: 16rem; padding: .5rem .7rem; resize: none; border-radius: .7rem; outline: none;
   font: inherit; font-size: .9rem; line-height: 1.45; color: rgb(var(--tc-text));

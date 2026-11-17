@@ -542,11 +542,13 @@
     if (texto) texto.replaceWith(caja); else art.querySelector('header') ? art.querySelector('header').after(caja) : art.prepend(caja);
     const ta = caja.querySelector('textarea');
     const crecer = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 260) + 'px'; };
+    const men = menciones(ta, caja, mapa, crecer);
     crecer();
     ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
     const deshacer = () => { editando = null; ponerMensaje(vistos.get(m.id) || m); };
     ta.addEventListener('input', () => { crecer(); if (editando && editando.id === m.id) editando.valor = ta.value; });
     ta.addEventListener('keydown', ev => {
+      if (men.teclado(ev)) return;
       if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); deshacer(); }
       if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); caja.requestSubmit(); }
     });
@@ -631,6 +633,73 @@
   }
 
   /**
+   * LAS MENCIONES AL ESCRIBIR «@», en cualquier caja (la de escribir y la de
+   * editar un mensaje: 17/11/2026, Camilo, «es cuando le da en editar mensaje»:
+   * al editar no salía nadie). `contenedor` lleva el desplegable (con position);
+   * `mapa` apunta «@Nombre» → id para mandarlo como <@id>.
+   * → { teclado(ev): true si la tecla era suya, cerrar() }
+   */
+  function menciones(ta, contenedor, mapa, crecer = () => {}) {
+    let sug = null, elegido = 0, desde = -1;
+    const cerrarSug = () => { if (sug) sug.remove(); sug = null; desde = -1; };
+    function pintarSug(lista_) {
+      if (!lista_.length) { cerrarSug(); return; }
+      if (!sug) { sug = document.createElement('ul'); sug.className = 'tc-chat-sugerencias'; sug.setAttribute('role', 'listbox'); contenedor.appendChild(sug); }
+      elegido = Math.min(elegido, lista_.length - 1);
+      sug.innerHTML = lista_.map((p, i) => `<li role="option" aria-selected="${i === elegido}" data-i="${i}">
+          ${p.id === 'canal' ? '<i class="fa-solid fa-bullhorn" aria-hidden="true"></i>' : `<span class="tc-avatar tc-avatar--chico" aria-hidden="true">${esc(iniciales(p.nombre))}</span>`}
+          <b>@${esc(p.nombre)}</b>${p.puesto ? `<small>${esc(p.puesto)}</small>` : ''}</li>`).join('');
+      sug._lista = lista_;
+    }
+    function buscarSug() {
+      const antes = ta.value.slice(0, ta.selectionStart);
+      const m = /(^|\s)@([^\s@]{0,30}(?:\s[^\s@]{0,30})?)$/.exec(antes);
+      if (!m) { cerrarSug(); return; }
+      desde = antes.length - m[2].length - 1;
+      const q = m[2].toLowerCase();
+      const lista_ = candidatos().filter(p => !q || p.nombre.toLowerCase().split(/\s+/).some(w => w.startsWith(q.split(/\s+/)[0]))
+        && p.nombre.toLowerCase().includes(q)).slice(0, 8);
+      pintarSug(lista_);
+    }
+    function elegir(i) {
+      const p = sug && sug._lista[i];
+      if (!p) return;
+      const visto = `@${p.nombre}`;
+      if (p.id !== 'canal') mapa.set(visto, p.id);
+      const fin = ta.selectionStart;
+      ta.value = ta.value.slice(0, desde) + visto + ' ' + ta.value.slice(fin);
+      const pos = desde + visto.length + 1;
+      ta.setSelectionRange(pos, pos);
+      cerrarSug();
+      ta.focus();
+      crecer();
+      // Que se entere quien escucha la caja (la edición a medias guarda lo escrito).
+      ta.dispatchEvent(new Event('input'));
+    }
+    ta.addEventListener('input', buscarSug);
+    contenedor.addEventListener('mousedown', ev => {
+      const li = ev.target.closest('.tc-chat-sugerencias li');
+      if (li && sug && sug.contains(li)) { ev.preventDefault(); elegir(Number(li.dataset.i)); }
+    });
+    ta.addEventListener('blur', () => setTimeout(cerrarSug, 150));
+    return {
+      teclado(ev) {
+        if (!sug) return false;
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          elegido = (elegido + (ev.key === 'ArrowDown' ? 1 : -1) + sug._lista.length) % sug._lista.length;
+          pintarSug(sug._lista);
+          return true;
+        }
+        if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); elegir(elegido); return true; }
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); cerrarSug(); return true; }
+        return false;
+      },
+      cerrar: cerrarSug,
+    };
+  }
+
+  /**
    * Prepara una caja de escribir. → { anadirFicheros(lista) } (para soltar ficheros encima).
    *
    * LOS FICHEROS, COMO EN SLACK (Camilo, 17/11/2026: «que el mensaje no aparezca
@@ -650,9 +719,8 @@
     const entrada = form.querySelector('[data-fichero]');
     const pista = form.querySelector('.tc-chat-pista');
     const pistaNormal = pista ? pista.textContent : '';
-    let sug = null, elegido = 0, desde = -1;
     const crecer = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; };
-    const cerrarSug = () => { if (sug) sug.remove(); sug = null; desde = -1; };
+    const men = menciones(ta, form, mapa, crecer);
 
     const nuevoBorrador = () => {
       const b = new Uint8Array(12);
@@ -716,57 +784,11 @@
       if (fs && fs.length) { ev.preventDefault(); anadirFicheros(fs); }
     });
 
-    function pintarSug(lista_) {
-      if (!lista_.length) { cerrarSug(); return; }
-      if (!sug) { sug = document.createElement('ul'); sug.className = 'tc-chat-sugerencias'; sug.setAttribute('role', 'listbox'); form.appendChild(sug); }
-      elegido = Math.min(elegido, lista_.length - 1);
-      sug.innerHTML = lista_.map((p, i) => `<li role="option" aria-selected="${i === elegido}" data-i="${i}">
-          ${p.id === 'canal' ? '<i class="fa-solid fa-bullhorn" aria-hidden="true"></i>' : `<span class="tc-avatar tc-avatar--chico" aria-hidden="true">${esc(iniciales(p.nombre))}</span>`}
-          <b>@${esc(p.nombre)}</b>${p.puesto ? `<small>${esc(p.puesto)}</small>` : ''}</li>`).join('');
-      sug._lista = lista_;
-    }
-    function buscarSug() {
-      const antes = ta.value.slice(0, ta.selectionStart);
-      const m = /(^|\s)@([^\s@]{0,30}(?:\s[^\s@]{0,30})?)$/.exec(antes);
-      if (!m) { cerrarSug(); return; }
-      desde = antes.length - m[2].length - 1;
-      const q = m[2].toLowerCase();
-      const lista_ = candidatos().filter(p => !q || p.nombre.toLowerCase().split(/\s+/).some(w => w.startsWith(q.split(/\s+/)[0]))
-        && p.nombre.toLowerCase().includes(q)).slice(0, 8);
-      pintarSug(lista_);
-    }
-    function elegir(i) {
-      const p = sug && sug._lista[i];
-      if (!p) return;
-      const visto = `@${p.nombre}`;
-      if (p.id !== 'canal') mapa.set(visto, p.id);
-      const fin = ta.selectionStart;
-      ta.value = ta.value.slice(0, desde) + visto + ' ' + ta.value.slice(fin);
-      const pos = desde + visto.length + 1;
-      ta.setSelectionRange(pos, pos);
-      cerrarSug();
-      ta.focus();
-      crecer();
-    }
-    ta.addEventListener('input', () => { crecer(); buscarSug(); });
+    ta.addEventListener('input', crecer);
     ta.addEventListener('keydown', ev => {
-      if (sug) {
-        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-          ev.preventDefault();
-          elegido = (elegido + (ev.key === 'ArrowDown' ? 1 : -1) + sug._lista.length) % sug._lista.length;
-          pintarSug(sug._lista);
-          return;
-        }
-        if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); elegir(elegido); return; }
-        if (ev.key === 'Escape') { ev.preventDefault(); cerrarSug(); return; }
-      }
+      if (men.teclado(ev)) return;
       if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); form.requestSubmit(); }
     });
-    form.addEventListener('mousedown', ev => {
-      const li = ev.target.closest('.tc-chat-sugerencias li');
-      if (li) { ev.preventDefault(); elegir(Number(li.dataset.i)); }
-    });
-    ta.addEventListener('blur', () => setTimeout(cerrarSug, 150));
     form.addEventListener('submit', async ev => {
       ev.preventDefault();
       if (enviando || !actual) return;
