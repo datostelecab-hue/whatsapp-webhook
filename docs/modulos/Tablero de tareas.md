@@ -133,6 +133,13 @@ await tablero.nacer(cli, { tipo, origenId, titulo, enlace, responsableId, plazoD
 await tablero.cerrarPorOrigen(cli, { tipo, origenId, autorId, nota: 'Aprobada' });
 ```
 
+Una **tarea a mano que nace de otra cosa** (con su aprobación, responsable y plazo), como un mensaje del [[Chat]] (2b, 17/11/2026): se registra el tipo con `aprobacion: true` y se crea con `crear`, que admite el origen y el enlace. Con `alCerrar`, el tipo decide qué pasa en su origen al cerrarla desde el tablero (el chat la cierra con `cerrarPorOrigen` y deja la respuesta en el hilo del mensaje):
+
+```js
+tablero.registrarTipo('mensaje', { etiqueta: 'Mensaje del chat', aprobacion: true, abrir: 'Abrir el mensaje', alCerrar });
+await tablero.crear(usuarioId, { titulo, descripcion, responsableId, plazoDias }, { tipo: 'mensaje', origenId, enlace });
+```
+
 ## Las tablas (db/251 y db/252)
 
 - `tarea`: la tarjeta, que se puede medir para el ítem 22 (fecha límite, cumplimiento, responsable por id, motivo de demora y enlace por id).

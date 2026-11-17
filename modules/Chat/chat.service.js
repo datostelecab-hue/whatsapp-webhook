@@ -1,11 +1,11 @@
 // ============================================================
-// EL CHAT INTERNO — ítem 2 de la hoja de ruta, entrega 2a (db/256)
+// EL CHAT INTERNO — ítem 2 de la hoja de ruta, entregas 2a y 2b (db/256, db/257)
 // ============================================================
 // «Reemplazar Slack por un chat dentro del ERP, con sus mismas funciones.» Solo
-// para la oficina. La 2a: canales públicos y privados, mensajes directos (de 1 a
-// 1 y de grupo), tiempo real, no leídos, menciones e hilos. Lo que decidió
-// Camilo el 17/11/2026:
+// para la oficina.
 //
+// LA 2a (17/11/2026): canales públicos y privados, mensajes directos (de 1 a 1 y
+// de grupo), tiempo real, no leídos, menciones e hilos. Lo que decidió Camilo:
 //   · LOS PÚBLICOS, DE TODA LA OFICINA, también los de bajas médicas, nóminas,
 //     RR. HH. y efectivo; y toda la oficina DENTRO de todos (quien llega
 //     después, entra solo: asegurarPublicos).
@@ -14,6 +14,22 @@
 //   · CREAN, ARCHIVAN Y RENOMBRAN CANALES los puestos de Dirección y Desarrollo
 //     (función de Organización «chat_canales»). A un privado añade gente
 //     quien está dentro; quita gente quien lo creó o quien lleva los canales.
+//
+// LA 2b (17/11/2026): adjuntos, reacciones, editar y anular, fijar y guardar,
+// formato, vista previa de enlaces y convertir en tarea. Lo que decidió Camilo:
+//   · REACCIONES: seis emojis fijos (EMOJIS).
+//   · EDITAR Y ANULAR LO PROPIO cuando se quiera y SIN MOTIVO, como Slack. Quien
+//     lleva los canales anula lo de otro, CON MOTIVO (lo ve el canal). Nada se
+//     borra: el texto queda en la fila y en el libro.
+//   · CONVERTIR EN TAREA como una tarea a mano del tablero: con su aprobación si
+//     quien la crea no aprueba. El mensaje lleva el sello; al cerrarla, la
+//     respuesta sale en su hilo, firmada por Telecab y mencionando a quien la creó.
+//   · FIJAR, cualquiera del canal; GUARDAR, cada uno lo suyo.
+//   · LOS FICHEROS van con el servicio de adjuntos (A6, R2): primero se manda el
+//     mensaje (con `conAdjuntos`) y luego se suben a él; solo su autor, y en la
+//     primera hora.
+//   · LA VISTA PREVIA DE UN ENLACE la lee el servidor después de mandar, con
+//     services/enlaces.js (protegido contra SSRF), y avisa cuando la tiene.
 //
 // LAS MENCIONES van en el texto como <@id> (una persona) y <!canal> (todo el
 // canal): así un nombre cambiado no rompe nada. Se apuntan en chat_mencion y
@@ -24,14 +40,18 @@
 // mención dentro de un hilo, sí.
 //
 // AL MOMENTO: cada mensaje avisa por el tiempo real (A7, canal «chat») a los
-// del canal y mueve sus contadores (A9). Las notificaciones al móvil llegan con
-// la 2c, junto al «no molestar».
+// del canal y mueve sus contadores (A9); cada cambio de un mensaje (editarlo,
+// una reacción, sus ficheros…) avisa con `tipo: 'cambio'`. Las notificaciones al
+// móvil llegan con la 2c, junto al «no molestar».
 'use strict';
 
 const libro = require('../../services/libro');
 const organizacion = require('../../services/organizacion');
 const contadores = require('../../services/contadores');
 const tiempoReal = require('../../services/tiempoReal');
+const adjuntos = require('../../services/adjuntos');
+const enlaces = require('../../services/enlaces');
+const tablero = require('../../services/tablero');
 const repo = require('./chat.repo');
 
 function conEstado(e, status) { e.status = status; return e; }
@@ -42,6 +62,9 @@ const texto = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
 const MAX_TEXTO = 8000;
 const MAX_DIRECTO = 9;   // como Slack: un directo de grupo, de hasta 9 personas
 const NO_ESTA = 'Ese canal no existe o no estás en él';
+const EMOJIS = ['ok', 'hecho', 'visto', 'gracias', 'risa', 'corazon'];
+const HORA_ADJUNTAR = 60 * 60 * 1000;   // los ficheros se suben a un mensaje en su primera hora
+const ANULADO_POR_AUTOR = 'Lo anuló quien lo escribió';
 
 // ── Quién es ───────────────────────────────────────────────────────────────
 // Lo de meterle en los públicos se hace una vez por persona y proceso (y otra
@@ -69,6 +92,14 @@ async function acceso(ctx, canalId, { cli = null } = {}) {
   return { canal: c, dentro };
 }
 
+/** Un mensaje (la fila entera) y su canal, si quien mira puede verlo. */
+async function delMensaje(ctx, mensajeId) {
+  const m = entero(mensajeId) ? await repo.mensajeCrudo(null, entero(mensajeId)) : null;
+  if (!m) throw error('Ese mensaje no existe', 404);
+  const { canal, dentro } = await acceso(ctx, m.canal_id);
+  return { m, canal, dentro, puedeEscribir: !canal.archivado_at && (dentro || canal.tipo === 'publico') };
+}
+
 // ── Lo que ve la pantalla ──────────────────────────────────────────────────
 function tituloDe(c, otros) {
   if (c.tipo !== 'directo') return c.nombre;
@@ -80,7 +111,7 @@ async function canales(usuarioId) {
   const ctx = await contexto(usuarioId);
   const [filas, puede] = await Promise.all([repo.canalesDe(ctx.id), puedeGestionar(ctx.id)]);
   return {
-    yo: { id: ctx.id, puedeCrear: puede },
+    yo: { id: ctx.id, puedeCrear: puede, gestiona: puede },
     canales: filas.map(c => ({
       id: Number(c.id), tipo: c.tipo, nombre: c.nombre, titulo: tituloDe(c, c.otros), tema: c.tema,
       sinLeer: c.sin_leer, menciones: c.menciones, miembros: c.miembros, ultimoAt: c.ultimo_mensaje_at,
@@ -93,33 +124,59 @@ async function canales(usuarioId) {
 async function ficha(usuarioId, canalId) {
   const ctx = await contexto(usuarioId);
   const { canal: c, dentro } = await acceso(ctx, canalId);
-  const [gente, gestiona] = await Promise.all([repo.miembros(null, c.id), puedeGestionar(ctx.id)]);
+  const [gente, gestiona, fijados] = await Promise.all([repo.miembros(null, c.id), puedeGestionar(ctx.id), repo.cuantosFijados(c.id)]);
   const otros = c.tipo === 'directo' ? gente.filter(p => Number(p.id) !== ctx.id) : null;
   return {
     id: Number(c.id), tipo: c.tipo, nombre: c.nombre, titulo: tituloDe(c, otros), tema: c.tema, descripcion: c.descripcion,
     creadoPor: c.creado_por_nombre || null, creadoAt: c.creado_at, archivado: !!c.archivado_at,
     miembros: gente.map(p => ({ id: Number(p.id), nombre: p.nombre, puesto: p.puesto })),
-    dentro,
+    dentro, fijados,
     puede: {
       escribir: !c.archivado_at && (dentro || c.tipo === 'publico'),
       anadir: c.tipo === 'privado' && !c.archivado_at && (dentro || gestiona),
       quitar: c.tipo === 'privado' && !c.archivado_at && (gestiona || c.creado_por === ctx.id),
+      anularDeOtros: gestiona,
     },
   };
 }
 
-async function conMenciones(filas) {
-  const m = await repo.mencionesDe(filas.map(x => Number(x.id)));
-  return filas.map(x => publico(x, m.get(Number(x.id))));
-}
-function publico(x, menciones) {
-  return {
-    id: Number(x.id), canalId: Number(x.canal_id), autorId: x.autor_id, autor: x.autor || 'Telecab',
-    padreId: x.padre_id ? Number(x.padre_id) : null, creadoAt: x.creado_at,
-    texto: x.texto, anulado: !!x.anulado_at, editado: !!x.editado_at,
-    respuestas: x.respuestas, ultimaRespuestaAt: x.ultima_respuesta_at,
-    menciones: menciones || { usuarios: [], todos: false },
-  };
+/**
+ * Los mensajes como los pinta la pantalla, con todo lo suyo: menciones,
+ * reacciones, ficheros, la vista previa del enlace, si está fijado, si quien
+ * mira lo tiene guardado y la tarjeta del tablero. Una consulta por cosa, no
+ * por mensaje.
+ */
+async function completar(filas, ctx) {
+  const ids = filas.map(x => Number(x.id));
+  const urls = [...new Set(filas.map(x => x.enlace_url).filter(Boolean))];
+  const [menciones, reacciones, fijados, guardados, tareas, ficheros, previas] = await Promise.all([
+    repo.mencionesDe(ids), repo.reaccionesDe(ids), repo.fijadosDe(ids), repo.guardadosEntre(ctx.id, ids),
+    repo.tareasDe(ids), repo.adjuntosDe(ids), repo.enlacesDe(urls),
+  ]);
+  return filas.map(x => {
+    const id = Number(x.id);
+    const anulado = !!x.anulado_at;
+    const previa = !anulado && x.enlace_url ? previas.get(x.enlace_url) : null;
+    const t = tareas.get(id);
+    return {
+      id, canalId: Number(x.canal_id), autorId: x.autor_id, autor: x.autor || 'Telecab',
+      padreId: x.padre_id ? Number(x.padre_id) : null, creadoAt: x.creado_at,
+      texto: x.texto, editado: !!x.editado_at, evento: x.evento || null,
+      anulado: anulado ? { porAutor: x.anulado_por === x.autor_id, por: x.anulado_por_nombre || null, motivo: x.anulado_motivo || null } : null,
+      respuestas: x.respuestas, ultimaRespuestaAt: x.ultima_respuesta_at,
+      menciones: menciones.get(id) || { usuarios: [], todos: false },
+      conAdjuntos: !!x.con_adjuntos,
+      adjuntos: anulado ? [] : (ficheros.get(id) || []).map(a => ({
+        id: Number(a.id), nombre: a.nombre, mime: a.mime, clase: adjuntos.claseDe(a.mime), bytes: Number(a.bytes),
+        creadoAt: a.creado_at, url: `/adjuntos/${a.id}/fichero`,
+      })),
+      reacciones: anulado ? [] : (reacciones.get(id) || []).map(r => ({ emoji: r.emoji, n: r.usuarios.length, mia: r.usuarios.includes(ctx.id), nombres: r.nombres })),
+      enlace: previa ? { url: previa.url, titulo: previa.titulo, descripcion: previa.descripcion, sitio: previa.sitio } : null,
+      fijado: fijados.has(id) && !anulado ? { por: fijados.get(id) } : null,
+      guardado: guardados.has(id),
+      tarea: t ? { id: Number(t.id), estado: t.estado, titulo: t.titulo, responsable: t.responsable || null, venceEl: t.vence_el } : null,
+    };
+  });
 }
 
 /**
@@ -136,16 +193,16 @@ async function mensajes(usuarioId, canalId, { antes = null, despues = null } = {
   filas = filas.slice(0, LIMITE);
   if (despues == null) filas.reverse();
   const yo = await repo.miembro(null, c.id, ctx.id);
-  return { mensajes: await conMenciones(filas), hayMas, ultimoLeido: yo ? Number(yo.ultimo_leido_id) : 0 };
+  return { mensajes: await completar(filas, ctx), hayMas, ultimoLeido: yo ? Number(yo.ultimo_leido_id) : 0 };
 }
 
-/** Un mensaje (para refrescar las respuestas de un hilo que acaba de crecer). */
+/** Un mensaje (para refrescar uno que cambió, o un hilo que acaba de crecer). */
 async function uno(usuarioId, mensajeId) {
   const ctx = await contexto(usuarioId);
   const m = entero(mensajeId) ? await repo.mensaje(null, entero(mensajeId)) : null;
   if (!m) throw error('Ese mensaje no existe', 404);
   await acceso(ctx, m.canal_id);
-  return { mensaje: (await conMenciones([m]))[0] };
+  return { mensaje: (await completar([m], ctx))[0] };
 }
 
 /** Un hilo: el mensaje de arriba y sus respuestas. */
@@ -155,23 +212,48 @@ async function hilo(usuarioId, mensajeId) {
   if (!raiz) throw error('Ese mensaje no existe', 404);
   if (raiz.padre_id) raiz = await repo.mensaje(null, Number(raiz.padre_id));
   await acceso(ctx, raiz.canal_id);
-  const [r] = await conMenciones([raiz]);
-  return { raiz: r, respuestas: await conMenciones(await repo.respuestas(Number(raiz.id))) };
+  const [r] = await completar([raiz], ctx);
+  return { raiz: r, respuestas: await completar(await repo.respuestas(Number(raiz.id)), ctx) };
 }
 
 // ── Escribir ───────────────────────────────────────────────────────────────
+/** El texto de un mensaje, limpio: saltos de línea de siempre, sin espacios a los lados. */
+const limpiarTexto = v => String(v == null ? '' : v).replace(/\r\n/g, '\n').trim();
+
+/** El primer enlace del texto, si se puede leer su vista previa; si no, null. */
+function primerEnlace(t) {
+  const m = /\bhttps?:\/\/[^\s<>]+[^\s<>.,;:!?)\]'"]/.exec(String(t || ''));
+  if (!m) return null;
+  try { return enlaces.urlValida(m[0]).url.toString().slice(0, 2000); } catch (_) { return null; }
+}
+
+/**
+ * A quién menciona un texto: las personas (<@id>) de la oficina que pueden
+ * leerlo (en un privado o un directo, las de dentro) y si avisa a todo el canal.
+ */
+async function mencionadosDe(t, c, autorId, dentroAhora) {
+  const ids = [...new Set([...t.matchAll(/<@(\d{1,9})>/g)].map(m => Number(m[1])))]
+    .filter(u => u !== autorId && (c.tipo === 'publico' || dentroAhora.has(u)));
+  const usuarios = [];
+  for (const u of ids) if (await repo.esDeLaOficina(u)) usuarios.push(u);
+  return { usuarios, todos: /<!canal>/.test(t) };
+}
+
 /**
  * Un mensaje (o la respuesta de un hilo con `padreId`). Las menciones van en
  * el texto: <@id> y <!canal>. En un privado o un directo solo cuenta la
- * mención a quien está dentro (el resto no lo podría leer).
+ * mención a quien está dentro (el resto no lo podría leer). Con `conAdjuntos`
+ * (cuántos ficheros van a subirse a él), el texto puede ir vacío.
  */
-async function enviar(usuarioId, canalId, { texto: txt, padreId = null } = {}) {
+async function enviar(usuarioId, canalId, { texto: txt, padreId = null, conAdjuntos = 0 } = {}) {
   const ctx = await contexto(usuarioId);
-  const t = String(txt == null ? '' : txt).replace(/\r\n/g, '\n').trim();
-  if (!t) throw error('Escribe el mensaje');
+  const t = limpiarTexto(txt);
+  const ficheros = Math.max(0, Math.min(20, Number(conAdjuntos) || 0));
+  if (!t && !ficheros) throw error('Escribe el mensaje');
   if (t.length > MAX_TEXTO) throw error(`Un mensaje no puede pasar de ${MAX_TEXTO} caracteres`);
   const { canal: c, dentro } = await acceso(ctx, canalId);
   if (c.archivado_at) throw error('Ese canal está archivado: ya no se escribe en él', 409);
+  const enlaceUrl = primerEnlace(t);
 
   const r = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'alta' }, async cli => {
     // Escribir en un público del que salió le vuelve a meter.
@@ -182,17 +264,14 @@ async function enviar(usuarioId, canalId, { texto: txt, padreId = null } = {}) {
       if (!p || Number(p.canal_id) !== Number(c.id)) throw error('Ese hilo no es de este canal', 404);
       padre = p.padre_id ? Number(p.padre_id) : Number(p.id);
     }
-    const id = await repo.escribir(cli, { canalId: c.id, autorId: ctx.id, padreId: padre, texto: t });
+    const id = await repo.escribir(cli, { canalId: c.id, autorId: ctx.id, padreId: padre, texto: t, conAdjuntos: ficheros > 0, enlaceUrl });
     const dentroAhora = new Set(await repo.idsMiembros(cli, c.id));
-    const mencionados = [...new Set([...t.matchAll(/<@(\d{1,9})>/g)].map(m => Number(m[1])))]
-      .filter(u => u !== ctx.id && (c.tipo === 'publico' || dentroAhora.has(u)));
-    const deLaOficina = [];
-    for (const u of mencionados) if (await repo.esDeLaOficina(u)) deLaOficina.push(u);
-    const todos = /<!canal>/.test(t);
-    if (deLaOficina.length || todos) await repo.mencionar(cli, id, { usuarios: deLaOficina, todos });
+    const men = await mencionadosDe(t, c, ctx.id, dentroAhora);
+    if (men.usuarios.length || men.todos) await repo.mencionar(cli, id, men);
     return { id, padre, para: [...dentroAhora] };
   });
   avisar(c.id, r.para, { id: r.id, padre: r.padre });
+  prepararEnlace(enlaceUrl, { canalId: c.id, para: r.para, id: r.id, padre: r.padre });
   return (await uno(ctx.id, r.id));
 }
 
@@ -205,6 +284,212 @@ async function leido(usuarioId, canalId, { hasta } = {}) {
   contadores.cambio('chat', { para: [ctx.id] });
   return { ultimoLeido: n };
 }
+
+// ── Editar y anular (2b) ───────────────────────────────────────────────────
+/**
+ * Cambia el texto de un mensaje propio. Sale «(editado)»; lo de antes queda en
+ * el libro. Una mención nueva avisa; la que se quita no se des-avisa.
+ */
+async function editar(usuarioId, mensajeId, { texto: txt } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { m, canal: c } = await delMensaje(ctx, mensajeId);
+  if (Number(m.autor_id) !== ctx.id) throw error('Solo quien lo escribió puede editarlo', 403);
+  if (m.anulado_at) throw error('Ese mensaje está anulado', 409);
+  if (m.evento) throw error('Ese mensaje lo puso el sistema: no se edita', 409);
+  if (c.archivado_at) throw error('Ese canal está archivado', 409);
+  const t = limpiarTexto(txt);
+  if (!t && !m.con_adjuntos) throw error('Escribe el mensaje (o anúlalo)');
+  if (t.length > MAX_TEXTO) throw error(`Un mensaje no puede pasar de ${MAX_TEXTO} caracteres`);
+  if (t === m.texto) return uno(ctx.id, m.id);
+  const enlaceUrl = primerEnlace(t);
+  const para = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'cambio' }, async cli => {
+    await repo.editar(cli, m.id, { texto: t, enlaceUrl });
+    const dentroAhora = new Set(await repo.idsMiembros(cli, c.id));
+    const men = await mencionadosDe(t, c, ctx.id, dentroAhora);
+    if (men.usuarios.length || men.todos) await repo.mencionar(cli, m.id, men);
+    return [...dentroAhora];
+  });
+  avisarCambio(c.id, para, { id: Number(m.id), padre: m.padre_id, contar: true });
+  if (enlaceUrl !== m.enlace_url) prepararEnlace(enlaceUrl, { canalId: c.id, para, id: Number(m.id), padre: m.padre_id });
+  return uno(ctx.id, m.id);
+}
+
+/**
+ * Anula un mensaje: deja de verse su texto (sale «Mensaje anulado») y se queda
+ * en la fila y en el libro. Lo propio, sin motivo; lo de otro, solo quien lleva
+ * los canales y con motivo, que ve el canal.
+ */
+async function anular(usuarioId, mensajeId, { motivo } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { m, canal: c } = await delMensaje(ctx, mensajeId);
+  const propio = Number(m.autor_id) === ctx.id;
+  if (!propio && !await puedeGestionar(ctx.id)) throw error('Solo quien lo escribió, o quien lleva los canales, puede anularlo', 403);
+  if (m.anulado_at) throw error('Ese mensaje ya estaba anulado', 409);
+  const mot = texto(motivo, 500);
+  if (!propio && mot.length < 3) throw error('Di por qué lo anulas (al menos 3 letras): lo verá el canal');
+  const porque = mot || ANULADO_POR_AUTOR;
+  await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'anulacion', motivo: porque }, async cli => {
+    if (!await repo.anular(cli, m.id, { por: ctx.id, motivo: porque })) throw error('Ese mensaje ya estaba anulado', 409);
+  });
+  avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id, contar: true, fijados: true });
+  return uno(ctx.id, m.id);
+}
+
+// ── Reacciones, fijar y guardar (2b) ───────────────────────────────────────
+/** Pone una de las seis reacciones, o la quita si ya la tenía. */
+async function reaccionar(usuarioId, mensajeId, { emoji } = {}) {
+  const ctx = await contexto(usuarioId);
+  if (!EMOJIS.includes(String(emoji))) throw error('Esa reacción no existe');
+  const { m, canal: c, puedeEscribir } = await delMensaje(ctx, mensajeId);
+  if (m.anulado_at) throw error('Ese mensaje está anulado', 409);
+  if (!puedeEscribir) throw error('Ese canal está archivado', 409);
+  await repo.reaccionar(null, m.id, ctx.id, String(emoji));
+  avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id });
+  return uno(ctx.id, m.id);
+}
+
+/** Fija un mensaje en su canal (o lo desfija). Cualquiera del canal; queda quién. */
+async function fijar(usuarioId, mensajeId, { fijar: si = true } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { m, canal: c, puedeEscribir } = await delMensaje(ctx, mensajeId);
+  if (!puedeEscribir) throw error('Ese canal está archivado', 409);
+  if (si && m.anulado_at) throw error('Ese mensaje está anulado', 409);
+  const hecho = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: si ? 'alta' : 'baja' },
+    cli => (si ? repo.fijar(cli, m.id, c.id, ctx.id) : repo.desfijar(cli, m.id, ctx.id)));
+  if (!hecho) throw error(si ? 'Ya estaba fijado' : 'No estaba fijado', 409);
+  avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id, fijados: true });
+  return uno(ctx.id, m.id);
+}
+
+/** Lo fijado en un canal, lo último primero. */
+async function fijados(usuarioId, canalId) {
+  const ctx = await contexto(usuarioId);
+  const { canal: c } = await acceso(ctx, canalId);
+  return { mensajes: await completar(await repo.fijadosCanal(c.id), ctx) };
+}
+
+/** Guarda un mensaje para luego (o deja de guardarlo). Solo lo ve quien lo guarda. */
+async function guardar(usuarioId, mensajeId, { guardar: si = true } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { m } = await delMensaje(ctx, mensajeId);
+  if (si && m.anulado_at) throw error('Ese mensaje está anulado', 409);
+  await repo.guardar(null, ctx.id, m.id, !!si);
+  return uno(ctx.id, m.id);
+}
+
+/** Lo que tiene guardado, de los canales que aún puede ver. */
+async function guardados(usuarioId) {
+  const ctx = await contexto(usuarioId);
+  const filas = await repo.guardadosDe(ctx.id);
+  const hechos = await completar(filas, ctx);
+  return { mensajes: hechos.map((m, i) => ({ ...m, canal: { id: m.canalId, tipo: filas[i].canal_tipo, nombre: filas[i].canal_nombre } })) };
+}
+
+// ── Los ficheros de un mensaje (2b, con el servicio de adjuntos A6) ────────
+// Se ven si se ve el mensaje; los sube su autor en la primera hora (el mensaje
+// se manda antes, con `conAdjuntos`); los quita su autor o quien lleva los canales.
+async function puedeFichero(cual, quien, duenoId) {
+  try {
+    const ctx = await contexto(quien && quien.id);
+    const { m } = await delMensaje(ctx, duenoId);
+    if (m.anulado_at) return false;
+    if (cual === 'ver') return true;
+    const propio = Number(m.autor_id) === ctx.id;
+    if (cual === 'adjuntar') return propio && m.con_adjuntos && Date.now() - new Date(m.creado_at).getTime() < HORA_ADJUNTAR;
+    return propio || await puedeGestionar(ctx.id);
+  } catch (_) {
+    return false;
+  }
+}
+adjuntos.registrarDueno('chat_mensaje', {
+  etiqueta: 'Mensaje del chat',
+  ver: (quien, id) => puedeFichero('ver', quien, id),
+  adjuntar: (quien, id) => puedeFichero('adjuntar', quien, id),
+  anular: (quien, id) => puedeFichero('anular', quien, id),
+});
+
+/** El autor ya subió sus ficheros: que lo vean los demás. */
+async function adjuntosListos(usuarioId, mensajeId) {
+  const ctx = await contexto(usuarioId);
+  const { m, canal: c } = await delMensaje(ctx, mensajeId);
+  if (Number(m.autor_id) !== ctx.id) throw error('Solo quien lo escribió', 403);
+  avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id });
+  return uno(ctx.id, m.id);
+}
+
+// ── La vista previa de los enlaces (2b) ────────────────────────────────────
+// Se lee después de mandar, sin hacer esperar a nadie, y una sola vez por
+// enlace a la semana. Cuando está, se avisa al canal y la pantalla la pinta.
+const SEMANA = 7 * 86400 * 1000;
+let leerPrevia = enlaces.vistaPrevia;
+const pendientes = new Set();
+function prepararEnlace(url, { canalId, para, id, padre }) {
+  if (!url || !leerPrevia) return;
+  const trabajo = (async () => {
+    const ya = await repo.enlace(url);
+    if (ya && Date.now() - new Date(ya.leido_at).getTime() < SEMANA) return;
+    let v = null, estado = 'error';
+    try { v = await leerPrevia(url); estado = v ? 'ok' : 'nada'; } catch (_) { estado = 'error'; }
+    await repo.guardarEnlace(url, { estado, titulo: v && v.titulo, descripcion: v && v.descripcion, sitio: v && v.sitio });
+    if (estado === 'ok') avisarCambio(canalId, para, { id, padre });
+  })().catch(e => console.error('❌ [Chat] vista previa de un enlace:', e.message))
+    .finally(() => pendientes.delete(trabajo));
+  pendientes.add(trabajo);
+}
+
+// ── Convertir en tarea (2b; el primer criterio del ítem 1) ─────────────────
+/**
+ * Una tarjeta del tablero a partir de un mensaje: como una tarea a mano (con
+ * responsable, plazo y, si quien la crea no aprueba, aprobación). Una por
+ * mensaje. El mensaje lleva su sello y la tarjeta, el enlace al mensaje.
+ */
+async function convertirEnTarea(usuarioId, mensajeId, { titulo, descripcion, responsableId, plazoDias, venceEl } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { m, canal: c } = await delMensaje(ctx, mensajeId);
+  if (m.anulado_at) throw error('Ese mensaje está anulado', 409);
+  const ya = (await repo.tareasDe([Number(m.id)])).get(Number(m.id));
+  if (ya && ya.estado !== 'anulada') throw error('Ese mensaje ya es una tarea', 409);
+  const enlace = `/chat?canal=${c.id}&mensaje=${m.id}`;
+  let tarjeta;
+  try {
+    tarjeta = await tablero.crear(ctx.id, { titulo, descripcion, responsableId, plazoDias, venceEl }, { tipo: 'mensaje', origenId: String(m.id), enlace });
+  } catch (e) {
+    if (e.code === '23505') throw error('Ese mensaje ya es una tarea', 409);
+    throw e;
+  }
+  avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id });
+  return { tarea: tarjeta, ...(await uno(ctx.id, m.id)) };
+}
+
+// Al cerrarla desde el tablero: se cierra, y la respuesta sale en el hilo del
+// mensaje, firmada por Telecab (quien la cierra puede no estar en el canal) y
+// mencionando a quien la creó, que así se entera.
+tablero.registrarTipo('mensaje', {
+  etiqueta: 'Mensaje del chat', aprobacion: true, abrir: 'Abrir el mensaje',
+  async alCerrar(t, { quien, nota }) {
+    const mid = entero(t.origen_id);
+    const m = mid ? await repo.mensajeCrudo(null, mid) : null;
+    const creador = entero(t.creada_por);
+    let nueva = null;
+    await libro.conFirma({ usuarioId: quien.id, origen: 'chat', accion: 'cierre', motivo: nota }, async cli => {
+      await tablero.cerrarPorOrigen(cli, { tipo: 'mensaje', origenId: String(t.origen_id), autorId: quien.id, nota });
+      if (!m) return;
+      const c = await repo.canal(cli, Number(m.canal_id));
+      const dentro = new Set(await repo.idsMiembros(cli, c.id));
+      const avisa = creador && (c.tipo === 'publico' || dentro.has(creador)) ? creador : null;
+      const quienCierra = await repo.nombreDe(cli, quien.id);
+      const txt = `${avisa ? `<@${avisa}> ` : ''}Tarea hecha: «${t.titulo}»${quienCierra ? `, la cerró ${quienCierra}` : ''}.\n${nota}`.slice(0, MAX_TEXTO);
+      const padre = m.padre_id ? Number(m.padre_id) : Number(m.id);
+      const id = await repo.escribir(cli, { canalId: c.id, autorId: null, padreId: padre, texto: txt, evento: 'tarea_cerrada' });
+      if (avisa) await repo.mencionar(cli, id, { usuarios: [avisa] });
+      nueva = { id, padre, canal: Number(c.id), para: [...dentro] };
+    });
+    if (nueva) {
+      avisar(nueva.canal, nueva.para, { id: nueva.id, padre: nueva.padre });
+      avisarCambio(nueva.canal, nueva.para, { id: mid, padre: m.padre_id });
+    }
+  },
+});
 
 // ── Canales, directos y miembros ───────────────────────────────────────────
 /** El nombre de un canal, como en Slack: minúsculas, sin tildes ni espacios. */
@@ -305,6 +590,19 @@ function avisar(canalId, para, { id, padre }) {
     console.error('❌ [Chat] al avisar de un mensaje:', e.message);
   }
 }
+/**
+ * Un mensaje cambió (editado, anulado, una reacción, sus ficheros, su enlace,
+ * fijado, su tarjeta): que lo vuelvan a pedir. `contar`: cambian los no leídos
+ * o las menciones; `fijados`: cambia la cuenta de fijados del canal.
+ */
+function avisarCambio(canalId, para, { id, padre = null, contar = false, fijados: f = false }) {
+  try {
+    tiempoReal.publicar('chat', { canal: Number(canalId), tipo: 'cambio', id: Number(id), padre: padre ? Number(padre) : null, fijados: !!f }, { para });
+    if (contar) contadores.cambio('chat', { para });
+  } catch (e) {
+    console.error('❌ [Chat] al avisar de un cambio:', e.message);
+  }
+}
 
 // Los números del menú (A9): en rojo, los directos sin leer y las menciones; si
 // no hay, en azul lo que haya sin leer en los canales.
@@ -323,10 +621,16 @@ contadores.registrarFuente('chat', {
   },
 });
 
-/** Para las pruebas: olvidar a quién ya se metió en los públicos. */
+// ── Para las pruebas ───────────────────────────────────────────────────────
+/** Olvidar a quién ya se metió en los públicos. */
 const olvidar = () => asegurados.clear();
+/** Cambiar cómo se lee la vista previa (no hay red en las pruebas); null la apaga. */
+const usarVistaPrevia = fn => { leerPrevia = fn === undefined ? enlaces.vistaPrevia : fn; };
+/** Esperar a que acaben las vistas previas que se están leyendo. */
+const esperarPendientes = () => Promise.all([...pendientes]);
 
 module.exports = {
   canales, ficha, mensajes, uno, hilo, enviar, leido, crearCanal, directo, anadir, quitar, personas,
-  nombreDeCanal, olvidar,
+  editar, anular, reaccionar, fijar, fijados, guardar, guardados, adjuntosListos, convertirEnTarea,
+  nombreDeCanal, primerEnlace, EMOJIS, olvidar, usarVistaPrevia, esperarPendientes,
 };

@@ -259,9 +259,11 @@ async function escribir(ctx, id, { accion, motivo } = {}, fn) {
 /**
  * Una tarea a mano: para otra persona o para uno mismo, con responsable y
  * plazo. Espera la aprobación de «tareas_aprueba», salvo que la cree él.
+ * Otro tipo con aprobación (un mensaje del chat, 2b) la crea igual, con su
+ * `origenId` y el `enlace` a lo de origen.
  *   → la tarjeta
  */
-async function crear(usuarioId, { titulo, descripcion, responsableId, plazoDias, venceEl } = {}, { tipo = 'manual', origenId = null } = {}) {
+async function crear(usuarioId, { titulo, descripcion, responsableId, plazoDias, venceEl } = {}, { tipo = 'manual', origenId = null, enlace = null } = {}) {
   const ctx = await contexto(usuarioId);
   const tit = texto(titulo, 200);
   if (!tit) throw error('Ponle un título a la tarea');
@@ -270,7 +272,7 @@ async function crear(usuarioId, { titulo, descripcion, responsableId, plazoDias,
   const conAprobacion = tipoDe(tipo).aprobacion && !ctx.aprueba;
   const id = await libro.conFirma({ usuarioId: ctx.id, origen: 'tablero', accion: 'alta' }, async cli => {
     const nueva = await repo.insertar(cli, {
-      tipo, origenId, titulo: tit, descripcion: texto(descripcion, 4000) || null,
+      tipo, origenId, titulo: tit, descripcion: texto(descripcion, 4000) || null, enlace,
       estado: conAprobacion ? 'por_aprobar' : 'por_hacer', responsableId: resp.id, creadaPor: ctx.id,
       // Por aprobar, el plazo queda pedido en días y cuenta al aprobarla.
       plazoDias: plazo.plazoDias, venceEl: conAprobacion ? null : plazo.venceEl, plazoDesde: conAprobacion ? null : new Date(),

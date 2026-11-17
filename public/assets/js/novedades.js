@@ -39,7 +39,7 @@
           texto: 'Todo lo que tienes que hacer, en columnas, con su plazo en días hábiles y su semáforo. Las J, las −J, las correcciones de fichaje y las vacaciones llegan solas a quien las resuelve, y se cierran solas al resolverlas.',
           enlace: { href: '/tablero', texto: 'Abrir mi tablero' } },
         { icono: 'fa-message', tono: 'acento', titulo: 'El chat de la oficina',
-          texto: 'Los canales de Slack, ahora dentro de Telecab: escribe en un canal, a una persona o a un grupo, responde en hilos y menciona con @. Llega al momento, sin recargar.',
+          texto: 'Los canales de Slack, ahora dentro de Telecab: escribe en un canal, a una persona o a un grupo, responde en hilos y menciona con @. Adjunta ficheros, reacciona, guarda y fija mensajes, y convierte uno en tarea del tablero. Llega al momento, sin recargar.',
           enlace: { href: '/chat', texto: 'Abrir el chat' } },
         { icono: 'fa-bell', tono: 'celeste', titulo: 'La campana, con tus avisos',
           texto: 'Cuando otro departamento hace algo que te toca (una cita del taller, por ejemplo), te llega un aviso a la campana. Lo marcas como leído o, cuando está hecho, como resuelto, y desaparece para todo tu equipo.' },

@@ -1,11 +1,12 @@
 <%#
-  EL CHAT INTERNO (ítem 2, entrega 2a, db/256) — el Slack de la oficina dentro
-  del ERP.
+  EL CHAT INTERNO (ítem 2, entregas 2a y 2b, db/256 y db/257) — el Slack de la
+  oficina dentro del ERP.
 
   A la izquierda, los canales y los mensajes directos, con lo que hay sin leer;
   a la derecha, la conversación elegida. Los hilos se abren al lado (Panel).
   En el móvil, una cosa o la otra. Todo con piezas globales: Panel, Dialogo,
-  Api, TiempoReal y las clases .tc-* (las del chat, .tc-chat*, en telecab.css).
+  Api, TiempoReal, Adjuntos (los ficheros, 2b) y las clases .tc-* (las del chat,
+  .tc-chat*, en telecab.css).
 %>
 
 <div class="tc-chat" id="chat" data-vista="lista">
@@ -13,6 +14,9 @@
     <div class="tc-chat-lado-cabeza">
       <h2>Chat</h2>
       <div class="flex items-center gap-1.5">
+        <button type="button" class="tc-boton tc-boton--chico" id="chat-guardados" title="Lo que has guardado" aria-label="Guardados">
+          <i class="fa-regular fa-bookmark" aria-hidden="true"></i>
+        </button>
         <button type="button" class="tc-boton tc-boton--chico" id="chat-directo" title="Nuevo mensaje directo" aria-label="Nuevo mensaje directo">
           <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
         </button>
@@ -37,4 +41,5 @@
 </div>
 
 <script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Chat/chat.js') %>"></script>
