@@ -50,6 +50,18 @@ router.get('/api/panel', async (req, res) => {
   }
 });
 
+// Cómo va cada zona en el mes (abajo de todo). Aparte: es el informe del mes
+// entero y tiene su propia caché de una hora (services/inicio.js, zonas).
+router.get('/api/zonas', async (req, res) => {
+  if (!veCifras(res)) return res.status(403).json({ status: 'error', msg: 'Sin permiso para las cifras' });
+  try {
+    res.json({ status: 'ok', ...(await inicio.zonas()) });
+  } catch (error) {
+    console.error('❌ [INICIO] zonas:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
 // Los conectados de ahora, por turno. Aparte del panel y sin su caché: es lo
 // único de Inicio que cambia cada pocos segundos, y la pantalla lo pide sola
 // cada 10 s.

@@ -517,8 +517,40 @@ async function panelCacheado({ forzar = false } = {}) {
   return { ...datos, calculadoAt: Date.now(), edadMs: 0 };
 }
 
+// ── CÓMO VA CADA ZONA (17/11/2026) ──────────────────────────────────────────
+// Abajo de todo en Inicio: horas hechas contra las que debía hacer cada zona en
+// el mes, hasta ayer, con las reglas del informe de rendimiento de Control
+// (modules/Control/rendimiento.service.js, resumenZonas) y la zona de cada
+// coche cada día (db/264). Es el informe del mes entero: pesa más que el panel,
+// y como solo llega hasta ayer apenas cambia en el día. Se guarda UNA HORA y,
+// pasada, se sirve lo guardado y se rehace por detrás; al cambiar de día se
+// espera al nuevo. Varios a la vez esperan al MISMO cálculo.
+const ZONAS_FRESCO = 60 * 60 * 1000;
+let cacheZonas = null;     // { datos, ts, dia }
+let zonasEnVuelo = null;
+
+function recalcularZonas(dia) {
+  if (zonasEnVuelo) return zonasEnVuelo;
+  zonasEnVuelo = require('../modules/Control/rendimiento.service').resumenZonas({ hoy: dia })
+    .then(datos => { cacheZonas = { datos, ts: Date.now(), dia }; return datos; })
+    .finally(() => { zonasEnVuelo = null; });
+  return zonasEnVuelo;
+}
+
+async function zonas() {
+  const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  if (cacheZonas && cacheZonas.dia === dia) {
+    const edad = Date.now() - cacheZonas.ts;
+    if (edad >= ZONAS_FRESCO) recalcularZonas(dia).catch(e => console.error('❌ [INICIO] zonas en segundo plano:', e.message));
+    return { ...cacheZonas.datos, calculadoAt: cacheZonas.ts };
+  }
+  const datos = await recalcularZonas(dia);
+  return { ...datos, calculadoAt: Date.now() };
+}
+
 module.exports = {
   panel: panelCacheado,
+  zonas,
   conectadosPorTurno,
   noEfectivas, kilometros, jornadaDe, diaMenos, JORNADA_DEFECTO,
   // Solo para las pruebas: lo que habría dejado el panel del turno en curso.

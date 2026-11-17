@@ -51,3 +51,15 @@ La gente y sus horas salen de **la misma carga** que el total y los «X conducto
 Después, **los kilómetros por turno** sin tocar (*«la de los KM está perfecta»*) y, abajo y en pequeño, **el resto**: hoy por día natural, la semana, el neto y la utilización del mes y las horas **no efectivas** (lo que faltó para la jornada de quien debía salir, por persona y sin compensar, solo de jornadas cerradas, de `bitacora_horas`).
 
 Las gráficas son SVG propio, sin librerías, con los colores del tema (`--tc-*`), para que el inicio cargue al momento.
+
+## Cómo va cada zona (17/11/2026)
+
+Camilo: *«en inicio, en la parte de abajo abajo, pon el resumen de cómo va cada zona: Canillejas 450 h de 500 que debía hacer, Alcorcón, etc. Si el coche no tiene CT, esos días no suman horas que debía hacer… si no había nadie, esas 8 horas se perdieron… si hoy el coche pasa de Alcobendas a Canillejas, en el lapso de esa fecha debían hacer tantas horas hasta que se cambió. Lo mismo cuando se pone en taller… es un resumen, más no gráficos complejos, algo sencillo y ejecutivo»*.
+
+Abajo de todo, una fila por zona (y el total): **las horas que hizo contra las que debía hacer**, su porcentaje con el color de la meta y una barra fina. Debajo, en pequeño, los coches, lo que debe en todo el mes, las horas de turnos sin nadie y los días de taller o parado.
+
+- **Días cerrados, hasta ayer a las 24:00** (Camilo: *«¿es en vivo o día cerrado?»*). Hoy no entra ni en lo que debía ni en lo que hizo: aún corre y saldría siempre por debajo. El día 1, el mes anterior entero.
+- **Las reglas son las del informe de rendimiento** de [[Control Reportes]] (`modules/Control/rendimiento.service.js`): cada turno que le toca a un coche, 8 h; un coche con correturnos, los dos turnos todos los días (si falta el CT se pide igual: son horas perdidas); uno **sin correturnos**, no se pide el turno del fijo que libra; los días **en taller o parado** no se piden ni cuentan sus horas (salvo que BOLT diga que rodó); las horas son las del coche en BOLT, lo lleve quien lo lleve.
+- **Cada día va a la zona que tenía el coche ese día** (`vehiculo_zona`, `db/264`). Antes del 17/11/2026 no había ningún registro: hasta ahí, la zona de ese día.
+- Los **cuadrantes libres** (coches sin cuadrante) son una zona más y suman al total, como en el informe.
+- Va aparte del panel (`GET /inicio/api/zonas`, `inicio.zonas`) y se guarda **una hora**: es el informe del mes entero y, como llega hasta ayer, apenas cambia en el día. Con la copia de octubre tarda menos de medio segundo.

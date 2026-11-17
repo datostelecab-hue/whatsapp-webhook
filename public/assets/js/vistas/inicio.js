@@ -435,6 +435,61 @@
       txt('t-vivo-salido-det', `${num(s.plan)} del plan + ${num(s.fuera)} NN`);
     }
   }
+  // ── CÓMO VA CADA ZONA (17/11/2026) ────────────────────────────────────────
+  // Abajo de todo: zona a zona, lo que hizo contra lo que debía hacer en el
+  // mes hasta ayer, su barra con el color de la meta y una línea de detalle.
+  async function cargarZonas() {
+    const caja = $('#i-zonas');
+    if (!caja) return;
+    try {
+      const r = await fetch('/inicio/api/zonas');
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo calcular');
+      pintarZonas(caja, j);
+    } catch (e) {
+      caja.innerHTML = `<p class="px-4 py-3 text-sm text-telecab-red">No se ha podido calcular cómo va cada zona: ${Casa.esc(e.message)}</p>`;
+    }
+  }
+
+  // Horas con el punto de los miles también en las de cuatro cifras (es-ES no
+  // agrupa 2400, y al lado de «12.000» se lee mal).
+  const miles = v => String(Math.round(Number(v) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  function pintarZonas(caja, j) {
+    const per = j.per || {};
+    const nota = per.enCurso
+      ? `${per.nombre}, hasta ayer (${per.cerrados} ${per.cerrados === 1 ? 'día' : 'días'})`
+      : `${per.nombre}, entero`;
+    txt('i-zonas-nota', `· ${nota}${j.conFechas ? '' : ' · con la zona de hoy de cada coche'}`);
+    if (!j.zonas || !j.zonas.length) {
+      caja.innerHTML = '<p class="px-4 py-3 text-sm text-telecab-muted">Ningún coche tenía turnos que hacer en estas fechas.</p>';
+      return;
+    }
+    const fila = (z, total) => {
+      const pct = z.pct == null ? null : z.pct * 100;
+      const color = pct == null ? 'rgb(var(--tc-muted))' : colorMeta(pct);
+      const detalle = [
+        `${z.coches} ${z.coches === 1 ? 'coche' : 'coches'}`,
+        per.enCurso ? `en el mes debe ${miles(z.mes)} h` : '',
+        z.perdidas ? `${miles(z.perdidas)} h de turnos sin nadie` : '',
+        z.diasParado ? `${z.diasParado} ${z.diasParado === 1 ? 'día' : 'días'} de taller o parado, no cuentan` : '',
+      ].filter(Boolean).join(' · ');
+      return `<div class="px-4 py-3 flex items-center gap-4${total ? ' bg-telecab-card2/40 rounded-b-2xl' : ''}">
+        <p class="w-28 sm:w-36 shrink-0 text-sm ${total ? 'font-bold' : 'font-semibold'} text-telecab-text truncate" title="${Casa.esc(z.zona)}">${Casa.esc(z.zona)}</p>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm"><b class="tabular-nums text-telecab-text">${miles(z.llevan)} h</b>
+            <span class="text-telecab-muted">de ${miles(z.debian)} que debía hacer</span></p>
+          <div class="mt-1 h-1.5 rounded-full bg-telecab-card2 overflow-hidden">
+            <div class="h-full rounded-full" style="width:${Math.min(100, pct || 0)}%;background:${color}"></div>
+          </div>
+          <p class="text-[11px] text-telecab-muted mt-1">${detalle}</p>
+        </div>
+        <p class="shrink-0 text-lg font-bold tabular-nums" style="color:${color}">${pct == null ? '—' : num(pct) + ' %'}</p>
+      </div>`;
+    };
+    caja.innerHTML = j.zonas.map(z => fila(z, false)).join('') + fila(j.total, true);
+  }
+
   async function cargarVivo() {
     if (document.hidden) return;
     try {
@@ -450,6 +505,7 @@
   if (b) b.addEventListener('click', () => { cargar(true); cargarVivo(); });
   cargar();
   cargarVivo();
+  cargarZonas();
   setInterval(cargarVivo, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) cargarVivo(); });
 })();

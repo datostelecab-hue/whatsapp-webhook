@@ -326,6 +326,16 @@
     <%- cifraPeq('k-ne-just', 'Justificadas · última jornada', 'h', 'taller, gestiones… sí cuentan') %>
     <%- cifraPeq('k-ne-mes', 'Sin hacer · el mes', 'h', '<span id="k-ne-mes-pct">—</span> % de lo que tocaba') %>
   </div>
+
+  <%# CÓMO VA CADA ZONA (17/11/2026): abajo de todo, sencillo y ejecutivo. Horas
+      hechas contra las que debía hacer cada zona en el mes, hasta ayer. %>
+  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2"
+      title="Cada turno que le toca a un coche son 8 h que debía hacer. El día que libra el fijo de un coche sin correturnos no se pide. Un turno sin nadie se pide igual: son horas perdidas. Los días en taller (o parado) no cuentan, ni lo que debía ni lo que hizo. Cada día va a la zona en la que estaba el coche ese día.">
+    Cómo va cada zona <span class="font-normal text-telecab-muted normal-case tracking-normal" id="i-zonas-nota"></span>
+  </h2>
+  <section id="i-zonas" class="rounded-2xl border border-telecab-border bg-telecab-card divide-y divide-telecab-border/60 mb-8" aria-live="polite">
+    <p class="px-4 py-3 text-sm text-telecab-muted">Calculando cómo va cada zona…</p>
+  </section>
 </div>
 
 <script src="<%= est('/assets/js/vistas/inicio.js') %>"></script>

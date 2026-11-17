@@ -349,6 +349,91 @@ async function informe({ mes, hoy = hoyMadrid() } = {}) {
   };
 }
 
+// ── LAS ZONAS DÍA A DÍA, PARA INICIO (17/11/2026) ───────────────────────────
+// Camilo: «en inicio, abajo de todo, el resumen de cómo va cada zona:
+// Canillejas 450 h de 500 que debía hacer… si hoy el coche pasa de Alcobendas
+// a Canillejas, en el lapso de esa fecha debían hacer tantas horas hasta que se
+// cambió. Lo mismo cuando se pone en taller… es un resumen, sencillo y
+// ejecutivo». Las reglas son las de arriba (8 h por turno que le toca; el día
+// que libra el fijo de un coche sin correturnos no se pide; parado no se pide
+// ni cuenta; un turno sin nadie se pide igual y son horas perdidas). Lo único
+// distinto: cada DÍA de cada coche va a la zona que tenía ESE día
+// (vehiculo_zona, db/264), no a la de hoy.
+
+/**
+ * Zona a zona con la zona de cada coche cada día. Pura.
+ *   r     calcular()
+ *   per   periodo()
+ *   hist  Map(vehiculoId → [{ d, h, zona }]) de vehiculo_zona (zona null = sin
+ *         zona: cuadrantes libres), o null sin db/264 (la zona de hoy)
+ */
+function zonasDiaADia(r, per, hist) {
+  const acc = new Map();
+  const de = zona => {
+    if (!acc.has(zona)) acc.set(zona, { zona, coches: new Set(), debian: 0, llevan: 0, mes: 0, diasParado: 0, sinNadie: 0 });
+    return acc.get(zona);
+  };
+  r.grupos.forEach(g => g.coches.forEach(x => {
+    const v = String(x.coche.vehiculoId);
+    const tramos = (hist && hist.get(v)) || [];
+    x.dias.forEach(dia => {
+      if (dia.antes || dia.despues) return;                 // aún no tenía plaza, o ya no
+      const t = tramos.find(y => y.d <= dia.d && (!y.h || y.h >= dia.d));
+      const z = de(t ? (t.zona || LIBRES) : g.zona);
+      z.mes += dia.obj;
+      if (dia.obj > 0) z.coches.add(v);
+      if (dia.d >= per.hoy) return;                          // de hoy en adelante, solo lo del mes
+      z.debian += dia.obj;
+      if (dia.parado) z.diasParado++; else z.llevan += dia.h || 0;
+      z.sinNadie += dia.sin;
+    });
+  }));
+  // El orden de las zonas del informe (el del planificador); los cuadrantes libres, al final.
+  const orden = r.zonas.map(z => z.zona);
+  const pos = z => (z === LIBRES ? 1e9 : orden.indexOf(z) < 0 ? 1e6 : orden.indexOf(z));
+  const cerrar = z => ({ zona: z.zona, coches: z.coches.size, debian: z.debian, llevan: z.llevan, mes: z.mes,
+    pct: z.debian ? z.llevan / z.debian : null, diasParado: z.diasParado, sinNadie: z.sinNadie, perdidas: z.sinNadie * HORAS_TURNO });
+  const zonas = [...acc.values()].filter(z => z.mes > 0 || z.llevan > 0)
+    .sort((a, b) => pos(a.zona) - pos(b.zona) || a.zona.localeCompare(b.zona)).map(cerrar);
+  const todos = new Set([...acc.values()].flatMap(z => [...z.coches]));
+  const suma = k => zonas.reduce((s, z) => s + z[k], 0);
+  const total = { zona: 'Total', coches: todos.size, debian: suma('debian'), llevan: suma('llevan'), mes: suma('mes'),
+    diasParado: suma('diasParado'), sinNadie: suma('sinNadie'), perdidas: suma('perdidas') };
+  total.pct = total.debian ? total.llevan / total.debian : null;
+  return { zonas, total };
+}
+
+/** vehiculo_zona del periodo: Map(vehiculoId → [{ d, h, zona }]). null sin db/264. */
+async function historialZonas(per) {
+  try {
+    const r = await db.consulta(
+      `SELECT z.vehiculo_id::text AS v, to_char(z.desde, 'YYYY-MM-DD') AS d, to_char(z.hasta, 'YYYY-MM-DD') AS h, bz.nombre AS zona
+         FROM vehiculo_zona z LEFT JOIN base_zona bz ON bz.id = z.base_zona_id
+        WHERE z.desde <= $2::date AND (z.hasta IS NULL OR z.hasta >= $1::date)`, [per.ini, per.fin]);
+    const m = new Map();
+    r.rows.forEach(x => { if (!m.has(x.v)) m.set(x.v, []); m.get(x.v).push({ d: x.d, h: x.h, zona: x.zona }); });
+    return m;
+  } catch (e) {
+    if (e.code === '42P01') return null;                    // sin db/264 aún: la zona de hoy
+    throw e;
+  }
+}
+
+/**
+ * El resumen de Inicio: el mes que enseñaría Control › Reportes por defecto (el
+ * en curso hasta ayer; el día 1, el anterior entero), zona a zona día a día.
+ */
+async function resumenZonas({ hoy = hoyMadrid() } = {}) {
+  const mes = (meses(hoy).find(m => m.porDefecto) || {}).mes;
+  const per = periodo(mes, hoy);
+  const [d, hist] = await Promise.all([cargar(per), historialZonas(per)]);
+  const r = calcular(d.entrada);
+  return {
+    per: { mes: per.mes, nombre: per.nombre, enCurso: per.enCurso, ini: per.ini, ayer: per.ayer, cerrados: per.cerrados },
+    horasTurno: HORAS_TURNO, conFechas: !!hist, ...zonasDiaADia(r, per, hist),
+  };
+}
+
 // ── EL EJECUTIVO: lo que hay que decir, en dos páginas ──────────────────────
 // Camilo, 06/11/2026: «el reporte ejecutivo debe de descargarse junto con el
 // excel en telecab» y «No lo quiero tan largo, resumido en 2 páginas». Aquí se
@@ -579,4 +664,4 @@ function ejecutivo(inf) {
     coches: peoresCoches, prioridades: prioridades.slice(0, 4), nota };
 }
 
-module.exports = { informe, meses, periodo, calcular, fundir, ejecutivo, pc };
+module.exports = { informe, meses, periodo, calcular, fundir, ejecutivo, pc, resumenZonas, zonasDiaADia };
