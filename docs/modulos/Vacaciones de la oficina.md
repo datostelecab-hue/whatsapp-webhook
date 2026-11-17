@@ -64,7 +64,7 @@ Desde ahí **las pide** (con una nota si hace falta). Se piden de hoy en adelant
 Camilo: *«los festivos también se saltan en las vacaciones, ten en cuenta que el festivo seguro del otro año es el 1 de enero para que sepas que en diciembre hay varios días festivos y esos no restan»*.
 
 - Son los del calendario de Madrid (`calendario.de('madrid').festivos`): los nacionales, los de la Comunidad y los locales de la oficina (San Isidro, la Almudena). En diciembre de 2026: el **7** (Constitución, trasladado), el **8** y el **25**.
-- De los años que aún no están cargados, el **1 de enero** va siempre (hasta dos años vista, lo que alcanza el simulador): unas vacaciones del 28/12 al 03/01 gastan 4 días, no 5. Cuando se carguen los festivos de 2027 con su migración, entran solos.
+- De los años que aún no están cargados, van siempre los seguros: el **1 de enero** y el **6 de enero** (Reyes; Camilo: *«añade eso»*), hasta dos años vista, lo que alcanza el simulador. Unas vacaciones del 28/12 al 03/01 gastan 4 días, no 5; del 04/01 al 08/01/2027, 4. Cuando se carguen los festivos de 2027 con su migración, son los mismos días y entran solos.
 - **Antes de este día no se descontaba ninguno**: el calendario no enseñaba sus festivos fuera de `esHabil` y la cuenta los tomaba como vacíos. Ahora el calendario los expone (`festivos`, una copia).
 
 ## «Vacaciones por meses» de la oficina (17/11/2026)
@@ -84,7 +84,7 @@ Camilo: *«pedí 12 y tengo 9,22… cuando llegue al 24 de diciembre sí me cuad
 
 - Cada petición que espera lleva su **previsión**, con la cuenta del simulador como si se aprobara: lo que tendrá **el día que se va** (con lo que genere hasta entonces) y lo que le quedará **al volver**, contando lo que genera durante las vacaciones.
 - Decide el «al volver»: **en verde «Sobran X días»** si llega; **en rojo «Se pasa X días»** (y la fila teñida) si no. Debajo, «tendrá N al irse». Pasando el ratón, el detalle.
-- Su caso: del 24/12/2026 al 12/01/2027 gasta 12; al irse tendrá 11,49 y al volver le sobran 0,56: en verde.
+- Su caso: del 24/12/2026 al 12/01/2027 gasta 11 (el 1 y el 6 de enero no cuentan); al irse tendrá 11,49 y al volver le sobran 1,56: en verde.
 - **Aprobar una que se pasa pide confirmación** («Aprobar igualmente»). El aviso a quien aprueba ya dice si se pasa o cuánto le sobra.
 - En la ficha, las libranzas van bajo las fechas: la tabla cabe en el Panel sin desplazarse de lado.
 

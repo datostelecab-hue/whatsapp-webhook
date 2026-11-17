@@ -172,24 +172,26 @@ test('«Vacaciones por meses» de la oficina: quién se va y cuándo, solo para 
   assert.ok(c.sinVacaciones.some(x => x.id === p.luis.id), 'quien no tiene ni un día, en la lista de a quién le toca');
   assert.ok(!c.sinVacaciones.some(x => x.id === p.ana.id), 'quien ya pidió, no');
   assert.ok(c.personas.some(x => x.id === p.ana.id), 'las personas, para abrir su ficha');
-  assert.ok(c.festivos.includes('2026-12-25') && c.festivos.includes(`${Number(hoy.slice(0, 4)) + 1}-01-01`), 'los festivos, y el 1 de enero del año que viene aunque no esté cargado');
+  assert.ok(c.festivos.includes('2026-12-25') && c.festivos.includes(`${Number(hoy.slice(0, 4)) + 1}-01-01`) && c.festivos.includes(`${Number(hoy.slice(0, 4)) + 1}-01-06`), 'los festivos, y el 1 y el 6 de enero del año que viene aunque no estén cargados');
   await vac.rechazar(p.jefe, r.id, { motivo: 'Coincide con el cierre' });
   const otra = await vac.calendarioOficina(p.jefe);
   assert.deepEqual(otra.periodos.filter(x => x.id === p.ana.id), [], 'las no aprobadas ya no salen');
 }));
 
-test('la previsión de una petición: del 24/12 al 12/01 gasta 12; al irse tendrá 11,49 y al volver le sobran 0,56 (en verde); si se alarga, se pasa (en rojo)', () => {
-  // El caso de Camilo (17/11/2026): alta el 17/06/2026, hoy 9,22.
-  const e = { hoy: '2026-11-17', festivos: new Set(['2026-12-07', '2026-12-08', '2026-12-25', '2027-01-01']) };
+test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de enero, festivos seguros); al irse tendrá 11,49 y al volver le sobran 1,56 (en verde); si se alarga, se pasa (en rojo)', () => {
+  // El caso de Camilo (17/11/2026): alta el 17/06/2026, hoy 9,22. De 2027 no
+  // hay festivos cargados: el 1 y el 6 de enero van igual.
+  const e = { hoy: '2026-11-17', festivos: vac._festivosDe({ festivos: ['2026-12-07', '2026-12-08', '2026-12-25'] }, '2026-11-17') };
+  assert.ok(e.festivos.has('2027-01-01') && e.festivos.has('2027-01-06'), 'el 1 y el 6 de enero del año que viene, seguros');
   const v = { id: 1, desde: '2026-12-24', hasta: '2027-01-12', libra_dias: [6, 7], estado: 'pedida' };
   const s = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [v] });
   assert.equal(s.saldo, 9.22);
   const pv = vac._previsionDe(s, v, { ...e, laborables: LV });
-  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.sePasa], [12, 11.49, 0.56, false], 'cuadra contando lo que genera durante las vacaciones');
+  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.sePasa], [11, 11.49, 1.56, false], 'cuadra contando lo que genera durante las vacaciones');
   const larga = { ...v, hasta: '2027-01-29' };
   const s2 = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [larga] });
   const pv2 = vac._previsionDe(s2, larga, { ...e, laborables: LV });
-  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [25, true, -11.34], 'se pasa 11,34 días');
+  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [24, true, -10.34], 'se pasa 10,34 días');
 });
 
 test('registrar unas ya disfrutadas: del 20 al 30 de agosto son 7 días, y se restan de las de hoy', () => conBase(async h => {
@@ -221,4 +223,6 @@ test('con la base: un festivo de la oficina no gasta vacaciones (el calendario t
   // Cruzando el año: el 1 de enero es festivo seguro, esté cargado el año o no.
   const fin = await vac.simular(p.ana, { desde: '2026-12-28', hasta: '2027-01-03', libra: [6, 7] });
   assert.deepEqual([fin.naturales, fin.libranzas, fin.festivos, fin.cuentan], [7, 2, 1, 4], 'el 1/1 tampoco gasta');
+  const reyes = await vac.simular(p.ana, { desde: '2027-01-04', hasta: '2027-01-08', libra: [6, 7] });
+  assert.deepEqual([reyes.festivos, reyes.cuentan], [1, 4], 'ni el 6/1, Reyes');
 }));

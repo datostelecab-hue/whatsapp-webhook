@@ -188,13 +188,16 @@ async function puedeAprobar(quien) {
 
 // Los festivos que no gastan vacaciones: los del calendario de Madrid (los
 // nacionales, los de la Comunidad y los locales de la oficina) y, de los años
-// que aún no están cargados, el 1 de enero, que es seguro (17/11/2026, Camilo:
-// «el festivo seguro del otro año es el 1 de enero»). Hasta dos años vista,
-// lo que alcanza el simulador.
+// que aún no están cargados, los seguros: el 1 de enero (17/11/2026, Camilo:
+// «el festivo seguro del otro año es el 1 de enero») y el 6 de enero, Reyes,
+// que en Madrid es festivo todos los años (17/11/2026, Camilo: «añade eso»).
+// Hasta dos años vista, lo que alcanza el simulador. Cuando se carguen los
+// festivos de ese año con su migración, son los mismos días y no cambia nada.
+const SEGUROS = ['01-01', '01-06'];
 function festivosDe(cal, hoy) {
   const out = new Set(cal.festivos || []);
   const ano = Number(hoy.slice(0, 4));
-  for (let a = ano; a <= ano + 2; a++) out.add(`${a}-01-01`);
+  for (let a = ano; a <= ano + 2; a++) SEGUROS.forEach(md => out.add(`${a}-${md}`));
   return out;
 }
 
@@ -449,5 +452,5 @@ contadores.registrarFuente(ORIGEN, {
 module.exports = {
   mias, de, lista, calendarioOficina, simular, registrar, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
   // Para las pruebas:
-  _saldoDe: saldoDe, _simularSobre: simularSobre, _previsionDe: previsionDe, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
+  _saldoDe: saldoDe, _simularSobre: simularSobre, _previsionDe: previsionDe, _festivosDe: festivosDe, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
 };
