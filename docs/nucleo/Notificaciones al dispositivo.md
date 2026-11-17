@@ -42,6 +42,22 @@ En **Configuración → Notificaciones**:
 
 **Brave** no deja recibir notificaciones hasta que se activa *Configuración → Privacidad y seguridad → «Usar los servicios de Google para la mensajería push»*. Si falla al activar en Brave, el mensaje lo dice.
 
+### La invitación al entrar (17/11/2026)
+
+Camilo: *«haz que la aplicación pida permisos de notificaciones de una vez, que no tengamos que ir hasta Configuración»*. En cada dispositivo que no las tenga, al entrar sale **«Activa las notificaciones · Activar / Ahora no»**. El permiso del navegador se sigue pidiendo tras un clic, pero el clic está en esa ventana: sin él, Chrome lo silencia y Firefox y Safari lo rechazan.
+
+- **«Ahora no»**: se vuelve a ofrecer **a los 7 días** (lo decidió Camilo). Siempre se pueden activar desde Configuración.
+- **Bloqueadas** en el navegador: no se insiste; se arreglan desde el candado.
+- **En el iPhone o el iPad sin instalar**: en vez de «Activar», cómo instalarlo.
+- **Sin claves VAPID** en el servidor: no sale.
+- Espera a que la pantalla esté quieta: después de la ventana de novedades y de un recorrido, sin un diálogo ni una ficha abierta.
+
+Está en `public/assets/js/notificacionesPush.js` («La invitación al entrar»).
+
+### Lo que ya tienes delante no suena
+
+El service worker (`public/sw.js`) **no enseña la notificación de un canal del chat que la persona tiene delante** (la pestaña visible y con el foco en ese canal). Y al pulsar una notificación del chat con el chat ya abierto, lo trae delante y le dice adónde ir (`postMessage` «chat-ir»): va al canal y al mensaje sin recargar.
+
 ## Solo mientras la sesión siga abierta
 
 Cada dispositivo lleva la **sesión** (`sid`) de la última vez que la pantalla lo confirmó, y **solo se avisa si esa sesión sigue abierta**. Así:
@@ -102,6 +118,7 @@ test/notificacionesPush.test.js                        8 pruebas
 
 ## Pendiente
 
-- Los primeros avisos de verdad: los del tablero de tareas (ítem 1) y los urgentes de los contadores (A9).
-- Que la persona elija qué avisos quiere en el móvil (cuando haya más de un tipo).
-- No avisar al móvil de lo que ya está viendo en la pantalla (con el [[Tiempo real]]).
+- Que la persona elija qué avisos quiere en el móvil, y el «no molestar» (con la 2c del [[Chat]]).
+- No avisar de lo que ya está viendo fuera del chat (en el chat ya no suena: ver arriba).
+
+Ya avisan: el [[Tablero de tareas]], los [[Avisos]] urgentes de la campana y el [[Chat]] (17/11/2026: directos, menciones, @canal, respuestas en sus hilos, que le añadan o le saquen de un privado, que le anulen un mensaje, y las reacciones y los fijados de los suyos).

@@ -9,7 +9,7 @@ actualizado: 2026-11-17
 
 - **2a — canales, directos, tiempo real, no leídos, menciones e hilos** (17/11/2026, rama `chat/2a-canales`, db/256).
 - **2b — ficheros, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces y convertir en tarea** (17/11/2026, en la misma rama, db/257).
-- **2c** búsqueda, estado y no molestar, y notificaciones al móvil.
+- **2c** búsqueda, estado y no molestar. Las notificaciones al dispositivo se adelantaron (17/11/2026: ver abajo).
 - **2d** gestión de canales (archivar, renombrar).
 
 **Los chats arrancan vacíos** (Camilo, 17/11/2026): no se trae el historial de Slack. Los canales nacen con su nombre de siempre y sin mensajes.
@@ -38,6 +38,18 @@ actualizado: 2026-11-17
 - **Gente de un privado**: la añade cualquiera de dentro (o quien lleva los canales); la saca quien creó el canal o quien lleva los canales; cada uno puede salirse. Salir es una marca, no un borrado.
 - **En el móvil**, la lista o la conversación, con un botón para volver.
 - **Nada se borra**: los canales y los mensajes están bajo el [[Libro de auditoria]].
+
+### Las notificaciones al dispositivo (17/11/2026)
+
+Camilo: *«además de menciones, todo lo que sea referente al usuario debe de llegarle como noti»*, y decidió qué es eso. Le llega a cada uno, aunque no tenga Telecab abierto:
+
+- un **mensaje directo** (de 1 a 1 o de grupo);
+- una **mención** a él, y **@canal** en un canal en el que está;
+- una **respuesta en un hilo** que empezó o en el que ha escrito;
+- que le **añadan** a un privado o le **saquen**, y que quien lleva los canales le **anule** un mensaje (con el motivo);
+- una **reacción** o que le **fijen** un mensaje.
+
+Una por mensaje y persona, la que más le toca (directo > mención > @canal > hilo), y nunca a quien lo escribe. Lleva el nombre de quien escribe y el principio del texto, con los nombres en vez de `<@id>` y **sin DNI, NIE ni cuentas**, porque sale en la pantalla bloqueada. Las de un canal se sustituyen entre sí en vez de amontonarse. **Si esa persona tiene ese canal delante, no sale**, y pulsarla con el chat abierto va al mensaje sin recargar. La de una tarea cerrada desde el tablero llega a quien la creó y a quien escribió en el hilo. Las tareas del tablero ya avisaban por su cuenta. Ver [[Notificaciones al dispositivo]].
 
 ### El recorrido, la primera vez
 

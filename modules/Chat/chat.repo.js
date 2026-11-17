@@ -175,6 +175,12 @@ async function mensajeCrudo(cli, id) {
   const r = await q(cli, 'SELECT * FROM chat_mensaje WHERE id = $1', [id]);
   return r.rows[0] || null;
 }
+/** Quién ha escrito en un hilo: el de arriba y los que respondieron (para avisarles). */
+async function participantesHilo(padreId) {
+  const r = await db.consulta(
+    'SELECT DISTINCT autor_id FROM chat_mensaje WHERE (id = $1 OR padre_id = $1) AND autor_id IS NOT NULL', [padreId]);
+  return r.rows.map(x => Number(x.autor_id));
+}
 async function respuestas(padreId) {
   const r = await db.consulta(
     `SELECT ${COLUMNAS} FROM chat_mensaje m LEFT JOIN usuario u ON u.id = m.autor_id
@@ -410,7 +416,7 @@ async function leer(canalId, usuarioId, hasta) {
 module.exports = {
   personas, nombreDe, esDeLaOficina, asegurarPublicos, canalesDe, resumen, canal, canalPorNombre, directoPorClave,
   miembro, miembros, idsMiembros, crearCanal, meter, meterOficina, sacar,
-  mensajes, mensaje, mensajeCrudo, respuestas, escribir, mencionar, mencionesDe, leer,
+  mensajes, mensaje, mensajeCrudo, respuestas, participantesHilo, escribir, mencionar, mencionesDe, leer,
   editar, anular, reaccionar, reaccionesDe, fijar, desfijar, fijadosDe, cuantosFijados, fijadosCanal,
   guardar, guardadosEntre, guardadosDe, tareasDe, adjuntosDe, ficherosDeBorrador, pasarBorrador, enlace, enlacesDe, guardarEnlace,
 };

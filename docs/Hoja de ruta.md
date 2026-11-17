@@ -156,7 +156,7 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
 - **Entregas:**
   - **2a:** canales, directos, tiempo real, no leídos, menciones e hilos.
   - **2b:** adjuntos y vista previa, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces (protegida contra SSRF) y convertir en tarea. Aquí se prueba el primer criterio del ítem 1.
-  - **2c:** búsqueda (tsvector en español con índice GIN, respetando privados y directos), estado y no molestar, y notificaciones.
+  - **2c:** búsqueda (tsvector en español con índice GIN, respetando privados y directos), estado y no molestar. Las notificaciones se adelantaron el 17/11/2026 (directos, menciones, @canal, hilos, añadir/sacar, anular, reacciones y fijados), con la invitación a activarlas al entrar.
   - **2d:** gestión de canales (archivar, renombrar). ~~Migración de Slack~~: no se trae nada (abajo).
 - **Decidido (Camilo, 17/11/2026): los chats arrancan vacíos.** No se trae el historial de Slack: los canales nacen con su nombre de siempre y sin mensajes. Con eso dejan de hacer falta el plan de Slack, su Workspace Owner, bajar los ficheros uno a uno y un sitio para los autores de Slack que no son usuarios del ERP. Lo de Slack de abajo queda como referencia.
 - **Hecho:** la **2a** (17/11/2026, rama `chat/2a-canales`, db/256). Decidido por Camilo: los 16 públicos abiertos a toda la oficina (también los cuatro sensibles) y con toda la oficina dentro; crean canales Dirección y Desarrollo (`chat_canales`); los privados, con quien los pidió. Ver [[Chat]].

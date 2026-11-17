@@ -1122,6 +1122,25 @@
   };
   document.getElementById('chat-recorrido').addEventListener('click', () => conNovedades(N => N.recorridoDe('chat', pasosChat)));
 
+  // Al pulsar una notificación del chat con esta pestaña abierta, el service
+  // worker (public/sw.js) la trae delante y dice adónde ir: sin recargar.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', async ev => {
+      const d = ev.data || {};
+      if (d.tipo !== 'chat-ir' || !d.url) return;
+      let u;
+      try { u = new URL(d.url, location.origin); } catch (_) { return; }
+      if (u.origin !== location.origin || u.pathname !== '/chat') return;
+      const canal = Number(u.searchParams.get('canal'));
+      const mensaje = Number(u.searchParams.get('mensaje'));
+      if (mensaje) {
+        const r = await Api.get(`${API}/mensajes/${mensaje}`).catch(() => null);
+        if (r) { irAlMensaje(r.mensaje.canalId, r.mensaje.id, r.mensaje.padreId); return; }
+      }
+      if (canal) abrir(canal);
+    });
+  }
+
   // ── Arranque ─────────────────────────────────────────────────────────────
   (async () => {
     const [p] = await Promise.all([Api.get(`${API}/personas`).catch(() => null), cargarLista()]);

@@ -42,8 +42,10 @@
 //
 // AL MOMENTO: cada mensaje avisa por el tiempo real (A7, canal «chat») a los
 // del canal y mueve sus contadores (A9); cada cambio de un mensaje (editarlo,
-// una reacción, sus ficheros…) avisa con `tipo: 'cambio'`. Las notificaciones al
-// móvil llegan con la 2c, junto al «no molestar».
+// una reacción, sus ficheros…) avisa con `tipo: 'cambio'`. Y lo que es de cada
+// uno le llega como notificación al dispositivo (A8), aunque no tenga el ERP
+// abierto: ver «Las notificaciones al dispositivo», más abajo. El «no
+// molestar», con la 2c.
 'use strict';
 
 const libro = require('../../services/libro');
@@ -275,10 +277,11 @@ async function enviar(usuarioId, canalId, { texto: txt, padreId = null, borrador
     const dentroAhora = new Set(await repo.idsMiembros(cli, c.id));
     const men = await mencionadosDe(t, c, ctx.id, dentroAhora);
     if (men.usuarios.length || men.todos) await repo.mencionar(cli, id, men);
-    return { id, padre, para: [...dentroAhora] };
+    return { id, padre, para: [...dentroAhora], men, ficheros };
   });
   avisar(c.id, r.para, { id: r.id, padre: r.padre });
   prepararEnlace(enlaceUrl, { canalId: c.id, para: r.para, id: r.id, padre: r.padre });
+  notificarMensaje({ canal: c, autorId: ctx.id, id: r.id, padre: r.padre, texto: t, men: r.men, para: r.para, ficheros: r.ficheros });
   return (await uno(ctx.id, r.id));
 }
 
@@ -309,15 +312,21 @@ async function editar(usuarioId, mensajeId, { texto: txt } = {}) {
   if (t.length > MAX_TEXTO) throw error(`Un mensaje no puede pasar de ${MAX_TEXTO} caracteres`);
   if (t === m.texto) return uno(ctx.id, m.id);
   const enlaceUrl = primerEnlace(t);
-  const para = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'cambio' }, async cli => {
+  const antes = (await repo.mencionesDe([Number(m.id)])).get(Number(m.id)) || { usuarios: [], todos: false };
+  const { para, men } = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'cambio' }, async cli => {
     await repo.editar(cli, m.id, { texto: t, enlaceUrl });
     const dentroAhora = new Set(await repo.idsMiembros(cli, c.id));
-    const men = await mencionadosDe(t, c, ctx.id, dentroAhora);
-    if (men.usuarios.length || men.todos) await repo.mencionar(cli, m.id, men);
-    return [...dentroAhora];
+    const nuevas = await mencionadosDe(t, c, ctx.id, dentroAhora);
+    if (nuevas.usuarios.length || nuevas.todos) await repo.mencionar(cli, m.id, nuevas);
+    return { para: [...dentroAhora], men: nuevas };
   });
   avisarCambio(c.id, para, { id: Number(m.id), padre: m.padre_id, contar: true });
   if (enlaceUrl !== m.enlace_url) prepararEnlace(enlaceUrl, { canalId: c.id, para, id: Number(m.id), padre: m.padre_id });
+  // Solo a quien nombra ahora y antes no: lo demás ya se avisó al mandarlo.
+  const nuevas = { usuarios: men.usuarios.filter(u => !antes.usuarios.includes(u)), todos: men.todos && !antes.todos };
+  if (nuevas.usuarios.length || nuevas.todos) {
+    notificarMensaje({ canal: c, autorId: ctx.id, id: Number(m.id), padre: null, texto: t, men: nuevas, para, soloMenciones: true });
+  }
   return uno(ctx.id, m.id);
 }
 
@@ -339,6 +348,14 @@ async function anular(usuarioId, mensajeId, { motivo } = {}) {
     if (!await repo.anular(cli, m.id, { por: ctx.id, motivo: porque })) throw error('Ese mensaje ya estaba anulado', 409);
   });
   avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id, contar: true, fijados: true });
+  // Lo anuló otro (quien lleva los canales): a su autor se le dice, con el motivo.
+  if (!propio && m.autor_id) {
+    notificarA([Number(m.autor_id)], async () => ({
+      titulo: `Han anulado un mensaje tuyo en ${dondeDe(c)}`,
+      cuerpo: `${await nombre(ctx.id)}: ${porque}`,
+      url: `/chat?canal=${c.id}&mensaje=${m.id}`, etiqueta: `chat-${c.id}`,
+    }));
+  }
   return uno(ctx.id, m.id);
 }
 
@@ -350,8 +367,16 @@ async function reaccionar(usuarioId, mensajeId, { emoji } = {}) {
   const { m, canal: c, puedeEscribir } = await delMensaje(ctx, mensajeId);
   if (m.anulado_at) throw error('Ese mensaje está anulado', 409);
   if (!puedeEscribir) throw error('Ese canal está archivado', 409);
-  await repo.reaccionar(null, m.id, ctx.id, String(emoji));
+  const puesta = await repo.reaccionar(null, m.id, ctx.id, String(emoji));
   avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id });
+  // A su autor, cuando otro la pone (quitarla no avisa).
+  if (puesta && m.autor_id && Number(m.autor_id) !== ctx.id) {
+    notificarA([Number(m.autor_id)], async () => ({
+      titulo: `${await nombre(ctx.id)} ha reaccionado ${EMOJI_TXT[emoji]} a tu mensaje`,
+      cuerpo: await vistaPrevia(m.texto, m.con_adjuntos ? 1 : 0),
+      url: `/chat?canal=${c.id}&mensaje=${m.id}`, etiqueta: `chat-${c.id}-r`,
+    }));
+  }
   return uno(ctx.id, m.id);
 }
 
@@ -365,6 +390,14 @@ async function fijar(usuarioId, mensajeId, { fijar: si = true } = {}) {
     cli => (si ? repo.fijar(cli, m.id, c.id, ctx.id) : repo.desfijar(cli, m.id, ctx.id)));
   if (!hecho) throw error(si ? 'Ya estaba fijado' : 'No estaba fijado', 409);
   avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id, fijados: true });
+  // A su autor, cuando otro lo fija (desfijar no avisa).
+  if (si && m.autor_id && Number(m.autor_id) !== ctx.id) {
+    notificarA([Number(m.autor_id)], async () => ({
+      titulo: `${await nombre(ctx.id)} ha fijado tu mensaje en ${dondeDe(c)}`,
+      cuerpo: await vistaPrevia(m.texto, m.con_adjuntos ? 1 : 0),
+      url: `/chat?canal=${c.id}&mensaje=${m.id}`, etiqueta: `chat-${c.id}-r`,
+    }));
+  }
   return uno(ctx.id, m.id);
 }
 
@@ -503,11 +536,14 @@ tablero.registrarTipo('mensaje', {
       const padre = m.padre_id ? Number(m.padre_id) : Number(m.id);
       const id = await repo.escribir(cli, { canalId: c.id, autorId: null, padreId: padre, texto: txt, evento: 'tarea_cerrada' });
       if (avisa) await repo.mencionar(cli, id, { usuarios: [avisa] });
-      nueva = { id, padre, canal: Number(c.id), para: [...dentro] };
+      nueva = { id, padre, canal: c, para: [...dentro], texto: txt, avisa };
     });
     if (nueva) {
-      avisar(nueva.canal, nueva.para, { id: nueva.id, padre: nueva.padre });
-      avisarCambio(nueva.canal, nueva.para, { id: mid, padre: m.padre_id });
+      avisar(nueva.canal.id, nueva.para, { id: nueva.id, padre: nueva.padre });
+      avisarCambio(nueva.canal.id, nueva.para, { id: mid, padre: m.padre_id });
+      // A quien la creó (mención) y a quien escribió en el hilo, como notificación.
+      notificarMensaje({ canal: nueva.canal, autorId: null, id: nueva.id, padre: nueva.padre, texto: nueva.texto,
+        men: { usuarios: nueva.avisa ? [nueva.avisa] : [], todos: false }, para: nueva.para, evento: 'tarea_cerrada' });
     }
   },
 });
@@ -576,6 +612,13 @@ async function anadir(usuarioId, canalId, { usuarioId: otro } = {}) {
   const para = await repo.idsMiembros(null, c.id);
   tiempoReal.publicar('chat', { canal: Number(c.id), tipo: 'miembros' }, { para });
   contadores.cambio('chat', { para: [u] });
+  if (u !== ctx.id) {
+    notificarA([u], async () => ({
+      titulo: `Te han añadido a ${dondeDe(c)}`,
+      cuerpo: `${await nombre(ctx.id)} te ha añadido: ya puedes leer lo que se ha escrito.`,
+      url: `/chat?canal=${c.id}`, etiqueta: `chat-${c.id}`,
+    }));
+  }
   return dentro ? ficha(ctx.id, c.id) : { ok: true };
 }
 
@@ -595,10 +638,113 @@ async function quitar(usuarioId, canalId, { usuarioId: otro } = {}) {
   const para = [...await repo.idsMiembros(null, c.id), u];
   tiempoReal.publicar('chat', { canal: c.id, tipo: 'miembros' }, { para });
   contadores.cambio('chat', { para });
+  // Si le saca otro, se le dice (salirse uno mismo no avisa).
+  if (u !== ctx.id) {
+    notificarA([u], async () => ({
+      titulo: `Te han sacado de ${dondeDe(c)}`,
+      cuerpo: `Lo ha hecho ${await nombre(ctx.id)}. Ya no verás sus mensajes.`,
+      url: '/chat', etiqueta: `chat-${c.id}`,
+    }));
+  }
   return { ok: true };
 }
 
 const personas = async usuarioId => { await contexto(usuarioId); return { personas: (await repo.personas()).map(p => ({ id: Number(p.id), nombre: p.nombre, puesto: p.puesto })) }; };
+
+// ── Las notificaciones al dispositivo (A8) ─────────────────────────────────
+// Camilo, 17/11/2026: «además de menciones, todo lo que sea referente al
+// usuario debe de llegarle como noti». Le llega a cada uno, aunque no tenga el
+// ERP abierto:
+//   · un mensaje directo (de 1 a 1 o de grupo);
+//   · una mención a él, y @canal en un canal en el que está;
+//   · una respuesta en un hilo que empezó o en el que ha escrito;
+//   · que le añadan a un privado o le saquen, y que quien lleva los canales le
+//     anule un mensaje;
+//   · una reacción o que le fijen un mensaje.
+// Una por mensaje y persona (la que más le toca: directo > mención > @canal >
+// hilo), nunca a quien lo escribe, y con la etiqueta del canal: la nueva
+// sustituye a la anterior en vez de amontonarse. Si esa persona tiene ESE canal
+// delante, no sale (lo decide public/sw.js). El «no molestar», con la 2c.
+let _push = null;
+const push = () => (_push || (_push = require('../../services/notificacionesPush')));
+const EMOJI_TXT = { ok: '👍', hecho: '✅', visto: '👀', gracias: '🙏', risa: '😂', corazon: '❤️' };
+const dondeDe = c => (c.tipo === 'directo' ? 'un mensaje directo' : `#${c.nombre}`);
+const nombre = async id => (id ? (await repo.nombreDe(null, id)) || 'Alguien' : 'Telecab');
+
+/**
+ * El texto de un mensaje para la notificación: con los nombres en vez de
+ * <@id>, sin las marcas de formato y SIN DNI, NIE ni cuentas (sale en la
+ * pantalla bloqueada). Corto: lo entero está en el chat.
+ */
+async function vistaPrevia(texto, ficheros = 0) {
+  let t = String(texto || '');
+  const ids = [...new Set([...t.matchAll(/<@(\d{1,9})>/g)].map(m => Number(m[1])))];
+  for (const id of ids) t = t.split(`<@${id}>`).join(`@${await nombre(id)}`);
+  t = t.replace(/<!canal>/g, '@canal')
+    .replace(/```/g, ' ').replace(/[*_~`]/g, '')
+    .replace(/\b[XYZ]?\d{7,8}[-\s]?[A-Z]\b/gi, '•••')                 // DNI y NIE
+    .replace(/\b[A-Z]{2}\d{2}(?:[\s-]?\d{4}){4,6}\b/gi, '•••')         // IBAN
+    .replace(/\s+/g, ' ').trim();
+  if (t.length > 140) t = t.slice(0, 139).trimEnd() + '…';
+  if (!t && ficheros) t = ficheros === 1 ? 'Ha mandado un fichero' : `Ha mandado ${ficheros} ficheros`;
+  return t;
+}
+
+/** Manda una notificación sin hacer esperar a nadie (y sin romper nada si falla). */
+function notificarA(ids, datos) {
+  const para = [...new Set(ids.map(Number).filter(Boolean))];
+  if (!para.length) return;
+  const trabajo = (async () => push().enviar(para, typeof datos === 'function' ? await datos() : datos))()
+    .catch(e => console.error('❌ [Chat] notificación:', e.message))
+    .finally(() => pendientes.delete(trabajo));
+  pendientes.add(trabajo);
+}
+
+/**
+ * Las notificaciones de un mensaje nuevo (o de las menciones nuevas al editarlo,
+ * con `soloMenciones`). `para`: quién está en el canal ahora.
+ */
+function notificarMensaje({ canal: c, autorId, id, padre, texto: t, men = {}, para = [], ficheros = 0, evento = null, soloMenciones = false }) {
+  const trabajo = (async () => {
+    const dentro = new Set(para.map(Number));
+    const PRIORIDAD = { directo: 4, mencion: 3, todos: 2, hilo: 1 };
+    const motivos = new Map();
+    const poner = (u, motivo) => {
+      const n = Number(u);
+      if (!n || n === Number(autorId)) return;
+      const ya = motivos.get(n);
+      if (!ya || PRIORIDAD[motivo] > PRIORIDAD[ya]) motivos.set(n, motivo);
+    };
+    if (c.tipo === 'directo' && !soloMenciones) dentro.forEach(u => poner(u, 'directo'));
+    (men.usuarios || []).forEach(u => poner(u, 'mencion'));
+    if (men.todos) dentro.forEach(u => poner(u, 'todos'));
+    if (padre && !soloMenciones) {
+      (await repo.participantesHilo(padre)).forEach(u => { if (c.tipo === 'publico' || dentro.has(u)) poner(u, 'hilo'); });
+    }
+    if (!motivos.size) return;
+    const quien = await nombre(autorId);
+    const donde = dondeDe(c);
+    const cuerpo = await vistaPrevia(t, ficheros);
+    const grupo = c.tipo === 'directo' && dentro.size > 2;
+    const tituloDe = motivo => (evento === 'tarea_cerrada' ? `Tarea hecha · ${donde}`
+      : motivo === 'directo' ? (grupo ? `${quien} · grupo` : quien)
+        : motivo === 'mencion' ? `${quien} te ha mencionado en ${donde}`
+          : motivo === 'todos' ? `${quien} avisa a todo ${donde}`
+            : `${quien} ha respondido en un hilo de ${donde}`);
+    const porTitulo = new Map();
+    motivos.forEach((motivo, u) => {
+      const tit = tituloDe(motivo);
+      if (!porTitulo.has(tit)) porTitulo.set(tit, []);
+      porTitulo.get(tit).push(u);
+    });
+    const url = `/chat?canal=${c.id}&mensaje=${id}`;
+    for (const [titulo, ids] of porTitulo) {
+      await push().enviar(ids, { titulo, cuerpo, url, etiqueta: `chat-${c.id}` });
+    }
+  })().catch(e => console.error('❌ [Chat] notificaciones de un mensaje:', e.message))
+    .finally(() => pendientes.delete(trabajo));
+  pendientes.add(trabajo);
+}
 
 // ── Avisar (tiempo real y contadores) ──────────────────────────────────────
 tiempoReal.registrarCanal('chat', { etiqueta: 'Chat interno', puede: async q => !!(q && q.id) });

@@ -1,17 +1,20 @@
 // ============================================================
 // NOTIFICACIONES AL DISPOSITIVO — el componente de la casa (A8)
 // ============================================================
-// Lo carga layout-gestion en todas las pantallas. Por sí solo SOLO confirma, al
+// Lo carga layout-gestion en todas las pantallas. Por sí solo confirma, al
 // cargar, que este navegador sigue activado, con la sesión de ahora (así los
-// avisos vuelven a llegar tras entrar otra vez). Lo demás lo pide Configuración:
+// avisos vuelven a llegar tras entrar otra vez), y, si este dispositivo no las
+// tiene, INVITA a activarlas con su botón (ver «La invitación al entrar», al
+// final). Lo demás lo pide Configuración:
 //
 //   await NotificacionesPush.estadoAqui()   { aqui: 'activadas' | 'apagadas' | 'bloqueadas'
 //                                             | 'instalar' (iPhone sin instalar) | 'sin-soporte' }
 //   await NotificacionesPush.activar()      tras un CLIC: pide el permiso y lo apunta
 //   await NotificacionesPush.desactivar()
 //
-// El permiso del navegador SOLO se pide al pulsar «Activar»: pedirlo al entrar
-// lo bloquea (y los navegadores castigan a las webs que lo hacen).
+// El permiso del navegador SOLO se pide al pulsar «Activar» (en la invitación o
+// en Configuración): pedirlo al entrar, sin clic, lo bloquea (y los navegadores
+// castigan a las webs que lo hacen).
 (function (global) {
   'use strict';
 
@@ -138,6 +141,71 @@
   if (soporte() && global.Notification.permission === 'granted') {
     global.setTimeout(() => { confirmar().catch(() => {}); }, 2000);
   }
+
+  // ── La invitación al entrar (17/11/2026) ────────────────────────────────
+  // Camilo: «haz que la aplicación pida permisos de notificaciones de una vez,
+  // que no tengamos que ir hasta Configuración». El permiso del navegador sigue
+  // pidiéndose tras un clic (sin él, Chrome lo silencia y Firefox y Safari lo
+  // rechazan), pero el clic está aquí: en cada dispositivo que no las tenga
+  // sale «Activa las notificaciones · Activar / Ahora no». Con «Ahora no», se
+  // vuelve a ofrecer a los 7 días (lo decidió Camilo). Si están bloqueadas en
+  // el navegador, no se insiste: eso se arregla desde el candado.
+  const CLAVE_INVITACION = 'tc-push-invitacion';
+  const ESPERA_INVITACION = 7 * 24 * 3600 * 1000;
+  const invitadoHace = () => { try { return Date.now() - Number(global.localStorage.getItem(CLAVE_INVITACION) || 0); } catch (_) { return 0; } };
+  const apuntarInvitacion = () => { try { global.localStorage.setItem(CLAVE_INVITACION, String(Date.now())); } catch (_) { /* sin almacenamiento */ } };
+  // La pantalla quieta: sin la carga, sin un diálogo, una ficha, las novedades ni un recorrido.
+  function ocupada() {
+    const carga = document.getElementById('cargando-overlay');
+    return (carga && !carga.classList.contains('hidden'))
+      || document.querySelector('.dialogo, .tc-panel, [data-formulario], .tc-novedades-fondo')
+      || (global.Recorrido && global.Recorrido.enMarcha && global.Recorrido.enMarcha());
+  }
+  /** ¿Hay que invitar en este dispositivo? → 'apagadas' | 'instalar' | null. Antes de esperar a que la pantalla esté quieta. */
+  async function hayQueInvitar() {
+    const est = await estadoAqui();
+    if (est.aqui !== 'apagadas' && est.aqui !== 'instalar') return null;
+    let srv = null;
+    try { srv = await global.Api.get('/push/api/estado'); } catch (_) { return null; }
+    return srv && srv.clave ? est.aqui : null;    // sin claves en el servidor, no hay nada que activar
+  }
+  /** La ventana, YA con la pantalla quieta (se abre en el mismo instante en que se comprueba). */
+  async function invitar(aqui) {
+    apuntarInvitacion();
+    if (aqui === 'instalar') {
+      await global.Dialogo.aviso({ titulo: 'Instala Telecab para recibir avisos',
+        texto: 'En el iPhone y el iPad las notificaciones solo llegan con Telecab instalado: en Safari, pulsa Compartir → «Añadir a pantalla de inicio», ábrelo desde ese icono y actívalas ahí.' });
+      return;
+    }
+    const v = await global.Dialogo.abrir({
+      titulo: 'Activa las notificaciones', tono: 'info',
+      html: '<p>Te avisaremos en este dispositivo de lo que es para ti, aunque no tengas Telecab abierto: los mensajes directos, las menciones y las respuestas del chat, y tus tareas del tablero.</p>'
+        + '<p class="text-telecab-muted text-xs">Al pulsar «Activar», el navegador te preguntará: elige «Permitir». Se pueden quitar cuando quieras en Configuración.</p>',
+      opciones: [{ texto: 'Ahora no', valor: null }, { texto: 'Activar', valor: 'si', principal: true }],
+    });
+    if (v !== 'si') return;
+    try {
+      await activar();
+      global.Dialogo.hecho('Notificaciones activadas en este dispositivo');
+    } catch (e) {
+      global.Dialogo.aviso({ titulo: 'No se han activado', texto: (e && e.message) || 'No se ha podido.', tono: 'error' });
+    }
+  }
+  async function invitarCuandoSePueda() {
+    if (!document.getElementById('menu') || !global.Dialogo || !global.Api) return;   // solo en la gestión, con sesión
+    if (!soporte() && !esIOS()) return;
+    if (invitadoHace() < ESPERA_INVITACION) return;
+    const aqui = await hayQueInvitar().catch(() => null);
+    if (!aqui) return;
+    let intentos = 0;
+    const probar = () => {
+      if (ocupada()) { if (++intentos < 40) global.setTimeout(probar, 1500); return; }
+      invitar(aqui).catch(() => {});
+    };
+    global.setTimeout(probar, 3500);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', invitarCuandoSePueda);
+  else invitarCuandoSePueda();
 
   global.NotificacionesPush = { estadoAqui, activar, desactivar, confirmar, nombreDispositivo, soporte };
 })(window);
