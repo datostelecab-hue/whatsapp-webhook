@@ -1,0 +1,32 @@
+<%#
+  LA MIGRACIÓN DE SLACK (ítem 2, entrega 2d, db/259) — solo el desarrollador.
+
+  Arriba, si el servidor tiene el token de Slack y con qué cuenta, y los dos
+  botones: «Simular» (lee Slack y dice qué traería, sin escribir ningún mensaje)
+  y «Migrar» (lo trae; se puede repetir y no duplica). Mientras va, el avance.
+
+  Debajo, dos pestañas (?vista=):
+    · Qué se trae: cada canal y cada directo de Slack, adónde va en el chat y
+      cuántos mensajes, respuestas y ficheros trae (o por qué no se trae).
+    · Quién es quién: cada persona de Slack con su usuario del ERP; las que
+      salieron por el nombre, o sin nadie, se corrigen aquí antes de migrar.
+%>
+
+<div class="tc-pantalla pb-0 space-y-4">
+  <div>
+    <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-right-to-bracket text-telecab-gold" aria-hidden="true"></i> Migración de Slack
+    </h1>
+    <p class="text-sm text-telecab-muted mt-1 max-w-3xl">
+      Trae al chat los canales de Slack, los mensajes directos de quien dio el token, sus hilos, reacciones y ficheros.
+      No avisa a nadie: lo traído no cuenta como no leído ni como mención.
+    </p>
+  </div>
+  <section id="sl-estado" aria-live="polite"></section>
+  <nav id="sl-pestanas" aria-label="Qué se ve de la migración"></nav>
+</div>
+<div id="sl-canales"></div>
+<div id="sl-personas" class="hidden"></div>
+
+<script src="<%= est('/assets/js/pestanas.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Chat/slack.js') %>"></script>

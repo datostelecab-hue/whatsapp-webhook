@@ -152,28 +152,31 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - la extensión `unaccent` ya instalada, para la búsqueda en español;
   - los nombres exactos de 14 canales de Slack, en la «Traza por Slack» de Control.
 
-  **No hay ningún acceso a Slack** en el código.
+  **No había ningún acceso a Slack** en el código (hasta la 2d: la migración lo lee con un token de solo lectura).
 - **Entregas:**
   - **2a:** canales, directos, tiempo real, no leídos, menciones e hilos.
   - **2b:** adjuntos y vista previa, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces (protegida contra SSRF) y convertir en tarea. Aquí se prueba el primer criterio del ítem 1.
   - **2c:** búsqueda (tsvector en español con índice GIN, respetando privados y directos), estado y no molestar. Las notificaciones se adelantaron el 17/11/2026 (directos, menciones, @canal, hilos, añadir/sacar, anular, reacciones y fijados), con la invitación a activarlas al entrar.
-  - **2d:** gestión de canales (archivar, renombrar). ~~Migración de Slack~~: no se trae nada (abajo).
-- **Decidido (Camilo, 17/11/2026): los chats arrancan vacíos.** No se trae el historial de Slack: los canales nacen con su nombre de siempre y sin mensajes. Con eso dejan de hacer falta el plan de Slack, su Workspace Owner, bajar los ficheros uno a uno y un sitio para los autores de Slack que no son usuarios del ERP. Lo de Slack de abajo queda como referencia.
+  - **2d:** la migración de Slack (hecha, abajo).
+  - **2e:** gestión de canales (archivar, renombrar).
+- ~~Decidido (Camilo, 17/11/2026, por la mañana): los chats arrancan vacíos.~~ **Cambiado ese mismo día: se trae Slack** («Ya no queremos usarlo y la idea es migrar toda la info allá. Que no avise menciones ni nada hasta después de la migración»).
 - **Hecho:** la **2a** (17/11/2026, rama `chat/2a-canales`, db/256). Decidido por Camilo: los 16 públicos abiertos a toda la oficina (también los cuatro sensibles) y con toda la oficina dentro; crean canales Dirección y Desarrollo (`chat_canales`); los privados, con quien los pidió. Ver [[Chat]].
 - **Hecho:** la **2b** (17/11/2026, en la misma rama, db/257). Decidido por Camilo: seis reacciones fijas; editar y anular lo propio sin motivo (lo de otro, quien lleva los canales y con motivo); convertir en tarea como una tarea a mano, con el sello en el mensaje y la respuesta en el hilo al cerrarla (**el primer criterio del ítem 1 queda probado**); fijar, cualquiera del canal; guardar, cada uno lo suyo. La vista previa de los enlaces, con `services/enlaces.js` (protegido contra SSRF).
+- **Hecho:** la **2d**, la migración de Slack (17/11/2026, en `main`, db/259). Decidido por Camilo: con un **token de Slack de solo lectura** (una app que crea Ignacio en su cuenta, `SLACK_MIGRACION_TOKEN` en Render, que se revoca al acabar) y un proceso del servidor, no con un agente; **los 19 canales y el privado #efectivo**, que se crea; y **los directos de Ignacio**. Se simula antes, se corrige quién es quién y se migra; se puede repetir sin duplicar y no avisa de nada. Ver [[Chat]].
 - **Choca:**
   - **«Toda la oficina consulta los canales» frente a la convención 6:** #4-bajas-medicas, #6-nominas, #9-rrhh y #16-efectivo son públicos en la lista. Es una objeción a algo que Ignacio ya decidió, y se le plantea a él.
   - «Borrar mensajes propios» frente a «nada se borra»: será una anulación y el texto queda en la auditoría.
   - La purga de 180 días de WhatsApp no se puede copiar.
-  - Los autores de Slack que no son usuarios del ERP necesitan un sitio aparte: `usuario` exige contraseña y email único.
+  - ~~Los autores de Slack que no son usuarios del ERP necesitan un sitio aparte~~: salen con su nombre de Slack (`autor_externo`, db/259).
   - La «Traza por Slack» de Control apunta a canales que dejarán de existir.
 - **Slack:** lo que se puede traer depende del plan.
   - **Free:** enseña 90 días y, desde el 26/08/2024, borra sin vuelta atrás lo de más de un año.
   - **Free y Pro:** exportan solo los canales públicos, con enlaces a los ficheros (en Free, solo los de 90 días).
   - **Privados y directos:** solo con Business+ y solicitud aprobada por el Workspace Owner, o con Enterprise.
-  - **Ficheros:** hay que bajarlos uno a uno antes de cerrar Slack.
+  - **Ficheros:** hay que bajarlos uno a uno antes de cerrar Slack (la 2d lo hace con el token).
+  - **Por la API** se ve lo que ve quien da el token, también sus privados y sus directos, sin exportar nada. En el plan gratuito, solo 90 días: el Slack empezó el 03/09/2026, así que **hay que migrar antes del 02/12/2026**.
 - **Decidir:**
-  - ~~el plan de Slack y su Workspace Owner, y si hay canales sin Ignacio~~; ~~qué hacer con privados y directos~~: los chats arrancan vacíos (17/11/2026);
+  - ~~el plan de Slack y su Workspace Owner, y si hay canales sin Ignacio~~; ~~qué hacer con privados y directos~~: se traen con el token de Ignacio, sus privados y sus directos (17/11/2026);
   - si «5 años» es un mínimo o un límite;
   - ~~quién crea canales~~: Dirección y Desarrollo (17/11/2026);
   - ~~el almacén (A6)~~: Cloudflare R2 (13/11/2026);
@@ -429,7 +432,7 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
 4. Seguridad antes del chat y de los datos sensibles.
 
 **De Ignacio, cuanto antes:**
-- **El plan de Slack y quién es su Workspace Owner.** Si es Free, cada día se borra lo que cumple un año. Y si hay canales en los que no está él.
+- ~~El plan de Slack y quién es su Workspace Owner~~: ya no hace falta (la 2d lee con su token). Sí: **crear la app de Slack y darle el token a Camilo**, y migrar antes del 02/12/2026 si el plan es el gratuito.
 - Si Angie es externa (no tiene usuario), y **las áreas, sus responsables y los superiores**: se ponen en `/organizacion` (A5). Y repasar el reparto de funciones que trae db/248.
 - ~~El almacén de ficheros~~: Cloudflare R2, decidido por Camilo el 13/11/2026 (A6).
 - La objeción de la convención 6: #4-bajas-medicas, #6-nominas, #9-rrhh y #16-efectivo abiertos a toda la oficina.

@@ -1233,6 +1233,8 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-chat-mencion--todos { background: rgb(var(--tc-warn) / .15); color: rgb(var(--tc-warn)); }
 .tc-chat-anulado { font-style: italic; color: rgb(var(--tc-muted)); }
 .tc-chat-editado { font-size: .7rem; color: rgb(var(--tc-muted)); }
+/* Lo traído de Slack (db/259): una marca discreta al lado de la hora. */
+.tc-chat-slack { padding: 0 .35rem; border-radius: .3rem; font-size: .62rem; font-weight: 700; letter-spacing: .02em; color: rgb(var(--tc-muted)); border: 1px solid rgb(var(--tc-border)); }
 .tc-chat-respuestas {
   display: inline-flex; align-items: center; gap: .4rem; margin-top: .3rem; padding: .2rem .5rem; border-radius: .5rem;
   font-size: .78rem; font-weight: 600; color: rgb(var(--tc-gold));

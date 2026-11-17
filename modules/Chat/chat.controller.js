@@ -31,7 +31,9 @@
 const express = require('express');
 const router = express.Router();
 const actor = require('../../services/repo/actor');
+const sesion = require('../../services/sesion');
 const chat = require('./chat.service');
+const slack = require('./slack.service');
 
 const yo = async req => (req.usuario && req.usuario.id) || await actor.idDe(req);
 const responde = fn => async (req, res) => {
@@ -70,5 +72,21 @@ router.post('/api/mensajes/:id/reaccion', responde((id, req) => chat.reaccionar(
 router.post('/api/mensajes/:id/fijar', responde((id, req) => chat.fijar(id, req.params.id, { fijar: b(req).fijar !== false })));
 router.post('/api/mensajes/:id/guardar', responde((id, req) => chat.guardar(id, req.params.id, { guardar: b(req).guardar !== false })));
 router.post('/api/mensajes/:id/tarea', responde((id, req) => chat.convertirEnTarea(id, req.params.id, b(req))));
+
+// ── La migración de Slack (2d, db/259): solo el desarrollador ───────────────
+//   GET  /chat/slack                  la pantalla
+//   GET  /chat/slack/api/estado?ligero=1  si hay token, con qué cuenta (ligero: sin preguntar a Slack) y lo que esté en marcha, con su informe
+//   GET  /chat/slack/api/personas     quién es quién (y los usuarios del ERP para elegir)
+//   POST /chat/slack/api/personas     { slackId, usuarioId }   corregir a mano (null: que salga con su nombre de Slack)
+//   POST /chat/slack/api/simular      lee Slack y dice qué traería (no escribe mensajes)
+//   POST /chat/slack/api/migrar       lo trae (se puede repetir: no duplica)
+router.get('/slack', sesion.requiereDesarrollador, (req, res) => {
+  res.render('chatSlack', { titulo: 'Migración de Slack', seccion: 'chat', layout: 'layout-gestion' });
+});
+router.get('/slack/api/estado', sesion.requiereDesarrollador, responde((id, req) => slack.estado({ ligero: req.query.ligero === '1' })));
+router.get('/slack/api/personas', sesion.requiereDesarrollador, responde(() => slack.personas()));
+router.post('/slack/api/personas', sesion.requiereDesarrollador, responde((id, req) => slack.ponerPersona(id, b(req))));
+router.post('/slack/api/simular', sesion.requiereDesarrollador, responde(id => ({ proceso: slack.lanzar('simular', id) })));
+router.post('/slack/api/migrar', sesion.requiereDesarrollador, responde(id => ({ proceso: slack.lanzar('migrar', id) })));
 
 module.exports = router;

@@ -255,7 +255,7 @@
         ${marcas ? `<p class="tc-chat-marcas">${marcas}</p>` : ''}
         <div class="tc-chat-msj-lado">${lado}</div>
         <div class="tc-chat-msj-cuerpo">
-          ${seguido && !marcas ? '' : `<header><b>${esc(m.autor)}</b><time datetime="${esc(m.creadoAt)}">${esc(hora(m.creadoAt))}</time></header>`}
+          ${seguido && !marcas ? '' : `<header><b>${esc(m.autor)}</b><time datetime="${esc(m.creadoAt)}">${esc(hora(m.creadoAt))}</time>${m.importado ? '<span class="tc-chat-slack" title="Traído de Slack">Slack</span>' : ''}</header>`}
           ${texto ? `<div class="tc-chat-texto">${texto}</div>` : ''}
           ${m.anulado ? '' : adjuntosHtml(m)}
           ${m.enlace ? `<a class="tc-chat-previa" href="${esc(m.enlace.url)}" target="_blank" rel="noopener noreferrer">
@@ -327,7 +327,8 @@
     editando = null;
     mensajes = m.mensajes;
     hayMas = m.hayMas;
-    const primeroNuevo = mensajes.find(x => x.id > m.ultimoLeido && x.autorId !== yo.id);
+    // Lo traído de Slack no es «nuevo» aunque su número sea alto: es de antes.
+    const primeroNuevo = mensajes.find(x => x.id > m.ultimoLeido && x.autorId !== yo.id && !x.importado);
     nuevosDesde = primeroNuevo ? primeroNuevo.id : null;
     raiz.dataset.vista = 'conversacion';
     conv.innerHTML = pintarCabeza() + `
@@ -369,6 +370,8 @@
     if (!r || !r.mensajes.length) return;
     const ids = new Set(mensajes.map(x => x.id));
     mensajes.push(...r.mensajes.filter(x => !ids.has(x.id)));
+    // Por fecha, como los pide el servidor (lo de Slack llega con números altos y es de antes).
+    mensajes.sort((a, b) => String(a.creadoAt).localeCompare(String(b.creadoAt)) || a.id - b.id);
     repintarSerie();
     marcarLeido();
   }

@@ -161,7 +161,9 @@ async function completar(filas, ctx) {
     const previa = !anulado && x.enlace_url ? previas.get(x.enlace_url) : null;
     const t = tareas.get(id);
     return {
-      id, canalId: Number(x.canal_id), autorId: x.autor_id, autor: x.autor || 'Telecab',
+      id, canalId: Number(x.canal_id), autorId: x.autor_id, autor: x.autor || x.autor_externo || 'Telecab',
+      // Traído de Slack (db/259): no cuenta como nuevo ni como no leído.
+      importado: !!x.importado,
       padreId: x.padre_id ? Number(x.padre_id) : null, creadoAt: x.creado_at,
       texto: x.texto, editado: !!x.editado_at, evento: x.evento || null,
       anulado: anulado ? { porAutor: x.anulado_por === x.autor_id, por: x.anulado_por_nombre || null, motivo: x.anulado_motivo || null } : null,

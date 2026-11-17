@@ -172,14 +172,15 @@ async function subir({ tipo, duenoId, nombre, mime, cuerpo, quien }) {
   }
 }
 
-async function subirYa({ tipo, duenoId, nombre, mime, cuerpo, quien }, rotoAntes) {
+async function subirYa({ tipo, duenoId, nombre, mime, cuerpo, quien, sistema = null }, rotoAntes) {
   const id = idDeDueno(duenoId);
-  await permiso('adjuntar', tipo, id, quien);
+  // Del sistema (subirDelSistema): lo decide el servidor, no el permiso de una persona.
+  if (sistema) dueno(tipo); else await permiso('adjuntar', tipo, id, quien);
   const donde = almacen.cual();
   if (!donde) {
     throw conEstado(new Error('No hay almacén de ficheros: falta configurar Cloudflare R2 en el servidor. Avisa al desarrollador.'), 503);
   }
-  const tope = await maxBytes();
+  const tope = (sistema && sistema.tope) || await maxBytes();
   if (rotoAntes()) throw conEstado(rotoAntes(), rotoAntes().status || 400);
   const limpio = nombreLimpio(nombre);
   const tipoFichero = mimeDe(mime, limpio);
@@ -210,17 +211,34 @@ async function subirYa({ tipo, duenoId, nombre, mime, cuerpo, quien }, rotoAntes
 
   let nuevo;
   try {
-    nuevo = await libro.conFirma({ usuarioId: quien.id, origen: 'adjuntos' }, cli => repo.insertar(cli, {
+    nuevo = await libro.conFirma({ usuarioId: sistema ? sistema.firmante : quien.id, origen: sistema ? sistema.origen : 'adjuntos' }, cli => repo.insertar(cli, {
       duenoTipo: tipo, duenoId: id, almacen: donde, ruta, nombre: limpio, mime: tipoFichero,
-      bytes, sha256: huella.digest('hex'), creadoPor: quien.id,
+      bytes, sha256: huella.digest('hex'), creadoPor: sistema ? sistema.creadoPor : quien.id,
     }));
   } catch (e) {
     // Sin fila, el fichero no es de nadie: fuera del almacén.
     await a.borrar(ruta).catch(() => {});
     throw e;
   }
-  console.log(`📎 [Adjuntos] ${tipo} ${id}: «${limpio}» (${bytes} bytes, ${donde}) por el usuario ${quien.id}`);
+  console.log(`📎 [Adjuntos] ${tipo} ${id}: «${limpio}» (${bytes} bytes, ${donde}) ${sistema ? `de ${sistema.origen}` : `por el usuario ${quien.id}`}`);
   return publico(await repo.porId(nuevo));
+}
+
+/**
+ * Un fichero que trae el SERVIDOR, no una persona (la migración de Slack): sin
+ * el permiso de «adjuntar» del dueño, que es para la gente. Firma `firmante`
+ * (quien lanzó el proceso); `creadoPor`, de quién es (o null); `tope`, en bytes.
+ * Solo se llama desde el servidor: no hay ninguna ruta que lo use.
+ */
+async function subirDelSistema({ tipo, duenoId, nombre, mime, cuerpo, firmante, creadoPor = null, origen = 'adjuntos', tope = null }) {
+  let rotoAntes = null;
+  const guardia = e => { if (!rotoAntes) rotoAntes = e; };
+  cuerpo.on('error', guardia);
+  try {
+    return await subirYa({ tipo, duenoId, nombre, mime, cuerpo, sistema: { firmante, creadoPor, origen, tope } }, () => rotoAntes);
+  } finally {
+    cuerpo.off('error', guardia);
+  }
 }
 
 // ── Leer ───────────────────────────────────────────────────────────────────
@@ -334,7 +352,7 @@ function publico(a) {
 function conEstado(e, status) { e.status = status; return e; }
 
 module.exports = {
-  registrarDueno, exigirAdjuntar, subir, lista, servir, anular, maxBytes, MOTIVO_MINIMO,
+  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, maxBytes, MOTIVO_MINIMO,
   // Para las pruebas y la pantalla de pruebas:
   ENLINEA, nombreLimpio, mimeDe, claseDe, rangoDe, disposicion, tipos: () => [...DUENOS.keys()],
 };

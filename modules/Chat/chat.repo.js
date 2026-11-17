@@ -53,12 +53,12 @@ async function asegurarPublicos(usuarioId) {
 const NO_LEIDOS = `
   (SELECT count(*) FROM chat_mensaje m
     WHERE m.canal_id = c.id AND m.padre_id IS NULL AND m.id > mi.ultimo_leido_id
-      AND m.autor_id IS DISTINCT FROM mi.usuario_id AND m.anulado_at IS NULL)::int`;
+      AND m.autor_id IS DISTINCT FROM mi.usuario_id AND m.anulado_at IS NULL AND m.slack_ts IS NULL)::int`;
 // Mensajes que le mencionan (uno que le nombra y además dice @canal, cuenta una vez).
 const MENCIONES = `
   (SELECT count(DISTINCT m.id) FROM chat_mencion x JOIN chat_mensaje m ON m.id = x.mensaje_id
     WHERE m.canal_id = c.id AND m.id > mi.ultimo_leido_id AND m.autor_id IS DISTINCT FROM mi.usuario_id
-      AND m.anulado_at IS NULL AND (x.usuario_id = mi.usuario_id OR x.todos))::int`;
+      AND m.anulado_at IS NULL AND m.slack_ts IS NULL AND (x.usuario_id = mi.usuario_id OR x.todos))::int`;
 
 /** Los canales de una persona (en los que está), con sus no leídos y menciones. */
 async function canalesDe(usuarioId) {
@@ -155,15 +155,21 @@ const COLUMNAS = `m.id, m.canal_id, m.autor_id, ${NOMBRE('u')} AS autor, m.padre
   m.respuestas, m.ultima_respuesta_at, m.editado_at, m.anulado_at, m.anulado_por,
   CASE WHEN m.anulado_por IS DISTINCT FROM m.autor_id THEN m.anulado_motivo END AS anulado_motivo,
   (SELECT ${NOMBRE('ua')} FROM usuario ua WHERE ua.id = m.anulado_por) AS anulado_por_nombre,
-  m.con_adjuntos, CASE WHEN m.anulado_at IS NULL THEN m.enlace_url END AS enlace_url, m.evento`;
+  m.con_adjuntos, CASE WHEN m.anulado_at IS NULL THEN m.enlace_url END AS enlace_url, m.evento,
+  m.autor_externo, (m.slack_ts IS NOT NULL) AS importado`;
 
-/** Los de arriba de un canal (sin las respuestas de los hilos), los más nuevos primero. */
+/**
+ * Los de arriba de un canal (sin las respuestas de los hilos), POR FECHA: los
+ * más nuevos primero; `antes`, los anteriores a ese mensaje; `despues`, los que
+ * han llegado después de ese (por número: lo nuevo siempre es lo último).
+ */
 async function mensajes(canalId, { antes = null, despues = null, limite = 50 } = {}) {
   const r = await db.consulta(
     `SELECT ${COLUMNAS} FROM chat_mensaje m LEFT JOIN usuario u ON u.id = m.autor_id
       WHERE m.canal_id = $1 AND m.padre_id IS NULL
-        AND ($2::bigint IS NULL OR m.id < $2) AND ($3::bigint IS NULL OR m.id > $3)
-      ORDER BY m.id ${despues != null ? 'ASC' : 'DESC'} LIMIT $4`, [canalId, antes, despues, limite]);
+        AND ($2::bigint IS NULL OR (m.creado_at, m.id) < (SELECT a.creado_at, a.id FROM chat_mensaje a WHERE a.id = $2))
+        AND ($3::bigint IS NULL OR m.id > $3)
+      ORDER BY ${despues != null ? 'm.creado_at ASC, m.id ASC' : 'm.creado_at DESC, m.id DESC'} LIMIT $4`, [canalId, antes, despues, limite]);
   return r.rows;
 }
 async function mensaje(cli, id) {
@@ -184,7 +190,7 @@ async function participantesHilo(padreId) {
 async function respuestas(padreId) {
   const r = await db.consulta(
     `SELECT ${COLUMNAS} FROM chat_mensaje m LEFT JOIN usuario u ON u.id = m.autor_id
-      WHERE m.padre_id = $1 ORDER BY m.id LIMIT 500`, [padreId]);
+      WHERE m.padre_id = $1 ORDER BY m.creado_at, m.id LIMIT 500`, [padreId]);
   return r.rows;
 }
 
