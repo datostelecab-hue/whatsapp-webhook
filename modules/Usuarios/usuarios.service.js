@@ -340,6 +340,41 @@ async function fijarFichaObligatorio(id, debe, firma = null) {
   return buscarUsuario(r.rows[0].email);
 }
 
+// ── LA FECHA DE ALTA (db/263, 17/11/2026) ────────────────────────────────────
+// Desde cuándo trabaja en Telecab: desde ahí genera vacaciones (Mis vacaciones).
+// La pone quien tiene la llave de Usuarios y permisos. VA APARTE DEL SELECT de
+// siempre a propósito: ese lo usa el inicio de sesión, y si la columna aún no
+// existe (la migración sin aplicar) nadie podría entrar. Aquí, sin la columna,
+// se dice que falta la migración y ya.
+const FALTA_ALTA = e => e && e.code === '42703' && /fecha_alta/.test(e.message || '');
+
+/** Las fechas de alta de todos: { porId: Map(id → 'AAAA-MM-DD'), sinMigracion }. */
+async function fechasDeAlta() {
+  try {
+    const r = await db.consulta(`SELECT id, to_char(fecha_alta, 'YYYY-MM-DD') AS alta FROM usuario WHERE fecha_alta IS NOT NULL`);
+    return { porId: new Map(r.rows.map(x => [Number(x.id), x.alta])), sinMigracion: false };
+  } catch (e) {
+    if (FALTA_ALTA(e)) return { porId: new Map(), sinMigracion: true };
+    throw e;
+  }
+}
+
+/** Pone (o quita, con null) la fecha de alta de una persona. → 'AAAA-MM-DD' o null. */
+async function fijarFechaAlta(id, fecha, firma = null) {
+  const f = fecha == null || fecha === '' ? null : String(fecha).trim();
+  if (f !== null && !/^\d{4}-\d{2}-\d{2}$/.test(f)) throw new Error('La fecha de alta va como día (aaaa-mm-dd)');
+  if (f !== null && (f < '2000-01-01' || f > '2100-12-31')) throw new Error('Esa fecha de alta no tiene sentido');
+  try {
+    const r = await escribir(firma,
+      `UPDATE usuario SET fecha_alta = $2::date WHERE id = $1 RETURNING to_char(fecha_alta, 'YYYY-MM-DD') AS alta`, [Number(id), f]);
+    if (!r.rowCount) throw new Error('No existe ese usuario');
+    return r.rows[0].alta || null;
+  } catch (e) {
+    if (FALTA_ALTA(e)) throw new Error('Falta aplicar la migración db/263 (la fecha de alta)');
+    throw e;
+  }
+}
+
 /**
  * Marca (o desmarca) que esta persona puede coger un coche por WhatsApp.
  *
@@ -427,6 +462,6 @@ module.exports = {
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,
   normalizarEmail, esEmail,
-  fijarFichaObligatorio, losQueFichan, fijarFichaCoche,
+  fijarFichaObligatorio, losQueFichan, fijarFichaCoche, fechasDeAlta, fijarFechaAlta,
   cortarSesiones, sesionSigueValiendo, olvidarCorte
 };

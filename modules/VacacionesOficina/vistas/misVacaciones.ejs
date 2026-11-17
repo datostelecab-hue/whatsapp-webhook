@@ -1,0 +1,25 @@
+<%#
+  MIS VACACIONES (db/263, 17/11/2026) — las de la gente de la oficina.
+
+  Cada uno ve las suyas: lo que tiene para usar hoy, lo generado, lo gastado y
+  lo programado; un simulador (fechas y sus dos días de libranza) que dice lo
+  que gastaría y lo que tendría ese día, también lo que habrá generado hasta
+  entonces; desde ahí las pide. Quien lleva Usuarios y permisos ve además «La
+  oficina»: el saldo de todos y lo que espera su aprobación.
+%>
+
+<div class="tc-pantalla space-y-5">
+  <div>
+    <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-umbrella-beach text-telecab-gold" aria-hidden="true"></i> Mis vacaciones
+    </h1>
+    <p class="text-sm text-telecab-muted mt-1 max-w-3xl" id="mv-reglas">Las vacaciones de la oficina: lo que llevas generado, lo que has gastado y un simulador para pedirlas.</p>
+  </div>
+  <nav id="mv-pestanas" aria-label="Qué vacaciones ves" hidden></nav>
+  <section id="mv-mias" aria-live="polite"></section>
+</div>
+<div id="mv-oficina" class="hidden"></div>
+
+<script src="<%= est('/assets/js/pestanas.js') %>"></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/VacacionesOficina/misVacaciones.js') %>"></script>

@@ -374,6 +374,8 @@ app.use('/novedades', require('./modules/Novedades/novedades.controller'));
 app.use('/avisos', require('./modules/Avisos/avisos.controller'));
 // El chat interno (ítem 2, db/256): canales, directos, hilos y menciones.
 app.use('/chat', require('./modules/Chat/chat.controller'));
+// Las vacaciones de la oficina (db/263): cada uno las suyas; quien lleva Usuarios y permisos, todas.
+app.use('/mis-vacaciones', require('./modules/VacacionesOficina/vacacionesOficina.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)

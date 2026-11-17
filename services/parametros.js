@@ -28,7 +28,8 @@ const repo = require('./repo/parametros');
 
 // ── Los tipos ──────────────────────────────────────────────────────────────
 // `entero` lleva su `unidad` (lo que se escribe detrás del número) y sus
-// límites; `importe` va en euros con dos decimales; `texto`, con su largo
+// límites; `importe` va en euros con dos decimales; `decimal`, un número con
+// coma (`decimales`, 2 si no se dice) y su `unidad`; `texto`, con su largo
 // máximo; `horario`, los días de la semana (1 = lunes … 7 = domingo) y la hora
 // de abrir y de cerrar, en hora de Madrid.
 const UNIDADES = {
@@ -61,6 +62,13 @@ const CATALOGO = [
     descripcion: 'Lo más que puede pesar un fichero que se adjunta (una foto, un PDF, un vídeo). No pasa de 95 MB: '
       + 'Cloudflare, que va delante del ERP, corta las subidas de más de 100 MB.',
     usa: 'La subida de adjuntos (services/adjuntos.js)' },
+
+  // Vacaciones de la oficina (db/263, 17/11/2026)
+  { clave: 'oficina.vacaciones.tope_mes', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'dias', decimales: 2, min: 0, max: 31, defecto: 1.84,
+    etiqueta: 'Vacaciones de la oficina: lo más que genera un mes',
+    descripcion: 'Cada día del horario de la oficina genera 0,084 días de vacaciones, como mucho esto al mes. '
+      + 'Los conductores tienen su propio tope (1,85).',
+    usa: 'Mis vacaciones (modules/VacacionesOficina)' },
 
   // Tablero de tareas (ítem 1, entrega 1c)
   { clave: 'tablero.plazo_colas_dias_habiles', modulo: 'Tablero', item: 1, tipo: 'entero', unidad: 'dias_habiles', min: 0, max: 30, defecto: 2,
@@ -171,6 +179,17 @@ function aImporte(v, p) {
   return r;
 }
 
+function aDecimal(v, p) {
+  const s = String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.');
+  const n = Number(s);
+  if (!s || !Number.isFinite(n)) throw new Error(`«${p.etiqueta}» va con coma («1,84»)`);
+  const k = 10 ** (p.decimales == null ? 2 : p.decimales);
+  const r = Math.round(n * k) / k;
+  if (p.min != null && r < p.min) throw new Error(`«${p.etiqueta}» no puede ser menos de ${p.min}`);
+  if (p.max != null && r > p.max) throw new Error(`«${p.etiqueta}» no puede pasar de ${p.max}`);
+  return r;
+}
+
 function aHorario(v, p) {
   const o = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch (_) { return null; } })() : v;
   if (!o || typeof o !== 'object') throw new Error(`«${p.etiqueta}»: faltan los días y las horas`);
@@ -195,6 +214,7 @@ function validar(clave, crudo) {
   const p = definicion(clave);
   if (p.tipo === 'entero') return aEntero(crudo, p);
   if (p.tipo === 'importe') return aImporte(crudo, p);
+  if (p.tipo === 'decimal') return aDecimal(crudo, p);
   if (p.tipo === 'horario') return aHorario(crudo, p);
   if (p.tipo === 'texto') return aTexto(crudo, p);
   throw new Error(`Tipo de parámetro desconocido: ${p.tipo}`);
@@ -219,6 +239,10 @@ function formatear(clave, valor) {
   if (p.tipo === 'horario') return `${diasEnTexto(valor.dias)}, de ${valor.desde} a ${valor.hasta}`;
   if (p.unidad === 'dia_mes') return `el día ${valor} de cada mes`;
   const u = UNIDADES[p.unidad];
+  if (p.tipo === 'decimal') {
+    const txt = Number(valor).toLocaleString('es-ES', { maximumFractionDigits: p.decimales == null ? 2 : p.decimales });
+    return u ? `${txt} ${Number(valor) === 1 ? u.una : u.varias}` : txt;
+  }
   return u ? `${valor} ${valor === 1 ? u.una : u.varias}` : String(valor);
 }
 

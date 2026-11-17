@@ -45,6 +45,7 @@ router.get('/', (req, res) => {
 router.get('/api/datos', async (req, res) => {
   try {
     const { lista } = await usuarios.leerUsuarios();
+    const altas = await usuarios.fechasDeAlta();
     const porUsuario = {};
     for (const u of lista) {
       // Nunca se devuelve el hash. Los de acceso total no llevan matriz.
@@ -58,7 +59,9 @@ router.get('/api/datos', async (req, res) => {
         fichaObligatorio: !!u.fichaObligatorio,
         fichaCoche: !!u.fichaCoche,
         creado_por: u.creado_por, fecha_creacion: u.fecha_creacion, ultimo_acceso: u.ultimo_acceso,
+        fechaAlta: altas.porId.get(u.id) || null,
       })),
+      altasSinMigracion: altas.sinMigracion,
       permisos: porUsuario,
       catalogo: permisos.CATALOGO,
       semillas: { oficina: permisos.semillaDeRol('oficina'), trafico: permisos.semillaDeRol('trafico') },
@@ -180,6 +183,17 @@ router.post('/reset', async (req, res) => {
     if (u.id) { await usuarios.cortarSesiones(u.id, firma(req)); usuarios.olvidarCorte(u.id); }
     console.log(`🔑 [Usuarios] Reset de ${email} — por ${req.usuario.email}`);
     res.json({ status: 'ok', correoEnviado: !!r.enviado, passwordProvisional: prov });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// ── La fecha de alta (db/263): desde ahí genera vacaciones ─────────────────
+router.post('/alta', async (req, res) => {
+  try {
+    const b = req.body || {};
+    await noEsDelDesarrollador(req, { id: b.id });
+    const alta = await usuarios.fijarFechaAlta(Number(b.id), b.fecha || null, firma(req));
+    console.log(`📅 [Usuarios] usuario ${Number(b.id)}: fecha de alta ${alta || 'sin poner'} — por ${req.usuario.email}`);
+    res.json({ status: 'ok', fechaAlta: alta });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 

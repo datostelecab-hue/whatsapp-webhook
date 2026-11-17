@@ -209,6 +209,10 @@ Cada uno pone la suya en **Configuración → Mi perfil** (`usuario.fecha_nacimi
 
 **No va en la lectura general del usuario** (`SELECT` de `usuarios.service`), que es la del inicio de sesión: se lee y se escribe aparte (`fechaNacimientoDe`, `ponerFechaNacimiento`). Si el código llegara antes que la migración y fuera en esa lectura, **nadie podría entrar**, ni siquiera para aplicarla. Así, sin `db/204` se lee vacía y al guardar avisa de que falta aplicarla.
 
+## La fecha de alta (17/11/2026, db/263)
+
+En la ficha de cada persona, **«Fecha de alta en Telecab»** (el calendario de la casa, dd/mm/aaaa): desde ese día genera vacaciones en [[Vacaciones de la oficina]]. La pone quien tiene la llave de Usuarios y permisos (Camilo: *«el que tenga los permisos de usuarios»*), con `POST /usuarios/alta`; queda en el libro. Como la fecha de nacimiento, **va aparte de la lectura general** (`fechasDeAlta`, `fijarFechaAlta`): sin `db/263`, la pantalla lo dice y no deja guardarla, y se puede seguir entrando.
+
 ## Lo que falta
 
 `usuarios.service.js` lleva dentro sus consultas SQL: es servicio y repositorio a la vez, y hay que sacarlo a un `usuarios.repo.js`. No se hizo al mudarlo porque la mudanza tenía que ser mecánica y revisable de un vistazo.

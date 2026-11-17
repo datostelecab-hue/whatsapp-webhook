@@ -145,6 +145,12 @@
             </span>
           </span>
         </label>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <label for="u-alta" class="text-sm text-telecab-text">Fecha de alta en Telecab</label>
+          <input id="u-alta" data-alta type="text" class="js-fecha px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-32"
+                 value="${u.fechaAlta ? esc(u.fechaAlta.split('-').reverse().join('/')) : ''}" placeholder="dd/mm/aaaa" ${D.altasSinMigracion ? 'disabled' : ''}>
+          <span class="text-[11px] text-telecab-muted">${D.altasSinMigracion ? 'Falta aplicar la migración db/263.' : 'Desde ese día genera vacaciones (Mis vacaciones).'}</span>
+        </div>
         <label class="flex items-start gap-2 cursor-pointer group w-fit mt-2">
           <input data-ficha-coche type="checkbox" ${u.fichaCoche ? 'checked' : ''}
                  class="w-4 h-4 mt-0.5 accent-telecab-gold shrink-0">
@@ -183,6 +189,16 @@
         e.target.checked = !debe;
         await Dialogo.aviso({ titulo: 'No se pudo guardar', texto: err.message, tono: 'error' });
       }
+    });
+    const alta = box.querySelector('[data-alta]');
+    alta.addEventListener('change', async () => {
+      const v = alta.value.trim();
+      const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(v);
+      const iso = m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;
+      if (v && !iso) return;
+      if ((iso || null) === (u.fechaAlta || null)) return;
+      try { await api('/usuarios/alta', { id: u.id, fecha: iso }); recargar(); }
+      catch (err) { await Dialogo.aviso({ titulo: 'No se pudo guardar la fecha de alta', texto: err.message, tono: 'error' }); recargar(); }
     });
     box.querySelector('[data-ficha-coche]').addEventListener('change', async e => {
       const puede = e.target.checked;

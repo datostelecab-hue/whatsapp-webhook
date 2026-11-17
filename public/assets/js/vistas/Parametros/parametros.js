@@ -145,7 +145,7 @@
     const unidad = d.tipo === 'importe' ? 'euros' : String(d.textoDefecto || '').replace(/^[\d.,]+\s*/, '').replace(/^el día \d+ /, 'día ');
     return [
       { id: 'valor', etiqueta: `Valor${unidad ? ' (' + unidad + ')' : ''}`, tipo: 'texto', obligatorio: true, max: 10,
-        valor: d.tipo === 'importe' ? String(d.valor).replace('.', ',') : String(d.valor), ayuda: limites },
+        valor: d.tipo === 'importe' || d.tipo === 'decimal' ? String(d.valor).replace('.', ',') : String(d.valor), ayuda: limites },
       MOTIVO,
     ];
   }

@@ -24,6 +24,7 @@ Los tipos:
 |---|---|
 | Entero, con unidad | días hábiles, horas hábiles, días, años, día del mes, MB |
 | Importe | el tope de 100 € de los reintegros |
+| Decimal, con unidad | el tope de 1,84 días al mes de las vacaciones de la oficina (17/11/2026: se escribe con coma) |
 | Texto | el acuse fijo del taller |
 | Horario | los días de la semana y la hora de abrir y cerrar |
 
@@ -39,6 +40,7 @@ El valor se pide **cada vez** (hay una caché de un minuto): guardarlo en una co
 - **En uso:**
   - el horario de la oficina de Madrid, que lee el [[Calendario laboral]];
   - `adjuntos.max_mb`, lo máximo que se puede adjuntar (90 MB; entre 1 y 95, porque Cloudflare corta a los 100). Ver [[Adjuntos]].
+  - `oficina.vacaciones.tope_mes`, lo más que genera un mes en las vacaciones de la oficina (1,84 días, desde 17/11/2026). Ver [[Vacaciones de la oficina]].
   - `tablero.plazo_colas_dias_habiles`, el plazo de las tarjetas de las colas: J, −J, correcciones de fichaje y vacaciones (2 días hábiles, desde 16/11/2026). Ver [[Tablero de tareas]].
 - **Aún sin usar:** los números de los ítems 2, 4 a 8, 10, 14 a 19, ya con el valor de la hoja de ruta. Están para que Ignacio los vea y los revise desde ya; la pantalla avisa de que cambiarlos no cambia nada hasta que se haga su ítem.
 
