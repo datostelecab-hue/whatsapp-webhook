@@ -435,14 +435,12 @@
   }
 
   // ── Vacaciones por meses: disfrutadas + PROGRAMADAS, para asignar sin pisarse ──
-  // Una parrilla por mes: una fila por persona de vacaciones, una celda por día.
-  // Lo ya disfrutado va sólido; lo programado (aún no llega), rayado. La fila
-  // "a la vez" de arriba dice cuánta gente falta cada día — el dato que evita
-  // que RRHH junte media flota el mismo puente. Y al final, quién no tiene NI
-  // UN DÍA todavía: la lista de a quién le toca asignar.
+  // La parrilla es la pieza global VacacionesPorMeses (vacacionesPorMeses.js,
+  // 17/11/2026: la recicla también «La oficina» de /mis-vacaciones). Una fila
+  // por persona de vacaciones, una celda por día; la fila "a la vez" dice
+  // cuánta gente falta cada día — el dato que evita que RRHH junte media flota
+  // el mismo puente. Y al final, quién no tiene NI UN DÍA todavía.
   let VAC = null, vacMesSel = null;
-  const pad2 = n => String(n).padStart(2, '0');
-  const mesIdxDe = iso => { const [y, m] = iso.split('-').map(Number); return y * 12 + (m - 1); };
 
   async function abrirVacaciones() {
     SEL = null; diaSel = null; pintarLista();
@@ -456,110 +454,25 @@
         VAC = r;
       } catch (e) { d.innerHTML = '<p class="text-sm text-telecab-red">No se pudieron cargar las vacaciones: ' + esc(e.message) + '</p>'; return; }
     }
-    if (vacMesSel == null) vacMesSel = mesIdxDe(VAC.hoy);
     pintarVacaciones();
   }
 
-  // Personas de vacaciones en un mes (índice año*12+mes), con sus tramos ya
-  // recortados al mes: [{...persona, segs: [{a, b}]}].
-  function filasDeMes(vm) {
-    const y = Math.floor(vm / 12), m = vm % 12;
-    const nD = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-    const iso1 = y + '-' + pad2(m + 1) + '-01', isoN = y + '-' + pad2(m + 1) + '-' + pad2(nD);
-    const porCond = new Map();
-    (VAC.periodos || []).forEach(p => {
-      const h = p.hasta || '9999-12-31';
-      if (p.desde > isoN || h < iso1) return;
-      const a = p.desde > iso1 ? Number(p.desde.slice(8, 10)) : 1;
-      const b = (p.hasta && p.hasta <= isoN) ? Number(p.hasta.slice(8, 10)) : nD;
-      if (!porCond.has(p.conductorId)) porCond.set(p.conductorId, { ...p, segs: [] });
-      porCond.get(p.conductorId).segs.push({ a, b, abierta: p.abierta, sigue: h > isoN, venia: p.desde < iso1 });
-    });
-    return { y, m, nD, filas: [...porCond.values()].sort((x, z) =>
-      Math.min(...x.segs.map(s => s.a)) - Math.min(...z.segs.map(s => s.a)) || x.nombre.localeCompare(z.nombre, 'es')) };
-  }
-
   function pintarVacaciones() {
-    const d = $('#b-default');
-    const hoyVm = mesIdxDe(VAC.hoy);
-    // La tira de meses: de junio 2026 hasta la última vacación programada (con
-    // 3 meses de margen para poder asignar hacia delante).
-    let maxVm = hoyVm + 3;
-    (VAC.periodos || []).forEach(p => { maxVm = Math.max(maxVm, mesIdxDe(p.hasta || p.desde)); });
-    // Tope de 15 meses vista: una fecha con el año mal tecleado (pasó) no puede
-    // convertir la tira de meses en una alfombra hasta 2029.
-    maxVm = Math.min(maxVm, hoyVm + 15);
-    const meses = []; for (let i = mesIdxDe('2026-06-01'); i <= maxVm; i++) meses.push(i);
-    if (vacMesSel < meses[0] || vacMesSel > maxVm) vacMesSel = hoyVm;
-
-    const { y, m, nD, filas } = filasDeMes(vacMesSel);
-    const cuenta = new Array(nD + 1).fill(0);
-    filas.forEach(f => f.segs.forEach(s => { for (let i = s.a; i <= s.b; i++) cuenta[i]++; }));
-    const maxC = Math.max(1, ...cuenta.slice(1));
-    const diasMes = filas.reduce((t, f) => t + f.segs.reduce((s2, s) => s2 + (s.b - s.a + 1), 0), 0);
-    const programadas = new Set((VAC.periodos || []).filter(p => p.desde > VAC.hoy).map(p => p.conductorId));
-    const finde = i => { const dow = new Date(Date.UTC(y, m, i)).getUTCDay(); return dow === 0 || dow === 6; };
-    const cols = 'grid-template-columns: minmax(9rem, 12rem) repeat(' + nD + ', minmax(0, 1fr));';
-
-    const filaHtml = f => {
-      let celdas = '';
-      for (let i = 1; i <= nD; i++) {
-        const s = f.segs.find(x => i >= x.a && i <= x.b);
-        const iso = y + '-' + pad2(m + 1) + '-' + pad2(i);
-        celdas += s ? '<i class="' + (iso > VAC.hoy ? 'vac-prog' : 'vac-on') + '"></i>'
-                    : '<i class="' + (finde(i) ? 'finde' : '') + '"></i>';
-      }
-      const dias = f.segs.reduce((t, s) => t + (s.b - s.a + 1), 0);
-      const abierta = f.segs.some(s => s.abierta);
-      return '<div class="vac-fila" style="' + cols + '">' +
-        '<span class="vac-nombre min-w-0 pr-2 text-sm text-telecab-text truncate" data-abrir="' + esc(f.conductorId) + '" ' +
-          'title="' + esc(f.nombre + (f.telefono ? ' · ' + f.telefono : '') + ' · ' + dias + ' día(s) este mes' + (abierta ? ' · sin fecha de vuelta' : '')) + '">' +
-          esc(f.nombre) + ' <span class="text-[11px] text-telecab-muted">' + dias + 'd' + (abierta ? ' →' : '') + '</span></span>' +
-        celdas + '</div>';
-    };
-
-    d.innerHTML =
-      '<div class="flex items-center justify-between flex-wrap gap-2 mb-1">' +
-        '<h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">' +
-          '<i class="fa-solid fa-umbrella-beach" style="color:' + clr('V') + '"></i> Vacaciones por meses</h2>' +
-        '<div class="flex items-center gap-2">' +
-          '<button id="b-vac-excel2" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold transition" title="Este calendario en Excel: del mes pasado al último con vacaciones programadas, una hoja por mes"><i class="fa-solid fa-file-excel mr-1"></i>Excel</button>' +
-          '<button id="b-vac-volver" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Hoy</button>' +
-        '</div>' +
-      '</div>' +
-      '<p class="text-xs text-telecab-muted mb-3">Lo disfrutado va sólido; lo <b>programado</b>, rayado. La fila «a la vez» dice cuánta gente falta cada día: si se pone caliente, ese mes no cabe nadie más.</p>' +
-      '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">' +
-        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">De vacaciones en ' + MESES_L[m] + '</p><p class="text-lg font-bold tabular-nums">' + filas.length + '</p></div>' +
-        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">Días de vacaciones del mes</p><p class="text-lg font-bold tabular-nums">' + diasMes + '</p></div>' +
-        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">Con vacaciones programadas</p><p class="text-lg font-bold tabular-nums" style="color:' + clr('V') + '">' + programadas.size + '</p></div>' +
-        '<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">Sin ni un día todavía</p><p class="text-lg font-bold tabular-nums text-telecab-warn">' + (VAC.sinVacaciones || []).length + '</p></div>' +
-      '</div>' +
-      '<div class="flex flex-wrap gap-1 mb-4">' + meses.map(i => {
-        const n = filasDeMes(i).filas.length;
-        return '<button data-vacmes="' + i + '" class="b-chip ' + (i === vacMesSel ? 'on' : '') + '">' +
-          MESES_L[i % 12].slice(0, 3) + ' ' + String(Math.floor(i / 12)).slice(2) +
-          (n ? ' <b>' + n + '</b>' : '') + (i === hoyVm ? ' ·' : '') + '</button>';
-      }).join('') + '</div>' +
-      (filas.length
-        ? '<div class="space-y-[3px]">' +
-            '<div class="vac-fila" style="' + cols + '"><span></span>' +
-              Array.from({ length: nD }, (_, i) => '<span class="text-center text-[10px] ' + (finde(i + 1) ? 'text-telecab-muted/50' : 'text-telecab-muted') + '">' + (i + 1) + '</span>').join('') + '</div>' +
-            '<div class="vac-fila" style="' + cols + '"><span class="text-[10px] text-telecab-muted text-right pr-2">a la vez</span>' +
-              cuenta.slice(1).map((c, i) => '<b style="background: rgb(var(--tc-vac) / ' + (c ? (0.12 + 0.68 * c / maxC).toFixed(2) : 0.04) + ')" title="' + c + ' de vacaciones el ' + (i + 1) + '">' + (c || '') + '</b>').join('') + '</div>' +
-            filas.map(filaHtml).join('') +
-          '</div>'
-        : '<p class="text-sm text-telecab-muted py-6 text-center">Nadie de vacaciones en ' + MESES_L[m] + ' ' + y + '.</p>') +
-      '<details class="mt-5"><summary class="cursor-pointer text-sm text-telecab-warn font-semibold">Sin vacaciones todavía (' + (VAC.sinVacaciones || []).length + ') — a quién le toca asignar</summary>' +
-        '<div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-1.5 mt-2">' + (VAC.sinVacaciones || []).map(c =>
-          '<button data-abrir="' + esc(c.conductorId) + '" class="text-left px-3 py-1.5 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 transition">' +
-            '<span class="block text-sm text-telecab-text truncate">' + esc(c.nombre) + '</span>' +
-            '<span class="block text-[11px] text-telecab-muted">' + esc(c.telefono || '') + (c.turno ? ' · ' + esc(c.turno) : '') + (c.zona ? ' · ' + esc(c.zona) : '') + '</span></button>').join('') +
-        '</div></details>';
-
-    d.querySelector('#b-vac-volver').addEventListener('click', pintarDefault);
-    d.querySelector('#b-vac-excel2').addEventListener('click', bajarVacacionesExcel);
-    d.querySelectorAll('[data-vacmes]').forEach(b => b.addEventListener('click', () => { vacMesSel = Number(b.dataset.vacmes); pintarVacaciones(); }));
-    d.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.abrir))));
+    VacacionesPorMeses.pintar($('#b-default'), {
+      hoy: VAC.hoy,
+      desde: '2026-06',
+      mes: vacMesSel,
+      alCambiarMes: m => { vacMesSel = m; },
+      titulo: 'Vacaciones por meses',
+      ayuda: 'La fila «a la vez» dice cuánta gente falta cada día: si se pone caliente, ese mes no cabe nadie más.',
+      periodos: (VAC.periodos || []).map(p => ({ id: p.conductorId, nombre: p.nombre, detalle: p.telefono || '', desde: p.desde, hasta: p.hasta, abierta: p.abierta })),
+      sinVacaciones: (VAC.sinVacaciones || []).map(c => ({ id: c.conductorId, nombre: c.nombre, detalle: [c.telefono, c.turno, c.zona].filter(Boolean).join(' · ') })),
+      botones: [
+        { html: '<i class="fa-solid fa-file-excel mr-1" aria-hidden="true"></i>Excel', titulo: 'Este calendario en Excel: del mes pasado al último con vacaciones programadas, una hoja por mes', alPulsar: bajarVacacionesExcel },
+        { html: '<i class="fa-solid fa-arrow-left mr-1" aria-hidden="true"></i>Hoy', alPulsar: pintarDefault },
+      ],
+      alAbrir: id => abrir(Number(id)),
+    });
   }
 
   // ── Detalle ──────────────────────────────────────────────────────────────

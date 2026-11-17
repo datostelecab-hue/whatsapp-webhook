@@ -186,9 +186,22 @@ async function puedeAprobar(quien) {
   return (await permisos.clavesDe(quien.id)).has('/usuarios');
 }
 
+// Los festivos que no gastan vacaciones: los del calendario de Madrid (los
+// nacionales, los de la Comunidad y los locales de la oficina) y, de los años
+// que aún no están cargados, el 1 de enero, que es seguro (17/11/2026, Camilo:
+// «el festivo seguro del otro año es el 1 de enero»). Hasta dos años vista,
+// lo que alcanza el simulador.
+function festivosDe(cal, hoy) {
+  const out = new Set(cal.festivos || []);
+  const ano = Number(hoy.slice(0, 4));
+  for (let a = ano; a <= ano + 2; a++) out.add(`${a}-01-01`);
+  return out;
+}
+
 async function entorno() {
   const [cal, tope] = await Promise.all([calendario.de('madrid'), parametros.valor(TOPE).catch(() => 1.84)]);
-  return { hoy: calendario.hoy(), laborables: [...cal.horario.dias], festivos: cal.festivos, tope: Number(tope) };
+  const hoy = calendario.hoy();
+  return { hoy, laborables: [...cal.horario.dias], festivos: festivosDe(cal, hoy), tope: Number(tope) };
 }
 
 /** Lo de una persona: su saldo, sus vacaciones y los meses. Lanza 404 si no es de la oficina. */
@@ -251,6 +264,38 @@ async function lista(quien) {
     };
   });
   return { filas, reglas: reglas(e) };
+}
+
+/**
+ * EL CALENDARIO DE LA OFICINA (17/11/2026, Camilo: «Hazlo tipo calendario para
+ * saber gráficamente quién se va y cuándo… ya hay algo parecido en bitácora
+ * llamado "Vacaciones por meses", recicla ese»): lo que pinta la pieza global
+ * VacacionesPorMeses. Las aprobadas y las que esperan de toda la oficina, con
+ * sus dos días de libranza (no gastan), los festivos, y quién no tiene ni un
+ * día este año. Solo quien aprueba.
+ */
+async function calendarioOficina(quien) {
+  if (!await puedeAprobar(quien)) throw error('Solo quien lleva Usuarios y permisos ve las de todos', 403);
+  const e = await entorno();
+  const gente = await repo.oficina();
+  const vacs = await repo.vacacionesDe(gente.map(x => x.id));
+  const enero = e.hoy.slice(0, 4) + '-01-01';
+  const periodos = [];
+  const sinVacaciones = [];
+  for (const p of gente) {
+    const suyas = (vacs.get(p.id) || []).filter(v => v.estado === 'aprobada' || v.estado === 'pedida');
+    suyas.forEach(v => periodos.push({
+      id: p.id, nombre: p.nombre, detalle: p.puesto || '', desde: v.desde, hasta: v.hasta,
+      pendiente: v.estado === 'pedida', libra: v.libra_dias || [],
+    }));
+    if (!suyas.some(v => v.hasta >= enero)) sinVacaciones.push({ id: p.id, nombre: p.nombre, detalle: p.puesto || (p.alta ? '' : 'Sin fecha de alta') });
+  }
+  return {
+    hoy: e.hoy, desde: DESDE.slice(0, 7),
+    festivos: [...e.festivos].filter(d => d >= DESDE).sort(),
+    periodos, sinVacaciones,
+    personas: gente.map(p => ({ id: p.id, nombre: p.nombre, alta: p.alta || null })),
+  };
 }
 
 /** El simulador, para sí o (quien aprueba) para otra persona. */
@@ -353,7 +398,7 @@ contadores.registrarFuente(ORIGEN, {
 });
 
 module.exports = {
-  mias, de, lista, simular, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
+  mias, de, lista, calendarioOficina, simular, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
   // Para las pruebas:
   _saldoDe: saldoDe, _simularSobre: simularSobre, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
 };

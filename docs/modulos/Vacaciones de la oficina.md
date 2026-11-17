@@ -57,7 +57,25 @@ Desde ahí **las pide** (con una nota si hace falta). Se piden de hoy en adelant
 ## La pantalla
 
 - **Mías**: las cifras (para usar hoy, generadas, gastadas, programadas, pedidas), «Simular y pedir», sus vacaciones con su estado (y «Retirar» las que esperan) y el mes a mes.
-- **La oficina** (quien tiene la llave): el [[Componente Listado|Listado]] de todos con su alta, lo generado, lo gastado, lo programado, el saldo y lo que espera; filtros «Con algo por aprobar» y «Sin fecha de alta». Al pulsar a alguien, su ficha en el Panel: sus cifras, «Simular sus vacaciones», y aprobar, no aprobar o anular.
+- **La oficina** (quien tiene la llave), arriba **«Vacaciones por meses»**: la parrilla de la bitácora (abajo), y debajo el [[Componente Listado|Listado]] de todos con su alta, lo generado, lo gastado, lo programado, el saldo y lo que espera; filtros «Con algo por aprobar» y «Sin fecha de alta». Al pulsar a alguien, su ficha en el Panel: sus cifras, «Simular sus vacaciones», y aprobar, no aprobar o anular.
+
+## Los festivos no gastan (17/11/2026)
+
+Camilo: *«los festivos también se saltan en las vacaciones, ten en cuenta que el festivo seguro del otro año es el 1 de enero para que sepas que en diciembre hay varios días festivos y esos no restan»*.
+
+- Son los del calendario de Madrid (`calendario.de('madrid').festivos`): los nacionales, los de la Comunidad y los locales de la oficina (San Isidro, la Almudena). En diciembre de 2026: el **7** (Constitución, trasladado), el **8** y el **25**.
+- De los años que aún no están cargados, el **1 de enero** va siempre (hasta dos años vista, lo que alcanza el simulador): unas vacaciones del 28/12 al 03/01 gastan 4 días, no 5. Cuando se carguen los festivos de 2027 con su migración, entran solos.
+- **Antes de este día no se descontaba ninguno**: el calendario no enseñaba sus festivos fuera de `esHabil` y la cuenta los tomaba como vacíos. Ahora el calendario los expone (`festivos`, una copia).
+
+## «Vacaciones por meses» de la oficina (17/11/2026)
+
+Camilo: *«Hazlo tipo calendario para saber gráficamente quién se va y cuándo»* y, en seguida, *«ya hay algo parecido en bitácora llamado "Vacaciones por meses", recicla ese»*. Es esa parrilla, sacada a la pieza global `VacacionesPorMeses` (`public/assets/js/vacacionesPorMeses.js`, clases `.tc-vpm-*` en `telecab.css`), que usan las dos pantallas:
+
+- Una tira de meses (desde enero de 2026 hasta la última vacación, como mucho 15 meses vista) y, del mes elegido, una fila por persona de vacaciones y una celda por día.
+- **Disfrutadas**, sólidas; **programadas**, rayadas; las que **esperan aprobación**, con el borde discontinuo; **los días que no gastan** (sus dos de libranza y los festivos), en claro. Fines de semana y festivos, de fondo.
+- **«A la vez»**: cuánta gente falta cada día (solo lo aprobado y solo los días que gastan). Junto al nombre, los días que gasta ese mes (las que esperan, también).
+- Cifras: de vacaciones ese mes, días del mes, con vacaciones programadas, las que esperan aprobación y quién no tiene ni un día este año (la lista, al final).
+- Pulsar a alguien abre su ficha en el Panel, donde se aprueba. Aprobar, pedir o anular repinta la parrilla y el Listado.
 
 ## Las tablas (db/263)
 
@@ -69,6 +87,7 @@ Desde ahí **las pide** (con una nota si hace falta). Se piden de hoy en adelant
 ```
 GET  /mis-vacaciones/api/mias                las mías: saldo, meses, vacaciones, reglas, si apruebo
 GET  /mis-vacaciones/api/lista               toda la oficina (quien aprueba)
+GET  /mis-vacaciones/api/calendario          «Vacaciones por meses»: periodos, festivos, quién no tiene ninguna (quien aprueba)
 GET  /mis-vacaciones/api/personas/:id        las de una persona (quien aprueba, o uno mismo)
 POST /mis-vacaciones/api/simular             { desde, hasta, libra: [d, d], usuarioId? }
 POST /mis-vacaciones/api/pedir               { desde, hasta, libra, nota }
@@ -90,5 +109,6 @@ modules/VacacionesOficina/vacacionesOficina.repo.js    el SQL
 modules/VacacionesOficina/vacacionesOficina.controller.js  /mis-vacaciones
 modules/VacacionesOficina/vistas/misVacaciones.ejs     la pantalla
 public/assets/js/vistas/VacacionesOficina/misVacaciones.js  «Mías», el simulador y «La oficina»
-test/vacaciones-oficina.test.js                        5 pruebas
+public/assets/js/vacacionesPorMeses.js                 la parrilla «Vacaciones por meses» (global, también la bitácora)
+test/vacaciones-oficina.test.js                        7 pruebas
 ```

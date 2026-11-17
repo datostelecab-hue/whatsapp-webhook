@@ -157,3 +157,35 @@ test('pedir, aprobar, no aprobar, retirar y anular: pedidas no restan, aprobadas
   const libro = (await h.consulta(`SELECT count(*)::int n FROM auditoria WHERE tabla = 'oficina_vacacion'`)).rows[0].n;
   assert.ok(libro >= 6, 'todo queda en el libro');
 }));
+
+test('«Vacaciones por meses» de la oficina: quién se va y cuándo, solo para quien aprueba', () => conBase(async h => {
+  const p = await oficina(h);
+  await usuarios.fijarFechaAlta(p.ana.id, '2026-01-01', p.firma);
+  const hoy = calendario.hoy();
+  const a = calendario.sumarDias(hoy, 3), b = calendario.sumarDias(hoy, 5);
+  const r = await vac.pedir(p.ana, { desde: a, hasta: b, libra: [6, 7] });
+  await assert.rejects(vac.calendarioOficina(p.ana), e => e.status === 403, 'solo quien aprueba');
+  const c = await vac.calendarioOficina(p.jefe);
+  assert.equal(c.hoy, hoy);
+  assert.equal(c.desde, '2026-01');
+  assert.deepEqual(c.periodos.filter(x => x.id === p.ana.id).map(x => [x.desde, x.hasta, x.pendiente, x.libra]), [[a, b, true, [6, 7]]], 'las que esperan, también, con su libranza');
+  assert.ok(c.sinVacaciones.some(x => x.id === p.luis.id), 'quien no tiene ni un día, en la lista de a quién le toca');
+  assert.ok(!c.sinVacaciones.some(x => x.id === p.ana.id), 'quien ya pidió, no');
+  assert.ok(c.personas.some(x => x.id === p.ana.id), 'las personas, para abrir su ficha');
+  assert.ok(c.festivos.includes('2026-12-25') && c.festivos.includes(`${Number(hoy.slice(0, 4)) + 1}-01-01`), 'los festivos, y el 1 de enero del año que viene aunque no esté cargado');
+  await vac.rechazar(p.jefe, r.id, { motivo: 'Coincide con el cierre' });
+  const otra = await vac.calendarioOficina(p.jefe);
+  assert.deepEqual(otra.periodos.filter(x => x.id === p.ana.id), [], 'las no aprobadas ya no salen');
+}));
+
+test('con la base: un festivo de la oficina no gasta vacaciones (el calendario trae sus festivos)', () => conBase(async h => {
+  const p = await oficina(h);
+  await usuarios.fijarFechaAlta(p.ana.id, '2026-01-01', p.firma);
+  const cal = await calendario.de('madrid');
+  assert.ok(cal.festivos instanceof Set && cal.festivos.has('2026-12-25'), 'el calendario expone sus festivos');
+  const sim = await vac.simular(p.ana, { desde: '2026-12-21', hasta: '2026-12-27', libra: [6, 7] });
+  assert.deepEqual([sim.naturales, sim.libranzas, sim.festivos, sim.cuentan], [7, 2, 1, 4], 'el 25/12 no gasta');
+  // Cruzando el año: el 1 de enero es festivo seguro, esté cargado el año o no.
+  const fin = await vac.simular(p.ana, { desde: '2026-12-28', hasta: '2027-01-03', libra: [6, 7] });
+  assert.deepEqual([fin.naturales, fin.libranzas, fin.festivos, fin.cuentan], [7, 2, 1, 4], 'el 1/1 tampoco gasta');
+}));

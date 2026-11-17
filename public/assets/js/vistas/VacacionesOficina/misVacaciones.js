@@ -18,6 +18,9 @@
   let R = null;          // las reglas (tasa, tope, días del horario…)
   let yo = null;         // lo mío
   let oficina = null;    // el Listado de «La oficina», si aprueba
+  let mesCal = null;     // el mes que se ve en «Vacaciones por meses» de la oficina
+  let calCargado = false;
+  const refrescarOficina = () => { if (oficina) { oficina.recargar(); cargarCalendario(); } };
 
   // ── Piezas ─────────────────────────────────────────────────────────────────
   const ESTADO = {
@@ -213,7 +216,7 @@
     if (!r) return;
     Dialogo.hecho('Pedidas: esperan aprobación');
     await cargarMias();
-    if (oficina) oficina.recargar();
+    refrescarOficina();
   }
 
   // ── Aprobar, rechazar, retirar, anular (en la tabla de vacaciones) ─────────
@@ -240,7 +243,7 @@
         if (!m) return;
         r = await Api.post(`${API}/${v.id}/${anular ? 'anular' : 'rechazar'}`, { motivo: m.motivo }, { aviso: 'No se ha podido' });
       }
-      if (r) { await recargar(); if (oficina) oficina.recargar(); }
+      if (r) { await recargar(); refrescarOficina(); }
     });
   }
 
@@ -295,6 +298,29 @@
     const ofi = id === 'oficina';
     caja.classList.toggle('hidden', ofi);
     document.getElementById('mv-oficina').classList.toggle('hidden', !ofi);
+    document.getElementById('mv-calendario-pantalla').classList.toggle('hidden', !ofi);
+    if (ofi && !calCargado) cargarCalendario();
+  }
+
+  // ── EL CALENDARIO DE LA OFICINA (17/11/2026, Camilo: «Hazlo tipo calendario
+  // para saber gráficamente quién se va y cuándo… ya hay algo parecido en
+  // bitácora llamado "Vacaciones por meses", recicla ese»). Es esa parrilla, la
+  // pieza global VacacionesPorMeses: aquí además con las que esperan
+  // aprobación y los días que no gastan (su libranza y los festivos). Al
+  // pulsar a alguien, su ficha, donde se aprueban.
+  const calCaja = document.getElementById('mv-calendario');
+
+  async function cargarCalendario() {
+    const c = await Api.get(`${API}/calendario`).catch(err => ({ error: err }));
+    if (c.error) { calCaja.innerHTML = aviso(`No se ha podido leer el calendario: ${esc(c.error.message)}`); return; }
+    calCargado = true;
+    VacacionesPorMeses.pintar(calCaja, {
+      hoy: c.hoy, desde: c.desde, festivos: c.festivos, periodos: c.periodos, sinVacaciones: c.sinVacaciones,
+      mes: mesCal, alCambiarMes: m => { mesCal = m; },
+      titulo: 'Vacaciones por meses',
+      ayuda: 'Quién se va y cuándo. La fila «a la vez» dice cuánta gente falta cada día de lunes a viernes. Pulsa a alguien para ver su ficha y aprobar.',
+      alAbrir: id => { const p = c.personas.find(x => String(x.id) === String(id)); if (p) abrirPersona(p); },
+    });
   }
 
   async function abrirPersona(x) {

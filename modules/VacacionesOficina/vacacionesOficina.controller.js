@@ -8,6 +8,7 @@
 //   GET  /mis-vacaciones                         la pantalla
 //   GET  /mis-vacaciones/api/mias                las mías: saldo, meses, vacaciones, reglas
 //   GET  /mis-vacaciones/api/lista               toda la oficina (quien aprueba)
+//   GET  /mis-vacaciones/api/calendario    «Vacaciones por meses» de la oficina: quién se va y cuándo (quien aprueba)
 //   GET  /mis-vacaciones/api/personas/:id        las de una persona (quien aprueba, o uno mismo)
 //   POST /mis-vacaciones/api/simular             { desde, hasta, libra: [d, d], usuarioId? }
 //   POST /mis-vacaciones/api/pedir               { desde, hasta, libra, nota }
@@ -40,6 +41,7 @@ router.get('/', (req, res) => {
 });
 router.get('/api/mias', responde(q => vac.mias(q)));
 router.get('/api/lista', responde(q => vac.lista(q)));
+router.get('/api/calendario', responde(q => vac.calendarioOficina(q)));
 router.get('/api/personas/:id', responde((q, req) => vac.de(q, req.params.id)));
 router.post('/api/simular', responde((q, req) => vac.simular(q, b(req)).then(simulacion => ({ simulacion }))));
 router.post('/api/pedir', responde((q, req) => vac.pedir(q, b(req))));

@@ -249,6 +249,9 @@ function atar(cal) {
   return {
     sede: cal.sede,
     horario: { ...cal.horario, dias: [...cal.horario.dias] },
+    // Una copia de sus festivos ('aaaa-mm-dd'), para quien tiene que recorrerlos
+    // (las vacaciones de la oficina: un festivo no gasta vacaciones).
+    festivos: new Set(cal.festivos),
     esHabil: iso => esHabil(cal, iso),
     sumarDiasHabiles: (iso, n) => sumarDiasHabiles(cal, iso, n),
     restarDiasHabiles: (iso, n) => restarDiasHabiles(cal, iso, n),

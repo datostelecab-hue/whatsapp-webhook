@@ -130,18 +130,7 @@
   .mini > i.futuro, .mini > i.fuera { opacity: .15; }
   .b-chip { font-size: 11px; padding: .2rem .55rem; border-radius: .5rem; border: 1px solid rgb(var(--tc-border) / .7); color: rgb(var(--tc-muted)); cursor: pointer; }
   .b-chip.on { border-color: rgb(var(--tc-gold)); color: rgb(var(--tc-text)); background: rgb(var(--tc-gold) / .12); }
-  /* Vacaciones por meses: una fila por persona, una celda por día. */
-  .vac-fila { display: grid; gap: 2px; align-items: center; }
-  .vac-fila > i { display: block; height: 20px; border-radius: 4px; background: rgb(var(--tc-dark) / .3); }
-  .vac-fila > i.finde { background: rgb(var(--tc-dark) / .55); }
-  .vac-fila > i.vac-on { background: rgb(var(--tc-vac)); }
-  /* Programadas (aún no llegan): rayadas, para distinguir la proyección. */
-  .vac-fila > i.vac-prog { background: repeating-linear-gradient(45deg,
-      rgb(var(--tc-vac) / .9) 0 5px, rgb(var(--tc-vac) / .30) 5px 10px); }
-  .vac-fila > b { display: flex; align-items: center; justify-content: center; height: 20px;
-      border-radius: 4px; font-size: 10px; font-weight: 700; color: rgb(var(--tc-text)); }
-  .vac-nombre { cursor: pointer; }
-  .vac-nombre:hover { color: rgb(var(--tc-gold)); }
+  /* Vacaciones por meses: la pieza global .tc-vpm-* (telecab.css). */
 </style>
 
 <script type="application/json" id="datos-servidor"><%- json({
@@ -151,4 +140,5 @@
   casuisticasMenosJ: typeof casuisticasMenosJ !== 'undefined' ? casuisticasMenosJ : [],
   tiposJ: tiposJ || [],
 }) %></script>
+<script src="<%= est('/assets/js/vacacionesPorMeses.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Operaciones/bitacora.js') %>"></script>

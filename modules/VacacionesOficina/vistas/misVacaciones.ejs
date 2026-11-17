@@ -5,7 +5,8 @@
   lo programado; un simulador (fechas y sus dos días de libranza) que dice lo
   que gastaría y lo que tendría ese día, también lo que habrá generado hasta
   entonces; desde ahí las pide. Quien lleva Usuarios y permisos ve además «La
-  oficina»: el saldo de todos y lo que espera su aprobación.
+  oficina»: «Vacaciones por meses» (la parrilla de la bitácora: quién se va y
+  cuándo), el saldo de todos y lo que espera su aprobación.
 %>
 
 <div class="tc-pantalla space-y-5">
@@ -18,8 +19,12 @@
   <nav id="mv-pestanas" aria-label="Qué vacaciones ves" hidden></nav>
   <section id="mv-mias" aria-live="polite"></section>
 </div>
+<div id="mv-calendario-pantalla" class="tc-pantalla pb-0 hidden">
+  <section id="mv-calendario" class="bg-telecab-card border border-telecab-border rounded-2xl p-5" aria-label="Vacaciones por meses de la oficina"></section>
+</div>
 <div id="mv-oficina" class="hidden"></div>
 
 <script src="<%= est('/assets/js/pestanas.js') %>"></script>
 <script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vacacionesPorMeses.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/VacacionesOficina/misVacaciones.js') %>"></script>
