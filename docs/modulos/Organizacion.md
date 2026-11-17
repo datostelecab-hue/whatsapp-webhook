@@ -1,6 +1,6 @@
 ---
 tags: [modulo, organizacion, permisos, hoja-de-ruta]
-actualizado: 2026-11-13
+actualizado: 2026-11-17
 ---
 
 # Organización
@@ -12,6 +12,40 @@ actualizado: 2026-11-13
 - «solo lo ven Laura, Ignacio y Fernando» (ítem 4, convención 6).
 
 Con esto, ningún ítem escribe un nombre ni un id en el código: pregunta quién tiene la función.
+
+## Por puestos, no por nombres (db/255, 17/11/2026)
+
+Camilo: *«no lo veas tanto por nombres sino por roles: si mañana se va una Karen, puede que venga otra persona y tome su rol»*. Hasta db/255 el área, el superior y las funciones se ponían persona a persona; **ahora cuelgan de un PUESTO**:
+
+- cada puesto está en un **área** y **reporta a** otro puesto;
+- lleva sus **funciones** (quién aprueba, quién reparte, quién lleva cada cola);
+- cada área la **dirige** un puesto (`cat_area.responsable_puesto`).
+
+A cada persona se le pone su puesto («Cambiar el puesto», en su ficha), y **de él le vienen su área, su superior y sus funciones**. Si alguien se va, quien ocupe su puesto lo hereda todo sin tocar nada más. Lo que se le pone **a mano** a una persona (otra área, otro superior, una función de más o de suplente) sigue valiendo, como excepción encima de su puesto.
+
+| Puesto | Área | Reporta a | Quién (17/11/2026) | Funciones |
+|---|---|---|---|---|
+| CEO | Dirección (la dirige) | — | Fernando | ve todos los tableros, ve los expedientes, caja (suplente y testigo) |
+| Dirección de operaciones | Dirección | CEO | Ignacio | supervisor, dirección, aprueba y reparte las tareas, ve todos los tableros, expedientes, multas escaladas, caja, combustible, reintegros por encima del tope, pólizas. Dirige RR. HH., Administración y Sistemas |
+| Dirección de Barcelona | Dirección | CEO | Carlos | — |
+| RR. HH. laboral y legal | RR. HH. | Dirección de operaciones | Laura | expedientes, desactiva por suspensión o despido, J de RR. HH. |
+| Administración de personal y nómina | RR. HH. | Dirección de operaciones | Diana | nómina, cartas (consulta), desactiva por baja voluntaria |
+| Selección y ETT | RR. HH. | Dirección de operaciones | Víctor | desactiva por fin de ETT |
+| Captación, documentación y altas | RR. HH. | Dirección de operaciones | Mercedes | cartas (consulta) |
+| Administración | Administración | Dirección de operaciones | Daiane | combustible, multas, caja, documentación de coches, reintegros |
+| Jefe de planificación | Planificación (la dirige) | Dirección de operaciones | William | supervisor, sustituciones, J de Tráfico, BOLT y Por compañero, −J |
+| Jefe de control | Control (la dirige) | Dirección de operaciones | Ángel y Lorenzo | supervisor |
+| Controlador | Control | Jefe de control | Karen, Gabriel y Gabriela | — |
+| Responsable de taller | Taller (la dirige) | Dirección de operaciones | Óscar (Guti, sin usuario) | taller, J de Taller |
+| Desarrollo y sistemas | Sistemas | Dirección de operaciones | Camilo | — |
+
+Sale de los descriptivos de puesto y los ciclos de trabajo de RR. HH., Administración y Flota (11 y 12/11/2026) y de lo que contestó Camilo el 17/11/2026.
+
+- **El superior** de una persona es: el puesto a mano, si lo tiene; si no, **quien ocupe el puesto al que reporta el suyo** (si son dos, los dos: los jefes de Control); si ese puesto está vacío, el de encima; y si no, quien dirija su área. `organizacion.superioresDe(id)` los da todos (el aviso de vencidas del tablero llega a todos).
+- **Dos jefes a la vez:** Laura reporta a Fernando (lo legal, 80 %) y a Ignacio (lo laboral, 20 %), y Daiane a Ignacio y a Carlos. Cada puesto reporta a uno: se pone a quien **evalúa** (Ignacio en los dos).
+- **Las funciones del puesto no se le quitan a la persona**: se le cambia el puesto, o se le quita la función al puesto. db/255 anuló las que cada persona tenía a mano y ahora le vienen del puesto, con su motivo.
+- **Ángel**: db/248 le buscaba como «Huarcayaculqui» y en producción es «Huarcaya», así que allí no le daba la función de supervisor. db/255 lo busca con los dos y se la da su puesto.
+- **Un puesto vacío** sale en la pantalla como aviso («Puestos sin nadie»): sus funciones no le llegan a nadie y quien reportaba a él sube al de encima.
 
 ## Función no es llave
 

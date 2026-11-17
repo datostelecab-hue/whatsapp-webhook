@@ -108,9 +108,16 @@ const entero = v => { const n = Number(v); return Number.isInteger(n) && n > 0 ?
 /** Quién tiene una función (vigente, y usuario no bloqueado). Primero los titulares. */
 async function quienes(codigo, { conSuplentes = true } = {}) {
   funcion(codigo);
-  return (await repo.funciones())
+  // Le puede venir de su puesto y además estar dada a mano: una vez, y como
+  // titular si lo es por una de las dos.
+  const porId = new Map();
+  (await repo.funciones())
     .filter(f => f.funcion === codigo && f.estado !== 'bloqueado' && (conSuplentes || !f.suplente))
-    .map(f => ({ id: f.usuario_id, nombre: f.nombre, suplente: f.suplente }));
+    .forEach(f => {
+      const ya = porId.get(f.usuario_id);
+      if (!ya || (ya.suplente && !f.suplente)) porId.set(f.usuario_id, { id: f.usuario_id, nombre: f.nombre, suplente: f.suplente });
+    });
+  return [...porId.values()].sort((a, b) => Number(a.suplente) - Number(b.suplente));
 }
 
 /** ¿La tiene esta persona (titular o suplente)? Ante cualquier duda, no. */
@@ -130,47 +137,102 @@ async function exigir(usuarioId, codigo) {
     : `Nadie tiene la función «${f.etiqueta}»: hay que dársela a alguien en Organización.`);
 }
 
+// ── LOS PUESTOS (db/255) ───────────────────────────────────────────────────
+// «No lo veas tanto por nombres sino por roles» (Camilo, 17/11/2026). Cada
+// persona tiene un PUESTO, y de él le vienen su área, su superior (quien ocupe
+// el puesto al que reporta) y sus funciones. Lo puesto a mano a una persona
+// (otra área, otro superior) va encima, como excepción. `repo.personas()` ya
+// trae el área de verdad y el puesto; aquí se resuelve quién manda a quién.
+
 /**
- * El superior de una persona: el que tiene puesto; si no, el responsable de su
- * área (salvo que sea ella misma). Sin nada de eso, null. Bloqueados, nunca: un
- * superior puesto que está bloqueado no cuenta, y entonces manda el área.
+ * Quién dirige un área: quien ocupe el puesto que la dirige y, si se puso a
+ * mano, su responsable. Con `conBloqueados`, también los bloqueados (para no
+ * cerrar un círculo que se abriría al desbloquearlos).
  */
-async function superiorDe(usuarioId) {
-  const id = entero(usuarioId);
-  if (!id) return null;
-  const [gente, areas] = await Promise.all([repo.personas({ conBloqueados: true }), repo.areas()]);
-  return superiorEn(gente, areas, id);
+function responsablesDe(a, gente, { conBloqueados = false } = {}) {
+  if (!a) return [];
+  const vale = p => conBloqueados || p.estado !== 'bloqueado';
+  const ids = new Set();
+  if (a.responsable_id && gente.some(p => p.id === a.responsable_id && vale(p))) ids.add(a.responsable_id);
+  if (a.responsable_puesto) gente.filter(p => p.puesto_codigo === a.responsable_puesto && vale(p)).forEach(p => ids.add(p.id));
+  return [...ids];
 }
 
-function superiorEn(gente, areas, id) {
+/**
+ * Los superiores de una persona (puede haber dos: los dos jefes de Control):
+ *   1. el que tenga puesto A MANO, si no está bloqueado;
+ *   2. si no, quien ocupe el puesto al que reporta su puesto; si ese puesto está
+ *      vacío (se fue quien lo tenía), el de encima, y así;
+ *   3. si no, quien dirija su área (salvo que la dirija ella misma).
+ * Bloqueados, nunca. → [{ id, nombre, porque: 'a mano' | 'su puesto' | 'responsable del área' }]
+ */
+function superioresEn(gente, areas, id) {
   const p = gente.find(x => x.id === id);
-  if (!p) return null;
+  if (!p) return [];
   const activo = uid => gente.find(x => x.id === uid && x.estado !== 'bloqueado');
   if (p.superior_id) {
     const s = activo(p.superior_id);
-    if (s) return { id: s.id, nombre: s.nombre, porque: 'puesto' };
+    if (s) return [{ id: s.id, nombre: s.nombre, porque: 'a mano' }];
+  }
+  const reporta = new Map(gente.filter(x => x.puesto_codigo).map(x => [x.puesto_codigo, x.puesto_reporta_a]));
+  let puesto = p.puesto_reporta_a;
+  for (let vueltas = 0; puesto && vueltas < 12; vueltas++) {
+    const jefes = gente.filter(x => x.puesto_codigo === puesto && x.estado !== 'bloqueado' && x.id !== id);
+    if (jefes.length) return jefes.map(s => ({ id: s.id, nombre: s.nombre, porque: 'su puesto' }));
+    // Nadie en ese puesto: su superior es el del puesto de encima (si se sabe).
+    puesto = reporta.has(puesto) ? reporta.get(puesto) : (PUESTOS_ARRIBA.get(puesto) || null);
   }
   const a = areas.find(x => x.codigo === p.area_codigo);
-  if (a && a.responsable_id && a.responsable_id !== id) {
-    const s = activo(a.responsable_id);
-    return s ? { id: s.id, nombre: s.nombre, porque: 'responsable del área' } : null;
-  }
-  return null;
+  const resp = responsablesDe(a, gente);
+  if (resp.includes(id)) return [];
+  return resp.map(activo).filter(Boolean).map(s => ({ id: s.id, nombre: s.nombre, porque: 'responsable del área' }));
+}
+function superiorEn(gente, areas, id) {
+  return superioresEn(gente, areas, id)[0] || null;
+}
+// A qué puesto reporta cada uno, también los que hoy no ocupa nadie (para subir
+// por encima de un puesto vacío). Se recarga con cada lectura de la organización.
+let PUESTOS_ARRIBA = new Map();
+async function cargar({ conBloqueados = false, cli = null } = {}) {
+  const [gente, areas, puestos] = await Promise.all([
+    repo.personas({ conBloqueados, cli }), repo.areas(cli), repo.puestos(cli),
+  ]);
+  PUESTOS_ARRIBA = new Map(puestos.map(x => [x.codigo, x.reporta_a]));
+  return { gente, areas, puestos };
 }
 
 /**
- * Un camino de superiores que sale de `id` y vuelve a ella, contando los DOS
- * enlaces de cada persona (su superior puesto y el responsable de su área), o
- * null. → [id, …, id]. Los bloqueados cuentan: pueden desbloquearse.
+ * El superior de una persona (el primero, si hay varios). Sin nada, null.
+ * Bloqueados, nunca. Ver superioresEn.
+ */
+async function superiorDe(usuarioId) {
+  return (await superioresDe(usuarioId))[0] || null;
+}
+/** Todos sus superiores: los dos jefes de Control a la vez, por ejemplo. */
+async function superioresDe(usuarioId) {
+  const id = entero(usuarioId);
+  if (!id) return [];
+  const { gente, areas } = await cargar({ conBloqueados: true });
+  return superioresEn(gente, areas, id);
+}
+
+/**
+ * Un camino de superiores que sale de `id` y vuelve a ella, o null. Cuenta
+ * TODOS los enlaces de cada persona a la vez (su superior a mano, quien ocupe
+ * el puesto al que reporta y quien dirija su área): así ningún bloqueo,
+ * desbloqueo o vacante de después lo puede cerrar. Los bloqueados cuentan.
+ * → [id, …, id]
  */
 function circuloDesde(gente, areas, id) {
   const porId = new Map(gente.map(p => [p.id, p]));
-  const resp = new Map(areas.filter(a => a.responsable_id).map(a => [a.codigo, a.responsable_id]));
   const enlaces = x => {
     const p = porId.get(x);
     if (!p) return [];
-    const r = resp.get(p.area_codigo);
-    return [...new Set([p.superior_id, r].filter(y => y && y !== x))];
+    const jefes = p.puesto_reporta_a ? gente.filter(y => y.puesto_codigo === p.puesto_reporta_a).map(y => y.id) : [];
+    const a = areas.find(y => y.codigo === p.area_codigo);
+    const resp = responsablesDe(a, gente, { conBloqueados: true });
+    const delArea = resp.includes(x) ? [] : resp;
+    return [...new Set([p.superior_id, ...jefes, ...delArea].filter(y => y && y !== x))];
   };
   const padre = new Map([[id, null]]);
   const pila = [id];
@@ -190,49 +252,49 @@ function circuloDesde(gente, areas, id) {
 
 /**
  * A quién ve una persona en el «Tablero del equipo» (ítem 1): todos, si tiene
- * «ve_todos_los_tableros»; si no, la gente de las áreas de las que es
- * responsable y quien la tenga puesta como superior.
+ * «ve_todos_los_tableros»; si no, la gente de las áreas que dirige y quien la
+ * tenga de superior (por su puesto o a mano).
  */
 async function equipo(usuarioId) {
   const id = entero(usuarioId);
   if (!id) return { todos: false, personas: [] };
-  const [gente, areas, todos] = await Promise.all([repo.personas(), repo.areas(), tiene(id, 've_todos_los_tableros')]);
-  const lleva = new Set(areas.filter(a => a.responsable_id === id).map(a => a.codigo));
-  const personas = gente.filter(p => p.id !== id && (todos || lleva.has(p.area_codigo) || p.superior_id === id))
+  const [{ gente, areas }, todos] = await Promise.all([cargar(), tiene(id, 've_todos_los_tableros')]);
+  const lleva = new Set(areas.filter(a => responsablesDe(a, gente).includes(id)).map(a => a.codigo));
+  const personas = gente.filter(p => p.id !== id && (todos || lleva.has(p.area_codigo)
+      || superioresEn(gente, areas, p.id).some(s => s.id === id)))
     .map(p => ({ id: p.id, nombre: p.nombre, area: p.area_codigo }));
   return { todos, personas };
 }
 
 // ── LAS ÁREAS COMO DESTINO DE LOS AVISOS (ítem 3, db/254) ──────────────────
-// «Todos los perfiles de Control» = la gente del área Control y su responsable
-// (Camilo, 16/11/2026). Un área sin nadie no se queda sin leer: sus avisos le
-// llegan a quien reparte las tareas (`tareas_asigna`, Ignacio), que es quien
-// tiene que poner gente en ella.
+// «Todos los perfiles de Control» = la gente del área Control y quien la dirige
+// (Camilo, 16/11/2026), por su puesto. Un área sin nadie no se queda sin leer:
+// sus avisos le llegan a quien reparte las tareas (`tareas_asigna`), que es
+// quien tiene que poner gente en ella.
 
 /** Quién recibe lo que va a un área. → [ids] (sin bloqueados). */
 async function deArea(codigo) {
-  const [gente, areas] = await Promise.all([repo.personas(), repo.areas()]);
+  const { gente, areas } = await cargar();
   const a = areas.find(x => x.codigo === codigo);
   if (!a) return [];
   const ids = new Set(gente.filter(p => p.area_codigo === codigo).map(p => p.id));
-  if (a.responsable_id && gente.some(p => p.id === a.responsable_id)) ids.add(a.responsable_id);
+  responsablesDe(a, gente).forEach(x => ids.add(x));
   if (!ids.size) (await quienes('tareas_asigna')).forEach(p => ids.add(p.id));
   return [...ids];
 }
 
-/** Las áreas cuyos avisos le llegan a una persona: la suya, las que lleva y, a quien reparte, las vacías. */
+/** Las áreas cuyos avisos le llegan a una persona: la suya, las que dirige y, a quien reparte, las vacías. */
 async function areasDeAvisos(usuarioId) {
   const id = entero(usuarioId);
   if (!id) return [];
-  const [gente, areas, reparte] = await Promise.all([repo.personas(), repo.areas(), tiene(id, 'tareas_asigna')]);
+  const [{ gente, areas }, reparte] = await Promise.all([cargar(), tiene(id, 'tareas_asigna')]);
   const yo = gente.find(p => p.id === id);
   const salida = new Set();
   if (yo && yo.area_codigo) salida.add(yo.area_codigo);
-  areas.filter(a => a.responsable_id === id).forEach(a => salida.add(a.codigo));
+  areas.filter(a => responsablesDe(a, gente).includes(id)).forEach(a => salida.add(a.codigo));
   if (reparte) {
     const conGente = new Set(gente.map(p => p.area_codigo).filter(Boolean));
-    const vivo = uid => gente.some(p => p.id === uid);
-    areas.filter(a => !conGente.has(a.codigo) && !(a.responsable_id && vivo(a.responsable_id))).forEach(a => salida.add(a.codigo));
+    areas.filter(a => !conGente.has(a.codigo) && !responsablesDe(a, gente).length).forEach(a => salida.add(a.codigo));
   }
   return [...salida];
 }
@@ -270,25 +332,43 @@ async function excepcionesDeLlaves(usuarioId, rol) {
 
 /** Lo que pinta la pantalla /organizacion: cada persona con su sitio y lo que hace. */
 async function organigrama() {
-  const [gente, areas, funcs] = await Promise.all([repo.personas(), repo.areas(), repo.funciones()]);
+  const [{ gente, areas, puestos }, funcs] = await Promise.all([cargar(), repo.funciones()]);
   const etqArea = new Map(areas.map(a => [a.codigo, a.etiqueta]));
+  const etqFuncion = c => (POR_CODIGO.get(c) || {}).etiqueta || c;
+  const nombrePuesto = new Map(puestos.map(x => [x.codigo, x.nombre]));
   const personas = gente.map(p => {
-    const sup = superiorEn(gente, areas, p.id);
+    const sups = superioresEn(gente, areas, p.id);
     const suyas = funcs.filter(f => f.usuario_id === p.id).map(f => ({
-      id: f.id, codigo: f.funcion, etiqueta: (POR_CODIGO.get(f.funcion) || {}).etiqueta || f.funcion,
+      id: f.id, codigo: f.funcion, etiqueta: etqFuncion(f.funcion),
       suplente: f.suplente, desde: f.creado_at, dadaPor: f.dada_por || null, nota: f.nota,
+      // Del puesto (no se quita a la persona, sino al puesto) o dada a mano.
+      dePuesto: f.id == null, puesto: f.puesto || null,
     }));
     return {
       id: p.id, nombre: p.nombre, email: p.email, rol: p.rol, rolEtiqueta: p.rol_etiqueta,
+      puesto: p.puesto_codigo || null, puestoNombre: p.puesto || null,
+      puestoReportaA: p.puesto_reporta_a ? (nombrePuesto.get(p.puesto_reporta_a) || p.puesto_reporta_a) : null,
       area: p.area_codigo, areaEtiqueta: etqArea.get(p.area_codigo) || null,
-      responsableDe: areas.filter(a => a.responsable_id === p.id).map(a => a.etiqueta),
-      superiorId: p.superior_id, superior: sup ? sup.nombre : null, superiorPorque: sup ? sup.porque : null,
+      // El área puesta a mano, si no es la de su puesto.
+      areaAMano: !!(p.area_propia && p.area_propia !== p.puesto_area),
+      responsableDe: areas.filter(a => responsablesDe(a, gente).includes(p.id)).map(a => a.etiqueta),
+      superiorId: p.superior_id, superiores: sups.map(x => x.nombre),
+      superior: sups.length ? sups.map(x => x.nombre).join(' y ') : null, superiorPorque: sups.length ? sups[0].porque : null,
       funciones: suyas,
     };
   });
   const sinNadie = FUNCIONES.filter(f => !funcs.some(x => x.funcion === f.codigo && x.estado !== 'bloqueado'))
     .map(f => ({ codigo: f.codigo, etiqueta: f.etiqueta, item: f.item }));
-  return { personas, areas, funciones: FUNCIONES, sinNadie };
+  // El catálogo de puestos, con quién los ocupa: un puesto sin nadie es una vacante.
+  const catalogo = puestos.filter(x => x.activo).map(x => ({
+    codigo: x.codigo, nombre: x.nombre, area: x.area_codigo, areaEtiqueta: etqArea.get(x.area_codigo) || x.area_codigo,
+    reportaA: x.reporta_a, reportaANombre: x.reporta_a ? (nombrePuesto.get(x.reporta_a) || x.reporta_a) : null,
+    mision: x.mision, funciones: (x.funciones || []).map(f => ({ codigo: f.funcion, etiqueta: etqFuncion(f.funcion), suplente: f.suplente })),
+    dirige: areas.filter(a => a.responsable_puesto === x.codigo).map(a => a.etiqueta),
+    ocupan: gente.filter(p => p.puesto_codigo === x.codigo).map(p => ({ id: p.id, nombre: p.nombre })),
+  }));
+  const areasPublicas = areas.map(a => ({ ...a, responsables: responsablesDe(a, gente) }));
+  return { personas, areas: areasPublicas, funciones: FUNCIONES, sinNadie, puestos: catalogo };
 }
 
 /** La ficha de una persona: lo del organigrama, más sus llaves fuera de su rol. */
@@ -322,9 +402,8 @@ async function ponerArea(usuarioId, { area, superiorId, responsable = false } = 
     // pueden cerrar un círculo entre los dos.
     await repo.bloquear(cli);
     // Con los bloqueados: también cuentan para que no quede un círculo (abajo).
-    const todos = await repo.personas({ conBloqueados: true, cli });
+    const { gente: todos, areas } = await cargar({ conBloqueados: true, cli });
     const gente = todos.filter(p => p.estado !== 'bloqueado');
-    const areas = await repo.areas(cli);
     if (!gente.some(p => p.id === id)) throw new Error('Esa persona no existe o está bloqueada');
     if (cod && !areas.some(a => a.codigo === cod && a.activa)) throw new Error(`No existe el área «${area}»`);
     if (sup && !gente.some(p => p.id === sup)) throw new Error('Ese superior no existe o está bloqueado');
@@ -338,7 +417,7 @@ async function ponerArea(usuarioId, { area, superiorId, responsable = false } = 
     // círculo, ningún bloqueo ni desbloqueo de después lo puede cerrar, porque
     // cada persona solo usa uno de sus dos. Todo enlace que cambia aquí toca a
     // esta persona, así que basta con buscar un camino que vuelva a ella.
-    const simulada = todos.map(p => (p.id === id ? { ...p, area_codigo: cod, superior_id: sup } : p));
+    const simulada = todos.map(p => (p.id === id ? { ...p, area_codigo: cod || p.puesto_area || null, area_propia: cod, superior_id: sup } : p));
     const areasSim = areas.map(a => (a.codigo === cod && responsable ? { ...a, responsable_id: id }
       : (a.responsable_id === id ? { ...a, responsable_id: null } : a)));
     const camino = circuloDesde(simulada, areasSim, id);
@@ -359,6 +438,36 @@ async function ponerArea(usuarioId, { area, superiorId, responsable = false } = 
 }
 
 /**
+ * Pone (o quita, con null) el puesto de una persona: de él le vienen su área,
+ * su superior y sus funciones. Lo que tuviera a mano se queda. Un puesto no
+ * puede dejarla de superior de sí misma (un círculo).
+ */
+async function ponerPuesto(usuarioId, puesto, { quien } = {}) {
+  const id = entero(usuarioId);
+  if (!id) throw new Error('Falta la persona');
+  const cod = puesto ? String(puesto) : null;
+  await libro.conFirma({ usuarioId: quien, origen: 'organizacion' }, async cli => {
+    await repo.bloquear(cli);
+    const { gente: todos, areas, puestos } = await cargar({ conBloqueados: true, cli });
+    const yo = todos.find(p => p.id === id && p.estado !== 'bloqueado');
+    if (!yo) throw new Error('Esa persona no existe o está bloqueada');
+    const pz = cod ? puestos.find(x => x.codigo === cod && x.activo) : null;
+    if (cod && !pz) throw new Error(`No existe el puesto «${puesto}»`);
+    const simulada = todos.map(p => (p.id === id ? {
+      ...p, puesto_codigo: cod, puesto: pz ? pz.nombre : null, puesto_area: pz ? pz.area_codigo : null,
+      puesto_reporta_a: pz ? pz.reporta_a : null, area_codigo: p.area_propia || (pz ? pz.area_codigo : null),
+    } : p));
+    const camino = circuloDesde(simulada, areas, id);
+    if (camino) {
+      const nombre = x => (simulada.find(p => p.id === x) || {}).nombre || `#${x}`;
+      throw new Error(`Así quedaría un círculo de superiores: ${camino.map(nombre).join(' → ')}`);
+    }
+    await repo.ponerPuesto(cli, id, cod);
+  });
+  return ficha(id);
+}
+
+/**
  * Da una función a una persona. Si es de una sola persona y su titular está
  * BLOQUEADO (se fue, o ya no entra en el ERP), se le anula a él en la misma
  * transacción, con su motivo: si no, al desbloquearlo habría dos titulares, y
@@ -373,14 +482,15 @@ async function darFuncion(usuarioId, codigo, { suplente = false, nota = '' } = {
     const yo = (await repo.personas({ cli })).find(p => p.id === id);
     if (!yo) throw new Error('Esa persona no existe o está bloqueada');
     const vigentes = (await repo.funciones({ cli })).filter(x => x.funcion === codigo);
-    if (vigentes.some(x => x.usuario_id === id)) throw new Error(`Ya tiene «${f.etiqueta}»`);
+    const ya = vigentes.find(x => x.usuario_id === id);
+    if (ya) throw new Error(ya.id == null ? `Ya tiene «${f.etiqueta}» por su puesto (${ya.puesto})` : `Ya tiene «${f.etiqueta}»`);
     if (!f.varias && !suplente) {
       const titulares = vigentes.filter(x => !x.suplente);
       const activos = titulares.filter(x => x.estado !== 'bloqueado');
       if (activos.length) {
         throw new Error(`«${f.etiqueta}» es de una sola persona (${activos.map(x => x.nombre).join(', ')}): quítasela antes, o dásela como suplente`);
       }
-      for (const t of titulares) {
+      for (const t of titulares.filter(x => x.id != null)) {
         // El motivo firmado vale para la anulación (un UPDATE); el alta de
         // abajo es siempre «alta».
         const motivo = `Pasa a ${yo.nombre}: ${t.nombre} está bloqueado en el ERP`;
@@ -416,7 +526,7 @@ async function quitarFuncion(asignacionId, motivo, { quien } = {}) {
 }
 
 module.exports = {
-  FUNCIONES, funcion, quienes, tiene, exigir, superiorDe, equipo, excepcionesDeLlaves,
-  organigrama, ficha, ponerArea, darFuncion, quitarFuncion,
+  FUNCIONES, funcion, quienes, tiene, exigir, superiorDe, superioresDe, equipo, excepcionesDeLlaves,
+  organigrama, ficha, ponerArea, ponerPuesto, darFuncion, quitarFuncion,
   deArea, areasDeAvisos, etiquetaDeArea,
 };

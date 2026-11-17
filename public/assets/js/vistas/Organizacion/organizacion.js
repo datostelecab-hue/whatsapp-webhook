@@ -1,8 +1,11 @@
-// modules/Organizacion/vistas/organizacion.ejs — la organización (db/248).
+// modules/Organizacion/vistas/organizacion.ejs — la organización (db/248, db/255).
 //
-// Pieza A5 de la hoja de ruta. Una persona de la oficina por fila: su área, su
-// superior y lo que le toca hacer (sus funciones). En la ficha, además, las
-// llaves que se salen de las de su rol.
+// Pieza A5 de la hoja de ruta. Una persona de la oficina por fila: su PUESTO
+// (db/255) y lo que le viene de él —su área, su superior y sus funciones—, más
+// lo que tenga a mano por encima. En la ficha, además, las llaves que se salen
+// de las de su rol. Camilo, 17/11/2026: «no lo veas tanto por nombres sino por
+// roles: si mañana se va una Karen, puede que venga otra persona y tome su rol».
+// Por eso lo primero de cada persona es su puesto.
 //
 // UNA FUNCIÓN NO ES UNA LLAVE: la llave abre una pantalla (se cambia en Usuarios
 // y permisos); la función dice a quién le llega una tarea o quién aprueba. Y se
@@ -12,6 +15,7 @@
   const { fecha, esc, etiqueta } = Listado.fmt;
   const URL = '/organizacion';
   const SIN_AREA = '__sin';
+  const SIN_PUESTO = '__sin';
 
   const SI_NO = [{ valor: 'si', texto: 'Sí' }, { valor: 'no', texto: 'No' }];
 
@@ -25,10 +29,16 @@
     return `<span class="flex flex-wrap items-center gap-1">${vistas.join('')}</span>`;
   }
 
+  const PORQUE = { 'a mano': 'puesto a mano', 'responsable del área': 'por dirigir su área' };
   const superiorHtml = f => (f.superior
-    ? esc(f.superior) + (f.superiorPorque === 'puesto' ? ''
-      : '<span class="block text-[11px] text-telecab-muted">por ser responsable del área</span>')
+    ? esc(f.superior) + (PORQUE[f.superiorPorque]
+      ? `<span class="block text-[11px] text-telecab-muted">${esc(PORQUE[f.superiorPorque])}</span>` : '')
     : '<span class="text-telecab-muted text-xs">Sin superior</span>');
+  const puestoHtml = f => (f.puestoNombre
+    ? `<span class="font-medium">${esc(f.puestoNombre)}</span>` +
+      (f.puestoReportaA ? `<span class="block text-[11px] text-telecab-muted">reporta a ${esc(f.puestoReportaA)}</span>` : '')
+    : '<span class="text-telecab-muted text-xs">Sin puesto</span>');
+  const vacantes = extra => ((extra && extra.puestos) || []).filter(p => !p.ocupan.length);
 
   const lst = Listado.montar({
     raiz: '#modulo',
@@ -37,13 +47,21 @@
     clave: 'id',
     origen: URL + '/api/lista',
     vacio: 'No hay nadie que coincida.',
-    buscar: { texto: 'Persona o función…', campos: ['nombre', 'areaEtiqueta', 'superior', 'rolEtiqueta', f => f.funciones.map(x => x.etiqueta).join(' ')] },
+    buscar: { texto: 'Persona, puesto o función…', campos: ['nombre', 'puestoNombre', 'areaEtiqueta', 'superior', 'rolEtiqueta', f => f.funciones.map(x => x.etiqueta).join(' ')] },
     subtitulo: (visibles, todas) => (visibles.length === todas.length
-      ? `${todas.length} personas de la oficina · área, superior y qué le toca a cada una`
+      ? `${todas.length} personas de la oficina · su puesto, y de él su área, su superior y lo que le toca`
       : `${visibles.length} de ${todas.length} personas`),
 
     nota: (v, extra) => {
-      const notas = [{ texto: 'Una función no abre ninguna pantalla: dice a quién le llega una tarea o quién aprueba. Las pantallas que abre cada uno (sus llaves) se cambian en Usuarios y permisos.' }];
+      const notas = [
+        { texto: 'Cada persona tiene un puesto, y de él le vienen su área, su superior (quien ocupe el puesto al que reporta) y sus funciones. Si alguien se va, quien ocupe su puesto lo hereda todo.' },
+        { texto: 'Una función no abre ninguna pantalla: dice a quién le llega una tarea o quién aprueba. Las pantallas que abre cada uno (sus llaves) se cambian en Usuarios y permisos.' },
+      ];
+      const libres = vacantes(extra);
+      if (libres.length) {
+        notas.push({ tono: 'aviso', icono: 'fa-user-slash',
+          texto: `${libres.length === 1 ? 'Un puesto no lo ocupa' : libres.length + ' puestos no los ocupa'} nadie: ${libres.map(p => p.nombre).join(' · ')}. Sus funciones no le llegan a nadie, y quien reportaba a él sube al puesto de encima.` });
+      }
       const sin = (extra && extra.sinNadie) || [];
       if (sin.length) {
         notas.push({ tono: 'aviso', icono: 'fa-triangle-exclamation',
@@ -53,13 +71,14 @@
     },
 
     kpis: (filas, extra) => [
-      { etiqueta: 'Sin área', valor: filas.filter(f => !f.area).length, tono: filas.some(f => !f.area) ? 'warn' : 'text',
-        pie: `de ${filas.length} personas`, filtro: { id: 'area', valor: SIN_AREA },
-        ayuda: 'Sin área no tiene responsable de área: sus tareas no suben a nadie' },
+      { etiqueta: 'Sin puesto', valor: filas.filter(f => !f.puesto).length, tono: filas.some(f => !f.puesto) ? 'warn' : 'text',
+        icono: 'fa-id-badge', pie: `de ${filas.length} personas`, filtro: { id: 'puesto', valor: SIN_PUESTO },
+        ayuda: 'Sin puesto no le viene ni área, ni superior, ni funciones: solo lo que tenga a mano' },
       { etiqueta: 'Sin superior', valor: filas.filter(f => !f.superior).length, pie: 'ni puesto ni por su área',
         filtro: { id: 'superior', valor: 'no' } },
-      { etiqueta: 'Con alguna función', valor: filas.filter(f => f.funciones.length).length, tono: 'gold',
-        pie: `${filas.reduce((n, f) => n + f.funciones.length, 0)} funciones repartidas`, filtro: { id: 'tiene', valor: 'si' } },
+      { etiqueta: 'Puestos sin nadie', valor: vacantes(extra).length, tono: vacantes(extra).length ? 'warn' : 'text',
+        icono: 'fa-user-slash', pie: `de ${((extra && extra.puestos) || []).length} puestos`,
+        ayuda: vacantes(extra).map(p => p.nombre).join(', ') || 'Todos tienen a alguien' },
       { etiqueta: 'Funciones sin nadie', valor: ((extra && extra.sinNadie) || []).length,
         tono: ((extra && extra.sinNadie) || []).length ? 'warn' : 'text',
         pie: `de ${((extra && extra.funciones) || []).length} del catálogo`,
@@ -67,6 +86,14 @@
     ],
 
     filtros: [
+      {
+        id: 'puesto', etiqueta: 'Puesto', textoTodos: 'Todos',
+        opciones: (filas, extra) => ((extra && extra.puestos) || [])
+          .map(p => ({ valor: p.codigo, texto: p.nombre, cuenta: filas.filter(f => f.puesto === p.codigo).length }))
+          .filter(o => o.cuenta)
+          .concat([{ valor: SIN_PUESTO, texto: 'Sin puesto', cuenta: filas.filter(f => !f.puesto).length }]),
+        pasa: (f, v) => (v === SIN_PUESTO ? !f.puesto : f.puesto === v),
+      },
       {
         id: 'area', etiqueta: 'Área', textoTodos: 'Todas',
         opciones: (filas, extra) => ((extra && extra.areas) || [])
@@ -104,9 +131,11 @@
       { titulo: 'Persona', campo: 'nombre',
         pinta: (v, f) => `<span class="font-semibold">${esc(v)}</span>` +
           `<span class="block text-[11px] text-telecab-muted">${esc(f.rolEtiqueta || f.rol || '')}</span>` },
+      { titulo: 'Puesto', valor: f => f.puestoNombre || 'Sin puesto', pinta: (v, f) => puestoHtml(f) },
       { titulo: 'Área', valor: f => f.areaEtiqueta || 'Sin área', clase: 'whitespace-nowrap',
         pinta: (v, f) => (f.area
-          ? esc(f.areaEtiqueta) + (f.responsableDe.length ? ' ' + etiqueta('Responsable', 'gold') : '')
+          ? esc(f.areaEtiqueta) + (f.responsableDe.length ? ' ' + etiqueta('Dirige', 'gold') : '')
+            + (f.areaAMano ? '<span class="block text-[11px] text-telecab-muted">puesta a mano</span>' : '')
           : '<span class="text-telecab-muted text-xs">Sin área</span>') },
       { titulo: 'Superior', valor: f => f.superior || '', clase: 'whitespace-nowrap', pinta: (v, f) => superiorHtml(f) },
       { titulo: 'Funciones', valor: f => f.funciones.map(x => x.etiqueta + (x.suplente ? ' (suplente)' : '')).join('; '),
@@ -118,17 +147,20 @@
     detalle: {
       origen: id => `${URL}/api/ficha/${encodeURIComponent(id)}`,
       titulo: d => d.nombre,
-      subtitulo: d => [d.rolEtiqueta || d.rol, d.areaEtiqueta || 'Sin área'].filter(Boolean).join(' · '),
+      subtitulo: d => [d.puestoNombre || 'Sin puesto', d.areaEtiqueta || 'Sin área'].filter(Boolean).join(' · '),
       acciones: [
-        { texto: 'Cambiar área y superior', icono: 'fa-sitemap', principal: true, onClick: d => cambiarArea(d) },
-        { texto: 'Dar una función', icono: 'fa-plus', onClick: d => darFuncion(d) },
+        { texto: 'Cambiar el puesto', icono: 'fa-id-badge', principal: true, onClick: d => cambiarPuesto(d) },
+        { texto: 'Área o superior a mano', icono: 'fa-sitemap', onClick: d => cambiarArea(d) },
+        { texto: 'Dar una función de más', icono: 'fa-plus', onClick: d => darFuncion(d) },
       ],
       bloques: [
         {
           titulo: 'Dónde está', icono: 'fa-sitemap',
           campos: [
+            { etiqueta: 'Puesto', html: true, valor: d => puestoHtml(d) },
             { etiqueta: 'Área', html: true, valor: d => (d.area
-              ? esc(d.areaEtiqueta) + (d.responsableDe.length ? ' ' + etiqueta('Responsable del área', 'gold') : '')
+              ? esc(d.areaEtiqueta) + (d.responsableDe.length ? ' ' + etiqueta(`Dirige ${d.responsableDe.join(', ')}`, 'gold') : '')
+                + (d.areaAMano ? ' <span class="text-[11px] text-telecab-muted">(puesta a mano, no la de su puesto)</span>' : '')
               : '<span class="text-telecab-muted">Sin área</span>') },
             { etiqueta: 'Superior', html: true, valor: d => superiorHtml(d) },
             { etiqueta: 'Rol', valor: d => d.rolEtiqueta || d.rol },
@@ -139,18 +171,20 @@
           titulo: 'Funciones', icono: 'fa-list-check',
           tabla: {
             datos: d => d.funciones,
-            vacio: 'No tiene ninguna función: no le llega ninguna tarea por lo que hace.',
+            vacio: 'No tiene ninguna función: no le llega ninguna tarea por lo que hace. Le vendrían de su puesto.',
             columnas: [
               { titulo: 'Función', campo: 'etiqueta',
                 pinta: (v, f) => `<span class="font-semibold">${esc(v)}</span>` +
                   (f.nota ? `<span class="block text-[11px] text-telecab-muted">${esc(f.nota)}</span>` : '') },
               { titulo: 'Como', campo: 'suplente', clase: 'whitespace-nowrap',
                 pinta: v => (v ? etiqueta('Suplente', 'muted') : 'Titular') },
+              { titulo: 'Le viene', campo: 'dePuesto', clase: 'whitespace-nowrap',
+                pinta: (v, f) => (v ? `De su puesto` : `A mano${f.dadaPor ? ` · ${esc(f.dadaPor)}` : ''}`) },
               { titulo: 'Desde', campo: 'desde', clase: 'whitespace-nowrap tabular-nums', pinta: v => esc(fecha(v)) },
-              { titulo: 'Se la dio', campo: 'dadaPor', clase: 'whitespace-nowrap', pinta: v => esc(v || '—') },
             ],
+            // Las de su puesto no se le quitan a la persona: se le cambia el puesto.
             acciones: [
-              { icono: 'fa-xmark', titulo: 'Quitar', onClick: (f, d) => quitarFuncion(f, d) },
+              { icono: 'fa-xmark', titulo: 'Quitar', visible: f => !f.dePuesto, onClick: (f, d) => quitarFuncion(f, d) },
             ],
           },
         },
@@ -201,16 +235,16 @@
     const extra = lst.extra || {};
     const areas = (extra.areas || []).filter(a => a.activa);
     const gente = (lst.filas || []).filter(p => p.id !== d.id);
-    const v = await Dialogo.formulario(`Área y superior · ${d.nombre}`, [
-      { id: 'area', etiqueta: 'Área', tipo: 'lista', valor: d.area || '',
+    const v = await Dialogo.formulario(`Área y superior a mano · ${d.nombre}`, [
+      { id: 'area', etiqueta: 'Área', tipo: 'lista', valor: d.areaAMano ? (d.area || '') : '',
         opciones: areas.map(a => ({ valor: a.codigo, texto: a.etiqueta + (a.responsable && a.responsable_id !== d.id ? ` (responsable: ${a.responsable})` : '') })) },
       { id: 'responsable', etiqueta: '¿Es la responsable de su área?', tipo: 'lista', obligatorio: true,
         valor: d.responsableDe.length ? 'si' : 'no', opciones: SI_NO,
         ayuda: 'Si el área ya tenía responsable, pasa a ser esta persona. Lleva solo el área en la que está.' },
       { id: 'superiorId', etiqueta: 'Superior', tipo: 'lista', valor: d.superiorId ? String(d.superiorId) : '',
         opciones: gente.map(p => ({ valor: String(p.id), texto: p.nombre + (p.areaEtiqueta ? ` · ${p.areaEtiqueta}` : '') })),
-        ayuda: 'Déjalo sin dato y su superior será el responsable de su área.' },
-    ], { textoBoton: 'Guardar' });
+        ayuda: 'Déjalo sin dato y su superior será quien ocupe el puesto al que reporta el suyo.' },
+    ], { textoBoton: 'Guardar', nota: 'Solo para excepciones: lo normal es que el área y el superior le vengan de su puesto.' });
     if (!v) return;
     // El «Sí» de responsable viene de su área de ANTES y el formulario no lo
     // recalcula al elegir otra: si va a llevar otra área, o a quitarle el puesto
@@ -230,6 +264,18 @@
     await guardar(`${URL}/api/area/${d.id}`,
       { area: v.area || null, superiorId: v.superiorId || null, responsable: v.responsable === 'si' },
       'Guardado', d);
+  }
+
+  async function cambiarPuesto(d) {
+    const puestos = (lst.extra || {}).puestos || [];
+    const v = await Dialogo.formulario(`Puesto · ${d.nombre}`, [
+      { id: 'puesto', etiqueta: 'Puesto', tipo: 'lista', valor: d.puesto || '',
+        opciones: puestos.map(p => ({ valor: p.codigo, texto: `${p.nombre} · ${p.areaEtiqueta}` +
+          (p.ocupan.length ? ` (${p.ocupan.map(x => x.nombre).join(', ')})` : ' (vacante)') })),
+        ayuda: 'Déjalo sin dato y se queda sin puesto: solo le valdrá lo que tenga a mano.' },
+    ], { textoBoton: 'Guardar', nota: 'Desde ya le vienen el área, el superior y las funciones de ese puesto. Lo que tenga a mano se queda.' });
+    if (!v) return;
+    await guardar(`${URL}/api/puesto/${d.id}`, { puesto: v.puesto || null }, 'Puesto guardado', d);
   }
 
   async function darFuncion(d) {

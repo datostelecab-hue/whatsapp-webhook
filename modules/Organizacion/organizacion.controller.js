@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
 
 router.get('/api/lista', responde(async () => {
   const o = await organizacion.organigrama();
-  return { filas: o.personas, areas: o.areas, funciones: o.funciones, sinNadie: o.sinNadie };
+  return { filas: o.personas, areas: o.areas, funciones: o.funciones, sinNadie: o.sinNadie, puestos: o.puestos };
 }));
 
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await organizacion.ficha(req.params.id) })));
@@ -43,6 +43,12 @@ router.post('/api/area/:id', responde(async req => {
   return { ficha: await organizacion.ponerArea(req.params.id,
     { area: b.area || null, superiorId: b.superiorId || null, responsable: b.responsable === true || b.responsable === 'si' },
     { quien: await quienEs(req) }) };
+}));
+
+// El puesto (db/255): de él le vienen el área, el superior y las funciones.
+router.post('/api/puesto/:id', responde(async req => {
+  const b = req.body || {};
+  return { ficha: await organizacion.ponerPuesto(req.params.id, b.puesto || null, { quien: await quienEs(req) }) };
 }));
 
 router.post('/api/funcion/:id', responde(async req => {

@@ -620,8 +620,8 @@ contadores.registrarFuente('tareas', {
 // ── Las que vencen: aviso al responsable y a su superior (A10) ─────────────
 /**
  * Cada día hábil a las 09:00, las tarjetas que vencieron (pasó su último día
- * hábil) y aún no se avisaron: notificación al responsable y a su superior
- * (organizacion.superiorDe), y su evento. Una vez por tarjeta; si se le cambia
+ * hábil) y aún no se avisaron: notificación al responsable y a sus superiores
+ * (organizacion.superioresDe: los dos jefes de Control, si son dos), y su evento. Una vez por tarjeta; si se le cambia
  * el plazo, vuelve a poder avisarse.
  */
 async function avisarVencidas({ periodo, cli }) {
@@ -635,8 +635,8 @@ async function avisarVencidas({ periodo, cli }) {
   // Lo que sale fuera de la base, al final (la vez queda hecha con lo de arriba).
   let avisos = 0;
   for (const t of filas) {
-    const sup = t.responsable_id ? await organizacion.superiorDe(t.responsable_id).catch(() => null) : null;
-    const para = [t.responsable_id, sup && sup.id].filter(Boolean);
+    const sups = t.responsable_id ? await organizacion.superioresDe(t.responsable_id).catch(() => []) : [];
+    const para = [...new Set([t.responsable_id, ...sups.map(x => x.id)].filter(Boolean))];
     if (!para.length) continue;
     await push().enviar(para, {
       titulo: 'Tarea vencida', cuerpo: t.sensible ? `Venció el ${t.vence_el}` : `${t.titulo} · venció el ${t.vence_el}`,
