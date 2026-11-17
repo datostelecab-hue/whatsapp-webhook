@@ -51,6 +51,15 @@
   }
 
   // Sus vacaciones: con sus acciones según quién mira.
+  // Si una petición cuadra o se pasa (la previsión del servidor, como el
+  // simulador): en rojo cuántos días se pasa; en verde, cuántos le sobran.
+  const prevision = pv => {
+    const ayuda = `El día que se va tendrá ${num(pv.alIrse)} (con lo que genere hasta entonces) y gasta ${pv.gasta}. Al volver: ${num(pv.alVolver)}${pv.generaDurante ? `, contando ${num(pv.generaDurante)} que genera durante las vacaciones` : ''}.`;
+    return `<span class="block mt-1" title="${esc(ayuda)}">
+      <span class="tc-pastilla ${pv.sePasa ? 'tc-pastilla--rojo' : 'tc-pastilla--verde'}">${pv.sePasa ? `Se pasa ${num(-pv.alVolver)} días` : `Sobran ${num(pv.alVolver)} días`}</span>
+      <span class="block text-[11px] text-telecab-muted mt-0.5">tendrá ${num(pv.alIrse)} al irse</span></span>`;
+  };
+
   function tablaVacaciones(d, { propio, aprueba }) {
     if (!d.vacaciones.length) return '<p class="text-sm text-telecab-muted px-5 py-4">Todavía no hay vacaciones pedidas.</p>';
     const fila = v => {
@@ -66,18 +75,18 @@
         : `<span class="text-telecab-muted">${num(v.dias, 0)}</span>`;
       const nota = [v.nota ? esc(v.nota) : '', v.resueltaNota && v.estado !== 'aprobada'
         ? `<span class="block text-[11px] text-telecab-muted">${esc(v.resueltaNota)}</span>` : ''].join('');
-      return `<tr class="border-t border-telecab-border/60 align-top">
-        <td class="py-2 pr-3 whitespace-nowrap tabular-nums">${f(v.desde)} → ${f(v.hasta)}</td>
-        <td class="py-2 px-3 whitespace-nowrap">libra ${esc(v.libraTexto)}</td>
+      const pv = v.prevision;
+      return `<tr class="border-t border-telecab-border/60 align-top${pv && pv.sePasa ? ' bg-telecab-red/5' : ''}">
+        <td class="py-2 pr-3 whitespace-nowrap tabular-nums">${f(v.desde)} → ${f(v.hasta)}<span class="block text-[11px] text-telecab-muted">libra ${esc(v.libraTexto)}</span></td>
         <td class="py-2 px-3 text-right tabular-nums">${gasta}</td>
-        <td class="py-2 px-3">${pastilla(v.estado)}</td>
+        <td class="py-2 px-3">${pastilla(v.estado)}${pv ? prevision(pv) : ''}</td>
         <td class="py-2 px-3 text-sm text-telecab-muted">${nota}</td>
         <td class="py-2 pl-3 text-right whitespace-nowrap"><div class="inline-flex flex-wrap gap-1 justify-end">${botones.join('')}</div></td>
       </tr>`;
     };
     return `<div class="px-5 py-3 overflow-x-auto"><table class="w-full text-sm">
       <thead class="text-xs text-telecab-muted"><tr>
-        <th class="text-left font-medium pb-1 pr-3">Fechas</th><th class="text-left font-medium pb-1 px-3">Libranzas</th>
+        <th class="text-left font-medium pb-1 pr-3">Fechas</th>
         <th class="text-right font-medium pb-1 px-3" title="Días que gastan: sin sus dos días de libranza ni los festivos">Gastan</th>
         <th class="text-left font-medium pb-1 px-3">Estado</th><th class="text-left font-medium pb-1 px-3">Nota</th><th class="pb-1 pl-3"></th>
       </tr></thead>
@@ -270,6 +279,12 @@
         if (!await Dialogo.confirmar({ titulo: 'Retirar la petición', texto: `Tus vacaciones ${fechas} dejan de esperar aprobación.`, si: 'Retirarla', no: 'Cancelar' })) return;
         r = await Api.post(`${API}/${v.id}/retirar`, {}, { boton: b, aviso: 'No se ha podido retirar' });
       } else if (b.dataset.aprobar) {
+        const pv = v.prevision;
+        if (pv && pv.sePasa && !await Dialogo.confirmar({
+          titulo: `Se pasa ${num(-pv.alVolver)} días`,
+          texto: `Las vacaciones ${fechas} gastan ${pv.gasta} días. El día que se va tendrá ${num(pv.alIrse)} y al volver le faltarán ${num(-pv.alVolver)}, aun contando lo que genera durante las vacaciones.`,
+          si: 'Aprobar igualmente', no: 'Cancelar',
+        })) return;
         r = await Api.post(`${API}/${v.id}/aprobar`, {}, { boton: b, aviso: 'No se han podido aprobar' });
         if (r) Dialogo.hecho('Aprobadas');
       } else {

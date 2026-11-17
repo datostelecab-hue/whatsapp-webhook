@@ -78,6 +78,16 @@ Camilo: *«Hazlo tipo calendario para saber gráficamente quién se va y cuándo
 - Cifras: de vacaciones hoy, con vacaciones programadas, **lo más lleno que viene** (cuántos a la vez y qué día), las que esperan aprobación y quién no tiene ni un día este año (la lista, al final).
 - Pulsar a alguien abre su ficha en el Panel, donde se aprueba. Aprobar, pedir o anular repinta la parrilla y el Listado.
 
+## Si una petición cuadra o se pasa (17/11/2026)
+
+Camilo: *«pedí 12 y tengo 9,22… cuando llegue al 24 de diciembre sí me cuadran, por lo que al aprobar debe de decir la predicción también, si me paso o no me paso: si me paso, en rojo y cuántos días; si no, en verde y los días de más»*.
+
+- Cada petición que espera lleva su **previsión**, con la cuenta del simulador como si se aprobara: lo que tendrá **el día que se va** (con lo que genere hasta entonces) y lo que le quedará **al volver**, contando lo que genera durante las vacaciones.
+- Decide el «al volver»: **en verde «Sobran X días»** si llega; **en rojo «Se pasa X días»** (y la fila teñida) si no. Debajo, «tendrá N al irse». Pasando el ratón, el detalle.
+- Su caso: del 24/12/2026 al 12/01/2027 gasta 12; al irse tendrá 11,49 y al volver le sobran 0,56: en verde.
+- **Aprobar una que se pasa pide confirmación** («Aprobar igualmente»). El aviso a quien aprueba ya dice si se pasa o cuánto le sobra.
+- En la ficha, las libranzas van bajo las fechas: la tabla cabe en el Panel sin desplazarse de lado.
+
 ## Registrar unas ya disfrutadas (17/11/2026)
 
 Camilo: *«déjame registrar vacaciones de la oficina del pasado, de tal a tal fecha el usuario disfrutó X días, para que así se resten con los que tenga hoy en día… si tengo 9, pero me fui del 20 al 30 de agosto, serían 7 días que disfruté ya que los días sábados y domingos no cuentan»*.

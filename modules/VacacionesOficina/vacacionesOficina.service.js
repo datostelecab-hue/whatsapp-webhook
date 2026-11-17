@@ -213,6 +213,23 @@ async function deUna(usuarioId, e) {
   return { p, vacs, s };
 }
 
+/**
+ * LA PREVISIÓN DE UNA PETICIÓN (17/11/2026, Camilo: «al aprobar debe de decir
+ * la predicción también de las vacaciones, si me paso o no me paso, si me paso
+ * son unas solicitudes en rojo y decir cuántos días me paso, sino en verde y
+ * los días de diferencia de más»). Es la cuenta del simulador, como si se
+ * aprobaran: lo que tendrá el día que se va (con lo que genere hasta
+ * entonces) y lo que le quedará al volver, contando lo que genera durante las
+ * vacaciones. Ese «al volver» decide: negativo, se pasa; si no, le sobran.
+ */
+function previsionDe(s, v, e) {
+  const sim = simularSobre(s, {
+    desde: v.desde, hasta: v.hasta, libra: v.libra_dias || [], hoy: e.hoy, festivos: e.festivos,
+    vacaciones: s.vacaciones.filter(x => x.id !== v.id),
+  });
+  return { alIrse: sim.disponible, gasta: sim.nuevos, alVolver: sim.alVolver, generaDurante: sim.generaDurante, sePasa: sim.alVolver < 0 };
+}
+
 const publica = (p, s, e) => ({
   id: p.id, nombre: p.nombre, alta: p.alta || null, inicio: s.inicio, hoy: e.hoy,
   generadas: s.generadas, disfrutadas: s.disfrutadas, programadas: s.programadas, pedidas: s.pedidas,
@@ -221,6 +238,7 @@ const publica = (p, s, e) => ({
     id: v.id, desde: v.desde, hasta: v.hasta, libra: v.libra_dias, libraTexto: v.libra_dias.map(n => DIAS_SEMANA[n - 1]).join(' y '),
     estado: v.estado, nota: v.nota || '', dias: v.dias, pasados: v.pasados, futuros: v.futuros,
     resueltaPor: v.resuelta_por_nombre || null, resueltaNota: v.resuelta_nota || '', pedidaAt: v.pedida_at,
+    prevision: v.estado === 'pedida' ? previsionDe(s, v, e) : null,
   })),
 });
 
@@ -337,7 +355,8 @@ async function pedir(quien, { desde, hasta, libra, nota } = {}) {
     return repo.insertar(cli, { usuarioId: quien.id, desde, hasta, libra: sim.libra, nota: texto, por: quien.id });
   });
   const aprueban = (await repo.aprobadores()).filter(x => x !== quien.id);
-  await avisar(aprueban, { titulo: 'Vacaciones por aprobar', cuerpo: `${sim.nombre}: del ${fecha(desde)} al ${fecha(hasta)}, ${sim.cuentan} días`, etiqueta: `vac-oficina-${id}` });
+  const cuadra = sim.alVolver < 0 ? `se pasa ${String(-sim.alVolver).replace('.', ',')} días` : `le sobran ${String(sim.alVolver).replace('.', ',')}`;
+  await avisar(aprueban, { titulo: 'Vacaciones por aprobar', cuerpo: `${sim.nombre}: del ${fecha(desde)} al ${fecha(hasta)}, ${sim.cuentan} días (${cuadra})`, etiqueta: `vac-oficina-${id}` });
   return { id, simulacion: sim };
 }
 
@@ -430,5 +449,5 @@ contadores.registrarFuente(ORIGEN, {
 module.exports = {
   mias, de, lista, calendarioOficina, simular, registrar, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
   // Para las pruebas:
-  _saldoDe: saldoDe, _simularSobre: simularSobre, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
+  _saldoDe: saldoDe, _simularSobre: simularSobre, _previsionDe: previsionDe, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
 };

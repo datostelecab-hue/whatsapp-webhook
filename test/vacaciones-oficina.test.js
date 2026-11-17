@@ -178,6 +178,20 @@ test('«Vacaciones por meses» de la oficina: quién se va y cuándo, solo para 
   assert.deepEqual(otra.periodos.filter(x => x.id === p.ana.id), [], 'las no aprobadas ya no salen');
 }));
 
+test('la previsión de una petición: del 24/12 al 12/01 gasta 12; al irse tendrá 11,49 y al volver le sobran 0,56 (en verde); si se alarga, se pasa (en rojo)', () => {
+  // El caso de Camilo (17/11/2026): alta el 17/06/2026, hoy 9,22.
+  const e = { hoy: '2026-11-17', festivos: new Set(['2026-12-07', '2026-12-08', '2026-12-25', '2027-01-01']) };
+  const v = { id: 1, desde: '2026-12-24', hasta: '2027-01-12', libra_dias: [6, 7], estado: 'pedida' };
+  const s = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [v] });
+  assert.equal(s.saldo, 9.22);
+  const pv = vac._previsionDe(s, v, { ...e, laborables: LV });
+  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.sePasa], [12, 11.49, 0.56, false], 'cuadra contando lo que genera durante las vacaciones');
+  const larga = { ...v, hasta: '2027-01-29' };
+  const s2 = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [larga] });
+  const pv2 = vac._previsionDe(s2, larga, { ...e, laborables: LV });
+  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [25, true, -11.34], 'se pasa 11,34 días');
+});
+
 test('registrar unas ya disfrutadas: del 20 al 30 de agosto son 7 días, y se restan de las de hoy', () => conBase(async h => {
   const p = await oficina(h);
   await usuarios.fijarFechaAlta(p.ana.id, '2026-01-01', p.firma);
