@@ -13,7 +13,7 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 
 | | Qué | Cómo |
 |---|---|---|
-| **+** | Generadas | **0,084 días por cada día que genera, con un máximo de 1,85 al mes** (los festivos van aparte). Cuentan desde el alta que dice el sistema (la del contrato abierto). Genera un día en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada** o **cada día de baja médica**, también los que habría librado. Ver [[#0,084 por día con un tope de 1,85 al mes (12/11/2026)]]. Del 06/11 al 12/11/2026 eran 0,05882 sin tope; antes, 0,0821 por día natural. |
+| **+** | Generadas | **0,084 días por cada día que genera, con un máximo de 1,85 al mes** (los festivos van aparte). Cuentan desde el alta que dice el sistema (la del contrato abierto). Genera un día en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada**, **cada día de baja médica** o **cada día de permiso retribuido** (también los de asuntos propios), también los que habría librado. Ver [[#0,084 por día con un tope de 1,85 al mes (12/11/2026)]]. Del 06/11 al 12/11/2026 eran 0,05882 sin tope; antes, 0,0821 por día natural. |
 | **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas en su jornada** (6 justas no), **desde el 01/10/2026**. Los de septiembre para atrás se pagaron en la nómina y no suman. **No entran en el tope.** Ver [[#Los festivos de septiembre para atrás, pagados (06/11/2026)]]. |
 | **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: los dos días que libra en esas vacaciones (puestos a mano) no cuentan; en las de antes, sus libranzas del planificador. Ver [[#Los dos días que libra, a mano (06/11/2026, db/233)]]. |
 
@@ -24,6 +24,17 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 - El saldo puede ser **negativo**: ha disfrutado más de lo generado.
 
 Las decisiones de Camilo, el 14/10/2026: los permisos se descuentan del saldo, y luego, *«Solo restan los de asuntos propios»*; para los antiguos, desde el 01/01/2025; las suspensiones no generan; y el festivo suma solo si se trabajó más de 6 h.
+
+## Los permisos retribuidos generan, como la baja (17/11/2026)
+
+Camilo, con la paternidad de **HAMID OUAHHAJ** (ficha 23: dos permisos retribuidos seguidos, del 05/01 al 22/02 y del 23/02 al 17/05/2026): *«esos días todos cuentan como 8 horas, con el límite de 1,85 días al mes … esos dos tramos suman a sus vacaciones»*. Y lo hizo **regla para todos los permisos**, no solo los suyos (eligió él; así es también en el convenio: el permiso retribuido es tiempo de trabajo).
+
+- **Cada día de permiso retribuido genera como uno de 8 h**, también los que habría librado, con el **tope de 1,85 al mes**. Igual que la baja médica.
+- **Los de asuntos propios también** (son un permiso retribuido: la nómina ya los paga como tal). Su banco de 2 días al año no cambia y siguen sin restar de las vacaciones.
+- **Cada día cuenta una vez**, por lo primero que tenga: trabajo, J, baja, permiso. Un día que trabajó dentro de un permiso cuenta como trabajado.
+- Siguen **sin restar** del saldo. Las suspensiones siguen sin generar.
+- En la ficha, el mes a mes tiene una columna **«Permiso»**, y el resumen de lo que genera dice cuántos días de permiso.
+- **Hamid**: 125 días de permiso cuentan (8 de enero también trabajó y cuentan una vez); de enero a abril llega al tope cada mes. Lo generado pasa de 10,00 a 17,90 y su saldo, de −3,00 a 4,90 (17/11/2026). Les sube también, un poco, a las otras 8 personas con permisos este año.
 
 ## 0,084 por día con un tope de 1,85 al mes (12/11/2026)
 

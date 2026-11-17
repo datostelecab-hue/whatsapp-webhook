@@ -162,19 +162,32 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-07-10', '2026-07-15')], [], new Map(), HOY);
   igual('Unas que empiezan antes del alta: solo cuentan los días desde el alta (3)', s.disfrutadas, 3);
   s = saldoDe({ alta: '2026-07-13' }, [perm('2026-08-23', '2026-08-31', null), perm('2026-10-08', '2026-11-08', 'PR_MATRIMONIO')], [], new Map(), HOY);
-  igual('Un permiso sin tipo y uno de matrimonio: no restan nada, ni hoy ni después', [s.saldo, s.saldoTras], [0, 0]);
+  // Desde el 17/11/2026 cada día de permiso genera como uno de 8 h (Camilo, con la
+  // paternidad de HAMID OUAHHAJ). Hasta hoy: 9 (agosto) + 7 (del 08 al 14/10).
+  igual('Un permiso sin tipo y uno de matrimonio: no restan, y sus días generan como de 8 h (16 × 0,084 = 1,34)', [s.saldo, s.saldoTras, s.diasPermiso], [1.34, 1.34, 16]);
   igual('…pero se ven en la ficha, con sus días', s.detalle.permisos.map(p => [p.dentro, p.programados]), [[9, 0], [7, 25]]);
+
+  // LA PATERNIDAD DE HAMID OUAHHAJ (17/11/2026): «esos días todos cuentan como 8
+  // horas, con el límite de 1,85 días al mes … esos dos tramos suman a sus
+  // vacaciones». Enero 27 días (2,27 → 1,85), febrero, marzo y abril en el tope,
+  // mayo 17 × 0,084 = 1,43.
+  s = saldoDe({ alta: '2024-06-01' }, [perm('2026-01-05', '2026-02-22', null), perm('2026-02-23', '2026-05-17', null)], [], new Map(), HOY);
+  igual('Dos permisos retribuidos seguidos (paternidad): 133 días de 8 h, con el tope de cada mes = 8,83',
+    [s.diasPermiso, s.generadas, s.detalle.meses.filter(m => m.mes <= '2026-05').map(m => [m.mes, m.permisos, m.generadas, m.tope])],
+    [133, 8.83, [['2026-01', 27, 1.85, true], ['2026-02', 28, 1.85, true], ['2026-03', 31, 1.85, true], ['2026-04', 30, 1.85, true], ['2026-05', 17, 1.43, false]]]);
+  s = saldoDe({ alta: '2024-06-01' }, [perm('2026-03-01', '2026-03-10', null)], [], new Map(), HOY, L('2026-03-01', '2026-03-05', 8));
+  igual('Un día trabajado dentro de un permiso cuenta una vez (10 días, no 15)', [s.diasLaborados, s.diasPermiso, s.diasQueGeneran], [5, 5, 10]);
 
   // ── 2b. Los asuntos propios: su banco, aparte (29/10/2026) ─────────────────
   // Camilo: «que no reste a las vacaciones, él se restará solo».
   s = saldoDe({ alta: '2026-07-13' }, [ap('2026-09-01', '2026-09-01'), ap('2026-10-20', '2026-10-20')], [], new Map(), HOY, L('2026-07-13', '2026-08-31', 8));
-  igual('Asuntos propios: no tocan el saldo de vacaciones', [s.saldo, s.saldoTras, s.generadas], [3.45, 3.45, 3.45]);
+  igual('Asuntos propios: no restan de las vacaciones, y el día cogido genera como uno de 8 h (3,45 + 0,08)', [s.saldo, s.saldoTras, s.generadas], [3.53, 3.53, 3.53]);
   igual('…su banco: 2 este año, 1 cogido, 1 programado',
     [s.asuntosPropios.generados, s.asuntosPropios.usados, s.asuntosPropios.programados, s.asuntosPropios.saldo, s.asuntosPropios.saldoTras], [2, 1, 1, 1, 0]);
   igual('…y se ven aparte en la ficha, no entre los permisos', [s.detalle.asuntos.length, s.detalle.permisos.length], [2, 0]);
   s = saldoDe({ alta: '2026-07-13' }, [perm('2026-09-01', '2026-09-01')], [], new Map(), HOY);
   igual('Un permiso de los de antes con el tipo de asuntos propios cuenta igual (si db/225 aún no lo ha pasado)',
-    [s.saldo, s.asuntosPropios.usados, s.detalle.asuntos.length], [0, 1, 1]);
+    [s.saldo, s.asuntosPropios.usados, s.detalle.asuntos.length], [0.08, 1, 1]);
   s = saldoDe({ alta: '2023-11-13' }, [], [], new Map(), HOY);
   igual('Quien entró antes: 2 días en 2026, enteros', [s.asuntosPropios.anios, s.asuntosPropios.generados, s.asuntosPropios.desde], [1, 2, '2026']);
   s = saldoDe({ alta: '2026-10-01' }, [], [], new Map(), HOY);
@@ -216,14 +229,14 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   s = saldoDe({ alta: '2026-07-13' },
     [vac('2026-08-01', '2026-08-05'), ap('2026-09-01', '2026-09-01'), susp('2026-09-10', '2026-09-11'), vac('2026-10-20', '2026-10-22')],
     cal, H({ '2026-08-15': 9 * 3600, '2026-10-12': 9 * 3600 }), HOY, trabajo);
-  igual('31 días laborados (2,60) + 1 festivo (el 12/10; el 15/08 se pagó) − 5 disfrutadas = −1,40 (el día de asuntos propios no resta)',
-    [s.diasLaborados, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [31, 2.6, 1, 5, -1.4]);
-  igual('…y tras las vacaciones del 20 al 22, −4,40', s.saldoTras, -4.4);
+  igual('31 días laborados + el de asuntos propios (2,69) + 1 festivo (el 12/10; el 15/08 se pagó) − 5 disfrutadas = −1,31 (el día de asuntos propios no resta: genera)',
+    [s.diasLaborados, s.diasPermiso, s.generadas, s.festivosSuman, s.disfrutadas, s.saldo], [31, 1, 2.69, 1, 5, -1.31]);
+  igual('…y tras las vacaciones del 20 al 22, −4,31', s.saldoTras, -4.31);
   // EL MES A MES DEL EXCEL DE LA BITÁCORA (12/11/2026): lo generado, los
   // festivos, lo disfrutado y el saldo al acabar cada mes. El último cuadra con el saldo.
   igual('Mes a mes: generadas, festivos, disfrutadas y saldo al acabar el mes (el de octubre es el saldo de hoy)',
     s.detalle.meses.map(m => [m.mes, m.generadas, m.festivos, m.disfrutadas, m.saldoFin]),
-    [['2026-07', 1.6, 0, 0, 1.6], ['2026-08', 0.92, 0, 5, -2.48], ['2026-09', 0, 0, 0, -2.48], ['2026-10', 0.08, 1, 0, -1.4]]);
+    [['2026-07', 1.6, 0, 0, 1.6], ['2026-08', 0.92, 0, 5, -2.48], ['2026-09', 0.08, 0, 0, -2.4], ['2026-10', 0.08, 1, 0, -1.31]]);
   // El tope no cuenta los festivos: un mes en el tope con un festivo trabajado da 1,85 + 1.
   const tf = saldoDe({ alta: '2026-07-13' }, [], [F('2026-10-12')], H({ '2026-10-12': 8 * 3600 }), HOY, L('2026-09-01', '2026-09-30', 8, L('2026-10-01', '2026-10-14', 8)));
   igual('El tope no cuenta los festivos: septiembre 1,85 (en el tope) y octubre 14 × 0,084 = 1,18 + el festivo del 12/10',

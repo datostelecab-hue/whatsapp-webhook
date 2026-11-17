@@ -23,7 +23,7 @@ vistas/vacaciones.ejs      el Listado: el saldo debajo de cada nombre y, en la f
 Las reglas (Camilo, 14/10/2026), en la cabecera del servicio: 0,05882 días por cada
 DÍA LABORADO —un día con MÁS de 4 h de viaje + espera de BOLT— desde el alta (o desde
 el 01/01/2026 —antes del 19/10/2026 era el 01/01/2025—; lo de antes no cuenta para
-nada), y también cada día con una J aprobada y cada día de baja médica que le tocaba
+nada), y también cada día con una J aprobada, cada día de permiso retribuido (17/11/2026: como la baja, un día de 8 h con el tope del mes; también los de asuntos propios) y cada día de baja médica que le tocaba
 trabajar (sin plaza o antes del planificador, cada día de baja vale 5/7: BAJA_SIN_PLAZA); + 1 día por festivo trabajado más de 6 h
 desde el 01/10/2026 (los de hasta el 30/09 se pagaron: FESTIVOS_PAGADOS_HASTA); − vacaciones disfrutadas, SOLO los
 días que le tocaba trabajar (las de db/233 llevan sus DOS días de libranza puestos a mano,

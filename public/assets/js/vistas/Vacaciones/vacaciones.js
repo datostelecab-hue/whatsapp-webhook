@@ -460,6 +460,7 @@
     const partes = [`${d.diasLaborados} trabajado(s) más de ${umbralL} h`];
     if (d.diasJustificados) partes.push(`${d.diasJustificados} justificado(s)`);
     if (d.diasBaja) partes.push(`${d.diasBaja} de baja médica`);
+    if (d.diasPermiso) partes.push(`${d.diasPermiso} de permiso retribuido`);
     // Del 06/11 al 12/11/2026 la baja sin plaza valía 5/7; ya no (cada día cuenta).
     if (d.diasBajaSupuestos) partes.push(`${d.diasBajaSupuestos} de baja sin plaza, a 5 de cada 7 (${num(d.diasBajaSupuestos * 5 / 7, 2)})`);
     const enTope = (d.detalle && d.detalle.meses || []).filter(m => m.tope).length;
@@ -479,7 +480,7 @@
     const meses = (d.detalle.meses || []).slice().reverse();
     const nota = R.sinHistorico || (d.reglas && d.reglas.sinHistorico)
       ? `<p class="text-sm text-telecab-warn mt-3">Falta aplicar la migración db/231: los días de antes del ${f(R.nucleoDesde || '2026-07-01')} todavía no cuentan.</p>`
-      : `<p class="text-xs text-telecab-muted mt-3">Generan los días que trabajó más de ${umbralL} h (viaje + espera de BOLT, por el día de la bitácora; antes del 01/07/2026, del historial de estados de BOLT), los que tienen una J aprobada y cada día de baja médica (también los que libraría), a ${tasa} cada uno y como mucho ${tope} al mes. Las libranzas, las vacaciones y las ausencias sin justificar no. Los festivos van aparte. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
+      : `<p class="text-xs text-telecab-muted mt-3">Generan los días que trabajó más de ${umbralL} h (viaje + espera de BOLT, por el día de la bitácora; antes del 01/07/2026, del historial de estados de BOLT), los que tienen una J aprobada y cada día de baja médica o de permiso retribuido (también los que libraría), a ${tasa} cada uno y como mucho ${tope} al mes. Las libranzas, las vacaciones y las ausencias sin justificar no. Los festivos van aparte. Lo de hoy y ayer suma cuando la bitácora cierra la jornada.</p>`;
     if (!meses.length) return `<div class="px-5 py-4"><p class="text-sm text-telecab-muted">Ningún día trabajado desde el ${f(d.inicio)}.</p>${nota}</div>`;
     const fila = m => `
       <tr class="border-t border-telecab-border/60">
@@ -487,6 +488,7 @@
         <td class="py-2 px-3 text-right tabular-nums font-semibold">${m.laborados}</td>
         <td class="py-2 px-3 text-right tabular-nums">${m.justificados || '—'}</td>
         <td class="py-2 px-3 text-right tabular-nums">${bajasMes(m)}</td>
+        <td class="py-2 px-3 text-right tabular-nums">${m.permisos || '—'}</td>
         <td class="py-2 px-3 text-right tabular-nums text-telecab-muted">${m.cortos || '—'}</td>
         <td class="py-2 px-3 text-right tabular-nums whitespace-nowrap">${horasTxt(m.segundos)}</td>
         <td class="py-2 pl-3 text-right tabular-nums whitespace-nowrap"${m.tope ? ` title="Daría ${num(m.sinTope, 2)}: se queda en el tope de ${tope} al mes"` : ''}>+ ${num(m.generadas, 2)}${m.tope ? '<span class="block text-[11px] text-telecab-muted">en el tope</span>' : ''}</td>
@@ -500,6 +502,7 @@
               <th class="text-right font-medium pb-1 px-3" title="Días que trabajó más de ${umbralL} h.">Trabajó más de ${umbralL} h</th>
               <th class="text-right font-medium pb-1 px-3" title="Días con una J aprobada (y sin llegar a ${umbralL} h).">Justificados</th>
               <th class="text-right font-medium pb-1 px-3" title="Días de baja médica: cuentan todos, también los que habría librado (cada B vale un día de 8 h).">Baja médica</th>
+              <th class="text-right font-medium pb-1 px-3" title="Días de permiso retribuido (también los de asuntos propios): cuentan todos, como un día de 8 h.">Permiso</th>
               <th class="text-right font-medium pb-1 px-3" title="Días que trabajó, pero no más de ${umbralL} h, y sin J: no suman.">${umbralL} h o menos</th>
               <th class="text-right font-medium pb-1 px-3">Horas del mes</th>
               <th class="text-right font-medium pb-1 pl-3">Generadas</th>

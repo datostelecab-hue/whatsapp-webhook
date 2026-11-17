@@ -24,9 +24,13 @@
 //               mes (12/11/2026, Camilo: «ojo con las bajas médicas, ahí es que
 //               se aplica más que todo el límite de 1,85 días … ya que no tiene
 //               días de libranza, y cada B equivale a 8 horas»; hasta entonces
-//               la baja en su libranza no sumaba y, sin plaza, valía 5/7). Cada
-//               día cuenta una vez. Las vacaciones, los permisos y los asuntos
-//               propios no generan.
+//               la baja en su libranza no sumaba y, sin plaza, valía 5/7). Y
+//               CADA DÍA DE PERMISO RETRIBUIDO (también los de asuntos propios),
+//               igual que la baja: un día de 8 h con el tope del mes (17/11/2026,
+//               Camilo, con la paternidad de HAMID OUAHHAJ: «esos días todos
+//               cuentan como 8 horas, con el límite de 1,85 días al mes»; y para
+//               todos los permisos, no solo los suyos). Cada día cuenta una vez.
+//               Las vacaciones no generan.
 //               Hasta entonces eran 0,0821 por DÍA NATURAL (con libranzas,
 //               bajas, vacaciones y permisos, y sin las suspensiones).
 //               Quien entró antes de 2026 empieza el 01/01/2026
@@ -64,7 +68,8 @@
 //     año siguiente suma otros 2 encima.
 //   − cada día en la situación «Asuntos propios» (db/225). Un permiso de los de
 //     antes con el tipo de asuntos propios cuenta igual.
-//   Los días de asuntos propios generan vacaciones, como un permiso.
+//   Los días de asuntos propios generan vacaciones, como un permiso (desde el
+//   17/11/2026, cada uno como un día de 8 h).
 //
 // Lo programado (vacaciones y permisos de mañana en adelante) no toca el saldo
 // de hoy: se enseña aparte, con el saldo que quedará después.
@@ -160,7 +165,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   const mesDe = dia => {
     const m = dia.slice(0, 7);
     if (!porMes.has(m)) {
-      porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, bajasSupuestas: 0, cortos: 0, segundos: 0,
+      porMes.set(m, { mes: m, laborados: 0, justificados: 0, bajas: 0, bajasSupuestas: 0, permisos: 0, cortos: 0, segundos: 0,
         festivos: 0, disfrutadas: 0 });
     }
     return porMes.get(m);
@@ -248,7 +253,10 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   //     generadas ya que no tiene días de libranza, y cada B equivale a 8 horas
   //     ya que genera vacaciones»). Un mes entero de baja daría 30 × 0,084 =
   //     2,52 y se queda en el tope de 1,85. Del 06/11 al 12/11 el día de baja
-  //     que caía en su libranza no sumaba, y sin plaza cada día valía 5/7.
+  //     que caía en su libranza no sumaba, y sin plaza cada día valía 5/7;
+  //   · si no, estaba de PERMISO RETRIBUIDO (o de asuntos propios): igual que
+  //     la baja, cada día como uno de 8 h (17/11/2026, Camilo: «esos días todos
+  //     cuentan como 8 horas, con el límite de 1,85 días al mes»).
   // (El mes a mes, `porMes`, está arriba.)
   const genera = new Map();      // día → 'trabajo' | 'justificado' | 'baja' | 'baja-supuesta'
   (laborados || new Map()).forEach((seg, dia) => {
@@ -259,17 +267,20 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   (justificados || new Set()).forEach(dia => {
     if (dia >= inicio && dia <= hoy && !genera.has(dia)) genera.set(dia, 'justificado');
   });
-  for (const t of tramos || []) {
-    if (t.estado !== 'baja_medica') continue;
-    const a = t.desde > inicio ? t.desde : inicio, b = (t.hasta || FIN) < hoy ? t.hasta : hoy;
-    for (let d = a; d <= b; d = mas(d, 1)) {
-      if (!genera.has(d)) genera.set(d, 'baja');
+  // La baja primero y luego los permisos: un día con las dos cosas, como baja.
+  for (const [estados, por] of [[['baja_medica'], 'baja'], [['permiso', 'asuntos_propios'], 'permiso']]) {
+    for (const t of tramos || []) {
+      if (!estados.includes(t.estado)) continue;
+      const a = t.desde > inicio ? t.desde : inicio, b = (t.hasta || FIN) < hoy ? t.hasta : hoy;
+      for (let d = a; d <= b; d = mas(d, 1)) {
+        if (!genera.has(d)) genera.set(d, por);
+      }
     }
   }
   genera.forEach((por, dia) => {
     const x = mesDe(dia);
     if (por === 'trabajo') x.laborados++; else if (por === 'justificado') x.justificados++;
-    else if (por === 'baja') x.bajas++; else x.bajasSupuestas++;
+    else if (por === 'baja') x.bajas++; else if (por === 'permiso') x.permisos++; else x.bajasSupuestas++;
   });
   (laborados || new Map()).forEach((seg, dia) => {
     if (dia >= inicio && dia <= hoy && seg > 0 && !genera.has(dia)) mesDe(dia).cortos++;
@@ -277,18 +288,19 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   const cuantos = por => [...genera.values()].filter(v => v === por).length;
   const diasLaborados = cuantos('trabajo'), diasJustificados = cuantos('justificado'), diasBaja = cuantos('baja');
   const diasBajaSupuestos = cuantos('baja-supuesta');
+  const diasPermiso = cuantos('permiso');
   // Los de baja sin saber qué libraría valen 5/7: el total puede llevar
   // decimales. Lo generado sale de los días SIN redondear (redondearlos antes de
   // multiplicar movía 0,01 lo generado); solo se redondea lo que se enseña.
   const valen = (enteros, supuestos) => enteros + supuestos * BAJA_SIN_PLAZA;
-  const crudo = valen(diasLaborados + diasJustificados + diasBaja, diasBajaSupuestos);
+  const crudo = valen(diasLaborados + diasJustificados + diasBaja + diasPermiso, diasBajaSupuestos);
   const diasQueGeneran = r2(crudo);
   // EL TOPE ES POR MES (12/11/2026): cada mes genera TASA por día, como mucho
   // TOPE_MES. Lo generado es la suma de los meses (sin redondear por el camino).
   // Los festivos van aparte y no entran en el tope.
   const conTope = c => Math.min(TOPE_MES, TASA * c);
   const mesesOrden = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes));
-  const generadas = r2(mesesOrden.reduce((t, x) => t + conTope(valen(x.laborados + x.justificados + x.bajas, x.bajasSupuestas)), 0));
+  const generadas = r2(mesesOrden.reduce((t, x) => t + conTope(valen(x.laborados + x.justificados + x.bajas + x.permisos, x.bajasSupuestas)), 0));
 
   // Los festivos de su periodo. El de hoy aún no ha terminado.
   const lista = (festivos || []).filter(f => f.fecha >= inicio && f.fecha <= hoy).map(f => {
@@ -307,7 +319,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   // saldo al acabarlo (lo de los meses anteriores incluido).
   let acumulado = 0;
   const meses = mesesOrden.map(x => {
-    const c = valen(x.laborados + x.justificados + x.bajas, x.bajasSupuestas);
+    const c = valen(x.laborados + x.justificados + x.bajas + x.permisos, x.bajasSupuestas);
     const gen = conTope(c);
     acumulado += gen + x.festivos - x.disfrutadas;
     return { ...x, generan: r2(c), sinTope: r2(TASA * c), generadas: r2(gen), tope: TASA * c > TOPE_MES, saldoFin: r2(acumulado) };
@@ -322,7 +334,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   const apSaldo = apGenerados - apUsados;
   return {
     inicio, desdeElAlta: inicio === p.alta,
-    diasNaturales, diasSuspension, diasQueGeneran, diasLaborados, diasJustificados, diasBaja, diasBajaSupuestos, generadas,
+    diasNaturales, diasSuspension, diasQueGeneran, diasLaborados, diasJustificados, diasBaja, diasBajaSupuestos, diasPermiso, generadas,
     festivosSuman, festivosSinDatos: lista.filter(f => f.estado === 'sin-datos').length,
     festivosPendientes: lista.filter(f => f.estado === 'pendiente' || f.estado === 'hoy').length,
     disfrutadas, saldo,
