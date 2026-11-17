@@ -486,15 +486,12 @@ const sinCerrar = () => repo.sinCerrar();
 const losQueFichan = () => usuarios.losQueFichan();
 
 // LOS CONTADORES (A9): pedir, retirar o resolver una corrección cambia el
-// número de quien las aprueba, y su menú lo ve al momento. Y EL TABLERO (ítem 1,
-// 1c): cada corrección pendiente tiene su tarjeta (./tarjetas.js), que nace o se
-// cierra con el repaso que se pide aquí (no lanza nunca).
+// número de quien las aprueba, y su menú lo ve al momento. Al tablero ya no
+// van (Camilo, 17/11/2026: «la corrección de fichajes no será prioridad»).
 const contadores = require('../../services/contadores');
-const tarjetas = require('./tarjetas');
 const avisaTras = fn => async (...args) => {
   const r = await fn(...args);
   contadores.cambio('fichaje');
-  await tarjetas.pedir();
   return r;
 };
 contadores.registrarFuente('fichaje', {

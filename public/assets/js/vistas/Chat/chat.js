@@ -602,8 +602,8 @@
         ayuda: 'Cuentan desde mañana, sin fines de semana ni festivos. O pon una fecha límite abajo (si pones las dos, manda la fecha).' },
       { id: 'fecha', etiqueta: 'O fecha límite', tipo: 'fecha' },
     ], {
-      textoBoton: yoTablero.aprueba ? 'Crear la tarea' : 'Pedir la tarea',
-      nota: (yoTablero.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Tu tarea estará a la espera de ser aprobada; el plazo empieza a contar cuando se apruebe.')
+      textoBoton: 'Crear la tarea',
+      nota: (yoTablero.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Si es para ti, empieza a contar ya. Si es para otra persona, estará a la espera de ser aprobada y el plazo empieza a contar cuando se apruebe.')
         + ' El mensaje llevará el sello de la tarea y, al cerrarla, la respuesta saldrá en su hilo.',
     });
     if (!v) return;
@@ -1105,7 +1105,7 @@
       enMensaje('[data-accion="tarea"]', { icono: 'fa-list-check', titulo: 'Convertir un mensaje en tarea',
         texto: 'Con el botón de la lista de la barra. El título y el detalle salen ya del mensaje; tú eliges quién la hace y el plazo, en días hábiles (sin fines de semana ni festivos).' }),
       { icono: 'fa-user-check', titulo: 'A la espera de aprobación',
-        texto: 'Tu tarea estará a la espera de ser aprobada, y el plazo empieza a contar cuando se apruebe. Si tú apruebas tareas, empieza a contar ya.' },
+        texto: 'Si es para otra persona, estará a la espera de ser aprobada, y el plazo empieza a contar cuando se apruebe. Si es para ti, o si tú apruebas tareas, empieza a contar ya.' },
       { sel: '.tc-chat-mensajes .tc-chat-tarea', icono: 'fa-tag', titulo: 'El sello de la tarea',
         texto: 'El mensaje lleva el sello de su tarea: en qué estado está, quién la hace y cuándo vence. Pulsándolo vas a su tarjeta en el tablero.' },
       { icono: 'fa-circle-check', titulo: 'Cuando se cierra',

@@ -258,7 +258,8 @@ async function escribir(ctx, id, { accion, motivo } = {}, fn) {
 // ── Crear ──────────────────────────────────────────────────────────────────
 /**
  * Una tarea a mano: para otra persona o para uno mismo, con responsable y
- * plazo. Espera la aprobación de «tareas_aprueba», salvo que la cree él.
+ * plazo. Espera la aprobación de «tareas_aprueba», salvo que la cree él o
+ * que sea para uno mismo (17/11/2026: la que uno se pide, nace aprobada).
  * Otro tipo con aprobación (un mensaje del chat, 2b) la crea igual, con su
  * `origenId` y el `enlace` a lo de origen.
  *   → la tarjeta
@@ -269,7 +270,10 @@ async function crear(usuarioId, { titulo, descripcion, responsableId, plazoDias,
   if (!tit) throw error('Ponle un título a la tarea');
   const resp = await exigirPersona(responsableId);
   const plazo = await plazoDe({ plazoDias, venceEl });
-  const conAprobacion = tipoDe(tipo).aprobacion && !ctx.aprueba;
+  // La que uno se pide a sí mismo no pasa por aprobación (Camilo, 17/11/2026:
+  // «William le pide a William, entonces son preaprobadas de una vez»).
+  const paraSi = resp.id === ctx.id;
+  const conAprobacion = tipoDe(tipo).aprobacion && !ctx.aprueba && !paraSi;
   const id = await libro.conFirma({ usuarioId: ctx.id, origen: 'tablero', accion: 'alta' }, async cli => {
     const nueva = await repo.insertar(cli, {
       tipo, origenId, titulo: tit, descripcion: texto(descripcion, 4000) || null, enlace,
@@ -279,7 +283,7 @@ async function crear(usuarioId, { titulo, descripcion, responsableId, plazoDias,
       aprobadaAt: conAprobacion ? null : new Date(), aprobadaPor: conAprobacion ? null : ctx.id,
     });
     await repo.evento(cli, nueva, { tipo: 'creada', autorId: ctx.id, datos: { responsable: resp.nombre, plazoDias: plazo.plazoDias, venceEl: plazo.venceEl } });
-    if (!conAprobacion) await repo.evento(cli, nueva, { tipo: 'aprobada', autorId: ctx.id, datos: { porQuienLaCrea: true } });
+    if (!conAprobacion) await repo.evento(cli, nueva, { tipo: 'aprobada', autorId: ctx.id, datos: ctx.aprueba ? { porQuienLaCrea: true } : { paraSiMismo: true } });
     return nueva;
   });
   if (conAprobacion) {

@@ -63,8 +63,17 @@ test('1. la tarea a mano espera la aprobación de Ignacio, y el plazo cuenta des
   assert.equal(a.plazo.venceEl, cal.sumarDiasHabiles(calendario.hoy(), 3), '3 días hábiles desde hoy, que la aprueba');
   assert.deepEqual(enviadas[0].ids, [p.laura, p.diana].sort((x, y) => x - y), 'a quien la lleva y a quien la pidió');
 
+  // La que uno se pide a sí mismo no pasa por aprobación (17/11/2026), ni avisa a Ignacio.
+  enviadas = [];
+  const propia = await tablero.crear(p.laura, { titulo: 'Ordenar mis carpetas', responsableId: p.laura, plazoDias: 2 });
+  assert.equal(propia.estado, 'por_hacer');
+  assert.equal(propia.plazo.venceEl, cal.sumarDiasHabiles(calendario.hoy(), 2), 'el plazo cuenta ya');
+  assert.deepEqual(enviadas, [], 'ni a Ignacio ni a ella misma');
+  const ev = (await h.consulta(`SELECT datos FROM tarea_evento WHERE tarea_id = $1 AND tipo = 'aprobada'`, [propia.id])).rows;
+  assert.deepEqual(ev.map(x => x.datos), [{ paraSiMismo: true }], 'y su historia lo dice');
+
   // Rechazar pide motivo y avisa a quien la pidió.
-  const t2 = await tablero.crear(p.laura, { titulo: 'Otra cosa', responsableId: p.laura, plazoDias: 1 });
+  const t2 = await tablero.crear(p.laura, { titulo: 'Otra cosa', responsableId: p.diana, plazoDias: 1 });
   await assert.rejects(tablero.rechazar(p.ignacio, t2.id, { motivo: '' }), /por qué/);
   enviadas = [];
   const r = await tablero.rechazar(p.ignacio, t2.id, { motivo: 'No es una tarea, es una duda' });
@@ -209,7 +218,7 @@ test('cada día hábil se avisa de las vencidas al responsable y a su superior, 
 
 test('los números del menú: las suyas (en rojo si hay vencidas), y por aprobar y por asignar a quien le toca', () => conBase(async h => {
   const p = await gente(h);
-  await tablero.crear(p.laura, { titulo: 'Pedida', responsableId: p.laura, plazoDias: 1 });
+  await tablero.crear(p.laura, { titulo: 'Pedida', responsableId: p.diana, plazoDias: 1 });
   const t = await tablero.crear(p.ignacio, { titulo: 'Suya', responsableId: p.laura, plazoDias: 1 });
   await h.consulta(`UPDATE tarea SET vence_el = $2::date WHERE id = $1`, [t.id, calendario.sumarDias(calendario.hoy(), -1)]);
   await ticket(h.consulta);

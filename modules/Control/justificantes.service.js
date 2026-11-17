@@ -96,6 +96,3 @@ module.exports = {
   ponerMenosJ, aprobarMenosJ, rechazarMenosJ, personasMenosJ,
 };
 
-// Las J y las −J pendientes tienen su tarjeta en el tablero (ítem 1, 1c): se
-// registran al cargar la cola, y cada cambio en los repos pide un repaso.
-require('./tarjetas');

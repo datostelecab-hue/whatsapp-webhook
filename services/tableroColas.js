@@ -1,5 +1,11 @@
 // ============================================================
-// LAS COLAS EN EL TABLERO — J, −J, correcciones de fichaje (ítem 1, entrega 1c)
+// LAS COLAS EN EL TABLERO — los tickets (ítem 1, entrega 1c)
+// ============================================================
+// Desde el 17/11/2026 solo los tickets (y con ellos las vacaciones). Las J, las
+// −J y las correcciones de fichaje salieron del tablero (Camilo: «la corrección
+// de fichajes no será prioridad»; «separar las justificaciones del tablero… no
+// son cosas urgentes»): se llevan en su pantalla, y sus tarjetas se anularon
+// (db/261). Lo de abajo vale para cualquier cola que se registre.
 // ============================================================
 // Lo que espera en una cola de hoy tiene su tarjeta en el tablero, y la cierra
 // su cola. Lo que decidió Camilo el 16/11/2026:

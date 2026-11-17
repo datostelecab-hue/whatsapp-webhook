@@ -97,6 +97,7 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
 ## Fase 0 — Base
 
 ### 1. Tablero de tareas (L)
+- **17/11/2026 (Camilo):** la tarea que uno se pide a sí mismo nace aprobada; las J, las −J y las correcciones de fichaje **salen del tablero** («no son cosas urgentes»; «la corrección de fichajes no será prioridad») y sus tarjetas abiertas se anulan (db/261). Ver [[Tablero de tareas]].
 - **Hay:** la ticketera, con responsable, `asignado_at`, `resuelto_at` y su historial `ticket_evento`. «Aplicar» un ticket de ausencia hace la acción y cierra solo el ticket: es el precedente de tarea automática. Las aprobaciones de J, −J, fichaje y vacaciones sirven de patrón de datos.
 - **Falta:**
   - Las tablas: `tarea`, colaboradores, comentarios y un libro de eventos intocable.

@@ -1,6 +1,6 @@
 ---
 tags: [modulo, tablero, tareas, hoja-de-ruta, item-1]
-actualizado: 2026-11-16
+actualizado: 2026-11-17
 ---
 
 # Tablero de tareas
@@ -9,14 +9,22 @@ El **lugar único del trabajo pendiente** (ítem 1 de la [[Hoja de ruta]]). Una 
 - **1a — datos y servicio** (16/11/2026, rama `tablero/1a-datos`, db/251): esta nota.
 - **1b — pantallas** (16/11/2026, rama `tablero/1b-pantallas`): ver «La pantalla» abajo.
 - **1c — las colas** (16/11/2026, rama `tablero/1c-colas`, db/252): J, −J, correcciones de fichaje y vacaciones, y el paso de lo abierto de una vez. Ver «Las colas» abajo.
+- **17/11/2026 — fuera las J, las −J y las correcciones de fichaje; la tarea para uno mismo, sin aprobación** (en `main`, db/261). Ver abajo.
 
 ## Lo que decidieron Camilo e Ignacio (16/11/2026)
 
-1. **Tareas a mano** (y desde el chat, cuando exista): cualquiera la crea, para otra persona o para sí. **Se le notifica a Ignacio y él la aprueba o no**. El plazo empieza a contar al aprobarla.
+1. **Tareas a mano** (y desde el chat, cuando exista): cualquiera la crea, para otra persona o para sí. **Se le notifica a Ignacio y él la aprueba o no**. El plazo empieza a contar al aprobarla. *(Desde el 17/11/2026, la que uno se pide a sí mismo no espera: abajo.)*
 2. **Tickets: todos.** Cada ticket nuevo crea su tarjeta, y **el plazo y el responsable se ponen a mano**.
 3. **El responsable de la tarjeta de un ticket lo pone Ignacio**, que es quien las asigna.
 4. **Ninguna tarjeta pide aprobación para cerrarse:** pasa a «cerrada» y ya.
 5. **Las colas de hoy pasan de una vez** (entrega 1c).
+
+Y el 17/11/2026, Camilo:
+
+- **La tarea que uno se pide a sí mismo no pasa por aprobación**: «William le pide a William, entonces son preaprobadas de una vez, no tienen que pasar por dirección». Nace «por hacer», el plazo cuenta ya, no avisa a quien aprueba y su historia dice «Para sí: no pasa por aprobación». Vale también para la que nace de un mensaje del [[Chat]]. La que se pide a otra persona sigue esperando a quien aprueba.
+- **Las correcciones de fichaje salen del tablero**: «la corrección de fichajes no será prioridad». Se llevan en `/fichaje`, como antes.
+- **Las J y las −J salen del tablero**: «vamos a separar las justificaciones del tablero… no son cosas urgentes». Se llevan en `/justificantes`, como antes; las funciones de quién lleva cada tipo siguen.
+- Sus tarjetas abiertas se **anularon** con su motivo (db/261: en producción, 9 de correcciones y 1 J); las cerradas siguen como estaban. Nada se borró.
 
 Y para la 1c (16/11/2026), con lo que hacía cada uno en los últimos 60 días:
 
@@ -80,6 +88,9 @@ Lo que no puede ver le da un 404 (no un 403): ni sabe que existe.
 Los enganches van en lo que **exporta** `ticketera.service`: así no se olvidan en ninguna ruta. Y no lanzan nunca, porque el ticket ya está hecho.
 
 ## Las colas (entrega 1c, `services/tableroColas.js`)
+
+> [!note] Desde el 17/11/2026, solo los tickets (y las vacaciones)
+> Las J, las −J y las correcciones de fichaje dejaron de ser colas del tablero (arriba). La tabla de abajo cuenta cómo eran; el mecanismo sigue igual para cualquier cola que se registre, y sus pruebas usan una cola de mentira.
 
 Lo que espera en una cola de hoy tiene su tarjeta, **ya asignada** a quien lo resuelve y con el plazo de las colas (`tablero.plazo_colas_dias_habiles`, 2 días hábiles, en [[Parametros]]). **La cierra su cola**: desde el tablero no se cierra (la ficha dice «Se cierra sola al resolverla allí» y no hay «Cerrar»).
 
@@ -196,15 +207,14 @@ GET  /tablero/api/yo                               si aprueba, si reparte, si lo
 ```
 db/251-tablero-de-tareas.sql               las tablas, las funciones de Ignacio
 db/252-tablero-colas.sql                   quién lleva las J y las −J (1c)
+db/261-tablero-sin-j-ni-fichajes.sql       anula las tarjetas abiertas de J, −J y correcciones de fichaje (17/11)
 services/tablero.js                        los tipos, quién ve y puede qué, el plazo, los avisos, las vencidas
 services/tableroColas.js                   las colas: el repaso, cuándo se pide y el diario (1c)
 services/repo/tablero.js                   el SQL
 modules/Ticketera/tarjetas.js              los tickets en el tablero, en los dos sentidos, y las vacaciones
-modules/Control/tarjetas.js                las J y las −J (1c)
-modules/Fichaje/tarjetas.js                las correcciones de fichaje (1c)
 modules/Tablero/tablero.controller.js      /tablero (la pantalla) y /tablero/api
 modules/Tablero/vistas/tablero.ejs         la pantalla
 public/assets/js/vistas/Tablero/tablero.js las vistas, la ficha, los formularios
 test/tablero.test.js                       12 pruebas, una por decisión
-test/tablero-colas.test.js                 6 pruebas de las colas (1c)
+test/tablero-colas.test.js                 5 pruebas de las colas (1c, y que las J y los fichajes ya no van)
 ```

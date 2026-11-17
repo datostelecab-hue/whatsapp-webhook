@@ -231,8 +231,8 @@
       campoPersona('responsable', 'Quién la hace', yo.id, 'Puedes pedírtela a ti o a otra persona.'),
       ...camposPlazo(2),
     ], {
-      textoBoton: yo.aprueba ? 'Crear la tarea' : 'Pedir la tarea',
-      nota: yo.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Tu tarea estará a la espera de ser aprobada; el plazo empieza a contar cuando se apruebe.',
+      textoBoton: 'Crear la tarea',
+      nota: yo.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Si es para ti, empieza a contar ya. Si es para otra persona, estará a la espera de ser aprobada y el plazo empieza a contar cuando se apruebe.',
     });
     if (!v) return;
     const r = await Api.post(`${API}/tarjetas`, { titulo: v.titulo, descripcion: v.descripcion, responsableId: Number(v.responsable), ...plazoDe(v) },
@@ -339,7 +339,8 @@
     creada: e => (e.datos && e.datos.origen
       ? `Nació de su origen${e.datos.responsable ? `, a nombre de ${e.datos.responsable}` : ''}` : `La pidió ${e.autor || 'alguien'}`),
     reabierta: e => `Volvió a estar pendiente en su origen: se reabrió${e.datos && e.datos.responsable ? ` a nombre de ${e.datos.responsable}` : ''}`,
-    aprobada: e => (e.datos && e.datos.porQuienLaCrea ? 'Aprobada al crearla' : `${e.autor || 'Alguien'} la aprobó`),
+    aprobada: e => (e.datos && e.datos.porQuienLaCrea ? 'Aprobada al crearla'
+      : e.datos && e.datos.paraSiMismo ? 'Para sí: no pasa por aprobación' : `${e.autor || 'Alguien'} la aprobó`),
     rechazada: e => `${e.autor || 'Alguien'} no la aprobó`,
     asignada: e => (e.datos && e.datos.porSuOrigen ? 'Se hizo cargo desde su bandeja' : `${e.autor || 'Alguien'} la asignó a ${e.datos.responsable || '—'}`),
     reasignada: e => (e.datos && e.datos.porSuOrigen ? `Cambió en su origen: pasó de ${e.datos.de || '—'} a ${e.datos.a || '—'}`
@@ -479,7 +480,7 @@
       { sel: '#t-nueva', icono: 'fa-plus', titulo: 'Nueva tarea',
         texto: 'Para ti o para otra persona: qué hay que hacer, quién la hace y el plazo en días hábiles (sin fines de semana ni festivos). También nace desde un mensaje del chat, con «Convertir en tarea».' },
       { sel: '[data-columna="por_aprobar"]', icono: 'fa-user-check', titulo: 'Por aprobar',
-        texto: 'Si no apruebas tareas, la que pides estará aquí a la espera de ser aprobada; su plazo empieza a contar cuando se apruebe. Si se rechaza, te llega el porqué.' },
+        texto: 'Si no apruebas tareas, la que pides para otra persona estará aquí a la espera de ser aprobada; su plazo empieza a contar cuando se apruebe. Si se rechaza, te llega el porqué. La que te pides a ti no espera.' },
       { sel: '[data-columna="por_hacer"]', icono: 'fa-arrows-left-right', titulo: 'Por hacer y en curso',
         texto: 'Cuando empieces, arrastra la tarjeta a «En curso» (o ábrela y cámbiala). Con el teclado, Intro la abre.' },
       { sel: ['#t-tablero .tc-tarjeta', '[data-columna="en_curso"]'], icono: 'fa-traffic-light', titulo: 'El semáforo del plazo',
