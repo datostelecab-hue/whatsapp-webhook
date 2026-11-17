@@ -24,6 +24,7 @@ Y el 17/11/2026, Camilo:
 - **La tarea que uno se pide a sí mismo no pasa por aprobación**: «William le pide a William, entonces son preaprobadas de una vez, no tienen que pasar por dirección». Nace «por hacer», el plazo cuenta ya, no avisa a quien aprueba y su historia dice «Para sí: no pasa por aprobación». Vale también para la que nace de un mensaje del [[Chat]]. La que se pide a otra persona sigue esperando a quien aprueba.
 - **Las correcciones de fichaje salen del tablero**: «la corrección de fichajes no será prioridad». Se llevan en `/fichaje`, como antes.
 - **Las J y las −J salen del tablero**: «vamos a separar las justificaciones del tablero… no son cosas urgentes». Se llevan en `/justificantes`, como antes; las funciones de quién lleva cada tipo siguen.
+- **Carlos también aprueba las tareas** («Que Carlos también apruebe tareas»): la función `tareas_aprueba` la tiene también el puesto Dirección Barcelona (db/262), además de Dirección de Operaciones (Ignacio). Repartir los tickets (`tareas_asigna`) sigue siendo solo de Ignacio.
 - Sus tarjetas abiertas se **anularon** con su motivo (db/261: en producción, 9 de correcciones y 1 J); las cerradas siguen como estaban. Nada se borró.
 
 Y para la 1c (16/11/2026), con lo que hacía cada uno en los últimos 60 días:
@@ -208,6 +209,7 @@ GET  /tablero/api/yo                               si aprueba, si reparte, si lo
 db/251-tablero-de-tareas.sql               las tablas, las funciones de Ignacio
 db/252-tablero-colas.sql                   quién lleva las J y las −J (1c)
 db/261-tablero-sin-j-ni-fichajes.sql       anula las tarjetas abiertas de J, −J y correcciones de fichaje (17/11)
+db/262-carlos-aprueba-tareas.sql           Dirección Barcelona (Carlos) también aprueba las tareas (17/11)
 services/tablero.js                        los tipos, quién ve y puede qué, el plazo, los avisos, las vencidas
 services/tableroColas.js                   las colas: el repaso, cuándo se pide y el diario (1c)
 services/repo/tablero.js                   el SQL
