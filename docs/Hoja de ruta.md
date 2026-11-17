@@ -1,7 +1,7 @@
 ---
 tags: [plan, hoja-de-ruta]
 actualizado: 2026-11-13
-estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entregas 1a, 1b y 1c hechas (`tablero/1a-datos`, `tablero/1b-pantallas`, `tablero/1c-colas`); Telecab V3 y las novedades en `v3/rediseno`; ítem 3 hecho en `avisos/3-avisos` (db/254)
+estado: en marcha desde el 13/11/2026 — fase A hecha (A1, A2 y A3 en main; A4 a A10 en sus ramas); ítem 1, entregas 1a, 1b y 1c hechas (`tablero/1a-datos`, `tablero/1b-pantallas`, `tablero/1c-colas`); Telecab V3 y las novedades en `v3/rediseno`; ítem 3 hecho en `avisos/3-avisos` (db/254); organización por puestos en `organizacion/puestos` (db/255); ítem 2, entrega 2a, en `chat/2a-canales` (db/256)
 ---
 
 # Hoja de ruta
@@ -158,6 +158,7 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - **2b:** adjuntos y vista previa, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces (protegida contra SSRF) y convertir en tarea. Aquí se prueba el primer criterio del ítem 1.
   - **2c:** búsqueda (tsvector en español con índice GIN, respetando privados y directos), estado y no molestar, y notificaciones.
   - **2d:** gestión de canales y migración de Slack.
+- **Hecho:** la **2a** (17/11/2026, rama `chat/2a-canales`, db/256). Decidido por Camilo: los 16 públicos abiertos a toda la oficina (también los cuatro sensibles) y con toda la oficina dentro; crean canales Dirección y Desarrollo (`chat_canales`); los privados, con quien los pidió. Ver [[Chat]].
 - **Choca:**
   - **«Toda la oficina consulta los canales» frente a la convención 6:** #4-bajas-medicas, #6-nominas, #9-rrhh y #16-efectivo son públicos en la lista. Es una objeción a algo que Ignacio ya decidió, y se le plantea a él.
   - «Borrar mensajes propios» frente a «nada se borra»: será una anulación y el texto queda en la auditoría.

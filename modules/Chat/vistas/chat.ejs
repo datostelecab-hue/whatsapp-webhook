@@ -1,0 +1,40 @@
+<%#
+  EL CHAT INTERNO (ítem 2, entrega 2a, db/256) — el Slack de la oficina dentro
+  del ERP.
+
+  A la izquierda, los canales y los mensajes directos, con lo que hay sin leer;
+  a la derecha, la conversación elegida. Los hilos se abren al lado (Panel).
+  En el móvil, una cosa o la otra. Todo con piezas globales: Panel, Dialogo,
+  Api, TiempoReal y las clases .tc-* (las del chat, .tc-chat*, en telecab.css).
+%>
+
+<div class="tc-chat" id="chat" data-vista="lista">
+  <aside class="tc-chat-lado" aria-label="Canales y mensajes directos">
+    <div class="tc-chat-lado-cabeza">
+      <h2>Chat</h2>
+      <div class="flex items-center gap-1.5">
+        <button type="button" class="tc-boton tc-boton--chico" id="chat-directo" title="Nuevo mensaje directo" aria-label="Nuevo mensaje directo">
+          <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="tc-boton tc-boton--chico hidden" id="chat-canal" title="Nuevo canal" aria-label="Nuevo canal">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+    <label class="tc-chat-buscar">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <input type="search" id="chat-filtro" placeholder="Buscar un canal o una persona" autocomplete="off" aria-label="Buscar un canal o una persona">
+    </label>
+    <nav class="tc-chat-lista" id="chat-lista" aria-live="polite"></nav>
+  </aside>
+
+  <section class="tc-chat-conversacion" id="chat-conversacion" aria-label="Conversación">
+    <div class="tc-chat-vacio" id="chat-bienvenida">
+      <i class="fa-solid fa-comments" aria-hidden="true"></i>
+      <p>Elige un canal o una persona para empezar.</p>
+    </div>
+  </section>
+</div>
+
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Chat/chat.js') %>"></script>

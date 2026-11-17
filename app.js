@@ -371,6 +371,8 @@ app.use('/tablero', require('./modules/Tablero/tablero.controller'));
 app.use('/novedades', require('./modules/Novedades/novedades.controller'));
 // Los avisos entre módulos (ítem 3, db/254): la bandeja de la campana.
 app.use('/avisos', require('./modules/Avisos/avisos.controller'));
+// El chat interno (ítem 2, db/256): canales, directos, hilos y menciones.
+app.use('/chat', require('./modules/Chat/chat.controller'));
 
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)

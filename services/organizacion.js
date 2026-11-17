@@ -53,6 +53,10 @@ const FUNCIONES = [
     descripcion: 'Le nace en el tablero la tarjeta de cada J de RR. HH. pendiente. Laura (16/11/2026).' },
   { codigo: 'menos_j', etiqueta: 'Lleva las −J', item: 1, varias: true,
     descripcion: 'Le nace en el tablero la tarjeta de cada −J pendiente. William (16/11/2026).' },
+  // El chat (ítem 2, db/256): «solo los roles autorizados crean canales». De
+  // los puestos de Dirección y Desarrollo (Camilo, 17/11/2026).
+  { codigo: 'chat_canales', etiqueta: 'Crea, archiva y renombra canales del chat', item: 2, varias: true,
+    descripcion: 'Crea canales públicos y privados, los archiva y los renombra, y gestiona quién está en los privados.' },
   { codigo: 'direccion', etiqueta: 'Dirección: valida', item: 4, varias: true,
     descripcion: 'Valida las propuestas de despido antes de que lleguen a RR. HH.' },
   { codigo: 'expedientes', etiqueta: 'Lleva los expedientes laborales', item: 4, varias: false,
