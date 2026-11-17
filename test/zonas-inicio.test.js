@@ -62,6 +62,15 @@ test('cada día de un coche va a la zona que tenía ese día; el taller no cuent
   assert.deepEqual(zonas.map(z => z.zona), ['Alcobendas', 'Canillejas'], 'en el orden del planificador');
   assert.deepEqual([total.debian, total.llevan, total.coches], [104, 88, 2]);
   assert.equal(Math.round(total.pct * 1000) / 1000, 0.846);
+  // Fuera del planificador: un coche que rodó sin plaza suma SOLO horas a Cuadrantes libres.
+  const conFuera = rend.zonasDiaADia(r, per, hist, new Map([
+    ['1PRB', new Map([['2026-11-01', 15]])],                                  // del plan: no se repite
+    ['7777XYZ', new Map([['2026-11-02', 10], ['2026-11-03', 6], ['2026-11-05', 9]])],   // el 5 es hoy: no
+  ]));
+  const libres = conFuera.zonas.find(z => z.zona === 'Cuadrantes libres');
+  assert.deepEqual([libres.llevan, libres.debian, libres.pct, libres.fuera.horas, libres.fuera.coches], [16, 0, null, 16, [{ matricula: '7777XYZ', h: 16 }]]);
+  assert.deepEqual([conFuera.total.llevan, conFuera.total.debian], [88 + 16, 104], 'el total de horas cuadra con lo que rodó; lo que debía, igual');
+
   // Sin historial (db/264 sin aplicar): todo a la zona de hoy.
   const sinHist = rend.zonasDiaADia(r, per, null);
   assert.deepEqual(sinHist.zonas.map(z => [z.zona, z.debian]), [['Alcobendas', 56], ['Canillejas', 48]]);

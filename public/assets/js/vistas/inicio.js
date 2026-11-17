@@ -475,6 +475,18 @@
       <span>Faltan ${miles(z.deficit)} h: ${personal} · ${conductores}${media}</span></p>`;
   }
 
+  // Lo que rodaron coches sin plaza (fuera del planificador): suma a las horas
+  // hechas de «Cuadrantes libres», no a lo que debía hacer. Las matrículas, en la ayuda.
+  function fueraTxt(z) {
+    const f = z.fuera;
+    if (!f || !f.horas) return '';
+    // Los de unos segundos o minutos (se conectaron un momento) no se nombran: suman igual.
+    const nombrados = f.coches.filter(x => x.h >= 0.5);
+    const n = f.coches.length;
+    const lista = nombrados.map(x => `${x.matricula} ${miles(x.h)} h`).join(', ') + (nombrados.length < f.coches.length ? ` y ${f.coches.length - nombrados.length} con menos de media hora` : '');
+    return `<span title="${Casa.esc('Rodaron sin plaza en el planificador: ' + lista + '. Suman a las horas hechas, no a lo que debía hacer.')}" class="underline decoration-dotted cursor-help">incluye ${miles(f.horas)} h de ${n} ${n === 1 ? 'coche' : 'coches'} fuera del planificador</span>`;
+  }
+
   function pintarZonas(caja, j) {
     const per = j.per || {};
     const nota = per.enCurso
@@ -492,6 +504,7 @@
         `${z.coches} ${z.coches === 1 ? 'coche' : 'coches'}`,
         per.enCurso ? `en el mes debe ${miles(z.mes)} h` : '',
         z.diasParado ? `${z.diasParado} ${z.diasParado === 1 ? 'día' : 'días'} de taller o parado, no cuentan` : '',
+        fueraTxt(z),
       ].filter(Boolean).join(' · ');
       return `<div class="px-4 py-3 flex items-center gap-4${total ? ' bg-telecab-card2/40 rounded-b-2xl' : ''}">
         <p class="w-28 sm:w-36 shrink-0 text-sm ${total ? 'font-bold' : 'font-semibold'} text-telecab-text truncate" title="${Casa.esc(z.zona)}">${Casa.esc(z.zona)}</p>

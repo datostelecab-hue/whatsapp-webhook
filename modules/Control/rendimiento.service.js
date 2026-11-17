@@ -366,18 +366,34 @@ async function informe({ mes, hoy = hoyMadrid() } = {}) {
  *   per   periodo()
  *   hist  Map(vehiculoId → [{ d, h, zona }]) de vehiculo_zona (zona null = sin
  *         zona: cuadrantes libres), o null sin db/264 (la zona de hoy)
+ *   horas Map(matrícula normalizada → Map(día → horas)) de cargar(), los días
+ *         cerrados de TODOS los coches de BOLT (opcional)
+ *
+ * FUERA DEL PLANIFICADOR (17/11/2026, Camilo: «fuera del planificador está
+ * melo, ponlo en Cuadrantes libres entonces… ojo, las horas»): lo que rodó un
+ * coche sin plaza ese día —uno que no está en el planificador, o el suyo antes
+ * de su primera plaza o después de la última— va a «Cuadrantes libres», SOLO
+ * EN LAS HORAS HECHAS: no tenía turnos, así que no suma a lo que debía hacer.
+ * Así el total de horas cuadra con Visibilidad, salvo los días de taller o
+ * parado, que no cuentan.
  */
-function zonasDiaADia(r, per, hist) {
+function zonasDiaADia(r, per, hist, horas = null) {
   const acc = new Map();
   const de = zona => {
     if (!acc.has(zona)) acc.set(zona, { zona, coches: new Set(), debian: 0, llevan: 0, mes: 0, diasParado: 0, sinNadie: 0, sinCt: 0 });
     return acc.get(zona);
   };
+  const norm = m => String(m || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const fuera = new Map();                                   // matrícula → horas sin plaza
+  const aFuera = (m, h) => { if (h > 0) fuera.set(m, (fuera.get(m) || 0) + h); };
+  const enPlan = new Set();
   r.grupos.forEach(g => g.coches.forEach(x => {
     const v = String(x.coche.vehiculoId);
     const tramos = (hist && hist.get(v)) || [];
+    enPlan.add(norm(x.coche.matricula));
     x.dias.forEach(dia => {
-      if (dia.antes || dia.despues) return;                 // aún no tenía plaza, o ya no
+      // Aún no tenía plaza, o ya no: sus horas, fuera del planificador.
+      if (dia.antes || dia.despues) { if (dia.d < per.hoy) aFuera(norm(x.coche.matricula), dia.h || 0); return; }
       const t = tramos.find(y => y.d <= dia.d && (!y.h || y.h >= dia.d));
       const z = de(t ? (t.zona || LIBRES) : g.zona);
       z.mes += dia.obj;
@@ -389,18 +405,27 @@ function zonasDiaADia(r, per, hist) {
       z.sinCt += dia.sinCt || 0;
     });
   }));
+  // Los coches que rodaron y no están en el planificador.
+  if (horas) horas.forEach((dias, m) => { if (!enPlan.has(m)) dias.forEach((h, d) => { if (d < per.hoy) aFuera(m, h); }); });
+  if (fuera.size) {
+    const z = de(LIBRES);
+    z.fuera = [...fuera].map(([matricula, h]) => ({ matricula, h })).sort((a, b) => b.h - a.h);
+    z.llevan += z.fuera.reduce((s, x) => s + x.h, 0);
+  }
   // El orden de las zonas del informe (el del planificador); los cuadrantes libres, al final.
   const orden = r.zonas.map(z => z.zona);
   const pos = z => (z === LIBRES ? 1e9 : orden.indexOf(z) < 0 ? 1e6 : orden.indexOf(z));
   const cerrar = z => conCausa({ zona: z.zona, coches: z.coches.size, debian: z.debian, llevan: z.llevan, mes: z.mes,
-    pct: z.debian ? z.llevan / z.debian : null, diasParado: z.diasParado, sinNadie: z.sinNadie, sinCt: z.sinCt, perdidas: z.sinNadie * HORAS_TURNO });
+    pct: z.debian ? z.llevan / z.debian : null, diasParado: z.diasParado, sinNadie: z.sinNadie, sinCt: z.sinCt, perdidas: z.sinNadie * HORAS_TURNO,
+    fuera: z.fuera ? { horas: z.fuera.reduce((s, x) => s + x.h, 0), coches: z.fuera } : null });
   const zonas = [...acc.values()].filter(z => z.mes > 0 || z.llevan > 0)
     .sort((a, b) => pos(a.zona) - pos(b.zona) || a.zona.localeCompare(b.zona)).map(cerrar);
   const todos = new Set([...acc.values()].flatMap(z => [...z.coches]));
   const suma = k => zonas.reduce((s, z) => s + z[k], 0);
   const total = conCausa({ zona: 'Total', coches: todos.size, debian: suma('debian'), llevan: suma('llevan'), mes: suma('mes'),
     diasParado: suma('diasParado'), sinNadie: suma('sinNadie'), sinCt: suma('sinCt'), perdidas: suma('perdidas'),
-    pct: suma('debian') ? suma('llevan') / suma('debian') : null });
+    pct: suma('debian') ? suma('llevan') / suma('debian') : null,
+    fuera: (zonas.find(z => z.fuera) || {}).fuera || null });
   return { zonas, total };
 }
 
@@ -457,7 +482,7 @@ async function resumenZonas({ hoy = hoyMadrid() } = {}) {
   const r = calcular(d.entrada);
   return {
     per: { mes: per.mes, nombre: per.nombre, enCurso: per.enCurso, ini: per.ini, ayer: per.ayer, cerrados: per.cerrados },
-    horasTurno: HORAS_TURNO, conFechas: !!hist, ...zonasDiaADia(r, per, hist),
+    horasTurno: HORAS_TURNO, conFechas: !!hist, ...zonasDiaADia(r, per, hist, d.entrada.horas),
   };
 }
 
