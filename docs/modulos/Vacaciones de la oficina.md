@@ -21,19 +21,28 @@ Camilo, 17/11/2026: *«Vamos ahora con el módulo de vacaciones pero para los de
 
 | | Qué | Cómo |
 |---|---|---|
-| **+** | Generadas | **0,084 por cada día del horario** (`oficina.madrid.horario`: de lunes a viernes) desde la fecha de alta hasta hoy, festivos y vacaciones incluidos, **como mucho 1,84 al mes**. Sin fichajes: los días que van pasando. Quien entró antes de 2026 empieza el **01/01/2026**, como los conductores. |
+| **+** | Generadas | **Cada mes completo, 1,84 justos**, tenga los días laborables que tenga. **El mes que va en curso** (y el de la fecha de alta, si entró a mitad), **el promedio por cada día real del horario** (`oficina.madrid.horario`: de lunes a viernes), festivos y vacaciones incluidos, sin pasar de 1,84. Sin fichajes: los días que van pasando. Quien entró antes de 2026 empieza el **01/01/2026**, como los conductores. |
 | **−** | Gastadas | Los días de unas vacaciones **aprobadas** que ya pasaron y no son **sus dos días de libranza** ni **festivos de la oficina**. |
 | | Programadas | Lo mismo, de las aprobadas que aún no han llegado: no tocan el saldo de hoy; se enseña lo que quedará. |
 | | Pedidas | Las que esperan aprobación: no restan. |
 
 **Para usar hoy** = generadas − gastadas. Puede ser negativo.
 
+## El promedio: 1,84 cada mes (17/11/2026)
+
+Primero eran 0,084 por día laborable con un tope de 1,84. Camilo preguntó cuánto daba de verdad un día (0,0831: el tope recortaba los meses de 22 y 23 días, y febrero no llegaba) y decidió: *«saca un promedio con eso, y que se calculen los días así tal cual, pero que el límite sea 1,84. Si se pasa, se baja a 1,84 y si no alcanza, entonces que igual quede en 1,84»*.
+
+- **Un mes completo da 1,84**, tenga 20 o 23 días laborables: 22,08 al año.
+- **El promedio por día** es el tope entre los días del horario de un mes medio: 5 × 365,25 / 7 / 12 = **21,74**, y 1,84 / 21,74 = **0,0846**. Sale del parámetro del tope y del horario: si cambian, cambia.
+- Se usa en el mes que aún no ha acabado (el de hoy) y en el de la fecha de alta si entró a mitad: días reales × 0,0846, sin pasar de 1,84. El último día del mes, el mes se completa y vale 1,84.
+
 ## El simulador
 
 Las fechas y **sus dos días de libranza** (por defecto los dos que no son del horario: sábado y domingo). Dice:
 - los días naturales, las libranzas y los festivos, y **los que gastaría** (lo ya aprobado no se cuenta dos veces);
 - **lo que tendrá ese día**: lo de hoy **más lo que generará hasta el día antes de irse**, menos lo ya programado. Si se va el mes que viene, suma lo de este mes que falta y lo que haga falta del siguiente (el ejemplo de Camilo: hoy 10, el otro mes 11,84). Si empiezan mañana, no suma nada;
-- **lo que le quedaría**, y un calendario con los días que gastan.
+- **lo que le quedará al volver**: lo de antes, menos lo que gaste, **más lo que genera durante las propias vacaciones** (*«con el número promediado, súmale al banco de vacaciones para que simule bien con los días reales de esa fecha»*);
+- un calendario con los días que gastan y, **debajo de cada día, el banco al acabarlo**: cada día laborable suma 0,0846 (también en vacaciones) y cada día que gasta resta 1; cuando un mes se completa, cuadra en 1,84.
 
 Desde ahí **las pide** (con una nota si hace falta). Se piden de hoy en adelante, sin pisar otras pedidas o aprobadas.
 

@@ -41,7 +41,7 @@
     return `<div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
       ${kpi('Para usar hoy', num(d.saldo), d.programadas ? `tras lo programado, ${num(d.saldoTras)}` : 'días', d.saldo < 0 ? 'red' : 'gold')}
       ${kpi('Generadas', num(d.generadas), d.inicio ? `desde el ${f(d.inicio)}` : 'sin fecha de alta', 'text',
-        `${num(R.tasa, 3)} por cada día de ${R.laborablesTexto}, como mucho ${num(R.tope)} al mes`)}
+        `Cada mes completo, ${num(R.tope)}; el que va en curso, ${num(R.tasa, 4)} por cada día de ${R.laborablesTexto}`)}
       ${kpi('Gastadas', num(d.disfrutadas, 0), 'vacaciones ya pasadas')}
       ${kpi('Programadas', num(d.programadas, 0), 'aprobadas, aún por llegar')}
       ${kpi('Pedidas', num(d.pedidas, 0), 'esperan aprobación', d.pedidas ? 'warn' : 'text')}
@@ -87,16 +87,16 @@
     return `<div class="px-5 py-3 overflow-x-auto"><table class="w-full text-sm">
       <thead class="text-xs text-telecab-muted"><tr>
         <th class="text-left font-medium pb-1 pr-3">Mes</th>
-        <th class="text-right font-medium pb-1 px-3" title="Días del horario de la oficina (${esc(R.laborablesTexto)}), aunque sean festivos o esté de vacaciones">Días que generan</th>
+        <th class="text-right font-medium pb-1 px-3" title="Días del horario de la oficina (${esc(R.laborablesTexto)}), aunque sean festivos o esté de vacaciones">Días laborables</th>
         <th class="text-right font-medium pb-1 px-3">Generadas</th>
         <th class="text-right font-medium pb-1 pl-3">Gastadas</th>
       </tr></thead>
       <tbody>${d.meses.slice().reverse().map(m => `<tr class="border-t border-telecab-border/60">
         <td class="py-2 pr-3 capitalize">${mesTxt(m.mes)}</td>
         <td class="py-2 px-3 text-right tabular-nums">${m.dias}</td>
-        <td class="py-2 px-3 text-right tabular-nums"${m.tope ? ` title="Daría ${num(m.dias * R.tasa)}: se queda en el tope de ${num(R.tope)} al mes"` : ''}>+ ${num(m.generadas)}${m.tope ? '<span class="block text-[11px] text-telecab-muted">en el tope</span>' : ''}</td>
+        <td class="py-2 px-3 text-right tabular-nums">+ ${num(m.generadas)}<span class="block text-[11px] text-telecab-muted">${m.completo ? 'mes completo' : `${m.dias} × ${num(R.tasa, 4)}`}</span></td>
         <td class="py-2 pl-3 text-right tabular-nums">${m.gastadas ? '− ' + m.gastadas : '—'}</td></tr>`).join('')}</tbody></table>
-      <p class="text-xs text-telecab-muted mt-3">Genera ${num(R.tasa, 3)} por cada día de ${esc(R.laborablesTexto)} desde la fecha de alta (o desde el ${f(R.desde)} si entró antes), aunque sea festivo o esté de vacaciones, como mucho ${num(R.tope)} al mes. Gastan los días de vacaciones que no son sus dos días de libranza ni festivos.</p></div>`;
+      <p class="text-xs text-telecab-muted mt-3">Cada mes completo genera ${num(R.tope)}, tenga los días laborables que tenga. El que va en curso (y el de la fecha de alta, si entró a mitad) genera el promedio, ${num(R.tasa, 4)} por cada día de ${esc(R.laborablesTexto)} (${num(R.tope)} entre los ${num(R.diasMes)} días de un mes medio), también festivos y días de vacaciones, sin pasar de ${num(R.tope)}. Cuenta desde la fecha de alta, o desde el ${f(R.desde)} si entró antes. Gastan los días de vacaciones que no son sus dos días de libranza ni festivos.</p></div>`;
   }
 
   const bloque = (titulo, icono, html, extra = '') => `
@@ -162,7 +162,7 @@
   }
 
   function resultado(s) {
-    const neg = s.quedaria < 0;
+    const neg = s.alVolver < 0;
     const cifra = (txt, valor, nota) => `<div class="rounded-xl bg-telecab-card2 border border-telecab-border px-3 py-2">
       <p class="text-xs text-telecab-muted">${esc(txt)}</p><p class="text-xl font-bold tabular-nums">${valor}</p>${nota ? `<p class="text-[11px] text-telecab-muted">${esc(nota)}</p>` : ''}</div>`;
     const avisos = [];
@@ -174,12 +174,13 @@
         ${cifra('Días naturales', s.naturales, `libras el ${s.libraTexto}`)}
         ${cifra('Gastarías', s.nuevos, `${s.libranzas} de libranza${s.festivos ? `, ${s.festivos} festivo(s)` : ''} no cuentan`)}
         ${cifra('Tendrás ese día', num(s.disponible), `hoy ${num(s.saldoHoy)}${s.generaraHastaEntonces ? ` + ${num(s.generaraHastaEntonces)} que generarás` : ''}${s.programadas ? ` − ${s.programadas} programadas` : ''}`)}
-        ${cifra('Te quedarían', `<span class="${neg ? 'text-telecab-red' : ''}">${num(s.quedaria)}</span>`, neg ? 'más de lo que tendrás' : '')}
+        ${cifra('Te quedarán al volver', `<span class="${s.alVolver < 0 ? 'text-telecab-red' : ''}">${num(s.alVolver)}</span>`,
+          s.generaDurante ? `con ${num(s.generaDurante)} que generas durante las vacaciones` : (neg ? 'más de lo que tendrás' : ''))}
       </div>
       ${avisos.length ? `<p class="text-sm text-telecab-warn mb-3">${avisos.map(esc).join(' ')}</p>` : ''}
       <div class="grid gap-4 sm:grid-cols-2">${calendario(s)}</div>
       <p class="text-xs text-telecab-muted mt-3"><span class="inline-block w-3 h-3 rounded bg-telecab-gold/20 border border-telecab-gold/40 align-middle mr-1"></span>gastan ·
-        <span class="line-through">12</span> libranza o festivo (F) · el punto, días que ya tienen vacaciones</p>`;
+        <span class="line-through">12</span> libranza o festivo (F) · el punto, días que ya tienen vacaciones · debajo de cada día, el banco al acabarlo: cada día laborable suma ${num(R.tasa, 4)}, también en vacaciones</p>`;
   }
 
   function calendario(s) {
@@ -188,11 +189,12 @@
     s.dias.forEach(x => { const m = x.dia.slice(0, 7); if (!porMes.has(m)) porMes.set(m, []); porMes.get(m).push(x); });
     const celda = x => {
       const titulo = [x.cuenta ? 'Gasta un día de vacaciones' : x.libra ? 'Libranza: no gasta' : 'Festivo: no gasta',
-        x.ya ? (x.ya === 'aprobada' ? 'Ya tienes vacaciones aprobadas' : 'Ya lo pediste') : ''].filter(Boolean).join(' · ');
+        x.ya ? (x.ya === 'aprobada' ? 'Ya tienes vacaciones aprobadas' : 'Ya lo pediste') : '',
+        `Banco al acabar el día: ${num(x.banco)}`].filter(Boolean).join(' · ');
       const clase = x.cuenta ? 'bg-telecab-gold/20 text-telecab-text border border-telecab-gold/40 font-semibold'
         : 'bg-telecab-card2 text-telecab-muted line-through decoration-telecab-muted/60';
-      return `<div class="h-9 rounded-lg flex items-center justify-center text-sm tabular-nums relative ${clase}" title="${esc(titulo)}">
-        <span>${Number(x.dia.slice(8))}</span>${x.ya ? '<span class="absolute top-0.5 right-1 w-1.5 h-1.5 rounded-full bg-telecab-text/60" aria-hidden="true"></span>' : ''}
+      return `<div class="h-10 rounded-lg flex flex-col items-center justify-center text-sm tabular-nums relative ${clase}" title="${esc(titulo)}">
+        <span class="leading-none">${Number(x.dia.slice(8))}</span><span class="text-[9px] leading-none text-telecab-muted tabular-nums mt-0.5">${num(x.banco, 1)}</span>${x.ya ? '<span class="absolute top-0.5 right-1 w-1.5 h-1.5 rounded-full bg-telecab-text/60" aria-hidden="true"></span>' : ''}
         ${x.festivo ? '<span class="absolute bottom-0.5 left-1 text-[9px] leading-none text-telecab-gold" aria-hidden="true">F</span>' : ''}</div>`;
     };
     return [...porMes].map(([m, lista]) => `<div>

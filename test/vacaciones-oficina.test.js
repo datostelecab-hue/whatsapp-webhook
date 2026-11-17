@@ -2,14 +2,15 @@
 // LAS VACACIONES DE LA OFICINA (db/263, 17/11/2026)
 // ============================================================
 // Lo que decidió Camilo:
-//   · generan 0,084 por cada día del horario de la oficina (de lunes a
-//     viernes) desde la fecha de alta, aunque sea festivo o esté de
-//     vacaciones, con un tope de 1,84 al mes (un parámetro);
+//   · cada mes completo genera 1,84 justos (un parámetro), tenga los días
+//     laborables que tenga; el que va en curso, el promedio (1,84 entre los
+//     21,74 días de un mes medio: 0,0846) por cada día de lunes a viernes,
+//     aunque sea festivo o esté de vacaciones;
 //   · gastan los días de unas vacaciones aprobadas que no son sus dos días de
 //     libranza ni festivos;
 //   · el simulador suma lo que aún generará hasta el día antes de irse («hoy
 //     tengo 10, pero si empiezo el otro mes las vacaciones, debe de contarme
-//     11,84»);
+//     11,84»), y cada día del calendario suma al banco con los días reales;
 //   · cada uno ve las suyas; quien tiene la llave de Usuarios y permisos, las
 //     de todos, pone la fecha de alta y aprueba; pedidas, no restan.
 'use strict';
@@ -32,13 +33,17 @@ afterEach(() => { push.enviar = enviar; contadores.olvidar(); });
 const LV = [1, 2, 3, 4, 5];
 const base = { laborables: LV, festivos: new Set(), tope: 1.84 };
 
-test('generan 0,084 por cada día de lunes a viernes, aunque sea festivo, con el tope de 1,84 al mes', () => {
-  // Enero de 2026 tiene 22 días de lunes a viernes (22 × 0,084 = 1,85 → 1,84); febrero, 20 (1,68).
+test('cada mes completo genera 1,84 justos (se pase o no llegue); el que va en curso, 0,0846 por día de lunes a viernes', () => {
+  assert.equal(Math.round(vac._tasaDe(1.84, LV) * 10000) / 10000, 0.0846, '1,84 entre los 21,74 días de un mes medio');
+  // Enero de 2026 tiene 22 días de lunes a viernes (pasaría de 1,84); febrero, 20 (no llegaría).
   const s = vac._saldoDe({ ...base, alta: '2025-06-01', hoy: '2026-02-28', festivos: new Set(['2026-01-01', '2026-01-06']) });
   assert.equal(s.inicio, '2026-01-01', 'quien entró antes de 2026 empieza el 01/01/2026');
-  assert.deepEqual(s.meses.map(m => [m.mes, m.dias, m.generadas, m.tope]), [['2026-01', 22, 1.84, true], ['2026-02', 20, 1.68, false]],
-    'los festivos (01/01 y 06/01) también generan');
-  assert.equal(s.generadas, 3.52);
+  assert.deepEqual(s.meses.map(m => [m.mes, m.dias, m.generadas, m.completo]), [['2026-01', 22, 1.84, true], ['2026-02', 20, 1.84, true]]);
+  assert.equal(s.generadas, 3.68);
+  // Alta el 15/01: enero, 12 días × 0,0846 = 1,02; febrero va por el 10, 7 días = 0,59.
+  const mitad = vac._saldoDe({ ...base, alta: '2026-01-15', hoy: '2026-02-10' });
+  assert.deepEqual(mitad.meses.map(m => [m.mes, m.dias, m.generadas, m.completo]), [['2026-01', 12, 1.02, false], ['2026-02', 7, 0.59, false]]);
+  assert.equal(mitad.generadas, 1.61);
   const sinAlta = vac._saldoDe({ ...base, alta: null, hoy: '2026-02-28' });
   assert.deepEqual([sinAlta.generadas, sinAlta.saldo, sinAlta.inicio], [0, 0, null], 'sin fecha de alta no genera');
 });
@@ -61,17 +66,25 @@ test('gastan las aprobadas sin sus dos días de libranza ni festivos; las pedida
   assert.equal(otra.disfrutadas, 5);
 });
 
-test('el simulador suma lo que aún generará hasta el día antes de irse («hoy tengo 10 … el otro mes, 11,84»)', () => {
-  // Hasta el 30/06/2026: enero 1,84, febrero 1,68, marzo 1,84, abril 1,84, mayo 21 × 0,084 = 1,76, junio 1,84 = 10,80.
+test('el simulador suma lo que generará hasta irse y durante las vacaciones, con los días reales («el otro mes, 11,84»)', () => {
+  // Hasta el 30/06/2026, seis meses completos: 6 × 1,84 = 11,04.
   const s = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-30' });
-  assert.equal(s.saldo, 10.8);
-  // Del 03/08 (lunes) al 14/08: julio entero se genera antes (23 días → 1,84) y el 01-02/08 es fin de semana.
+  assert.equal(s.saldo, 11.04);
+  // Del 03/08 (lunes) al 14/08: julio completo se genera antes (+1,84; el 01-02/08 es fin de semana).
   const sim = vac._simularSobre(s, { desde: '2026-08-03', hasta: '2026-08-14', libra: [6, 7], hoy: '2026-06-30', festivos: new Set() });
   assert.deepEqual([sim.naturales, sim.cuentan, sim.libranzas], [12, 10, 2]);
-  assert.deepEqual([sim.saldoHoy, sim.generaraHastaEntonces, sim.disponible, sim.quedaria], [10.8, 1.84, 12.64, 2.64]);
-  // Si empiezan mañana, no hay nada más que generar.
+  assert.deepEqual([sim.saldoHoy, sim.generaraHastaEntonces, sim.disponible, sim.quedaria], [11.04, 1.84, 12.88, 2.88]);
+  // Y en las vacaciones genera sus 10 días laborables a 0,0846: al volver, 3,73.
+  assert.deepEqual([sim.alVolver, sim.generaDurante], [3.73, 0.85]);
+  assert.deepEqual(sim.dias.slice(0, 7).map(d => d.banco), [11.96, 11.05, 10.13, 9.22, 8.3, 8.3, 8.3],
+    'el banco de cada día: + 0,0846 − 1 los laborables; el fin de semana, igual');
+  // A mitad de mes (15/06: 11 días, 0,93): si se va el 01/07, junio se completa (+0,91).
+  const mitad = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-15' });
+  const julio = vac._simularSobre(mitad, { desde: '2026-07-01', hasta: '2026-07-03', libra: [6, 7], hoy: '2026-06-15', festivos: new Set() });
+  assert.deepEqual([mitad.saldo, julio.generaraHastaEntonces, julio.disponible], [10.13, 0.91, 11.04]);
+  // Si empiezan mañana, no hay nada más que generar antes.
   const ya = vac._simularSobre(s, { desde: '2026-07-01', hasta: '2026-07-03', libra: [6, 7], hoy: '2026-06-30', festivos: new Set() });
-  assert.deepEqual([ya.generaraHastaEntonces, ya.disponible, ya.nuevos], [0, 10.8, 3]);
+  assert.deepEqual([ya.generaraHastaEntonces, ya.disponible, ya.nuevos], [0, 11.04, 3]);
   assert.deepEqual(vac._dosDias(null, LV), [6, 7], 'por defecto libra los dos días que no son del horario');
   assert.throws(() => vac._dosDias([3], LV), /dos días/);
 });

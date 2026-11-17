@@ -13,12 +13,19 @@
 //   QUIÉN VE     cada uno las suyas; quien tiene la llave de Usuarios y permisos
 //                (o el desarrollador), las de todos. Esa llave pone la fecha de
 //                alta (en Usuarios) y aprueba.
-//   GENERADAS    0,084 días (la tasa de los conductores) por CADA DÍA DEL
-//                HORARIO DE LA OFICINA (Parámetros: de lunes a viernes) desde su
-//                alta hasta hoy, aunque sea festivo o esté de vacaciones, con un
-//                TOPE de 1,84 al mes (parámetro oficina.vacaciones.tope_mes).
-//                Sin fichajes: los días que van pasando. Quien entró antes de
-//                2026 empieza el 01/01/2026, como los conductores.
+//   GENERADAS    CADA MES COMPLETO, 1,84 JUSTOS (parámetro
+//                oficina.vacaciones.tope_mes), tenga los días laborables que
+//                tenga (17/11/2026, Camilo: «que el límite sea 1,84. Si se pasa,
+//                se baja a 1,84 y si no alcanza, entonces que igual quede en
+//                1,84»). El mes que aún no ha acabado (y el de su alta, si entró
+//                a mitad) genera EL PROMEDIO por cada día real del horario de la
+//                oficina (Parámetros: de lunes a viernes), aunque sea festivo o
+//                esté de vacaciones, sin pasar de 1,84: el promedio es 1,84
+//                entre los días del horario de un mes medio (5 × 365,25 / 7 / 12
+//                = 21,74), 0,0846 por día («saca un promedio con eso, y que se
+//                calculen los días así tal cual»). Hasta entonces, 0,084 por día
+//                con un tope de 1,84. Sin fichajes. Quien entró antes de 2026
+//                empieza el 01/01/2026, como los conductores.
 //   GASTADAS     los días de unas vacaciones APROBADAS que no son sus dos días
 //                de libranza (los elige al pedirlas) ni festivo de la oficina.
 //                Las pasadas restan del saldo de hoy; las futuras, «programadas».
@@ -27,7 +34,11 @@
 //   SIMULADOR    lo que gastaría y lo que tendría al empezar: lo de hoy MÁS lo
 //                que generará hasta el día antes de irse, menos lo aprobado
 //                (Camilo: «hoy tengo 10, pero si en el simulador pongo que
-//                empiezo el otro mes las vacaciones, debe de contarme 11,84»).
+//                empiezo el otro mes las vacaciones, debe de contarme 11,84»),
+//                y lo que le quedará al volver, con lo que genera durante las
+//                vacaciones: cada día del calendario suma al banco con los días
+//                reales de esa fecha («con el número promediado, súmale al banco
+//                de vacaciones para que simule bien con los días reales»).
 'use strict';
 
 const libro = require('../../services/libro');
@@ -41,7 +52,8 @@ function conEstado(e, status) { e.status = status; return e; }
 const error = (msg, status = 400) => conEstado(new Error(msg), status);
 
 const ORIGEN = 'vacaciones_oficina';
-const TASA = 0.084;                    // la de los conductores (Vacaciones)
+// El promedio por día del horario: el tope entre los días de un mes medio.
+const tasaDe = (tope, laborables) => tope / (laborables.length * 365.25 / 7 / 12);
 const DESDE = '2026-01-01';            // todo empieza aquí, como en los conductores
 const TOPE = 'oficina.vacaciones.tope_mes';
 const DIAS_SEMANA = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
@@ -55,6 +67,8 @@ const mas = (d, n) => iso(ms(d) + n * DIA);
 const dow = d => { const w = new Date(ms(d)).getUTCDay(); return w === 0 ? 7 : w; };   // 1 = lunes … 7 = domingo
 const r2 = n => Math.round(n * 100) / 100;
 const max = (a, b) => (a > b ? a : b), min = (a, b) => (a < b ? a : b);
+/** 'AAAA-MM' → el mes siguiente. */
+const mesSiguiente = m => { const [y, mm] = m.split('-').map(Number); return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, '0')}`; };
 const esDia = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && !Number.isNaN(ms(s));
 
 /** Los dos días que libra: los que se digan, o los dos primeros que el horario no tiene (sábado y domingo). */
@@ -74,18 +88,24 @@ function dosDias(libra, laborables) {
  */
 function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(), tope }) {
   const inicio = alta ? max(alta, DESDE) : null;
-  // Lo generado hasta un día, mes a mes con su tope.
+  const tasa = tasaDe(tope, laborables);
+  // Lo generado hasta un día: cada mes completo, el tope justo; el que no ha
+  // acabado (o empezó con su alta a mitad), el promedio por cada día del
+  // horario, sin pasar del tope. Se guarda lo de cada mes sin redondear.
   const meses = new Map();
   const generadasHasta = hasta => {
     if (!inicio || hasta < inicio) return { total: 0, meses: [] };
-    const porMes = new Map();
-    for (let d = inicio; d <= hasta; d = mas(d, 1)) {
-      if (!laborables.includes(dow(d))) continue;
-      const m = d.slice(0, 7);
-      porMes.set(m, (porMes.get(m) || 0) + 1);
+    const lista = [];
+    for (let m = inicio.slice(0, 7); m <= hasta.slice(0, 7); m = mesSiguiente(m)) {
+      const primero = m + '-01', ultimo = mas(mesSiguiente(m) + '-01', -1);
+      const a = max(inicio, primero), b = min(hasta, ultimo);
+      let dias = 0;
+      for (let d = a; d <= b; d = mas(d, 1)) if (laborables.includes(dow(d))) dias++;
+      const completo = a === primero && b === ultimo;
+      const crudo = completo ? tope : Math.min(tope, tasa * dias);
+      lista.push({ mes: m, dias, completo, crudo, generadas: r2(crudo) });
     }
-    const lista = [...porMes].map(([mes, dias]) => ({ mes, dias, generadas: r2(Math.min(tope, TASA * dias)), tope: TASA * dias > tope }));
-    return { total: r2(lista.reduce((t, x) => t + Math.min(tope, TASA * x.dias), 0)), meses: lista };
+    return { total: r2(lista.reduce((t, x) => t + x.crudo, 0)), meses: lista };
   };
   // Los días que gasta unas vacaciones entre a y b: ni sus dos de libranza ni festivos.
   const gasta = (v, a, b) => {
@@ -116,8 +136,8 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
   const saldo = r2(hoyGen.total - disfrutadas);
   return {
     inicio, generadas: hoyGen.total, disfrutadas, programadas, pedidas, saldo, saldoTras: r2(saldo - programadas),
-    meses: [...meses.values()], vacaciones: lista, generadasHasta: d => generadasHasta(d).total,
-    gasta,
+    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: d => generadasHasta(d).total,
+    gasta, tasa,
   };
 }
 
@@ -139,13 +159,23 @@ function simularSobre(s, { desde, hasta, libra, hoy, festivos = new Set(), vacac
   const nuevos = dias.filter(d => d.cuenta && d.ya !== 'aprobada').length;
   const generadasAlEmpezar = desde > hoy ? s.generadasHasta(mas(desde, -1)) : s.generadas;
   const disponible = r2(generadasAlEmpezar - s.disfrutadas - s.programadas);
+  // EL BANCO DE CADA DÍA DEL CALENDARIO: lo generado hasta ese día (con los
+  // días reales de esa fecha), menos lo aprobado y lo que llevan gastado estas.
+  let gastados = 0;
+  for (const x of dias) {
+    if (x.cuenta && x.ya !== 'aprobada') gastados++;
+    const generado = x.dia > hoy ? s.generadasHasta(x.dia) : s.generadas;
+    x.banco = r2(generado - s.disfrutadas - s.programadas - gastados);
+  }
+  const alVolver = dias.length ? dias[dias.length - 1].banco : disponible;
   return {
     desde, hasta, libra, naturales: dias.length, cuentan, nuevos,
     libranzas: dias.filter(d => d.libra).length, festivos: dias.filter(d => d.festivo && !d.libra).length,
     yaAprobadas: dias.filter(d => d.cuenta && d.ya === 'aprobada').length,
     yaPedidas: dias.filter(d => d.ya === 'pedida').length,
     saldoHoy: s.saldo, generaraHastaEntonces: r2(generadasAlEmpezar - s.generadas), programadas: s.programadas,
-    disponible, quedaria: r2(disponible - nuevos), dias,
+    disponible, quedaria: r2(disponible - nuevos), alVolver,
+    generaDurante: r2(alVolver - (disponible - nuevos)), dias,
   };
 }
 
@@ -182,7 +212,7 @@ const publica = (p, s, e) => ({
 });
 
 const reglas = e => ({
-  tasa: TASA, tope: e.tope, desde: DESDE, laborables: e.laborables,
+  tasa: tasaDe(e.tope, e.laborables), diasMes: r2(e.laborables.length * 365.25 / 7 / 12), tope: e.tope, desde: DESDE, laborables: e.laborables,
   laborablesTexto: e.laborables.map(n => DIAS_SEMANA[n - 1]).join(', '), libraPorDefecto: dosDias(null, e.laborables),
 });
 
@@ -325,5 +355,5 @@ contadores.registrarFuente(ORIGEN, {
 module.exports = {
   mias, de, lista, simular, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
   // Para las pruebas:
-  _saldoDe: saldoDe, _simularSobre: simularSobre, _dosDias: dosDias, TASA, DESDE,
+  _saldoDe: saldoDe, _simularSobre: simularSobre, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
 };

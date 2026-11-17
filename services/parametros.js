@@ -66,7 +66,7 @@ const CATALOGO = [
   // Vacaciones de la oficina (db/263, 17/11/2026)
   { clave: 'oficina.vacaciones.tope_mes', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'dias', decimales: 2, min: 0, max: 31, defecto: 1.84,
     etiqueta: 'Vacaciones de la oficina: lo más que genera un mes',
-    descripcion: 'Cada día del horario de la oficina genera 0,084 días de vacaciones, como mucho esto al mes. '
+    descripcion: 'Lo que genera cada mes completo, tenga los días laborables que tenga. El mes en curso genera esto entre los días de un mes medio por cada día del horario. '
       + 'Los conductores tienen su propio tope (1,85).',
     usa: 'Mis vacaciones (modules/VacacionesOficina)' },
 
