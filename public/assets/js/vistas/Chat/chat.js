@@ -47,7 +47,6 @@
   let nuevosDesde = null;     // el primer mensaje sin leer al abrirlo (la raya «Nuevos»)
   let hilo = null;            // { raiz, respuestas, panel }
   const vistos = new Map();   // id → el último mensaje pintado (para sus ficheros y para editarlo)
-  const subiendo = new Map(); // id → el texto de lo que va subiendo
   const tocar = matchMedia('(hover: none)');
 
   const iniciales = n => String(n || '').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x.charAt(0)).join('').toUpperCase() || '·';
@@ -179,8 +178,7 @@
 
   // ── Un mensaje ────────────────────────────────────────────────────────────
   function adjuntosHtml(m) {
-    const sube = subiendo.get(m.id);
-    if (!m.adjuntos.length) return sube ? `<p class="tc-chat-subiendo" data-subiendo="${m.id}"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>${esc(sube)}</p>` : '';
+    if (!m.adjuntos.length) return '';
     const fotos = m.adjuntos.filter(a => a.clase === 'imagen');
     const otros = m.adjuntos.filter(a => a.clase !== 'imagen');
     return `<div class="tc-chat-adjuntos">
@@ -189,7 +187,6 @@
         ${otros.map(a => `<button type="button" class="tc-chat-fichero" data-adjunto="${a.id}" data-de="${m.id}" aria-label="Abrir ${esc(a.nombre)}">
             <i class="fa-solid ${ICONO_FICHERO[a.clase] || 'fa-file'}" aria-hidden="true"></i>
             <span><b>${esc(a.nombre)}</b><small>${esc(tamano(a.bytes))}</small></span></button>`).join('')}
-        ${sube ? `<p class="tc-chat-subiendo" data-subiendo="${m.id}"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>${esc(sube)}</p>` : ''}
       </div>`;
   }
   function reaccionesHtml(m, puedo) {
@@ -240,6 +237,9 @@
     } else if (m.texto) {
       texto = formatear(m.texto);
       if (m.editado) texto = /<\/p>$/.test(texto) ? texto.replace(/<\/p>$/, ' <span class="tc-chat-editado">(editado)</span></p>') : texto + '<span class="tc-chat-editado">(editado)</span>';
+    } else if (!m.adjuntos.length && !m.evento) {
+      // Los de antes del 17/11 que se mandaron antes de subir y no llegaron a tener ficheros.
+      texto = '<p class="tc-chat-anulado"><i class="fa-regular fa-file" aria-hidden="true"></i>Los ficheros de este mensaje no llegaron a subirse</p>';
     }
     const marcas = [
       m.fijado ? `<span><i class="fa-solid fa-thumbtack" aria-hidden="true"></i>Fijado por ${esc(m.fijado.por)}</span>` : '',
@@ -627,27 +627,75 @@
     return s.replace(/(^|[^\w@])@canal\b/g, '$1<!canal>');
   }
 
-  /** Prepara una caja de escribir. → { anadirFicheros(lista) } (para soltar ficheros encima). */
+  /**
+   * Prepara una caja de escribir. → { anadirFicheros(lista) } (para soltar ficheros encima).
+   *
+   * LOS FICHEROS, COMO EN SLACK (Camilo, 17/11/2026: «que el mensaje no aparezca
+   * sino hasta que se suba completamente el archivo»): se suben en cuanto se
+   * eligen, a un borrador de quien escribe, con su progreso aquí abajo. El
+   * mensaje se manda cuando todo está arriba (si se pulsa Enviar antes, espera)
+   * y entonces los ficheros pasan a él. Nadie ve un mensaje a medias.
+   */
   function prepararEscribir(form, { padreId }) {
     if (!form) return null;
     const ta = form.querySelector('textarea');
     const mapa = new Map();
-    const porSubir = [];
+    const porSubir = [];        // { fichero, estado: 'subiendo' | 'listo' | 'error', pct, adjunto, error, promesa, quitado }
+    let borrador = null;        // «<mi id>-<al azar>»: donde se suben los de este mensaje
+    let enviando = false;
     const listaPorSubir = form.querySelector('[data-por-subir]');
     const entrada = form.querySelector('[data-fichero]');
+    const pista = form.querySelector('.tc-chat-pista');
+    const pistaNormal = pista ? pista.textContent : '';
     let sug = null, elegido = 0, desde = -1;
     const crecer = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; };
     const cerrarSug = () => { if (sug) sug.remove(); sug = null; desde = -1; };
 
+    const nuevoBorrador = () => {
+      const b = new Uint8Array(12);
+      crypto.getRandomValues(b);
+      return `${yo.id}-${[...b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+    };
+    const iconoDe = f => (f.type.startsWith('image/') ? 'fa-image' : f.type === 'application/pdf' ? 'fa-file-pdf'
+      : f.type.startsWith('video/') ? 'fa-film' : f.type.startsWith('audio/') ? 'fa-music' : 'fa-file');
+    const pct = x => Math.round((x.pct || 0) * 100);
+    const estadoHtml = x => (x.estado === 'subiendo' ? `<small data-pct>${pct(x)} %</small>`
+      : x.estado === 'error' ? `<small class="tc-chat-por-subir-error" title="${esc(x.error)}">No se ha subido</small>`
+        : `<small>${esc(tamano(x.fichero.size))}</small>`);
     function pintarPorSubir() {
       listaPorSubir.hidden = !porSubir.length;
-      listaPorSubir.innerHTML = porSubir.map((f, i) => `<li>
-          <i class="fa-solid ${f.type.startsWith('image/') ? 'fa-image' : f.type === 'application/pdf' ? 'fa-file-pdf' : 'fa-file'}" aria-hidden="true"></i>
-          <span>${esc(f.name)}</span><small>${esc(tamano(f.size))}</small>
-          <button type="button" data-quitar-fichero="${i}" aria-label="Quitar ${esc(f.name)}" title="Quitar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></li>`).join('');
+      listaPorSubir.innerHTML = porSubir.map((x, i) => `<li class="tc-chat-por-subir--${x.estado}" style="--pct: ${pct(x)}%">
+          <i class="fa-solid ${iconoDe(x.fichero)}" aria-hidden="true"></i>
+          <span>${esc(x.fichero.name)}</span>${estadoHtml(x)}
+          <button type="button" data-quitar-fichero="${i}" aria-label="Quitar ${esc(x.fichero.name)}" title="Quitar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></li>`).join('');
+    }
+    // El progreso, sin repintar la lista entera en cada trocito.
+    function pintarProgreso(x) {
+      const li = listaPorSubir.children[porSubir.indexOf(x)];
+      if (!li) return;
+      li.style.setProperty('--pct', `${pct(x)}%`);
+      const s = li.querySelector('[data-pct]');
+      if (s) s.textContent = `${pct(x)} %`;
+    }
+    const quitarDelServidor = x => {
+      if (x.adjunto) Api.post(`/adjuntos/api/${x.adjunto.id}/anular`, { motivo: 'Quitado antes de mandar el mensaje' }).catch(() => {});
+    };
+    function subirUno(x) {
+      if (!borrador) borrador = nuevoBorrador();
+      x.estado = 'subiendo';
+      x.pct = 0;
+      x.promesa = Adjuntos.subir({ tipo: 'chat_borrador', dueno: borrador, fichero: x.fichero, alProgresar: p => { x.pct = p; pintarProgreso(x); } })
+        .then(a => { x.adjunto = a; x.estado = 'listo'; if (x.quitado) quitarDelServidor(x); })
+        .catch(e => { x.estado = 'error'; x.error = (e && e.message) || 'No se ha podido subir'; })
+        .finally(() => { if (!x.quitado) pintarPorSubir(); });
     }
     function anadirFicheros(ficheros) {
-      [...ficheros].forEach(f => { if (f && f.size >= 0 && porSubir.length < 20) porSubir.push(f); });
+      [...ficheros].forEach(f => {
+        if (!f || porSubir.length >= 20) return;
+        const x = { fichero: f };
+        porSubir.push(x);
+        subirUno(x);
+      });
       pintarPorSubir();
       ta.focus();
     }
@@ -655,7 +703,10 @@
     entrada.addEventListener('change', () => { anadirFicheros(entrada.files); entrada.value = ''; });
     listaPorSubir.addEventListener('click', ev => {
       const q = ev.target.closest('[data-quitar-fichero]');
-      if (q) { porSubir.splice(Number(q.dataset.quitarFichero), 1); pintarPorSubir(); }
+      if (!q || enviando) return;
+      const [x] = porSubir.splice(Number(q.dataset.quitarFichero), 1);
+      if (x) { x.quitado = true; quitarDelServidor(x); }
+      pintarPorSubir();
     });
     ta.addEventListener('paste', ev => {
       const fs = ev.clipboardData && ev.clipboardData.files;
@@ -715,42 +766,54 @@
     ta.addEventListener('blur', () => setTimeout(cerrarSug, 150));
     form.addEventListener('submit', async ev => {
       ev.preventDefault();
-      const crudo = ta.value.trim();
-      if ((!crudo && !porSubir.length) || !actual) return;
+      if (enviando || !actual) return;
+      if (!ta.value.trim() && !porSubir.length) return;
       const boton = form.querySelector('button[type="submit"]');
-      const ficheros = porSubir.splice(0);
-      const r = await Api.post(`${API}/canales/${actual.id}/mensajes`, { texto: codificar(crudo, mapa), padreId, conAdjuntos: ficheros.length },
-        { boton, aviso: 'No se ha enviado' });
-      if (!r) { porSubir.push(...ficheros); return; }
-      ta.value = ''; mapa.clear(); crecer(); pintarPorSubir();
-      if (ficheros.length) subiendo.set(r.mensaje.id, `Subiendo ${ficheros.length === 1 ? 'el fichero' : `${ficheros.length} ficheros`}…`);
-      if (padreId) { await recargarHilo(); actualizarRaiz(r.mensaje.padreId); }
-      else {
-        if (!mensajes.some(x => x.id === r.mensaje.id)) mensajes.push(r.mensaje);
-        nuevosDesde = null;
-        repintarSerie({ alFinal: true });
+      enviando = true;
+      try {
+        // Si aún suben, se espera: el mensaje sale en cuanto acaben (y se puede seguir escribiendo).
+        const pendientes = porSubir.filter(x => x.estado === 'subiendo');
+        if (pendientes.length) {
+          boton.disabled = true;
+          if (pista) pista.textContent = `Subiendo ${pendientes.length === 1 ? 'el fichero' : `${pendientes.length} ficheros`}… el mensaje sale en cuanto acabe.`;
+          await Promise.all(pendientes.map(x => x.promesa));
+        }
+        const malos = porSubir.filter(x => x.estado === 'error');
+        const listos = () => porSubir.filter(x => x.estado === 'listo');
+        if (malos.length) {
+          const lista_ = malos.map(x => `${x.fichero.name}: ${x.error}`).join('\n');
+          if (!ta.value.trim() && !listos().length) {
+            await Dialogo.aviso({ titulo: malos.length === 1 ? 'El fichero no se ha subido' : 'No se ha subido ningún fichero', texto: lista_, tono: 'error' });
+            return;
+          }
+          const si = await Dialogo.confirmar({ titulo: malos.length === 1 ? 'Un fichero no se ha subido' : `${malos.length} ficheros no se han subido`,
+            texto: `${lista_}\n\n¿Mandar el mensaje sin ${malos.length === 1 ? 'él' : 'ellos'}?`, si: 'Mandarlo así', no: 'Volver' });
+          if (!si) return;
+          malos.forEach(x => { porSubir.splice(porSubir.indexOf(x), 1); });
+          pintarPorSubir();
+        }
+        const crudo = ta.value.trim();
+        if (!crudo && !listos().length) return;
+        boton.disabled = false;
+        const r = await Api.post(`${API}/canales/${actual.id}/mensajes`,
+          { texto: codificar(crudo, mapa), padreId, borrador: listos().length ? borrador : null },
+          { boton, aviso: 'No se ha enviado' });
+        if (!r) return;
+        ta.value = ''; mapa.clear(); crecer();
+        porSubir.length = 0; borrador = null; pintarPorSubir();
+        if (padreId) { await recargarHilo(); actualizarRaiz(r.mensaje.padreId); }
+        else {
+          if (!mensajes.some(x => x.id === r.mensaje.id)) mensajes.push(r.mensaje);
+          nuevosDesde = null;
+          repintarSerie({ alFinal: true });
+        }
+      } finally {
+        enviando = false;
+        boton.disabled = false;
+        if (pista) pista.textContent = pistaNormal;
       }
-      if (ficheros.length) subirFicheros(r.mensaje.id, ficheros);
     });
     return { anadirFicheros };
-  }
-
-  /** Sube los ficheros de un mensaje recién mandado, uno detrás de otro, y avisa al canal. */
-  async function subirFicheros(id, ficheros) {
-    const fallos = [];
-    for (let i = 0; i < ficheros.length; i++) {
-      const f = ficheros[i];
-      const pon = pct => {
-        const t = `Subiendo ${ficheros.length > 1 ? `${i + 1} de ${ficheros.length} · ` : ''}${f.name} · ${Math.round(pct * 100)} %`;
-        subiendo.set(id, t);
-        document.querySelectorAll(`[data-subiendo="${id}"]`).forEach(x => { x.lastChild.textContent = t; });
-      };
-      try { await Adjuntos.subir({ tipo: 'chat_mensaje', dueno: id, fichero: f, alProgresar: pon }); } catch (e) { fallos.push(`${f.name}: ${e.message || 'no se ha podido subir'}`); }
-    }
-    subiendo.delete(id);
-    const r = await Api.post(`${API}/mensajes/${id}/adjuntos`, {}).catch(() => null);
-    if (r) ponerMensaje(r.mensaje);
-    if (fallos.length) Dialogo.aviso({ titulo: fallos.length === ficheros.length ? 'No se ha subido nada' : 'Algún fichero no se ha subido', texto: fallos.join('\n'), tono: 'error' });
   }
 
   // Soltar ficheros encima de la conversación (van a la caja de abajo).
@@ -779,6 +842,12 @@
       html: '', alCerrar: () => { hilo = null; },
     });
     hilo = { raiz: r.raiz, respuestas: r.respuestas, panel, escritor: null };
+    // La caja de escribir se monta UNA vez: al repintar el hilo (llega una
+    // respuesta) solo cambian los mensajes, y lo que se está escribiendo o
+    // subiendo sigue ahí.
+    panel.cuerpo.innerHTML = `<div class="tc-chat-hilo" data-hilo-mensajes></div>
+      ${actual && actual.puede.escribir ? escribirHtml('hilo', 'Responde en el hilo') : ''}`;
+    hilo.escritor = prepararEscribir(panel.cuerpo.querySelector('[data-escribir="hilo"]'), { padreId: r.raiz.id });
     panel.cuerpo.addEventListener('click', alPulsarMensaje);
     zonaDeSoltar(panel.cuerpo, () => hilo && hilo.escritor);
     pintarHilo();
@@ -787,18 +856,13 @@
   function pintarHilo({ enfocar = true } = {}) {
     if (!hilo) return;
     const { raiz: rz, respuestas: rs, panel } = hilo;
-    const borrador = panel.cuerpo.querySelector('[data-escribir="hilo"] textarea');
-    const texto = borrador ? borrador.value : '';
-    panel.cuerpo.innerHTML = `
-      <div class="tc-chat-hilo">
+    const caja = panel.cuerpo.querySelector('[data-hilo-mensajes]');
+    if (!caja) return;
+    caja.innerHTML = `
         ${mensajeHtml(rz, { enHilo: true })}
         <div class="tc-chat-dia"><span>${rs.length ? `${rs.length} ${rs.length === 1 ? 'respuesta' : 'respuestas'}` : 'Sin respuestas todavía'}</span></div>
-        <div data-respuestas>${serieHtml(rs, { enHilo: true })}</div>
-      </div>
-      ${actual && actual.puede.escribir ? escribirHtml('hilo', 'Responde en el hilo') : ''}`;
-    hilo.escritor = prepararEscribir(panel.cuerpo.querySelector('[data-escribir="hilo"]'), { padreId: rz.id });
+        <div data-respuestas>${serieHtml(rs, { enHilo: true })}</div>`;
     const ta = panel.cuerpo.querySelector('[data-escribir="hilo"] textarea');
-    if (ta && texto) ta.value = texto;
     const max = Math.max(rz.id, ...rs.map(x => x.id));
     marcarLeido({ hasta: max });
     if (ta && enfocar && !editando) ta.focus();

@@ -342,6 +342,26 @@ async function tareasDe(ids) {
   return new Map(r.rows.map(x => [Number(x.origen_id), x]));
 }
 
+/**
+ * Cuántos ficheros tiene ya subidos alguien en su borrador (y los bloquea
+ * hasta que acabe la transacción: que no se le quite uno a medio mandar).
+ */
+async function ficherosDeBorrador(cli, borrador, autorId) {
+  const r = await q(cli,
+    `SELECT id FROM adjunto
+      WHERE dueno_tipo = 'chat_borrador' AND dueno_id = $1 AND creado_por = $2 AND anulado_at IS NULL
+      FOR UPDATE`, [borrador, autorId]);
+  return r.rows.length;
+}
+/** Los ficheros del borrador pasan al mensaje (el libro apunta el cambio de dueño). */
+async function pasarBorrador(cli, borrador, autorId, mensajeId) {
+  const r = await q(cli,
+    `UPDATE adjunto SET dueno_tipo = 'chat_mensaje', dueno_id = $3
+      WHERE dueno_tipo = 'chat_borrador' AND dueno_id = $1 AND creado_por = $2 AND anulado_at IS NULL
+      RETURNING id`, [borrador, autorId, String(mensajeId)]);
+  return r.rows.length;
+}
+
 /** Los ficheros de unos mensajes (sin los quitados): Map(id → [filas de adjunto]). */
 async function adjuntosDe(ids) {
   if (!ids.length) return new Map();
@@ -392,5 +412,5 @@ module.exports = {
   miembro, miembros, idsMiembros, crearCanal, meter, meterOficina, sacar,
   mensajes, mensaje, mensajeCrudo, respuestas, escribir, mencionar, mencionesDe, leer,
   editar, anular, reaccionar, reaccionesDe, fijar, desfijar, fijadosDe, cuantosFijados, fijadosCanal,
-  guardar, guardadosEntre, guardadosDe, tareasDe, adjuntosDe, enlace, enlacesDe, guardarEnlace,
+  guardar, guardadosEntre, guardadosDe, tareasDe, adjuntosDe, ficherosDeBorrador, pasarBorrador, enlace, enlacesDe, guardarEnlace,
 };

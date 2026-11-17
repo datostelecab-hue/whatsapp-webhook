@@ -47,7 +47,7 @@ actualizado: 2026-11-17
 - **Reacciones**: las seis, con quién puso cada una al pasar por encima. Pulsar la tuya la quita (es una marca con fecha, no un borrado).
 - **Fijar**: el mensaje sale con «Fijado por …» y el canal tiene arriba el botón con la chincheta y cuántos hay. Desfijar también queda.
 - **Guardar**: el botón de arriba a la izquierda («Guardados») lista lo tuyo de todos los canales que aún puedes ver; de un privado del que has salido, ya no.
-- **Ficheros**: con el clip, arrastrándolos encima o pegándolos. Se manda el mensaje y luego se suben a él con el servicio de [[Adjuntos]] (R2), con su progreso; un mensaje puede ser solo ficheros. Solo los sube su autor, en la primera hora. Las fotos salen en miniatura y se abren en grande; el PDF, el vídeo y el audio se ven en la página; lo demás se descarga. Los ve quien ve el mensaje.
+- **Ficheros**, como en Slack: con el clip, arrastrándolos encima o pegándolos. **Se suben en cuanto se eligen**, con su progreso en la caja de escribir, a un **borrador** de quien escribe (`chat_borrador`, «<su id>-<al azar>», que solo él ve). **El mensaje no existe hasta que todo está subido**: si se pulsa Enviar antes, espera y sale al terminar; al mandarlo, los ficheros pasan a él en la misma transacción. Así nadie ve un mensaje a medias y sale en su sitio, no más arriba (Camilo, 17/11/2026, al ver un mensaje vacío mientras subía un vídeo). Si uno no sube, se pregunta si mandarlo sin él. A un mensaje ya mandado no se le suben más; un mensaje puede ser solo ficheros. Los que se quitan antes de mandar se anulan. Las fotos salen en miniatura y se abren en grande; el PDF, el vídeo y el audio se ven en la página; lo demás se descarga. Los ve quien ve el mensaje.
 - **Formato**, como Slack: `*negrita*`, `_cursiva_`, `~tachado~`, `` `código` ``, bloques entre tres comillas invertidas, `> cita` y listas con `-` o `1.`. Siempre sobre el texto escapado: no se puede colar HTML.
 - **La vista previa de un enlace**: del primer enlace del mensaje, el título, la descripción y el sitio. La lee el **servidor** después de mandar (nadie espera) con `services/enlaces.js`, protegido contra SSRF (abajo), una vez por enlace a la semana, y avisa al canal cuando la tiene. Sin imágenes: la CSP de la casa no deja pintar las de fuera.
 - **Convertir en tarea**: el mismo formulario que «Nueva tarea» del tablero, con el título y el detalle ya puestos desde el mensaje. La tarjeta es del tipo `mensaje`, con el enlace al mensaje (`/chat?canal=…&mensaje=…`). El mensaje lleva el **sello** con su estado, quién la hace y cuándo vence, que lleva a la tarjeta. Una por mensaje. **Al cerrarla en el tablero, la respuesta sale en el hilo del mensaje**, firmada por Telecab (quien la cierra puede no estar en el canal) y **mencionando a quien la creó**, que así se entera. Es el primer criterio del ítem 1: «una tarea creada desde un mensaje».
@@ -83,7 +83,7 @@ Todo con piezas globales: Panel (hilos y miembros), Dialogo (nuevo canal, direct
 GET  /chat/api/canales                       los suyos, con no leídos y menciones
 GET  /chat/api/canales/:id                   uno, con quién está dentro y qué puede hacer
 GET  /chat/api/canales/:id/mensajes?antes=|despues=
-POST /chat/api/canales/:id/mensajes          { texto, padreId?, conAdjuntos? }
+POST /chat/api/canales/:id/mensajes          { texto, padreId?, borrador? }   (borrador: donde subió ya sus ficheros)
 GET  /chat/api/canales/:id/fijados           lo fijado en el canal
 POST /chat/api/canales/:id/leido             { hasta }
 POST /chat/api/canales                       { nombre, tipo, tema, descripcion }   (chat_canales)
@@ -97,11 +97,10 @@ POST /chat/api/mensajes/:id/anular           { motivo? }      (lo propio, sin mo
 POST /chat/api/mensajes/:id/reaccion         { emoji }        la pone o la quita
 POST /chat/api/mensajes/:id/fijar            { fijar }
 POST /chat/api/mensajes/:id/guardar          { guardar }
-POST /chat/api/mensajes/:id/adjuntos         ya se subieron sus ficheros (a /adjuntos/api/chat_mensaje/:id): que lo vea el canal
 POST /chat/api/mensajes/:id/tarea            { titulo, descripcion, responsableId, plazoDias, venceEl }
 ```
 
-Los ficheros se suben por la ruta de siempre de [[Adjuntos]] (`/adjuntos/api/chat_mensaje/:id`): el chat se registra como dueño `chat_mensaje` y dice quién los ve, quién los sube y quién los quita.
+Los ficheros se suben por la ruta de siempre de [[Adjuntos]], al borrador (`/adjuntos/api/chat_borrador/<borrador>`). El chat se registra como dos dueños: `chat_borrador` (solo quien escribe) y `chat_mensaje` (lo ve quien ve el mensaje; lo quita su autor o quien lleva los canales; no admite subidas).
 
 De toda la oficina, como `/tablero`: no está en el catálogo de permisos y cada canal se comprueba en el servicio.
 

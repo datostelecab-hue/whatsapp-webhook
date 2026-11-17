@@ -134,22 +134,34 @@ test('convertir un mensaje en tarea: como una tarea a mano, con su sello y la re
   assert.equal((await chat.canales(p.a)).canales.find(x => x.id === p.general).menciones, 1, 'a quien la creó le llega como mención');
 }));
 
-test('los ficheros: un mensaje puede ser solo ficheros; los sube su autor y los ve quien ve el mensaje', () => conBase(async h => {
+test('los ficheros: se suben antes de mandar, el mensaje sale con ellos ya subidos y los ve quien ve el mensaje', () => conBase(async h => {
   const p = await oficina(h);
-  await assert.rejects(enviar(p.b, p.general, '   '), e => e.status === 400, 'vacío y sin ficheros, no');
-  const m = await enviar(p.b, p.general, '', { conAdjuntos: 1 });
-  assert.equal(m.conAdjuntos, true);
   const quien = id => ({ id, rol: 'oficina' });
-  await assert.rejects(adjuntos.subir({ tipo: 'chat_mensaje', duenoId: String(m.id), nombre: 'x.pdf', mime: 'application/pdf', cuerpo: aTrozos(Buffer.from('%PDF-1.4 x')), quien: quien(p.c) }),
-    e => e.status === 403, 'solo su autor');
-  const a = await adjuntos.subir({ tipo: 'chat_mensaje', duenoId: String(m.id), nombre: 'parte.pdf', mime: 'application/pdf', cuerpo: aTrozos(Buffer.from('%PDF-1.4 parte')), quien: quien(p.b) });
-  const visto = (await chat.adjuntosListos(p.b, m.id)).mensaje;
-  assert.deepEqual(visto.adjuntos.map(x => [x.id, x.nombre, x.clase, x.url]), [[Number(a.id), 'parte.pdf', 'pdf', `/adjuntos/${a.id}/fichero`]]);
+  const subir = (u, borrador, nombre) => adjuntos.subir({ tipo: 'chat_borrador', duenoId: borrador, nombre, mime: 'application/pdf', cuerpo: aTrozos(Buffer.from(`%PDF-1.4 ${nombre}`)), quien: quien(u) });
+  await assert.rejects(enviar(p.b, p.general, '   '), e => e.status === 400, 'vacío y sin ficheros, no');
+
+  // El borrador es de quien escribe: nadie más sube ni ve en él.
+  const bb = `${p.b}-a1b2c3d4e5f6`;
+  await assert.rejects(subir(p.c, bb, 'x.pdf'), e => e.status === 403, 'en el borrador de otro, no');
+  const a = await subir(p.b, bb, 'parte.pdf');
+  await assert.rejects(adjuntos.lista('chat_borrador', bb, quien(p.c)), e => e.status === 403, 'lo de un borrador solo lo ve quien lo sube');
+  const antes = (await chat.mensajes(p.c, p.general)).mensajes.length;
+  assert.equal(antes, 0, 'mientras sube, no hay mensaje que ver');
+  await assert.rejects(enviar(p.c, p.general, '', { borrador: bb }), e => e.status === 403, 'mandar los ficheros de otro, no');
+
+  const m = await enviar(p.b, p.general, '', { borrador: bb });
+  assert.equal(m.conAdjuntos, true, 'un mensaje puede ser solo ficheros');
+  assert.deepEqual(m.adjuntos.map(x => [x.id, x.nombre, x.clase, x.url]), [[Number(a.id), 'parte.pdf', 'pdf', `/adjuntos/${a.id}/fichero`]], 'sale ya con ellos');
   assert.equal((await adjuntos.lista('chat_mensaje', String(m.id), quien(p.c))).length, 1, 'lo ve quien ve el canal');
+  assert.deepEqual(await adjuntos.lista('chat_borrador', bb, quien(p.b)), [], 'y el borrador se queda vacío');
+  await assert.rejects(enviar(p.b, p.general, '', { borrador: bb }), e => e.status === 400, 'ya mandados, no se mandan dos veces');
+  await assert.rejects(adjuntos.subir({ tipo: 'chat_mensaje', duenoId: String(m.id), nombre: 'y.pdf', mime: 'application/pdf', cuerpo: aTrozos(Buffer.from('%PDF-1.4 y')), quien: quien(p.b) }),
+    e => e.status === 403, 'a un mensaje ya mandado no se le suben más');
 
   const priv = await chat.crearCanal(p.a, { nombre: 'nominas-privado', tipo: 'privado' });
-  const mp = await enviar(p.a, priv.id, 'La nómina', { conAdjuntos: 1 });
-  await adjuntos.subir({ tipo: 'chat_mensaje', duenoId: String(mp.id), nombre: 'n.pdf', mime: 'application/pdf', cuerpo: aTrozos(Buffer.from('%PDF-1.4 n')), quien: quien(p.a) });
+  const ba = `${p.a}-ffeeddccbbaa`;
+  await subir(p.a, ba, 'n.pdf');
+  const mp = await enviar(p.a, priv.id, 'La nómina', { borrador: ba });
   await assert.rejects(adjuntos.lista('chat_mensaje', String(mp.id), quien(p.b)), e => e.status === 403, 'de un privado, solo los de dentro');
 
   await chat.anular(p.b, m.id, {});

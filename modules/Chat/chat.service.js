@@ -25,9 +25,10 @@
 //     quien la crea no aprueba. El mensaje lleva el sello; al cerrarla, la
 //     respuesta sale en su hilo, firmada por Telecab y mencionando a quien la creó.
 //   · FIJAR, cualquiera del canal; GUARDAR, cada uno lo suyo.
-//   · LOS FICHEROS van con el servicio de adjuntos (A6, R2): primero se manda el
-//     mensaje (con `conAdjuntos`) y luego se suben a él; solo su autor, y en la
-//     primera hora.
+//   · LOS FICHEROS van con el servicio de adjuntos (A6, R2), como en Slack: se
+//     suben en cuanto se eligen, a un BORRADOR de quien escribe, y al mandar
+//     pasan al mensaje. El mensaje no existe hasta que todo está subido: nadie
+//     ve uno a medias (Camilo, 17/11/2026) y sale en su sitio, no más arriba.
 //   · LA VISTA PREVIA DE UN ENLACE la lee el servidor después de mandar, con
 //     services/enlaces.js (protegido contra SSRF), y avisa cuando la tiene.
 //
@@ -63,7 +64,6 @@ const MAX_TEXTO = 8000;
 const MAX_DIRECTO = 9;   // como Slack: un directo de grupo, de hasta 9 personas
 const NO_ESTA = 'Ese canal no existe o no estás en él';
 const EMOJIS = ['ok', 'hecho', 'visto', 'gracias', 'risa', 'corazon'];
-const HORA_ADJUNTAR = 60 * 60 * 1000;   // los ficheros se suben a un mensaje en su primera hora
 const ANULADO_POR_AUTOR = 'Lo anuló quien lo escribió';
 
 // ── Quién es ───────────────────────────────────────────────────────────────
@@ -242,14 +242,16 @@ async function mencionadosDe(t, c, autorId, dentroAhora) {
 /**
  * Un mensaje (o la respuesta de un hilo con `padreId`). Las menciones van en
  * el texto: <@id> y <!canal>. En un privado o un directo solo cuenta la
- * mención a quien está dentro (el resto no lo podría leer). Con `conAdjuntos`
- * (cuántos ficheros van a subirse a él), el texto puede ir vacío.
+ * mención a quien está dentro (el resto no lo podría leer). Con `borrador`
+ * (donde subió ya sus ficheros: borradorValido), los ficheros pasan al mensaje
+ * y el texto puede ir vacío.
  */
-async function enviar(usuarioId, canalId, { texto: txt, padreId = null, conAdjuntos = 0 } = {}) {
+async function enviar(usuarioId, canalId, { texto: txt, padreId = null, borrador = null } = {}) {
   const ctx = await contexto(usuarioId);
   const t = limpiarTexto(txt);
-  const ficheros = Math.max(0, Math.min(20, Number(conAdjuntos) || 0));
-  if (!t && !ficheros) throw error('Escribe el mensaje');
+  const b = borrador ? borradorValido(borrador, ctx.id) : null;
+  if (borrador && !b) throw error('Esos ficheros no son tuyos', 403);
+  if (!t && !b) throw error('Escribe el mensaje');
   if (t.length > MAX_TEXTO) throw error(`Un mensaje no puede pasar de ${MAX_TEXTO} caracteres`);
   const { canal: c, dentro } = await acceso(ctx, canalId);
   if (c.archivado_at) throw error('Ese canal está archivado: ya no se escribe en él', 409);
@@ -264,7 +266,12 @@ async function enviar(usuarioId, canalId, { texto: txt, padreId = null, conAdjun
       if (!p || Number(p.canal_id) !== Number(c.id)) throw error('Ese hilo no es de este canal', 404);
       padre = p.padre_id ? Number(p.padre_id) : Number(p.id);
     }
+    // Los ficheros que ya subió, del borrador al mensaje (en esta transacción:
+    // o salen el mensaje y sus ficheros, o nada).
+    const ficheros = b ? await repo.ficherosDeBorrador(cli, b, ctx.id) : 0;
+    if (!t && !ficheros) throw error('Escribe el mensaje: los ficheros no han llegado a subirse');
     const id = await repo.escribir(cli, { canalId: c.id, autorId: ctx.id, padreId: padre, texto: t, conAdjuntos: ficheros > 0, enlaceUrl });
+    if (ficheros) await repo.pasarBorrador(cli, b, ctx.id, id);
     const dentroAhora = new Set(await repo.idsMiembros(cli, c.id));
     const men = await mencionadosDe(t, c, ctx.id, dentroAhora);
     if (men.usuarios.length || men.todos) await repo.mencionar(cli, id, men);
@@ -386,17 +393,40 @@ async function guardados(usuarioId) {
 }
 
 // ── Los ficheros de un mensaje (2b, con el servicio de adjuntos A6) ────────
-// Se ven si se ve el mensaje; los sube su autor en la primera hora (el mensaje
-// se manda antes, con `conAdjuntos`); los quita su autor o quien lleva los canales.
+// Se suben ANTES de mandar, a un borrador de quien escribe ('chat_borrador',
+// «<su id>-<al azar>»): solo él los sube, los ve y los quita. Al mandar, pasan
+// al mensaje ('chat_mensaje'): los ve quien ve el mensaje y los quita su autor
+// o quien lleva los canales. A un mensaje ya mandado no se le suben más.
+const BORRADOR = /^(\d{1,9})-[a-z0-9]{8,40}$/;
+/** El borrador, si es de esa persona; si no, null. */
+function borradorValido(v, usuarioId) {
+  const s = String(v || '').trim().toLowerCase();
+  const m = BORRADOR.exec(s);
+  return m && Number(m[1]) === Number(usuarioId) ? s : null;
+}
+async function puedeFicheroDeBorrador(quien, duenoId) {
+  try {
+    const ctx = await contexto(quien && quien.id);
+    return !!borradorValido(duenoId, ctx.id);
+  } catch (_) {
+    return false;
+  }
+}
+adjuntos.registrarDueno('chat_borrador', {
+  etiqueta: 'Fichero del chat aún sin mandar',
+  ver: puedeFicheroDeBorrador,
+  adjuntar: puedeFicheroDeBorrador,
+  anular: puedeFicheroDeBorrador,
+});
+
 async function puedeFichero(cual, quien, duenoId) {
   try {
     const ctx = await contexto(quien && quien.id);
     const { m } = await delMensaje(ctx, duenoId);
     if (m.anulado_at) return false;
     if (cual === 'ver') return true;
-    const propio = Number(m.autor_id) === ctx.id;
-    if (cual === 'adjuntar') return propio && m.con_adjuntos && Date.now() - new Date(m.creado_at).getTime() < HORA_ADJUNTAR;
-    return propio || await puedeGestionar(ctx.id);
+    if (cual === 'adjuntar') return false;
+    return Number(m.autor_id) === ctx.id || await puedeGestionar(ctx.id);
   } catch (_) {
     return false;
   }
@@ -407,15 +437,6 @@ adjuntos.registrarDueno('chat_mensaje', {
   adjuntar: (quien, id) => puedeFichero('adjuntar', quien, id),
   anular: (quien, id) => puedeFichero('anular', quien, id),
 });
-
-/** El autor ya subió sus ficheros: que lo vean los demás. */
-async function adjuntosListos(usuarioId, mensajeId) {
-  const ctx = await contexto(usuarioId);
-  const { m, canal: c } = await delMensaje(ctx, mensajeId);
-  if (Number(m.autor_id) !== ctx.id) throw error('Solo quien lo escribió', 403);
-  avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id });
-  return uno(ctx.id, m.id);
-}
 
 // ── La vista previa de los enlaces (2b) ────────────────────────────────────
 // Se lee después de mandar, sin hacer esperar a nadie, y una sola vez por
@@ -631,6 +652,6 @@ const esperarPendientes = () => Promise.all([...pendientes]);
 
 module.exports = {
   canales, ficha, mensajes, uno, hilo, enviar, leido, crearCanal, directo, anadir, quitar, personas,
-  editar, anular, reaccionar, fijar, fijados, guardar, guardados, adjuntosListos, convertirEnTarea,
+  editar, anular, reaccionar, fijar, fijados, guardar, guardados, convertirEnTarea,
   nombreDeCanal, primerEnlace, EMOJIS, olvidar, usarVistaPrevia, esperarPendientes,
 };

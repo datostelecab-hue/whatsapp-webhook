@@ -1360,7 +1360,6 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-chat-fichero span { min-width: 0; }
 .tc-chat-fichero b { display: block; font-size: .82rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-chat-fichero small { display: block; font-size: .7rem; color: rgb(var(--tc-muted)); }
-.tc-chat-subiendo { display: flex; align-items: center; gap: .45rem; margin-top: .3rem; font-size: .75rem; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
 
 /* La vista previa de un enlace. */
 .tc-chat-previa {
@@ -1394,6 +1393,13 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-chat-por-subir li small { color: rgb(var(--tc-muted)); white-space: nowrap; }
 .tc-chat-por-subir li button { width: 1.5rem; height: 1.5rem; border-radius: .4rem; color: rgb(var(--tc-muted)); }
 .tc-chat-por-subir li button:hover { background: rgb(var(--tc-red) / .12); color: rgb(var(--tc-red)); }
+/* Lo que va subiendo se va llenando de color; lo que falló, en rojo. */
+.tc-chat-por-subir li.tc-chat-por-subir--subiendo {
+  background: linear-gradient(to right, rgb(var(--tc-gold) / .16) var(--pct, 0%), rgb(var(--tc-card)) var(--pct, 0%));
+}
+.tc-chat-por-subir li.tc-chat-por-subir--subiendo small { font-variant-numeric: tabular-nums; color: rgb(var(--tc-gold)); }
+.tc-chat-por-subir li.tc-chat-por-subir--error { border-color: rgb(var(--tc-red) / .55); }
+.tc-chat-por-subir .tc-chat-por-subir-error { color: rgb(var(--tc-red)); font-weight: 600; }
 .tc-chat--soltando { outline: 2px dashed rgb(var(--tc-gold) / .8); outline-offset: -6px; }
 .tc-chat-editar { margin-top: .15rem; }
 .tc-chat-editar textarea {
