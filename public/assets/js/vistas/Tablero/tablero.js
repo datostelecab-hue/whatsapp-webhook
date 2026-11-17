@@ -354,6 +354,29 @@
     vencida: () => 'Venció: se avisó a quien la lleva y a su superior',
   };
 
+  /**
+   * El mensaje del que nace la tarea, dentro de la ficha (17/11/2026): quien
+   * aprueba no tiene por qué estar en su canal. Si no está, no se le enseña el
+   * enlace (le diría «no existe»), y se le dice por qué.
+   */
+  function origenHtml(t) {
+    const o = t.origen;
+    if (!o || o.tipo !== 'mensaje') return '';
+    const cuerpo = o.anulado ? '<p class="text-sm italic text-telecab-muted">El mensaje se anuló.</p>'
+      : `<p class="text-sm whitespace-pre-line">${esc(o.texto || '')}</p>`
+        + (o.conFicheros ? '<p class="text-xs text-telecab-muted mt-1"><i class="fa-solid fa-paperclip mr-1" aria-hidden="true"></i>Lleva ficheros: se ven en el chat.</p>' : '');
+    return `<section class="tc-panel-seccion">
+        <h4>El mensaje</h4>
+        <div class="rounded-xl bg-telecab-card2 border border-telecab-border px-3 py-2">
+          <div class="flex flex-wrap items-center gap-x-2 text-[11px] text-telecab-muted mb-1">
+            <span class="font-semibold text-telecab-text">${esc(o.autor || '—')}</span><span>${esc(fechaHora(o.creadoAt))}</span><span>· ${esc(o.donde || '')}</span>
+          </div>
+          ${cuerpo}
+        </div>
+        ${o.puedeAbrir ? '' : '<p class="text-xs text-telecab-muted mt-1"><i class="fa-solid fa-lock mr-1" aria-hidden="true"></i>Es de un canal en el que no estás: aquí tienes el mensaje, pero no el resto de la conversación.</p>'}
+      </section>`;
+  }
+
   function pintarFicha(t) {
     if (!panel) return;
     const fila = (etq, html) => `<div class="flex gap-3 text-sm py-1"><span class="w-28 shrink-0 text-telecab-muted">${esc(etq)}</span><span class="min-w-0 flex-1">${html}</span></div>`;
@@ -369,13 +392,14 @@
         ${fila('Plazo', t.plazo.venceEl ? `${esc(dia(t.plazo.venceEl))}${t.plazo.dias != null ? ` <span class="text-telecab-muted">(${t.plazo.dias} días hábiles)</span>` : ''}`
           : t.plazo.dias != null ? `${t.plazo.dias} días hábiles <span class="text-telecab-muted">desde que se apruebe</span>` : '<span class="text-telecab-muted">Sin plazo</span>')}
         ${fila(t.tipo === 'manual' ? 'La pidió' : 'Nació', `${t.creadaPor ? esc(t.creadaPor.nombre) + ' · ' : ''}${esc(fechaHora(t.creadaAt))}`)}
-        ${t.enlace ? fila('Origen', `<a class="text-telecab-gold hover:underline" href="${esc(t.enlace)}">${esc(t.abrir || 'Abrir')} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>`
+        ${t.enlace && !(t.origen && t.origen.puedeAbrir === false) ? fila('Origen', `<a class="text-telecab-gold hover:underline" href="${esc(t.enlace)}">${esc(t.abrir || 'Abrir')} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>`
           + (t.seCierraEnSuOrigen && !['cerrada', 'rechazada', 'anulada'].includes(t.estado)
             ? '<span class="block text-xs text-telecab-muted mt-0.5">Se cierra sola al resolverla allí.</span>' : '')) : ''}
         ${t.bloqueoMotivo ? fila('La bloquea', `<span class="text-telecab-red">${esc(t.bloqueoMotivo)}</span>`) : ''}
         ${t.cierreNota ? fila(t.estado === 'cerrada' ? 'En qué quedó' : 'Motivo', esc(t.cierreNota)) : ''}
         ${t.motivoDemora ? fila('Por qué tarde', esc(t.motivoDemora)) : ''}
       </section>
+      ${origenHtml(t)}
       ${t.sensible ? '<p class="text-xs text-telecab-muted"><i class="fa-solid fa-lock mr-1" aria-hidden="true"></i>Lleva datos sensibles: el detalle se mira en su origen, con sus permisos.</p>'
         : t.descripcion ? `<section class="tc-panel-seccion"><h4>Detalle</h4><p class="text-sm whitespace-pre-line">${esc(t.descripcion)}</p></section>` : ''}
       <section class="tc-panel-seccion">

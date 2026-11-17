@@ -536,6 +536,7 @@ async function convertirEnTarea(usuarioId, mensajeId, { titulo, descripcion, res
 // mencionando a quien la creó, que así se entera.
 tablero.registrarTipo('mensaje', {
   etiqueta: 'Mensaje del chat', aprobacion: true, abrir: 'Abrir el mensaje',
+  verOrigen: mensajeDeTarea,
   async alCerrar(t, { quien, nota }) {
     const mid = entero(t.origen_id);
     const m = mid ? await repo.mensajeCrudo(null, mid) : null;
@@ -694,6 +695,37 @@ const nombre = async id => (id ? (await repo.nombreDe(null, id)) || 'Alguien' : 
  * <@id>, sin las marcas de formato y SIN DNI, NIE ni cuentas (sale en la
  * pantalla bloqueada). Corto: lo entero está en el chat.
  */
+/**
+ * El mensaje del que nace una tarea, para la ficha del tablero (17/11/2026):
+ * quien la aprueba no tiene por qué estar en su canal, y al abrir el mensaje le
+ * salía «no existe». Quien convierte un mensaje en tarea lo comparte con quien
+ * la aprueba: solo ese mensaje, nada más del canal. `puedeAbrir`: si está en
+ * el canal (si no, la ficha no le enseña el enlace).
+ */
+async function mensajeDeTarea(t, usuarioId) {
+  const mid = entero(t.origen_id);
+  const m = mid ? await repo.mensaje(null, mid) : null;
+  if (!m) return null;
+  const c = await repo.canal(null, Number(m.canal_id));
+  const yo = c.tipo === 'publico' ? null : await repo.miembro(null, c.id, usuarioId);
+  let texto = null;
+  if (!m.anulado_at) {
+    texto = String(m.texto || '');
+    const ids = [...new Set([...texto.matchAll(/<@(\d{1,9})>/g)].map(x => Number(x[1])))];
+    for (const id of ids) texto = texto.split(`<@${id}>`).join(`@${await nombre(id)}`);
+    texto = texto.replace(/<!canal>/g, '@canal');
+  }
+  return {
+    tipo: 'mensaje',
+    autor: m.autor || nombreCorto(m.autor_externo) || 'Telecab',
+    creadoAt: m.creado_at,
+    donde: c.tipo === 'directo' ? 'Un mensaje directo' : `#${c.nombre}`,
+    privado: c.tipo !== 'publico',
+    texto, anulado: !!m.anulado_at, conFicheros: !!m.con_adjuntos,
+    puedeAbrir: c.tipo === 'publico' || !!(yo && !yo.salido_at),
+  };
+}
+
 async function vistaPrevia(texto, ficheros = 0) {
   let t = String(texto || '');
   const ids = [...new Set([...t.matchAll(/<@(\d{1,9})>/g)].map(m => Number(m[1])))];

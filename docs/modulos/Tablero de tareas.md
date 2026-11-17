@@ -25,6 +25,8 @@ Y el 17/11/2026, Camilo:
 - **Las correcciones de fichaje salen del tablero**: «la corrección de fichajes no será prioridad». Se llevan en `/fichaje`, como antes.
 - **Las J y las −J salen del tablero**: «vamos a separar las justificaciones del tablero… no son cosas urgentes». Se llevan en `/justificantes`, como antes; las funciones de quién lleva cada tipo siguen.
 - **Carlos también aprueba las tareas** («Que Carlos también apruebe tareas»): la función `tareas_aprueba` la tiene también el puesto Dirección Barcelona (db/262), además de Dirección de Operaciones (Ignacio). Repartir los tickets (`tareas_asigna`) sigue siendo solo de Ignacio.
+- **Quien aprueba, rechaza o cierra una tarjeta la sigue viendo después** (17/11/2026). Carlos, que aprueba pero no ve todos los tableros, rechazó una y le salió «no existe»: la había rechazado, pero ya no estaba «por aprobar» y no era suya ni de su equipo.
+- **La tarea que nace de un mensaje enseña el mensaje en su ficha** (autor, cuándo, canal y texto), para quien puede ver la tarjeta aunque no esté en ese canal: quien la aprueba no tiene por qué estar en un privado (a Carlos, «Abrir el mensaje» le decía «no existe»). Solo ese mensaje; el resto del canal sigue siendo de quien está dentro, y a quien no está no se le enseña el enlace. Lo da cada tipo con `verOrigen` (`registrarTipo`).
 - Sus tarjetas abiertas se **anularon** con su motivo (db/261: en producción, 9 de correcciones y 1 J); las cerradas siguen como estaban. Nada se borró.
 
 Y para la 1c (16/11/2026), con lo que hacía cada uno en los últimos 60 días:

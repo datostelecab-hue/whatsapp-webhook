@@ -66,10 +66,14 @@ const TIPOS = new Map();
  *                su vez cierra la tarjeta). Sin él, se cierra aquí.
  *   alAsignar(tarea, { responsable, quien }): lo que hace en su origen.
  *   abrir        el texto del enlace a su origen en la ficha («Abrir la J»).
+ *   verOrigen(tarea, usuarioId) → lo que la ficha enseña de su origen, para
+ *                quien puede ver la tarjeta aunque no pueda abrir el origen
+ *                (un mensaje de un canal privado, para quien aprueba), con
+ *                `puedeAbrir`: si el enlace le sirve.
  */
-function registrarTipo(tipo, { etiqueta, aprobacion = false, cierreManual = true, alCerrar = null, alAsignar = null, abrir = null } = {}) {
+function registrarTipo(tipo, { etiqueta, aprobacion = false, cierreManual = true, alCerrar = null, alAsignar = null, abrir = null, verOrigen = null } = {}) {
   if (!/^[a-z][a-z_]{0,23}$/.test(String(tipo || ''))) throw new Error(`Tipo de tarjeta no válido: «${tipo}»`);
-  TIPOS.set(tipo, { tipo, etiqueta: etiqueta || tipo, aprobacion, cierreManual, alCerrar, alAsignar, abrir: abrir || 'Abrir' });
+  TIPOS.set(tipo, { tipo, etiqueta: etiqueta || tipo, aprobacion, cierreManual, alCerrar, alAsignar, abrir: abrir || 'Abrir', verOrigen });
 }
 const tipoDe = t => TIPOS.get(t) || { tipo: t, etiqueta: t, aprobacion: false, cierreManual: true, abrir: 'Abrir' };
 
@@ -89,6 +93,9 @@ async function contexto(usuarioId) {
 function puedeVer(ctx, t) {
   if (ctx.todos) return true;
   if (ctx.aprueba && t.estado === 'por_aprobar') return true;
+  // Quien la aprobó, la rechazó o la cerró la sigue viendo (17/11/2026: Carlos
+  // rechazaba una y le salía «no existe», porque ya no estaba por aprobar).
+  if (t.aprobada_por === ctx.id || t.cerrada_por === ctx.id) return true;
   if (t.responsable_id === ctx.id || t.creada_por === ctx.id || (t.colaboradores || []).includes(ctx.id)) return true;
   return !!(t.responsable_id && ctx.equipo.has(t.responsable_id));
 }
@@ -196,9 +203,12 @@ async function ficha(usuarioId, id) {
   const t = entero(id) ? await repo.una(null, entero(id)) : null;
   if (!t || !puedeVer(ctx, t)) throw error('Esa tarjeta no existe o no es de las que puedes ver', 404);
   const cal = await calendario.de('madrid');
-  const [eventos, comentarios] = await Promise.all([repo.eventos(t.id), repo.comentarios(t.id)]);
+  const ver = tipoDe(t.tipo).verOrigen;
+  const [eventos, comentarios, origen] = await Promise.all([repo.eventos(t.id), repo.comentarios(t.id),
+    ver && t.origen_id && !t.sensible ? Promise.resolve(ver(t, ctx.id)).catch(() => null) : null]);
   return {
     ...publica(ctx, t, await semaforoDe(t, cal, calendario.hoy())),
+    origen: origen || null,
     historia: eventos.map(e => ({ tipo: e.tipo, autor: e.autor_nombre, en: e.en, datos: e.datos, motivo: e.motivo })),
     comentariosLista: comentarios.map(c => ({ id: Number(c.id), autor: c.autor_nombre, autorId: c.autor_id, texto: c.texto, en: c.creado_at, mio: c.autor_id === ctx.id })),
   };

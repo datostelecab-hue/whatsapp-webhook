@@ -106,6 +106,32 @@ test('reacciones, fijar y guardar', () => conBase(async h => {
   assert.deepEqual((await chat.guardados(p.b)).mensajes.map(x => x.id), [m.id], 'de un privado del que salió, ya no');
 }));
 
+test('quien solo aprueba ve el mensaje de la tarea aunque sea de un privado, y aprobarla o rechazarla no le dice «no existe» (17/11/2026)', () => conBase(async h => {
+  const p = await oficina(h);
+  // Como Carlos: aprueba tareas, pero no ve todos los tableros ni está en el canal.
+  const carlos = (await h.fabrica.usuario({ nombre: 'Carlos' })).id;
+  await h.consulta(`INSERT INTO usuario_funcion (usuario_id, funcion, suplente, creado_por) VALUES ($1, 'tareas_aprueba', FALSE, $1)`, [carlos]);
+  const canalId = (await chat.crearCanal(p.a, { nombre: 'escalaciones', tipo: 'privado' })).id;
+  await chat.anadir(p.a, canalId, { usuarioId: p.b });
+  const m = await enviar(p.b, canalId, 'Revisar la caja con <@' + p.a + '>');
+  const r = await chat.convertirEnTarea(p.b, m.id, { titulo: 'Revisar la caja', responsableId: p.c, plazoDias: 2 });
+  assert.equal(r.tarea.estado, 'por_aprobar');
+
+  const f = await tablero.ficha(carlos, r.tarea.id);
+  assert.deepEqual(
+    (({ texto, privado: pr, puedeAbrir, donde, autor }) => ({ texto, privado: pr, puedeAbrir, donde, autor }))(f.origen),
+    { texto: 'Revisar la caja con @Ignacio P.', privado: true, puedeAbrir: false, donde: '#escalaciones', autor: 'Karen P.' },
+    'el mensaje, con los nombres; y que el enlace no le sirve');
+  await assert.rejects(chat.uno(carlos, m.id), e => e.status === 404, 'el canal sigue siendo privado');
+  assert.equal((await tablero.ficha(p.b, r.tarea.id)).origen.puedeAbrir, true, 'quien está en el canal, sí lo abre');
+
+  const rechazada = await tablero.rechazar(carlos, r.tarea.id, { motivo: 'Eso lo lleva el taller' });
+  assert.equal(rechazada.estado, 'rechazada', 'la tarjeta, no «no existe»');
+  const otra = await tablero.crear(p.b, { titulo: 'Otra cosa', responsableId: p.c, plazoDias: 1 });
+  assert.equal((await tablero.aprobar(carlos, otra.id, {})).estado, 'por_hacer');
+  assert.equal((await tablero.ficha(carlos, otra.id)).estado, 'por_hacer', 'y la sigue viendo después');
+}));
+
 test('convertir un mensaje en tarea: como una tarea a mano, con su sello y la respuesta en el hilo al cerrarla (ítem 1)', () => conBase(async h => {
   const p = await oficina(h);
   const jefe = (await h.fabrica.usuario({ nombre: 'Jefe' })).id;

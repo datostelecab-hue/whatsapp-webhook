@@ -31,6 +31,7 @@ actualizado: 2026-11-17
 
 ## Cómo funciona
 
+- **La tarea que nace de un mensaje** enseña el mensaje en su ficha del [[Tablero de tareas]] a quien la puede ver, aunque no esté en el canal (`mensajeDeTarea`, 17/11/2026): quien la aprueba necesita el contexto. Solo ese mensaje: el canal sigue cerrado para quien no está dentro.
 - **Los nombres, cortos** (Camilo, 17/11/2026: «el nombre y las iniciales de sus apellidos en el chat y ya»): «Laura B.», «Karen G. L.», sin las partículas («de», «la»…). En todo el chat: autores, menciones, reacciones, miembros, directos, avisos al dispositivo y los autores traídos de Slack sin usuario. Lo hacen `NOMBRE` de `chat.repo.js` (para los usuarios) y `nombreCorto()` de `chat.service.js` (para los nombres de Slack). Fuera del chat, el nombre sigue completo.
 - **Canales** públicos (de toda la oficina) y privados (de quien está dentro), y **mensajes directos** de 1 a 1 o de grupo (hasta 9 personas; el mismo grupo es siempre el mismo directo). Un privado o un directo, a quien no está dentro le da un 404: ni sabe que existe.
 - **No leídos**: el canal sale en negrita; los **directos sin leer y las menciones** llevan su número. En el menú, la entrada **Chat** va en rojo con los directos y las menciones y, si no hay, en azul con lo que haya sin leer en los canales. Al abrir un canal se marca leído (con la pestaña delante), y una raya «Nuevos» enseña dónde se quedó.
