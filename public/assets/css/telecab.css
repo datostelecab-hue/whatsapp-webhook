@@ -1028,3 +1028,124 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-aviso-acciones { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
 .tc-aviso-punto { position: absolute; top: .8rem; right: .75rem; width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--tc-gold)); }
 .tc-aviso--urgente .tc-aviso-punto { background: rgb(var(--tc-red)); }
+
+/* ══════════════════════════════════════════════════════════════
+   ORGANIGRAMA (organigrama.js, 17/11/2026) — los puestos en árbol
+   ══════════════════════════════════════════════════════════════
+   Los puestos de db/255 colgando del puesto al que reportan, agrupados por
+   área, y dentro de cada puesto las personas que lo ocupan, que se arrastran
+   de un puesto a otro. Cada área con su color: un color de CATEGORÍA, que no
+   es el acento ni un estado. */
+:root, :root[data-theme='dark'], :root:not([data-theme^='claro-']):not([data-theme='light']) {
+  --tc-area-direccion: 167 139 250;
+  --tc-area-rrhh: 244 114 182;
+  --tc-area-administracion: 34 211 238;
+  --tc-area-planificacion: 74 222 128;
+  --tc-area-control: 96 165 250;
+  --tc-area-taller: 251 146 60;
+  --tc-area-sistemas: 148 163 184;
+}
+:root[data-theme='light'], :root[data-theme^='claro-'] {
+  --tc-area-direccion: 124 58 237;
+  --tc-area-rrhh: 219 39 119;
+  --tc-area-administracion: 14 116 144;
+  --tc-area-planificacion: 21 128 61;
+  --tc-area-control: 37 99 235;
+  --tc-area-taller: 194 65 12;
+  --tc-area-sistemas: 71 85 105;
+}
+
+.tc-avatar--chico { width: 1.6rem; height: 1.6rem; font-size: .625rem; }
+
+.tc-org { display: flex; flex-direction: column; gap: .85rem; }
+.tc-org-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
+.tc-org-ayuda { display: flex; align-items: center; gap: .45rem; font-size: .8125rem; color: rgb(var(--tc-muted)); }
+.tc-org-zoom { display: flex; align-items: center; gap: .35rem; }
+.tc-org-zoom-valor { min-width: 3.2rem; text-align: center; font-size: .75rem; font-weight: 600; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+
+/* La bandeja de quien no tiene puesto: también se suelta aquí (le quita el puesto). */
+.tc-org-sin {
+  padding: .65rem .75rem; border-radius: 1rem; border: 1px dashed rgb(var(--tc-border)); background: rgb(var(--tc-card) / .6);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.tc-org-sin h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }
+.tc-org-sin .tc-org-gente { flex-direction: row; flex-wrap: wrap; }
+.tc-org-sin .tc-org-persona { width: auto; max-width: 16rem; }
+
+/* El marco se desplaza; el lienzo se acerca o se aleja (zoom). */
+.tc-org-marco {
+  overflow: auto; max-height: calc(100vh - 15rem); border-radius: 1rem;
+  border: 1px solid rgb(var(--tc-border)); background: rgb(var(--tc-card2) / .35);
+}
+.tc-org-lienzo { display: inline-block; min-width: 100%; padding: 1rem 1.25rem 1.5rem; }
+
+/* El árbol: cada nivel en fila, con las líneas de la casa (el borde). */
+.tc-org-nivel { position: relative; display: flex; justify-content: center; margin: 0; padding: 1.25rem 0 0; list-style: none; }
+.tc-org-lienzo > .tc-org-nivel { padding-top: 0; }
+.tc-org-nivel .tc-org-nivel::before {
+  content: ''; position: absolute; top: 0; left: 50%; height: 1.25rem; border-left: 2px solid rgb(var(--tc-border));
+}
+.tc-org-rama { position: relative; display: flex; flex-direction: column; align-items: center; padding: 1.25rem .45rem 0; }
+.tc-org-rama::before, .tc-org-rama::after {
+  content: ''; position: absolute; top: 0; width: 50%; height: 1.25rem; border-top: 2px solid rgb(var(--tc-border));
+}
+.tc-org-rama::before { right: 50%; }
+.tc-org-rama::after { left: 50%; border-left: 2px solid rgb(var(--tc-border)); }
+.tc-org-rama:only-child { padding-top: 0; }
+.tc-org-rama:only-child::before, .tc-org-rama:only-child::after { display: none; }
+.tc-org-rama:first-child::before, .tc-org-rama:last-child::after { border: 0 none; }
+.tc-org-rama:last-child::before { border-right: 2px solid rgb(var(--tc-border)); border-top-right-radius: .7rem; }
+.tc-org-rama:first-child::after { border-top-left-radius: .7rem; }
+
+/* El bloque de un área: sus puestos de ese nivel, uno debajo de otro. */
+.tc-org-grupo {
+  --org-area: var(--tc-muted);
+  display: flex; flex-direction: column; gap: .5rem; padding: .55rem; border-radius: 1rem;
+  border: 1px solid rgb(var(--org-area) / .4); background: rgb(var(--org-area) / .07);
+}
+.tc-org-grupo[data-area='direccion'] { --org-area: var(--tc-area-direccion); }
+.tc-org-grupo[data-area='rrhh'] { --org-area: var(--tc-area-rrhh); }
+.tc-org-grupo[data-area='administracion'] { --org-area: var(--tc-area-administracion); }
+.tc-org-grupo[data-area='planificacion'] { --org-area: var(--tc-area-planificacion); }
+.tc-org-grupo[data-area='control'] { --org-area: var(--tc-area-control); }
+.tc-org-grupo[data-area='taller'] { --org-area: var(--tc-area-taller); }
+.tc-org-grupo[data-area='sistemas'] { --org-area: var(--tc-area-sistemas); }
+.tc-org-area {
+  display: inline-flex; align-items: center; gap: .4rem; padding: 0 .2rem;
+  font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--org-area));
+}
+.tc-org-area::before { content: ''; width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--org-area)); }
+
+/* Un puesto: su nombre, quien lo ocupa y cuántas funciones lleva. */
+.tc-org-puesto {
+  width: 13.5rem; display: flex; flex-direction: column; gap: .45rem; padding: .6rem .65rem; border-radius: .85rem;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); box-shadow: var(--tc-sombra);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.tc-org-puesto--vacante { border-style: dashed; }
+.tc-org-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: .4rem; }
+.tc-org-cabeza h4 { font-size: .8125rem; font-weight: 700; line-height: 1.3; color: rgb(var(--tc-text)); }
+.tc-org-gente { display: flex; flex-direction: column; gap: .3rem; }
+.tc-org-persona {
+  display: flex; align-items: center; gap: .5rem; width: 100%; padding: .3rem .5rem .3rem .3rem; border-radius: .65rem;
+  background: rgb(var(--tc-card2)); border: 1px solid transparent; color: rgb(var(--tc-text));
+  font-size: .8125rem; font-weight: 500; text-align: left; cursor: grab;
+  transition: border-color .15s ease, background-color .15s ease, opacity .15s ease;
+}
+.tc-org-persona:hover { border-color: rgb(var(--tc-gold) / .5); }
+.tc-org-persona:active { cursor: grabbing; }
+.tc-org-persona:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 2px; }
+.tc-org-persona--arrastrando { opacity: .4; }
+.tc-org-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-org-vacio { padding: .25rem .2rem; font-size: .75rem; font-style: italic; color: rgb(var(--tc-muted)); }
+.tc-org-pie { display: flex; align-items: center; gap: .35rem; font-size: .6875rem; color: rgb(var(--tc-muted)); cursor: help; }
+
+/* Mientras se arrastra: dónde se puede soltar, y dónde se va a soltar. */
+.tc-org--arrastrando .tc-org-puesto, .tc-org--arrastrando .tc-org-sin { border-style: dashed; }
+.tc-org .tc-org-soltar {
+  border-color: rgb(var(--tc-gold)); border-style: solid;
+  background: rgb(var(--tc-gold) / .1); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .22);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-org-puesto, .tc-org-persona, .tc-org-sin { transition: none; }
+}

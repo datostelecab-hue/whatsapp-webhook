@@ -47,6 +47,15 @@ Sale de los descriptivos de puesto y los ciclos de trabajo de RR. HH., Administr
 - **Ángel**: db/248 le buscaba como «Huarcayaculqui» y en producción es «Huarcaya», así que allí no le daba la función de supervisor. db/255 lo busca con los dos y se la da su puesto.
 - **Un puesto vacío** sale en la pantalla como aviso («Puestos sin nadie»): sus funciones no le llegan a nadie y quien reportaba a él sube al de encima.
 
+### El organigrama (17/11/2026)
+
+La pestaña **Organigrama** de /organizacion (`?vista=organigrama`) pinta los puestos en árbol: cada uno colgando del puesto al que reporta, los de un mismo nivel **agrupados por área** (RR. HH. sale como un bloque con sus cuatro puestos) y cada área con su color. Dentro de cada puesto, quien lo ocupa; un puesto sin nadie sale como **vacante**.
+
+- **Se arrastra a la gente**: soltar a una persona en otro puesto dice qué le cambia (área, superior y funciones) y, si se confirma, se lo cambia. Soltarla en **«Sin puesto»** se lo quita.
+- **Pulsar a una persona** abre su ficha en la pestaña Personas. En el móvil, donde no se arrastra, es la forma de cambiarle el puesto («Cambiar el puesto»).
+- **Más grande, más pequeño o «Ajustar»** a lo ancho; se recuerda en cada navegador.
+- Es la pieza global `Organigrama` (`public/assets/js/organigrama.js`, clases `.tc-org*`): ver [[Componentes de la casa]].
+
 ## Función no es llave
 
 | | La **llave** ([[Usuarios y permisos]]) | La **función** (aquí) |

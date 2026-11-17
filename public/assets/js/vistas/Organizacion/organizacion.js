@@ -296,6 +296,69 @@
     await guardar(`${URL}/api/funcion/${d.id}`, { funcion: v.funcion, suplente: v.suplente === 'si', nota: v.nota }, 'Función dada', d);
   }
 
+  // ── El organigrama (Organigrama, pieza global) ─────────────────────────
+  // Los puestos en árbol con la gente dentro. Arrastrar a alguien a otro
+  // puesto se lo cambia, después de decir qué le cambia; pulsar a alguien abre
+  // su ficha en la vista de personas.
+  const cajaOrg = document.getElementById('org-organigrama');
+  let organigrama = null;
+  let datosOrg = null;   // lo último que pintó: los puestos, para explicar un cambio
+  async function pintarOrganigrama() {
+    if (!organigrama) {
+      organigrama = Organigrama.montar(cajaOrg, {
+        alSoltar: moverEnOrganigrama,
+        alAbrir: async id => { pestanas.ir('personas'); await lst.abrir(id); },
+      });
+    }
+    const r = await Api.get(URL + '/api/lista', { aviso: 'No se ha podido cargar el organigrama' });
+    if (!r) return;
+    datosOrg = r;
+    organigrama.pintar({
+      puestos: r.puestos || [],
+      sinPuesto: (r.filas || []).filter(f => !f.puesto && f.rol !== 'conductor').map(f => ({ id: f.id, nombre: f.nombre })),
+    });
+  }
+
+  async function moverEnOrganigrama({ persona, nombre, desde, hacia }) {
+    const puestos = (datosOrg && datosOrg.puestos) || [];
+    const nuevo = puestos.find(p => p.codigo === hacia);
+    const antes = puestos.find(p => p.codigo === desde);
+    const si = await Dialogo.confirmar({
+      titulo: hacia ? `¿${nombre} pasa a ${nuevo ? nuevo.nombre : hacia}?` : `¿${nombre} se queda sin puesto?`,
+      texto: hacia
+        ? `${antes ? `Deja de ser ${antes.nombre}. ` : ''}Desde ya le vienen el área (${nuevo ? nuevo.areaEtiqueta : '—'}), el superior` +
+          `${nuevo && nuevo.reportaANombre ? ` (quien ocupe ${nuevo.reportaANombre})` : ''} y las funciones de ese puesto. Lo que tenga a mano se queda.`
+        : 'Deja de tener el área, el superior y las funciones de su puesto: solo le valdrá lo que tenga a mano.',
+      si: hacia ? 'Sí, cambiarle el puesto' : 'Sí, quitarle el puesto', no: 'Volver',
+    });
+    if (!si) return;
+    try {
+      await Api.post(`${URL}/api/puesto/${persona}`, { puesto: hacia || null });
+      Dialogo.hecho('Puesto cambiado');
+      await lst.recargar();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se ha cambiado', texto: e.message, tono: 'error' });
+    }
+    await pintarOrganigrama();
+  }
+
+  const pestanas = Pestanas.montar(document.getElementById('org-pestanas'), {
+    pestanas: [
+      { id: 'personas', texto: 'Personas', icono: 'fa-users' },
+      { id: 'organigrama', texto: 'Organigrama', icono: 'fa-sitemap' },
+    ],
+    param: 'vista',
+    alCambiar: id => mostrar(id),
+  });
+  function mostrar(id) {
+    const org = id === 'organigrama';
+    document.getElementById('modulo').classList.toggle('hidden', org);
+    cajaOrg.classList.toggle('hidden', !org);
+    if (org) pintarOrganigrama();
+  }
+  // Se puede llegar con la vista puesta (?vista=organigrama).
+  mostrar(pestanas.actual());
+
   async function quitarFuncion(f, d) {
     const v = await Dialogo.formulario(`Quitar · ${f.etiqueta}`, [
       { id: 'motivo', etiqueta: 'Por qué se le quita', tipo: 'texto-largo', obligatorio: true, max: 500,
