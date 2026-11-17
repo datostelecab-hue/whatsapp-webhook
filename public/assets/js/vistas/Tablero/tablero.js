@@ -232,7 +232,7 @@
       ...camposPlazo(2),
     ], {
       textoBoton: yo.aprueba ? 'Crear la tarea' : 'Pedir la tarea',
-      nota: yo.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Le llega a quien aprueba las tareas; el plazo empieza a contar cuando la apruebe.',
+      nota: yo.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Tu tarea estará a la espera de ser aprobada; el plazo empieza a contar cuando se apruebe.',
     });
     if (!v) return;
     const r = await Api.post(`${API}/tarjetas`, { titulo: v.titulo, descripcion: v.descripcion, responsableId: Number(v.responsable), ...plazoDe(v) },
@@ -479,7 +479,7 @@
       { sel: '#t-nueva', icono: 'fa-plus', titulo: 'Nueva tarea',
         texto: 'Para ti o para otra persona: qué hay que hacer, quién la hace y el plazo en días hábiles (sin fines de semana ni festivos). También nace desde un mensaje del chat, con «Convertir en tarea».' },
       { sel: '[data-columna="por_aprobar"]', icono: 'fa-user-check', titulo: 'Por aprobar',
-        texto: 'Si no apruebas tareas, la que pides espera aquí a que Ignacio la apruebe; su plazo empieza a contar cuando la aprueba. Si la rechaza, te llega el porqué.' },
+        texto: 'Si no apruebas tareas, la que pides estará aquí a la espera de ser aprobada; su plazo empieza a contar cuando se apruebe. Si se rechaza, te llega el porqué.' },
       { sel: '[data-columna="por_hacer"]', icono: 'fa-arrows-left-right', titulo: 'Por hacer y en curso',
         texto: 'Cuando empieces, arrastra la tarjeta a «En curso» (o ábrela y cámbiala). Con el teclado, Intro la abre.' },
       { sel: ['#t-tablero .tc-tarjeta', '[data-columna="en_curso"]'], icono: 'fa-traffic-light', titulo: 'El semáforo del plazo',

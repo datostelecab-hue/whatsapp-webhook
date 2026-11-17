@@ -600,7 +600,7 @@
       { id: 'fecha', etiqueta: 'O fecha límite', tipo: 'fecha' },
     ], {
       textoBoton: yoTablero.aprueba ? 'Crear la tarea' : 'Pedir la tarea',
-      nota: (yoTablero.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Le llega a quien aprueba las tareas; el plazo empieza a contar cuando la apruebe.')
+      nota: (yoTablero.aprueba ? 'La creas tú, que apruebas: empieza a contar ya.' : 'Tu tarea estará a la espera de ser aprobada; el plazo empieza a contar cuando se apruebe.')
         + ' El mensaje llevará el sello de la tarea y, al cerrarla, la respuesta saldrá en su hilo.',
     });
     if (!v) return;
@@ -1101,8 +1101,8 @@
         texto: `${tocar.matches ? 'Al tocar un mensaje' : 'Al pasar por encima de un mensaje'} sale su barra: reaccionar, responder en un hilo, guardarlo para luego, fijarlo en el canal, convertirlo en tarea y, si es tuyo, editarlo o anularlo.` }),
       enMensaje('[data-accion="tarea"]', { icono: 'fa-list-check', titulo: 'Convertir un mensaje en tarea',
         texto: 'Con el botón de la lista de la barra. El título y el detalle salen ya del mensaje; tú eliges quién la hace y el plazo, en días hábiles (sin fines de semana ni festivos).' }),
-      { icono: 'fa-user-check', titulo: 'Quién la aprueba',
-        texto: 'Si tú no apruebas tareas, la tarea le llega primero a Ignacio, y el plazo empieza a contar cuando la aprueba. Si la creas tú y apruebas, empieza a contar ya.' },
+      { icono: 'fa-user-check', titulo: 'A la espera de aprobación',
+        texto: 'Tu tarea estará a la espera de ser aprobada, y el plazo empieza a contar cuando se apruebe. Si tú apruebas tareas, empieza a contar ya.' },
       { sel: '.tc-chat-mensajes .tc-chat-tarea', icono: 'fa-tag', titulo: 'El sello de la tarea',
         texto: 'El mensaje lleva el sello de su tarea: en qué estado está, quién la hace y cuándo vence. Pulsándolo vas a su tarjeta en el tablero.' },
       { icono: 'fa-circle-check', titulo: 'Cuando se cierra',
