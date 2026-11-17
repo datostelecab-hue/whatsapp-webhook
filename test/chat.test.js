@@ -48,7 +48,7 @@ test('los públicos son de toda la oficina; los privados y los directos, de quie
 
   const d1 = await chat.directo(p.a, { usuarios: [p.b] });
   assert.equal((await chat.directo(p.b, { usuarios: [p.a] })).id, d1.id, 'el mismo directo, lo abra quien lo abra');
-  assert.equal(d1.titulo, 'Karen De Prueba');
+  assert.equal(d1.titulo, 'Karen P.');
   await assert.rejects(chat.mensajes(p.c, d1.id), e => e.status === 404, 'un directo es privado');
 
   const fuera = (await h.fabrica.usuario({ nombre: 'Luis', estado: 'bloqueado' })).id;

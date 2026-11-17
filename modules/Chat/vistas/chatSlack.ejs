@@ -1,9 +1,11 @@
 <%#
   LA MIGRACIÓN DE SLACK (ítem 2, entrega 2d, db/259) — solo el desarrollador.
 
-  Arriba, si el servidor tiene el token de Slack y con qué cuenta, y los dos
-  botones: «Simular» (lee Slack y dice qué traería, sin escribir ningún mensaje)
-  y «Migrar» (lo trae; se puede repetir y no duplica). Mientras va, el avance.
+  El ERP no habla con Slack (Camilo: «no necesito integrar slack sino migrarlo»):
+  Slack se lee fuera, mensaje a mensaje, y aquí se sube. Arriba, tres pasos:
+  subir la exportación; «Simular» (dice qué traería, sin escribir ningún
+  mensaje) y «Migrar» (lo trae; se puede repetir y no duplica); y subir la
+  carpeta de los ficheros.
 
   Debajo, dos pestañas (?vista=):
     · Qué se trae: cada canal y cada directo de Slack, adónde va en el chat y
@@ -18,7 +20,7 @@
       <i class="fa-solid fa-right-to-bracket text-telecab-gold" aria-hidden="true"></i> Migración de Slack
     </h1>
     <p class="text-sm text-telecab-muted mt-1 max-w-3xl">
-      Trae al chat los canales de Slack, los mensajes directos de quien dio el token, sus hilos, reacciones y ficheros.
+      Trae al chat lo que se leyó de Slack: los canales, los mensajes directos de la cuenta con la que se leyó, sus hilos, reacciones y ficheros, y la gente de cada privado.
       No avisa a nadie: lo traído no cuenta como no leído ni como mención.
     </p>
   </div>

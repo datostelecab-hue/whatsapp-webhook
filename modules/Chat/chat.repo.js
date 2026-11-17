@@ -8,7 +8,14 @@
 const db = require('../../services/db');
 
 const q = (cli, sql, vals) => (cli || { query: (s, v) => db.consulta(s, v) }).query(sql, vals);
-const NOMBRE = a => `btrim(${a}.nombre || ' ' || COALESCE(NULLIF(${a}.apellidos, '.'), ''))`;
+// En el chat, cada uno con su nombre y las iniciales de sus apellidos (Camilo,
+// 17/11/2026: «Laura B.»), sin las partículas («de», «la»…). Igual que
+// nombreCorto() de chat.service.js, que lo hace con los nombres de Slack.
+const PARTICULAS = `'de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'di', 'van', 'von'`;
+const NOMBRE = a => `btrim(${a}.nombre || COALESCE(' ' || (
+    SELECT string_agg(upper(left(x.p, 1)) || '.', ' ' ORDER BY x.n)
+      FROM regexp_split_to_table(btrim(NULLIF(${a}.apellidos, '.')), '\\s+') WITH ORDINALITY AS x (p, n)
+     WHERE x.p <> '' AND lower(x.p) NOT IN (${PARTICULAS})), ''))`;
 // Quién es de la oficina: con sesión en la gestión (no los conductores) y sin bloquear.
 const OFICINA = a => `${a}.estado <> 'bloqueado' AND NOT EXISTS (SELECT 1 FROM rol r WHERE r.id = ${a}.rol_id AND r.codigo = 'conductor')`;
 

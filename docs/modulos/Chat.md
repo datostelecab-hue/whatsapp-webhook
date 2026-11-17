@@ -10,7 +10,7 @@ actualizado: 2026-11-17
 - **2a — canales, directos, tiempo real, no leídos, menciones e hilos** (17/11/2026, rama `chat/2a-canales`, db/256).
 - **2b — ficheros, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces y convertir en tarea** (17/11/2026, en la misma rama, db/257).
 - **2c** búsqueda, estado y no molestar. Las notificaciones al dispositivo se adelantaron (17/11/2026: ver abajo).
-- **2d — la migración de Slack** (17/11/2026, en `main`, db/259): abajo.
+- **2d — la migración de Slack** (17/11/2026, en `main`, db/259 y db/260): abajo.
 - **2e** gestión de canales (archivar, renombrar).
 
 **Se trae Slack** (Camilo, 17/11/2026): «Ya no queremos usarlo y la idea es migrar toda la info allá. Que no avise menciones ni nada hasta después de la migración». Sustituye a lo de «los chats arrancan vacíos», decidido ese mismo día por la mañana.
@@ -31,6 +31,7 @@ actualizado: 2026-11-17
 
 ## Cómo funciona
 
+- **Los nombres, cortos** (Camilo, 17/11/2026: «el nombre y las iniciales de sus apellidos en el chat y ya»): «Laura B.», «Karen G. L.», sin las partículas («de», «la»…). En todo el chat: autores, menciones, reacciones, miembros, directos, avisos al dispositivo y los autores traídos de Slack sin usuario. Lo hacen `NOMBRE` de `chat.repo.js` (para los usuarios) y `nombreCorto()` de `chat.service.js` (para los nombres de Slack). Fuera del chat, el nombre sigue completo.
 - **Canales** públicos (de toda la oficina) y privados (de quien está dentro), y **mensajes directos** de 1 a 1 o de grupo (hasta 9 personas; el mismo grupo es siempre el mismo directo). Un privado o un directo, a quien no está dentro le da un 404: ni sabe que existe.
 - **No leídos**: el canal sale en negrita; los **directos sin leer y las menciones** llevan su número. En el menú, la entrada **Chat** va en rojo con los directos y las menciones y, si no hay, en azul con lo que haya sin leer en los canales. Al abrir un canal se marca leído (con la pestaña delante), y una raya «Nuevos» enseña dónde se quedó.
 - **Menciones**: al escribir «@» salen las personas (en un privado o un directo, solo las de dentro) y **@canal**, que avisa a todos. En el texto van como `<@id>` y `<!canal>`, así que un nombre cambiado no rompe nada. Un mensaje que te menciona sale resaltado. En un privado, mencionar a quien no está no cuenta: no lo podría leer.
@@ -83,27 +84,35 @@ Que el servidor lea una página es justo lo que busca un ataque SSRF: que pida p
 
 Todo con piezas globales: Panel (hilos y miembros), Dialogo (nuevo canal, directo, añadir), Api, TiempoReal, Contadores y las clases `.tc-chat*` de `telecab.css` (V3).
 
-## La migración de Slack (2d, db/259)
+## La migración de Slack (2d, db/259 y db/260)
 
 Lo que decidió Camilo (17/11/2026):
 
-1. **Con un token de Slack de solo lectura y un proceso del servidor**, no con un agente que lea mensaje a mensaje: copia el texto exacto, los hilos, las reacciones y los ficheros, y se puede repetir. El token es de una app de Slack que crea Ignacio en su cuenta; va en Render como `SLACK_MIGRACION_TOKEN` y se revoca al acabar.
-2. **Los 19 canales del chat y el privado #efectivo**, que no estaba y se crea (privado, con su gente de Slack). Los demás canales de Slack no se traen.
-3. **Los mensajes directos de Ignacio** (los de quien da el token), como directos del chat entre él y cada persona. Los grupos de directos, solo si todos tienen usuario del ERP.
+1. **Mensaje a mensaje, sin integrar Slack en el ERP**: «no necesito integrar slack sino migrarlo y dejar de usarlo, que lo haga mensaje a mensaje». Primero se había hecho con un token y una app de Slack (la primera versión de la 2d, `db58ddd`); se quitó ese mismo día. **El ERP no habla con Slack**: ni token ni app.
+2. **Los 19 canales del chat y el privado #efectivo**, que no estaba y se crea. Los demás canales de Slack no se traen.
+3. **Los mensajes directos de Ignacio**, como directos del chat entre él y cada persona. Los de bots (Google Drive, jibble, Miro, Slack) y el suyo consigo mismo, no.
+4. **La gente de cada privado** («que en escalaciones-lorenzo estén los que faltan en el ERP»): entran sus miembros de Slack que tienen usuario; la simulación dice quién entra y quién no tiene usuario. Los públicos ya tienen a toda la oficina.
 
-Cómo va, en `/chat/slack` (solo el desarrollador):
+**Cómo se lee Slack** (fuera del ERP y fuera del repo: tiene datos de personas). En `Documents/Claude/Scripts de análisis/slack-migracion/`:
 
-- **Simular** lee Slack entero y dice, por conversación, adónde va, cuántos mensajes, respuestas y ficheros trae y cuántos son nuevos, o por qué no se trae. **No escribe ningún mensaje**; sí apunta **quién es quién**: cada persona de Slack con su usuario del ERP, por el correo y, si no casa, por el nombre (nombre y primer apellido, o el nombre solo si en la oficina no hay otro). Lo que salió por el nombre se comprueba en la pestaña «Quién es quién» y se corrige pulsando la fila; lo puesto a mano no lo cambia otra simulación.
-- **Migrar** lo trae. Cada mensaje con su **fecha** y su **autor**: si no tiene usuario del ERP (un conductor, alguien que ya no está, una integración), sale con su nombre de Slack (`autor_externo`). Los hilos, como hilos. Las reacciones, solo las que son de las seis del chat (👍 ✅ 👀 🙏 😂 ❤️ y sus parecidas); las demás se cuentan y no se traen. Las menciones, a `<@id>` si es usuario y si no a «@Nombre»; @here, @channel y @everyone, a @canal. Los enlaces, a su dirección; los `:emojis:` del texto, a su carácter. Los ficheros, a R2 como los del chat (de `files.slack.com` y de ningún otro sitio: el token no sale de ahí). El tema y la descripción del canal, si en el chat no tenía.
+- Agentes (Haiku) leen Slack con el **conector de Slack de Claude** (la cuenta de Ignacio): cada página de cada conversación, cada hilo, quién puso cada reacción, los miembros de los privados, los perfiles que hagan falta y cada fichero. **No reescriben nada**: lo que devuelve el conector queda tal cual en el registro de cada agente (y los ficheros, en disco).
+- `reconstruir.js` rehace desde ahí cada mensaje (texto exacto, autor con su correo, marca de tiempo, hilo, reacciones, ficheros) y **comprueba que no falte nada**: las páginas encadenadas hasta el final, cada hilo con todas sus respuestas, cada reacción con su gente, cada fichero. Lo que falta lo deja como lista de llamadas (`pendientes.json`); `lotes.js` la reparte en lotes para otros agentes, y se repite hasta que no falte nada.
+- La salida: `salida/exportacion.json` (los mensajes) y `salida/ficheros/` (cada uno como `<id de Slack>__<nombre>`). Lo que pasa de 10 MB no lo da el conector y queda en `salida/a-mano.txt` para bajarlo de Slack a mano con ese mismo nombre.
+
+**Cómo se trae**, en `/chat/slack` (solo el desarrollador), en tres pasos:
+
+1. **Subir la exportación** (el JSON; se queda en memoria hasta que el servidor se reinicie).
+2. **Simular** dice, por conversación, adónde va, cuántos mensajes, respuestas y ficheros trae y cuántos son nuevos, o por qué no se trae; y en cada privado, quién entra. **No escribe ningún mensaje**; sí apunta **quién es quién**: cada persona de Slack con su usuario del ERP, por el correo y, si no casa, por el nombre. Lo que salió por el nombre se comprueba en la pestaña «Quién es quién» y se corrige pulsando la fila; lo puesto a mano no lo cambia otra simulación. **Migrar** lo trae: cada mensaje con su **fecha** y su **autor** (si no tiene usuario del ERP, con su nombre de Slack: `autor_externo`); los hilos, como hilos; las reacciones de las seis del chat (las demás se cuentan y no se traen); las menciones a `<@id>` o «@Nombre»; @here, @channel y @everyone, a @canal; los enlaces, a su dirección; los `:emojis:`, a su carácter; lo reenviado, «Reenviado de …». Un mensaje borrado que tenía hilo sale como «(Mensaje borrado en Slack)». De cada fichero se apunta de qué mensaje es (`chat_slack_fichero`, db/260).
+3. **Subir los ficheros**: se elige la carpeta `ficheros` y se sube, uno a uno y tal cual, cada uno que falte; va a R2 como los del chat, a su mensaje. Si alguno falla, se vuelve a elegir la carpeta y solo se sube lo que falta.
+
 - **No avisa de nada**: lo traído (`slack_ts`) no cuenta como no leído ni como mención pendiente, no saca la línea de «Nuevos» y no manda notificaciones. Al acabar, solo se avisa a las pantallas abiertas para que se recarguen. En la conversación lleva una marca discreta, «Slack».
-- **Se puede repetir sin duplicar** (mismo canal y marca de Slack): sirve para traer lo que se siga escribiendo hasta el cambio, y para reintentar los ficheros que fallaron.
-- Fuera: lo que no es un mensaje (entró, salió, cambió el tema…). Un mensaje borrado que tenía hilo sale como «(Mensaje borrado en Slack)».
+- **Se puede repetir sin duplicar** (mismo canal y marca de Slack), con una exportación más nueva: sirve para traer lo que se siga escribiendo hasta el cambio.
 
 **El chat ordena por fecha** desde la 2d, no por el número del mensaje: lo traído entra después (con números más altos) pero es de antes, y tiene que salir en su sitio.
 
-**Ojo con el plazo**: el Slack de Telecab empezó el 03/09/2026. Si es el plan gratuito, enseña solo 90 días, y desde el **02/12/2026** lo más viejo deja de verse (tampoco por la API). Hay que migrar antes.
+**Ojo con el plazo**: el Slack de Telecab empezó el 03/09/2026. Si es el plan gratuito, enseña solo 90 días, y desde el **02/12/2026** lo más viejo deja de verse. Hay que migrar antes.
 
-## Las tablas (db/256, db/257 y db/259)
+## Las tablas (db/256, db/257, db/259 y db/260)
 
 - `chat_canal`: tipo (público, privado, directo), nombre, tema, descripción, `clave_directo` (los ids de un directo, en orden), archivado.
 - `chat_miembro`: quién está y hasta qué mensaje ha leído (`ultimo_leido_id`); salir es `salido_at`.
@@ -115,6 +124,7 @@ Cómo va, en `/chat/slack` (solo el desarrollador):
 - `chat_enlace` (2b): la vista previa de cada enlace (título, descripción, sitio) y si se pudo leer.
 - De Slack (2d): `chat_canal.slack_id` y `chat_mensaje.slack_canal`, `slack_ts` (únicos juntos: lo que impide duplicar) y `autor_externo` (el nombre de Slack de quien no es usuario del ERP).
 - `chat_slack_usuario` (2d): cada persona de Slack, su usuario del ERP y cómo se decidió (`email`, `nombre` o `a mano`). Bajo el libro.
+- `chat_slack_fichero` (2d, db/260): cada fichero de un mensaje traído (su id de Slack) y su adjunto cuando se sube. Bajo el libro.
 
 ## La API (`/chat/api`)
 
@@ -147,11 +157,14 @@ La migración de Slack, **solo el desarrollador** (`sesion.requiereDesarrollador
 
 ```
 GET  /chat/slack                     la pantalla
-GET  /chat/slack/api/estado          si hay token, con qué cuenta y lo que esté en marcha, con su informe (?ligero=1: sin preguntar a Slack)
+GET  /chat/slack/api/estado          la exportación subida, lo que esté en marcha (con su informe) y los ficheros (total y por subir)
+POST /chat/slack/api/exportacion     el JSON de la exportación (hasta 50 MB; se salta el parser de 2 MB de app.js)
 GET  /chat/slack/api/personas        quién es quién, y los usuarios del ERP para elegir
 POST /chat/slack/api/personas        { slackId, usuarioId }   corregir a mano (null: con su nombre de Slack)
 POST /chat/slack/api/simular         en segundo plano; una a la vez
 POST /chat/slack/api/migrar          en segundo plano; se puede repetir
+GET  /chat/slack/api/ficheros        los que faltan por subir
+POST /chat/slack/api/ficheros/:id    el fichero tal cual (application/octet-stream), a su mensaje; si ya estaba, nada
 ```
 
 ## Ficheros
@@ -160,11 +173,12 @@ POST /chat/slack/api/migrar          en segundo plano; se puede repetir
 db/256-chat.sql                       las tablas, los 19 canales de Slack y quién crea canales
 db/257-chat-2b.sql                    reacciones, fijados, guardados, vistas previas y los mensajes de solo ficheros
 db/259-chat-slack.sql                 de dónde viene cada canal y mensaje de Slack, quién es quién, y el orden por fecha
+db/260-chat-slack-ficheros.sql        de qué mensaje es cada fichero de Slack y si ya se subió
 services/enlaces.js                   la vista previa de un enlace, protegida contra SSRF (pieza de la casa)
 modules/Chat/chat.service.js          quién ve qué, enviar, menciones, hilos, leídos, contadores
 modules/Chat/chat.repo.js             el SQL
 modules/Chat/chat.controller.js       /chat, /chat/api y /chat/slack
-modules/Chat/slack.service.js         la migración de Slack: leerlo, quién es quién, el texto, simular y migrar
+modules/Chat/slack.service.js         la migración de Slack: la exportación, quién es quién, el texto, simular, migrar y los ficheros
 modules/Chat/slack.repo.js            su SQL
 modules/Chat/vistas/chatSlack.ejs     la pantalla de la migración
 public/assets/js/vistas/Chat/slack.js el estado, «Qué se trae» y «Quién es quién»
@@ -172,5 +186,5 @@ modules/Chat/vistas/chat.ejs          la pantalla
 public/assets/js/vistas/Chat/chat.js  la lista, la conversación, los hilos y las menciones
 test/chat.test.js                     3 pruebas (2a)
 test/chat-2b.test.js                  6 pruebas (2b)
-test/chat-slack.test.js               5 pruebas (2d, con un Slack de mentira)
+test/chat-slack.test.js               5 pruebas (2d, con una exportación de mentira)
 ```

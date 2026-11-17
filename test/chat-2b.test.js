@@ -60,14 +60,14 @@ test('editar y anular: lo propio, sin motivo; lo de otro, quien lleva los canale
   await assert.rejects(chat.anular(p.a, m.id, {}), e2 => e2.status === 400 && /por qué/.test(e2.message), 'lo de otro, con motivo');
   const an = (await chat.anular(p.a, m.id, { motivo: 'Datos personales' })).mensaje;
   assert.equal(an.texto, null, 'el texto ya no sale');
-  assert.deepEqual(an.anulado, { porAutor: false, por: 'Ignacio De Prueba', motivo: 'Datos personales' });
+  assert.deepEqual(an.anulado, { porAutor: false, por: 'Ignacio P.', motivo: 'Datos personales' });
   await assert.rejects(chat.editar(p.b, m.id, { texto: 'Otra vez' }), e2 => e2.status === 409);
   const fila = (await h.consulta('SELECT texto FROM chat_mensaje WHERE id = $1', [m.id])).rows[0];
   assert.equal(fila.texto, 'Mañana no libro', 'nada se borra');
 
   const m2 = await enviar(p.c, p.general, 'Me he equivocado de canal');
   const an2 = (await chat.anular(p.c, m2.id, {})).mensaje;
-  assert.deepEqual(an2.anulado, { porAutor: true, por: 'Laura De Prueba', motivo: null }, 'lo propio, sin motivo y sin enseñarlo');
+  assert.deepEqual(an2.anulado, { porAutor: true, por: 'Laura P.', motivo: null }, 'lo propio, sin motivo y sin enseñarlo');
   await assert.rejects(chat.anular(p.c, m2.id, {}), e2 => e2.status === 409);
   const de = (await chat.canales(p.b)).canales.find(x => x.id === p.general);
   assert.equal(de.sinLeer, 0, 'lo anulado no cuenta como no leído');
@@ -77,7 +77,7 @@ test('reacciones, fijar y guardar', () => conBase(async h => {
   const p = await oficina(h);
   const m = await enviar(p.a, p.general, 'Reunión a las 10');
   let r = (await chat.reaccionar(p.b, m.id, { emoji: 'ok' })).mensaje;
-  assert.deepEqual(r.reacciones, [{ emoji: 'ok', n: 1, mia: true, nombres: ['Karen De Prueba'] }]);
+  assert.deepEqual(r.reacciones, [{ emoji: 'ok', n: 1, mia: true, nombres: ['Karen P.'] }]);
   r = (await chat.reaccionar(p.c, m.id, { emoji: 'ok' })).mensaje;
   assert.equal(r.reacciones[0].n, 2);
   assert.equal((await chat.uno(p.a, m.id)).mensaje.reacciones[0].mia, false, 'la de otro no es mía');
@@ -90,7 +90,7 @@ test('reacciones, fijar y guardar', () => conBase(async h => {
   await assert.rejects(chat.reaccionar(p.b, mp.id, { emoji: 'ok' }), e => e.status === 404, 'a quien no está, ni existe');
 
   const f = (await chat.fijar(p.c, m.id, { fijar: true })).mensaje;
-  assert.deepEqual(f.fijado, { por: 'Laura De Prueba' }, 'fija cualquiera del canal');
+  assert.deepEqual(f.fijado, { por: 'Laura P.' }, 'fija cualquiera del canal');
   assert.equal((await chat.ficha(p.b, p.general)).fijados, 1);
   assert.deepEqual((await chat.fijados(p.b, p.general)).mensajes.map(x => x.id), [m.id]);
   await assert.rejects(chat.fijar(p.b, m.id, { fijar: true }), e => e.status === 409, 'ya estaba fijado');
@@ -118,7 +118,7 @@ test('convertir un mensaje en tarea: como una tarea a mano, con su sello y la re
   assert.equal(r.tarea.estado, 'por_aprobar', 'quien la crea no aprueba: pasa por quien aprueba');
   const fila = (await h.consulta('SELECT tipo, origen_id, enlace, creada_por FROM tarea WHERE id = $1', [r.tarea.id])).rows[0];
   assert.deepEqual(fila, { tipo: 'mensaje', origen_id: String(m.id), enlace: `/chat?canal=${p.general}&mensaje=${m.id}`, creada_por: p.a });
-  assert.deepEqual([r.mensaje.tarea.id, r.mensaje.tarea.estado, r.mensaje.tarea.responsable], [r.tarea.id, 'por_aprobar', 'Laura De Prueba'], 'el sello en el mensaje');
+  assert.deepEqual([r.mensaje.tarea.id, r.mensaje.tarea.estado, r.mensaje.tarea.responsable], [r.tarea.id, 'por_aprobar', 'Laura P.'], 'el sello en el mensaje');
   await assert.rejects(chat.convertirEnTarea(p.b, m.id, { titulo: 'Otra', responsableId: p.c, plazoDias: 1 }), e => e.status === 409, 'una por mensaje');
 
   await tablero.aprobar(jefe, r.tarea.id, {});
@@ -130,7 +130,7 @@ test('convertir un mensaje en tarea: como una tarea a mano, con su sello y la re
   const resp = hilo.respuestas[0];
   assert.equal(resp.evento, 'tarea_cerrada');
   assert.equal(resp.autor, 'Telecab', 'la firma Telecab: quien la cierra puede no estar en el canal');
-  assert.match(resp.texto, new RegExp(`^<@${p.a}> Tarea hecha: «Cambiar la rueda del 0101LTF», la cerró Laura De Prueba\\.\\nRueda cambiada en el taller$`));
+  assert.match(resp.texto, new RegExp(`^<@${p.a}> Tarea hecha: «Cambiar la rueda del 0101LTF», la cerró Laura P\\.\\nRueda cambiada en el taller$`));
   assert.equal((await chat.canales(p.a)).canales.find(x => x.id === p.general).menciones, 1, 'a quien la creó le llega como mención');
 }));
 

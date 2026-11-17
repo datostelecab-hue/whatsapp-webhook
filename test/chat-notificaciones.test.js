@@ -50,21 +50,21 @@ test('un mensaje normal no avisa a nadie; una mención, @canal y un directo, sí
 
   const m = await enviar(p.a, p.general, `<@${p.b}> mira el turno de mañana`);
   const r = await llegado();
-  assert.deepEqual([...r], [[p.b, 'Ignacio De Prueba te ha mencionado en #1-general-telecab']]);
-  assert.equal(r.todo[0].cuerpo, '@Karen De Prueba mira el turno de mañana', 'con el nombre, no con <@id>');
+  assert.deepEqual([...r], [[p.b, 'Ignacio P. te ha mencionado en #1-general-telecab']]);
+  assert.equal(r.todo[0].cuerpo, '@Karen P. mira el turno de mañana', 'con el nombre, no con <@id>');
   assert.equal(r.todo[0].url, `/chat?canal=${p.general}&mensaje=${m.id}`);
   assert.equal(r.todo[0].etiqueta, `chat-${p.general}`, 'la de un canal sustituye a la anterior');
 
   await enviar(p.c, p.general, `<!canal> hoy cerramos a las 15:00, <@${p.b}> también`);
   assert.deepEqual([...await llegado()].filter(x => [p.a, p.b, p.c].includes(x[0])), [
-    [p.a, 'Laura De Prueba avisa a todo #1-general-telecab'],
-    [p.b, 'Laura De Prueba te ha mencionado en #1-general-telecab'],
+    [p.a, 'Laura P. avisa a todo #1-general-telecab'],
+    [p.b, 'Laura P. te ha mencionado en #1-general-telecab'],
   ], 'una sola por persona: a Karen, la mención; a quien escribe, nada');
 
   const d = await chat.directo(p.a, { usuarios: [p.b] });
   await enviar(p.a, d.id, '¿Puedes llamarme? Mi DNI es 12345678Z');
   const dr = await llegado();
-  assert.deepEqual([...dr], [[p.b, 'Ignacio De Prueba']], 'el directo, con el nombre de quien escribe');
+  assert.deepEqual([...dr], [[p.b, 'Ignacio P.']], 'el directo, con el nombre de quien escribe');
   assert.equal(dr.todo[0].cuerpo, '¿Puedes llamarme? Mi DNI es •••', 'sin DNI en la pantalla bloqueada');
 }));
 
@@ -72,11 +72,11 @@ test('las respuestas en un hilo avisan a quien lo empezó y a quien ha escrito e
   const p = await oficina(h);
   const raiz = await enviar(p.a, p.general, 'Propuesta de turnos para diciembre');
   await enviar(p.b, p.general, 'A mí me vale', { padreId: raiz.id });
-  assert.deepEqual([...await llegado()], [[p.a, 'Karen De Prueba ha respondido en un hilo de #1-general-telecab']]);
+  assert.deepEqual([...await llegado()], [[p.a, 'Karen P. ha respondido en un hilo de #1-general-telecab']]);
   await enviar(p.c, p.general, 'A mí también', { padreId: raiz.id });
   assert.deepEqual([...await llegado()], [
-    [p.a, 'Laura De Prueba ha respondido en un hilo de #1-general-telecab'],
-    [p.b, 'Laura De Prueba ha respondido en un hilo de #1-general-telecab'],
+    [p.a, 'Laura P. ha respondido en un hilo de #1-general-telecab'],
+    [p.b, 'Laura P. ha respondido en un hilo de #1-general-telecab'],
   ]);
 }));
 
@@ -84,13 +84,13 @@ test('reacciones, fijados, añadir y sacar de un privado, y anular lo de otro', 
   const p = await oficina(h);
   const m = await enviar(p.b, p.general, 'Subo el cuadrante nuevo');
   await chat.reaccionar(p.c, m.id, { emoji: 'ok' });
-  assert.deepEqual([...await llegado()], [[p.b, 'Laura De Prueba ha reaccionado 👍 a tu mensaje']]);
+  assert.deepEqual([...await llegado()], [[p.b, 'Laura P. ha reaccionado 👍 a tu mensaje']]);
   await chat.reaccionar(p.c, m.id, { emoji: 'ok' });
   assert.deepEqual([...await llegado()], [], 'quitarla no avisa');
   await chat.reaccionar(p.b, m.id, { emoji: 'hecho' });
   assert.deepEqual([...await llegado()], [], 'a uno mismo, nada');
   await chat.fijar(p.a, m.id, { fijar: true });
-  assert.deepEqual([...await llegado()], [[p.b, 'Ignacio De Prueba ha fijado tu mensaje en #1-general-telecab']]);
+  assert.deepEqual([...await llegado()], [[p.b, 'Ignacio P. ha fijado tu mensaje en #1-general-telecab']]);
 
   const priv = await chat.crearCanal(p.a, { nombre: 'direccion', tipo: 'privado' });
   await chat.anadir(p.a, priv.id, { usuarioId: p.b });
@@ -101,7 +101,7 @@ test('reacciones, fijados, añadir y sacar de un privado, y anular lo de otro', 
   await chat.anular(p.a, m.id, { motivo: 'Lleva datos personales' });
   const r = await llegado();
   assert.deepEqual([...r], [[p.b, 'Han anulado un mensaje tuyo en #1-general-telecab']]);
-  assert.equal(r.todo[0].cuerpo, 'Ignacio De Prueba: Lleva datos personales');
+  assert.equal(r.todo[0].cuerpo, 'Ignacio P.: Lleva datos personales');
   const propio = await enviar(p.c, p.general, 'Me equivoqué');
   await chat.anular(p.c, propio.id, {});
   assert.deepEqual([...await llegado()], [], 'anular lo propio no avisa a nadie');
@@ -112,5 +112,5 @@ test('al editar, solo avisa a quien nombra ahora y antes no', () => conBase(asyn
   const m = await enviar(p.a, p.general, `<@${p.b}> revisa esto`);
   await llegado();
   await chat.editar(p.a, m.id, { texto: `<@${p.b}> revisa esto, y tú también <@${p.c}>` });
-  assert.deepEqual([...await llegado()], [[p.c, 'Ignacio De Prueba te ha mencionado en #1-general-telecab']]);
+  assert.deepEqual([...await llegado()], [[p.c, 'Ignacio P. te ha mencionado en #1-general-telecab']]);
 }));

@@ -161,7 +161,7 @@ async function completar(filas, ctx) {
     const previa = !anulado && x.enlace_url ? previas.get(x.enlace_url) : null;
     const t = tareas.get(id);
     return {
-      id, canalId: Number(x.canal_id), autorId: x.autor_id, autor: x.autor || x.autor_externo || 'Telecab',
+      id, canalId: Number(x.canal_id), autorId: x.autor_id, autor: x.autor || nombreCorto(x.autor_externo) || 'Telecab',
       // Traído de Slack (db/259): no cuenta como nuevo ni como no leído.
       importado: !!x.importado,
       padreId: x.padre_id ? Number(x.padre_id) : null, creadoAt: x.creado_at,
@@ -222,6 +222,20 @@ async function hilo(usuarioId, mensajeId) {
 
 // ── Escribir ───────────────────────────────────────────────────────────────
 /** El texto de un mensaje, limpio: saltos de línea de siempre, sin espacios a los lados. */
+/**
+ * Un nombre completo, como sale en el chat: el nombre y las iniciales de los
+ * apellidos, sin las partículas (Camilo, 17/11/2026: «Laura B.»). Para los
+ * nombres de Slack de quien no es usuario del ERP; los de los usuarios los
+ * hace así la consulta (NOMBRE de chat.repo).
+ */
+const PARTICULAS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'das', 'do', 'dos', 'di', 'van', 'von']);
+function nombreCorto(completo) {
+  const [nombre, ...resto] = String(completo || '').trim().split(/\s+/).filter(Boolean);
+  if (!nombre) return '';
+  const iniciales = resto.filter(p => !PARTICULAS.has(p.toLowerCase())).map(p => p[0].toUpperCase() + '.');
+  return [nombre, ...iniciales].join(' ');
+}
+
 const limpiarTexto = v => String(v == null ? '' : v).replace(/\r\n/g, '\n').trim();
 
 /** El primer enlace del texto, si se puede leer su vista previa; si no, null. */
@@ -534,7 +548,9 @@ tablero.registrarTipo('mensaje', {
       const dentro = new Set(await repo.idsMiembros(cli, c.id));
       const avisa = creador && (c.tipo === 'publico' || dentro.has(creador)) ? creador : null;
       const quienCierra = await repo.nombreDe(cli, quien.id);
-      const txt = `${avisa ? `<@${avisa}> ` : ''}Tarea hecha: «${t.titulo}»${quienCierra ? `, la cerró ${quienCierra}` : ''}.\n${nota}`.slice(0, MAX_TEXTO);
+      // Un nombre como «Laura B.» ya acaba en punto: no se pone otro.
+      const fin = quienCierra && quienCierra.endsWith('.') ? '' : '.';
+      const txt = `${avisa ? `<@${avisa}> ` : ''}Tarea hecha: «${t.titulo}»${quienCierra ? `, la cerró ${quienCierra}` : ''}${fin}\n${nota}`.slice(0, MAX_TEXTO);
       const padre = m.padre_id ? Number(m.padre_id) : Number(m.id);
       const id = await repo.escribir(cli, { canalId: c.id, autorId: null, padreId: padre, texto: txt, evento: 'tarea_cerrada' });
       if (avisa) await repo.mencionar(cli, id, { usuarios: [avisa] });
@@ -799,6 +815,7 @@ const usarVistaPrevia = fn => { leerPrevia = fn === undefined ? enlaces.vistaPre
 const esperarPendientes = () => Promise.all([...pendientes]);
 
 module.exports = {
+  nombreCorto,
   canales, ficha, mensajes, uno, hilo, enviar, leido, crearCanal, directo, anadir, quitar, personas,
   editar, anular, reaccionar, fijar, fijados, guardar, guardados, convertirEnTarea,
   nombreDeCanal, primerEnlace, EMOJIS, olvidar, usarVistaPrevia, esperarPendientes,

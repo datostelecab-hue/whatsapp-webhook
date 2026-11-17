@@ -1,5 +1,5 @@
 // ============================================================
-// LA MIGRACIÓN DE SLACK — el SQL (db/259)
+// LA MIGRACIÓN DE SLACK — el SQL (db/259 y db/260)
 // ============================================================
 // Solo consultas. Qué se trae y cómo lo decide slack.service.js. Lo que escribe
 // recibe el `cli` de la transacción firmada (libro.conFirma).
@@ -57,11 +57,9 @@ async function directoPorClave(cli, clave) {
   const r = await q(cli, 'SELECT * FROM chat_canal WHERE clave_directo = $1', [clave]);
   return r.rows[0] || null;
 }
-/** Le apunta de qué canal de Slack viene y, si no tenía, su tema y su descripción. */
-async function enlazarCanal(cli, canalId, { slackId, tema, descripcion }) {
-  await q(cli,
-    `UPDATE chat_canal SET slack_id = $2, tema = COALESCE(tema, $3), descripcion = COALESCE(descripcion, $4) WHERE id = $1`,
-    [canalId, slackId, tema || null, descripcion || null]);
+/** Le apunta de qué conversación de Slack viene. */
+async function enlazarCanal(cli, canalId, { slackId }) {
+  await q(cli, 'UPDATE chat_canal SET slack_id = $2 WHERE id = $1 AND slack_id IS DISTINCT FROM $2', [canalId, slackId]);
 }
 async function crearCanal(cli, { tipo, nombre = null, claveDirecto = null, creadoPor = null, creadoAt = null }) {
   const r = await q(cli,
@@ -83,14 +81,10 @@ async function idsMiembros(cli, canalId) {
 }
 
 // ── Los mensajes ───────────────────────────────────────────────────────────
-/** Los ya traídos de un canal de Slack: Map(ts → { id, ficheros }). */
+/** Los ya traídos de una conversación de Slack: Map(ts → { id }). */
 async function traidos(cli, slackCanal) {
-  const r = await q(cli,
-    `SELECT m.id, m.slack_ts,
-            (SELECT count(*) FROM adjunto a WHERE a.dueno_tipo = 'chat_mensaje' AND a.dueno_id = m.id::text AND a.anulado_at IS NULL)::int AS ficheros,
-            (SELECT COALESCE(array_agg(a.nombre), '{}') FROM adjunto a WHERE a.dueno_tipo = 'chat_mensaje' AND a.dueno_id = m.id::text AND a.anulado_at IS NULL) AS nombres
-       FROM chat_mensaje m WHERE m.slack_canal = $1 AND m.slack_ts IS NOT NULL`, [slackCanal]);
-  return new Map(r.rows.map(x => [x.slack_ts, { id: Number(x.id), ficheros: x.ficheros, nombres: x.nombres || [] }]));
+  const r = await q(cli, 'SELECT id, slack_ts FROM chat_mensaje WHERE slack_canal = $1 AND slack_ts IS NOT NULL', [slackCanal]);
+  return new Map(r.rows.map(x => [x.slack_ts, { id: Number(x.id) }]));
 }
 /** Un mensaje de Slack. Si ya estaba (mismo canal y ts), nada. → id nuevo o null. */
 async function importarMensaje(cli, { canalId, autorId, autorExterno, padreId, texto, creadoAt, editadoAt, conAdjuntos, slackCanal, slackTs }) {
@@ -125,8 +119,35 @@ async function recontar(cli, canalId) {
       WHERE c.id = $1`, [canalId]);
 }
 
+// ── Los ficheros (db/260) ──────────────────────────────────────────────────
+/** Apunta un fichero de Slack con su mensaje (si ya estaba, nada). */
+async function apuntarFichero(cli, { slackId, mensajeId, nombre, mime }) {
+  await q(cli,
+    `INSERT INTO chat_slack_fichero (slack_id, mensaje_id, nombre, mime) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (slack_id) DO NOTHING`, [slackId, mensajeId, nombre, String(mime).slice(0, 150)]);
+}
+async function cuentaFicheros() {
+  const r = await db.consulta(
+    `SELECT count(*)::int AS total, (count(*) FILTER (WHERE adjunto_id IS NULL))::int AS pendientes FROM chat_slack_fichero`);
+  return r.rows[0];
+}
+async function ficherosPendientes() {
+  const r = await db.consulta('SELECT slack_id, nombre FROM chat_slack_fichero WHERE adjunto_id IS NULL ORDER BY slack_id');
+  return r.rows.map(x => ({ id: x.slack_id, nombre: x.nombre }));
+}
+/** Uno, con el autor de su mensaje (quien lo subió en Slack). */
+async function fichero(slackId) {
+  const r = await db.consulta(
+    `SELECT f.*, m.autor_id FROM chat_slack_fichero f JOIN chat_mensaje m ON m.id = f.mensaje_id WHERE f.slack_id = $1`, [slackId]);
+  return r.rows[0] || null;
+}
+async function ficheroSubido(cli, slackId, adjuntoId) {
+  await q(cli, 'UPDATE chat_slack_fichero SET adjunto_id = $2 WHERE slack_id = $1', [slackId, adjuntoId]);
+}
+
 module.exports = {
   usuariosErp, personasSlack, apuntarPersona, ponerUsuario,
   canalPorSlack, canalPorNombre, directoPorClave, enlazarCanal, crearCanal, meter, idsMiembros,
   traidos, importarMensaje, mencionar, reaccionar, recontar,
+  apuntarFichero, cuentaFicheros, ficherosPendientes, fichero, ficheroSubido,
 };
