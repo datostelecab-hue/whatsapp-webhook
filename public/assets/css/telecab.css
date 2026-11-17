@@ -1039,6 +1039,8 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 :root, :root[data-theme='dark'], :root:not([data-theme^='claro-']):not([data-theme='light']) {
   --tc-area-direccion: 167 139 250;
   --tc-area-rrhh: 244 114 182;
+  --tc-area-seleccion: 163 230 53;
+  --tc-area-legal: 251 191 36;
   --tc-area-administracion: 34 211 238;
   --tc-area-planificacion: 74 222 128;
   --tc-area-control: 96 165 250;
@@ -1048,6 +1050,8 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 :root[data-theme='light'], :root[data-theme^='claro-'] {
   --tc-area-direccion: 124 58 237;
   --tc-area-rrhh: 219 39 119;
+  --tc-area-seleccion: 77 124 15;
+  --tc-area-legal: 161 98 7;
   --tc-area-administracion: 14 116 144;
   --tc-area-planificacion: 21 128 61;
   --tc-area-control: 37 99 235;
@@ -1105,6 +1109,8 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 }
 .tc-org-grupo[data-area='direccion'] { --org-area: var(--tc-area-direccion); }
 .tc-org-grupo[data-area='rrhh'] { --org-area: var(--tc-area-rrhh); }
+.tc-org-grupo[data-area='seleccion'] { --org-area: var(--tc-area-seleccion); }
+.tc-org-grupo[data-area='legal'] { --org-area: var(--tc-area-legal); }
 .tc-org-grupo[data-area='administracion'] { --org-area: var(--tc-area-administracion); }
 .tc-org-grupo[data-area='planificacion'] { --org-area: var(--tc-area-planificacion); }
 .tc-org-grupo[data-area='control'] { --org-area: var(--tc-area-control); }

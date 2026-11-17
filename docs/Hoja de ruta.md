@@ -157,7 +157,8 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - **2a:** canales, directos, tiempo real, no leídos, menciones e hilos.
   - **2b:** adjuntos y vista previa, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces (protegida contra SSRF) y convertir en tarea. Aquí se prueba el primer criterio del ítem 1.
   - **2c:** búsqueda (tsvector en español con índice GIN, respetando privados y directos), estado y no molestar, y notificaciones.
-  - **2d:** gestión de canales y migración de Slack.
+  - **2d:** gestión de canales (archivar, renombrar). ~~Migración de Slack~~: no se trae nada (abajo).
+- **Decidido (Camilo, 17/11/2026): los chats arrancan vacíos.** No se trae el historial de Slack: los canales nacen con su nombre de siempre y sin mensajes. Con eso dejan de hacer falta el plan de Slack, su Workspace Owner, bajar los ficheros uno a uno y un sitio para los autores de Slack que no son usuarios del ERP. Lo de Slack de abajo queda como referencia.
 - **Hecho:** la **2a** (17/11/2026, rama `chat/2a-canales`, db/256). Decidido por Camilo: los 16 públicos abiertos a toda la oficina (también los cuatro sensibles) y con toda la oficina dentro; crean canales Dirección y Desarrollo (`chat_canales`); los privados, con quien los pidió. Ver [[Chat]].
 - **Hecho:** la **2b** (17/11/2026, en la misma rama, db/257). Decidido por Camilo: seis reacciones fijas; editar y anular lo propio sin motivo (lo de otro, quien lleva los canales y con motivo); convertir en tarea como una tarea a mano, con el sello en el mensaje y la respuesta en el hilo al cerrarla (**el primer criterio del ítem 1 queda probado**); fijar, cualquiera del canal; guardar, cada uno lo suyo. La vista previa de los enlaces, con `services/enlaces.js` (protegido contra SSRF).
 - **Choca:**
@@ -172,11 +173,11 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - **Privados y directos:** solo con Business+ y solicitud aprobada por el Workspace Owner, o con Enterprise.
   - **Ficheros:** hay que bajarlos uno a uno antes de cerrar Slack.
 - **Decidir:**
-  - el plan de Slack y su Workspace Owner, y si hay canales sin Ignacio;
-  - qué hacer con privados y directos;
+  - ~~el plan de Slack y su Workspace Owner, y si hay canales sin Ignacio~~; ~~qué hacer con privados y directos~~: los chats arrancan vacíos (17/11/2026);
   - si «5 años» es un mínimo o un límite;
-  - quién crea canales;
-  - el almacén (A6).
+  - ~~quién crea canales~~: Dirección y Desarrollo (17/11/2026);
+  - ~~el almacén (A6)~~: Cloudflare R2 (13/11/2026);
+  - la «Traza por Slack» de Control: a qué canal del chat pasa a apuntar.
 
 ## Fase 1 — RR. HH.
 

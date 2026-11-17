@@ -26,13 +26,13 @@ A cada persona se le pone su puesto («Cambiar el puesto», en su ficha), y **de
 | Puesto | Área | Reporta a | Quién (17/11/2026) | Funciones |
 |---|---|---|---|---|
 | CEO | Dirección (la dirige) | — | Fernando | ve todos los tableros, ve los expedientes, caja (suplente y testigo) |
-| Dirección de operaciones | Dirección | CEO | Ignacio | supervisor, dirección, aprueba y reparte las tareas, ve todos los tableros, expedientes, multas escaladas, caja, combustible, reintegros por encima del tope, pólizas. Dirige RR. HH., Administración y Sistemas |
+| Dirección de operaciones | Dirección | CEO | Ignacio | supervisor, dirección, aprueba y reparte las tareas, ve todos los tableros, expedientes, multas escaladas, caja, combustible, reintegros por encima del tope, pólizas. Dirige RR. HH., Selección, Legal, Administración y Sistemas |
 | Dirección de Barcelona | Dirección | CEO | Carlos | — |
-| RR. HH. laboral y legal | RR. HH. | Dirección de operaciones | Laura | expedientes, desactiva por suspensión o despido, J de RR. HH. |
 | Administración de personal y nómina | RR. HH. | Dirección de operaciones | Diana | nómina, cartas (consulta), desactiva por baja voluntaria |
-| Selección y ETT | RR. HH. | Dirección de operaciones | Víctor | desactiva por fin de ETT |
-| Captación, documentación y altas | RR. HH. | Dirección de operaciones | Mercedes | cartas (consulta) |
+| Selección y ETT | Selección | Dirección de operaciones | Víctor | desactiva por fin de ETT |
+| Legal | Legal | Dirección de operaciones | Laura | expedientes, desactiva por suspensión o despido, J de RR. HH. |
 | Administración | Administración | Dirección de operaciones | Daiane | combustible, multas, caja, documentación de coches, reintegros |
+| Captación, documentación y altas | Administración | Dirección de operaciones | Mercedes | cartas (consulta) |
 | Jefe de planificación | Planificación (la dirige) | Dirección de operaciones | William | supervisor, sustituciones, J de Tráfico, BOLT y Por compañero, −J |
 | Jefe de control | Control (la dirige) | Dirección de operaciones | Ángel y Lorenzo | supervisor |
 | Controlador | Control | Jefe de control | Karen, Gabriel y Gabriela | — |
@@ -40,6 +40,14 @@ A cada persona se le pone su puesto («Cambiar el puesto», en su ficha), y **de
 | Desarrollo y sistemas | Sistemas | Dirección de operaciones | Camilo | — |
 
 Sale de los descriptivos de puesto y los ciclos de trabajo de RR. HH., Administración y Flota (11 y 12/11/2026) y de lo que contestó Camilo el 17/11/2026.
+
+**RR. HH., Selección y Legal, cada uno su área (db/258, 17/11/2026).** Camilo: *«Hay que separar RR. HH. (Diana) de legal (Laura) y selección (Víctor); a Mercedes déjala en administración junto con Daiane»*. Se movieron los **puestos**, no las personas: quien los ocupe mañana va con ellos.
+
+- **Legal** y **Selección** son áreas nuevas, con su color en el organigrama; las dirige, como RR. HH., la Dirección de operaciones.
+- El puesto de Laura pasa a llamarse **Legal**. Camilo decidió que **siga reportando a Ignacio** y que **conserve las J de RR. HH.**, además de los expedientes.
+- El puesto de Mercedes («Captación, documentación y altas») pasa a **Administración**, al lado del de Daiane, con sus mismas funciones.
+- A quien tuviera «RR. HH.» puesto a mano en uno de esos puestos se le quitó la excepción: va con su puesto.
+- Ninguna pantalla depende del área salvo los [[Avisos]], que hoy solo mandan a Control: el cambio no deja a nadie sin nada.
 
 - **El superior** de una persona es: el puesto a mano, si lo tiene; si no, **quien ocupe el puesto al que reporta el suyo** (si son dos, los dos: los jefes de Control); si ese puesto está vacío, el de encima; y si no, quien dirija su área. `organizacion.superioresDe(id)` los da todos (el aviso de vencidas del tablero llega a todos).
 - **Dos jefes a la vez:** Laura reporta a Fernando (lo legal, 80 %) y a Ignacio (lo laboral, 20 %), y Daiane a Ignacio y a Carlos. Cada puesto reporta a uno: se pone a quien **evalúa** (Ignacio en los dos).
@@ -132,6 +140,8 @@ Los mismos que en [[Usuarios y permisos]]: el desarrollador por su rol, o quien 
 
 ```
 db/248-organizacion.sql                     cat_area, usuario.area_codigo/superior_id, usuario_funcion
+db/255-puestos.sql                          los puestos, sus funciones y quién ocupa cada uno
+db/258-areas-legal-seleccion.sql            RR. HH., Selección y Legal, cada uno su área; Captación, a Administración
 services/organizacion.js                    el catálogo y las reglas (lo usa todo el ERP)
 services/repo/organizacion.js               el SQL
 modules/Organizacion/                       la pantalla /organizacion y su API

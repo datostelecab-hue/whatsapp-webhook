@@ -10,7 +10,9 @@ actualizado: 2026-11-17
 - **2a — canales, directos, tiempo real, no leídos, menciones e hilos** (17/11/2026, rama `chat/2a-canales`, db/256).
 - **2b — ficheros, reacciones, editar y anular, fijar y guardar, formato, vista previa de enlaces y convertir en tarea** (17/11/2026, en la misma rama, db/257).
 - **2c** búsqueda, estado y no molestar, y notificaciones al móvil.
-- **2d** gestión de canales (archivar, renombrar) y la migración de Slack.
+- **2d** gestión de canales (archivar, renombrar).
+
+**Los chats arrancan vacíos** (Camilo, 17/11/2026): no se trae el historial de Slack. Los canales nacen con su nombre de siempre y sin mensajes.
 
 ## Lo que decidió Camilo (17/11/2026)
 
