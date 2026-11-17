@@ -36,6 +36,8 @@
   const W = 22;          // px de un día
   const NOMBRE = 200;    // px de la columna del nombre
   const DIA = 86400000;
+  // Tailwind compila lo que está ESCRITO: las columnas de las cifras, enteras (no `md:grid-cols-${n}`).
+  const COLUMNAS = { 3: 'md:grid-cols-3', 4: 'md:grid-cols-4', 5: 'md:grid-cols-5' };
   const ms = iso => Date.parse(iso + 'T00:00:00Z');
   const isoDe = t => new Date(t).toISOString().slice(0, 10);
   const dowDe = iso => { const w = new Date(ms(iso)).getUTCDay(); return w === 0 ? 7 : w; };
@@ -150,7 +152,7 @@
         </div>
       </div>
       ${o.ayuda ? `<p class="text-xs text-telecab-muted mb-3">${o.ayuda}</p>` : ''}
-      <div class="grid grid-cols-2 md:grid-cols-${kpis.length} gap-2 mb-3">${kpis.join('')}</div>
+      <div class="grid grid-cols-2 ${COLUMNAS[kpis.length] || 'md:grid-cols-5'} gap-2 mb-3">${kpis.join('')}</div>
       ${filas.length ? `
       <div class="tc-vpm-marco" tabindex="0" aria-label="Las vacaciones día a día: arrastra o desplázate a los lados para moverte en el tiempo">
         <div class="tc-vpm-lienzo" style="width:${NOMBRE + N * W}px;--vpm-dia:${W}px;--vpm-nombre:${NOMBRE}px;--vpm-ancho:${N * W}px;--vpm-finde:${-(dowDe(inicio) - 1) * W}px">
