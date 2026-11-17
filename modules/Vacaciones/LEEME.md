@@ -29,7 +29,7 @@ desde el 01/10/2026 (los de hasta el 30/09 se pagaron: FESTIVOS_PAGADOS_HASTA); 
 días que le tocaba trabajar (las de db/233 llevan sus DOS días de libranza puestos a mano,
 `libra_dias`, y mandan esos; las de antes, sus libranzas del planificador: `libranzas.js`, la regla de
 f_cobertura sin apartar al ausente; la plaza de ese día o la última que tuvo; antes del
-planificador, 03/09/2026, no se sabe y cuentan). Ningún permiso resta. Hasta el
+planificador, 03/09/2026, o sin plaza, no se sabe y cada día cuenta 5/7 desde el 17/11/2026; hasta entonces contaban todos). Ningún permiso resta. Hasta el
 06/11/2026 eran 0,0821 por día natural, sin las suspensiones.
 
 «Simular vacaciones» (ficha, GET /api/simular/:id?desde&hasta&libra=3,7): el calendario de unas

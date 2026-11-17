@@ -51,8 +51,13 @@
 //               sus libranzas se mantienen y no cuentan (06/11/2026, Camilo: «si
 //               pido 18 días de vacaciones, me tiene que contar solo días
 //               laborales para mí, se saltan los días de libranza»). Qué libra
-//               cada día lo dice el cuadrante (libranzas.js); antes del
-//               planificador (03/09/2026) no se sabe y cuentan todos.
+//               cada día lo dice el cuadrante (libranzas.js). Un día en el que
+//               no se sabe (antes del planificador, 03/09/2026, o sin plaza)
+//               cuenta 5/7: una semana de vacaciones gasta 5, porque todos
+//               libran dos días de cada siete (17/11/2026, Camilo, con las de
+//               HAMID OUAHHAJ del 27/08 al 10/09: «solo cuenta 5 días por cada 7
+//               que tengan … no los habíamos calculado así antes»). Hasta
+//               entonces contaban todos.
 //   PERMISOS    no tocan el saldo de vacaciones. Hasta el 29/10/2026 los de
 //               asuntos propios restaban un día cada uno; desde entonces tienen
 //               su banco aparte (abajo).
@@ -105,6 +110,9 @@ const UMBRAL_LABORADO = 4 * 3600;         // un día laborado: más de 4 horas
 // Un día de baja médica sin saber qué libraría (sin plaza, o antes del
 // planificador) vale 5/7 de día: una semana de cinco (06/11/2026).
 const BAJA_SIN_PLAZA = 5 / 7;
+// Un día de vacaciones sin saber qué libraba (antes del planificador o sin
+// plaza) gasta 5/7 de día: una semana de vacaciones son 5 (17/11/2026).
+const VACACIONES_SIN_CUADRANTE = 5 / 7;
 const UMBRAL_FESTIVO = 6 * 3600;          // más de 6 horas
 // Los festivos de septiembre para atrás NO suman (06/11/2026, Camilo: «quita las
 // vacaciones generadas por festivos de septiembre para atrás ya que esas sí
@@ -180,13 +188,16 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
   // `alMes`: apuntar cada día que cuenta en su mes (lo disfrutado, no lo programado).
   const deVacaciones = (a, b, libra, alMes = false) => {
     const r = { cuentan: 0, libra: 0, sinCuadrante: 0 };
-    const cuenta = d => { r.cuentan++; if (alMes) mesDe(d).disfrutadas++; };
+    const cuenta = (d, peso = 1) => { r.cuentan += peso; if (alMes) mesDe(d).disfrutadas += peso; };
     for (let d = a; d <= b; d = mas(d, 1)) {
       if (libra) { if (libranzas.cuentaConLibra(libra, d)) cuenta(d); else r.libra++; continue; }
       const x = plan ? plan(d) : null;
       if (!libranzas.cuenta(x)) r.libra++;
-      else { cuenta(d); if (x && x.trabaja === null) r.sinCuadrante++; }
+      else if (x && x.trabaja === null) { r.sinCuadrante++; cuenta(d, VACACIONES_SIN_CUADRANTE); }
+      else cuenta(d);
     }
+    // Con días a 5/7 salen decimales: se redondea lo que se enseña.
+    r.cuentan = r2(r.cuentan);
     return r;
   };
 
@@ -322,7 +333,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     const c = valen(x.laborados + x.justificados + x.bajas + x.permisos, x.bajasSupuestas);
     const gen = conTope(c);
     acumulado += gen + x.festivos - x.disfrutadas;
-    return { ...x, generan: r2(c), sinTope: r2(TASA * c), generadas: r2(gen), tope: TASA * c > TOPE_MES, saldoFin: r2(acumulado) };
+    return { ...x, disfrutadas: r2(x.disfrutadas), generan: r2(c), sinTope: r2(TASA * c), generadas: r2(gen), tope: TASA * c > TOPE_MES, saldoFin: r2(acumulado) };
   });
 
   const saldo = r2(generadas + festivosSuman - disfrutadas);

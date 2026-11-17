@@ -15,7 +15,7 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 |---|---|---|
 | **+** | Generadas | **0,084 días por cada día que genera, con un máximo de 1,85 al mes** (los festivos van aparte). Cuentan desde el alta que dice el sistema (la del contrato abierto). Genera un día en el que trabajó **más de 4 horas** (4 justas, no), uno con una **J aprobada**, **cada día de baja médica** o **cada día de permiso retribuido** (también los de asuntos propios), también los que habría librado. Ver [[#0,084 por día con un tope de 1,85 al mes (12/11/2026)]]. Del 06/11 al 12/11/2026 eran 0,05882 sin tope; antes, 0,0821 por día natural. |
 | **+** | Festivos trabajados | **1 día entero** por cada festivo nacional o de la Comunidad de Madrid en el que trabajó **más de 6 horas en su jornada** (6 justas no), **desde el 01/10/2026**. Los de septiembre para atrás se pagaron en la nómina y no suman. **No entran en el tope.** Ver [[#Los festivos de septiembre para atrás, pagados (06/11/2026)]]. |
-| **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: los dos días que libra en esas vacaciones (puestos a mano) no cuentan; en las de antes, sus libranzas del planificador. Ver [[#Los dos días que libra, a mano (06/11/2026, db/233)]]. |
+| **−** | Vacaciones disfrutadas | Los días de vacaciones que ya pasaron **y le tocaba trabajar**: los dos días que libra en esas vacaciones (puestos a mano) no cuentan; en las de antes, sus libranzas del planificador. **Sin cuadrante** (antes del 03/09/2026, o sin plaza) **cada día cuenta 5/7**: una semana gasta 5 (17/11/2026). Ver [[#Los dos días que libra, a mano (06/11/2026, db/233)]]. |
 
 **Los asuntos propios ya no restan de aquí** (desde el 29/10/2026): tienen su banco aparte, abajo. Ningún permiso toca el saldo de vacaciones.
 
@@ -24,6 +24,16 @@ Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[R
 - El saldo puede ser **negativo**: ha disfrutado más de lo generado.
 
 Las decisiones de Camilo, el 14/10/2026: los permisos se descuentan del saldo, y luego, *«Solo restan los de asuntos propios»*; para los antiguos, desde el 01/01/2025; las suspensiones no generan; y el festivo suma solo si se trabajó más de 6 h.
+
+## Sin cuadrante, 5 días de cada 7 (17/11/2026)
+
+Camilo, con las vacaciones de **HAMID OUAHHAJ** del 27/08 al 10/09/2026: *«Recalcula todas las vacaciones teniendo en cuenta de que ahora todo es por días laborales. En ese lapso, solo cuenta 5 días por cada 7 que tengan, ya que recuerda que tienen dos días de descanso y no los habíamos calculado así antes»*.
+
+- Un día de vacaciones en el que **no se sabe qué libraba** (antes del planificador, 03/09/2026, o sin plaza) **cuenta 5/7**: una semana de vacaciones gasta 5, porque todos libran dos de cada siete. Como la baja sin plaza hasta el 12/11. Hasta hoy contaban todos.
+- Los días con cuadrante siguen igual (no cuentan sus libranzas), y las vacaciones con sus dos días puestos a mano también.
+- Con días a 5/7 salen decimales: se enseñan redondeados a dos. En la ficha, la columna «Libranzas» dice «N sin cuadrante, a 5 de cada 7».
+- **No hace falta recalcular nada a mano**: el saldo se calcula cada vez, así que todas las vacaciones quedan recalculadas solas.
+- **Hamid**: 15 naturales; los 7 de antes del 03/09 gastan 5 y de los 8 con cuadrante libra 2: **11, no 13**. Su saldo, 6,90. En producción cambia el saldo de **46 personas** (58 tramos de vacaciones de antes del 03/09, 658 días naturales).
 
 ## Los permisos retribuidos generan, como la baja (17/11/2026)
 

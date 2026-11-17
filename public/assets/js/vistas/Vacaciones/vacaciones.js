@@ -211,7 +211,7 @@
                 ayuda: 'Los días que libra en esas vacaciones: no cuentan. Las nuevas llevan sus dos días puestos a mano; las de antes, los del cuadrante.',
                 pinta: (v, x) => (v ? String(v) : DASH) + ((x.libraDias || []).length
                   ? `<span class="block text-[11px] text-telecab-muted" title="Puestos a mano al aprobarlas">libra ${esc(nombresLibra(x.libraDias))}</span>` : '') + (x.sinCuadrante
-                  ? `<span class="block text-[11px] text-telecab-muted" title="Antes del planificador (03/09/2026), o sin plaza: no se sabe qué libraba y el día cuenta.">${x.sinCuadrante} sin cuadrante</span>` : '') },
+                  ? `<span class="block text-[11px] text-telecab-muted" title="Antes del planificador (03/09/2026), o sin plaza: no se sabe qué libraba y cada día cuenta 5/7 (una semana, 5 días).">${x.sinCuadrante} sin cuadrante, a 5 de cada 7</span>` : '') },
               { titulo: 'Cuentan', campo: 'disfrutados', clase: 'whitespace-nowrap tabular-nums',
                 pinta: (v, x) => (x.deAntes
                   ? `<span class="text-telecab-muted" title="Empezaron antes del ${f(R.desde)}: son del año pasado y no restan, tampoco los días que caen en este">0 · empezaron en ${esc(String(x.desde).slice(0, 4))}</span>`
@@ -349,7 +349,7 @@
     const avisos = [];
     if (s.yaDeVacaciones) avisos.push(`${s.yaDeVacaciones} de esos días ya los tiene de vacaciones: no se cuentan dos veces.`);
     if (s.otraAusencia) avisos.push(`${s.otraAusencia} día(s) ya tienen otra ausencia puesta (punto en el día).`);
-    if (s.sinCuadrante) avisos.push(`${s.sinCuadrante} día(s) sin cuadrante (antes del 03/09/2026 o sin plaza): no se sabe si libraba y cuentan.`);
+    if (s.sinCuadrante) avisos.push(`${s.sinCuadrante} día(s) sin cuadrante (antes del 03/09/2026 o sin plaza): no se sabe si libraba y cada día cuenta 5/7.`);
     const plan = s.segunPlanificador || [];
     if (String(plan) !== String(s.libra || [])) {
       avisos.push(plan.length ? `El planificador le tiene libranza el ${nombresLibra(plan)}; en las vacaciones libra el ${nombresLibra(s.libra)}, y al volver, lo del planificador.`

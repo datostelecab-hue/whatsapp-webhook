@@ -103,7 +103,18 @@ function L(desde, hasta, horas, m = new Map()) { for (let d = desde; d <= hasta;
   igual('Vacaciones del 14 al 27/09 con libranza X y J: 14 naturales, 4 libranzas, cuentan 10', [s.detalle.vacaciones[0].dias, s.detalle.vacaciones[0].libranzas, s.disfrutadas], [14, 4, 10]);
   igual('…y las de noviembre, 7 naturales menos sus 2 libranzas futuras: 5 programadas', [s.programadas, s.detalle.vacaciones[1].libranzas], [5, 2]);
   s = saldoDe({ alta: '2026-07-13' }, [vac('2026-09-14', '2026-09-27')], [], new Map(), HOY, new Map(), d => ({ trabaja: null, por: 'antes-del-cuadrante' }));
-  igual('Un día sin cuadrante (no se sabe si libraba) cuenta, y se dice', [s.disfrutadas, s.detalle.vacaciones[0].sinCuadrante], [14, 14]);
+  // 17/11/2026, Camilo: «solo cuenta 5 días por cada 7 que tengan, ya que … tienen
+  // dos días de descanso». Hasta entonces, cada día sin cuadrante contaba entero.
+  igual('Sin cuadrante (no se sabe si libraba) cada día cuenta 5/7: 14 días gastan 10, y se dice', [s.disfrutadas, s.detalle.vacaciones[0].sinCuadrante], [10, 14]);
+  // Las de HAMID OUAHHAJ: del 27/08 al 10/09/2026. Hasta el 02/09 no hay
+  // planificador (7 días → 5); desde el 03/09 su cuadrante (libra S y D: 2 de 8 → 6).
+  const libraSD = d => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return { trabaja: w !== 6 && w !== 0, por: 'plaza' }; };
+  const antesYLuego = d => (d < '2026-09-03' ? { trabaja: null, por: 'antes-del-cuadrante' } : libraSD(d));
+  s = saldoDe({ alta: '2024-06-01' }, [vac('2026-08-27', '2026-09-10')], [], new Map(), HOY, new Map(), antesYLuego);
+  igual('Las de Hamid (27/08 → 10/09): 15 naturales, 7 sin cuadrante a 5/7 (5) + 6 de los 8 con cuadrante = 11, no 13',
+    [s.detalle.vacaciones[0].dias, s.detalle.vacaciones[0].libranzas, s.detalle.vacaciones[0].sinCuadrante, s.disfrutadas], [15, 2, 7, 11]);
+  igual('…y en sus meses: 5 en agosto (27–31) y 6 en septiembre (1–2 a 5/7 y 6 con cuadrante)',
+    s.detalle.meses.filter(m => m.mes === '2026-08' || m.mes === '2026-09').map(m => [m.mes, m.disfrutadas]), [['2026-08', 3.57], ['2026-09', 7.43]]);
 
   s = saldoDe({ alta: '2023-11-13' }, [], [], new Map(), HOY, L('2025-12-01', '2026-01-31', 8));
   // 19/10/2026, Camilo: «Reinicia las vacaciones desde el 1 … que empiecen a contar desde este año».
