@@ -1441,24 +1441,81 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 }
 
 /* ── VACACIONES POR MESES (pieza global, 17/11/2026) ───────────────────────
-   La parrilla de la bitácora (12/11/2026), ahora también en «La oficina» de
-   /mis-vacaciones (vacacionesPorMeses.js). Una fila por persona, una celda por
-   día. Disfrutadas, sólidas; programadas, rayadas; las que esperan aprobación,
-   con el borde discontinuo; los días que no gastan (libranza o festivo), en
-   claro. Fines de semana y festivos, de fondo. */
-.tc-vpm-fila { display: grid; gap: 2px; align-items: center; }
-:where(.tc-vpm-fila) > i { display: block; height: 20px; border-radius: 4px; background: rgb(var(--tc-dark) / .3); }
-.tc-vpm-finde { background: rgb(var(--tc-dark) / .55); }
-.tc-vpm-fila > b { display: flex; align-items: center; justify-content: center; height: 20px;
-  border-radius: 4px; font-size: 10px; font-weight: 700; color: rgb(var(--tc-text)); }
+   La parrilla de la bitácora, también en «La oficina» de /mis-vacaciones
+   (vacacionesPorMeses.js). SEGUIDA: una tira de días que se arrastra, con el
+   nombre y la cabecera quietos. Cada vacación, una barra entera aunque cruce
+   de mes: disfrutadas, sólidas; programadas, rayadas; las que esperan
+   aprobación, en aviso con el borde discontinuo; y en gris los días que no
+   gastan (libranza o festivo). Fines de semana y festivos, de fondo; hoy, con
+   su columna. */
+.tc-vpm-marco {
+  position: relative; overflow: auto; max-height: min(72vh, 46rem);
+  border: 1px solid rgb(var(--tc-border) / .6); border-radius: .9rem;
+  cursor: grab; user-select: none; overscroll-behavior-x: contain;
+}
+.tc-vpm-marco.arrastrando { cursor: grabbing; }
+.tc-vpm-marco.arrastrando .tc-vpm-barra { pointer-events: none; }
+.tc-vpm-marco:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 2px; }
+.tc-vpm-lienzo { position: relative; }
+.tc-vpm-cabeza { position: sticky; top: 0; z-index: 4; background: rgb(var(--tc-card)); border-bottom: 1px solid rgb(var(--tc-border) / .7); }
+.tc-vpm-fila { display: flex; height: 28px; }
+.tc-vpm-fila--persona { height: 30px; border-top: 1px solid rgb(var(--tc-border) / .3); }
+.tc-vpm-izq {
+  position: sticky; left: 0; z-index: 3; flex: none; width: var(--vpm-nombre);
+  display: flex; align-items: center; justify-content: flex-end; padding: 0 .6rem;
+  background: rgb(var(--tc-card)); border-right: 1px solid rgb(var(--tc-border) / .7);
+}
+.tc-vpm-cabeza .tc-vpm-izq { z-index: 5; }
+.tc-vpm-pista { position: relative; flex: none; width: var(--vpm-ancho); }
+.tc-vpm-mes-et {
+  position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: .5rem;
+  font-size: .75rem; font-weight: 600; color: rgb(var(--tc-text)); text-transform: capitalize;
+  white-space: nowrap; overflow: clip; border-left: 1px solid rgb(var(--tc-border) / .8);
+}
+/* El nombre del mes se queda a la vista mientras se ve algo de ese mes. */
+.tc-vpm-mes-et > b { position: sticky; left: calc(var(--vpm-nombre) + .5rem); font-weight: 600; }
+.tc-vpm-dias { display: flex; }
+.tc-vpm-dias > span { flex: none; width: var(--vpm-dia); text-align: center; line-height: 28px; font-size: 10px; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
+.tc-vpm-dias > .descanso { color: rgb(var(--tc-muted) / .45); }
+.tc-vpm-dias > .hoy { color: rgb(var(--tc-gold)); font-weight: 700; }
+.tc-vpm-vez { display: flex; align-items: center; }
+.tc-vpm-vez > b {
+  flex: none; width: calc(var(--vpm-dia) - 2px); margin: 0 1px; height: 20px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: rgb(var(--tc-text));
+}
+/* El fondo de cada fila: los fines de semana, de una semana a otra. */
+.tc-vpm-persona {
+  background-color: rgb(var(--tc-dark) / .12);
+  background-image: linear-gradient(90deg, transparent 0 calc(var(--vpm-dia) * 5), rgb(var(--tc-dark) / .45) calc(var(--vpm-dia) * 5) calc(var(--vpm-dia) * 7));
+  background-size: calc(var(--vpm-dia) * 7) 100%; background-position: var(--vpm-finde) 0;
+}
+/* Los festivos, el cambio de mes y hoy, por encima del fondo y por debajo de las barras. */
+.tc-vpm-capa { position: absolute; top: 0; bottom: 0; left: var(--vpm-nombre); width: var(--vpm-ancho); z-index: 1; pointer-events: none; }
+.tc-vpm-capa > span { position: absolute; top: 0; bottom: 0; }
+.tc-vpm-capa-festivo { width: var(--vpm-dia); background: rgb(var(--tc-dark) / .45); }
+.tc-vpm-capa-mes { width: 1px; background: rgb(var(--tc-border) / .9); }
+.tc-vpm-capa-hoy { width: var(--vpm-dia); background: rgb(var(--tc-gold) / .08); box-shadow: inset 1px 0 rgb(var(--tc-gold) / .7), inset -1px 0 rgb(var(--tc-gold) / .7); }
+.tc-vpm-barra {
+  position: absolute; top: 5px; bottom: 5px; z-index: 2; display: flex; padding: 0; border: 0;
+  border-radius: 5px; overflow: hidden; cursor: pointer; background: none;
+}
+.tc-vpm-barra > i { display: block; flex-basis: 0; min-width: 0; }
+.tc-vpm-barra--corte-izq { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.tc-vpm-barra--corte-der { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.tc-vpm-barra--pend::after, .tc-vpm-muestra-pend { box-sizing: border-box; border: 1.5px dashed rgb(var(--tc-warn)); }
+.tc-vpm-barra--pend::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+.tc-vpm-barra:hover, .tc-vpm-barra:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
 .tc-vpm-on { background: rgb(var(--tc-vac)); }
 .tc-vpm-prog { background: repeating-linear-gradient(45deg, rgb(var(--tc-vac) / .9) 0 5px, rgb(var(--tc-vac) / .30) 5px 10px); }
-.tc-vpm-libra { background: rgb(var(--tc-vac) / .22); }
-.tc-vpm-pend { background: rgb(var(--tc-warn) / .14); outline: 1px dashed rgb(var(--tc-warn)); outline-offset: -1px; }
-.tc-vpm-nombre { cursor: pointer; }
+.tc-vpm-pend { background: rgb(var(--tc-warn) / .32); }
+.tc-vpm-libra { background: rgb(var(--tc-muted) / .5); }
+.tc-vpm-nombre {
+  display: flex; align-items: baseline; gap: .4rem; width: 100%; min-width: 0; justify-content: flex-end;
+  font-size: .8rem; color: rgb(var(--tc-text)); text-align: right; cursor: pointer; background: none; border: 0; padding: 0;
+}
 .tc-vpm-nombre:hover, .tc-vpm-nombre:focus-visible { color: rgb(var(--tc-gold)); }
-.tc-vpm-mes { font-size: 11px; padding: .2rem .55rem; border-radius: .5rem; border: 1px solid rgb(var(--tc-border) / .7); color: rgb(var(--tc-muted)); cursor: pointer; }
-.tc-vpm-mes.on { border-color: rgb(var(--tc-gold)); color: rgb(var(--tc-text)); background: rgb(var(--tc-gold) / .12); }
+.tc-vpm-nombre-dias { flex: none; font-size: 11px; color: rgb(var(--tc-muted)); font-variant-numeric: tabular-nums; }
 .tc-vpm-leyenda { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .72rem; color: rgb(var(--tc-muted)); }
 .tc-vpm-leyenda span { display: inline-flex; align-items: center; gap: .35rem; }
 .tc-vpm-leyenda i { display: inline-block; width: 1.3rem; height: .7rem; border-radius: .25rem; }
+.tc-vpm-leyenda .tc-vpm-muestra-hoy { width: .7rem; background: rgb(var(--tc-gold) / .15); box-shadow: inset 1px 0 rgb(var(--tc-gold)), inset -1px 0 rgb(var(--tc-gold)); border-radius: 0; }

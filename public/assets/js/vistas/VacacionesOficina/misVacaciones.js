@@ -18,7 +18,6 @@
   let R = null;          // las reglas (tasa, tope, días del horario…)
   let yo = null;         // lo mío
   let oficina = null;    // el Listado de «La oficina», si aprueba
-  let mesCal = null;     // el mes que se ve en «Vacaciones por meses» de la oficina
   let calCargado = false;
   const refrescarOficina = () => { if (oficina) { oficina.recargar(); cargarCalendario(); } };
 
@@ -207,6 +206,44 @@
       </div>`).join('');
   }
 
+  // REGISTRAR UNAS YA DISFRUTADAS (17/11/2026): quien aprueba apunta unas
+  // vacaciones que empezaron antes de hoy; entran aprobadas y se restan. Antes
+  // de guardar, dice cuántos días gastan (sin libranzas ni festivos).
+  async function registrar(d, alAcabar, antes) {
+    const v = await Dialogo.formulario(`Vacaciones ya disfrutadas de ${d.nombre}`, [
+      { id: 'desde', etiqueta: 'Primer día', tipo: 'fecha', obligatorio: true, valor: antes ? f(antes.desde) : '' },
+      { id: 'hasta', etiqueta: 'Último día', tipo: 'fecha', obligatorio: true, valor: antes ? f(antes.hasta) : '' },
+      { id: 'libra', etiqueta: 'Sus dos días de libranza en esas vacaciones', tipo: 'semana', exactos: 2,
+        valor: antes ? antes.libra : R.libraPorDefecto, ayuda: 'Esos días no gastan vacaciones. Los festivos tampoco.' },
+      { id: 'nota', etiqueta: 'Una nota (si hace falta)', tipo: 'texto-largo', max: 1000, valor: antes ? antes.nota : '' },
+    ], { textoBoton: 'Calcular los días', nota: 'Las que ya empezaron. Entran aprobadas y se restan de lo que tiene hoy.' });
+    if (!v) return;
+    const datos = { usuarioId: d.id, desde: Dialogo.aISO(v.desde) || v.desde, hasta: Dialogo.aISO(v.hasta) || v.hasta, libra: v.libra || [], nota: v.nota || '' };
+    const r = await Api.post(`${API}/simular`, datos, { aviso: 'No se han podido calcular' });
+    if (!r) return;
+    const s = r.simulacion;
+    const pisa = s.yaAprobadas || s.yaPedidas;
+    const no = [s.libranzas ? `${s.libranzas} de libranza` : '', s.festivos ? `${s.festivos} festivo(s)` : ''].filter(Boolean).join(' y ');
+    const eleccion = await Dialogo.elegir({
+      titulo: `Del ${f(s.desde)} al ${f(s.hasta)}: ${s.cuentan} ${s.cuentan === 1 ? 'día' : 'días'}`, tono: 'info',
+      html: `<p class="text-sm">De ${s.naturales} días naturales gastan <b>${s.cuentan}</b>${no ? ` (${no} no cuentan)` : ''}.</p>
+        <p class="text-sm mt-2">${esc(d.nombre)} tiene hoy <b>${num(s.saldoHoy)}</b>; con estas, <b class="${s.saldoHoy - s.cuentan < 0 ? 'text-telecab-red' : ''}">${num(s.saldoHoy - s.cuentan)}</b>.</p>
+        ${pisa ? '<p class="text-sm text-telecab-warn mt-2">Esas fechas pisan otras vacaciones suyas: no se pueden registrar encima.</p>' : ''}`,
+      opciones: [
+        ...(pisa ? [] : [{ texto: `Registrar (${s.cuentan} días)`, valor: 'si', principal: true }]),
+        { texto: 'Otras fechas', valor: 'otra' }, { texto: 'Cancelar', valor: false },
+      ],
+    });
+    if (eleccion === 'otra') return registrar(d, alAcabar, { ...datos, desde: s.desde, hasta: s.hasta });
+    if (eleccion !== 'si') return;
+    const hecho = await Api.post(`${API}/registrar`, datos, { aviso: 'No se han podido registrar' });
+    if (!hecho) return;
+    Dialogo.hecho(`Registradas: ${hecho.dias} días restados`);
+    if (alAcabar) await alAcabar();
+    if (d.id === yo.id) await cargarMias();
+    refrescarOficina();
+  }
+
   async function pedir(s) {
     const v = await Dialogo.formulario(`Pedir del ${f(s.desde)} al ${f(s.hasta)}`, [
       { id: 'nota', etiqueta: 'Una nota para quien las aprueba (si hace falta)', tipo: 'texto-largo', max: 1000 },
@@ -316,9 +353,8 @@
     calCargado = true;
     VacacionesPorMeses.pintar(calCaja, {
       hoy: c.hoy, desde: c.desde, festivos: c.festivos, periodos: c.periodos, sinVacaciones: c.sinVacaciones,
-      mes: mesCal, alCambiarMes: m => { mesCal = m; },
       titulo: 'Vacaciones por meses',
-      ayuda: 'Quién se va y cuándo. La fila «a la vez» dice cuánta gente falta cada día de lunes a viernes. Pulsa a alguien para ver su ficha y aprobar.',
+      ayuda: 'Quién se va y cuándo, seguido: arrastra la parrilla para ver quién pisa a quién. En gris, sus días de libranza y los festivos, que no gastan. Pulsa a alguien para ver su ficha y aprobar.',
       alAbrir: id => { const p = c.personas.find(x => String(x.id) === String(id)); if (p) abrirPersona(p); },
     });
   }
@@ -330,11 +366,15 @@
       d = await Api.get(`${API}/personas/${x.id}`).catch(err => ({ error: err }));
       if (d.error) { p.poner({ html: aviso(esc(d.error.message)) }); return; }
       p.poner({ html: `${cifras(d)}
-        <div class="flex justify-end mt-3"><button type="button" class="tc-boton tc-boton--chico" data-simular-otro ${d.alta ? '' : 'disabled'}>
+        <div class="flex justify-end flex-wrap gap-2 mt-3">
+          <button type="button" class="tc-boton tc-boton--chico" data-registrar ${d.alta ? '' : 'disabled'} title="Unas vacaciones que ya disfrutó: se restan de lo que tiene hoy">
+            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Registrar unas ya disfrutadas</button>
+          <button type="button" class="tc-boton tc-boton--chico" data-simular-otro ${d.alta ? '' : 'disabled'}>
           <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Simular sus vacaciones</button></div>
         <section class="tc-panel-seccion"><h4>Sus vacaciones</h4>${tablaVacaciones(d, { propio: d.id === yo.id, aprueba: true })}</section>
         <section class="tc-panel-seccion"><h4>Mes a mes</h4>${tablaMeses(d)}</section>` });
       p.cuerpo.querySelector('[data-simular-otro]').addEventListener('click', () => simular(d));
+      p.cuerpo.querySelector('[data-registrar]').addEventListener('click', () => registrar(d, cargar));
     };
     engancharAcciones(p.cuerpo, () => (d && !d.error ? d : null), { recargar: async () => { await cargar(); if (d && d.id === yo.id) await cargarMias(); } });
     await cargar();

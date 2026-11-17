@@ -2,14 +2,21 @@
 // VACACIONES POR MESES — quién se va y cuándo (pieza global, 17/11/2026)
 // ============================================================
 // La parrilla de «Vacaciones por meses» de la bitácora (12/11/2026), sacada a
-// una pieza para que la use también «La oficina» de /mis-vacaciones (Camilo:
-// «ya hay algo parecido en bitácora llamado "Vacaciones por meses", recicla
-// ese»). Una parrilla por mes: una fila por persona de vacaciones, una celda por
-// día. Lo ya disfrutado va sólido; lo programado (aún no llega), rayado; lo que
-// espera aprobación, con el borde discontinuo; los días que no gastan (su
-// libranza o un festivo), en claro. La fila «a la vez» dice cuánta gente falta
-// cada día: si se pone caliente, ese mes no cabe nadie más. Al final, quién no
-// tiene ni un día todavía. Clases globales .tc-vpm-* de telecab.css.
+// una pieza que usa también «La oficina» de /mis-vacaciones (Camilo: «ya hay
+// algo parecido en bitácora llamado "Vacaciones por meses", recicla ese»).
+//
+// SEGUIDA, NO MES A MES (17/11/2026, Camilo: «que no se vea mes a mes sino que
+// se pueda arrastrar como en la bitácora general para saber quién pisa a quién
+// en los lapsos y no se partan por los meses»): una sola tira de días, de la
+// primera fecha a la última vacación (como mucho 15 meses vista), que se
+// arrastra con el ratón (o se desplaza a los lados). Cada vacación es una
+// barra entera aunque cruce de mes. Una fila por persona.
+//
+// Dentro de cada barra: lo ya disfrutado, sólido; lo programado, rayado; lo
+// que espera aprobación, en aviso con el borde discontinuo; y EN GRIS los días
+// que no gastan (su libranza y los festivos). La fila «a la vez» dice cuánta
+// gente falta cada día (lo aprobado y solo los días que gastan): si se pone
+// caliente, ahí no cabe nadie más. Clases globales .tc-vpm-* de telecab.css.
 //
 //   VacacionesPorMeses.pintar(caja, {
 //     hoy: 'AAAA-MM-DD',
@@ -17,150 +24,203 @@
 //                  abierta, pendiente, libra: [1..7] }],
 //     festivos: ['AAAA-MM-DD'],      // no gastan (opcional)
 //     desde: 'AAAA-MM',              // el primer mes de la tira
-//     mes: índice año*12+mes,        // el mes que se ve (por defecto, el de hoy)
 //     sinVacaciones: [{ id, nombre, detalle }],   // opcional
 //     titulo, icono, ayuda, botones: [{ html, titulo, alPulsar }],
-//     alAbrir: id => …, alCambiarMes: indice => …,
+//     alAbrir: id => …,
 //   });
+// Al volver a pintar en la misma caja, se queda donde estaba (no salta a hoy).
 (function (global) {
   'use strict';
   const esc = s => global.Casa.esc(s);
   const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-  const pad2 = n => String(n).padStart(2, '0');
+  const W = 22;          // px de un día
+  const NOMBRE = 200;    // px de la columna del nombre
+  const DIA = 86400000;
+  const ms = iso => Date.parse(iso + 'T00:00:00Z');
+  const isoDe = t => new Date(t).toISOString().slice(0, 10);
+  const dowDe = iso => { const w = new Date(ms(iso)).getUTCDay(); return w === 0 ? 7 : w; };
+  const f = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   const mesIdx = iso => { const [y, m] = iso.split('-').map(Number); return y * 12 + (m - 1); };
-
-  // Las personas de vacaciones en un mes (índice año*12+mes), con sus tramos
-  // recortados al mes: [{ ...persona, segs: [{ a, b, ... }] }].
-  function filasDeMes(periodos, vm) {
-    const y = Math.floor(vm / 12), m = vm % 12;
-    const nD = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-    const iso1 = `${y}-${pad2(m + 1)}-01`, isoN = `${y}-${pad2(m + 1)}-${pad2(nD)}`;
-    const porPersona = new Map();
-    periodos.forEach(p => {
-      const h = p.hasta || '9999-12-31';
-      if (p.desde > isoN || h < iso1) return;
-      const a = p.desde > iso1 ? Number(p.desde.slice(8, 10)) : 1;
-      const b = (p.hasta && p.hasta <= isoN) ? Number(p.hasta.slice(8, 10)) : nD;
-      const k = String(p.id);
-      if (!porPersona.has(k)) porPersona.set(k, { ...p, segs: [] });
-      porPersona.get(k).segs.push({ a, b, abierta: !!p.abierta, pendiente: !!p.pendiente, libra: p.libra || [] });
-    });
-    return { y, m, nD, filas: [...porPersona.values()].sort((x, z) =>
-      Math.min(...x.segs.map(s => s.a)) - Math.min(...z.segs.map(s => s.a)) || x.nombre.localeCompare(z.nombre, 'es')) };
-  }
+  const finDeMes = vm => isoDe(Date.UTC(Math.floor(vm / 12), vm % 12 + 1, 0));
+  const suave = () => !(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   function pintar(caja, o) {
     const periodos = o.periodos || [];
     const festivos = new Set(o.festivos || []);
     const sin = o.sinVacaciones || null;
-    const hoyVm = mesIdx(o.hoy);
-    const conPendientes = periodos.some(p => p.pendiente);
-    const conLibra = periodos.some(p => (p.libra || []).length) || festivos.size > 0;
-    // La tira de meses: desde el primero hasta la última vacación (con 3 meses
-    // de margen para poder asignar hacia delante) y como mucho 15 meses vista:
-    // una fecha con el año mal tecleado no convierte la tira en una alfombra.
-    let maxVm = hoyVm + 3;
-    periodos.forEach(p => { maxVm = Math.max(maxVm, mesIdx(p.hasta || p.desde)); });
-    maxVm = Math.min(maxVm, hoyVm + 15);
-    const primerVm = Math.min(mesIdx((o.desde || o.hoy.slice(0, 7)) + '-01'), hoyVm);
-    const meses = []; for (let i = primerVm; i <= maxVm; i++) meses.push(i);
-    let vm = o.mes == null || o.mes < primerVm || o.mes > maxVm ? hoyVm : o.mes;
+    const hoy = o.hoy;
+    const hoyVm = mesIdx(hoy);
 
-    function repintar() {
-      const { y, m, nD, filas } = filasDeMes(periodos, vm);
-      const iso = i => `${y}-${pad2(m + 1)}-${pad2(i)}`;
-      const dow = i => { const w = new Date(Date.UTC(y, m, i)).getUTCDay(); return w === 0 ? 7 : w; };
-      const descanso = i => dow(i) >= 6 || festivos.has(iso(i));
-      // Qué es cada día de una persona: vacaciones que gastan, que no gastan
-      // (su libranza o festivo), que esperan aprobación, o nada.
-      // Las que esperan aprobación van enteras con su borde; los días que
-      // gastarían se cuentan igual en su fila, pero no en «a la vez» ni en el
-      // total del mes hasta que se aprueben.
-      const gasta = (s, i) => !s.libra.includes(dow(i)) && !festivos.has(iso(i));
-      const tipo = (s, i) => (s.pendiente ? 'pend' : !gasta(s, i) ? 'libra' : iso(i) > o.hoy ? 'prog' : 'on');
-      const diasDe = (f, soloAprobadas) => f.segs.reduce((t, s) => {
-        if (soloAprobadas && s.pendiente) return t;
-        for (let i = s.a; i <= s.b; i++) if (gasta(s, i)) t++;
-        return t;
-      }, 0);
-      const cuenta = new Array(nD + 1).fill(0);
-      filas.forEach(f => f.segs.forEach(s => { if (!s.pendiente) for (let i = s.a; i <= s.b; i++) if (gasta(s, i)) cuenta[i]++; }));
-      const maxC = Math.max(1, ...cuenta.slice(1));
-      const diasMes = filas.reduce((t, f) => t + diasDe(f, true), 0);
-      const programadas = new Set(periodos.filter(p => !p.pendiente && p.desde > o.hoy).map(p => String(p.id)));
-      const pendientes = new Set(periodos.filter(p => p.pendiente).map(p => String(p.id)));
-      const cols = `grid-template-columns: minmax(9rem, 12rem) repeat(${nD}, minmax(0, 1fr));`;
-      const NOMBRE_T = { on: 'de vacaciones', prog: 'vacaciones programadas', libra: 'no gasta (libra o festivo)', pend: 'esperando aprobación' };
+    // La tira: del primer mes a la última vacación, con 3 meses de margen para
+    // poder asignar hacia delante y como mucho 15 meses vista: una fecha con el
+    // año mal tecleado no convierte la tira en una alfombra hasta 2029.
+    let finVm = hoyVm + 3;
+    periodos.forEach(p => { finVm = Math.max(finVm, mesIdx(p.hasta || p.desde)); });
+    finVm = Math.min(finVm, hoyVm + 15);
+    const desdeMes = o.desde || hoy.slice(0, 7);
+    const inicio = (mesIdx(desdeMes + '-01') <= hoyVm ? desdeMes : hoy.slice(0, 7)) + '-01';
+    const fin = finDeMes(finVm);
+    const N = Math.round((ms(fin) - ms(inicio)) / DIA) + 1;
+    const idx = iso => Math.round((ms(iso) - ms(inicio)) / DIA);
+    const dias = Array.from({ length: N }, (_, i) => isoDe(ms(inicio) + i * DIA));
+    const descanso = iso => dowDe(iso) >= 6 || festivos.has(iso);
 
-      const fila = f => {
-        let celdas = '';
-        for (let i = 1; i <= nD; i++) {
-          const s = f.segs.find(x => i >= x.a && i <= x.b);
-          celdas += s ? `<i class="tc-vpm-${tipo(s, i)}" title="${esc(`${f.nombre} · ${i}: ${NOMBRE_T[tipo(s, i)]}`)}"></i>`
-                      : `<i class="${descanso(i) ? 'tc-vpm-finde' : ''}"></i>`;
-        }
-        const dias = diasDe(f, false);
-        const abierta = f.segs.some(s => s.abierta);
-        const espera = f.segs.some(s => s.pendiente);
-        return `<div class="tc-vpm-fila" style="${cols}">
-          <button type="button" class="tc-vpm-nombre min-w-0 pr-2 text-sm text-left text-telecab-text truncate" data-abrir="${esc(f.id)}"
-            title="${esc(f.nombre + (f.detalle ? ' · ' + f.detalle : '') + ' · ' + dias + ' día(s) este mes' + (abierta ? ' · sin fecha de vuelta' : '') + (espera ? ' · esperando aprobación' : ''))}">${esc(f.nombre)}
-            <span class="text-[11px] text-telecab-muted">${dias}d${abierta ? ' →' : ''}</span></button>${celdas}</div>`;
-      };
-      const kpi = (txt, val, estilo = '') => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${txt}</p><p class="text-lg font-bold tabular-nums"${estilo}>${val}</p></div>`;
-      const kpis = [
-        kpi(`De vacaciones en ${MESES[m]}`, filas.length),
-        kpi('Días de vacaciones del mes', diasMes),
-        kpi('Con vacaciones programadas', programadas.size, ' style="color: rgb(var(--tc-vac))"'),
-        conPendientes ? kpi('Esperan aprobación', pendientes.size, ' style="color: rgb(var(--tc-warn))"') : '',
-        sin ? kpi('Sin ni un día todavía', sin.length, ' style="color: rgb(var(--tc-warn))"') : '',
-      ].filter(Boolean);
+    // Cada vacación, recortada a la tira.
+    const tramos = periodos.map(p => {
+      const h = p.hasta || fin;
+      const a = p.desde < inicio ? inicio : p.desde, b = h > fin ? fin : h;
+      return a > b ? null : { ...p, a, b, libra: p.libra || [], corteIzq: p.desde < inicio, corteDer: !p.hasta || p.hasta > fin };
+    }).filter(Boolean);
+    const gasta = (t, iso) => !t.libra.includes(dowDe(iso)) && !festivos.has(iso);
+    const tipo = (t, iso) => (!gasta(t, iso) ? 'libra' : t.pendiente ? 'pend' : iso > hoy ? 'prog' : 'on');
+    const diasDe = t => { let n = 0; for (let d = t.a; d <= t.b; d = isoDe(ms(d) + DIA)) if (gasta(t, d)) n++; return n; };
 
-      caja.innerHTML = `
-        <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
-            <i class="fa-solid ${esc(o.icono || 'fa-umbrella-beach')}" style="color: rgb(var(--tc-vac))" aria-hidden="true"></i> ${esc(o.titulo || 'Vacaciones por meses')}</h2>
-          <div class="flex items-center gap-2">${(o.botones || []).map((b, n) =>
-            `<button type="button" data-vpm-boton="${n}" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold transition"${b.titulo ? ` title="${esc(b.titulo)}"` : ''}>${b.html}</button>`).join('')}</div>
-        </div>
-        ${o.ayuda ? `<p class="text-xs text-telecab-muted mb-3">${o.ayuda}</p>` : ''}
-        <div class="grid grid-cols-2 md:grid-cols-${kpis.length} gap-2 mb-3">${kpis.join('')}</div>
-        <div class="flex flex-wrap gap-1 mb-4" role="group" aria-label="Mes">${meses.map(i => {
-          const n = filasDeMes(periodos, i).filas.length;
-          return `<button type="button" data-vpm-mes="${i}" class="tc-vpm-mes${i === vm ? ' on' : ''}"${i === vm ? ' aria-pressed="true"' : ''}>${MESES[i % 12].slice(0, 3)} ${String(Math.floor(i / 12)).slice(2)}${n ? ` <b>${n}</b>` : ''}${i === hoyVm ? ' ·' : ''}</button>`;
-        }).join('')}</div>
-        ${filas.length
-          ? `<div class="overflow-x-auto"><div class="space-y-[3px] min-w-[44rem]">
-              <div class="tc-vpm-fila" style="${cols}"><span></span>${Array.from({ length: nD }, (_, k) =>
-                `<span class="text-center text-[10px] ${iso(k + 1) === o.hoy ? 'text-telecab-gold font-bold' : descanso(k + 1) ? 'text-telecab-muted/50' : 'text-telecab-muted'}"${festivos.has(iso(k + 1)) ? ' title="Festivo"' : ''}>${k + 1}</span>`).join('')}</div>
-              <div class="tc-vpm-fila" style="${cols}"><span class="text-[10px] text-telecab-muted text-right pr-2">a la vez</span>${cuenta.slice(1).map((c, k) =>
-                `<b style="background: rgb(var(--tc-vac) / ${c ? (0.12 + 0.68 * c / maxC).toFixed(2) : 0.04})" title="${c} de vacaciones el ${k + 1}">${c || ''}</b>`).join('')}</div>
-              ${filas.map(fila).join('')}
-            </div></div>`
-          : `<p class="text-sm text-telecab-muted py-6 text-center">Nadie de vacaciones en ${MESES[m]} ${y}.</p>`}
-        <div class="tc-vpm-leyenda mt-3">
-          <span><i class="tc-vpm-on"></i>Disfrutadas</span>
-          <span><i class="tc-vpm-prog"></i>Programadas</span>
-          ${conPendientes ? '<span><i class="tc-vpm-pend"></i>Esperan aprobación</span>' : ''}
-          ${conLibra ? '<span><i class="tc-vpm-libra"></i>No gasta (su libranza o festivo)</span>' : ''}
-        </div>
-        ${sin ? `<details class="mt-5"><summary class="cursor-pointer text-sm text-telecab-warn font-semibold">Sin vacaciones todavía (${sin.length}) — a quién le toca asignar</summary>
-          <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-1.5 mt-2">${sin.map(c =>
-            `<button type="button" data-abrir="${esc(c.id)}" class="text-left px-3 py-1.5 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 transition">
-              <span class="block text-sm text-telecab-text truncate">${esc(c.nombre)}</span>
-              ${c.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(c.detalle)}</span>` : ''}</button>`).join('')}</div></details>` : ''}`;
+    // «A la vez»: lo aprobado, los días que gastan.
+    const cuenta = new Array(N).fill(0);
+    tramos.forEach(t => { if (!t.pendiente) for (let i = idx(t.a); i <= idx(t.b); i++) if (gasta(t, dias[i])) cuenta[i]++; });
+    const maxC = Math.max(1, ...cuenta);
 
-      caja.querySelectorAll('[data-vpm-boton]').forEach(b => b.addEventListener('click', () => o.botones[Number(b.dataset.vpmBoton)].alPulsar()));
-      caja.querySelectorAll('[data-vpm-mes]').forEach(b => b.addEventListener('click', () => {
-        vm = Number(b.dataset.vpmMes);
-        if (o.alCambiarMes) o.alCambiarMes(vm);
-        repintar();
-      }));
-      if (o.alAbrir) caja.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => o.alAbrir(b.dataset.abrir)));
+    // Una fila por persona: primero quien tiene algo de hoy en adelante (por
+    // fecha de salida, para ver la escalera de quién pisa a quién) y después
+    // quien solo tiene vacaciones pasadas, de la más reciente a la más vieja.
+    const porPersona = new Map();
+    tramos.forEach(t => {
+      const k = String(t.id);
+      if (!porPersona.has(k)) porPersona.set(k, { id: t.id, nombre: t.nombre, detalle: t.detalle || '', tramos: [] });
+      porPersona.get(k).tramos.push(t);
+    });
+    const filas = [...porPersona.values()].map(r => {
+      const vivos = r.tramos.filter(t => (t.hasta || '9999-12-31') >= hoy);
+      return { ...r, dias: r.tramos.reduce((n, t) => n + diasDe(t), 0),
+        orden: vivos.length ? [0, vivos.map(t => t.desde).sort()[0]] : [1, r.tramos.map(t => t.b).sort().pop()] };
+    }).sort((x, z) => x.orden[0] - z.orden[0]
+      || (x.orden[0] === 0 ? x.orden[1].localeCompare(z.orden[1]) : z.orden[1].localeCompare(x.orden[1]))
+      || x.nombre.localeCompare(z.nombre, 'es'));
+
+    // Las cifras de arriba.
+    const fueraHoy = new Set(tramos.filter(t => !t.pendiente && t.a <= hoy && t.b >= hoy).map(t => String(t.id)));
+    const programadas = new Set(periodos.filter(p => !p.pendiente && p.desde > hoy).map(p => String(p.id)));
+    const pendientes = periodos.filter(p => p.pendiente).length;
+    let pico = 0, picoDia = null;
+    for (let i = Math.max(0, idx(hoy)); i < N; i++) if (cuenta[i] > pico) { pico = cuenta[i]; picoDia = dias[i]; }
+    const kpi = (txt, val, estilo = '', pie = '') => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${txt}</p><p class="text-lg font-bold tabular-nums"${estilo}>${val}${pie ? ` <span class="text-xs font-normal text-telecab-muted">${pie}</span>` : ''}</p></div>`;
+    const kpis = [
+      kpi('De vacaciones hoy', fueraHoy.size),
+      kpi('Con vacaciones programadas', programadas.size, ' style="color: rgb(var(--tc-vac))"'),
+      kpi('Lo más lleno que viene', pico ? `${pico} a la vez` : '—', '', picoDia ? `el ${picoDia.slice(8, 10)}/${picoDia.slice(5, 7)}` : ''),
+      pendientes ? kpi('Esperan aprobación', pendientes, ' style="color: rgb(var(--tc-warn))"') : '',
+      sin ? kpi('Sin ni un día todavía', sin.length, ' style="color: rgb(var(--tc-warn))"') : '',
+    ].filter(Boolean);
+
+    const NOMBRE_T = { on: 'disfrutadas', prog: 'programadas', pend: 'esperando aprobación' };
+    const barra = t => {
+      // Los tramos de un mismo color, seguidos, dentro de la barra.
+      const trozos = [];
+      for (let d = t.a; d <= t.b; d = isoDe(ms(d) + DIA)) {
+        const k = tipo(t, d);
+        if (trozos.length && trozos[trozos.length - 1].k === k) trozos[trozos.length - 1].n++; else trozos.push({ k, n: 1 });
+      }
+      const n = diasDe(t);
+      const conGris = trozos.some(x => x.k === 'libra');
+      const estado = t.pendiente ? NOMBRE_T.pend : t.b < hoy ? NOMBRE_T.on : t.a > hoy ? NOMBRE_T.prog : 'de vacaciones ahora';
+      const texto = `${t.nombre}: del ${f(t.desde)} ${t.hasta ? `al ${f(t.hasta)}` : 'sin fecha de vuelta'} · ${n} ${n === 1 ? 'día' : 'días'}${conGris ? ' (sin contar libranzas ni festivos)' : ''} · ${estado}`;
+      const clases = ['tc-vpm-barra', t.pendiente ? 'tc-vpm-barra--pend' : '', t.corteIzq ? 'tc-vpm-barra--corte-izq' : '', t.corteDer ? 'tc-vpm-barra--corte-der' : ''].filter(Boolean).join(' ');
+      return `<button type="button" class="${clases}" data-abrir="${esc(t.id)}" style="left:${idx(t.a) * W + 1}px;width:${(idx(t.b) - idx(t.a) + 1) * W - 2}px" title="${esc(texto)}" aria-label="${esc(texto)}">${
+        trozos.map(x => `<i class="tc-vpm-${x.k}" style="flex-grow:${x.n}"></i>`).join('')}</button>`;
+    };
+
+    const meses = [];
+    for (let vm = mesIdx(inicio); vm <= finVm; vm++) {
+      const a = isoDe(Date.UTC(Math.floor(vm / 12), vm % 12, 1));
+      meses.push({ a, n: idx(finDeMes(vm)) - idx(a) + 1, nombre: `${MESES[vm % 12]} ${Math.floor(vm / 12)}` });
     }
 
-    repintar();
-    return { get mes() { return vm; } };
+    const html = `
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid ${esc(o.icono || 'fa-umbrella-beach')}" style="color: rgb(var(--tc-vac))" aria-hidden="true"></i> ${esc(o.titulo || 'Vacaciones por meses')}</h2>
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="inline-flex rounded-lg border border-telecab-border overflow-hidden" role="group" aria-label="Moverse en el tiempo">
+            <button type="button" data-vpm-ir="-30" class="px-2.5 py-2 text-xs text-telecab-muted hover:text-telecab-gold" aria-label="Un mes atrás"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+            <button type="button" data-vpm-ir="hoy" class="px-3 py-2 text-xs text-telecab-muted hover:text-telecab-gold border-x border-telecab-border">Ir a hoy</button>
+            <button type="button" data-vpm-ir="30" class="px-2.5 py-2 text-xs text-telecab-muted hover:text-telecab-gold" aria-label="Un mes adelante"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+          </div>
+          ${(o.botones || []).map((b, n) =>
+            `<button type="button" data-vpm-boton="${n}" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold transition"${b.titulo ? ` title="${esc(b.titulo)}"` : ''}>${b.html}</button>`).join('')}
+        </div>
+      </div>
+      ${o.ayuda ? `<p class="text-xs text-telecab-muted mb-3">${o.ayuda}</p>` : ''}
+      <div class="grid grid-cols-2 md:grid-cols-${kpis.length} gap-2 mb-3">${kpis.join('')}</div>
+      ${filas.length ? `
+      <div class="tc-vpm-marco" tabindex="0" aria-label="Las vacaciones día a día: arrastra o desplázate a los lados para moverte en el tiempo">
+        <div class="tc-vpm-lienzo" style="width:${NOMBRE + N * W}px;--vpm-dia:${W}px;--vpm-nombre:${NOMBRE}px;--vpm-ancho:${N * W}px;--vpm-finde:${-(dowDe(inicio) - 1) * W}px">
+          <div class="tc-vpm-capa" aria-hidden="true">
+            ${dias.map((d, i) => (festivos.has(d) && dowDe(d) < 6 ? `<span class="tc-vpm-capa-festivo" style="left:${i * W}px"></span>` : '')).join('')}
+            ${meses.slice(1).map(m => `<span class="tc-vpm-capa-mes" style="left:${idx(m.a) * W}px"></span>`).join('')}
+            ${idx(hoy) >= 0 && idx(hoy) < N ? `<span class="tc-vpm-capa-hoy" style="left:${idx(hoy) * W}px"></span>` : ''}
+          </div>
+          <div class="tc-vpm-cabeza">
+            <div class="tc-vpm-fila"><span class="tc-vpm-izq"></span><div class="tc-vpm-pista">${meses.map(m =>
+              `<span class="tc-vpm-mes-et" style="left:${idx(m.a) * W}px;width:${m.n * W}px"><b>${m.nombre}</b></span>`).join('')}</div></div>
+            <div class="tc-vpm-fila"><span class="tc-vpm-izq"></span><div class="tc-vpm-pista tc-vpm-dias">${dias.map(d =>
+              `<span class="${d === hoy ? 'hoy' : descanso(d) ? 'descanso' : ''}"${festivos.has(d) ? ' title="Festivo"' : ''}>${Number(d.slice(8))}</span>`).join('')}</div></div>
+            <div class="tc-vpm-fila"><span class="tc-vpm-izq text-[11px] text-telecab-muted">a la vez</span><div class="tc-vpm-pista tc-vpm-vez">${cuenta.map((c, i) =>
+              `<b style="background: rgb(var(--tc-vac) / ${c ? (0.14 + 0.66 * c / maxC).toFixed(2) : 0.04})" title="${c} de vacaciones el ${f(dias[i])}">${c || ''}</b>`).join('')}</div></div>
+          </div>
+          ${filas.map(r => `<div class="tc-vpm-fila tc-vpm-fila--persona">
+            <span class="tc-vpm-izq"><button type="button" class="tc-vpm-nombre" data-abrir="${esc(r.id)}" title="${esc(r.nombre + (r.detalle ? ' · ' + r.detalle : '') + ' · ' + r.dias + ' día(s) en la parrilla')}">
+              <span class="truncate">${esc(r.nombre)}</span><span class="tc-vpm-nombre-dias">${r.dias}d</span></button></span>
+            <div class="tc-vpm-pista tc-vpm-persona">${r.tramos.map(barra).join('')}</div></div>`).join('')}
+        </div>
+      </div>` : `<p class="text-sm text-telecab-muted py-6 text-center">Nadie tiene vacaciones de ${MESES[mesIdx(inicio) % 12]} de ${inicio.slice(0, 4)} en adelante.</p>`}
+      <div class="tc-vpm-leyenda mt-3">
+        <span><i class="tc-vpm-on"></i>Disfrutadas</span>
+        <span><i class="tc-vpm-prog"></i>Programadas</span>
+        ${pendientes ? '<span><i class="tc-vpm-pend tc-vpm-muestra-pend"></i>Esperan aprobación</span>' : ''}
+        <span><i class="tc-vpm-libra"></i>No gasta (su libranza o festivo)</span>
+        <span><i class="tc-vpm-muestra-hoy"></i>Hoy</span>
+        <span>Arrastra la parrilla para moverte en el tiempo</span>
+      </div>
+      ${sin ? `<details class="mt-5"><summary class="cursor-pointer text-sm text-telecab-warn font-semibold">Sin vacaciones todavía (${sin.length}) — a quién le toca asignar</summary>
+        <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-1.5 mt-2">${sin.map(c =>
+          `<button type="button" data-abrir="${esc(c.id)}" class="text-left px-3 py-1.5 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 transition">
+            <span class="block text-sm text-telecab-text truncate">${esc(c.nombre)}</span>
+            ${c.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(c.detalle)}</span>` : ''}</button>`).join('')}</div></details>` : ''}`;
+
+    caja.innerHTML = html;
+    if (caja._vpmCtl) caja._vpmCtl.abort();
+    const ctl = caja._vpmCtl = new AbortController();
+    const marco = caja.querySelector('.tc-vpm-marco');
+
+    if (marco) {
+      // Donde estaba, o hoy con diez días de antes a la vista.
+      marco.scrollLeft = caja._vpmScroll != null ? caja._vpmScroll : Math.max(0, (idx(hoy) - 10) * W);
+      marco.addEventListener('scroll', () => { caja._vpmScroll = marco.scrollLeft; }, { signal: ctl.signal });
+      // Arrastrar con el ratón, como la bitácora general. Arrastrar no abre la ficha.
+      let arr = null, movido = false;
+      marco.addEventListener('pointerdown', e => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        arr = { x: e.clientX, y: e.clientY, sx: marco.scrollLeft, sy: marco.scrollTop };
+        movido = false;
+      }, { signal: ctl.signal });
+      global.addEventListener('pointermove', e => {
+        if (!arr) return;
+        const dx = e.clientX - arr.x, dy = e.clientY - arr.y;
+        if (!movido && Math.abs(dx) + Math.abs(dy) > 4) { movido = true; marco.classList.add('arrastrando'); }
+        if (movido) { marco.scrollLeft = arr.sx - dx; marco.scrollTop = arr.sy - dy; }
+      }, { signal: ctl.signal });
+      global.addEventListener('pointerup', () => { arr = null; marco.classList.remove('arrastrando'); }, { signal: ctl.signal });
+      marco.addEventListener('click', e => { if (movido) { e.stopPropagation(); e.preventDefault(); movido = false; } }, { capture: true, signal: ctl.signal });
+    }
+
+    caja.querySelectorAll('[data-vpm-ir]').forEach(b => b.addEventListener('click', () => {
+      if (!marco) return;
+      const v = b.dataset.vpmIr;
+      const left = v === 'hoy' ? Math.max(0, (idx(hoy) - 10) * W) : marco.scrollLeft + Number(v) * W;
+      marco.scrollTo({ left, behavior: suave() ? 'smooth' : 'auto' });
+    }));
+    caja.querySelectorAll('[data-vpm-boton]').forEach(b => b.addEventListener('click', () => o.botones[Number(b.dataset.vpmBoton)].alPulsar()));
+    if (o.alAbrir) caja.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => o.alAbrir(b.dataset.abrir)));
   }
 
   global.VacacionesPorMeses = { pintar, mesIdx };

@@ -178,6 +178,25 @@ test('«Vacaciones por meses» de la oficina: quién se va y cuándo, solo para 
   assert.deepEqual(otra.periodos.filter(x => x.id === p.ana.id), [], 'las no aprobadas ya no salen');
 }));
 
+test('registrar unas ya disfrutadas: del 20 al 30 de agosto son 7 días, y se restan de las de hoy', () => conBase(async h => {
+  const p = await oficina(h);
+  await usuarios.fijarFechaAlta(p.ana.id, '2026-01-01', p.firma);
+  const antes = await vac.mias(p.ana);
+  await assert.rejects(vac.registrar(p.ana, { usuarioId: p.ana.id, desde: '2026-08-20', hasta: '2026-08-30' }), e => e.status === 403, 'solo quien aprueba');
+  avisos = [];
+  const r = await vac.registrar(p.jefe, { usuarioId: p.ana.id, desde: '2026-08-20', hasta: '2026-08-30', libra: [6, 7], nota: 'Agosto' });
+  assert.equal(r.dias, 7, 'jueves 20 y viernes 21, y del lunes 24 al viernes 28: los sábados y domingos no cuentan');
+  assert.deepEqual(avisos.map(x => [x.ids, x.titulo]), [[[p.ana.id], 'Vacaciones registradas']], 'le llega a quien se las registran');
+  const despues = await vac.mias(p.ana);
+  assert.equal(despues.disfrutadas, antes.disfrutadas + 7);
+  assert.equal(despues.saldo, Math.round((antes.saldo - 7) * 100) / 100, 'se restan de las que tiene hoy');
+  assert.equal(despues.vacaciones.find(v => v.id === r.id).estado, 'aprobada', 'entran ya aprobadas');
+  await assert.rejects(vac.registrar(p.jefe, { usuarioId: p.ana.id, desde: '2026-08-24', hasta: '2026-08-26' }), e => e.status === 409, 'no encima de otras');
+  const hoy = calendario.hoy();
+  await assert.rejects(vac.registrar(p.jefe, { usuarioId: p.ana.id, desde: hoy, hasta: calendario.sumarDias(hoy, 3) }), /se piden/, 'las que vienen se piden');
+  await assert.rejects(vac.registrar(p.jefe, { usuarioId: p.ana.id, desde: '2025-12-20', hasta: '2025-12-24' }), /empieza el 01.01.2026/, 'antes de 2026 no cuenta');
+}));
+
 test('con la base: un festivo de la oficina no gasta vacaciones (el calendario trae sus festivos)', () => conBase(async h => {
   const p = await oficina(h);
   await usuarios.fijarFechaAlta(p.ana.id, '2026-01-01', p.firma);

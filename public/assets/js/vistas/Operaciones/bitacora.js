@@ -440,7 +440,7 @@
   // por persona de vacaciones, una celda por día; la fila "a la vez" dice
   // cuánta gente falta cada día — el dato que evita que RRHH junte media flota
   // el mismo puente. Y al final, quién no tiene NI UN DÍA todavía.
-  let VAC = null, vacMesSel = null;
+  let VAC = null;
 
   async function abrirVacaciones() {
     SEL = null; diaSel = null; pintarLista();
@@ -461,10 +461,8 @@
     VacacionesPorMeses.pintar($('#b-default'), {
       hoy: VAC.hoy,
       desde: '2026-06',
-      mes: vacMesSel,
-      alCambiarMes: m => { vacMesSel = m; },
       titulo: 'Vacaciones por meses',
-      ayuda: 'La fila «a la vez» dice cuánta gente falta cada día: si se pone caliente, ese mes no cabe nadie más.',
+      ayuda: 'Seguida, sin partir por meses: arrastra la parrilla para moverte en el tiempo y ver quién pisa a quién. La fila «a la vez» dice cuánta gente falta cada día: si se pone caliente, ahí no cabe nadie más.',
       periodos: (VAC.periodos || []).map(p => ({ id: p.conductorId, nombre: p.nombre, detalle: p.telefono || '', desde: p.desde, hasta: p.hasta, abierta: p.abierta })),
       sinVacaciones: (VAC.sinVacaciones || []).map(c => ({ id: c.conductorId, nombre: c.nombre, detalle: [c.telefono, c.turno, c.zona].filter(Boolean).join(' · ') })),
       botones: [

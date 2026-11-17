@@ -8,6 +8,7 @@
 //   GET  /mis-vacaciones                         la pantalla
 //   GET  /mis-vacaciones/api/mias                las mías: saldo, meses, vacaciones, reglas
 //   GET  /mis-vacaciones/api/lista               toda la oficina (quien aprueba)
+//   POST /mis-vacaciones/api/registrar     { usuarioId, desde, hasta, libra, nota }  unas ya disfrutadas (quien aprueba)
 //   GET  /mis-vacaciones/api/calendario    «Vacaciones por meses» de la oficina: quién se va y cuándo (quien aprueba)
 //   GET  /mis-vacaciones/api/personas/:id        las de una persona (quien aprueba, o uno mismo)
 //   POST /mis-vacaciones/api/simular             { desde, hasta, libra: [d, d], usuarioId? }
@@ -45,6 +46,7 @@ router.get('/api/calendario', responde(q => vac.calendarioOficina(q)));
 router.get('/api/personas/:id', responde((q, req) => vac.de(q, req.params.id)));
 router.post('/api/simular', responde((q, req) => vac.simular(q, b(req)).then(simulacion => ({ simulacion }))));
 router.post('/api/pedir', responde((q, req) => vac.pedir(q, b(req))));
+router.post('/api/registrar', responde((q, req) => vac.registrar(q, b(req))));
 router.post('/api/:id(\\d+)/aprobar', responde((q, req) => vac.aprobar(q, req.params.id)));
 router.post('/api/:id(\\d+)/rechazar', responde((q, req) => vac.rechazar(q, req.params.id, b(req))));
 router.post('/api/:id(\\d+)/retirar', responde((q, req) => vac.retirar(q, req.params.id)));

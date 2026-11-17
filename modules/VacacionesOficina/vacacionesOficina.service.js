@@ -341,6 +341,36 @@ async function pedir(quien, { desde, hasta, libra, nota } = {}) {
   return { id, simulacion: sim };
 }
 
+/**
+ * REGISTRAR UNAS YA DISFRUTADAS (17/11/2026, Camilo: «déjame registrar
+ * vacaciones de la oficina del pasado, de tal a tal fecha el usuario disfrutó
+ * X días, para que así se resten con los que tenga hoy en día… si me fui del
+ * 20 al 30 de agosto, serían 7 días, ya que los sábados y domingos no
+ * cuentan»). Solo quien aprueba, para cualquiera de la oficina (también para
+ * sí). Entran ya aprobadas: gastan los días sin sus dos de libranza ni
+ * festivos, como todas. Empiezan antes de hoy (las que vienen se piden) y
+ * desde el 01/01/2026, cuando empieza la cuenta.
+ */
+async function registrar(quien, { usuarioId, desde, hasta, libra, nota } = {}) {
+  if (!await puedeAprobar(quien)) throw error('Las registra quien lleva Usuarios y permisos', 403);
+  const id = Number(usuarioId);
+  if (!id) throw error('Falta de quién son');
+  const e = await entorno();
+  if (esDia(desde) && desde >= e.hoy) throw error('Aquí van las que ya empezaron: las que vienen se piden desde el simulador');
+  if (esDia(desde) && desde < DESDE) throw error('La cuenta empieza el 01/01/2026: lo de antes no cuenta');
+  const sim = await simular(quien, { usuarioId: id, desde, hasta, libra });
+  if (!sim.cuentan) throw error('Esos días no gastan vacaciones (son libranzas o festivos)');
+  const texto = String(nota || '').trim().slice(0, 1000);
+  const nueva = await libro.conFirma({ usuarioId: quien.id, origen: ORIGEN, accion: 'alta', motivo: 'Vacaciones ya disfrutadas, registradas después' }, async cli => {
+    if ((await repo.solapadas(cli, id, desde, hasta)).length) throw error('Ya tiene vacaciones pedidas o aprobadas esos días', 409);
+    const vid = await repo.insertar(cli, { usuarioId: id, desde, hasta, libra: sim.libra, nota: texto, por: quien.id });
+    await repo.resolver(cli, vid, { estado: 'aprobada', por: quien.id, nota: 'Ya disfrutadas: registradas después', desdeEstados: ['pedida'] });
+    return vid;
+  });
+  await avisar(id !== quien.id ? [id] : [], { titulo: 'Vacaciones registradas', cuerpo: `Del ${fecha(desde)} al ${fecha(hasta)}: ${sim.cuentan} días, ya restados`, etiqueta: `vac-oficina-${nueva}` });
+  return { id: nueva, dias: sim.cuentan, simulacion: sim };
+}
+
 async function cambiarEstado(quien, id, { estado, nota, desdeEstados, soloAprueba = true, propia = false }) {
   const v = await repo.vacacion(null, Number(id));
   if (!v) throw error('Esas vacaciones no existen', 404);
@@ -398,7 +428,7 @@ contadores.registrarFuente(ORIGEN, {
 });
 
 module.exports = {
-  mias, de, lista, calendarioOficina, simular, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
+  mias, de, lista, calendarioOficina, simular, registrar, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
   // Para las pruebas:
   _saldoDe: saldoDe, _simularSobre: simularSobre, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
 };

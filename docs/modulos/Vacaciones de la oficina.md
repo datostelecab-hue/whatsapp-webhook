@@ -71,11 +71,21 @@ Camilo: *«los festivos también se saltan en las vacaciones, ten en cuenta que 
 
 Camilo: *«Hazlo tipo calendario para saber gráficamente quién se va y cuándo»* y, en seguida, *«ya hay algo parecido en bitácora llamado "Vacaciones por meses", recicla ese»*. Es esa parrilla, sacada a la pieza global `VacacionesPorMeses` (`public/assets/js/vacacionesPorMeses.js`, clases `.tc-vpm-*` en `telecab.css`), que usan las dos pantallas:
 
-- Una tira de meses (desde enero de 2026 hasta la última vacación, como mucho 15 meses vista) y, del mes elegido, una fila por persona de vacaciones y una celda por día.
-- **Disfrutadas**, sólidas; **programadas**, rayadas; las que **esperan aprobación**, con el borde discontinuo; **los días que no gastan** (sus dos de libranza y los festivos), en claro. Fines de semana y festivos, de fondo.
-- **«A la vez»**: cuánta gente falta cada día (solo lo aprobado y solo los días que gastan). Junto al nombre, los días que gasta ese mes (las que esperan, también).
-- Cifras: de vacaciones ese mes, días del mes, con vacaciones programadas, las que esperan aprobación y quién no tiene ni un día este año (la lista, al final).
+- **Seguida, no mes a mes** (Camilo: *«que no se vea mes a mes sino que se pueda arrastrar como en la bitácora general para saber quién pisa a quién en los lapsos y no se partan por los meses»*): una sola tira de días, de enero de 2026 a la última vacación (como mucho 15 meses vista), que **se arrastra con el ratón** (o con la rueda y Mayúsculas, o con los botones ‹ Ir a hoy ›). El nombre y la cabecera se quedan quietos; el nombre del mes, a la vista. Al abrirla, hoy con diez días de antes; al repintar (aprobar, registrar…), se queda donde estaba.
+- Cada vacación es **una barra entera** aunque cruce de mes. Una fila por persona: primero quien tiene algo de hoy en adelante, por fecha de salida (la escalera de quién pisa a quién); después quien solo tiene pasadas.
+- Dentro de la barra: **disfrutadas**, sólidas; **programadas**, rayadas; las que **esperan aprobación**, en ámbar con el borde discontinuo; y **en gris los días que no gastan** (sus dos de libranza y los festivos). Fines de semana y festivos, de fondo; hoy, con su columna.
+- **«A la vez»**: cuánta gente falta cada día (solo lo aprobado y solo los días que gastan). Junto al nombre, los días que gasta en toda la tira (las que esperan, también).
+- Cifras: de vacaciones hoy, con vacaciones programadas, **lo más lleno que viene** (cuántos a la vez y qué día), las que esperan aprobación y quién no tiene ni un día este año (la lista, al final).
 - Pulsar a alguien abre su ficha en el Panel, donde se aprueba. Aprobar, pedir o anular repinta la parrilla y el Listado.
+
+## Registrar unas ya disfrutadas (17/11/2026)
+
+Camilo: *«déjame registrar vacaciones de la oficina del pasado, de tal a tal fecha el usuario disfrutó X días, para que así se resten con los que tenga hoy en día… si tengo 9, pero me fui del 20 al 30 de agosto, serían 7 días que disfruté ya que los días sábados y domingos no cuentan»*.
+
+- En la ficha de cada persona («La oficina» → pulsarla), **«Registrar unas ya disfrutadas»**: primer y último día, sus dos días de libranza (por defecto sábado y domingo) y una nota.
+- Antes de guardar dice cuántos días gastan (sin libranzas ni festivos) y cómo queda su saldo: del 20 al 30 de agosto de 2026, 7 días.
+- Entran **ya aprobadas** y se restan como cualquier otra. Solo quien aprueba, para cualquiera de la oficina (también para sí). Tienen que haber empezado antes de hoy (las que vienen se piden desde el simulador) y desde el 01/01/2026. No se registran encima de otras. A la persona le llega un aviso.
+- Si se registran mal, se anulan con motivo como unas aprobadas.
 
 ## Las tablas (db/263)
 
@@ -88,6 +98,7 @@ Camilo: *«Hazlo tipo calendario para saber gráficamente quién se va y cuándo
 GET  /mis-vacaciones/api/mias                las mías: saldo, meses, vacaciones, reglas, si apruebo
 GET  /mis-vacaciones/api/lista               toda la oficina (quien aprueba)
 GET  /mis-vacaciones/api/calendario          «Vacaciones por meses»: periodos, festivos, quién no tiene ninguna (quien aprueba)
+POST /mis-vacaciones/api/registrar           { usuarioId, desde, hasta, libra, nota }  unas ya disfrutadas (quien aprueba)
 GET  /mis-vacaciones/api/personas/:id        las de una persona (quien aprueba, o uno mismo)
 POST /mis-vacaciones/api/simular             { desde, hasta, libra: [d, d], usuarioId? }
 POST /mis-vacaciones/api/pedir               { desde, hasta, libra, nota }
@@ -110,5 +121,5 @@ modules/VacacionesOficina/vacacionesOficina.controller.js  /mis-vacaciones
 modules/VacacionesOficina/vistas/misVacaciones.ejs     la pantalla
 public/assets/js/vistas/VacacionesOficina/misVacaciones.js  «Mías», el simulador y «La oficina»
 public/assets/js/vacacionesPorMeses.js                 la parrilla «Vacaciones por meses» (global, también la bitácora)
-test/vacaciones-oficina.test.js                        7 pruebas
+test/vacaciones-oficina.test.js                        8 pruebas
 ```
