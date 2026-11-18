@@ -105,9 +105,11 @@ function crear({ repo, claveNomina = '/recaudacion/nomina' }) {
   const PARA_EL_CONDUCTOR = {
     presencial: 'Entregado en mano', nomina: 'Descontado de tu nómina', transferencia: 'Transferencia',
     entrega: 'Te devolvimos', cambio: 'Cambio que te dimos',
+    // db/266: un gasto suyo que se le devolvió quedándose ese dinero.
+    remesa: 'Gasto que te devolvimos (remesa)',
   };
   // Lo que baja lo que debe (entrega él) y lo que lo sube (se le da dinero).
-  const BAJA = new Set(['presencial', 'nomina', 'transferencia']);
+  const BAJA = new Set(['presencial', 'nomina', 'transferencia', 'remesa']);
 
   async function extractoDe(conductorId) {
     const f = await repo.ficha(conductorId);
@@ -183,7 +185,14 @@ function crear({ repo, claveNomina = '/recaudacion/nomina' }) {
   }
 
   /** Anular un movimiento. Queda anulado con su motivo, no se borra. */
-  const anular = (id, usuarioId, motivo) => repo.anular(id, { usuarioId, motivo });
+  // El movimiento de una remesa no se anula aquí: lo lleva su remesa (db/266).
+  // Anulado a mano, la remesa seguiría «pagada con efectivo» sin descontar nada.
+  const anular = async (id, usuarioId, motivo) => {
+    if (repo.esDeRemesa && await repo.esDeRemesa(id)) {
+      throw new Error('Ese descuento lo puso una remesa: se cambia o se anula en Recaudación › Remesas.');
+    }
+    return repo.anular(id, { usuarioId, motivo });
+  };
 
   // ── El cierre de BOLT ──────────────────────────────────────────────────────
 

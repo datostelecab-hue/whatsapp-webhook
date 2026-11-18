@@ -75,6 +75,9 @@ function crear(recaudacion, { titulo = 'Recaudación', seccion = 'recaudacion', 
   return router;
 }
 
-// Madrid: el servicio de siempre, en /recaudacion (app.js).
-module.exports = crear(require('./recaudacion.service'));
+// Madrid: el servicio de siempre, en /recaudacion (app.js), con sus Remesas
+// (db/266, 18/11/2026: «solo Madrid por ahora»).
+const madrid = crear(require('./recaudacion.service'), { vista: { conRemesas: true } });
+require('./remesas.controller')(madrid, { quienEs });
+module.exports = madrid;
 module.exports.crear = crear;

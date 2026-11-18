@@ -177,6 +177,37 @@ Una tarjeta abajo a la derecha, con el aspecto de las de cumpleaños (`public/as
 
 Comprobador: `scripts/comprobar-aviso-efectivo.js`.
 
+## Las remesas (18/11/2026, db/266)
+
+Camilo, con el Excel «Remesas Conductores»: *«Vamos a sacar las funcionalidades de este excel y agregarlo a recaudación en un apartado llamado "Remesas"… La remesa sí o sí debe de quitarle efectivo a entregar del conductor, si el conductor no tiene efectivo en BOLT deben de haber los siguientes estados… Todos los estados pueden ser editables»*. Y de paso: *«quita lo de añadir cambio, es un despropósito ya que cada conductor tiene su botón, también el botón de "Pegar a mano" ya que no volveremos a usar excels»* (los dos botones de arriba ya no están; el cambio se da desde la fila o la ficha de cada conductor).
+
+Una **remesa** es un gasto que pagó el conductor y que la casa le devuelve (combustible, ITV, lavado, parking, peaje…). Es la pestaña **«Remesas»** de `/recaudacion`, al lado de **«Efectivo»** (solo Madrid: Camilo, *«solo Madrid por ahora»*). `modules/Administracion/remesas.{service,repo,controller}.js` y `public/assets/js/vistas/Administracion/remesas.js`.
+
+| Estado | Qué pasa con el dinero |
+|---|---|
+| Pendiente de aprobación | Nada. La apunta quien entra en Recaudación |
+| Pendiente de pago | Nada: aprobada, sin pagar |
+| **Pagado con efectivo de BOLT** | Un movimiento `remesa` en la recaudación: **baja lo que debe entregar** y no toca el cajón (los signos de la nómina) |
+| Pagado en nómina | Nada aquí: va en su nómina |
+| Pagado en su cuenta | Nada aquí: transferencia a su **IBAN** (el de la remesa o, si no lleva, el de su ficha) |
+
+- **«Sí o sí» le quita efectivo a entregar**: al apuntarla (quien aprueba, sin elegir estado) o al aprobarla, si tiene efectivo por entregar se paga con él; si no, queda pendiente de pago. Puede quedarle en negativo: la casa le debe la diferencia.
+- **Todos los estados se cambian**, y el dinero sigue al estado **en la misma transacción**: salir de «con efectivo» anula su movimiento (vuelve a deber); entrar lo apunta (con la fecha de ese día); cambiar el importe o el conductor lo rehace; anular la remesa lo anula. El movimiento **no se anula a mano** desde la ficha del conductor («de una remesa»): lo para `recaudacion.service.anular`.
+- **Quién** (Camilo: *«una llave nueva»*): apuntar, quien entra en Recaudación (queda pendiente de aprobación). **Aprobar** (sacarla de pendiente de aprobación o volverla a ella), tocar una aprobada, anular, ver el IBAN entero e importar el Excel: la llave **`/recaudacion/remesas/aprobar`** («Recaudación · aprobar remesas», `manual`: no la tiene nadie hasta que se dé en Usuarios), y el superadmin y el desarrollador como en toda la caja. A quien tiene la llave le llega una notificación con cada remesa nueva por aprobar y un número en «Recaudación» del menú y en la pestaña.
+- **El IBAN va cifrado** (`services/cripto.js`, como el de la ficha) y en la lista sale enmascarado («•••• 1266»); entero, solo a quien aprueba, al pulsar «Ver entero».
+- **Las cuentas** llevan el tipo `remesa` en todas partes: el cuadro (resta en «a recaudar»), el cuadre de caja (en el pendiente, no en el efectivo), la ficha del conductor, su portal («Gasto que te devolvimos (remesa)») y una comprobación más de «¿Cuadra?» (las remesas, tabla contra caja).
+
+### El Excel, una vez
+
+Camilo: *«Sí, subiendo el Excel una vez»*. Lleva IBAN: no va en una migración (el repositorio es público). **«Importar el Excel»** (quien aprueba) lee la hoja **«Remesas»** (la de Madrid; «CARNET VTC» no, que es dinero que el conductor debe a la casa, y Barcelona tampoco por ahora) y primero dice lo que haría:
+
+- el **conductor**, por el nombre: todas las palabras del Excel en su nombre completo (o el de BOLT) y que no haya dos así. Si no, entra **sin conductor** (con su nombre del Excel, en rojo) y se le pone con «Editar». Contra la copia local casaron 40 de 49;
+- el **estado**: «Pagado» con un IBAN → en su cuenta (IBAN cifrado); con «nómina» → en nómina; con «efectivo» → con efectivo de BOLT; si no se sabe, en nómina, que es como se pagaban casi todas. «Pendiente/Aprobado» → pendiente de pago. Sin estado → pendiente de aprobación;
+- el **concepto**, de las observaciones o del paréntesis («Devolución en nómina ( combustible )» → «combustible»);
+- **sin tocar la recaudación**: lo del Excel ya se saldó en su día.
+
+Lo que ya entró (mismo contenido) no se repite: se puede volver a subir sin miedo.
+
 ## El cron
 
 Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia. Después hace lo mismo con la de Barcelona.

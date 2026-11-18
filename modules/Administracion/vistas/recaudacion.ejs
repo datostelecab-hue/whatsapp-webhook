@@ -5,6 +5,8 @@
   const BASE = (typeof base !== 'undefined' && base) ? base : '/recaudacion';
   const SEDE_NOMBRE = (typeof sedeNombre !== 'undefined' && sedeNombre) ? sedeNombre : '';
   const SOLO_CUENTAS = (typeof soloCuentas !== 'undefined') && !!soloCuentas;
+  // LAS REMESAS (db/266, 18/11/2026): solo Madrid por ahora.
+  const CON_REMESAS = (typeof conRemesas !== 'undefined') && !!conRemesas;
 %>
 <div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
 
@@ -19,7 +21,7 @@
         <b>total en mano</b>, lo que ya ha entregado en ventanilla; y lo que queda es lo que hay que pedirle.
       </p>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2" id="r-acciones">
       <button id="r-nuevo" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
         <i class="fa-solid fa-receipt mr-1"></i> Nuevo ingreso
       </button>
@@ -28,10 +30,10 @@
         <i class="fa-solid fa-file-invoice-dollar mr-1"></i> Descuento de nómina
       </button>
       <% } %>
-      <button id="r-cambio" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
-              title="El dinero que se le da para que tenga cambio. Sale de la caja y él lo debe">
-        <i class="fa-solid fa-hand-holding-dollar mr-1"></i> Añadir cambio
-      </button>
+      <%# «Añadir cambio» y «Pegar a mano» ya no están arriba (18/11/2026, Camilo:
+          «es un despropósito ya que cada conductor tiene su botón» y «no
+          volveremos a usar excels»): el cambio se da desde la fila y la ficha de
+          cada conductor. %>
       <button id="r-salida" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> Salida de caja
       </button>
@@ -42,13 +44,23 @@
       <button id="r-calcular" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-rotate mr-1"></i> Recalcular desde BOLT
       </button>
-      <% if (!SOLO_CUENTAS) { %>
-      <button id="r-cierre" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text" title="Meter las cifras a mano, para un histórico viejo o una hoja de fuera">
-        <i class="fa-solid fa-file-import mr-1"></i> Pegar a mano
-      </button>
-      <% } %>
     </div>
   </div>
+
+  <% if (CON_REMESAS) { %>
+  <%# Las dos partes de la recaudación (db/266): el efectivo de siempre y las remesas. %>
+  <div id="r-pestanas" class="flex flex-wrap items-center gap-2 mb-4" role="tablist">
+    <button type="button" role="tab" data-r-pestana="efectivo" class="r-pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i> Efectivo
+    </button>
+    <button type="button" role="tab" data-r-pestana="remesas" class="r-pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-receipt" aria-hidden="true"></i> Remesas
+      <span class="tc-contador" data-contador="remesas.aprobar" hidden></span>
+    </button>
+  </div>
+  <div id="v-remesas" class="hidden -mx-4 lg:-mx-6 -mt-4 lg:-mt-6"><div id="rm-lista"></div></div>
+  <% } %>
+  <div id="v-efectivo">
 
   <!-- ── El cuadre de caja: las dos cifras que se miran al abrir ──────── -->
   <div class="grid sm:grid-cols-2 gap-3 mb-5">
@@ -153,7 +165,12 @@
 
   <!-- ── Lo que salió de la caja en esta quincena ─────────────────────── -->
   <div id="r-salidas" class="mt-4"></div>
+  </div>
 </div>
 
 <script type="application/json" id="datos-servidor"><%- json({ denominaciones: denominaciones || [], tiposMovimiento: tiposMovimiento || [], salidasCaja: salidasCaja || [], etiquetasSalida: etiquetasSalida || salidasCaja || [], puedeNomina: !!(puedeNomina), base: BASE, soloCuentas: SOLO_CUENTAS, sedeNombre: SEDE_NOMBRE }) %></script>
 <script src="<%= est('/assets/js/vistas/Administracion/recaudacion.js') %>"></script>
+<% if (CON_REMESAS) { %>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Administracion/remesas.js') %>"></script>
+<% } %>

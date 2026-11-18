@@ -814,7 +814,7 @@
       const etqTipo = t => (TIPOS.find(x => x.codigo === t) || {}).etiqueta || t;
       // El cambio en ámbar, como en la tabla: no es un ingreso ni una devolución,
       // es dinero de la casa que anda por la calle.
-      const tono = t => (t === 'presencial' || t === 'transferencia' ? 'text-telecab-green' : t === 'nomina' ? 'text-sky-400'
+      const tono = t => (t === 'presencial' || t === 'transferencia' ? 'text-telecab-green' : t === 'nomina' || t === 'remesa' ? 'text-sky-400'
         : t === 'cambio' ? 'text-telecab-warn' : 'text-telecab-muted');
       // Sale dinero del cajón en los dos casos, aunque por razones distintas.
       const signo = t => (t === 'entrega' || t === 'cambio' ? '−' : '+');
@@ -886,7 +886,10 @@
                       '<span class="text-[11px] text-telecab-muted/70">· ' + esc(m.quien) + '</span>' +
                       (m.anulado
                         ? '<span class="text-[11px] text-telecab-red">anulado por ' + esc(m.anuladoPor || '¿?') + ': «' + esc(m.anuladoMotivo) + '»</span>'
-                        : '<button data-anular class="ml-auto text-[11px] px-2 py-0.5 rounded border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">Anular</button>') +
+                        : m.tipo === 'remesa'
+                          // El de una remesa no se anula aquí (db/266): se cambia en Remesas.
+                          ? '<span class="ml-auto text-[11px] text-telecab-muted" title="Se cambia o se anula en Recaudación › Remesas">de una remesa</span>'
+                          : '<button data-anular class="ml-auto text-[11px] px-2 py-0.5 rounded border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">Anular</button>') +
                     '</div>').join('')
                   : '<p class="px-4 py-2 text-xs text-telecab-muted">Sin movimientos en esta quincena.</p>') +
               '</div>').join('')
@@ -936,7 +939,8 @@
   }
 
   $('#r-nuevo').addEventListener('click', () => recibo(null, 'ingreso'));
-  $('#r-cambio').addEventListener('click', () => recibo(null, 'cambio'));
+  // «Añadir cambio» ya no está arriba (18/11/2026): se da desde cada conductor.
+  if ($('#r-cambio')) $('#r-cambio').addEventListener('click', () => recibo(null, 'cambio'));
   ['#f-busca', '#f-estado', '#f-plantilla', '#f-dias'].forEach(s =>
     $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
   $('#r-salida').addEventListener('click', salidaCaja);

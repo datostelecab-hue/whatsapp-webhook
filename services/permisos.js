@@ -204,6 +204,10 @@ const CATALOGO = [
     // caja: quién puede tocarla no se decide por descarte.
     { clave: '/recaudacion',        etiqueta: 'Recaudación del efectivo', manual: true },
     { clave: '/recaudacion/nomina', etiqueta: 'Recaudación · descuentos de nómina (RRHH)', manual: true },
+    // LAS REMESAS (db/266, 18/11/2026): apuntarlas es de quien entra en
+    // Recaudación; aprobarlas, tocar una aprobada, anularla, ver el IBAN entero
+    // e importar el Excel, de esta llave (Camilo: «una llave nueva»).
+    { clave: '/recaudacion/remesas/aprobar', etiqueta: 'Recaudación · aprobar remesas', manual: true },
     // LA CAJA DE BARCELONA (05/11/2026, db/230): aparte de la de Madrid y con
     // llaves propias —lo eligió Camilo: quien lleva una caja no tiene por qué
     // llevar la otra—. Las dos igual que las de Madrid, apagadas para todos.

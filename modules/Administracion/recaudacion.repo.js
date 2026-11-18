@@ -50,6 +50,12 @@ const TIPOS = [
   // banco. `referencia`: lleva el ID de la transferencia, obligatorio y escrito
   // a mano, y la misma no se puede apuntar dos veces.
   { codigo: 'transferencia',     etiqueta: 'Transferencia',         caja:  0, deuda: +1, conductor: true, referencia: true },
+  // UNA REMESA PAGADA CON SU EFECTIVO (db/266, 18/11/2026): un gasto que pagó él
+  // (combustible, ITV, lavado…) y se le devuelve quedándose ese dinero de lo que
+  // cobró en mano. Los signos de la nómina: baja lo que debe y no entra en el
+  // cajón. Lo escribe y lo anula Remesas (remesas.service.js), nunca a mano:
+  // `interno` lo deja fuera de los desplegables.
+  { codigo: 'remesa',            etiqueta: 'Remesa (gasto devuelto)', caja: 0, deuda: +1, conductor: true, interno: true },
   { codigo: 'entrega',           etiqueta: 'Devuelto al conductor', caja: -1, deuda: -1, conductor: true },
   // EL CAMBIO QUE SE LE DA PARA TRABAJAR. Sale del cajón y ÉL LO DEBE: no es
   // suyo, es de la casa, y vuelve con la recaudación. Mismos signos que
@@ -273,6 +279,7 @@ function crear(cfg) {
                 COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
                 COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
                 COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0) AS transferencia,
+                COALESCE(sum(importe) FILTER (WHERE tipo = 'remesa'), 0)     AS remesa,
                 COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega,
                 COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)     AS cambio,
                 -- La última vez que ESTE dinero bajó de verdad. 'entrega' es lo
@@ -303,6 +310,7 @@ function crear(cfg) {
               COALESCE(m.presencial, 0) AS presencial,
               COALESCE(m.nomina, 0)     AS nomina,
               COALESCE(m.transferencia, 0) AS transferencia,
+              COALESCE(m.remesa, 0)     AS remesa,
               COALESCE(m.entrega, 0)    AS entrega,
               COALESCE(m.cambio, 0)     AS cambio,
               m.ultima_entrega
@@ -334,6 +342,7 @@ function crear(cfg) {
               COALESCE(m.presencial, 0) AS presencial,
               COALESCE(m.nomina, 0)     AS nomina,
               COALESCE(m.transferencia, 0) AS transferencia,
+              COALESCE(m.remesa, 0)     AS remesa,
               COALESCE(m.entrega, 0)    AS entrega,
               COALESCE(m.cambio, 0)     AS cambio,
               m.ultima_entrega
@@ -351,6 +360,8 @@ function crear(cfg) {
       // Lo que pagó por transferencia: como la nómina, baja lo que debe sin pasar
       // por la ventanilla, así que tampoco va dentro de «en mano».
       const transferencia = Number(x.transferencia);
+      // Las remesas pagadas con su efectivo (db/266): igual, bajan lo que debe.
+      const remesa = Number(x.remesa) || 0;
       // El cambio que se le dio y aún no ha vuelto. SUMA a lo que debe, encima de
       // lo que diga BOLT: BOLT no sabe nada de este dinero —lo ponemos nosotros—.
       const cambio = Number(x.cambio);
@@ -376,8 +387,9 @@ function crear(cfg) {
         bolt: +bolt.toFixed(2),
         enMano, nomina: +nomina.toFixed(2), entrega: +entrega.toFixed(2),
         transferencia: +transferencia.toFixed(2),
+        remesa: +remesa.toFixed(2),
         cambio: +cambio.toFixed(2),
-        aRecaudar: +(bolt + cambio - enMano - nomina - transferencia).toFixed(2),
+        aRecaudar: +(bolt + cambio - enMano - nomina - transferencia - remesa).toFixed(2),
       };
     });
 
@@ -388,6 +400,7 @@ function crear(cfg) {
         gente: filas.length,
         bolt: suma('bolt'), enMano: suma('enMano'), nomina: suma('nomina'),
         transferencia: suma('transferencia'),
+        remesa: suma('remesa'),
         cambio: suma('cambio'),
         aRecaudar: suma('aRecaudar'),
         // A cuántos les falta algo: es el número por el que preguntan.
@@ -485,6 +498,7 @@ function crear(cfg) {
          COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0)        AS presencial,
          COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)            AS nomina,
          COALESCE(sum(importe) FILTER (WHERE tipo = 'transferencia'), 0)     AS transferencia,
+         COALESCE(sum(importe) FILTER (WHERE tipo = 'remesa'), 0)            AS remesa,
          COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)           AS entrega,
          COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)            AS cambio,
          COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_banco'), 0)      AS banco,
@@ -508,11 +522,13 @@ function crear(cfg) {
       // Lo que queda por cobrarle a la gente, incluido el cambio que se le prestó.
       // La transferencia lo baja y, como la nómina, no toca el cajón: el efectivo
       // de arriba no la lleva.
-      pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') + n('transferencia') - n('entrega'))),
+      // Las remesas pagadas con su efectivo (db/266), como la transferencia.
+      pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') + n('transferencia') + n('remesa') - n('entrega'))),
       deuda: dosDec(n('deuda')),
       entradas: dosDec(n('presencial')),
       nomina: dosDec(n('nomina')),
       transferencia: dosDec(n('transferencia')),
+      remesa: dosDec(n('remesa')),
       devuelto: dosDec(n('entrega')),
       // Cuánto cambio nuestro hay ahora mismo en la calle.
       cambio: dosDec(n('cambio')),
@@ -634,13 +650,14 @@ function crear(cfg) {
       q.presencial = +vivos.filter(m => m.tipo === 'presencial').reduce((a, m) => a + m.importe, 0).toFixed(2);
       q.nomina = +vivos.filter(m => m.tipo === 'nomina').reduce((a, m) => a + m.importe, 0).toFixed(2);
       q.transferencia = +vivos.filter(m => m.tipo === 'transferencia').reduce((a, m) => a + m.importe, 0).toFixed(2);
+      q.remesa = +vivos.filter(m => m.tipo === 'remesa').reduce((a, m) => a + m.importe, 0).toFixed(2);
       q.entrega = +vivos.filter(m => m.tipo === 'entrega').reduce((a, m) => a + m.importe, 0).toFixed(2);
       // El cambio va APARTE de lo entregado, no restandolo. Es dinero nuestro que
       // se le presta: sube lo que debe sin tocar lo que ha traido. Metido dentro
       // de `recaudado` la ficha ensenaria "entregado 300" a quien entrego 500 y se
       // llevo 200 de suelto, que es mentira por los dos lados.
       q.cambio = +vivos.filter(m => m.tipo === 'cambio').reduce((a, m) => a + m.importe, 0).toFixed(2);
-      q.recaudado = +(q.presencial + q.nomina + q.transferencia - q.entrega).toFixed(2);
+      q.recaudado = +(q.presencial + q.nomina + q.transferencia + q.remesa - q.entrega).toFixed(2);
       acumulado = +(acumulado + q.deuda + q.cambio - q.recaudado).toFixed(2);
       q.saldo = acumulado;
     });
@@ -850,6 +867,14 @@ function crear(cfg) {
       throw e;
     }
     return { id: String(r.rows[0].id), importe: +(centimos / 100).toFixed(2), fecha: dia, tipo, referencia: ref };
+  }
+
+  /** ¿Es el movimiento de una remesa? (db/266). Sin la tabla, o en otra sede, no. */
+  async function esDeRemesa(movimientoId) {
+    try {
+      const r = await db.consulta(`SELECT tipo FROM ${TM} WHERE id = $1`, [Number(movimientoId)]);
+      return !!r.rows[0] && r.rows[0].tipo === 'remesa';
+    } catch (_) { return false; }
   }
 
   /** Anula un movimiento. No se borra: el dinero deja rastro o no vale de nada. */
@@ -1150,6 +1175,9 @@ function crear(cfg) {
     mete('Lo pagado por transferencia cuadra entre tabla y caja',
       casi(suma('transferencia'), caja.transferencia),
       `tabla ${suma('transferencia')} € · caja ${caja.transferencia} €`);
+    mete('Las remesas pagadas con su efectivo cuadran entre tabla y caja',
+      casi(suma('remesa'), caja.remesa || 0),
+      `tabla ${suma('remesa')} € · caja ${caja.remesa || 0} €`);
     mete('Lo que queda por recaudar cuadra entre tabla y caja',
       casi(suma('aRecaudar'), caja.pendiente),
       `tabla ${suma('aRecaudar')} € · caja ${caja.pendiente} €`);
@@ -1384,7 +1412,7 @@ function crear(cfg) {
     candidatos,
     comprobar,
     anotar,
-    anular,
+    anular, esDeRemesa,
     guardarCierre,
     importarCierre,
     efectivoBolt,
