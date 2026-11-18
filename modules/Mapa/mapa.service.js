@@ -77,6 +77,7 @@ const ahora = require('../../services/flotaViva/ahora');
 const { normMat } = require('../../services/flotaViva/fuentes');
 const { dentroDeM30, kmHastaM30 } = require('./m30');
 const { SEDE_FLOTA } = require('../../services/nucleo');
+const parametros = require('../../services/parametros');
 
 // EL «SIN SEÑAL» LO DICE MAPON, NO UN CRONÓMETRO NUESTRO.
 //
@@ -292,6 +293,66 @@ function tonoConMotor(t, c, m) {
   return t;
 }
 
+// ── EL COCHE CAMBIADO EN BOLT (18/11/2026) ───────────────────────────────────
+// Camilo, con el 5886LBZ: «en BOLT en estos momentos hay alguien con él, pero
+// está en otra posición muy diferente; en Mapon solo me sale uno, en Coslada».
+// Israel Periñán trabajaba en BOLT con el 5886LBZ puesto, y el 5886LBZ estaba
+// aparcado en Coslada; el que rodaba era el 9985LBC, uno de sus coches en el
+// planificador, sin nadie en BOLT. BOLT pinta el coche donde está el móvil.
+//
+// LA REGLA, con hechos y sin adivinar:
+//   · el coche PUESTO: alguien va DE VIAJE en BOLT con él y Mapon lo tiene
+//     parado desde hace 10 min o más (lo que hasta hoy era «error de GPS»);
+//   · el coche REAL: rueda según Mapon, sin nadie conectado en BOLT, y es de
+//     ESA persona: lo tiene fichado en el bot o es uno de sus coches en el
+//     planificador hoy (fijo o correturnos).
+// Si hay más de uno así, el que tiene fichado en el bot y, si no, el que lleva
+// más rato rodando. Los dos salen con su
+// tono, «Coche cambiado en BOLT», y cada uno dice cuál es el otro. Sin el
+// segundo coche, el primero sigue siendo «error de GPS»: no se acusa a nadie.
+
+/**
+ * Los coches cambiados. `lista`: por cada coche { matricula, rueda,
+ * situacion, tonoBase, llevaAsi, personaId (la ficha de quien va en BOLT),
+ * ftConductorId (quien lo tiene en el bot), conductor (su nombre en BOLT) }.
+ * `cochesDe`: persona → Set de sus matrículas en el planificador.
+ * Devuelve Map(índice → { papel: 'puesto' | 'real', otro, persona, por: 'bot' | 'planificador', paradoS }). Pura.
+ */
+function buscarCambiados(lista, cochesDe) {
+  const out = new Map();
+  const usados = new Set();
+  lista.forEach((x, i) => {
+    if (x.situacion !== 'viaje' || x.tonoBase !== 'errorgps' || x.personaId == null) return;
+    const suyos = cochesDe.get(Number(x.personaId)) || new Set();
+    const candidatos = lista
+      .map((y, j) => ({ y, j }))
+      .filter(({ y, j }) => j !== i && !usados.has(j) && y.matricula && y.matricula !== x.matricula
+        && y.rueda && !CONECTADO.has(y.situacion)
+        && (Number(y.ftConductorId) === Number(x.personaId) || suyos.has(y.matricula)))
+      // Primero el que tiene fichado en el bot (lo dijo él); luego, el que lleva más rato rodando.
+      .sort((a, b) => (Number(b.y.ftConductorId) === Number(x.personaId)) - (Number(a.y.ftConductorId) === Number(x.personaId))
+        || (Number(b.y.llevaAsi) || 0) - (Number(a.y.llevaAsi) || 0));
+    if (!candidatos.length) return;
+    const { y, j } = candidatos[0];
+    const por = Number(y.ftConductorId) === Number(x.personaId) ? 'bot' : 'planificador';
+    usados.add(j);
+    out.set(i, { papel: 'puesto', otro: y.matricula, persona: x.conductor || null, por, paradoS: x.llevaAsi == null ? null : Number(x.llevaAsi) });
+    out.set(j, { papel: 'real', otro: x.matricula, persona: x.conductor || null, por, paradoS: x.llevaAsi == null ? null : Number(x.llevaAsi) });
+  });
+  return out;
+}
+
+/** Lo que dice la ficha de un coche cambiado. */
+function porQueCambiado(k) {
+  const quien = k.persona || 'Quien va en BOLT';
+  const parado = k.paradoS != null ? ` desde hace ${Math.round(k.paradoS / 60)} min` : '';
+  const suyo = k.por === 'bot' ? 'lo tiene fichado en el bot' : 'es uno de sus coches en el planificador';
+  const hacer = k.por === 'bot' ? 'Que cambie el coche en BOLT.' : `Que cambie el coche en BOLT y fiche el ${k.papel === 'puesto' ? k.otro : 'que lleva'} en el bot.`;
+  return k.papel === 'puesto'
+    ? `En BOLT va ${quien} de viaje con este coche, pero Mapon lo tiene parado${parado}. Casi seguro va en el ${k.otro}: ${suyo} y rueda sin nadie en BOLT. Tiene puesto en BOLT el coche equivocado. ${hacer}`
+    : `Rueda sin nadie en BOLT. Casi seguro lo lleva ${quien}, que va de viaje en BOLT con el ${k.otro} puesto (parado en Mapon${parado}): ${suyo}. ${hacer}`;
+}
+
 /**
  * La situación de BOLT de un coche, tal como la dice la foto del ahora.
  *
@@ -446,7 +507,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
 
   // La posición es de este módulo; lo de BOLT, de la foto del ahora, que se
   // hace una vez para todas las pantallas.
-  const [filas, frescura, foto] = await Promise.all([repo.coches(sedes), repo.frescura(sedes), ahora.foto()]);
+  const diasMuerto = await parametros.valor('mapa.equipo_muerto_dias').catch(() => 7);
+  const [filas, frescura, foto] = await Promise.all([
+    repo.coches(sedes, { diasMuerto }), repo.frescura(sedes, { diasMuerto }), ahora.foto()]);
 
   // Con la API v2 lo de BOLT es de hace segundos: lo que diga su lista. Si la
   // foto salió de la base, lo de siempre: la más fresca de las dos tuberías.
@@ -551,6 +614,29 @@ async function frente({ forzar = false, sedes = null } = {}) {
       motivo: porQue(c, t, boltHace),
     };
   });
+
+  // EL COCHE CAMBIADO EN BOLT (18/11/2026): ver buscarCambiados. Solo se mira
+  // el planificador de quien va de viaje con un coche parado: casi nunca nadie.
+  const lista = coches.map((c, i) => ({
+    matricula: c.matricula, rueda: c.rueda, situacion: c.situacion, tonoBase: c.tonoBase, llevaAsi: c.llevaAsi,
+    personaId: c.uuidConductor && enlaces.has(c.uuidConductor) ? enlaces.get(c.uuidConductor) : null,
+    ftConductorId: filas[i].ft_conductor_id == null ? null : Number(filas[i].ft_conductor_id),
+    conductor: c.conductor,
+  }));
+  const ids = lista.filter(x => x.situacion === 'viaje' && x.tonoBase === 'errorgps' && x.personaId != null).map(x => x.personaId);
+  if (ids.length) {
+    const cochesDe = await repo.cochesDePersonas(ids).catch(e => {
+      console.warn('⚠️ [MAPA] Sin el planificador para los coches cambiados:', e.message);
+      return new Map();
+    });
+    buscarCambiados(lista, cochesDe).forEach((k, i) => {
+      const c = coches[i];
+      c.tono = 'cambiado';
+      c.cambio = k;
+      c.motivo = porQueCambiado(k) + (boltFiable ? '' : ` — OJO: lo de BOLT es de hace ${Math.round((boltHace || 0) / 60)} min`);
+      c.dudoso = !boltFiable;
+    });
+  }
 
   const cuenta = coches.reduce((a, c) => { a[c.tono] = (a[c.tono] || 0) + 1; return a; }, {});
   const datos = {
@@ -744,7 +830,7 @@ async function noVuelven({ sedes = null, minMinutos = NO_VUELVE_MIN } = {}) {
 const olvidar = () => { cache.clear(); };
 
 module.exports = { frente, sueltos, noVuelven, olvidar, tono, fichajeDe, mismoNombre, tonoConFichaje,
-  motorDe, tonoConMotor,
+  motorDe, tonoConMotor, buscarCambiados,
   PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
   NO_VUELVE_MIN,
   // El anillo, para que la pantalla lo pinte sin tener que saber de dónde sale.

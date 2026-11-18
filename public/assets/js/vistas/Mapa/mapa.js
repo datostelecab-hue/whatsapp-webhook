@@ -30,6 +30,9 @@
     descanso:    { tk: '--tc-mapa-descanso', icono: 'fa-mug-hot',              texto: 'Rodando en descanso' },
     // El fichaje del bot que no cuadra (04/11/2026): parpadea. Ver mapa.service (`fichajeDe`).
     fichaje:     { tk: '--tc-red',           icono: 'fa-user-xmark',           texto: 'Fichaje que no cuadra' },
+    // El coche cambiado en BOLT (18/11/2026): va en uno y en BOLT tiene puesto
+    // otro. Parpadea como el fichaje. Ver mapa.service (`buscarCambiados`).
+    cambiado:    { tk: '--tc-red',           icono: 'fa-right-left',           texto: 'Coche cambiado en BOLT' },
     // Los parados sin nadie en el bot, por su motor (04/11/2026). Ver mapa.service (`tonoConMotor`).
     sinbloquear: { tk: '--tc-red',           icono: 'fa-lock-open',            texto: 'Parado sin bloquear' },
     suelto:      { tk: '--tc-red',           icono: 'fa-triangle-exclamation', texto: 'Rodando desconectado' },
@@ -44,7 +47,7 @@
   };
   // El del fichaje y el parado sin bloquear, junto al rojo de siempre: los rojos
   // seguidos. El bloqueado, delante del parado: es un parado que está bien.
-  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'fichaje', 'sinbloquear', 'suelto', 'errorgps'];
+  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'fichaje', 'cambiado', 'sinbloquear', 'suelto', 'errorgps'];
   const ORDEN = PRINCIPALES.concat(['bloqueado', 'parado', 'singps', 'perdido', 'sinmapon']);
   const CLASES_TONO = ORDEN.map(k => 'm-' + k);
   // Explicación de cada filtro, para el globo del chip.
@@ -54,6 +57,7 @@
     esperafuera: 'En espera en BOLT, pero FUERA de la M-30.',
     descanso: 'Rodando con el conductor en descanso: conectado, pero sin dar servicio.',
     fichaje: 'Se está usando (rueda o hay alguien conectado en BOLT) y nadie lo tiene fichado en el bot, o en BOLT va otra persona que la del bot.',
+    cambiado: 'Va en un coche y en BOLT tiene puesto otro: de viaje en BOLT con un coche que Mapon tiene parado, mientras uno de sus coches (del bot o del planificador) rueda sin nadie en BOLT. Salen los dos.',
     sinbloquear: 'Parado, nadie lo tiene en el bot y el motor NO está cortado: se lo puede llevar cualquiera sin fichar.',
     suelto: 'Rodando sin nadie conectado en BOLT, con el coche fichado en el bot a nombre de quien lo lleva.',
     errorgps: 'De viaje en BOLT y Mapon lo da por parado desde hace 10 min o más: el GPS no está dando la posición real.',
@@ -647,7 +651,9 @@
         + (c.noVuelve ? ' · ' + minTxt(c.noVuelve.desde) + ' sin volver a la M-30' : '');
       m.el.querySelector('i').className = 'fa-solid ' + t.icono;
       // El nombre de quien lo tiene en el bot, pegado al punto (ver .m-nombre).
-      const etqBot = sinFichar(c) ? 'Sin fichar' : c.tono === 'sinbloquear' ? 'Sin bloquear'
+      const etqBot = c.tono === 'cambiado' && c.cambio
+        ? (c.cambio.papel === 'puesto' ? 'Va en ' + c.cambio.otro : 'BOLT: ' + c.cambio.otro)
+        : sinFichar(c) ? 'Sin fichar' : c.tono === 'sinbloquear' ? 'Sin bloquear'
         : delBot(c) ? corto(delBot(c)) : '';
       let nb = m.el.querySelector('.m-nombre');
       if (etqBot) {
@@ -750,6 +756,8 @@
       const enBolt = nombreDe(c);
       const estado = c.tono === 'sinmapon'
         ? (c.estadoVehiculo || 'sin estado') + ' · sin Mapon'
+        : c.tono === 'cambiado' && c.cambio
+          ? (c.cambio.papel === 'puesto' ? 'en BOLT con este · va en ' + c.cambio.otro : 'lo lleva ' + (c.cambio.persona || '¿?') + ' · BOLT: ' + c.cambio.otro)
         : bot
           ? (c.fichaje.estado === 'otro' && enBolt ? 'en BOLT: ' + enBolt
             : esAhora(c) ? (c.situacionEtiqueta || t.texto) : t.texto)
@@ -762,7 +770,7 @@
       return '<button data-clave="' + esc(c.clave) + '"'
         + ' class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition flex items-center gap-2">'
         + '<span class="w-2 h-2 rounded-full shrink-0' + (c.tono === 'esperafuera' ? ' m-parpadea'
-          : c.tono === 'fichaje' || c.tono === 'sinbloquear' ? ' m-parpadea-rojo' : '')
+          : c.tono === 'fichaje' || c.tono === 'cambiado' || c.tono === 'sinbloquear' ? ' m-parpadea-rojo' : '')
         + '" style="background:' + cv(t.tk) + '"></span>'
         + '<span class="min-w-0 flex-1">'
         + '<span class="block text-xs font-semibold truncate' + (quien && !bot && !esAhora(c) ? ' text-telecab-muted' : '') + '">'

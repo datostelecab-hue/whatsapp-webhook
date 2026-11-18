@@ -169,6 +169,17 @@ puede haber acabado hace rato.
 Va antes que «Sin señal» a propósito: un equipo muerto en un coche que está
 haciendo un viaje es justo este error.
 
+### El coche cambiado en BOLT (18/11/2026)
+
+Camilo, con el 5886LBZ: *«en BOLT en estos momentos hay alguien con él, pero también está en otra posición muy diferente; en Mapon solo me sale uno, en Coslada»*. Israel Periñán trabajaba en BOLT con el **5886LBZ puesto**, y el 5886LBZ estaba aparcado en Coslada; el que rodaba era el **9985LBC**, uno de sus coches de correturnos, sin nadie en BOLT. BOLT pinta el coche donde está el móvil de quien lo lleva puesto. Y el mapa lo daba como «Error de GPS», que no lo era.
+
+Tono propio, **«Coche cambiado en BOLT»**, rojo que parpadea como el del fichaje. La regla (`buscarCambiados` en `mapa.service.js`), solo con hechos:
+
+- **El coche puesto**: alguien va **de viaje** en BOLT con él y Mapon lo tiene parado desde hace 10 min o más (lo que antes era «error de GPS»).
+- **El coche real**: rueda según Mapon, **sin nadie conectado en BOLT**, y es **de esa persona**: lo tiene fichado en el bot o es uno de sus coches en el planificador hoy (fijo o correturnos, `repo.cochesDePersonas`). Si hay más de uno, el fichado en el bot y, si no, el que lleva más rato rodando.
+
+Salen **los dos**, y cada uno dice cuál es el otro: al lado del punto, «Va en 9985LBC» o «BOLT: 5886LBZ»; en la ficha, qué pasa y qué hacer (que cambie el coche en BOLT y lo fiche en el bot). Sin el segundo coche, el primero sigue siendo «Error de GPS»: no se acusa a nadie. En espera tampoco: esperar es estar aparcado. El coche real **no cuenta como suelto** para el aviso de coche suelto: quien lo lleva está trabajando. Probado contra producción ese día: salían los dos de Israel, y el 1090MJY seguía en «Error de GPS» (no había ningún coche suyo rodando).
+
 ### Colores fijos
 
 El azul y el amarillo se pidieron con nombre, y los del tema no sirven: en
@@ -357,6 +368,8 @@ con el estado que da Mapon (el tono) y el suyo en la casa (en la ficha).
 
 Medido ese día: **81 coches**, los mismos 81 en las dos pantallas. **82 filas**
 en el mapa porque un coche lleva dos equipos de Mapon.
+
+**Un equipo muerto no se pinta (18/11/2026).** El 5886LBZ salía dos veces: el bueno en Coslada y el equipo viejo (898080), mudo desde el 29/09, congelado en el norte de Madrid. Mapon ya no lo enseñaba, pero su última posición seguía en `fv_posicion`. Ahora, si un coche tiene dos equipos y uno lleva **7 días** sin hablar (el parámetro `mapa.equipo_muerto_dias`) mientras el otro habla después, el callado no se pinta ni se cuenta. Un coche con **un solo** equipo sale siempre, aunque calle («Sin señal»): eso sí hay que verlo. Ese día el mapa pasó de 82 filas a 81, una por coche.
 
 ### La alerta: coches de los que Mapon no da NADA
 

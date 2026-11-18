@@ -64,6 +64,12 @@ const CATALOGO = [
       + 'Cloudflare, que va delante del ERP, corta las subidas de más de 100 MB.',
     usa: 'La subida de adjuntos (services/adjuntos.js)' },
 
+  // El mapa (18/11/2026)
+  { clave: 'mapa.equipo_muerto_dias', modulo: 'Operaciones', tipo: 'entero', unidad: 'dias', min: 1, max: 90, defecto: 7,
+    etiqueta: 'Mapa: días sin hablar para dar por muerto un equipo de Mapon',
+    descripcion: 'Si un coche tiene dos equipos de Mapon y uno lleva estos días sin hablar mientras el otro sí habla, el callado no se pinta: es un equipo que se quitó o se cambió. '
+      + 'Un coche con un solo equipo sale siempre, aunque esté callado («Sin señal»).',
+    usa: 'Mapa de flota (modules/Mapa/mapa.repo.js)' },
   // El banco de KM (db/267, 18/11/2026)
   { clave: 'banco_km.km_dia', modulo: 'Operaciones', tipo: 'decimal', unidad: 'km', decimales: 1, min: 0, max: 500, defecto: 17.5,
     etiqueta: 'Banco de KM: km fuera de BOLT por cada día',

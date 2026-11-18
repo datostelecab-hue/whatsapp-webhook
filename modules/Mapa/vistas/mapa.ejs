@@ -121,7 +121,7 @@
      tiene en el bot, o en BOLT va otro. Se apaga entero, como la espera de
      fuera, y más deprisa; no late como el rojo de siempre: de reojo se separa
      el «no se sabe quién lo lleva» del «se sabe, pero no se ha conectado». */
-  .m-coche.m-fichaje, .m-parpadea-rojo { animation: m-parpadeo .8s ease-in-out infinite; }
+  .m-coche.m-fichaje, .m-coche.m-cambiado, .m-parpadea-rojo { animation: m-parpadeo .8s ease-in-out infinite; }
   /* Y EL PARADO SIN NADIE EN EL BOT Y CON EL MOTOR LIBRE (04/11/2026), igual:
      es el mismo «aquí falta alguien», con el coche quieto. */
   .m-coche.m-sinbloquear { animation: m-parpadeo .8s ease-in-out infinite; }
@@ -131,9 +131,9 @@
      espera de fuera, sin parpadeo, lleva un anillo discontinuo: algo tiene que
      separarla de la de dentro. El fichaje y el sin bloquear, lo mismo en rojo. */
   @media (prefers-reduced-motion: reduce) {
-    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea, .m-coche.m-fichaje, .m-coche.m-sinbloquear, .m-parpadea-rojo { animation: none; }
+    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea, .m-coche.m-fichaje, .m-coche.m-cambiado, .m-coche.m-sinbloquear, .m-parpadea-rojo { animation: none; }
     .m-coche.m-esperafuera { outline: 2px dashed rgb(var(--tc-mapa-espera)); outline-offset: 2px; }
-    .m-coche.m-fichaje, .m-coche.m-sinbloquear { outline: 2px dashed rgb(var(--tc-red)); outline-offset: 2px; }
+    .m-coche.m-fichaje, .m-coche.m-cambiado, .m-coche.m-sinbloquear { outline: 2px dashed rgb(var(--tc-red)); outline-offset: 2px; }
   }
 
   /* QUIÉN LO TIENE EN EL BOT (04/11/2026): su nombre pegado al punto. Desde el
@@ -145,8 +145,8 @@
     background: rgb(var(--tc-card)); color: rgb(var(--tc-text)); border: 1px solid rgb(var(--tc-border));
     box-shadow: 0 1px 3px rgb(0 0 0 / .45);
   }
-  #m-mapa.m-nombres .m-nombre, .m-coche.m-fichaje .m-nombre, .m-coche.m-sinbloquear .m-nombre { display: block; }
-  .m-coche.m-fichaje .m-nombre, .m-coche.m-sinbloquear .m-nombre { background: rgb(var(--tc-red)); color: rgb(var(--tc-dark)); border-color: transparent; }
+  #m-mapa.m-nombres .m-nombre, .m-coche.m-fichaje .m-nombre, .m-coche.m-cambiado .m-nombre, .m-coche.m-sinbloquear .m-nombre { display: block; }
+  .m-coche.m-fichaje .m-nombre, .m-coche.m-cambiado .m-nombre, .m-coche.m-sinbloquear .m-nombre { background: rgb(var(--tc-red)); color: rgb(var(--tc-dark)); border-color: transparent; }
 
   /* NO VUELVE A LA M-30 (29/09/2026): una etiqueta con los minutos pegada al
      punto. No cambia el color —el color dice qué hace en BOLT—: dice además

@@ -36,7 +36,7 @@ const db = require('../../services/db');
  * del que mira puede ir mal, y de ellos depende que un coche se pinte apagado o
  * que suene un aviso.
  */
-async function coches(sedes) {
+async function coches(sedes, { diasMuerto = 7 } = {}) {
   const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
   // `rele_corte` y `motor_cortado` los crea el esquema de Flota viva al arrancar.
   // Si el mapa se pide antes de que esté puesto, espera a que lo esté en vez de
@@ -111,7 +111,17 @@ async function coches(sedes) {
       -- pidio Camilo: los coches son los NUESTROS, esten en taller o donde
       -- esten, y si de alguno no hay nada en Mapon, eso es una alerta.
       FROM vehiculo v
+      -- UN EQUIPO MUERTO NO SE PINTA (18/11/2026). Un coche puede llevar
+      -- dos equipos de Mapon, y salen los dos; pero el que lleva más de
+      -- una semana (o lo que diga mapa.equipo_muerto_dias) sin hablar cuando el coche tiene otro que habla después es
+      -- un equipo que se quitó o se cambió: su punto es de cuando se calló.
+      -- El 5886LBZ salía dos veces: el bueno en Coslada y el viejo (898080),
+      -- mudo desde el 29/09, congelado en el norte de Madrid.
       LEFT JOIN fv_posicion p ON p.matricula = v.matricula
+       AND NOT (COALESCE(p.visto_at, '-infinity') < now() - make_interval(days => $2::int)
+                AND EXISTS (SELECT 1 FROM fv_posicion q
+                             WHERE q.matricula = p.matricula AND q.mapon_unit <> p.mapon_unit
+                               AND COALESCE(q.visto_at, '-infinity') > COALESCE(p.visto_at, '-infinity')))
       LEFT JOIN cat_estado_vehiculo ev ON ev.codigo = v.estado_operativo
       LEFT JOIN fv_vehiculo fvv ON fvv.matricula = v.matricula
       LEFT JOIN LATERAL (
@@ -174,7 +184,7 @@ async function coches(sedes) {
          LIMIT 1) om ON TRUE
      WHERE v.baja_at IS NULL
        AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
-     ORDER BY v.matricula`, [filtro]);
+     ORDER BY v.matricula`, [filtro, Math.max(1, Math.round(Number(diasMuerto) || 7))]);
   return r.rows;
 }
 
@@ -185,7 +195,7 @@ async function coches(sedes) {
  * equipos sin avisar es un mapa en el que un día falta un coche y nadie sabe
  * por qué.
  */
-async function frescura(sedes) {
+async function frescura(sedes, { diasMuerto = 7 } = {}) {
   const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
   const r = await db.consulta(`
     SELECT max(p.refrescado_at)                                        AS refrescado_at,
@@ -214,8 +224,40 @@ async function frescura(sedes) {
                               AND $1::varchar[] IS NOT NULL
                               AND NOT (v.sede = ANY($1::varchar[])))::int AS otra_sede
       FROM fv_posicion p
-      LEFT JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL`, [filtro]);
+      LEFT JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL
+     -- Sin los equipos muertos de un coche que tiene otro (ver coches()).
+     WHERE NOT (COALESCE(p.visto_at, '-infinity') < now() - make_interval(days => $2::int)
+                AND EXISTS (SELECT 1 FROM fv_posicion q
+                             WHERE q.matricula = p.matricula AND q.mapon_unit <> p.mapon_unit
+                               AND COALESCE(q.visto_at, '-infinity') > COALESCE(p.visto_at, '-infinity')))`,
+    [filtro, Math.max(1, Math.round(Number(diasMuerto) || 7))]);
   return r.rows[0] || { refrescado_at: null, hace: null, bolt_hace: null, dentro: 0, sin_ficha: 0, otra_sede: 0 };
+}
+
+/**
+ * LOS COCHES DE UNAS PERSONAS EN EL PLANIFICADOR, HOY (18/11/2026): conductor_id
+ * → Set de matrículas. Fijo o correturnos, le toque hoy o no. Para el «coche
+ * cambiado en BOLT»: si alguien trabaja en BOLT con un coche que Mapon tiene
+ * parado y uno de SUS coches rueda sin nadie en BOLT, va en ese.
+ */
+async function cochesDePersonas(ids) {
+  const lista = [...new Set((ids || []).map(Number).filter(Number.isFinite))];
+  if (!lista.length) return new Map();
+  const r = await db.consulta(
+    `SELECT a.conductor_id, v.matricula
+       FROM asignacion a
+       JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+       JOIN vehiculo v ON v.id = p.vehiculo_id AND v.baja_at IS NULL
+      WHERE a.conductor_id = ANY($1::bigint[])
+        AND a.desde <= (now() AT TIME ZONE 'Europe/Madrid')::date
+        AND (a.hasta IS NULL OR a.hasta >= (now() AT TIME ZONE 'Europe/Madrid')::date)`, [lista]);
+  const m = new Map();
+  r.rows.forEach(x => {
+    const k = Number(x.conductor_id);
+    if (!m.has(k)) m.set(k, new Set());
+    m.get(k).add(x.matricula);
+  });
+  return m;
 }
 
 /**
@@ -236,4 +278,4 @@ async function personasDeBolt(uuids) {
   return new Map(r.rows.map(x => [x.externo_id, Number(x.conductor_id)]));
 }
 
-module.exports = { coches, frescura, personasDeBolt };
+module.exports = { coches, frescura, personasDeBolt, cochesDePersonas };
