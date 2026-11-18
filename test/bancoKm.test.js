@@ -102,3 +102,43 @@ test('con la base: la foto de cada jornada, la semana de cada uno y la de cada c
   assert.deepEqual(coche.personas.map(p => [p.persona, p.pct]), [[H, 92], [C, 8]], 'de quién son sus km fuera, en %');
   assert.equal((await banco.historia(H, '2026-11-08')).semanas[0].saldo, -15);
 }));
+
+// ── El desglose (18/11/2026): de dónde sale cada km de una persona ───────────
+const desg = require('../modules/Operaciones/bancoKm.desglose');
+
+test('el desglose: descanso, desconectado, por no terminar el turno (lo llevaba otro) y fichado sin BOLT', () => {
+  const H = 3600 * 1000;
+  // El fijo de noche (c1, cuenta cF) ficha a las 0 y no termina hasta las 10 h.
+  // Su compañero (cJ) coge el coche: en espera de 1 a 2 h y desconectado de 2 a 4 h.
+  const tramosCrudos = [
+    { id: 1, vehiculo: 'V', cuenta: 'cJ', situacion: 'espera', desde: 1 * H, hasta: 2 * H },
+    { id: 2, vehiculo: 'V', cuenta: 'cJ', situacion: 'desconectado', desde: 2 * H, hasta: null },
+    { id: 3, vehiculo: 'V', cuenta: 'cF', situacion: 'descanso', desde: 5 * H, hasta: 6 * H },
+    { id: 4, vehiculo: 'V', cuenta: 'cF', situacion: 'viaje', desde: 6 * H, hasta: 7 * H },
+    { id: 5, vehiculo: 'V', cuenta: 'cF', situacion: 'desconectado', desde: 9 * H, hasta: null },
+    { id: 6, vehiculo: 'W', cuenta: 'cJ', situacion: 'viaje', desde: 4 * H, hasta: 4.5 * H },   // cJ aparece en otro coche a las 4
+  ];
+  const ahora = 30 * H;
+  const fines = desg.finesKm(tramosCrudos, ahora);
+  assert.equal(fines.get(2), 4 * H, 'el desconectado de cJ se corta cuando aparece en otro coche');
+  assert.equal(fines.get(5), 21 * H, 'sin nada que lo corte, 12 h');
+  const tramos = tramosCrudos.filter(t => t.vehiculo === 'V').map(t => ({ ...t, fin: fines.get(t.id) }));
+  const fichajes = [{ id: 77, dueno: 'c1', inicio: 0, fin: 10 * H }];
+  // 10 km cada hora, de 0 a 12 h (odómetro; sin GPS).
+  const trozos = desg.trozos({ odometro: [{ inicio: 0, fin: 12 * H, metros: 120000 }], rutas: [] }, 0, 12 * H);
+  const nombres = { cJ: 'Juan', cF: 'Francisco' };
+  const reparto = desg.clasificar(trozos, { tramos, fichajes, persona: 'c1', suyas: new Set(['cF']), nombreDe: c => nombres[c], ahora });
+  const km = cl => Math.round([...reparto.values()].filter(x => x.causa === cl).reduce((s, x) => s + x.metros, 0) / 100) / 10;
+  assert.equal(km('fichaje_abierto'), 20, 'de 2 a 4 h, Juan desconectado con su fichaje abierto');
+  assert.equal([...reparto.values()].find(x => x.causa === 'fichaje_abierto').con, 'Juan');
+  assert.equal(km('fichado_sin_bolt'), 40, 'de 0 a 1, de 4 a 5 y de 7 a 9 h, fichado y sin nadie en BOLT (de 9 a 10 ya está él, desconectado)');
+  assert.equal(km('descanso'), 10);
+  assert.equal(km('desconectado'), 30, 'de 9 a 12 h: él, desconectado (con su fichaje y después sin él)');
+  // Juan no se lleva nada: lo que hizo fuera de BOLT fue con el fichaje de otro.
+  assert.equal(desg.clasificar(trozos, { tramos, fichajes, persona: 'c2', suyas: new Set(['cJ']), nombreDe: c => nombres[c], ahora }).size, 0);
+
+  // Escalado a lo que dice la foto, sumando exacto.
+  const esc = desg.escalar(reparto, 45);
+  assert.equal(Math.round(esc.reduce((s, x) => s + x.km, 0) * 10) / 10, 45);
+  assert.deepEqual(desg.escalar(new Map(), 7.5), [{ causa: 'sin_desglose', con: null, fichajeId: null, km: 7.5 }]);
+});

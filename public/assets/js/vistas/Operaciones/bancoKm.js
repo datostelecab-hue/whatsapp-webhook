@@ -6,6 +6,12 @@
 // al límite». Dos pestañas: «Por conductor» (su límite de la semana, lo que
 // gastó y el saldo) y «Por matrícula» (los km fuera de BOLT de cada coche y de
 // quién son). Las cuentas son del servidor (modules/Operaciones/bancoKm.service.js).
+//
+// EL DESGLOSE (18/11/2026): en la ficha de cada uno, de dónde sale cada km, día
+// a día: en descanso, desconectado, por no terminar el turno (el coche lo
+// llevaba otro con su fichaje abierto) o fichado sin conectarse. Camilo:
+// «Necesitamos decirles: ey, por no haber desfichado, mira los KM que se te
+// imputan». Con un mensaje listo para copiar y mandárselo.
 (function (global) {
   'use strict';
   const esc = Casa.esc;
@@ -36,6 +42,27 @@
     cerca:  { texto: 'Cerca del límite', pastilla: 'tc-pastilla--aviso', barra: 'bg-telecab-warn' },
     dentro: { texto: 'Dentro', pastilla: 'tc-pastilla--verde', barra: 'bg-telecab-green' },
   };
+
+  const CAUSA = {
+    fichaje_abierto:  { punto: 'bg-telecab-red',    corto: 'Por no terminar el turno' },
+    desconectado:     { punto: 'bg-telecab-warn',   corto: 'Desconectado de BOLT' },
+    descanso:         { punto: 'bg-telecab-azul',   corto: 'En descanso en BOLT' },
+    fichado_sin_bolt: { punto: 'bg-telecab-violet', corto: 'Fichado, sin conectarse a BOLT' },
+    sin_desglose:     { punto: 'bg-telecab-muted',  corto: 'Sin desglose' },
+  };
+  const hora = iso => new Date(iso).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
+  const diaDe = iso => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(iso));
+  /** «su fichaje del jueves 12 a las 03:09 se cerró solo a las 18:56». */
+  function textoFichaje(f) {
+    if (!f) return '';
+    const ini = `su fichaje del ${diaLargo(diaDe(f.inicio))} a las ${hora(f.inicio)}`;
+    const cuando = iso => (diaDe(iso) === diaDe(f.inicio) ? `a las ${hora(iso)}` : `el ${diaLargo(diaDe(iso))} a las ${hora(iso)}`);
+    if (!f.fin) return `${ini} sigue abierto`;
+    if (f.estado === 'auto-cerrado') return `${ini} se cerró solo ${cuando(f.fin)}`;
+    if (f.estado === 'relevado') return `${ini} lo cerró el relevo ${cuando(f.fin)}`;
+    return `${ini} lo terminó ${cuando(f.fin)}`;
+  }
+  const punto = c => `<span class="inline-block w-2 h-2 rounded-full ${(CAUSA[c] || CAUSA.sin_desglose).punto}" aria-hidden="true"></span>`;
 
   let datos = null;
   let pedido = null;            // el lunes que se está mirando (null = la última semana con jornadas cerradas)
@@ -217,14 +244,15 @@
       }
       const marcas = [d.sinFichar ? '<span class="tc-pastilla tc-pastilla--aviso" title="Trabajó o movió un coche sin fichar por WhatsApp">sin fichar</span>' : '',
         d.revisar ? '<span class="tc-pastilla tc-pastilla--aviso" title="Estuvo en BOLT con un coche que no dio km: lo cuadra Tráfico">REVISAR</span>' : ''].join(' ');
-      return `<tr class="border-b border-telecab-border/50 align-top">
+      // Con km, la raya va debajo de su desglose, no entre el día y él.
+      return `<tr class="${d.km > 0 ? '' : 'border-b border-telecab-border/50 '}align-top">
         <td class="py-1.5 pr-2 whitespace-nowrap">${esc(diaLargo(d.dia))}</td>
         <td class="py-1.5 pr-2">${esc(queFue(d))}${d.horas ? ` <span class="text-telecab-muted">(${num(d.horas)} h)</span>` : ''} ${marcas}
           ${d.fichaje ? `<span class="block text-[11px] text-telecab-muted">Fichaje: ${esc(d.fichaje)}</span>` : ''}</td>
         <td class="py-1.5 pr-2 text-right tabular-nums whitespace-nowrap">${d.limite ? `+${km(d.limite)}` : '—'}</td>
         <td class="py-1.5 pr-2 text-right tabular-nums whitespace-nowrap font-semibold">${d.km ? km(d.km) : '—'}</td>
         <td class="py-1.5 text-[11px] text-telecab-muted">${d.coches.map(c => `${esc(placa(c.matricula))} ${km(c.km)}`).join('<br>')}</td>
-      </tr>`;
+      </tr>${d.km > 0 ? `<tr class="border-b border-telecab-border/50"><td></td><td colspan="4" class="pb-2 text-[11px] text-telecab-muted" data-desglose-dia="${esc(d.dia)}">Desglosando…</td></tr>` : ''}`;
     }).join('');
     const est = ESTADO[f.estado];
     const p = Panel.abrir({
@@ -237,6 +265,7 @@
         </div>
         <p class="mb-3"><span class="tc-pastilla ${est.pastilla}">${esc(est.texto)}</span>
           <span class="text-xs text-telecab-muted ml-1">${f.programados} ${f.programados === 1 ? 'día le tocaba' : 'días le tocaban'}${f.extra ? `, ${f.extra} salió sin tocarle` : ''}</span></p>
+        ${f.km > 0 ? '<div data-desglose-semana class="mb-4 text-sm text-telecab-muted">Desglosando los km…</div>' : ''}
         <div class="overflow-x-auto"><table class="w-full text-sm">
           <thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted text-left border-b border-telecab-border">
             <th class="py-1.5 pr-2 font-semibold">Día</th><th class="py-1.5 pr-2 font-semibold">Qué fue</th>
@@ -247,6 +276,15 @@
         <h3 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mt-5 mb-2">Sus últimas semanas</h3>
         <div data-historia class="text-sm text-telecab-muted">Cargando…</div>`,
     });
+    if (f.km > 0) {
+      Api.get(`${API}/desglose?persona=${encodeURIComponent(f.persona)}&lunes=${encodeURIComponent(datos.lunes)}`)
+        .then(r => pintarDesglose(p.cuerpo, f, r))
+        .catch(e => {
+          const caja = p.cuerpo.querySelector('[data-desglose-semana]');
+          if (caja) caja.textContent = `No se ha podido desglosar: ${e.message}`;
+          p.cuerpo.querySelectorAll('[data-desglose-dia]').forEach(x => { x.textContent = ''; });
+        });
+    }
     Api.get(`${API}/historia?persona=${encodeURIComponent(f.persona)}&hasta=${encodeURIComponent(datos.domingo)}`).then(r => {
       const caja = p.cuerpo.querySelector('[data-historia]');
       if (!caja) return;
@@ -259,6 +297,58 @@
     }).catch(e => {
       const caja = p.cuerpo.querySelector('[data-historia]');
       if (caja) caja.textContent = `No se ha podido leer: ${e.message}`;
+    });
+  }
+
+  // El desglose: arriba la semana (barra y leyenda, y el aviso del turno sin
+  // terminar con su mensaje para copiar); debajo de cada día, sus causas.
+  function pintarDesglose(cuerpo, f, r) {
+    const caja = cuerpo.querySelector('[data-desglose-semana]');
+    if (!caja) return;
+    const total = r.semana.reduce((s, x) => s + x.km, 0);
+    const porCausa = new Map();
+    r.semana.forEach(x => porCausa.set(x.causa, (porCausa.get(x.causa) || 0) + x.km));
+    const orden = Object.keys(CAUSA).filter(c => porCausa.get(c) > 0);
+    const barra = total > 0 ? `<div class="flex h-2.5 rounded-full overflow-hidden bg-telecab-card2" role="img" aria-label="Reparto de sus km fuera de BOLT">${
+      orden.map(c => `<span class="block h-full ${CAUSA[c].punto}" style="width:${(porCausa.get(c) / total * 100).toFixed(2)}%"></span>`).join('')}</div>` : '';
+    const leyenda = orden.map(c => `<span class="inline-flex items-center gap-1.5 mr-3 whitespace-nowrap">${punto(c)}${esc(CAUSA[c].corto)} <b class="text-telecab-text tabular-nums">${km(porCausa.get(c))}</b></span>`).join('');
+    const abiertos = r.semana.filter(x => x.causa === 'fichaje_abierto' && x.km > 0);
+    const kmAbierto = abiertos.reduce((s, x) => s + x.km, 0);
+    caja.className = 'mb-4';
+    caja.innerHTML = `<h3 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mb-2">De dónde salen sus km</h3>
+      ${barra}<p class="mt-2 text-xs text-telecab-muted leading-6">${leyenda}</p>
+      ${kmAbierto > 0 ? `<div class="mt-2 rounded-xl border border-telecab-red/40 bg-telecab-red/5 px-3 py-2 text-sm">
+          <p><b class="text-telecab-red">${km(kmAbierto)} por no terminar el turno.</b> Su fichaje seguía abierto mientras el coche lo llevaba ${
+            abiertos.map(x => `${esc(x.con || 'otra persona')} (${km(x.km)})`).join(', ')}, desconectado o en descanso en BOLT: con la regla del fichaje, esos km cuentan en su banco.</p>
+          <button type="button" class="tc-boton tc-boton--chico mt-2" data-copiar-aviso><i class="fa-solid fa-copy" aria-hidden="true"></i>Copiar el mensaje para mandárselo</button>
+        </div>` : ''}`;
+    const boton = caja.querySelector('[data-copiar-aviso]');
+    if (boton) {
+      boton.addEventListener('click', async () => {
+        const nombre = String(f.nombre || '').split(/\s+/)[0] || '';
+        const otros = [...porCausa.entries()].filter(([c]) => c !== 'fichaje_abierto' && c !== 'sin_desglose')
+          .map(([c, k]) => `${km(k)} ${c === 'descanso' ? 'en descanso en BOLT' : c === 'desconectado' ? 'desconectado de BOLT' : 'con el coche fichado sin conectarte a BOLT'}`);
+        const texto = [
+          `Hola${nombre ? ` ${nombre}` : ''}. En la ${textoSemana(datos.lunes, datos.domingo).toLowerCase()} llevas ${km(f.km)} fuera de BOLT, y tu límite es de ${km(f.limite)}.`,
+          `De esos, ${km(kmAbierto)} son por no terminar el turno en el bot: tu fichaje siguió abierto mientras el coche lo llevaba ${abiertos.map(x => x.con || 'otra persona').join(' y ')}, y esos km se te apuntan a ti.`,
+          otros.length ? `El resto: ${otros.join(' y ')}.` : '',
+          'Cuando dejes el coche, pulsa «Terminar turno» en el bot.',
+        ].filter(Boolean).join('\n\n');
+        try { await navigator.clipboard.writeText(texto); Dialogo.hecho('Mensaje copiado'); }
+        catch (_) { Dialogo.aviso({ titulo: 'Cópialo a mano', texto }); }
+      });
+    }
+
+    // Día a día.
+    const porDia = new Map(r.dias.map(d => [d.dia, d]));
+    cuerpo.querySelectorAll('[data-desglose-dia]').forEach(celda => {
+      const d = porDia.get(celda.dataset.desgloseDia);
+      if (!d) { celda.textContent = ''; return; }
+      const varios = d.coches.length > 1;
+      celda.innerHTML = d.coches.map(c => `${varios ? `<span class="block font-semibold text-telecab-text">${esc(placa(c.matricula))}</span>` : ''}${
+        c.causas.map(x => `<span class="block">${punto(x.causa)} ${esc((CAUSA[x.causa] || CAUSA.sin_desglose).corto)}: <b class="text-telecab-text tabular-nums">${km(x.km)}</b>${
+          x.causa === 'fichaje_abierto' ? ` <span>— lo llevaba ${esc(x.con || 'otra persona')}; ${esc(textoFichaje(r.fichajes[x.fichajeId]))}</span>`
+          : x.causa === 'fichado_sin_bolt' ? ` <span>— ${esc(textoFichaje(r.fichajes[x.fichajeId]))}</span>` : ''}</span>`).join('')}`).join('');
     });
   }
 

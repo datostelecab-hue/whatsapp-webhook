@@ -25,6 +25,13 @@
 //     ese día). Se calcula CERRADA: después de las 12:00 del día siguiente, que
 //     es cuando el reporte deja de ser parcial. Hoy no cuenta.
 //
+// EL DESGLOSE (18/11/2026): en la ficha de una persona, cada día dice de dónde
+// salen sus km: en descanso, desconectado, por no terminar el turno (tenía el
+// coche fichado y lo llevaba otro) o fichado sin conectarse. Camilo:
+// «Necesitamos decirles: ey, por no haber desfichado, mira los KM que se te
+// imputan». Se calcula al abrir la ficha, solo con sus coches de esa semana
+// (bancoKm.desglose.js), y se escala a los km de la foto.
+//
 // CÓMO: una foto por jornada (km_banco_dia y km_banco_coche). La hace la tarea
 // programada «banco_km.dia» (como mucho tres jornadas por vuelta, la más nueva
 // primero, desde el lunes 26/10/2026, cuando entró en el ciclo de bloqueo toda
@@ -36,6 +43,7 @@ const repo = require('./bancoKm.repo');
 const parametros = require('../../services/parametros');
 const tareasProgramadas = require('../../services/tareasProgramadas');
 const calendario = require('../../services/calendario');
+const desg = require('./bancoKm.desglose');
 
 /** El primer día del banco: el lunes en que toda la plantilla entró en el ciclo de bloqueo (db/219). */
 const DESDE = process.env.BANCO_KM_DESDE || '2026-10-26';
@@ -267,8 +275,96 @@ async function historia(persona, hasta) {
   return { semanas: semanas.map(s => ({ ...s, saldo: r1(s.limite - s.km) })) };
 }
 
+// ── El desglose de una persona ──────────────────────────────────────────────
+/**
+ * La ventana de una persona en una jornada, la del reporte de Control por su
+ * turno: de noche, de 12:00 a 12:00 del día siguiente; quien hace los dos, de
+ * 00:00 a 12:00 del día siguiente; de día (o sin turno), el día natural.
+ */
+function ventana(dia, turno) {
+  const t = String(turno || '').trim();
+  const [h0, mas, h1] = t === 'Noche' ? [12, 1, 12] : t === 'TodoTurno' ? [0, 1, 12] : [0, 1, 0];
+  return [+calendario.instante(dia, h0 * 60), +calendario.instante(sumarDias(dia, mas), h1 * 60)];
+}
+const PERSONA = /^[a-z][^\u0000-\u001f]{1,79}$/i;
+
+/**
+ * De dónde salen los km fuera de BOLT de una persona en una semana, día a día y
+ * coche a coche. Solo lee: sus días de la foto y los datos crudos de sus coches.
+ */
+async function desglose(persona, lunesPedido) {
+  if (!PERSONA.test(String(persona || ''))) throw error('Esa persona no se entiende');
+  const lunes = esDia(lunesPedido) ? lunesDe(lunesPedido) : lunesDe(ultimaCerrada());
+  const domingo = sumarDias(lunes, 6);
+  const foto = await repo.diasDe(persona, lunes, domingo);
+  const conKm = foto.coches.filter(c => c.km > 0);
+  const etiquetas = Object.fromEntries(desg.CAUSAS.map(c => [c.codigo, c.etiqueta]));
+  if (!conKm.length) return { lunes, dias: [], semana: [], fichajes: {}, causas: desg.CAUSAS };
+
+  const turnoDe = new Map(foto.dias.map(d => [d.dia, d.turno]));
+  const ventanas = new Map(conKm.map(c => [c.dia, ventana(c.dia, turnoDe.get(c.dia))]));
+  const ini = Math.min(...[...ventanas.values()].map(v => v[0]));
+  const fin = Math.max(...[...ventanas.values()].map(v => v[1]));
+  const crudo = await repo.crudoDesglose({ matriculas: [...new Set(conKm.map(c => c.matricula))], ini, fin });
+
+  const ahora = Date.now();
+  const fines = desg.finesKm(crudo.tramos, ahora);
+  const tramos = crudo.tramos.map(t => ({ ...t, fin: fines.get(t.id) }));
+  // Quién es cada cuenta un día (las prestadas, de quien la usaba) y su nombre.
+  const base = new Map(crudo.cuentas.map(c => [c.cuenta, c]));
+  const prestada = (cuenta, dia) => crudo.fantasmas.find(f => f.cuenta === cuenta && f.desde <= dia && (!f.hasta || f.hasta >= dia));
+  const personaDe = (cuenta, dia) => {
+    const p = prestada(cuenta, dia);
+    if (p) return `c${p.conductorId}`;
+    const b = base.get(cuenta);
+    return b && b.conductorId ? `c${b.conductorId}` : `b${cuenta}`;
+  };
+  const nombreDe = dia => cuenta => {
+    const p = prestada(cuenta, dia);
+    return (p && p.nombre) || (base.get(cuenta) || {}).nombre || 'otra cuenta de BOLT';
+  };
+
+  const dias = new Map();
+  const usados = new Set();
+  for (const c of conKm) {
+    const v = crudo.vehiculos.find(x => x.matricula === c.matricula);
+    let causas;
+    if (!v) causas = desg.escalar(new Map(), c.km);
+    else {
+      const [a, b] = ventanas.get(c.dia);
+      const tz = desg.trozos({ odometro: crudo.odometro.filter(s => s.unit === v.unit), rutas: crudo.rutas.filter(s => s.unit === v.unit) }, a, b);
+      const delCoche = tramos.filter(t => t.vehiculo === v.uuid);
+      const suyas = new Set(delCoche.map(t => t.cuenta).filter(cu => personaDe(cu, c.dia) === persona));
+      const fichajes = crudo.fichajes.filter(f => (v.unit && f.unit === v.unit) || f.matricula === c.matricula);
+      causas = desg.escalar(desg.clasificar(tz, { tramos: delCoche, fichajes, persona, suyas, nombreDe: nombreDe(c.dia), ahora }), c.km);
+    }
+    causas.forEach(x => { if (x.fichajeId) usados.add(x.fichajeId); });
+    if (!dias.has(c.dia)) dias.set(c.dia, { dia: c.dia, km: 0, coches: [] });
+    const d = dias.get(c.dia);
+    d.km = r1(d.km + c.km);
+    d.coches.push({ matricula: c.matricula, km: c.km, causas: causas.map(x => ({ ...x, etiqueta: etiquetas[x.causa] })) });
+  }
+
+  // La semana, por causa (y, por no terminar el turno, con quién llevaba el coche).
+  const sem = new Map();
+  [...dias.values()].forEach(d => d.coches.forEach(c => c.causas.forEach(x => {
+    const k = x.causa === 'fichaje_abierto' ? `${x.causa}|${x.con || ''}` : x.causa;
+    const y = sem.get(k) || { causa: x.causa, etiqueta: etiquetas[x.causa], con: x.causa === 'fichaje_abierto' ? x.con : null, km: 0 };
+    y.km = r1(y.km + x.km);
+    sem.set(k, y);
+  })));
+  const fichajes = {};
+  crudo.fichajes.filter(f => usados.has(f.id)).forEach(f => {
+    fichajes[f.id] = { inicio: new Date(f.inicio).toISOString(), fin: f.fin ? new Date(f.fin).toISOString() : null, estado: f.estado, matricula: f.matricula };
+  });
+  return {
+    lunes, dias: [...dias.values()].sort((a, b) => a.dia.localeCompare(b.dia)),
+    semana: [...sem.values()].sort((a, b) => b.km - a.km), fichajes, causas: desg.CAUSAS,
+  };
+}
+
 module.exports = {
-  semana, historia, recalcular, calcularDia, pendientes, DESDE,
+  semana, historia, recalcular, calcularDia, pendientes, desglose, DESDE,
   // Para las pruebas:
   _filasDelDia: filasDelDia, _lunesDe: lunesDe, _ultimaCerrada: ultimaCerrada,
   _conReporte: fn => { _reporte = fn; },

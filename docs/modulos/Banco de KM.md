@@ -61,6 +61,25 @@ Contra la copia local (19–25/10/2026, solo GPS), los km de las personas suman 
 - **Por matrícula**: los km fuera de BOLT de cada coche en la semana y **de quién son, en %**. Con un binomio de fijos se ve en el acto si es reparto de cambio de turno (48/52) o uso por fuera de uno (10/90). La ficha: el reparto y el día a día.
 - **La semana** se elige con las flechas; arriba se dice qué jornadas faltan por calcular y, en la semana en curso, hasta qué día cuenta.
 
+## El desglose: de dónde sale cada km (18/11/2026)
+
+Camilo, con la ficha de un fijo de noche que salía con 661 km en una semana: *«Dejemos la regla, pero que por día, al darle click a la persona de la semana, me desglose todos los KM: si es por descanso, si es por supuesto fichaje no cerrado, etc. Necesitamos decirles: ey, por no haber desfichado, mira los KM que se te imputan»*.
+
+Al abrir la ficha de un conductor, arriba sale **de dónde salen sus km** de la semana (una barra y su leyenda) y, debajo de cada día, lo mismo coche a coche:
+
+| Causa | Cuándo |
+|---|---|
+| **Por no terminar el turno** | Tenía el coche **fichado** y quien estaba en BOLT con él era **otro**, desconectado o en descanso. Dice quién lo llevaba y qué pasó con su fichaje («su fichaje del jueves 12 a las 03:09 se cerró solo a las 18:56») |
+| **En descanso en BOLT** | Él, conectado pero en pausa |
+| **Desconectado de BOLT** | Él, desconectado y el último con el coche (con el corte de siempre: hasta que otro se conecta, él aparece en otro coche o pasan 12 h) |
+| **Fichado, sin conectarse a BOLT** | Tenía el coche fichado y nadie estaba en BOLT con él |
+
+Si hay km por no terminar el turno, un recuadro en rojo lo dice con la cifra y quién llevaba el coche, y **«Copiar el mensaje para mandárselo»** deja en el portapapeles un texto para el conductor (sus km, su límite, los del turno sin terminar y «Cuando dejes el coche, pulsa «Terminar turno» en el bot»).
+
+- **La regla no cambia** (Camilo: «dejemos la regla»): siguen contando en su banco. El desglose solo dice por qué.
+- **Cómo**: `modules/Operaciones/bancoKm.desglose.js` reparte minuto a minuto los km de sus coches de esa semana con la regla del reporte (`FIN_KM` y el fichaje), y el reparto **se escala a los km de la foto**: la ficha no puede dar dos cifras para lo mismo. Si los datos crudos no dan nada para ese día y coche, sale «Sin desglose».
+- **Se calcula al abrir la ficha**, solo con sus coches de esa semana (unos miles de filas, por índices). Contra producción, la semana del 9 al 15/11 de ese conductor tardó 2 s desde fuera de Render y salió: en descanso 330,9 km, **por no terminar el turno 280,7** (el coche lo llevaba su compañero de día, que no fichó ni una vez), desconectado 48,5 y 1 sin desglose; los 661,1 km de su ficha al décimo.
+
 ## Permisos
 
 La llave **`/operaciones/banco-km`** («Banco de KM»). db/267 se la da a quien ya veía la [[Auditoria de flota]].
