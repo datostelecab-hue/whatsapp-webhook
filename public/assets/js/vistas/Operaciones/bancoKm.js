@@ -201,7 +201,7 @@
           (() => {
             const des = filas.reduce((s, f) => s + (f.kmNoDesfichar || 0), 0);
             const base = filas.reduce((s, f) => s + (f.kmDesglosado || 0), 0);
-            return { etiqueta: 'Por no desfichar', valor: km(des), tono: des > 0 ? 'warn' : 'muted',
+            return { etiqueta: 'Por no desvincular', valor: km(des), tono: des > 0 ? 'warn' : 'muted',
               pie: base > 0 ? `el ${Math.round(des / base * 100)} % de sus km fuera` : 'sin desglose todavía',
               filtro: { id: 'desfichar', valor: 'algo' } };
           })(),
@@ -214,10 +214,10 @@
         opciones: filas => Object.keys(ESTADO).map(e => ({ valor: e, texto: ESTADO[e].texto, cuenta: filas.filter(f => f.estado === e).length })).filter(o => o.cuenta),
         pasa: (f, v) => f.estado === v,
       }, {
-        id: 'desfichar', etiqueta: 'Por no desfichar', textoTodos: 'Todos',
+        id: 'desfichar', etiqueta: 'Por no desvincular', textoTodos: 'Todos',
         opciones: filas => [
-          { valor: 'mitad', texto: 'La mitad o más, por no desfichar', cuenta: filas.filter(f => f.pctNoDesfichar >= 50).length },
-          { valor: 'algo', texto: 'Con km por no desfichar', cuenta: filas.filter(f => f.kmNoDesfichar > 0).length },
+          { valor: 'mitad', texto: 'La mitad o más, por no desvincular', cuenta: filas.filter(f => f.pctNoDesfichar >= 50).length },
+          { valor: 'algo', texto: 'Con km por no desvincular', cuenta: filas.filter(f => f.kmNoDesfichar > 0).length },
           { valor: 'nada', texto: 'Todo suyo', cuenta: filas.filter(f => f.kmDesglosado > 0 && !(f.kmNoDesfichar > 0)).length },
         ].filter(o => o.cuenta),
         pasa: (f, v) => (v === 'mitad' ? f.pctNoDesfichar >= 50 : v === 'algo' ? f.kmNoDesfichar > 0 : f.kmDesglosado > 0 && !(f.kmNoDesfichar > 0)),
@@ -248,7 +248,7 @@
           valor: f => (f.pctSuyos == null ? -1 : f.pctSuyos),
           pinta: (v, f) => (f.pctSuyos == null ? '<span class="text-telecab-muted">—</span>'
             : `<span class="font-semibold">${f.pctSuyos} %</span><span class="block text-[10px] text-telecab-muted">${km(f.kmSuyos)}</span>`) },
-        { titulo: 'Por no desfichar', campo: 'pctNoDesfichar', clase: 'text-right tabular-nums whitespace-nowrap',
+        { titulo: 'Por no desvincular', campo: 'pctNoDesfichar', clase: 'text-right tabular-nums whitespace-nowrap',
           ayuda: 'De sus km fuera de BOLT, los que se le imputan por no terminar el turno: tenía el coche fichado y quien estaba en BOLT con él era otro.',
           valor: f => (f.pctNoDesfichar == null ? -1 : f.pctNoDesfichar),
           pinta: (v, f) => (f.pctNoDesfichar == null ? '<span class="text-telecab-muted">—</span>'
