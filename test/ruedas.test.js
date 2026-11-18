@@ -1,5 +1,5 @@
 // ============================================================
-// RUEDAS — cada 25.000 km, un cambio (db/265, 18/11/2026)
+// RUEDAS — cada 30.000 km, un cambio (db/265, 18/11/2026; 30.000 desde ese mismo día)
 // ============================================================
 // Camilo: «que cada 25K de KM se pase y avise, los KM de los últimos
 // mantenimientos deben de sacarse de cambio de ruedas, hay unos de pinchazos en
@@ -46,12 +46,14 @@ test('el último cambio de cada coche, con sus ruedas; los pinchazos aparte, sin
   assert.deepEqual(h.get(9).cambios.map(c => [c.id, c.ruedas, c.origen]), [[5, 4, 'manual'], [4, 2, 'factura']], 'el apuntado a mano también cuenta');
 });
 
-test('el semáforo: a los 25.000 km toca; desde el 85 % (o a 15 días al ritmo de ahora), a punto; sin cambio o sin km, sin dato', () => {
+test('el semáforo: a los 30.000 km toca; desde el 85 % (o a 15 días al ritmo de ahora), a punto; sin cambio o sin km, sin dato', () => {
   const c = km => ({ id: 1, km, fecha: '2026-05-10' });
-  assert.deepEqual(ruedas._semaforo({ odometro: 66000, cambio: c(40000) }).estado, 'toca');
-  assert.equal(ruedas._semaforo({ odometro: 66000, cambio: c(40000) }).restan, -1000);
-  assert.equal(ruedas._semaforo({ odometro: 61300, cambio: c(40000) }).estado, 'pronto', '21.300 km: el 85 %');
-  assert.equal(ruedas._semaforo({ odometro: 55000, cambio: c(40000), kmDia: 700 }).estado, 'pronto', 'le quedan 10.000 km: a 700 al día, 14 días');
+  assert.equal(ruedas.INTERVALO, 30000, 'Camilo, 18/11: «a los 30K km»');
+  assert.deepEqual(ruedas._semaforo({ odometro: 71000, cambio: c(40000) }).estado, 'toca');
+  assert.equal(ruedas._semaforo({ odometro: 71000, cambio: c(40000) }).restan, -1000);
+  assert.equal(ruedas._semaforo({ odometro: 65000, cambio: c(40000) }).estado, 'ok', '25.000 km: con 30.000 aún no toca (con 25.000 tocaba), y es el 83 %');
+  assert.equal(ruedas._semaforo({ odometro: 65500, cambio: c(40000) }).estado, 'pronto', '25.500 km: el 85 %');
+  assert.equal(ruedas._semaforo({ odometro: 60000, cambio: c(40000), kmDia: 700 }).estado, 'pronto', 'le quedan 10.000 km: a 700 al día, 14 días');
   assert.equal(ruedas._semaforo({ odometro: 50000, cambio: c(40000), kmDia: 300 }).estado, 'ok');
   assert.deepEqual([ruedas._semaforo({ odometro: 50000, cambio: null }).estado, ruedas._semaforo({ odometro: 50000, cambio: null }).motivo], ['sin_dato', 'sin_cambio']);
   assert.equal(ruedas._semaforo({ odometro: 50000, cambio: c(null) }).motivo, 'cambio_sin_km');
@@ -64,7 +66,7 @@ test('con la base: el aviso llega por el chat, en «Notificaciones Telecab», al
   const oscar = await fabrica.usuario({ rol: 'taller', nombre: 'Taller' });
   await consulta(`UPDATE usuario SET puesto_codigo = 'responsable_taller' WHERE id = $1`, [oscar.id]);
   const v = await fabrica.vehiculo();
-  const fila = { id: v.id, matricula: v.matricula, vehiculo: 'Toyota Corolla', estado: 'toca', desde: 26300,
+  const fila = { id: v.id, matricula: v.matricula, vehiculo: 'Toyota Corolla', estado: 'toca', desde: 31300,
     cambio: { id: null, km: 40000, fecha: '2026-05-10', taller: 'iPark' } };
 
   const r = await ruedas.avisar({ filas: [fila] });
@@ -77,7 +79,7 @@ test('con la base: el aviso llega por el chat, en «Notificaciones Telecab», al
   assert.equal(msj[0].autor_id, null, 'lo firma el sistema');
   assert.equal(msj[0].evento, 'aviso');
   assert.match(msj[0].texto, new RegExp(`<@${oscar.id}> Ruedas: a un coche le toca cambiar las ruedas`));
-  assert.match(msj[0].texto, new RegExp(`${v.matricula} \\(Toyota Corolla\\): lleva 26\\.300 km desde el último cambio \\(10/05/2026, 40\\.000 km, iPark\\)`));
+  assert.match(msj[0].texto, new RegExp(`${v.matricula} \\(Toyota Corolla\\): lleva 31\\.300 km desde el último cambio \\(10/05/2026, 40\\.000 km, iPark\\)`));
   assert.deepEqual(notificados, [{ ids: [oscar.id], titulo: 'Notificaciones Telecab' }], 'le llega al móvil como «Notificaciones Telecab»');
   const lista = await chat.canales(oscar.id);
   assert.ok((lista.canales || lista).some(c => c.titulo === 'Notificaciones Telecab'), 'en su lista del chat se llama así');

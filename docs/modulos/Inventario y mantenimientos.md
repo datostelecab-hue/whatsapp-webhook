@@ -123,14 +123,14 @@ En Mantenimientos, al lado de Revisión por km (solo Madrid), `modules/Vehiculos
   - una línea de **cubierta nueva** en una factura («CUB. 205/55R16…», «NEUMÁTICOS DELANTEROS … + MONTAJE»);
   - **no** los pinchazos, los reutilizados, la ecotasa, la retirada, el sensor de presión ni el equilibrado o la alineación solos;
   - o un cambio **apuntado a mano** en la pestaña («Apuntar un cambio»: día, km, 2 o 4 ruedas, taller y nota), que es un mantenimiento a mano de neumáticos.
-- **El semáforo**, como Revisión por km: los km desde ese cambio con el odómetro de hoy; a los **25.000** (`TALLER_KM_RUEDAS`) **toca**; desde el 85 % (o si al ritmo de los últimos 30 días le quedan 15 días o menos), **a punto**. Sin cambio, o con uno sin km, **sin dato** hasta apuntarlo a mano (Camilo: «Sin dato y apuntarlo a mano»). El 18/11 tenían cambio en las facturas 44 de los 81 coches de Madrid (de mayo a septiembre).
+- **El semáforo**, como Revisión por km: los km desde ese cambio con el odómetro de hoy; a los **30.000** (`TALLER_KM_RUEDAS`; eran 25.000 hasta que Camilo, el mismo 18/11: *«cambiemos el parámetro de revisión de llantas a los 30K km»*) **toca**; desde el 85 % (o si al ritmo de los últimos 30 días le quedan 15 días o menos), **a punto**. Sin cambio, o con uno sin km, **sin dato** hasta apuntarlo a mano (Camilo: «Sin dato y apuntarlo a mano»). El 18/11 tenían cambio en las facturas 44 de los 81 coches de Madrid (de mayo a septiembre).
 - La ficha de cada coche (en el Panel) trae sus cambios de ruedas y, aparte, sus **pinchazos**, que no cuentan.
 - La lista es un Listado con `url: false`: el `#id` de la dirección es de la lista de Mantenimientos.
 
 ### Ruedas: el aviso
 
 - **Un número en el menú**: «Mantenimientos» suma, a lo de las citas, los coches a los que les toca (`taller.ruedas`, también en la pestaña). Se calcula cada 10 minutos como mucho.
-- **Por el chat**, cada día a las 08:00 (tarea programada `taller.ruedas`): los coches que han llegado a los 25.000 km y de los que aún no se avisó, en **un mensaje** al canal **«Notificaciones Telecab»**, mencionando a quien tenga el **puesto de responsable de taller** (Óscar; si cambia el puesto, le llega al nuevo). **Una vez por cambio**: `ruedas_aviso` apunta coche y cambio, y con un cambio nuevo vuelve a contar. Ver [[Chat]].
+- **Por el chat**, cada día a las 08:00 (tarea programada `taller.ruedas`): los coches que han llegado a los 30.000 km y de los que aún no se avisó, en **un mensaje** al canal **«Notificaciones Telecab»**, mencionando a quien tenga el **puesto de responsable de taller** (Óscar; si cambia el puesto, le llega al nuevo). **Una vez por cambio**: `ruedas_aviso` apunta coche y cambio, y con un cambio nuevo vuelve a contar. Ver [[Chat]].
 
 ## Ver también
 

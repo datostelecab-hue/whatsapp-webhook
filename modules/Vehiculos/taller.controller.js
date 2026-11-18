@@ -136,7 +136,7 @@ router.post('/api/ancla', responde(exigeApuntar((req, quien) =>
 router.post('/api/intervalo', responde(exigeApuntar((req, quien) =>
   taller.intervalo(req.body, { sedes: quien.sedes }))));
 
-// ── RUEDAS (db/265, 18/11/2026): cada 25.000 km, un cambio ───────────────────
+// ── RUEDAS (db/265, 18/11/2026): cada 30.000 km, un cambio ───────────────────
 // Mirar, con '/taller'; apuntar un cambio a mano, con '/taller/apuntar'.
 router.get('/api/ruedas', responde(async req => ruedas.cuadro({ sedes: await sedesDe(req) })));
 router.post('/api/ruedas/apuntar', responde(exigeApuntar((req, quien) => ruedas.apuntar(req.body, quien))));

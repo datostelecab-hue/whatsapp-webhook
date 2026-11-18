@@ -33,6 +33,8 @@
     c.origen === 'manual' ? 'apuntado a mano' : c.referencia].filter(Boolean).join(' · ');
 
   let lst = null;
+  // Cada cuántos km (lo dice el servidor: TALLER_KM_RUEDAS, 30.000 desde el 18/11).
+  let intervalo = 30000;
   let cfg = { base: '/taller', puede: false };
 
   function montar(opciones) {
@@ -47,16 +49,16 @@
       origen: `${cfg.base}/api/ruedas`,
       vacio: 'No hay coches.',
       buscar: { texto: 'Matrícula, modelo o zona…', campos: [f => `${f.matricula} ${String(f.matricula).replace(/^(\d{4})/, '$1 ')}`, 'vehiculo', 'zona'] },
-      subtitulo: (v, todas, extra) => `Cada ${miles((extra && extra.intervalo) || 25000)} km, un cambio de ruedas. Cuentan los de las facturas (los pinchazos no) y los apuntados a mano.`,
-      kpis: filas => [
+      subtitulo: (v, todas, extra) => `Cada ${miles((extra && extra.intervalo) || intervalo)} km, un cambio de ruedas. Cuentan los de las facturas (los pinchazos no) y los apuntados a mano.`,
+      kpis: filas => { if (filas[0] && filas[0].intervalo) intervalo = filas[0].intervalo; return [
         { etiqueta: 'Toca cambiar', valor: filas.filter(f => f.estado === 'toca').length, tono: filas.some(f => f.estado === 'toca') ? 'red' : 'muted',
-          pie: 'han pasado de los 25.000 km', filtro: { id: 'estado', valor: 'toca' } },
+          pie: `han pasado de los ${miles(intervalo)} km`, filtro: { id: 'estado', valor: 'toca' } },
         { etiqueta: 'A punto', valor: filas.filter(f => f.estado === 'pronto').length, tono: 'warn',
           pie: 'desde el 85 % o a 15 días', filtro: { id: 'estado', valor: 'pronto' } },
         { etiqueta: 'Al día', valor: filas.filter(f => f.estado === 'ok').length, tono: 'green', filtro: { id: 'estado', valor: 'ok' } },
         { etiqueta: 'Sin dato', valor: filas.filter(f => f.estado === 'sin_dato').length, tono: 'muted',
           pie: 'sin cambio apuntado, o sin km', filtro: { id: 'estado', valor: 'sin_dato' } },
-      ],
+      ]; },
       filtros: [{
         id: 'estado', etiqueta: 'Estado', textoTodos: 'Todos',
         opciones: filas => Object.keys(ESTADO).map(e => ({ valor: e, texto: ESTADO[e][1], cuenta: filas.filter(f => f.estado === e).length }))
@@ -138,7 +140,7 @@
       { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', max: 500 },
     );
     const v = await global.Dialogo.formulario(fila ? `Cambio de ruedas de ${fila.matricula}` : 'Apuntar un cambio de ruedas', campos,
-      { textoBoton: 'Apuntar', nota: 'Desde estos km se cuentan los 25.000 del próximo cambio. Los pinchazos no se apuntan aquí.' });
+      { textoBoton: 'Apuntar', nota: `Desde estos km se cuentan los ${miles((fila && fila.intervalo) || intervalo)} del próximo cambio. Los pinchazos no se apuntan aquí.` });
     if (!v) return;
     const km = Number(String(v.km || '').replace(/[.\s]/g, '').replace(',', '.'));
     const r = await global.Api.post(`${cfg.base}/api/ruedas/apuntar`, {

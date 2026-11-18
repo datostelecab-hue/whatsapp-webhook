@@ -1,12 +1,13 @@
 // ============================================================
-// RUEDAS — cada 25.000 km, un cambio de ruedas (db/265, 18/11/2026)
+// RUEDAS — cada 30.000 km, un cambio de ruedas (db/265, 18/11/2026)
 // ============================================================
 // Camilo: «quiero un nuevo submódulo como el de mantenimientos, pero que diga
 // "Ruedas", que cada 25K de KM se pase y avise, los KM de los últimos
 // mantenimientos deben de sacarse de cambio de ruedas, hay unos de pinchazos en
 // las facturas por los que esos no cuentan». Y: «que le llegue al chat de
 // Óscar, que es el responsable de taller, también una notificación, pero el
-// chat de Telecab, que se llame "Notificaciones Telecab"».
+// chat de Telecab, que se llame "Notificaciones Telecab"». El mismo 18/11 lo
+// subió: «cambiemos el parámetro de revisión de llantas a los 30K km».
 //
 // LAS REGLAS
 //   · EL ÚLTIMO CAMBIO de cada coche: el mantenimiento más reciente (por fecha
@@ -16,13 +17,13 @@
 //         reutilizados, ni la ecotasa, el equilibrado o la alineación solos;
 //       - o un cambio apuntado a mano en esta pestaña (tipo neumáticos, a mano).
 //   · LO QUE LLEVA: el odómetro de hoy (el mismo de Revisión por km) menos los
-//     km de ese cambio. A los 25.000 km «toca»; desde el 85 % (o si al ritmo de
+//     km de ese cambio. A los 30.000 km «toca»; desde el 85 % (o si al ritmo de
 //     los últimos 30 días le quedan 15 días o menos), «a punto».
 //   · SIN CAMBIO APUNTADO, o con un cambio sin km: «sin dato» hasta que se
 //     apunte a mano (Camilo: «Sin dato y apuntarlo a mano»).
 //   · EL AVISO: un número en «Mantenimientos» del menú con los que tocan, y una
 //     vez al día, por el chat (canal «notificaciones-telecab»), a quien tenga el
-//     puesto de responsable de taller, los coches que han pasado de 25.000 km
+//     puesto de responsable de taller, los coches que han pasado de 30.000 km
 //     desde la última vez: una vez por cambio.
 'use strict';
 
@@ -32,8 +33,8 @@ const contadores = require('../../services/contadores');
 const tareasProgramadas = require('../../services/tareasProgramadas');
 const { SEDE_FLOTA } = require('../../services/nucleo');
 
-/** Cada cuántos km se cambian las ruedas (Camilo: «cada 25K»). */
-const INTERVALO = Number(process.env.TALLER_KM_RUEDAS) || 25000;
+/** Cada cuántos km se cambian las ruedas (Camilo: «cada 25K»; el 18/11, «a los 30K km»). */
+const INTERVALO = Number(process.env.TALLER_KM_RUEDAS) || 30000;
 const AVISO_PCT = 0.85;
 const AVISO_DIAS = 15;
 /** Más que esto desde el último cambio no es un cambio pendiente: es un dato mal metido. */
@@ -167,7 +168,7 @@ contadores.registrarFuente('ruedas', {
   async contar(quien) {
     if (!veTaller(quien)) return {};
     const n = await cuantosTocan();
-    return { 'taller.ruedas': { n, tono: n ? 'aviso' : 'info', titulo: `${n} ${n === 1 ? 'coche' : 'coches'} con las ruedas por cambiar (25.000 km)` } };
+    return { 'taller.ruedas': { n, tono: n ? 'aviso' : 'info', titulo: `${n} ${n === 1 ? 'coche' : 'coches'} con las ruedas por cambiar (${miles(INTERVALO)} km)` } };
   },
 });
 
@@ -180,13 +181,13 @@ function textoAviso(filas) {
   const una = f => `• ${f.matricula}${f.vehiculo ? ` (${f.vehiculo})` : ''}: lleva ${miles(f.desde)} km desde el último cambio` +
     ` (${[ddmmaaaa(f.cambio.fecha), `${miles(f.cambio.km)} km`, f.cambio.taller].filter(Boolean).join(', ')}).`;
   const cabeza = filas.length === 1
-    ? 'Ruedas: a un coche le toca cambiar las ruedas (25.000 km).'
-    : `Ruedas: a ${filas.length} coches les toca cambiar las ruedas (25.000 km).`;
+    ? `Ruedas: a un coche le toca cambiar las ruedas (${miles(INTERVALO)} km).`
+    : `Ruedas: a ${filas.length} coches les toca cambiar las ruedas (${miles(INTERVALO)} km).`;
   return [cabeza, ...filas.map(una), 'Lo tienes en Mantenimientos › Ruedas: /taller?vista=ruedas'].join('\n');
 }
 
 /**
- * El repaso diario: los coches de la flota que han llegado a los 25.000 km y de
+ * El repaso diario: los coches de la flota que han llegado a los 30.000 km y de
  * los que aún no se ha avisado (por su último cambio), en un mensaje al canal
  * «notificaciones-telecab», mencionando a los responsables de taller.
  */
@@ -209,7 +210,7 @@ async function avisar({ cli, filas = null } = {}) {
 
 tareasProgramadas.registrar({
   clave: 'taller.ruedas',
-  descripcion: 'Avisa por el chat (Notificaciones Telecab) de los coches que llegan a los 25.000 km sin cambiar las ruedas',
+  descripcion: 'Avisa por el chat (Notificaciones Telecab) de los coches que llegan a los 30.000 km sin cambiar las ruedas',
   desde: '2026-11-18',
   toca: ahora => tareasProgramadas.cuando.diaria(ahora, { hora: '08:00' }),
   hacer: avisar,
