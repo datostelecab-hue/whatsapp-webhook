@@ -47,6 +47,15 @@ router.get('/api/personas/:id', responde((q, req) => vac.de(q, req.params.id)));
 router.post('/api/simular', responde((q, req) => vac.simular(q, b(req)).then(simulacion => ({ simulacion }))));
 router.post('/api/pedir', responde((q, req) => vac.pedir(q, b(req))));
 router.post('/api/registrar', responde((q, req) => vac.registrar(q, b(req))));
+// LOS PERMISOS (db/271, 18/11/2026): asuntos propios y teletrabajo, con su histórico.
+router.get('/api/permisos/mios', responde(q => vac.permisosMios(q)));
+router.get('/api/permisos/lista', responde((q, req) => vac.permisosLista(q, { estado: req.query.estado })));
+router.post('/api/permisos/simular', responde((q, req) => vac.simularPermiso(q, b(req)).then(simulacion => ({ simulacion }))));
+router.post('/api/permisos/pedir', responde((q, req) => vac.pedirPermiso(q, b(req))));
+router.post('/api/permisos/:grupo(\\d+)/aprobar', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'aprobar', b(req))));
+router.post('/api/permisos/:grupo(\\d+)/rechazar', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'rechazar', b(req))));
+router.post('/api/permisos/:grupo(\\d+)/anular', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'anular', b(req))));
+router.post('/api/permisos/:grupo(\\d+)/retirar', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'retirar', b(req))));
 router.post('/api/:id(\\d+)/aprobar', responde((q, req) => vac.aprobar(q, req.params.id)));
 router.post('/api/:id(\\d+)/rechazar', responde((q, req) => vac.rechazar(q, req.params.id, b(req))));
 router.post('/api/:id(\\d+)/retirar', responde((q, req) => vac.retirar(q, req.params.id)));

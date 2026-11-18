@@ -81,6 +81,11 @@ const CATALOGO = [
     etiqueta: 'Banco de KM: lo más que genera un día',
     descripcion: 'El tope de lo que generan las horas de viaje de un día. Camilo: «con un límite de 53 km al día».',
     usa: 'Banco de KM (modules/Operaciones/bancoKm.service.js)' },
+  // Los asuntos propios de la oficina (db/271, 18/11/2026): un banco aparte.
+  { clave: 'oficina.asuntos_propios.al_ano', modulo: 'Vacaciones', tipo: 'entero', unidad: 'dias', min: 0, max: 30, defecto: 2,
+    etiqueta: 'Oficina: días de asuntos propios al año',
+    descripcion: 'Lo que se suma cada año natural al banco de asuntos propios de cada persona de la oficina (desde su alta, o desde 2026). Enteros y sin prorratear; lo que no se usa se acumula. No restan vacaciones.',
+    usa: 'Permisos de la oficina (modules/VacacionesOficina/vacacionesOficina.service.js)' },
   // Vacaciones de la oficina (db/263, 17/11/2026)
   { clave: 'oficina.vacaciones.tope_mes', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'dias', decimales: 2, min: 0, max: 31, defecto: 1.84,
     etiqueta: 'Vacaciones de la oficina: lo más que genera un mes',

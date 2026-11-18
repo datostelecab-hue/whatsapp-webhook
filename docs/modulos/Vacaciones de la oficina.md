@@ -133,3 +133,31 @@ public/assets/js/vistas/VacacionesOficina/misVacaciones.js  «Mías», el simula
 public/assets/js/vacacionesPorMeses.js                 la parrilla «Vacaciones por meses» (global, también la bitácora)
 test/vacaciones-oficina.test.js                        8 pruebas
 ```
+
+## Los permisos: asuntos propios y teletrabajo (18/11/2026, db/271)
+
+Camilo: *«que también podamos solicitar 2 días de asuntos propios o permisos especiales, como medio día de teletrabajo, todo un día de teletrabajo, etc., y que quede un histórico de esos permisos»*.
+
+En el mismo bloque de «Mis vacaciones» (`/mis-vacaciones`), debajo de las vacaciones, con su propio histórico:
+
+| Qué | Cómo |
+|---|---|
+| **Asuntos propios** | Un **banco aparte** de **2 días al año natural** (parámetro `oficina.asuntos_propios.al_ano`), desde su alta o desde 2026 si entró antes. Enteros, sin prorratear. Lo que no usa **se acumula**. **No restan vacaciones** (como en los conductores, db/225). |
+| **Teletrabajo** | Día completo, o **media mañana** o **media tarde**. **Sin cupo**: se pide, lo aprueba quien lleva Usuarios y permisos, y no consume nada. |
+
+- **Una solicitud son sus días.** Cada día laborable del rango (sin festivos ni fines de semana) es una fila, con el mismo `grupo`. Aprobar, no aprobar o anular es de una vez. El medio día es siempre un solo día.
+- **Los días de asuntos propios generan vacaciones** igual que los demás: el saldo de la oficina se calcula por días del calendario del horario, no por días trabajados, así que no hay que tocar nada.
+- **El banco se mira al pedir.** Lo que se pasa se deja pedir, en rojo, con los días de más; quien aprueba lo ve antes de aprobar y se le pide confirmación.
+- **No se pide un día que ya tiene un permiso que lo ocupe** (las dos mitades de un día sí pueden pedirse por separado) **ni unas vacaciones**.
+- **El histórico no se borra.** Se ve lo aprobado, lo no aprobado, lo retirado y lo anulado, con quién lo resolvió y por qué. Quien pidió puede **retirar** el suyo mientras espera; quien aprueba puede **anular** uno aprobado (con motivo).
+- **Quien lleva Usuarios y permisos** ve arriba, en el mismo bloque, lo que espera aprobación de toda la oficina, y el número en el menú («Mis vacaciones»).
+
+```
+db/271-oficina-permisos.sql                    la tabla (una fila por día, con su grupo) y la auditoría
+services/parametros.js                         oficina.asuntos_propios.al_ano (2)
+modules/VacacionesOficina/vacacionesOficina.service.js   el banco, las reglas, el histórico y la aprobación (sección de los permisos)
+modules/VacacionesOficina/vacacionesOficina.repo.js       el SQL de los permisos
+modules/VacacionesOficina/vacacionesOficina.controller.js /mis-vacaciones/api/permisos/*
+public/assets/js/vistas/VacacionesOficina/permisosOficina.js   el bloque: el banco, pedir, el histórico y lo que espera aprobación
+test/vacaciones-permisos.test.js               4 pruebas: el banco, los días, el flujo completo y el banco que se pasa
+```

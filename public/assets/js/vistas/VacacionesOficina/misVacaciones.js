@@ -130,8 +130,11 @@
         </div>`, `<button type="button" class="tc-boton tc-boton--principal" data-simular ${d.alta ? '' : 'disabled'}>
           <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Simular unas vacaciones</button>`)}
       ${bloque('Mis vacaciones', 'fa-umbrella-beach', tablaVacaciones(d, { propio: true, aprueba: false }))}
+      <div id="mv-permisos" class="mt-4"></div>
       ${bloque('Mes a mes', 'fa-calendar-days', tablaMeses(d))}`;
     caja.querySelector('[data-simular]').addEventListener('click', () => simular(d));
+    // Los asuntos propios y el teletrabajo (db/271): su bloque, con lo de quien mira.
+    if (window.PermisosOficina) PermisosOficina.montar(caja.querySelector('#mv-permisos'));
   }
   // Una vez: la caja se repinta, pero el escuchador se queda y lee lo de ahora.
   engancharAcciones(caja, () => yo, { recargar: () => cargarMias() });
