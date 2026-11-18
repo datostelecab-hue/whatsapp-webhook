@@ -14,6 +14,9 @@
 //   POST /tablero/api/tarjetas/:id/asignar | reasignar | plazo  (quien reparte)
 //   POST /tablero/api/tarjetas/:id/mover | cerrar | anular
 //   POST /tablero/api/tarjetas/:id/comentarios                  { texto }
+//   POST /tablero/api/tarjetas/:id/comentarios                  { texto, borrador } (ficheros y GIF del borrador)
+//   GET  /tablero/api/gifs?q=                                    GIF de KLIPY para un comentario
+//   POST /tablero/api/gif                                        { gifId, borrador }: lo trae al borrador
 //   POST /tablero/api/comentarios/:id/anular                    el suyo
 //   POST /tablero/api/tarjetas/:id/colaboradores                { usuarioId, quitar }
 //   GET  /tablero/api/personas                                  a quién se le puede dar una
@@ -72,5 +75,9 @@ router.post('/api/comentarios/:id(\\d+)/anular', responde(async (id, req) => ({
   tarjeta: await tablero.anularComentario(id, req.params.id, cuerpo(req)),
 })));
 router.get('/api/personas', responde(async () => ({ personas: await tablero.personas() })));
+// Los GIF de un comentario (db/270): la misma búsqueda de KLIPY que el chat, y
+// uno que se trae al borrador de quien comenta (no se manda solo).
+router.get('/api/gifs', responde((id, req) => tablero.buscarGifs(id, { q: req.query.q, pagina: req.query.pagina })));
+router.post('/api/gif', responde(async (id, req) => tablero.gifABorrador(id, cuerpo(req))));
 
 module.exports = router;

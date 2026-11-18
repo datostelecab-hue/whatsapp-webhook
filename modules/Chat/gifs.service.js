@@ -123,8 +123,13 @@ async function buscar(usuarioId, { q = '', pagina = 1 } = {}) {
   return { gifs: r.gifs.map(({ id, titulo, vista }) => ({ id, titulo, vista })), hayMas: r.hayMas, pagina: page };
 }
 
-/** Mandar un GIF de los enseñados: se trae, se guarda como adjunto y sale en un mensaje. */
-async function mandar(usuarioId, canalId, { gifId, padreId = null } = {}) {
+/**
+ * Trae un GIF de los enseñados (solo esos) y lo guarda como ADJUNTO de un
+ * borrador: el de un mensaje del chat ('chat_borrador') o el de un comentario
+ * del tablero ('tarea_borrador'). Devuelve el adjunto, como lo enseña la pantalla.
+ * Lo usan mandar (el chat) y el tablero (18/11/2026, db/270).
+ */
+async function aBorrador(usuarioId, gifId, tipo, borrador) {
   const g = vistos.get(String(gifId || ''));
   if (!g || Date.now() - g.at > VISTO_MS) throw error('Ese GIF ya no está a mano: búscalo otra vez.', 410);
   let res;
@@ -136,19 +141,24 @@ async function mandar(usuarioId, canalId, { gifId, padreId = null } = {}) {
   if (!res.ok || !res.body) throw error('No se ha podido traer el GIF de KLIPY. Prueba otra vez.', 502);
   const mime = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   if (!/^image\/(gif|webp)$/.test(mime)) throw error('Eso no es un GIF.', 502);
-  // Un borrador del chat de quien lo manda (como los ficheros que sube él).
-  const borrador = `${Number(usuarioId)}-${crypto.randomBytes(12).toString('hex')}`;
   const base = String(g.slug || g.titulo || 'gif').normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'gif';
-  await adjuntos.subir({
-    tipo: 'chat_borrador', duenoId: borrador, nombre: `${base}.${mime === 'image/webp' ? 'webp' : 'gif'}`, mime,
+  return adjuntos.subir({
+    tipo, duenoId: borrador, nombre: `${base}.${mime === 'image/webp' ? 'webp' : 'gif'}`, mime,
     cuerpo: Readable.fromWeb(res.body), quien: { id: Number(usuarioId) },
   });
+}
+
+/** Mandar un GIF de los enseñados: se trae, se guarda como adjunto y sale en un mensaje. */
+async function mandar(usuarioId, canalId, { gifId, padreId = null } = {}) {
+  // Un borrador del chat de quien lo manda (como los ficheros que sube él).
+  const borrador = `${Number(usuarioId)}-${crypto.randomBytes(12).toString('hex')}`;
+  await aBorrador(usuarioId, gifId, 'chat_borrador', borrador);
   return require('./chat.service').enviar(usuarioId, canalId, { texto: '', padreId, borrador });
 }
 
 module.exports = {
-  buscar, mandar, configurado,
+  buscar, mandar, aBorrador, configurado,
   // Para las pruebas:
   _aGif: aGif, _leerRespuesta: leerRespuesta, _recordar: recordar, _olvidar: () => { vistos.clear(); cache.clear(); },
 };

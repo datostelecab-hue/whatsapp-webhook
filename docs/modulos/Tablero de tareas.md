@@ -205,6 +205,26 @@ GET  /tablero/api/personas
 GET  /tablero/api/yo                               si aprueba, si reparte, si lo ve todo
 ```
 
+## Ficheros y GIF (18/11/2026, db/270)
+
+Camilo: «que en cada tarea también se puedan adjuntar archivos, lo que sea: imágenes, vídeos, Word, Excel, etc., hasta GIFs en los comentarios».
+
+- **Los ficheros de la tarjeta.** Una sección propia en la ficha, con el componente de adjuntos de la casa (`Adjuntos`, dueño `tarea`). Los sube quien ve la tarjeta, mientras no esté rechazada ni anulada. Los quita quien la lleva, quien la creó o quien reparte.
+- **Los ficheros de un comentario.** Se eligen (o se suelten) en el compositor y se suben ya a un **borrador** de quien escribe (`tarea_borrador`, «<su id>-<al azar>», igual que el chat). Al comentar, pasan al comentario (`tarea_comentario`) en la misma transacción. Un comentario puede llevar **solo** un fichero o un GIF: por eso el texto deja de ser obligatorio cuando lleva ficheros (`con_adjuntos`, db/270).
+- **Los GIF.** El mismo buscador de KLIPY que el chat (`buscarGifs`, `/tablero/api/gifs`). Al elegir uno se trae al borrador, con su progreso como un fichero (`gifABorrador`). La descarga, la comprobación de que es un GIF y el tope son los de `modules/Chat/gifs.service.js` (`aBorrador`, compartido).
+- **Las imágenes y los GIF** salen en el comentario a la vista; el resto, como una pastilla con su nombre que abre el visor o se descarga. Quitar un comentario quita con él sus ficheros de la vista.
+- **Quién ve qué:** quien ve la tarjeta, sus ficheros y los de sus comentarios; un comentario se quita por quien lo escribió (o quien reparte). Un fichero que se quita del borrador antes de mandar el comentario se anula en el servidor, para que no se le cuelgue al siguiente.
+- **No se han hecho aún:** que la historia de la tarjeta diga «X adjuntó Y» (un evento nuevo) y el número de ficheros en la tarjeta de la lista.
+
+```
+db/270-comentarios-con-ficheros.sql        el comentario puede ir sin texto si lleva ficheros
+services/tablero.js                        los dueños de fichero (tarea, tarea_comentario, tarea_borrador: quién ve, sube y quita), comentar con borrador, la ficha con ficheros, buscarGifs y gifABorrador
+services/repo/tablero.js                   ficherosDeBorrador y pasarBorrador (el SQL del paso al comentario)
+modules/Chat/gifs.service.js               aBorrador: el GIF al borrador (lo usan el chat y el tablero)
+public/assets/js/vistas/Tablero/tablero.js el compositor, la subida con progreso, el GIF y los ficheros de la ficha
+test/tablero-ficheros.test.js              3 pruebas: el GIF o el fichero sin texto, quién ve y quién sube, y quitar
+```
+
 ## Ficheros
 
 ```

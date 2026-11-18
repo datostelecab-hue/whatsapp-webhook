@@ -38,6 +38,7 @@ const repo = require('./repo/tablero');
 const contadores = require('./contadores');
 const tiempoReal = require('./tiempoReal');
 const tareasProgramadas = require('./tareasProgramadas');
+const adjuntos = require('./adjuntos');
 
 const TRABAJANDO = ['por_hacer', 'en_curso', 'bloqueada'];
 const ABIERTAS = ['por_aprobar', 'por_asignar', ...TRABAJANDO];
@@ -114,6 +115,8 @@ function permisos(ctx, t) {
     cerrar: (lleva || ctx.asigna) && TRABAJANDO.includes(t.estado) && tipo.cierreManual,
     anular: viva && (ctx.asigna || (t.creada_por === ctx.id && t.estado === 'por_aprobar')),
     comentar: puedeVer(ctx, t),
+    // Los ficheros de la tarjeta (db/270): quien la ve, si no está rechazada ni anulada.
+    adjuntar: puedeVer(ctx, t) && !['rechazada', 'anulada'].includes(t.estado),
     colaboradores: (lleva || ctx.asigna) && TRABAJANDO.includes(t.estado),
   };
 }
@@ -204,13 +207,19 @@ async function ficha(usuarioId, id) {
   if (!t || !puedeVer(ctx, t)) throw error('Esa tarjeta no existe o no es de las que puedes ver', 404);
   const cal = await calendario.de('madrid');
   const ver = tipoDe(t.tipo).verOrigen;
-  const [eventos, comentarios, origen] = await Promise.all([repo.eventos(t.id), repo.comentarios(t.id),
-    ver && t.origen_id && !t.sensible ? Promise.resolve(ver(t, ctx.id)).catch(() => null) : null]);
+  const quien = { id: ctx.id };
+  const [eventos, comentarios, origen, ficherosTarjeta] = await Promise.all([repo.eventos(t.id), repo.comentarios(t.id),
+    ver && t.origen_id && !t.sensible ? Promise.resolve(ver(t, ctx.id)).catch(() => null) : null,
+    adjuntos.lista('tarea', t.id, quien).catch(() => [])]);
+  const ficherosComentarios = await Promise.all(comentarios.map(c => adjuntos.lista('tarea_comentario', c.id, quien).catch(() => [])));
   return {
     ...publica(ctx, t, await semaforoDe(t, cal, calendario.hoy())),
     origen: origen || null,
+    adjuntos: ficherosTarjeta,
+    yo: ctx.id,
     historia: eventos.map(e => ({ tipo: e.tipo, autor: e.autor_nombre, en: e.en, datos: e.datos, motivo: e.motivo })),
-    comentariosLista: comentarios.map(c => ({ id: Number(c.id), autor: c.autor_nombre, autorId: c.autor_id, texto: c.texto, en: c.creado_at, mio: c.autor_id === ctx.id })),
+    comentariosLista: comentarios.map((c, i) => ({ id: Number(c.id), autor: c.autor_nombre, autorId: c.autor_id, texto: c.texto, en: c.creado_at, mio: c.autor_id === ctx.id,
+      adjuntos: ficherosComentarios[i] })),
   };
 }
 
@@ -566,12 +575,18 @@ async function anular(usuarioId, id, { motivo } = {}) {
 }
 
 // ── Comentarios y colaboradores ────────────────────────────────────────────
-async function comentar(usuarioId, id, { texto: t } = {}) {
+async function comentar(usuarioId, id, { texto: t, borrador = null } = {}) {
   const ctx = await contexto(usuarioId);
   const tx = texto(t, 4000);
-  if (!tx) throw error('Escribe el comentario');
+  // Los ficheros y el GIF que ya se subieron a un borrador de quien escribe.
+  const b = borrador ? borradorValido(borrador, ctx.id) : null;
+  if (borrador && !b) throw error('Esos ficheros no son tuyos', 403);
+  if (!tx && !b) throw error('Escribe el comentario o adjunta algo');
   const r = await escribir(ctx, entero(id), { accion: 'comentario' }, async (cli, tarea) => {
-    await repo.comentar(cli, tarea.id, ctx.id, tx);
+    const ficheros = b ? await repo.ficherosDeBorrador(cli, b, ctx.id) : 0;
+    if (!tx && !ficheros) throw error('Escribe el comentario: los ficheros no han llegado a subirse');
+    const cid = await repo.comentar(cli, tarea.id, ctx.id, tx, ficheros > 0);
+    if (ficheros) await repo.pasarBorrador(cli, b, ctx.id, 'tarea_comentario', cid);
     return tarea;
   });
   await avisar(r.id);
@@ -672,10 +687,86 @@ tareasProgramadas.registrar({
   hacer: avisarVencidas,
 });
 
+// ── Los ficheros de la tarjeta y de sus comentarios (db/270, 18/11/2026) ─────
+// Van al servicio de adjuntos, que los guarda y los sirve. Aquí se dice quién
+// puede qué con cada uno: quien ve la tarjeta ve sus ficheros; un comentario
+// lleva los suyos y se quitan por quien lo escribió (o quien reparte); lo que se
+// sube antes de comentar va a un borrador de quien escribe, igual que el chat.
+const BORRADOR_TAB = /^(\d{1,9})-[a-z0-9]{8,40}$/;
+/** El borrador, si es de esa persona; si no, null. */
+function borradorValido(v, usuarioId) {
+  const s2 = String(v || '').trim().toLowerCase();
+  const m = BORRADOR_TAB.exec(s2);
+  return m && Number(m[1]) === Number(usuarioId) ? s2 : null;
+}
+/** La tarjeta de un fichero, si quien pregunta puede verla. */
+async function tarjetaDeFichero(quien, id) {
+  if (!quien || !quien.id) return null;
+  const ctx = await contexto(quien.id);
+  const t = entero(id) ? await repo.una(null, entero(id)) : null;
+  return t && puedeVer(ctx, t) ? { ctx, t } : null;
+}
+/** El comentario de un fichero, si existe. */
+async function comentarioDeFichero(id) {
+  const n = entero(id);
+  return n ? repo.comentario(null, n) : null;
+}
+
+adjuntos.registrarDueno('tarea', {
+  etiqueta: 'Tarjeta del tablero',
+  ver: async (quien, id) => !!(await tarjetaDeFichero(quien, id)),
+  adjuntar: async (quien, id) => {
+    const v = await tarjetaDeFichero(quien, id);
+    return !!v && !['rechazada', 'anulada'].includes(v.t.estado);
+  },
+  // Quitar un fichero de la tarjeta: quien la lleva, quien la creó o quien reparte.
+  anular: async (quien, id) => {
+    const v = await tarjetaDeFichero(quien, id);
+    return !!v && (v.ctx.asigna || v.t.responsable_id === v.ctx.id || v.t.creada_por === v.ctx.id);
+  },
+});
+
+adjuntos.registrarDueno('tarea_comentario', {
+  etiqueta: 'Comentario de una tarjeta',
+  ver: async (quien, id) => {
+    const c = await comentarioDeFichero(id);
+    return !!c && !c.anulado_at && !!(await tarjetaDeFichero(quien, c.tarea_id));
+  },
+  // Los ficheros de un comentario entran con él (desde su borrador): no se suben a uno ya mandado.
+  adjuntar: async () => false,
+  anular: async (quien, id) => {
+    const c = await comentarioDeFichero(id);
+    if (!c || c.anulado_at || !quien || !quien.id) return false;
+    if (Number(c.autor_id) === Number(quien.id)) return true;
+    return (await contexto(quien.id)).asigna;
+  },
+});
+
+adjuntos.registrarDueno('tarea_borrador', {
+  etiqueta: 'Fichero de un comentario sin mandar',
+  ver: async (quien, id) => !!borradorValido(id, quien && quien.id),
+  adjuntar: async (quien, id) => !!borradorValido(id, quien && quien.id),
+  anular: async (quien, id) => !!borradorValido(id, quien && quien.id),
+});
+
+/** Los GIF de KLIPY para el comentario (la misma búsqueda que el chat). */
+function buscarGifs(usuarioId, { q, pagina } = {}) {
+  return require('../modules/Chat/gifs.service').buscar(usuarioId, { q, pagina });
+}
+
+/** Un GIF que se acaba de enseñar, traído al borrador de quien comenta. */
+async function gifABorrador(usuarioId, { gifId, borrador } = {}) {
+  const b = borradorValido(borrador, usuarioId);
+  if (!b) throw error('Esos ficheros no son tuyos', 403);
+  const adjunto = await require('../modules/Chat/gifs.service').aBorrador(usuarioId, gifId, 'tarea_borrador', b);
+  return { adjunto };
+}
+
 module.exports = {
   TRABAJANDO, ABIERTAS, FINALES, ETIQUETA_ESTADO,
   registrarTipo, listar, ficha, crear, nacer, ajustarPorOrigen, aprobar, rechazar, asignar, reasignar, cambiarPlazo, mover,
   cerrar, cerrarPorOrigen, asignarPorOrigen, anular, comentar, anularComentario, colaborador, avisar,
+  buscarGifs, gifABorrador,
   personas: () => repo.personas(), quienSoy,
   // Para las pruebas:
   plazoDe, avisarVencidas, contexto, permisos,

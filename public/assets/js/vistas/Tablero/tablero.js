@@ -37,6 +37,13 @@
   // cambio y llega DESPUÉS no puede pintar encima de lo nuevo.
   let turnoFicha = 0;
 
+  // LOS FICHEROS DE UN COMENTARIO (18/11/2026, db/270): lo que se sube a un borrador de
+  // quien escribe antes de mandar el comentario, y el texto a medias. Vive aquí y no en la
+  // ficha, que se vuelve a pintar entera cada vez.
+  let pendientes = { borrador: null, items: [], texto: '' };
+  let temporizadorGif = null;
+  const ICONO_FICHERO = { imagen: 'fa-image', pdf: 'fa-file-pdf', video: 'fa-film', audio: 'fa-music', otro: 'fa-file' };
+
   // ── Formatos ────────────────────────────────────────────────────────────
   const dia = iso => (iso ? iso.split('-').reverse().join('/') : '');
   const fechaHora = v => {
@@ -399,6 +406,9 @@
         ${t.cierreNota ? fila(t.estado === 'cerrada' ? 'En qué quedó' : 'Motivo', esc(t.cierreNota)) : ''}
         ${t.motivoDemora ? fila('Por qué tarde', esc(t.motivoDemora)) : ''}
       </section>
+      <section class="tc-panel-seccion">
+        <div data-ficheros-tarjeta></div>
+      </section>
       ${origenHtml(t)}
       ${t.sensible ? '<p class="text-xs text-telecab-muted"><i class="fa-solid fa-lock mr-1" aria-hidden="true"></i>Lleva datos sensibles: el detalle se mira en su origen, con sus permisos.</p>'
         : t.descripcion ? `<section class="tc-panel-seccion"><h4>Detalle</h4><p class="text-sm whitespace-pre-line">${esc(t.descripcion)}</p></section>` : ''}
@@ -419,14 +429,30 @@
               <span class="font-semibold text-telecab-text">${esc(c.autor || '—')}</span><span>${esc(fechaHora(c.en))}</span>
               ${c.mio ? `<button type="button" class="ml-auto hover:text-telecab-red" data-quitar-comentario="${c.id}" aria-label="Quitar mi comentario"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>` : ''}
             </div>
-            <p class="text-sm whitespace-pre-line mt-1">${esc(c.texto)}</p>
+            ${c.texto ? `<p class="text-sm whitespace-pre-line mt-1">${esc(c.texto)}</p>` : ''}
+            ${adjuntosHtml(c.adjuntos)}
           </div>`).join('') || '<p class="text-xs text-telecab-muted">Sin comentarios.</p>'}
         </div>
         ${t.puede.comentar ? `
           <form data-comentar class="mt-2 flex flex-col gap-2">
             <label for="t-comentario" class="sr-only">Escribe un comentario</label>
             <textarea id="t-comentario" rows="2" maxlength="4000" class="inp" placeholder="Escribe un comentario…"></textarea>
-            <button type="submit" class="tc-boton self-end"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Comentar</button>
+            <div data-pendientes class="flex flex-col gap-1.5"></div>
+            <div data-gifs hidden class="rounded-xl border border-telecab-border bg-telecab-card2 p-2">
+              <div class="flex items-center gap-2">
+                <input type="search" data-gif-q class="inp" placeholder="Buscar un GIF en KLIPY…" aria-label="Buscar un GIF" autocomplete="off">
+                <button type="button" data-gif-cerrar class="tc-boton tc-boton--chico" aria-label="Cerrar los GIF"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+              </div>
+              <div data-gif-rejilla class="grid grid-cols-3 gap-1.5 mt-2 max-h-56 overflow-y-auto" aria-live="polite"></div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="tc-boton tc-boton--chico cursor-pointer" title="Adjuntar ficheros: imágenes, vídeos, Word, Excel…">
+                <i class="fa-solid fa-paperclip" aria-hidden="true"></i>Adjuntar
+                <input type="file" multiple class="sr-only" data-fichero aria-label="Adjuntar ficheros al comentario">
+              </label>
+              <button type="button" class="tc-boton tc-boton--chico" data-gif-abrir title="Buscar un GIF"><i class="fa-solid fa-face-smile" aria-hidden="true"></i>GIF</button>
+              <button type="submit" class="tc-boton ml-auto"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Comentar</button>
+            </div>
           </form>` : ''}
       </section>
       <section class="tc-panel-seccion">
@@ -438,9 +464,21 @@
       </section>`;
     panel.p.poner({ titulo: t.titulo, subtitulo: `${t.tipoEtiqueta} · ${t.estadoEtiqueta}`, html });
     panel.t = t;
+    if (t.yo) yo.id = t.yo;
+    // Los ficheros de la tarjeta: los pinta y los sube el componente de la casa.
+    const cajaFicheros = panel.p.cuerpo.querySelector('[data-ficheros-tarjeta]');
+    if (cajaFicheros && window.Adjuntos) {
+      Adjuntos.montar(cajaFicheros, { tipo: 'tarea', dueno: t.id, titulo: 'Ficheros', puedeAdjuntar: !!t.puede.adjuntar, puedeQuitar: !!t.puede.adjuntar });
+    }
+    // El comentario a medias y sus ficheros sobreviven a volver a pintar la ficha.
+    const ta = panel.p.cuerpo.querySelector('#t-comentario');
+    if (ta && pendientes.texto) ta.value = pendientes.texto;
+    pintarPendientes();
   }
 
   async function abrirFicha(id) {
+    // Un comentario a medias es de la tarjeta en la que se escribió.
+    pendientes = { borrador: null, items: [], texto: '' };
     const p = Panel.abrir({
       titulo: 'Cargando…', html: '<p class="text-sm text-telecab-muted">Cargando…</p>',
       alCerrar: () => {
@@ -452,6 +490,8 @@
     panel = { id, p, t: null };
     p.cuerpo.addEventListener('click', alPulsarFicha);
     p.cuerpo.addEventListener('submit', alComentar);
+    p.cuerpo.addEventListener('change', alElegirFichero);
+    p.cuerpo.addEventListener('input', alEscribirComentario);
     const turno = ++turnoFicha;
     const r = await Api.get(`${API}/tarjetas/${id}`).catch(e => { p.poner({ titulo: 'No se ha podido abrir', html: `<p class="text-sm text-telecab-warn">${esc(e.message)}</p>` }); return null; });
     if (r && panel && panel.p === p && turno === turnoFicha) pintarFicha(r.tarjeta);
@@ -468,8 +508,17 @@
   async function alPulsarFicha(e) {
     if (!panel || !panel.t) return;
     const t = panel.t;
-    const b = e.target.closest('[data-accion], [data-quitar-colaborador], [data-quitar-comentario]');
+    const b = e.target.closest('[data-accion], [data-quitar-colaborador], [data-quitar-comentario], [data-ver-adjunto], [data-quitar-pendiente], [data-gif-id], [data-gif-abrir], [data-gif-cerrar]');
     if (!b) return;
+    if (b.dataset.verAdjunto) {
+      const a = adjuntoDeLaFicha(t, b.dataset.verAdjunto);
+      if (a) Adjuntos.ver(a);
+      return;
+    }
+    if (b.dataset.quitarPendiente) return quitarPendiente(b.dataset.quitarPendiente);
+    if (b.dataset.gifId) return alElegirGif(b.dataset.gifId);
+    if ('gifAbrir' in b.dataset) return cajaGifs(true);
+    if ('gifCerrar' in b.dataset) return cajaGifs(false);
     if (b.dataset.accion && ACCIONES[b.dataset.accion]) return ACCIONES[b.dataset.accion](t);
     if (b.dataset.quitarColaborador) {
       return hacer(t.id, 'colaboradores', { usuarioId: Number(b.dataset.quitarColaborador), quitar: true }, 'No se ha quitado');
@@ -482,14 +531,156 @@
     }
   }
 
+  // ── Ficheros y GIF de un comentario (18/11/2026, db/270) ───────────────────
+
+  /** Pinta un fichero de un comentario o de la tarjeta: las imágenes y los GIF, a la vista. */
+  function adjuntosHtml(adjs) {
+    if (!adjs || !adjs.length) return '';
+    return `<div class="mt-2 flex flex-wrap gap-2">${adjs.map(a => (a.clase === 'imagen'
+      ? `<button type="button" data-ver-adjunto="${a.id}" class="block rounded-lg overflow-hidden border border-telecab-border bg-telecab-card" aria-label="Ver ${esc(a.nombre)}" title="${esc(a.nombre)}"><img src="${esc(a.url)}" alt="${esc(a.nombre)}" loading="lazy" class="max-h-48 max-w-full block"></button>`
+      : `<button type="button" data-ver-adjunto="${a.id}" class="tc-pastilla hover:text-telecab-gold" title="${esc(a.nombre)}"><i class="fa-solid ${ICONO_FICHERO[a.clase] || 'fa-file'}" aria-hidden="true"></i> ${esc(a.nombre)}</button>`)).join('')}</div>`;
+  }
+
+  /** Un fichero de la ficha abierta (de la tarjeta o de un comentario), por su id. */
+  function adjuntoDeLaFicha(t, id) {
+    const todos = [...(t.adjuntos || []), ...(t.comentariosLista || []).flatMap(c => c.adjuntos || [])];
+    return todos.find(a => String(a.id) === String(id));
+  }
+
+  function nuevoBorrador() {
+    const b = new Uint8Array(12);
+    crypto.getRandomValues(b);
+    return `${yo.id}-${[...b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  /** La lista de lo que se va a mandar con el comentario, con su progreso o su error. */
+  function pintarPendientes() {
+    const caja = panel && panel.p.cuerpo.querySelector('[data-pendientes]');
+    if (!caja) return;
+    caja.innerHTML = pendientes.items.map(it => `
+      <div class="flex items-center gap-2 text-xs rounded-lg bg-telecab-card2 border border-telecab-border px-2 py-1.5">
+        ${it.adjunto && it.adjunto.clase === 'imagen'
+          ? `<img src="${esc(it.adjunto.url)}" alt="" class="h-10 w-10 object-cover rounded">`
+          : `<i class="fa-solid ${it.estado === 'error' ? 'fa-triangle-exclamation text-telecab-warn' : 'fa-paperclip text-telecab-muted'}" aria-hidden="true"></i>`}
+        <span class="min-w-0 flex-1 truncate" title="${esc(it.nombre)}">${esc(it.nombre)}</span>
+        <span class="tabular-nums text-telecab-muted">${it.estado === 'subiendo' ? `${it.pct} %` : it.estado === 'error' ? esc(it.error) : ''}</span>
+        <button type="button" data-quitar-pendiente="${esc(it.id)}" class="hover:text-telecab-red" aria-label="Quitar ${esc(it.nombre)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>`).join('');
+  }
+
+  /** Lo que se escribe: el texto (para no perderlo al volver a pintar) y la búsqueda de GIF. */
+  function alEscribirComentario(e) {
+    if (e.target.matches('#t-comentario')) { pendientes.texto = e.target.value; return; }
+    if (e.target.matches('[data-gif-q]')) {
+      clearTimeout(temporizadorGif);
+      const q = e.target.value.trim();
+      temporizadorGif = setTimeout(() => buscarGifs(q), 400);
+    }
+  }
+
+  /** Los ficheros que se eligen (o se sueltan) se suben ya a un borrador, con su progreso. */
+  function alElegirFichero(e) {
+    const input = e.target.closest('[data-fichero]');
+    if (!input || !input.files || !input.files.length) return;
+    const ficheros = [...input.files];
+    input.value = '';
+    ficheros.forEach(subirAlBorrador);
+  }
+
+  function subirAlBorrador(fichero) {
+    pendientes.borrador = pendientes.borrador || nuevoBorrador();
+    const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, nombre: fichero.name, estado: 'subiendo', pct: 0, adjunto: null, error: null };
+    pendientes.items.push(item);
+    pintarPendientes();
+    Adjuntos.subir({ tipo: 'tarea_borrador', dueno: pendientes.borrador, fichero, alProgresar: p => { item.pct = Math.round(p * 100); pintarPendientes(); } })
+      .then(a => {
+        item.estado = 'listo'; item.adjunto = a;
+        // Si se quitó mientras subía, no se queda en el borrador.
+        if (!pendientes.items.includes(item)) anularAdjunto(a.id);
+      })
+      .catch(err => { item.estado = 'error'; item.error = err.message; })
+      .finally(pintarPendientes);
+  }
+
+  /** Quitar un fichero de los que van con el comentario: se anula en el servidor si ya estaba subido. */
+  function quitarPendiente(id) {
+    const it = pendientes.items.find(x => x.id === id);
+    if (!it) return;
+    pendientes.items = pendientes.items.filter(x => x !== it);
+    pintarPendientes();
+    if (it.adjunto) anularAdjunto(it.adjunto.id);
+  }
+
+  function anularAdjunto(id) {
+    Api.post(`/adjuntos/api/${id}/anular`, { motivo: 'Quitado antes de mandar el comentario' }).catch(() => {});
+  }
+
+  /** Abrir o cerrar la caja de los GIF; al abrirla, se pone el cursor en la búsqueda. */
+  function cajaGifs(abrir) {
+    const caja = panel && panel.p.cuerpo.querySelector('[data-gifs]');
+    if (!caja) return;
+    caja.hidden = !abrir;
+    if (abrir) {
+      const q = caja.querySelector('[data-gif-q]');
+      q.focus();
+      if (!caja.querySelector('[data-gif-id]')) buscarGifs('');
+    }
+  }
+
+  /** Busca GIF en KLIPY (lo que pide el servidor); sin texto, los más vistos. */
+  async function buscarGifs(q) {
+    const rejilla = panel && panel.p.cuerpo.querySelector('[data-gif-rejilla]');
+    if (!rejilla) return;
+    rejilla.innerHTML = '<p class="text-xs text-telecab-muted col-span-full">Buscando…</p>';
+    const r = await Api.get(`${API}/gifs?q=${encodeURIComponent(q)}`).catch(err => {
+      rejilla.innerHTML = `<p class="text-xs text-telecab-warn col-span-full">${esc(err.message)}</p>`;
+      return null;
+    });
+    if (!r) return;
+    rejilla.innerHTML = r.gifs.map(g => `
+      <button type="button" data-gif-id="${esc(g.id)}" title="${esc(g.titulo || 'GIF')}" aria-label="Añadir el GIF ${esc(g.titulo || '')}" class="rounded-lg overflow-hidden border border-telecab-border hover:border-telecab-gold">
+        <img src="${esc(g.vista.url)}" alt="" loading="lazy" class="w-full h-20 object-cover block">
+      </button>`).join('') || '<p class="text-xs text-telecab-muted col-span-full">Ningún GIF con eso.</p>';
+  }
+
+  /** Un GIF elegido: se trae al borrador y sale en la lista, con los ficheros. */
+  async function alElegirGif(gifId) {
+    pendientes.borrador = pendientes.borrador || nuevoBorrador();
+    const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, nombre: 'GIF', estado: 'subiendo', pct: 0, adjunto: null, error: null };
+    pendientes.items.push(item);
+    pintarPendientes();
+    const r = await Api.post(`${API}/gif`, { gifId, borrador: pendientes.borrador }, { aviso: 'No se ha podido traer el GIF' });
+    if (r && r.adjunto) {
+      item.estado = 'listo'; item.adjunto = r.adjunto; item.nombre = r.adjunto.nombre;
+      if (!pendientes.items.includes(item)) anularAdjunto(r.adjunto.id);
+    } else {
+      item.estado = 'error'; item.error = 'No se ha podido traer el GIF';
+    }
+    pintarPendientes();
+  }
+
+  /** Mandar el comentario: con texto, con ficheros o con GIF; no sale si alguno no se ha subido. */
   async function alComentar(e) {
     if (!e.target.matches('[data-comentar]') || !panel) return;
     e.preventDefault();
     const caja = e.target.querySelector('textarea');
     const texto = caja.value.trim();
-    if (!texto) { caja.focus(); return; }
-    const r = await Api.post(`${API}/tarjetas/${panel.id}/comentarios`, { texto }, { aviso: 'No se ha guardado el comentario', boton: e.target.querySelector('button') });
-    if (r) { turnoFicha++; pintarFicha(r.tarjeta); recargarPronto(); }
+    if (pendientes.items.some(x => x.estado === 'subiendo')) {
+      Dialogo.aviso({ titulo: 'Espera un momento', texto: 'Aún se están subiendo ficheros: el comentario sale cuando acaben.' });
+      return;
+    }
+    if (pendientes.items.some(x => x.estado === 'error')) {
+      Dialogo.aviso({ titulo: 'Un fichero no se ha subido', texto: 'Quítalo con la ✕ o vuelve a elegirlo antes de comentar.', tono: 'error' });
+      return;
+    }
+    const listos = pendientes.items.filter(x => x.estado === 'listo');
+    if (!texto && !listos.length) { caja.focus(); return; }
+    const r = await Api.post(`${API}/tarjetas/${panel.id}/comentarios`, { texto, borrador: listos.length ? pendientes.borrador : null },
+      { aviso: 'No se ha guardado el comentario', boton: e.target.querySelector('button[type="submit"]') });
+    if (r) {
+      pendientes = { borrador: null, items: [], texto: '' };
+      turnoFicha++; pintarFicha(r.tarjeta); recargarPronto();
+    }
   }
 
   // ── El recorrido, la primera vez (y con el botón, cuando se quiera) ───────

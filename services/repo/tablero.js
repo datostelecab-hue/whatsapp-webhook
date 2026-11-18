@@ -103,9 +103,30 @@ async function eventos(tareaId) {
   return r.rows;
 }
 
-async function comentar(cli, tareaId, autorId, texto) {
-  const r = await q(cli, 'INSERT INTO tarea_comentario (tarea_id, autor_id, texto) VALUES ($1, $2, $3) RETURNING id', [tareaId, autorId, texto]);
+async function comentar(cli, tareaId, autorId, texto, conAdjuntos = false) {
+  const r = await q(cli, 'INSERT INTO tarea_comentario (tarea_id, autor_id, texto, con_adjuntos) VALUES ($1, $2, $3, $4) RETURNING id', [tareaId, autorId, texto, !!conAdjuntos]);
   return Number(r.rows[0].id);
+}
+
+// ── Los ficheros de un comentario (db/270) ──────────────────────────────────
+// Se suben antes de mandar, a un borrador de quien escribe ('tarea_borrador',
+// «<su id>-<al azar>»), igual que el chat. Al comentar, pasan al comentario.
+/** Cuántos ficheros tiene ya el borrador (bloqueados hasta que acabe la transacción). */
+async function ficherosDeBorrador(cli, borrador, autorId) {
+  const r = await q(cli,
+    `SELECT id FROM adjunto
+      WHERE dueno_tipo = 'tarea_borrador' AND dueno_id = $1 AND creado_por = $2 AND anulado_at IS NULL
+      FOR UPDATE`, [borrador, autorId]);
+  return r.rows.length;
+}
+
+/** Los ficheros del borrador pasan al comentario. */
+async function pasarBorrador(cli, borrador, autorId, tipo, duenoId) {
+  const r = await q(cli,
+    `UPDATE adjunto SET dueno_tipo = $4, dueno_id = $3
+      WHERE dueno_tipo = 'tarea_borrador' AND dueno_id = $1 AND creado_por = $2 AND anulado_at IS NULL
+      RETURNING id`, [borrador, autorId, String(duenoId), tipo]);
+  return r.rows.length;
 }
 
 async function comentario(cli, id) {
@@ -202,4 +223,5 @@ async function deOrigenes(tipo, origenIds) {
 module.exports = {
   una, porOrigen, listar, insertar, cambiar, evento, eventos, comentar, comentario, anularComentario, comentarios,
   ponerColaborador, quitarColaborador, persona, personas, cuentas, vencidasSinAviso, vivasDe, deOrigenes,
+  ficherosDeBorrador, pasarBorrador,
 };
