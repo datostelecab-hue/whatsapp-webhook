@@ -8,6 +8,8 @@
   const SEDE_NOMBRE = typeof sedeNombre !== 'undefined' && sedeNombre ? sedeNombre : '';
   const CON_CITAS = typeof conCitas === 'undefined' ? true : !!conCitas;
   const CITAS_AGENDA = typeof citasAgenda !== 'undefined' && !!citasAgenda;
+  // RUEDAS (db/265, 18/11/2026): solo en la de Madrid, que es la flota de Óscar.
+  const CON_RUEDAS = typeof conRuedas === 'undefined' ? BASE === '/taller' : !!conRuedas;
 %>
 <div class="p-4 lg:p-6 max-w-[1500px] mx-auto">
 
@@ -21,6 +23,7 @@
         Todo lo que se le ha hecho a cada coche: lo de las facturas del taller, lo apuntado a mano y las piezas
         del inventario. En <b>Revisión por km</b>, a qué coche le toca revisión: lleva
         <b><%= intervaloGeneral.toLocaleString('es-ES') %> km</b> desde la última apuntada a mano.
+        <% if (CON_RUEDAS) { %>En <b>Ruedas</b>, a cuál le toca cambiarlas: cada 25.000 km desde el último cambio.<% } %>
         <% if (SEDE_NOMBRE) { %>Aquí, los coches con sede <b><%= SEDE_NOMBRE %></b> en Vehículos.<% } %>
       </p>
     </div>
@@ -54,6 +57,12 @@
     <button data-pestana="flota" role="tab" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
       <i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Revisión por km
     </button>
+    <% if (CON_RUEDAS) { %>
+    <button data-pestana="ruedas" role="tab" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-circle-dot" aria-hidden="true"></i> Ruedas
+      <span class="tc-contador" data-contador="taller.ruedas" hidden></span>
+    </button>
+    <% } %>
     <% if (CON_CITAS) { %>
     <button data-pestana="citas" role="tab" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
       <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Citas del taller
@@ -67,6 +76,14 @@
   <div id="v-historial" class="hidden -mx-4 lg:-mx-6 -mt-4 lg:-mt-6">
     <div id="h-lista"></div>
   </div>
+
+  <%# ══ RUEDAS (db/265): cada 25.000 km un cambio; su Listado no mira el #id
+       (ese es de Mantenimientos), y cada coche abre su historia en el Panel. %>
+  <% if (CON_RUEDAS) { %>
+  <div id="v-ruedas" class="hidden -mx-4 lg:-mx-6 -mt-4 lg:-mt-6">
+    <div id="r-lista"></div>
+  </div>
+  <% } %>
 
   <div id="v-flota" class="hidden">
   <!-- ── Los cuatro estados ───────────────────────────────────────────── -->
@@ -298,5 +315,7 @@
 
 <script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
 <script src="<%= typeof est === 'function' ? est('/assets/js/mantenimientosCoche.js') : '/assets/js/mantenimientosCoche.js' %>"></script>
-<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, citasAgenda: CITAS_AGENDA, sedeNombre: SEDE_NOMBRE, puedeApuntar: !!puedeApuntar, tipos: tipos, categorias: typeof categorias !== 'undefined' ? categorias : [], intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<% if (CON_RUEDAS) { %><script src="<%= est('/assets/js/vistas/Vehiculos/ruedas.js') %>"></script><% } %>
+<script type="application/json" id="datos-servidor"><%- json({ base: BASE, conCitas: CON_CITAS, conRuedas: CON_RUEDAS, citasAgenda: CITAS_AGENDA, sedeNombre: SEDE_NOMBRE, puedeApuntar: !!puedeApuntar, tipos: tipos, categorias: typeof categorias !== 'undefined' ? categorias : [], intervaloGeneral: intervaloGeneral, citasEstados: citasEstados, citasDiasAntes: citasDiasAntes }) %></script>
 <script src="<%= est('/assets/js/vistas/Vehiculos/taller.js') %>"></script>

@@ -497,7 +497,15 @@
    * de uno en uno por la misma puerta que el botón de cada factura.
    */
   const normNum = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // El nombre de un fichero sin sus copias («… (1).pdf») ni mayúsculas.
+  const nombreLimpio = s => String(s || '').replace(/\s*\(\d+\)(?=\.[a-z0-9]{2,5}$)/i, '').trim().toUpperCase();
   function casarFichero(nombre, filas) {
+    // Primero, por el nombre exacto (18/11/2026): las facturas que se cargan por
+    // migración guardan el nombre de su PDF (db/265: «755.FACTURA OCTUBRE
+    // 3110KSM.pdf» es la L755/2026 y «_7182026.pdf» la 718/GL, que el número no
+    // casaría). Solo las que aún no tienen PDF.
+    const exacta = filas.filter(f => !f.anulada && !f.enlace && f.archivo && nombreLimpio(f.archivo) === nombreLimpio(nombre));
+    if (exacta.length === 1) return exacta[0];
     const n = normNum(String(nombre).replace(/\.[a-z0-9]{2,5}$/i, ''));
     let c = filas.filter(f => !f.anulada && normNum(f.numero).length >= 4 && n.includes(normNum(f.numero)));
     if (c.length > 1) {

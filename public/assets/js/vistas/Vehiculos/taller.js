@@ -12,6 +12,7 @@
   // AGENDA: solo se apuntan, sin quién lo lleva, sin aviso y sin confirmación.
   const BASE = DEL_SERVIDOR.base || '/taller';
   const CON_CITAS = DEL_SERVIDOR.conCitas !== false;
+  const CON_RUEDAS = DEL_SERVIDOR.conRuedas === true;      // db/265: la pestaña Ruedas (ruedas.js)
   const CITAS_AGENDA = DEL_SERVIDOR.citasAgenda === true;
   const SEDE = DEL_SERVIDOR.sedeNombre || 'Madrid';
   // Lo que pintan igual Mantenimientos y Control de una cita (citasTaller.js).
@@ -587,7 +588,7 @@
   // Listado de mantenimientos, que abre con él la ficha de uno. El #citas de
   // antes (los enlaces de Control) sigue valiendo: se pasa a ?vista=citas
   // ANTES de montar el Listado, que si no lo tomaría por un id. ──
-  const VISTAS = ['historial', 'flota'].concat(CON_CITAS ? ['citas'] : []);
+  const VISTAS = ['historial', 'flota'].concat(CON_RUEDAS ? ['ruedas'] : [], CON_CITAS ? ['citas'] : []);
   function verPestana(p) {
     if (!VISTAS.includes(p)) p = 'historial';
     document.querySelectorAll('.pestana').forEach(b => {
@@ -609,10 +610,11 @@
         (p === 'historial' ? location.hash : ''));
     } catch (_) { /* nada */ }
     if (p === 'historial') montarHistorial();
+    if (p === 'ruedas' && window.TallerRuedas) window.TallerRuedas.montar({ base: BASE, puede: PUEDE });
   }
   document.querySelectorAll('.pestana').forEach(b => b.addEventListener('click', () => verPestana(b.dataset.pestana)));
   {
-    const antes = { '#citas': 'citas', '#flota': 'flota' }[location.hash];
+    const antes = { '#citas': 'citas', '#flota': 'flota', '#ruedas': 'ruedas' }[location.hash];
     if (antes) history.replaceState(null, '', location.pathname + '?vista=' + antes);
     verPestana(new URLSearchParams(location.search).get('vista') || 'historial');
   }

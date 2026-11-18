@@ -21,6 +21,7 @@ const taller = require('./taller.service');
 const actor = require('../../services/repo/actor');
 const facturas = require('./facturas.service');
 const citas = require('./citas.service');
+const ruedas = require('./ruedas.service');
 
 /**
  * Las sedes que ve quien pregunta. Sin la llave '/vehiculos/sedes', solo Madrid
@@ -134,6 +135,11 @@ router.post('/api/ancla', responde(exigeApuntar((req, quien) =>
 
 router.post('/api/intervalo', responde(exigeApuntar((req, quien) =>
   taller.intervalo(req.body, { sedes: quien.sedes }))));
+
+// ── RUEDAS (db/265, 18/11/2026): cada 25.000 km, un cambio ───────────────────
+// Mirar, con '/taller'; apuntar un cambio a mano, con '/taller/apuntar'.
+router.get('/api/ruedas', responde(async req => ruedas.cuadro({ sedes: await sedesDe(req) })));
+router.post('/api/ruedas/apuntar', responde(exigeApuntar((req, quien) => ruedas.apuntar(req.body, quien))));
 
 // ── LAS CITAS DEL TALLER (db/187) ───────────────────────────────────────────
 // Mirarlas es de '/taller'; subir el Excel, avisar y cambiar su estado, de

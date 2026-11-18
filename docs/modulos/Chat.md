@@ -113,6 +113,10 @@ Lo que decidió Camilo (17/11/2026):
 
 **Ojo con el plazo**: el Slack de Telecab empezó el 03/09/2026. Si es el plan gratuito, enseña solo 90 días, y desde el **02/12/2026** lo más viejo deja de verse. Hay que migrar antes.
 
+## Notificaciones Telecab (db/265, 18/11/2026)
+
+Camilo: *«que le llegue al chat de Óscar… pero el chat de Telecab, que se llame "Notificaciones Telecab"»*. Un canal **privado**, `notificaciones-telecab`, que en la lista y en la notificación del móvil se llama **«Notificaciones Telecab»**. Ahí escribe el ERP solo: `chat.avisoDelSistema({ para, texto })` crea el canal la primera vez, mete a esas personas, escribe sin autor (firma «Telecab») con el evento **`aviso`** y las menciona, así que les llega como cualquier mención. Lo estrenan las ruedas: [[Inventario y mantenimientos]].
+
 ## Las tablas (db/256, db/257, db/259 y db/260)
 
 - `chat_canal`: tipo (público, privado, directo), nombre, tema, descripción, `clave_directo` (los ids de un directo, en orden), archivado.

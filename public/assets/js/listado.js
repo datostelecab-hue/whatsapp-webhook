@@ -840,6 +840,10 @@
 
     /** Pone la lista o la ficha según lo que diga la URL. */
     async sincronizarConUrl() {
+      // `url: false` (18/11/2026): una segunda lista en la misma pantalla (Ruedas,
+      // al lado de Mantenimientos) no mira la dirección: el #123 es de la otra, y
+      // abriría aquí una ficha que no es suya. Sus filas abren con `alAbrir`.
+      if (this.cfg.url === false) return;
       // La ficha va en el hash (#123). Desde otras pantallas se llega también con
       // ?id=123 (Sanciones, Auditoría): se abre igual
       // y la dirección se queda con su hash, como si se hubiera pinchado aquí.

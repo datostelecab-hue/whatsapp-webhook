@@ -98,6 +98,40 @@ Una factura de Hergar trae albaranes sin matrícula porque es una compra para el
   - Van en la hoja «Km que no cuadran» del mismo Excel.
 - **Los scripts.** Pasar a imagen, repartir, leer, cruzar y generar el SQL viven fuera del repo, en el borrador de la sesión. db/242 es su resultado y no se regenera: es una carga de una vez.
 
+## Limpiezas, lunas y Ruedas (db/265, 18/11/2026)
+
+Camilo, con 22 PDF: *«Estos son lavados de coches, súbelos y haz una migración directamente a la carpeta de facturas en el servidor… Necesitamos tener visibilidad de estos lavados, también necesitamos que cuenten mantenimientos de ruedas, quiero un nuevo submódulo como el de mantenimientos, pero que diga "Ruedas", que cada 25K de KM se pase y avise… hay unos de pinchazos en las facturas por los que esos no cuentan»*. Y: *«que le llegue al chat de Óscar, que es el responsable de taller, también una notificación, pero el chat de Telecab, que se llame "Notificaciones Telecab"»*.
+
+### Las facturas: limpiezas y lunas
+
+Los 22 PDF eran **17 facturas** (el resto, copias) de dos proveedores, y no todas lavados:
+
+| Proveedor | Facturas | Qué | Sin IVA |
+|---|---|---|---|
+| Miguel José Celis Junco (limpiezas), autónomo | 9 | limpieza integral (65 €) o parcial (40 €): vómitos, combustible derramado, malos olores | 460,00 € |
+| Extrelunas SL | 8 | parabrisas (con calibración ADAS) y una ventanilla | 2.356,09 € |
+
+- Camilo eligió: las de Extrelunas, como **«Lunas»**; las limpiezas, como categoría **«Limpieza»** de Mantenimientos, sin pestaña aparte. Dos categorías y dos tipos nuevos (`limpieza`, `lunas`), y en las partes `limpieza` y `lunas` van PRIMERO: «limpieza de maletero por derrame de gasolina» no es un filtro de combustible, y «PB.» es el parabrisas.
+- Cada factura entra con su línea (un coche), su mantenimiento (origen `factura`, sin km: no vienen en el papel) y sus piezas, y cuadra al céntimo (la migración lo comprueba). Del autónomo **no va su DNI**: el repositorio es público.
+- **Los PDF van a Drive**, como todas las facturas de taller («Facturas de taller AAAA-MM»; Camilo no recordaba si era R2 o Drive: el taller está en Drive). No van en la migración ni en el repositorio: cada factura guarda el **nombre de su PDF** (`nombre_archivo`, sin subir) y **«Subir PDFs»** de Facturas de taller los casa **por ese nombre exacto** antes que por el número (con el número, «755.FACTURA OCTUBRE 3110KSM» no casaba con L755/2026 ni «_7182026» con 718/GL). Las copias «(1)», «(2)» van a la misma factura y se suben una vez.
+
+### Ruedas: la pestaña
+
+En Mantenimientos, al lado de Revisión por km (solo Madrid), `modules/Vehiculos/ruedas.service.js` y `public/assets/js/vistas/Vehiculos/ruedas.js`:
+
+- **El último cambio de cada coche**: el mantenimiento más reciente que es un cambio de ruedas, por fecha (y km si empatan):
+  - una línea de **cubierta nueva** en una factura («CUB. 205/55R16…», «NEUMÁTICOS DELANTEROS … + MONTAJE»);
+  - **no** los pinchazos, los reutilizados, la ecotasa, la retirada, el sensor de presión ni el equilibrado o la alineación solos;
+  - o un cambio **apuntado a mano** en la pestaña («Apuntar un cambio»: día, km, 2 o 4 ruedas, taller y nota), que es un mantenimiento a mano de neumáticos.
+- **El semáforo**, como Revisión por km: los km desde ese cambio con el odómetro de hoy; a los **25.000** (`TALLER_KM_RUEDAS`) **toca**; desde el 85 % (o si al ritmo de los últimos 30 días le quedan 15 días o menos), **a punto**. Sin cambio, o con uno sin km, **sin dato** hasta apuntarlo a mano (Camilo: «Sin dato y apuntarlo a mano»). El 18/11 tenían cambio en las facturas 44 de los 81 coches de Madrid (de mayo a septiembre).
+- La ficha de cada coche (en el Panel) trae sus cambios de ruedas y, aparte, sus **pinchazos**, que no cuentan.
+- La lista es un Listado con `url: false`: el `#id` de la dirección es de la lista de Mantenimientos.
+
+### Ruedas: el aviso
+
+- **Un número en el menú**: «Mantenimientos» suma, a lo de las citas, los coches a los que les toca (`taller.ruedas`, también en la pestaña). Se calcula cada 10 minutos como mucho.
+- **Por el chat**, cada día a las 08:00 (tarea programada `taller.ruedas`): los coches que han llegado a los 25.000 km y de los que aún no se avisó, en **un mensaje** al canal **«Notificaciones Telecab»**, mencionando a quien tenga el **puesto de responsable de taller** (Óscar; si cambia el puesto, le llega al nuevo). **Una vez por cambio**: `ruedas_aviso` apunta coche y cambio, y con un cambio nuevo vuelve a contar. Ver [[Chat]].
+
 ## Ver también
 
 [[Vehiculos]] · [[Inspeccion de vehiculos]] · [[Citas del taller]]

@@ -48,6 +48,10 @@ const TIPOS = [
   { codigo: 'itv',        etiqueta: 'ITV',             icono: 'fa-clipboard-check',    cuenta: false },
   { codigo: 'chapa',      etiqueta: 'Chapa y pintura', icono: 'fa-spray-can',          cuenta: false },
   { codigo: 'averia',     etiqueta: 'Avería',          icono: 'fa-triangle-exclamation', cuenta: false },
+  // db/265 (18/11/2026): las limpiezas (vómitos, combustible, malos olores) y
+  // las lunas (parabrisas, ventanillas) que traen sus facturas.
+  { codigo: 'limpieza',   etiqueta: 'Limpieza',        icono: 'fa-spray-can-sparkles', cuenta: false },
+  { codigo: 'lunas',      etiqueta: 'Lunas',           icono: 'fa-car-rear',           cuenta: false },
   { codigo: 'otro',       etiqueta: 'Otro',            icono: 'fa-wrench',             cuenta: false },
 ];
 const CODIGOS = TIPOS.map(t => t.codigo);
@@ -72,6 +76,8 @@ const CATEGORIAS = [
   { codigo: 'bateria',    etiqueta: 'Batería' },
   { codigo: 'chapa',      etiqueta: 'Chapa y pintura' },
   { codigo: 'mecanica',   etiqueta: 'Mecánica' },
+  { codigo: 'limpieza',   etiqueta: 'Limpieza' },
+  { codigo: 'lunas',      etiqueta: 'Lunas' },
   { codigo: 'otro',       etiqueta: 'Otro' },
   { codigo: 'mano_obra',  etiqueta: 'Mano de obra' },
   { codigo: 'nota',       etiqueta: 'Nota' },
@@ -454,6 +460,10 @@ async function historial({ sedes, desde, hasta, limite = 5000 } = {}) {
  * que encaja). Lo que no encaja en ninguna no es una parte: no sale en el filtro.
  */
 const PARTES = [
+  // Las primeras (db/265): «LIMPIEZA DE MALETERO POR DERRAME DE GASOLINA» no es
+  // un filtro de combustible, y «PB.» es el parabrisas (Extrelunas).
+  { codigo: 'limpieza',          etiqueta: 'Limpieza',             re: /LIMPIEZA|LAVADO|OZONO|ASPIRADO/ },
+  { codigo: 'lunas',             etiqueta: 'Lunas y parabrisas',   re: /PARABRISAS|\bPB\.|\bLUNA|ALMOHADILLA DE SENSOR|DTE\.DE\.|ORIGINAL TOYOTA 5610/ },
   { codigo: 'filtro_habitaculo', etiqueta: 'Filtro de habitáculo', re: /HABITACULO|POLEN/ },
   { codigo: 'filtro_aceite',     etiqueta: 'Filtro de aceite',     re: /FIL?T?RO.*ACEITE/ },
   { codigo: 'filtro_combustible', etiqueta: 'Filtro de combustible', re: /FILTRO.*(GASOIL|COMBUSTIBLE|GASOLINA)/ },

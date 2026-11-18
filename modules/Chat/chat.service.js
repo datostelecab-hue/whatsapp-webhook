@@ -104,6 +104,7 @@ async function delMensaje(ctx, mensajeId) {
 
 // ── Lo que ve la pantalla ──────────────────────────────────────────────────
 function tituloDe(c, otros) {
+  if (c.nombre === CANAL_AVISOS) return TITULO_AVISOS;
   if (c.tipo !== 'directo') return c.nombre;
   return (otros || []).map(o => o.nombre).join(', ') || 'Solo tú';
 }
@@ -687,7 +688,7 @@ const personas = async usuarioId => { await contexto(usuarioId); return { person
 let _push = null;
 const push = () => (_push || (_push = require('../../services/notificacionesPush')));
 const EMOJI_TXT = { ok: '👍', hecho: '✅', visto: '👀', gracias: '🙏', risa: '😂', corazon: '❤️' };
-const dondeDe = c => (c.tipo === 'directo' ? 'un mensaje directo' : `#${c.nombre}`);
+const dondeDe = c => (c.tipo === 'directo' ? 'un mensaje directo' : c.nombre === CANAL_AVISOS ? TITULO_AVISOS : `#${c.nombre}`);
 const nombre = async id => (id ? (await repo.nombreDe(null, id)) || 'Alguien' : 'Telecab');
 
 /**
@@ -776,7 +777,8 @@ function notificarMensaje({ canal: c, autorId, id, padre, texto: t, men = {}, pa
     const donde = dondeDe(c);
     const cuerpo = await vistaPrevia(t, ficheros);
     const grupo = c.tipo === 'directo' && dentro.size > 2;
-    const tituloDe = motivo => (evento === 'tarea_cerrada' ? `Tarea hecha · ${donde}`
+    const tituloDe = motivo => (evento === 'aviso' ? TITULO_AVISOS
+      : evento === 'tarea_cerrada' ? `Tarea hecha · ${donde}`
       : motivo === 'directo' ? (grupo ? `${quien} · grupo` : quien)
         : motivo === 'mencion' ? `${quien} te ha mencionado en ${donde}`
           : motivo === 'todos' ? `${quien} avisa a todo ${donde}`
@@ -794,6 +796,40 @@ function notificarMensaje({ canal: c, autorId, id, padre, texto: t, men = {}, pa
   })().catch(e => console.error('❌ [Chat] notificaciones de un mensaje:', e.message))
     .finally(() => pendientes.delete(trabajo));
   pendientes.add(trabajo);
+}
+
+// ── NOTIFICACIONES TELECAB: los avisos del sistema (db/265, 18/11/2026) ────
+// Camilo: «que le llegue al chat de Óscar, que es el responsable de taller,
+// también una notificación, pero el chat de Telecab, que se llame
+// "Notificaciones Telecab"». Un canal privado, «notificaciones-telecab», que en
+// la lista se ve como «Notificaciones Telecab»: ahí escribe el ERP solo (sin
+// autor, evento 'aviso', firmado «Telecab»). Quien tiene que enterarse entra en
+// el canal la primera vez y se le menciona, así que le llega la notificación al
+// móvil y el número rojo del chat, como cualquier mención. Lo estrenan las
+// ruedas (modules/Vehiculos/ruedas.service.js).
+const CANAL_AVISOS = 'notificaciones-telecab';
+const TITULO_AVISOS = 'Notificaciones Telecab';
+
+/** Escribe un aviso del sistema a unas personas. → { id, canalId } o null si no hay a quién. */
+async function avisoDelSistema({ para = [], texto } = {}) {
+  const ids = [...new Set(para.map(Number).filter(Boolean))];
+  const t = String(texto || '').trim();
+  if (!ids.length || !t) return null;
+  const cuerpo = `${ids.map(u => `<@${u}>`).join(' ')} ${t}`.slice(0, MAX_TEXTO);
+  const hecho = await libro.conFirma({ usuarioId: null, origen: 'chat', accion: 'alta', motivo: 'Aviso del sistema' }, async cli => {
+    const ya = await repo.canalPorNombre(cli, CANAL_AVISOS);
+    const canalId = ya ? Number(ya.id) : await repo.crearCanal(cli, {
+      tipo: 'privado', nombre: CANAL_AVISOS, tema: TITULO_AVISOS,
+      descripcion: 'Los avisos automáticos del ERP: aquí escribe el sistema.', creadoPor: null });
+    for (const u of ids) await repo.meter(cli, canalId, u, null);
+    const id = await repo.escribir(cli, { canalId, autorId: null, texto: cuerpo, evento: 'aviso' });
+    await repo.mencionar(cli, id, { usuarios: ids });
+    return { canal: await repo.canal(cli, canalId), id, para: await repo.idsMiembros(cli, canalId) };
+  });
+  avisar(hecho.canal.id, hecho.para, { id: hecho.id, padre: null });
+  notificarMensaje({ canal: hecho.canal, autorId: null, id: hecho.id, padre: null, texto: cuerpo,
+    men: { usuarios: ids, todos: false }, para: hecho.para, evento: 'aviso' });
+  return { id: Number(hecho.id), canalId: Number(hecho.canal.id) };
 }
 
 // ── Avisar (tiempo real y contadores) ──────────────────────────────────────
@@ -851,4 +887,5 @@ module.exports = {
   canales, ficha, mensajes, uno, hilo, enviar, leido, crearCanal, directo, anadir, quitar, personas,
   editar, anular, reaccionar, fijar, fijados, guardar, guardados, convertirEnTarea,
   nombreDeCanal, primerEnlace, EMOJIS, olvidar, usarVistaPrevia, esperarPendientes,
+  avisoDelSistema, CANAL_AVISOS,
 };

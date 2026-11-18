@@ -203,6 +203,8 @@ Lo estrenó la lista de Mantenimientos: filtrar por Discom tiene que decir lo ga
 
 **La rejilla que llega justo hasta abajo: `ajustarAlto: true`** (23/10/2026). Con `alto` fijo (un `calc` de rem) el hueco se calcula para lo que haya encima ese día; si encima hay notas que crecen o desaparecen, la rejilla se sale por abajo y hay doble barra (Combustible a 1529×729: 30 px). Con la opción, el Listado la mide —sin tope, para que lo de debajo sea lo de verdad— y le pone el alto que cabe, otra vez cuando cambia la ventana o lo de encima (un `ResizeObserver` sobre la página, y cuando acaba de cargar la letra). Si no caben ni 160 px (`ajustarAlto: { minimo }`), como en un móvil, deja el `alto` de siempre. Sin la opción no cambia nada.
 
+**Dos listas en la misma pantalla: `url: false`** (18/11/2026). La ficha va en el `#id` de la dirección, y con dos Listados en una página los dos lo leerían. El segundo (Ruedas, al lado de Mantenimientos) lleva `url: false` y abre sus filas con `alAbrir`.
+
 **Abrir una ficha desde otra pantalla**: `/plantilla#123` o `/plantilla?id=123`. El Listado abre la ficha con las dos, y con `?id=` deja la dirección con su hash, como si se hubiera pinchado allí (08/10/2026: los enlaces de Sanciones y de la Auditoría usaban `?id=` y abrían la lista, no la ficha).
 
 **Exportar** manda lo filtrado a `/exportar/excel` con los valores en crudo (sin el HTML de `pinta`). Cada columna viaja con una clave de texto propia (`c0`, `c1`…): hasta el 28/09/2026 la clave era el `campo` o **la función de `valor`**, y el JSON tira las funciones, así que **toda columna con `valor: f => …` salía vacía** en el Excel. Se vio en Inspección de vehículos (solo salían Matrícula y Observaciones) y afectaba igual a Selección y ETT.
