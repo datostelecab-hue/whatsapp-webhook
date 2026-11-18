@@ -17,9 +17,17 @@
 //     fichado, del último que estuvo en BOLT con él. Se calculan con el MISMO
 //     código (Control/reporteHoras.repo.reporteDia): dos cuentas distintas del
 //     mismo dato acabarían discrepando.
-//   · EL LÍMITE: 17,5 km (el parámetro banco_km.km_dia) por cada día que le
-//     tocaba en el planificador, haya salido o no, y por cada día que salió sin
-//     tocarle (un NN, un día extra). Vacaciones, baja o libranza no suman.
+//   · EL LÍMITE (desde el 18/11/2026, db/268): cada hora DE VIAJE en BOLT
+//     genera 8,8 km (banco_km.km_hora_viaje), con un tope de 53 km al día
+//     (banco_km.tope_dia). La espera no genera. Camilo: «cada hora de viaje en
+//     BOLT genera 8,8 km por fuera en el banco, con un límite de 53 km al día».
+//     Antes (db/267) eran 17,5 km por cada día que le tocaba en el
+//     planificador; todo el banco se rehízo con la regla nueva (VERSION 2).
+//   · LOS KM JUSTIFICADOS (db/268): una justificación de KM aprobada (llave
+//     «/justificantes/km») resta de sus km fuera de ese día, nunca por debajo de
+//     cero. Van «por fuera del límite y de los km generados». La pendiente se
+//     enseña pero no resta. Se leen en vivo, no en la foto: aprobar una no
+//     obliga a recalcular nada.
 //   · LA SEMANA: de lunes a domingo, y empieza de cero.
 //   · LA JORNADA: la del reporte de Control (el turno de día y el de noche de
 //     ese día). Se calcula CERRADA: después de las 12:00 del día siguiente, que
@@ -50,6 +58,9 @@ const DESDE = process.env.BANCO_KM_DESDE || '2026-10-26';
 /** Margen tras el cierre de la jornada, para que entre lo último de BOLT y Mapon. */
 const MARGEN_MS = 60 * 60 * 1000;
 const POR_VUELTA = 3;
+/** La regla con la que se calcula la foto: 2 = por horas de viaje (db/268). Un día de otra versión se rehace. */
+const VERSION = 2;
+const kmj = require('../../services/repo/kmJustificacion');
 
 function error(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
 const esDia = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && !Number.isNaN(Date.parse(s));
@@ -75,10 +86,22 @@ function ultimaCerrada(ahora = new Date()) {
 
 // ── Una jornada ─────────────────────────────────────────────────────────────
 /**
- * De las filas del reporte de un día, lo que se guarda. Puro.
- * `kmDia`: lo que suma al límite cada día que cuenta.
+ * Lo que genera un día: `kmHora` por hora de viaje, con `tope`. Puro.
+ * 3 h de viaje a 8,8 = 26,4 km; 7 h = 61,6, que se quedan en 53.
  */
-function filasDelDia(filasReporte, kmDia) {
+const generado = (horasViaje, { kmHora, tope }) => Math.min(tope, r1((Number(horasViaje) || 0) * kmHora));
+
+/** La regla de ahora, de los parámetros. */
+async function regla() {
+  const [kmHora, tope] = await Promise.all([parametros.valor('banco_km.km_hora_viaje'), parametros.valor('banco_km.tope_dia')]);
+  return { kmHora: Number.isFinite(Number(kmHora)) ? Number(kmHora) : 8.8, tope: Number.isFinite(Number(tope)) ? Number(tope) : 53 };
+}
+
+/**
+ * De las filas del reporte de un día, lo que se guarda. Puro.
+ * `r`: la regla ({ kmHora, tope }).
+ */
+function filasDelDia(filasReporte, r) {
   const filas = [], coches = [];
   const vistas = new Set();
   for (const f of filasReporte) {
@@ -89,6 +112,7 @@ function filasDelDia(filasReporte, kmDia) {
     const oficina = !!f.deOficina;
     const programado = !!f.debiaSalir;
     const trabajo = (Number(f.horas) || 0) > 0;
+    const horasViaje = Math.round((Number(f.horasViaje) || 0) * 100) / 100;
     const km = typeof f.kmDesc === 'number' ? r1(f.kmDesc) : 0;
     const porCoche = Object.entries(f.kmFueraPorCoche || {}).filter(([, k]) => k > 0);
     if (!programado && !trabajo && !km && !porCoche.length) continue;
@@ -97,7 +121,7 @@ function filasDelDia(filasReporte, kmDia) {
       turno: String(f.turno || '').slice(0, 16), programado, trabajo, horas: r1(f.horas), oficina,
       justificado: !!f.esJ,
       // La oficina no tiene banco: sus km salen solo en las matrículas.
-      limite_km: !oficina && (programado || trabajo) ? kmDia : 0,
+      limite_km: oficina ? 0 : generado(horasViaje, r), horas_viaje: horasViaje,
       km_fuera: km, revisar: f.kmDesc === 'REVISAR',
       fichaje: String(f.fichaje || '').slice(0, 300), sin_fichar: !!f.sinFichar,
     });
@@ -120,9 +144,8 @@ async function calcularDia(dia, { cli, usuarioId = null, ahora = new Date() } = 
   const rep = await reporte()(dia, { conKmFuera: true });
   if (rep.parcial) throw error('Esa jornada aún no está cerrada');
   if (rep.sinFichaje) throw error(`Los km con el fichaje no salieron (${rep.sinFichaje}): se reintenta más tarde`);
-  const kmDia = Number(await parametros.valor('banco_km.km_dia'));
-  const { filas, coches } = filasDelDia(rep.filas || [], Number.isFinite(kmDia) ? kmDia : 17.5);
-  const guardar = c => repo.guardarDia(c, dia, { filas, coches, milisegundos: Date.now() - t0, usuarioId });
+  const { filas, coches } = filasDelDia(rep.filas || [], await regla());
+  const guardar = c => repo.guardarDia(c, dia, { filas, coches, milisegundos: Date.now() - t0, usuarioId, version: VERSION });
   if (cli) await guardar(cli);
   else await require('../../services/db').transaccion(guardar);
   return { personas: filas.length, km: r1(filas.reduce((s, f) => s + f.km_fuera, 0)) };
@@ -135,7 +158,8 @@ async function pendientes(ahora = new Date()) {
   let hechos;
   try { hechos = await repo.calculados(DESDE, hasta); } catch (e) { if (repo.faltaMigracion(e)) return []; throw e; }
   const faltan = [];
-  for (let d = hasta; d >= DESDE; d = sumarDias(d, -1)) if (!hechos.has(d)) faltan.push(d);
+  // Los que faltan, y los calculados con una regla anterior (se rehacen).
+  for (let d = hasta; d >= DESDE; d = sumarDias(d, -1)) if ((hechos.get(d) || 0) < VERSION) faltan.push(d);
   return faltan;
 }
 
@@ -144,9 +168,22 @@ tareasProgramadas.registrar({
   descripcion: 'Banco de KM: la foto de cada jornada cerrada (los km fuera de BOLT y el límite de cada uno)',
   desde: DESDE,
   // Como mucho tres por vuelta, la más nueva primero: la de ayer sale enseguida
-  // y el histórico se rellena poco a poco, sin cargar la base de golpe.
-  toca: async ahora => (await pendientes(ahora)).slice(0, POR_VUELTA),
-  hacer: ({ periodo, cli }) => calcularDia(periodo, { cli }),
+  // y el histórico se rellena poco a poco, sin cargar la base de golpe. El
+  // periodo lleva la versión de la regla («2026-11-16#v2»): un día ya hecho con
+  // la anterior es OTRO periodo para la tarea, y así se rehace.
+  //
+  // La más nueva siempre; las otras dos, rotando por la lista con cada vuelta:
+  // si un día falla una y otra vez (la tarea lo deja tras cinco fallos), no
+  // tapa a los que vienen detrás.
+  toca: async ahora => {
+    const p = await pendientes(ahora);
+    if (p.length <= POR_VUELTA) return p.map(d => `${d}#v${VERSION}`);
+    const resto = p.slice(1);
+    const giro = Math.floor(+ahora / (10 * 60 * 1000)) % resto.length;
+    const elegidos = [p[0], ...resto.slice(giro), ...resto.slice(0, giro)].slice(0, POR_VUELTA);
+    return elegidos.map(d => `${d}#v${VERSION}`);
+  },
+  hacer: ({ periodo, cli }) => calcularDia(String(periodo).slice(0, 10), { cli }),
 });
 
 // ── Recalcular una semana a mano ────────────────────────────────────────────
@@ -184,10 +221,12 @@ async function semana(lunesPedido) {
   const domingo = sumarDias(lunes, 6);
   const cerrada = ultimaCerrada();
   let datos, calc;
+  let just;
   try {
     [datos, calc] = await Promise.all([repo.dias(lunes, domingo), repo.calculos(lunes, domingo)]);
   } catch (e) { if (repo.faltaMigracion(e)) return { sinMigracion: true }; throw e; }
-  const kmDia = Number(await parametros.valor('banco_km.km_dia'));
+  try { just = await kmj.porConductorYDia(lunes, domingo); } catch (e) { if (kmj.faltaMigracion(e)) just = new Map(); else throw e; }
+  const r = await regla();
   const dias = [...Array(7).keys()].map(i => {
     const d = sumarDias(lunes, i);
     return { dia: d, corto: DIAS_CORTOS[i], cerrada: d <= cerrada && d >= DESDE, calculada: calc.has(d) };
@@ -206,23 +245,34 @@ async function semana(lunesPedido) {
   datos.personas.filter(p => !p.oficina).forEach(p => {
     if (!porPersona.has(p.persona)) {
       porPersona.set(p.persona, { persona: p.persona, conductorId: p.conductorId, nombre: p.nombre, turno: p.turno,
-        sinFicha: !p.conductorId, programados: 0, extra: 0, limite: 0, km: 0, revisar: false, sinFichar: 0, dias: [] });
+        sinFicha: !p.conductorId, programados: 0, extra: 0, limite: 0, km: 0, revisar: false, sinFichar: 0, dias: [],
+        horasViaje: 0, kmFuera: 0, justificados: 0, pendientes: 0 });
     }
     const x = porPersona.get(p.persona);
+    // Lo justificado de ese día (solo las de un conductor de la plantilla).
+    const j = p.conductorId ? just.get(`${p.conductorId}|${p.dia}`) : null;
+    const aprobados = Math.min(p.km, j ? j.aprobados : 0);
+    const gasto = r1(p.km - aprobados);
     x.nombre = p.nombre || x.nombre;
     if (p.turno) x.turno = p.turno;
     if (p.programado) x.programados++;
     else if (p.trabajo) x.extra++;
     x.limite = r1(x.limite + p.limite);
-    x.km = r1(x.km + p.km);
+    // `km` es lo que GASTA: los km fuera de BOLT menos lo justificado y aprobado.
+    x.km = r1(x.km + gasto);
+    x.kmFuera = r1(x.kmFuera + p.km);
+    x.justificados = r1(x.justificados + aprobados);
+    x.pendientes = r1(x.pendientes + (j ? j.pendientes : 0));
+    x.horasViaje = Math.round((x.horasViaje + p.horasViaje) * 100) / 100;
     if (p.revisar) x.revisar = true;
     if (p.sinFichar) x.sinFichar++;
     x.dias.push({ dia: p.dia, programado: p.programado, trabajo: p.trabajo, justificado: p.justificado, horas: p.horas,
-      limite: p.limite, km: p.km, revisar: p.revisar, fichaje: p.fichaje, sinFichar: p.sinFichar,
+      horasViaje: p.horasViaje, limite: p.limite, kmFuera: p.km, km: gasto, revisar: p.revisar, fichaje: p.fichaje, sinFichar: p.sinFichar,
+      justificados: aprobados, pendientes: j ? j.pendientes : 0, justificaciones: j ? j.lista : [],
       coches: cochesDe.get(`${p.dia}|${p.persona}`) || [] });
   });
   const conductores = [...porPersona.values()]
-    .filter(x => x.limite > 0 || x.km > 0)
+    .filter(x => x.limite > 0 || x.kmFuera > 0)
     .map(x => {
       const saldo = r1(x.limite - x.km);
       const estado = x.km > x.limite ? 'pasado' : x.limite > 0 && x.km >= x.limite * 0.8 ? 'cerca' : 'dentro';
@@ -259,7 +309,7 @@ async function semana(lunesPedido) {
 
   return {
     lunes, domingo, desde: DESDE, enCurso: lunes === hoyLunes, anterior: lunes > DESDE ? sumarDias(lunes, -7) : null,
-    siguiente: lunes < hoyLunes ? sumarDias(lunes, 7) : null, dias, kmDia: Number.isFinite(kmDia) ? kmDia : 17.5,
+    siguiente: lunes < hoyLunes ? sumarDias(lunes, 7) : null, dias, kmHora: r.kmHora, tope: r.tope,
     faltan: dias.filter(d => d.cerrada && !d.calculada).map(d => d.dia),
     calculadaAt: [...calc.values()].reduce((m, c) => (!m || c.at > m ? c.at : m), null),
     recalculando: recalculo(), conductores, coches,
@@ -273,6 +323,18 @@ async function historia(persona, hasta) {
   const ini = sumarDias(lunesDe(fin), -7 * 7);
   const semanas = await repo.semanasDe(persona, ini < DESDE ? DESDE : ini, fin);
   return { semanas: semanas.map(s => ({ ...s, saldo: r1(s.limite - s.km) })) };
+}
+
+// ── Justificar km desde la ficha (db/268) ───────────────────────────────────
+/**
+ * Apunta una justificación de KM de un conductor y un día, desde su ficha del
+ * banco. Nace pendiente: la aprueba quien tiene la llave «/justificantes/km».
+ */
+async function justificar({ persona, dia, km, matricula, motivo } = {}, usuarioId) {
+  const m = /^c(\d+)$/.exec(String(persona || ''));
+  if (!m) throw error('Solo se justifican km de un conductor de la plantilla');
+  if (!esDia(dia) || dia < DESDE || dia > ultimaCerrada()) throw error('Ese día no está en el banco');
+  return kmj.poner({ conductorId: Number(m[1]), dia, km, matricula, motivo, origen: 'banco_km', usuarioId });
 }
 
 // ── El desglose de una persona ──────────────────────────────────────────────
@@ -364,7 +426,8 @@ async function desglose(persona, lunesPedido) {
 }
 
 module.exports = {
-  semana, historia, recalcular, calcularDia, pendientes, desglose, DESDE,
+  semana, historia, recalcular, calcularDia, pendientes, desglose, justificar, DESDE, VERSION,
+  _generado: generado,
   // Para las pruebas:
   _filasDelDia: filasDelDia, _lunesDe: lunesDe, _ultimaCerrada: ultimaCerrada,
   _conReporte: fn => { _reporte = fn; },

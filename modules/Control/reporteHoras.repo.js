@@ -423,6 +423,8 @@ async function reporteDia(key, { conKmFuera = false } = {}) {
     const clave = claveDe(uuid);
     const x = horasDe(clave);
     const horas = conHoras.has(clave) ? 0 : r1((x.dia + x.noche) / 3600);
+    // Y de ellas, las de VIAJE (el banco de KM, 18/11/2026), igual: una vez.
+    const horasViaje = conHoras.has(clave) ? 0 : Math.round((x.viaje || 0) / 36) / 100;
     conHoras.add(clave);
     const cid = pad.idDeUuid.get(a.uuid);
     const p = cid ? pad.porId.get(cid) : null;
@@ -445,6 +447,7 @@ async function reporteDia(key, { conKmFuera = false } = {}) {
       // convenio es justo lo que hay que ver.
       enLibranza: !!(pl && pl.libra),
       sinFicha: !cid,
+      horasViaje,
       matricula: (a.matriculas && a.matriculas.length) ? a.matriculas.join(', ') : null,
       kmBolt: a.km, kmDesc: a.kmFuera,
       // CON QUÉ VARA SE MIDIERON ESOS KM. 'can' es el odómetro del cuadro del
@@ -467,6 +470,7 @@ async function reporteDia(key, { conKmFuera = false } = {}) {
     // La MISMA persona con otra cuenta de BOLT ese día: se suma, no se pisa.
     const f = filasPorId.get(cid);
     f.horas = r1(f.horas + fila.horas);
+    f.horasViaje = Math.round(((f.horasViaje || 0) + (fila.horasViaje || 0)) * 100) / 100;
     f.uuids.push(a.uuid);
     if (!pl || !pl.turno) f.turno = turnoDeHecho(clave);
     f.matricula = [...new Set([...(f.matricula ? f.matricula.split(', ') : []), ...(fila.matricula ? fila.matricula.split(', ') : [])])].join(', ') || null;
@@ -623,6 +627,8 @@ async function reporteDia(key, { conKmFuera = false } = {}) {
         : (f.fichajes && f.fichajes.length) ? duenoFichaje(f.fichajes[0]) : `n${f.nombre}`,
       conductorId: f.conductorId || null,
       kmFueraPorCoche: f.porCoche || {},
+      // Las horas de VIAJE de BOLT (sin la espera): generan el banco de KM.
+      horasViaje: f.horasViaje || 0,
       // null cuando no hay promedio: alguien recién dado de alta, o un NN sin
       // ficha. Se deja vacío en vez de poner un cero que parecería un suspenso.
       promedioMes: (f.conductorId && (prom.get(Number(f.conductorId)) || {}).horas) ?? null,

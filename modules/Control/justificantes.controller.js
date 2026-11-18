@@ -17,6 +17,13 @@ const responde = fn => async (req, res) => {
 
 /** Quién firma. Por id de sesión, y por correo si la cookie es vieja. */
 const quien = async req => (req.usuario && req.usuario.id) || await actor.idDe(req);
+/** Quién es, con su rol: para lo que depende de una llave (las de KM). */
+const quienCon = async req => ({ id: await quien(req), rol: req.usuario && req.usuario.rol });
+// Un error con estado (403 sin la llave) sale con su estado.
+const respondeCon = fn => async (req, res) => {
+  try { res.json({ status: 'ok', ...(await fn(req)) }); }
+  catch (e) { res.status(e.status || 400).json({ status: 'error', msg: e.message }); }
+};
 
 router.get('/', (req, res) => {
   res.render('justificantes', {
@@ -28,10 +35,16 @@ router.get('/', (req, res) => {
   });
 });
 
-router.get('/api/cola', responde(req => justificantes.cola({
+router.get('/api/cola', responde(async req => justificantes.cola({
   estado: req.query.estado, tipo: req.query.tipo,
   desde: req.query.desde, hasta: req.query.hasta,
-})));
+}, await quienCon(req))));
+
+// ── LAS JUSTIFICACIONES DE KM (db/268): su pestaña en esta misma pantalla ──
+router.post('/api/km', respondeCon(async req => justificantes.ponerKm(req.body || {}, await quienCon(req))));
+router.post('/api/km/:id/aprobar', respondeCon(async req => justificantes.aprobarKm(req.params.id, await quienCon(req))));
+router.post('/api/km/:id/rechazar', respondeCon(async req =>
+  justificantes.rechazarKm(req.params.id, await quienCon(req), (req.body || {}).motivo)));
 
 // EL HISTORIAL de una J o una −J (db/228): cada cambio, con quién, cuándo y desde dónde.
 router.get('/api/historial', responde(async req =>

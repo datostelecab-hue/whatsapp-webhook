@@ -165,7 +165,11 @@ const CATALOGO = [
   { grupo: 'Aprobaciones', items: [
     // Quién entra aquí lo decide el desarrollador usuario a usuario: el módulo
     // no viene sembrado en ningún rol (salvo los que llevan TODO el catálogo).
-    { clave: '/justificantes', etiqueta: 'Justificantes (aprobación)' },
+    { clave: '/justificantes', etiqueta: 'Justificantes (aprobación)', hijos: [
+      // Las justificaciones de KM del banco de KM (db/268): las apunta Control y
+      // las aprueba quien tenga esta llave (Camilo: William y Ángel).
+      { clave: '/justificantes/km', etiqueta: 'Justificantes · aprobar las de KM (banco de KM)', manual: true },
+    ] },
     // PONER la J (y quitarla, y marcar libranza) desde la bitácora. Es un
     // poder aparte de ABRIR la bitácora: media empresa la mira, y solo algunos
     // escriben en ella. Antes era una lista de roles escrita en la vista

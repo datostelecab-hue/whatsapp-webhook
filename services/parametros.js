@@ -71,10 +71,15 @@ const CATALOGO = [
       + 'Un coche con un solo equipo sale siempre, aunque esté callado («Sin señal»).',
     usa: 'Mapa de flota (modules/Mapa/mapa.repo.js)' },
   // El banco de KM (db/267, 18/11/2026)
-  { clave: 'banco_km.km_dia', modulo: 'Operaciones', tipo: 'decimal', unidad: 'km', decimales: 1, min: 0, max: 500, defecto: 17.5,
-    etiqueta: 'Banco de KM: km fuera de BOLT por cada día',
-    descripcion: 'Lo que suma al límite de la semana cada día que le tocaba en el planificador o que salió (NN, día extra). Camilo: «un límite de 17,5 km por fuera al día». '
-      + 'Un cambio vale para las jornadas que se calculen desde entonces: las ya calculadas guardan el de su día.',
+  // Desde db/268: lo genera cada hora de VIAJE en BOLT, con un tope al día.
+  { clave: 'banco_km.km_hora_viaje', modulo: 'Operaciones', tipo: 'decimal', unidad: 'km', decimales: 1, min: 0, max: 100, defecto: 8.8,
+    etiqueta: 'Banco de KM: km fuera de BOLT por cada hora de viaje',
+    descripcion: 'Lo que genera para el banco de la semana cada hora de viaje en BOLT (yendo a por el pasajero o llevándolo; la espera no genera). Camilo: «cada hora de viaje en BOLT genera 8,8 km por fuera». '
+      + 'Un cambio vale para las jornadas que se calculen desde entonces: las ya calculadas guardan su límite (o se recalculan a mano).',
+    usa: 'Banco de KM (modules/Operaciones/bancoKm.service.js)' },
+  { clave: 'banco_km.tope_dia', modulo: 'Operaciones', tipo: 'decimal', unidad: 'km', decimales: 1, min: 0, max: 500, defecto: 53,
+    etiqueta: 'Banco de KM: lo más que genera un día',
+    descripcion: 'El tope de lo que generan las horas de viaje de un día. Camilo: «con un límite de 53 km al día».',
     usa: 'Banco de KM (modules/Operaciones/bancoKm.service.js)' },
   // Vacaciones de la oficina (db/263, 17/11/2026)
   { clave: 'oficina.vacaciones.tope_mes', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'dias', decimales: 2, min: 0, max: 31, defecto: 1.84,

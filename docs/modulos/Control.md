@@ -91,6 +91,8 @@ Los **backfills** de `/flota-viva/api/*` piden rol de desarrollador o superadmin
 
 **La −J y la auditoría (30/10/2026)**: /justificantes tiene la pestaña «−J · Perjuicios» y el historial de cada J y −J; editar una J aprobada la devuelve a pendiente y anular pide el porqué. Ver [[Menos J]].
 
+**Las justificaciones de KM (18/11/2026, db/268)**: /justificantes tiene también la pestaña «KM · Banco de KM». Son los km fuera de BOLT de un conductor y un día que no cuentan en su [[Banco de KM]]: las apunta Control (aquí o en la ficha del banco) y las aprueba quien tiene la llave `/justificantes/km`, con su número en el menú. Ver [[Banco de KM]].
+
 **Una J pendiente es presunta.** Cuenta como hora presunta (azul) hasta que alguien la mira; la aprobada es la única que entra en bitácora y en nómina; la rechazada es una alerta para volver a llamar. Una J rechazada tiene **dos finales** —rehacerla o cerrarla— porque sin ellos el caso se quedaba abierto para siempre: la alerta pedía llamar y no había forma de decir que ya se había llamado (`modules/Control/justificantes.service.js`).
 
 **La asistencia llega hasta ayer.** La jornada de hoy no ha terminado y quien entra a las 17:00 aún no ha faltado a nada.

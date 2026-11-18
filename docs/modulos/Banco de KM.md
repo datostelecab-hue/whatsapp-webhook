@@ -28,7 +28,8 @@ test/bancoKm.test.js
 | | |
 |---|---|
 | **Qué km gastan banco** | **Todos los de fuera de BOLT**: desconectado y en descanso. Son los de la columna «KM fuera BOLT» del [[Control Reportes\|reporte de horas]] de Control, con su misma regla: con el coche **fichado** por WhatsApp, de quien lo fichó (también si se le olvidó terminar el turno); sin fichar, del **último que estuvo en BOLT** con el coche |
-| **El límite** | **17,5 km** (el parámetro `banco_km.km_dia`, ver [[Parametros]]) por cada día que **le tocaba en el planificador**, haya salido o no, y por cada día que **salió sin tocarle** (un NN, un día extra). Vacaciones, baja o libranza no suman |
+| **El límite** (desde db/268) | Cada **hora de viaje** en BOLT (yendo a por el pasajero o llevándolo) genera **8,8 km**, con un **tope de 53 km al día** (los parámetros `banco_km.km_hora_viaje` y `banco_km.tope_dia`, ver [[Parametros]]). La espera no genera. Hasta db/268 eran 17,5 km por cada día que le tocaba en el planificador |
+| **Los km justificados** (db/268) | Una **justificación de KM aprobada** resta de sus km fuera de ese día (nunca por debajo de cero). Va «por fuera del límite y de los km generados» |
 | **La semana** | De lunes a domingo, y **empieza de cero** |
 | **La jornada** | La del reporte de Control: el turno de día y el de noche de ese día. Se calcula **cerrada**, después de las 12:00 del día siguiente (más una hora de margen). **Hoy no cuenta** |
 
@@ -79,6 +80,20 @@ Si hay km por no terminar el turno, un recuadro en rojo lo dice con la cifra y q
 - **La regla no cambia** (Camilo: «dejemos la regla»): siguen contando en su banco. El desglose solo dice por qué.
 - **Cómo**: `modules/Operaciones/bancoKm.desglose.js` reparte minuto a minuto los km de sus coches de esa semana con la regla del reporte (`FIN_KM` y el fichaje), y el reparto **se escala a los km de la foto**: la ficha no puede dar dos cifras para lo mismo. Si los datos crudos no dan nada para ese día y coche, sale «Sin desglose».
 - **Se calcula al abrir la ficha**, solo con sus coches de esa semana (unos miles de filas, por índices). Contra producción, la semana del 9 al 15/11 de ese conductor tardó 2 s desde fuera de Render y salió: en descanso 330,9 km, **por no terminar el turno 280,7** (el coche lo llevaba su compañero de día, que no fichó ni una vez), desconectado 48,5 y 1 sin desglose; los 661,1 km de su ficha al décimo.
+
+## La regla por horas de viaje y las justificaciones de KM (18/11/2026, db/268)
+
+Camilo: *«Cada hora de viaje en BOLT genera 8,8 km por fuera en el banco, con un límite de 53 km al día. Hay que implementar en las justificaciones de horas también justificaciones de KM… si hago 3 horas de viaje ese día puedo gastar 26,4 km por fuera; si tengo 50 km por fuera pero con 28 justificados desde Control y justificados por William o Ángel, que serán los que tengan la llave, entonces hice 22 km por fuera, y me quedan 4,4 km generados para la semana»*. Ese ejemplo es una prueba (`test/bancoKm.test.js`).
+
+Y decidió: generan **solo las horas de viaje**; Control apunta la justificación y la **aprueban** quienes tengan la llave; y **todo el banco desde el 26/10 se rehace** con la regla nueva.
+
+- **Las horas de viaje** salen del mismo reparto que las horas del reporte (`repartoTurnos.porPersonaYDia` da ahora también `viaje`, y `reporteDia` la columna `horasViaje`). Se guardan en `km_banco_dia.horas_viaje`. Con la copia local (20/10): el 72 % de las horas trabajadas son de viaje, y ese día la mitad de la gente llegaba al tope de 53.
+- **Rehacer el histórico**: cada día guarda con qué regla se calculó (`km_banco_calculo.version`, 2 = por horas de viaje). La tarea `banco_km.dia` rehace los de una versión anterior, como mucho tres por vuelta: la jornada más nueva y otras dos que van rotando, para que un día que falle una y otra vez no tape a los demás. El periodo de la tarea lleva la versión («2026-11-16#v2»). Sin db/268 aplicada no hace nada y la pantalla dice que falta.
+- **Las justificaciones de KM** (`km_justificacion`, `services/repo/kmJustificacion.js`, bajo el [[Libro de auditoria]]): un conductor, un día, los km, el coche si se sabe y el motivo (obligatorio). **Nacen pendientes** y no restan hasta que las aprueba quien tiene la llave **`/justificantes/km`** («Justificantes · aprobar las de KM», `manual`: se da en Usuarios a William y Ángel). Rechazada, o anulada después de aprobarla, deja de restar, con quién y por qué.
+  - **Se apuntan** desde la ficha del banco («Justificar km» en cada día con km fuera) o desde **Justificantes › KM · Banco de KM** («Justificar KM»).
+  - **Se aprueban** en Justificantes › KM, con su número en el menú para quien tiene la llave. Quien no la tiene las ve «a la espera de ser aprobada».
+  - **Se leen en vivo**, no van en la foto: aprobar una no obliga a recalcular nada.
+- **En la pantalla**: la columna «Viaje» (horas de la semana) sustituye a «Días»; «Km fuera de BOLT» es lo que gasta, con «50,0 − 28,0 justificados» y lo que está por aprobar debajo; en la ficha, cada día dice sus horas de viaje, lo que genera, sus justificaciones y el botón para justificar.
 
 ## Permisos
 

@@ -6,6 +6,7 @@
 //   GET  /operaciones/banco-km/api/historia?persona=&hasta=   las últimas semanas de uno
 //   GET  /operaciones/banco-km/api/desglose?persona=&lunes=  de dónde salen sus km, día a día
 //   POST /operaciones/banco-km/api/recalcular     { lunes }   rehace las jornadas cerradas de esa semana
+//   POST /operaciones/banco-km/api/justificar     { persona, dia, km, matricula, motivo }   justificación de KM (pendiente)
 //
 // La llave es '/operaciones/banco-km' (el catálogo de permisos la pide por el
 // prefijo de la ruta). Las reglas, en bancoKm.service.js.
@@ -35,5 +36,6 @@ router.get('/api/semana', responde(req => banco.semana(req.query.lunes)));
 router.get('/api/historia', responde(req => banco.historia(req.query.persona, req.query.hasta)));
 router.get('/api/desglose', responde(req => banco.desglose(req.query.persona, req.query.lunes)));
 router.post('/api/recalcular', responde(async req => banco.recalcular((req.body || {}).lunes, await quienEs(req))));
+router.post('/api/justificar', responde(async req => banco.justificar(req.body || {}, await quienEs(req))));
 
 module.exports = router;

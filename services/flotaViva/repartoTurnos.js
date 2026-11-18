@@ -449,9 +449,12 @@ async function porPersonaYDia(fechas) {
     if (!quiero.has(fecha) || !(v.seg > 0)) return;
     if (!out.has(persona)) out.set(persona, new Map());
     const m = out.get(persona);
-    if (!m.has(fecha)) m.set(fecha, { dia: 0, noche: 0, nnDia: false, nnNoche: false });
+    // `viaje`: de esos segundos, los de viaje (18/11/2026: el banco de KM se
+    // genera por hora de viaje). El resto es espera.
+    if (!m.has(fecha)) m.set(fecha, { dia: 0, noche: 0, nnDia: false, nnNoche: false, viaje: 0 });
     const x = m.get(fecha);
     x[turno] += v.seg;
+    x.viaje += v.viajeSeg || 0;
     if (v.nn) x[turno === 'dia' ? 'nnDia' : 'nnNoche'] = true;
   }));
   return out;

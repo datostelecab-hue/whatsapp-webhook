@@ -12,6 +12,10 @@
 // llevaba otro con su fichaje abierto) o fichado sin conectarse. Camilo:
 // «Necesitamos decirles: ey, por no haber desfichado, mira los KM que se te
 // imputan». Con un mensaje listo para copiar y mandárselo.
+//
+// LA REGLA NUEVA (18/11/2026, db/268): cada hora de VIAJE en BOLT genera 8,8 km,
+// con tope de 53 al día; y los km justificados y aprobados (llave
+// «/justificantes/km») no cuentan. Desde la ficha, «Justificar km» en cada día.
 (function (global) {
   'use strict';
   const esc = Casa.esc;
@@ -96,7 +100,7 @@
   function pintarCabecera() {
     if (datos.sinMigracion) {
       $('#bk-semana').textContent = '—';
-      aviso('Para el banco de KM falta aplicar la migración db/267 en /migraciones.', 'aviso');
+      aviso('Para el banco de KM falta aplicar las migraciones db/267 y db/268 en /migraciones.', 'aviso');
       return;
     }
     $('#bk-semana').textContent = textoSemana(datos.lunes, datos.domingo);
@@ -165,7 +169,7 @@
   const origen = clave => async () => {
     if (!datos) await traer();
     if (datos.sinMigracion) return { filas: [] };
-    return { filas: datos[clave], kmDia: datos.kmDia };
+    return { filas: datos[clave], kmHora: datos.kmHora, tope: datos.tope };
   };
 
   // ── Por conductor ──────────────────────────────────────────────────────────
@@ -179,7 +183,7 @@
       origen: origen('conductores'),
       vacio: 'Esta semana nadie tiene límite ni km fuera de BOLT.',
       buscar: { texto: 'Conductor o matrícula…', campos: ['nombre', f => f.matriculas.map(m => `${m.matricula} ${placa(m.matricula)}`).join(' ')] },
-      subtitulo: (v, todas, extra) => `${km((extra && extra.kmDia) || 17.5)} fuera de BOLT por cada día que le toca en el planificador o que sale sin tocarle (NN o día extra). La semana va de lunes a domingo y empieza de cero.`,
+      subtitulo: (v, todas, extra) => `Cada hora de viaje en BOLT genera ${km((extra && extra.kmHora) || 8.8)} fuera de BOLT, con un tope de ${km((extra && extra.tope) || 53)} al día. Los km justificados y aprobados no cuentan. La semana va de lunes a domingo y empieza de cero.`,
       kpisDeLoVisible: true,
       kpis: filas => {
         const de = e => filas.filter(f => f.estado === e);
@@ -190,7 +194,7 @@
           { etiqueta: 'Cerca del límite', valor: de('cerca').length, tono: 'warn', pie: 'desde el 80 %', filtro: { id: 'estado', valor: 'cerca' } },
           { etiqueta: 'Dentro', valor: de('dentro').length, tono: 'green', filtro: { id: 'estado', valor: 'dentro' } },
           { etiqueta: 'Km fuera de BOLT', valor: km(filas.reduce((s, f) => s + f.km, 0)), tono: 'muted',
-            pie: `de ${km(filas.reduce((s, f) => s + f.limite, 0))} de límite` },
+            pie: `de ${km(filas.reduce((s, f) => s + f.limite, 0))} de límite${filas.some(f => f.justificados > 0) ? ` · ${km(filas.reduce((s, f) => s + f.justificados, 0))} justificados` : ''}` },
         ];
       },
       filtros: [{
@@ -208,14 +212,15 @@
         { titulo: 'Conductor', campo: 'nombre',
           pinta: (v, f) => `<span class="font-semibold">${esc(f.nombre)}</span>${f.sinFicha ? ' <span class="tc-pastilla tc-pastilla--aviso" title="Una cuenta de BOLT sin ficha en la plantilla">sin ficha</span>' : ''}
             <span class="block text-[11px] text-telecab-muted">${esc([f.turno, f.matriculas.slice(0, 3).map(m => placa(m.matricula)).join(', ')].filter(Boolean).join(' · '))}</span>` },
-        { titulo: 'Días', campo: 'programados', clase: 'tabular-nums whitespace-nowrap',
-          ayuda: 'Días que le tocaban en el planificador, más los que salió sin tocarle (NN o día extra). Cada uno suma al límite.',
-          valor: f => f.programados + f.extra,
-          pinta: (v, f) => `${f.programados}${f.extra ? ` <span class="text-telecab-muted">+ ${f.extra} sin tocarle</span>` : ''}` },
+        { titulo: 'Viaje', campo: 'horasViaje', clase: 'text-right tabular-nums whitespace-nowrap',
+          ayuda: 'Horas de viaje en BOLT de la semana (yendo a por el pasajero o llevándolo). Cada una genera límite; la espera no.',
+          pinta: v => `${num(v)} h` },
         { titulo: 'Límite', campo: 'limite', clase: 'text-right tabular-nums whitespace-nowrap', pinta: v => km(v) },
         { titulo: 'Km fuera de BOLT', campo: 'km', clase: 'tabular-nums whitespace-nowrap',
-          ayuda: 'Desconectado o en descanso, con su regla de siempre: con el coche fichado, de quien lo fichó; sin fichar, del último que estuvo en BOLT con él.',
-          pinta: (v, f) => `<span class="block text-right font-semibold">${km(v)}</span>
+          ayuda: 'Desconectado o en descanso, con su regla de siempre: con el coche fichado, de quien lo fichó; sin fichar, del último que estuvo en BOLT con él. Sin los km justificados y aprobados.',
+          pinta: (v, f) => `<span class="block text-right font-semibold">${km(v)}</span>${f.justificados > 0 || f.pendientes > 0
+            ? `<span class="block text-right text-[10px] text-telecab-muted">${[f.justificados > 0 ? `${num(f.kmFuera)} − ${num(f.justificados)} justificados` : '',
+              f.pendientes > 0 ? `${num(f.pendientes)} por aprobar` : ''].filter(Boolean).join(' · ')}</span>` : ''}
             <span class="block h-1.5 mt-1 rounded-full bg-telecab-card2 overflow-hidden min-w-[6rem]" aria-hidden="true">
               <span class="block h-full ${ESTADO[f.estado].barra}" style="width:${Math.min(100, f.pct == null ? 100 : f.pct)}%"></span></span>` },
         { titulo: 'Saldo', campo: 'saldo', clase: 'text-right tabular-nums whitespace-nowrap',
@@ -229,11 +234,13 @@
 
   // La ficha de un conductor: su semana día a día y sus últimas semanas.
   function queFue(d) {
-    if (d.justificado) return 'Le tocaba · J';
-    if (d.programado) return d.trabajo ? 'Le tocaba · salió' : 'Le tocaba · no salió';
-    if (d.trabajo) return 'Salió sin tocarle';
-    return 'Libraba';
+    const viaje = d.horasViaje > 0 ? `${num(d.horasViaje)} h de viaje` : 'Sin viaje';
+    return d.horas > d.horasViaje ? `${viaje} (de ${num(d.horas)} h en BOLT)` : viaje;
   }
+  /** Las justificaciones de KM de un día, en la ficha. */
+  const justificacionesTxt = d => (d.justificaciones || []).map(j =>
+    `<span class="block text-[11px] ${j.estado === 'aprobada' ? 'text-telecab-green' : 'text-telecab-azul'}">${km(j.km)} justificados · ${
+      j.estado === 'aprobada' ? `aprobada por ${esc(j.aprobadaPor || '¿?')}` : 'a la espera de ser aprobada'}: «${esc(j.motivo)}»</span>`).join('');
   function abrirConductor(f) {
     const porDia = new Map(f.dias.map(d => [d.dia, d]));
     const filas = datos.dias.map(dd => {
@@ -245,14 +252,18 @@
       const marcas = [d.sinFichar ? '<span class="tc-pastilla tc-pastilla--aviso" title="Trabajó o movió un coche sin fichar por WhatsApp">sin fichar</span>' : '',
         d.revisar ? '<span class="tc-pastilla tc-pastilla--aviso" title="Estuvo en BOLT con un coche que no dio km: lo cuadra Tráfico">REVISAR</span>' : ''].join(' ');
       // Con km, la raya va debajo de su desglose, no entre el día y él.
-      return `<tr class="${d.km > 0 ? '' : 'border-b border-telecab-border/50 '}align-top">
+      const puedeJustificar = /^c\d+$/.test(f.persona) && d.kmFuera > 0;
+      return `<tr class="${d.kmFuera > 0 ? '' : 'border-b border-telecab-border/50 '}align-top">
         <td class="py-1.5 pr-2 whitespace-nowrap">${esc(diaLargo(d.dia))}</td>
-        <td class="py-1.5 pr-2">${esc(queFue(d))}${d.horas ? ` <span class="text-telecab-muted">(${num(d.horas)} h)</span>` : ''} ${marcas}
-          ${d.fichaje ? `<span class="block text-[11px] text-telecab-muted">Fichaje: ${esc(d.fichaje)}</span>` : ''}</td>
+        <td class="py-1.5 pr-2">${esc(queFue(d))} ${marcas}
+          ${d.fichaje ? `<span class="block text-[11px] text-telecab-muted">Fichaje: ${esc(d.fichaje)}</span>` : ''}
+          ${justificacionesTxt(d)}
+          ${puedeJustificar ? `<button type="button" class="tc-boton tc-boton--chico mt-1" data-justificar="${esc(d.dia)}"><i class="fa-solid fa-file-circle-check" aria-hidden="true"></i>Justificar km</button>` : ''}</td>
         <td class="py-1.5 pr-2 text-right tabular-nums whitespace-nowrap">${d.limite ? `+${km(d.limite)}` : '—'}</td>
-        <td class="py-1.5 pr-2 text-right tabular-nums whitespace-nowrap font-semibold">${d.km ? km(d.km) : '—'}</td>
+        <td class="py-1.5 pr-2 text-right tabular-nums whitespace-nowrap font-semibold">${d.kmFuera ? km(d.km) : '—'}${d.justificados > 0
+          ? `<span class="block text-[10px] font-normal text-telecab-muted">${num(d.kmFuera)} − ${num(d.justificados)}</span>` : ''}</td>
         <td class="py-1.5 text-[11px] text-telecab-muted">${d.coches.map(c => `${esc(placa(c.matricula))} ${km(c.km)}`).join('<br>')}</td>
-      </tr>${d.km > 0 ? `<tr class="border-b border-telecab-border/50"><td></td><td colspan="4" class="pb-2 text-[11px] text-telecab-muted" data-desglose-dia="${esc(d.dia)}">Desglosando…</td></tr>` : ''}`;
+      </tr>${d.kmFuera > 0 ? `<tr class="border-b border-telecab-border/50"><td></td><td colspan="4" class="pb-2 text-[11px] text-telecab-muted" data-desglose-dia="${esc(d.dia)}">Desglosando…</td></tr>` : ''}`;
     }).join('');
     const est = ESTADO[f.estado];
     const p = Panel.abrir({
@@ -264,19 +275,20 @@
           <div class="tc-kpi" data-tono="${f.saldo < 0 ? 'red' : 'muted'}"><p class="tc-kpi-etiqueta">Saldo</p><p class="tc-kpi-valor">${f.saldo < 0 ? `−${km(-f.saldo)}` : km(f.saldo)}</p></div>
         </div>
         <p class="mb-3"><span class="tc-pastilla ${est.pastilla}">${esc(est.texto)}</span>
-          <span class="text-xs text-telecab-muted ml-1">${f.programados} ${f.programados === 1 ? 'día le tocaba' : 'días le tocaban'}${f.extra ? `, ${f.extra} salió sin tocarle` : ''}</span></p>
-        ${f.km > 0 ? '<div data-desglose-semana class="mb-4 text-sm text-telecab-muted">Desglosando los km…</div>' : ''}
+          <span class="text-xs text-telecab-muted ml-1">${num(f.horasViaje)} h de viaje en la semana${f.justificados > 0 ? ` · ${km(f.justificados)} justificados` : ''}${f.pendientes > 0 ? ` · ${km(f.pendientes)} a la espera de ser aprobados` : ''}</span></p>
+        ${f.kmFuera > 0 ? '<div data-desglose-semana class="mb-4 text-sm text-telecab-muted">Desglosando los km…</div>' : ''}
         <div class="overflow-x-auto"><table class="w-full text-sm">
           <thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted text-left border-b border-telecab-border">
             <th class="py-1.5 pr-2 font-semibold">Día</th><th class="py-1.5 pr-2 font-semibold">Qué fue</th>
             <th class="py-1.5 pr-2 font-semibold text-right">Límite</th><th class="py-1.5 pr-2 font-semibold text-right">Km fuera</th>
             <th class="py-1.5 font-semibold">Coches</th></tr></thead>
           <tbody>${filas}</tbody></table></div>
-        <p class="text-[11px] text-telecab-muted mt-2">Los km fuera de BOLT son los del reporte de Control: con el coche fichado por WhatsApp, de quien lo fichó (también si se le olvidó terminar el turno); sin fichar, del último que estuvo en BOLT con el coche.</p>
+        <p class="text-[11px] text-telecab-muted mt-2">Los km fuera de BOLT son los del reporte de Control: con el coche fichado por WhatsApp, de quien lo fichó (también si se le olvidó terminar el turno); sin fichar, del último que estuvo en BOLT con el coche. Cada hora de viaje genera ${km(datos.kmHora || 8.8)} de límite, con un tope de ${km(datos.tope || 53)} al día. Lo justificado cuenta solo cuando se aprueba.</p>
         <h3 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mt-5 mb-2">Sus últimas semanas</h3>
         <div data-historia class="text-sm text-telecab-muted">Cargando…</div>`,
     });
-    if (f.km > 0) {
+    p.cuerpo.querySelectorAll('[data-justificar]').forEach(b => b.addEventListener('click', () => justificar(f, porDia.get(b.dataset.justificar))));
+    if (f.kmFuera > 0) {
       Api.get(`${API}/desglose?persona=${encodeURIComponent(f.persona)}&lunes=${encodeURIComponent(datos.lunes)}`)
         .then(r => pintarDesglose(p.cuerpo, f, r))
         .catch(e => {
@@ -298,6 +310,32 @@
       const caja = p.cuerpo.querySelector('[data-historia]');
       if (caja) caja.textContent = `No se ha podido leer: ${e.message}`;
     });
+  }
+
+  /**
+   * Justificar km de un día, desde la ficha. Nace pendiente: cuenta cuando la
+   * aprueba quien tiene la llave (en Justificantes › KM). Después se recarga
+   * la semana y se vuelve a abrir su ficha.
+   */
+  async function justificar(f, d) {
+    if (!d) return;
+    const libres = Math.max(0, Math.round((d.kmFuera - d.justificados - d.pendientes) * 10) / 10);
+    const v = await Dialogo.formulario(`Justificar km de ${f.nombre} · ${diaLargo(d.dia)}`, [
+      { id: 'km', etiqueta: 'Km que se justifican', obligatorio: true, marcador: `hasta ${num(libres)}` },
+      ...(d.coches.length ? [{ id: 'matricula', etiqueta: 'Coche', tipo: 'lista', valor: d.coches[0].matricula,
+        opciones: d.coches.map(c => ({ valor: c.matricula, texto: `${placa(c.matricula)} · ${km(c.km)} fuera` })) }] : []),
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', obligatorio: true, minimo: 3, marcador: 'Llevó el coche al taller, cambio de zona…' },
+    ], { textoBoton: 'Apuntar',
+         nota: `Ese día lleva ${km(d.kmFuera)} fuera de BOLT${d.justificados || d.pendientes ? ` (${km(d.justificados + d.pendientes)} ya justificados o por aprobar)` : ''}. Nace a la espera de ser aprobada; cuando se aprueba, esos km dejan de contar.` });
+    if (!v) return;
+    const r = await Api.post(`${API}/justificar`, { persona: f.persona, dia: d.dia, km: v.km, matricula: v.matricula, motivo: v.motivo },
+      { aviso: 'No se ha podido apuntar' });
+    if (!r) return;
+    Dialogo.hecho('Apuntada: a la espera de ser aprobada');
+    try { await traer(); } catch (_) { return; }
+    if (lstC) lstC.recargar();
+    const nuevo = datos.conductores.find(x => x.persona === f.persona);
+    if (nuevo) abrirConductor(nuevo);
   }
 
   // El desglose: arriba la semana (barra y leyenda, y el aviso del turno sin
@@ -329,7 +367,7 @@
         const otros = [...porCausa.entries()].filter(([c]) => c !== 'fichaje_abierto' && c !== 'sin_desglose')
           .map(([c, k]) => `${km(k)} ${c === 'descanso' ? 'en descanso en BOLT' : c === 'desconectado' ? 'desconectado de BOLT' : 'con el coche fichado sin conectarte a BOLT'}`);
         const texto = [
-          `Hola${nombre ? ` ${nombre}` : ''}. En la ${textoSemana(datos.lunes, datos.domingo).toLowerCase()} llevas ${km(f.km)} fuera de BOLT, y tu límite es de ${km(f.limite)}.`,
+          `Hola${nombre ? ` ${nombre}` : ''}. En la ${textoSemana(datos.lunes, datos.domingo).toLowerCase()} llevas ${km(f.kmFuera)} fuera de BOLT${f.justificados > 0 ? ` (${km(f.justificados)} justificados, que no cuentan)` : ''}, y tu límite es de ${km(f.limite)}, por tus ${num(f.horasViaje)} h de viaje.`,
           `De esos, ${km(kmAbierto)} son por no terminar el turno en el bot: tu fichaje siguió abierto mientras el coche lo llevaba ${abiertos.map(x => x.con || 'otra persona').join(' y ')}, y esos km se te apuntan a ti.`,
           otros.length ? `El resto: ${otros.join(' y ')}.` : '',
           'Cuando dejes el coche, pulsa «Terminar turno» en el bot.',

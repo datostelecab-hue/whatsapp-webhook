@@ -9,6 +9,10 @@
   const TIPOS = DEL_SERVIDOR.tiposJ;
   // La −J (db/227): su pestaña es este «tipo», que no es un tipo de J.
   const MENOS_J = 'menos_j';
+  // Las justificaciones de KM del banco de KM (db/268): su pestaña es este «tipo».
+  const KM = 'km';
+  let apruebaKm = false;
+  const kmTxt = v => (Number(v) || 0).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' km';
   const CASUISTICAS = DEL_SERVIDOR.casuisticasMenosJ;
   let personas = null;    // para elegir quién lo causó; se piden la primera vez
   const fecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
@@ -28,7 +32,7 @@
 
   function pintarEstados() {
     const sel = $('#j-estado').value;
-    const esMenos = tipo === MENOS_J;
+    const esMenos = tipo === MENOS_J || tipo === KM;
     $('#j-estados').innerHTML = ESTADOS.map(e => {
       const on = e.id === sel;
       const n = cuentas[e.id];
@@ -42,7 +46,13 @@
           abiertas + ' por llamar</span>' : '') +
         '</button>';
     }).join('') +
-      (esMenos
+      (tipo === KM
+        ? '<span class="ml-auto self-center text-xs text-telecab-muted">' +
+          '<b class="text-emerald-400">' + kmTxt(cuentas.kmAprobados) + '</b> aprobados · ' +
+          '<b class="text-sky-400">' + kmTxt(cuentas.kmPendientes) + '</b> pendientes</span>' +
+          '<button data-nueva-km class="px-3.5 py-2 rounded-xl text-sm font-semibold bg-telecab-gold text-telecab-dark shadow-gold">' +
+          '<i class="fa-solid fa-plus mr-1.5" aria-hidden="true"></i>Justificar KM</button>'
+        : esMenos
         ? '<span class="ml-auto self-center text-xs text-telecab-muted">Tiempo de perjuicio: ' +
           '<b class="text-telecab-text">' + (HorasMin.texto(cuentas.minutosAprobados || 0) || '0 min') + '</b> aprobado · ' +
           '<b class="text-sky-400">' + (HorasMin.texto(cuentas.minutosPendientes || 0) || '0 min') + '</b> pendiente</span>'
@@ -53,11 +63,13 @@
         : '');
     $('#j-estados').querySelectorAll('[data-estado]').forEach(b =>
       b.addEventListener('click', () => { $('#j-estado').value = b.dataset.estado; cargar(); }));
+    const nueva = $('#j-estados').querySelector('[data-nueva-km]');
+    if (nueva) nueva.addEventListener('click', nuevaKm);
   }
 
   function pintarTabs() {
     // «Todas» son las J: la −J va en su pestaña y no suma aquí.
-    const total = Object.entries(pendientes).reduce((a, [k, n]) => a + (k === MENOS_J ? 0 : n), 0);
+    const total = Object.entries(pendientes).reduce((a, [k, n]) => a + (k === MENOS_J || k === KM ? 0 : n), 0);
     const tab = (cod, txt, n) => {
       const on = tipo === cod;
       return '<button data-tipo="' + cod + '" class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition ' +
@@ -69,7 +81,8 @@
     };
     $('#j-tabs').innerHTML = tab('', 'Todas', total) +
       TIPOS.map(t => tab(t.codigo, t.etiqueta, pendientes[t.codigo] || 0)).join('') +
-      '<span class="w-px bg-telecab-border mx-1"></span>' + tab(MENOS_J, '−J · Perjuicios', pendientes[MENOS_J] || 0);
+      '<span class="w-px bg-telecab-border mx-1"></span>' + tab(MENOS_J, '−J · Perjuicios', pendientes[MENOS_J] || 0) +
+      tab(KM, 'KM · Banco de KM', pendientes[KM] || 0);
     $('#j-tabs').querySelectorAll('[data-tipo]').forEach(b =>
       b.addEventListener('click', () => { tipo = b.dataset.tipo; cargar(); }));
   }
@@ -82,6 +95,7 @@
       return;
     }
     if (tipo === MENOS_J) return pintarMenosJ();
+    if (tipo === KM) return pintarKm();
     const etqTipo = c => (TIPOS.find(t => t.codigo === c) || {}).etiqueta || c;
     $('#j-lista').innerHTML = filas.map(j =>
       '<div class="px-4 py-3 border-b border-telecab-border/50 flex items-start gap-3' +
@@ -158,6 +172,87 @@
       liga('[data-menosj]', menosJDeJ);
       liga('[data-verhist]', () => MenosJ.historial(el.querySelector('[data-hist]'), '/justificantes/api/historial?entidad=j&id=' + encodeURIComponent(j.id)));
     });
+  }
+
+  // ── La pestaña de KM (db/268) ─────────────────────────────────────────────
+  // Los km fuera de BOLT de un conductor y un día que no cuentan en el banco de
+  // KM. Nacen pendientes y solo resta la aprobada; aprueba quien tiene la llave
+  // «/justificantes/km». Una aprobada se puede anular después (con motivo).
+  function pintarKm() {
+    $('#j-lista').innerHTML = filas.map(k =>
+      '<div class="px-4 py-3 border-b border-telecab-border/50 flex items-start gap-3" data-kid="' + esc(k.id) + '">' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex items-center gap-2 flex-wrap">' +
+            '<span class="font-medium text-sm">' + esc(k.conductor) + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-telecab-card2 text-telecab-text">KM</span>' +
+            '<span class="text-[11px] text-telecab-muted">' + fecha(k.dia) + '</span>' +
+            '<span class="text-[11px] font-semibold text-sky-400">' + esc(kmTxt(k.km)) + '</span>' +
+            (k.matricula ? '<span class="text-[11px] text-telecab-muted">' + esc(k.matricula) + '</span>' : '') +
+          '</div>' +
+          '<div class="text-xs text-telecab-muted mt-0.5">«' + esc(k.motivo) + '»</div>' +
+          '<div class="text-[11px] text-telecab-muted/80 mt-0.5">puesta por <b>' + esc(k.puestaPor || '¿?') + '</b> el ' + hora(k.creadoAt) +
+            (k.origen === 'banco_km' ? ' · desde el banco de KM' : '') +
+            (k.estado === 'aprobada' ? ' · <span class="text-telecab-green">aprobada por ' + esc(k.aprobadaPor || '¿?') + '</span>' : '') +
+            (k.estado === 'rechazada' ? ' · <span class="text-telecab-red">' + (k.aprobadoAt ? 'anulada' : 'rechazada') + ' por ' + esc(k.rechazadaPor || '¿?') +
+              ' el ' + hora(k.anuladoAt) + (k.anuladoMotivo ? ': «' + esc(k.anuladoMotivo) + '»' : '') + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="flex items-center gap-1.5 shrink-0">' +
+          (apruebaKm && k.estado === 'pendiente'
+            ? '<button data-ok aria-label="' + esc('Aprobar los km de ' + (k.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold"><i class="fa-solid fa-check mr-1" aria-hidden="true"></i>Aprobar</button>' +
+              '<button data-no aria-label="' + esc('Rechazar los km de ' + (k.conductor || '')) + '" class="px-3 h-8 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs font-semibold"><i class="fa-solid fa-xmark mr-1" aria-hidden="true"></i>Rechazar</button>'
+            : '') +
+          (apruebaKm && k.estado === 'aprobada'
+            ? '<button data-no class="px-3 h-8 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-muted text-xs font-semibold" title="Deja de restar en su banco de KM">Anular</button>'
+            : '') +
+          (!apruebaKm && k.estado === 'pendiente'
+            ? '<span class="text-[11px] text-telecab-muted">a la espera de ser aprobada</span>' : '') +
+        '</div>' +
+      '</div>').join('');
+    $('#j-lista').querySelectorAll('[data-kid]').forEach(el => {
+      const k = filas.find(x => x.id === el.dataset.kid);
+      const ok = el.querySelector('[data-ok]'), no = el.querySelector('[data-no]');
+      if (ok) ok.addEventListener('click', async () => {
+        try { await Api.pedir('/justificantes/api/km/' + k.id + '/aprobar', { metodo: 'POST', boton: ok }); cargar(); }
+        catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+      });
+      if (no) no.addEventListener('click', async () => {
+        const anular = k.estado === 'aprobada';
+        const v = await Dialogo.formulario((anular ? 'Anular' : 'Rechazar') + ' los km justificados de ' + k.conductor, [
+          { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto-largo', obligatorio: true, minimo: 3 },
+        ], { textoBoton: anular ? 'Anularla' : 'Rechazarla',
+             nota: 'Deja de restar: esos ' + kmTxt(k.km) + ' vuelven a contar en su banco de KM. Queda con tu nombre y el motivo.' });
+        if (!v) return;
+        const r = await Api.post('/justificantes/api/km/' + k.id + '/rechazar', { motivo: v.motivo }, { aviso: 'No se ha podido' });
+        if (r) cargar();
+      });
+    });
+  }
+
+  /** Justificar KM desde aquí: conductor, día, km, coche (si se sabe) y motivo. */
+  async function nuevaKm() {
+    if (!personas) {
+      try {
+        const r = await fetch('/justificantes/api/menos-j/personas').then(x => x.json());
+        if (r.status !== 'ok') throw new Error(r.msg);
+        personas = r.personas || [];
+      } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo cargar la plantilla', texto: e.message, tono: 'error' }); }
+    }
+    const ayer = new Date(Date.now() - 86400000).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const v = await Dialogo.formulario('Justificar KM', [
+      { id: 'conductorId', etiqueta: 'Conductor', tipo: 'lista', obligatorio: true, opciones: personas.map(p => ({ valor: String(p.id), texto: p.nombre })) },
+      { id: 'dia', etiqueta: 'Día', tipo: 'fecha', obligatorio: true, valor: ayer },
+      { id: 'km', etiqueta: 'Km que se justifican', obligatorio: true, marcador: 'p. ej. 28' },
+      { id: 'matricula', etiqueta: 'Matrícula (si se sabe)', marcador: '1234ABC' },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', obligatorio: true, minimo: 3, marcador: 'Llevó el coche al taller, cambio de zona…' },
+    ], { textoBoton: 'Apuntar',
+         nota: 'Nace pendiente: cuando se apruebe, esos km dejan de contar en su banco de KM de ese día.' });
+    if (!v) return;
+    const r = await Api.post('/justificantes/api/km', v, { aviso: 'No se ha podido apuntar' });
+    if (!r) return;
+    Dialogo.hecho('Justificación de KM apuntada');
+    $('#j-estado').value = 'pendiente';
+    cargar();
   }
 
   // ── La pestaña −J ─────────────────────────────────────────────────────────
@@ -333,6 +428,7 @@
       const r = await fetch('/justificantes/api/cola?' + q).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'Error');
       filas = r.filas; pendientes = r.pendientes || {}; cuentas = r.cuentas || {};
+      if (r.km) apruebaKm = !!r.aprueba;
       pintarEstados(); pintarTabs(); pintarLista();
     } catch (e) {
       $('#j-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-red">' + esc(e.message) + '</p>';
@@ -350,7 +446,7 @@
   // es a donde apunta la alerta "Justificación rechazada".
   const q0 = new URLSearchParams(location.search);
   if (['pendiente', 'aprobada', 'rechazada'].includes(q0.get('estado'))) $('#j-estado').value = q0.get('estado');
-  if (q0.get('tipo') === MENOS_J || TIPOS.some(t => t.codigo === q0.get('tipo'))) tipo = q0.get('tipo');
+  if (q0.get('tipo') === MENOS_J || q0.get('tipo') === KM || TIPOS.some(t => t.codigo === q0.get('tipo'))) tipo = q0.get('tipo');
   if (/^\d{4}-\d{2}-\d{2}$/.test(q0.get('dia') || '')) { $('#j-desde').value = q0.get('dia'); $('#j-hasta').value = q0.get('dia'); }
   cargar();
 })();

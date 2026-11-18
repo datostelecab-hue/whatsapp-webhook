@@ -1,15 +1,19 @@
 // ============================================================
 // EL BANCO DE KM (db/267, 18/11/2026)
 // ============================================================
-// Camilo: «un límite de 17,5 km por fuera desconectado al día, por cada uno; si
-// descansa no se le suma al límite… si se programó otro día de la nada entonces
-// son 6 días y el límite sube a 105; esto también aplica a los NN».
+// Camilo, 18/11/2026: «cada hora de viaje en BOLT genera 8,8 km por fuera en el
+// banco, con un límite de 53 km al día… si hago 3 horas de viaje ese día puedo
+// gastar 26,4 km por fuera; si tengo 50 km por fuera pero con 28 justificados…
+// entonces hice 22 km por fuera, y me quedan 4,4 km generados para la semana»
+// (db/268; antes, db/267, eran 17,5 km por día que tocaba).
 //
-//   · pura: qué suma al límite (le tocaba, salió sin tocarle; la libranza, la
-//     oficina y Barcelona no), los km fuera coche a coche, el lunes de la semana
-//     y cuándo se cierra una jornada;
-//   · con la base: la foto de una jornada se guarda y se rehace sin duplicar, y
-//     la semana suma el límite y los km de cada uno y reparte los de cada coche.
+//   · pura: lo que genera cada día (8,8 por hora de viaje, tope 53; la oficina y
+//     Barcelona no), los km fuera coche a coche, el lunes de la semana y cuándo
+//     se cierra una jornada;
+//   · con la base: la foto de una jornada se guarda y se rehace sin duplicar; la
+//     semana suma lo generado y lo gastado de cada uno y reparte lo de cada
+//     coche; lo justificado y aprobado no cuenta (lo pendiente, sí); un día
+//     calculado con la regla anterior vuelve a estar pendiente.
 'use strict';
 
 const { conBase } = require('./apoyo/base');   // primero: sustituye services/db
@@ -17,36 +21,39 @@ const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 
 const banco = require('../modules/Operaciones/bancoKm.service');
+const kmj = require('../services/repo/kmJustificacion');
+const justificantes = require('../modules/Control/justificantes.service');
+const permisos = require('../services/permisos');
 
 after(() => banco._conReporte(null));
 
 // Las filas como las da el reporte de Control (reporteDia con conKmFuera).
 const fila = (o = {}) => ({
-  persona: 'c1', conductorId: null, nombre: 'Uno', turno: 'Día', horas: 0, debiaSalir: false, deOficina: false,
+  persona: 'c1', conductorId: null, nombre: 'Uno', turno: 'Día', horas: 0, horasViaje: 0, debiaSalir: false, deOficina: false,
   esJ: false, kmDesc: 0, kmFueraPorCoche: {}, fichaje: '', sinFichar: false, otraSede: null, ...o,
 });
+const REGLA = { kmHora: 8.8, tope: 53 };
 
-test('lo que suma al límite: le tocaba (saliera o no) o salió sin tocarle; la libranza, la oficina y Barcelona no', () => {
+test('lo que genera un día: 8,8 km por hora de viaje, con tope de 53; la espera, la oficina y Barcelona no', () => {
+  assert.deepEqual([0, 1, 3, 6, 7].map(h => banco._generado(h, REGLA)), [0, 8.8, 26.4, 52.8, 53]);
   const { filas, coches } = banco._filasDelDia([
-    fila({ persona: 'c1', debiaSalir: true, horas: 9.2, kmDesc: 12.34, kmFueraPorCoche: { '1234ABC': 12.34 } }),
-    fila({ persona: 'c2', debiaSalir: true, horas: 0 }),                                   // le tocaba y no salió
-    fila({ persona: 'c3', debiaSalir: false, horas: 6, kmDesc: 3 }),                        // NN: salió sin tocarle
+    fila({ persona: 'c1', debiaSalir: true, horas: 9.2, horasViaje: 3, kmDesc: 12.34, kmFueraPorCoche: { '1234ABC': 12.34 } }),
+    fila({ persona: 'c2', debiaSalir: true, horas: 0 }),                                   // le tocaba y no salió: no genera
+    fila({ persona: 'c3', debiaSalir: false, horas: 6, horasViaje: 1, kmDesc: 3 }),         // NN: genera por su viaje
     fila({ persona: 'c4', debiaSalir: false, horas: 0, kmDesc: 20, kmFueraPorCoche: { '5678DEF': 20 } }),   // libraba y el coche anduvo
-    fila({ persona: 'u9', deOficina: true, kmDesc: 4, kmFueraPorCoche: { '1234ABC': 4 } }),  // un viaje de la oficina
-    fila({ persona: 'c5', debiaSalir: true, horas: 8, kmDesc: 'Barcelona', otraSede: 'Barcelona' }),
-    fila({ persona: 'c6', debiaSalir: true, horas: 7, kmDesc: 'REVISAR' }),
+    fila({ persona: 'u9', deOficina: true, horasViaje: 2, kmDesc: 4, kmFueraPorCoche: { '1234ABC': 4 } }),  // un viaje de la oficina
+    fila({ persona: 'c5', debiaSalir: true, horas: 8, horasViaje: 5, kmDesc: 'Barcelona', otraSede: 'Barcelona' }),
+    fila({ persona: 'c6', debiaSalir: true, horas: 7, horasViaje: 7.5, kmDesc: 'REVISAR' }),
     fila({ persona: 'c7', debiaSalir: false, horas: 0, kmDesc: 0 }),                         // libraba y nada: fuera
-    fila({ persona: 'c8', debiaSalir: true, esJ: true }),                                    // le tocaba, con una J
-  ], 17.5);
-  const de = p => filas.find(f => f.persona === p);
-  assert.deepEqual(filas.map(f => f.persona), ['c1', 'c2', 'c3', 'c4', 'u9', 'c6', 'c8']);
-  assert.deepEqual([de('c1').limite_km, de('c1').km_fuera], [17.5, 12.3]);
-  assert.equal(de('c2').limite_km, 17.5, 'le tocaba aunque no saliera');
-  assert.equal(de('c3').limite_km, 17.5, 'el NN también suma');
-  assert.deepEqual([de('c4').limite_km, de('c4').km_fuera], [0, 20], 'libraba: no suma, pero sus km sí gastan');
+  ], REGLA);
+  const de = p => filas.find(x => x.persona === p);
+  assert.deepEqual(filas.map(x => x.persona), ['c1', 'c2', 'c3', 'c4', 'u9', 'c6']);
+  assert.deepEqual([de('c1').limite_km, de('c1').horas_viaje, de('c1').km_fuera], [26.4, 3, 12.3], '3 h de viaje: 26,4 km');
+  assert.equal(de('c2').limite_km, 0, 'sin viaje no genera, le tocara o no');
+  assert.equal(de('c3').limite_km, 8.8);
+  assert.deepEqual([de('c4').limite_km, de('c4').km_fuera], [0, 20], 'libraba: no genera, pero sus km sí gastan');
   assert.equal(de('u9').limite_km, 0, 'la oficina no tiene banco');
-  assert.deepEqual([de('c6').km_fuera, de('c6').revisar], [0, true]);
-  assert.deepEqual([de('c8').limite_km, de('c8').justificado], [17.5, true]);
+  assert.deepEqual([de('c6').limite_km, de('c6').km_fuera, de('c6').revisar], [53, 0, true], '7,5 h: el tope de 53');
   assert.deepEqual(coches, [
     { persona: 'c1', matricula: '1234ABC', km_fuera: 12.3 },
     { persona: 'c4', matricula: '5678DEF', km_fuera: 20 },
@@ -66,17 +73,17 @@ test('con la base: la foto de cada jornada, la semana de cada uno y la de cada c
   const carlos = await fabrica.conductor({ nombre: 'Carlos' });
   const hamza = await fabrica.conductor({ nombre: 'Hamza' });
   const C = `c${carlos.id}`, H = `c${hamza.id}`;
-  // Cinco días le tocan a cada uno; Hamza sale además el sábado sin tocarle.
+  // Carlos: 3 h de viaje y 2 km fuera, cinco días. Hamza: 2 h de viaje y 20 km fuera, seis días.
   const reportes = {};
   const lunes = '2026-11-02';
   for (let i = 0; i < 7; i++) {
     const d = `2026-11-0${2 + i}`;
-    const tocaC = i < 5, tocaH = i < 5;
+    const salC = i < 5, salH = i < 6;
     reportes[d] = [
-      fila({ persona: C, conductorId: carlos.id, nombre: 'Carlos', turno: 'Día', debiaSalir: tocaC, horas: tocaC ? 9 : 0,
-        kmDesc: tocaC ? 2 : 0, kmFueraPorCoche: tocaC ? { '1111AAA': 2 } : {} }),
-      fila({ persona: H, conductorId: hamza.id, nombre: 'Hamza', turno: 'Noche', debiaSalir: tocaH, horas: tocaH || i === 5 ? 9 : 0,
-        kmDesc: tocaH || i === 5 ? 20 : 0, kmFueraPorCoche: tocaH || i === 5 ? { '1111AAA': 18, '2222BBB': 2 } : {} }),
+      fila({ persona: C, conductorId: carlos.id, nombre: 'Carlos', turno: 'Día', debiaSalir: salC, horas: salC ? 9 : 0, horasViaje: salC ? 3 : 0,
+        kmDesc: salC ? 2 : 0, kmFueraPorCoche: salC ? { '1111AAA': 2 } : {} }),
+      fila({ persona: H, conductorId: hamza.id, nombre: 'Hamza', turno: 'Noche', debiaSalir: i < 5, horas: salH ? 9 : 0, horasViaje: salH ? 2 : 0,
+        kmDesc: salH ? 20 : 0, kmFueraPorCoche: salH ? { '1111AAA': 18, '2222BBB': 2 } : {} }),
     ];
   }
   banco._conReporte(async (d, o) => {
@@ -88,19 +95,62 @@ test('con la base: la foto de cada jornada, la semana de cada uno y la de cada c
   // Otra vez el lunes: se rehace, no se duplica.
   await banco.calcularDia(lunes, { ahora });
   assert.equal((await consulta(`SELECT count(*)::int AS n FROM km_banco_dia WHERE dia = $1`, [lunes])).rows[0].n, 2);
+  assert.equal((await consulta(`SELECT version FROM km_banco_calculo WHERE dia = $1`, [lunes])).rows[0].version, banco.VERSION);
   await assert.rejects(banco.calcularDia('2026-11-12', { ahora }), /cerrada/, 'el mismo día no está cerrado');
   await assert.rejects(banco.calcularDia('2026-10-20', { ahora }), /empieza/);
 
   const s = await banco.semana(lunes);
   const c = s.conductores.find(x => x.persona === C), h = s.conductores.find(x => x.persona === H);
-  assert.deepEqual([c.programados, c.extra, c.limite, c.km, c.saldo, c.estado], [5, 0, 87.5, 10, 77.5, 'dentro']);
-  assert.deepEqual([h.programados, h.extra, h.limite, h.km, h.saldo, h.estado], [5, 1, 105, 120, -15, 'pasado'],
-    'seis días (uno sin tocarle): 105 km de límite, y se pasó');
+  assert.deepEqual([c.horasViaje, c.limite, c.km, c.saldo, c.estado], [15, 132, 10, 122, 'dentro'], '5 días × 26,4');
+  assert.deepEqual([h.horasViaje, h.limite, h.km, h.saldo, h.estado], [12, 105.6, 120, -14.4, 'pasado'], '6 días × 17,6, y 120 km fuera');
   assert.equal(s.conductores[0].persona, H, 'el más pasado, primero');
   const coche = s.coches.find(x => x.matricula === '1111AAA');
   assert.equal(coche.km, 118);
   assert.deepEqual(coche.personas.map(p => [p.persona, p.pct]), [[H, 92], [C, 8]], 'de quién son sus km fuera, en %');
-  assert.equal((await banco.historia(H, '2026-11-08')).semanas[0].saldo, -15);
+  assert.equal((await banco.historia(H, '2026-11-08')).semanas[0].saldo, -14.4);
+
+  // Un día calculado con la regla de antes vuelve a estar pendiente (y la tarea lo pide con la versión).
+  await consulta(`UPDATE km_banco_calculo SET version = 1 WHERE dia = '2026-11-03'`);
+  assert.ok((await banco.pendientes(ahora)).includes('2026-11-03'));
+}));
+
+test('con la base: el ejemplo de Camilo — 3 h de viaje, 50 km fuera, 28 justificados y aprobados: gastó 22 y le quedan 4,4', () => conBase(async ({ fabrica, consulta }) => {
+  const yo = await fabrica.conductor({ nombre: 'Ejemplo' });
+  const P = `c${yo.id}`;
+  const dia = '2026-11-04';
+  banco._conReporte(async () => ({ parcial: false, sinFichaje: null, filas: [
+    fila({ persona: P, conductorId: yo.id, nombre: 'Ejemplo', debiaSalir: true, horas: 8, horasViaje: 3, kmDesc: 50, kmFueraPorCoche: { '3333CCC': 50 } }),
+  ] }));
+  await banco.calcularDia(dia, { ahora: new Date('2026-11-12T12:00:00Z') });
+
+  const control = await fabrica.usuario({ nombre: 'Control' });
+  const william = await fabrica.usuario({ nombre: 'William' });
+  await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/justificantes'), ($1, '/justificantes/km')`, [william.id]);
+  await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/justificantes')`, [control.id]);
+  permisos.invalidar(william.id); permisos.invalidar(control.id);
+
+  // Control la apunta desde la ficha del banco: nace pendiente y no resta.
+  const { id } = await banco.justificar({ persona: P, dia, km: '28', matricula: '3333CCC', motivo: 'Llevó el coche al taller' }, control.id);
+  let x = (await banco.semana(dia)).conductores.find(c => c.persona === P);
+  assert.deepEqual([x.limite, x.kmFuera, x.km, x.pendientes, x.saldo], [26.4, 50, 50, 28, -23.6], 'pendiente: no resta');
+  // Sin la llave no se aprueba; William sí.
+  await assert.rejects(justificantes.aprobarKm(id, { id: control.id, rol: 'oficina' }), e => e.status === 403);
+  await justificantes.aprobarKm(id, { id: william.id, rol: 'oficina' });
+  x = (await banco.semana(dia)).conductores.find(c => c.persona === P);
+  assert.deepEqual([x.limite, x.kmFuera, x.justificados, x.km, x.saldo, x.estado], [26.4, 50, 28, 22, 4.4, 'cerca'],
+    '«entonces hice 22 km por fuera, y me quedan 4,4 km generados para la semana»');
+  assert.equal((await banco.historia(P, dia)).semanas[0].saldo, 4.4, 'las semanas de la ficha, igual');
+  // En /justificantes sale en su pestaña, aprobada; anularla la deja de restar.
+  const cola = await justificantes.cola({ estado: 'aprobada', tipo: 'km' }, { id: william.id, rol: 'oficina' });
+  assert.deepEqual([cola.aprueba, cola.filas.length, cola.filas[0].km], [true, 1, 28]);
+  await justificantes.rechazarKm(id, { id: william.id, rol: 'oficina' }, 'No era del taller');
+  x = (await banco.semana(dia)).conductores.find(c => c.persona === P);
+  assert.equal(x.km, 50);
+  // Más justificado que km fuera: nunca por debajo de cero.
+  const otra = await kmj.poner({ conductorId: yo.id, dia, km: 80, motivo: 'Prueba de tope', usuarioId: control.id });
+  await kmj.aprobar(otra.id, { usuarioId: william.id });
+  x = (await banco.semana(dia)).conductores.find(c => c.persona === P);
+  assert.deepEqual([x.km, x.justificados], [0, 50]);
 }));
 
 // ── El desglose (18/11/2026): de dónde sale cada km de una persona ───────────
