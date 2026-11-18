@@ -17,13 +17,14 @@
   const esc = s => global.Casa.esc(s);
   let abierto = null;
 
-  function abrir({ titulo = '', subtitulo = '', html = '', alCerrar } = {}) {
+  // `ancho: 'ancha'` (18/11/2026): para una ficha con tablas. Por defecto, la de siempre.
+  function abrir({ titulo = '', subtitulo = '', html = '', alCerrar, ancho = null } = {}) {
     if (abierto) abierto.cerrar();
     const antes = document.activeElement;
     const fondo = document.createElement('div');
     fondo.className = 'tc-panel-fondo';
     const panel = document.createElement('aside');
-    panel.className = 'tc-panel tc-panel--saliendo';
+    panel.className = 'tc-panel tc-panel--saliendo' + (ancho === 'ancha' ? ' tc-panel--ancha' : '');
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
     panel.innerHTML = `

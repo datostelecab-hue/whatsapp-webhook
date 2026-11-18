@@ -852,6 +852,8 @@ body .tc-selector.tc-selector-compacto button {
   transform: translateX(0); transition: transform .22s cubic-bezier(0.23, 1, 0.32, 1);
 }
 .tc-panel--saliendo { transform: translateX(100%); }
+/* Una ficha con tablas (el Banco de KM, 18/11/2026): más ancha, solo cuando la pide quien la abre. */
+.tc-panel--ancha { width: min(56rem, 100vw); }
 .tc-panel-cabeza { display: flex; align-items: flex-start; gap: .75rem; padding: 1.1rem 1.35rem; border-bottom: 1px solid rgb(var(--tc-border)); }
 .tc-panel-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 1.1rem 1.35rem; display: flex; flex-direction: column; gap: 1.2rem; }
 .tc-panel-seccion > h4 { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--tc-muted)); margin-bottom: .45rem; }

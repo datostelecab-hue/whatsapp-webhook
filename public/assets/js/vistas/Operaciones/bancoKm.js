@@ -299,6 +299,7 @@
     const p = Panel.abrir({
       titulo: f.nombre,
       subtitulo: `${textoSemana(datos.lunes, datos.domingo)}${f.turno ? ` · ${f.turno}` : ''}`,
+      ancho: 'ancha',
       html: `<div class="grid grid-cols-3 gap-2 mb-3">
           <div class="tc-kpi" data-tono="muted"><p class="tc-kpi-etiqueta">Límite</p><p class="tc-kpi-valor">${km(f.limite)}</p></div>
           <div class="tc-kpi" data-tono="${f.estado === 'pasado' ? 'red' : f.estado === 'cerca' ? 'warn' : 'green'}"><p class="tc-kpi-etiqueta">Km fuera</p><p class="tc-kpi-valor">${km(f.km)}</p></div>
@@ -455,6 +456,7 @@
     Panel.abrir({
       titulo: placa(f.matricula),
       subtitulo: `${textoSemana(datos.lunes, datos.domingo)} · ${km(f.km)} fuera de BOLT`,
+      ancho: 'ancha',
       html: `<h3 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mb-2">De quién son</h3>
         <div class="space-y-2 mb-5">${f.personas.map(p => `<div>
             <div class="flex justify-between gap-3 text-sm"><span class="font-semibold">${esc(p.nombre)}${p.oficina ? ' <span class="text-telecab-muted font-normal">(oficina)</span>' : ''}</span>
