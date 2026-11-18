@@ -34,6 +34,7 @@ const router = express.Router();
 const actor = require('../../services/repo/actor');
 const sesion = require('../../services/sesion');
 const chat = require('./chat.service');
+const gifs = require('./gifs.service');
 const slack = require('./slack.service');
 
 const yo = async req => (req.usuario && req.usuario.id) || await actor.idDe(req);
@@ -57,6 +58,9 @@ router.get('/api/canales', responde(id => chat.canales(id)));
 router.get('/api/canales/:id', responde((id, req) => chat.ficha(id, req.params.id).then(canal => ({ canal }))));
 router.get('/api/canales/:id/mensajes', responde((id, req) => chat.mensajes(id, req.params.id, { antes: req.query.antes, despues: req.query.despues })));
 router.post('/api/canales/:id/mensajes', responde((id, req) => chat.enviar(id, req.params.id, { texto: b(req).texto, padreId: b(req).padreId, borrador: b(req).borrador })));
+// El botón de GIF (18/11/2026, con KLIPY): buscar y mandar uno de los enseñados.
+router.get('/api/gifs', responde((id, req) => gifs.buscar(id, { q: req.query.q, pagina: req.query.pagina })));
+router.post('/api/canales/:id/gif', responde((id, req) => gifs.mandar(id, req.params.id, { gifId: b(req).gifId, padreId: b(req).padreId })));
 router.get('/api/canales/:id/fijados', responde((id, req) => chat.fijados(id, req.params.id)));
 router.post('/api/canales/:id/leido', responde((id, req) => chat.leido(id, req.params.id, { hasta: b(req).hasta })));
 router.post('/api/canales', responde((id, req) => chat.crearCanal(id, b(req)).then(canal => ({ canal }))));

@@ -113,6 +113,16 @@ Lo que decidió Camilo (17/11/2026):
 
 **Ojo con el plazo**: el Slack de Telecab empezó el 03/09/2026. Si es el plan gratuito, enseña solo 90 días, y desde el **02/12/2026** lo más viejo deja de verse. Hay que migrar antes.
 
+## El botón de GIF, con KLIPY (18/11/2026)
+
+Camilo: *«¿el chat puede enviar GIF?»* (ya se podía: adjuntando el `.gif`, que sale animado) y *«ponle el botón de GIF con Tenor»*. **La API de Tenor ya no existe**: Google la apagó el 30/06/2026 (desde enero no daba claves) y se rompieron los selectores de GIF de WhatsApp, Discord, X… Camilo eligió **KLIPY**, adonde se fueron muchas.
+
+- **El botón «GIF»**, al lado del clip, en la caja de abajo y en la del hilo. Abre encima un buscador (sin escribir, los más vistos) con la rejilla; al pulsar uno, sale al momento en su propio mensaje. Firma «GIF de KLIPY».
+- **Buscar** (`GET /chat/api/gifs?q=&pagina=`) lo hace el servidor (`modules/Chat/gifs.service.js`): la clave no sale de él, las mismas búsquedas se guardan 10 minutos y a KLIPY va una huella de la persona, no su id. Contenido `rating=pg` (`KLIPY_RATING` para cambiarlo).
+- **Mandar** (`POST /chat/api/canales/:id/gif { gifId, padreId }`): solo un GIF que el servidor acaba de enseñar (se recuerdan una hora); no se descarga lo que diga el navegador. Se trae de KLIPY y se guarda como **adjunto del mensaje** (R2), igual que un fichero subido: el historial no depende de KLIPY. Con Tenor, al cerrar, se rompieron los GIF de medio internet.
+- **La clave**: `KLIPY_API_KEY` en Render, la saca Camilo en el panel de KLIPY (partner panel). Sin ella, el buscador dice que falta. La de prueba de KLIPY permite unas 100 búsquedas por minuto; la de producción se pide en su panel.
+- La respuesta de KLIPY se lee con cuidado (`file` con los tamaños `md`, `sm`, `hd`, `xs` y los formatos `gif`, `webp`): su documentación no se pudo leer entera al hacerlo. Lo que no trae un GIF https se salta.
+
 ## Notificaciones Telecab (db/265, 18/11/2026)
 
 Camilo: *«que le llegue al chat de Óscar… pero el chat de Telecab, que se llame "Notificaciones Telecab"»*. Un canal **privado**, `notificaciones-telecab`, que en la lista y en la notificación del móvil se llama **«Notificaciones Telecab»**. Ahí escribe el ERP solo: `chat.avisoDelSistema({ para, texto })` crea el canal la primera vez, mete a esas personas, escribe sin autor (firma «Telecab») con el evento **`aviso`** y las menciona, así que les llega como cualquier mención. Lo estrenan las ruedas: [[Inventario y mantenimientos]].

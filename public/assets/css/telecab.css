@@ -1387,6 +1387,31 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-chat-adjuntar:hover { background: rgb(var(--tc-gold) / .12); color: rgb(var(--tc-text)); }
 .tc-chat-adjuntar:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
 .tc-chat-caja { padding-left: .35rem; }
+/* EL BOTÓN DE GIF (18/11/2026, con KLIPY): el selector sale encima de la caja. */
+.tc-chat-gif-boton { font-size: .68rem; font-weight: 800; letter-spacing: .02em; }
+.tc-chat-gif {
+  position: absolute; left: 1.1rem; right: 1.1rem; bottom: calc(100% - .25rem); z-index: 20;
+  max-width: 26rem; max-height: min(26rem, 60vh); display: flex; flex-direction: column;
+  background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 1rem;
+  box-shadow: 0 12px 32px rgb(0 0 0 / .28); overflow: hidden;
+}
+.tc-chat-gif[hidden] { display: none; }
+.tc-panel-cuerpo .tc-chat-gif { left: 0; right: 0; }
+.tc-chat-gif-cabeza { display: flex; gap: .4rem; padding: .6rem; border-bottom: 1px solid rgb(var(--tc-border) / .7); }
+.tc-chat-gif-cabeza input {
+  flex: 1; min-width: 0; padding: .45rem .7rem; border-radius: .6rem; font-size: .85rem;
+  background: rgb(var(--tc-card2)); border: 1px solid rgb(var(--tc-border)); color: rgb(var(--tc-text));
+}
+.tc-chat-gif-cabeza input:focus-visible { outline: 2px solid rgb(var(--tc-gold) / .7); outline-offset: 1px; }
+.tc-chat-gif-cabeza button { width: 2rem; border-radius: .5rem; color: rgb(var(--tc-muted)); }
+.tc-chat-gif-cabeza button:hover { color: rgb(var(--tc-text)); background: rgb(var(--tc-card2)); }
+.tc-chat-gifs { flex: 1; overflow-y: auto; padding: .5rem; columns: 2; column-gap: .4rem; }
+.tc-chat-gifs > button { display: block; width: 100%; margin: 0 0 .4rem; padding: 0; border-radius: .55rem; overflow: hidden; break-inside: avoid; background: rgb(var(--tc-card2)); }
+.tc-chat-gifs > button img { display: block; width: 100%; height: auto; }
+.tc-chat-gifs > button:hover, .tc-chat-gifs > button:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: -2px; }
+.tc-chat-gif--mandando { opacity: .45; cursor: progress; }
+.tc-chat-gif-nota { column-span: all; padding: 1rem .5rem; text-align: center; font-size: .8rem; color: rgb(var(--tc-muted)); }
+.tc-chat-gif-pie { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem .6rem; border-top: 1px solid rgb(var(--tc-border) / .7); font-size: .68rem; color: rgb(var(--tc-muted)); }
 .tc-chat-por-subir { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .4rem; padding: 0; list-style: none; }
 .tc-chat-por-subir li {
   display: inline-flex; align-items: center; gap: .4rem; max-width: 16rem; padding: .25rem .3rem .25rem .6rem; border-radius: .55rem;

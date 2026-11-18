@@ -124,7 +124,9 @@ app.use((req, res, next) => {
     // que caen en `connect-src`, y los dibuja en un Worker creado desde un
     // blob. Sin estas dos, el mapa de flota se queda en gris.
     // OpenFreeMap: sin clave, sin cuenta y sin limite de vistas.
-    "img-src 'self' data: blob:; media-src 'self'; " +
+    // Las vistas de la rejilla de GIF del chat vienen de KLIPY (18/11/2026);
+    // el GIF que se manda se guarda aquí (R2) y se sirve desde 'self'.
+    "img-src 'self' data: blob: https://*.klipy.com; media-src 'self'; " +
     "connect-src 'self' https://tiles.openfreemap.org; " +
     "child-src 'self' blob:; " +
     "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");

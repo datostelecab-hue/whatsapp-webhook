@@ -305,10 +305,12 @@
   function escribirHtml(donde, marcador) {
     return `<form class="tc-chat-escribir" data-escribir="${donde}">
         <ul class="tc-chat-por-subir" data-por-subir hidden></ul>
+        <div class="tc-chat-gif" data-gif-caja hidden></div>
         <div class="tc-chat-caja">
           <button type="button" class="tc-chat-adjuntar" data-adjuntar title="Adjuntar ficheros (o arrástralos aquí)" aria-label="Adjuntar ficheros">
             <i class="fa-solid fa-paperclip" aria-hidden="true"></i></button>
           <input type="file" multiple hidden data-fichero>
+          <button type="button" class="tc-chat-adjuntar tc-chat-gif-boton" data-gif title="Buscar un GIF" aria-label="Buscar un GIF" aria-expanded="false">GIF</button>
           <textarea rows="1" maxlength="8000" placeholder="${esc(marcador)}" aria-label="${esc(marcador)}"></textarea>
           <button type="submit" class="tc-boton tc-boton--principal tc-boton--chico" aria-label="Enviar"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i></button>
         </div>
@@ -771,6 +773,7 @@
       ta.focus();
     }
     form.querySelector('[data-adjuntar]').addEventListener('click', () => entrada.click());
+    selectorDeGif(form, { padreId });
     entrada.addEventListener('change', () => { anadirFicheros(entrada.files); entrada.value = ''; });
     listaPorSubir.addEventListener('click', ev => {
       const q = ev.target.closest('[data-quitar-fichero]');
@@ -839,6 +842,81 @@
       }
     });
     return { anadirFicheros };
+  }
+
+  // ── EL BOTÓN DE GIF (18/11/2026, con KLIPY) ───────────────────────────────
+  // Encima de la caja: un buscador (sin escribir, los más vistos) y la rejilla.
+  // Al pulsar uno, sale al momento en su propio mensaje: el servidor lo trae de
+  // KLIPY y lo guarda como adjunto (modules/Chat/gifs.service.js).
+  function selectorDeGif(form, { padreId }) {
+    const boton = form.querySelector('[data-gif]');
+    const caja = form.querySelector('[data-gif-caja]');
+    if (!boton || !caja) return;
+    let q = '', pagina = 1, hayMas = false, reloj = null, mandando = false, pedido = 0;
+    caja.innerHTML = `<div class="tc-chat-gif-cabeza">
+        <input type="search" data-gif-q placeholder="Buscar en KLIPY…" aria-label="Buscar un GIF" autocomplete="off">
+        <button type="button" data-gif-cerrar aria-label="Cerrar" title="Cerrar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <div class="tc-chat-gifs" data-gif-rejilla aria-live="polite"></div>
+      <div class="tc-chat-gif-pie"><button type="button" class="tc-boton tc-boton--chico" data-gif-mas hidden>Más</button><span>GIF de KLIPY</span></div>`;
+    const entrada = caja.querySelector('[data-gif-q]');
+    const rejilla = caja.querySelector('[data-gif-rejilla]');
+    const mas = caja.querySelector('[data-gif-mas]');
+    const abierto = () => !caja.hidden;
+    function cerrar() { caja.hidden = true; boton.setAttribute('aria-expanded', 'false'); }
+    function abrirSel() {
+      caja.hidden = false; boton.setAttribute('aria-expanded', 'true');
+      entrada.focus();
+      if (!rejilla.children.length) cargar(true);
+    }
+    async function cargar(nuevo) {
+      const yoPedido = ++pedido;
+      if (nuevo) { pagina = 1; rejilla.innerHTML = '<p class="tc-chat-gif-nota">Buscando…</p>'; }
+      let r;
+      try {
+        r = await Api.get(`${API}/gifs?q=${encodeURIComponent(q)}&pagina=${pagina}`);
+      } catch (e) {
+        if (yoPedido === pedido) rejilla.innerHTML = `<p class="tc-chat-gif-nota">${esc(e.message || 'No se ha podido buscar')}</p>`;
+        return;
+      }
+      if (yoPedido !== pedido) return;      // ya se escribió otra cosa
+      if (nuevo) rejilla.innerHTML = '';
+      hayMas = !!r.hayMas;
+      mas.hidden = !hayMas;
+      if (nuevo && !r.gifs.length) { rejilla.innerHTML = '<p class="tc-chat-gif-nota">Ningún GIF con eso.</p>'; return; }
+      rejilla.insertAdjacentHTML('beforeend', r.gifs.map(g => `<button type="button" data-gif-id="${esc(g.id)}" title="${esc(g.titulo || 'GIF')}" aria-label="Mandar el GIF ${esc(g.titulo || '')}">
+          <img src="${esc(g.vista.url)}" alt="" loading="lazy"${g.vista.ancho && g.vista.alto ? ` width="${g.vista.ancho}" height="${g.vista.alto}"` : ''}></button>`).join(''));
+    }
+    boton.addEventListener('click', () => (abierto() ? cerrar() : abrirSel()));
+    caja.querySelector('[data-gif-cerrar]').addEventListener('click', () => { cerrar(); boton.focus(); });
+    caja.addEventListener('keydown', ev => { if (ev.key === 'Escape') { ev.stopPropagation(); cerrar(); boton.focus(); } });
+    entrada.addEventListener('keydown', ev => { if (ev.key === 'Enter') ev.preventDefault(); });
+    entrada.addEventListener('input', () => {
+      clearTimeout(reloj);
+      reloj = setTimeout(() => { q = entrada.value.trim(); cargar(true); }, 350);
+    });
+    mas.addEventListener('click', () => { if (hayMas) { pagina++; cargar(false); } });
+    document.addEventListener('click', ev => { if (abierto() && !caja.contains(ev.target) && !boton.contains(ev.target)) cerrar(); });
+    rejilla.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-gif-id]');
+      if (!b || mandando || !actual) return;
+      mandando = true;
+      b.classList.add('tc-chat-gif--mandando');
+      try {
+        const r = await Api.post(`${API}/canales/${actual.id}/gif`, { gifId: b.dataset.gifId, padreId }, { aviso: 'No se ha mandado el GIF' });
+        if (!r) return;
+        cerrar();
+        if (padreId) { await recargarHilo(); actualizarRaiz(r.mensaje.padreId); }
+        else {
+          if (!mensajes.some(x => x.id === r.mensaje.id)) mensajes.push(r.mensaje);
+          nuevosDesde = null;
+          repintarSerie({ alFinal: true });
+        }
+      } finally {
+        mandando = false;
+        b.classList.remove('tc-chat-gif--mandando');
+      }
+    });
   }
 
   // Soltar ficheros encima de la conversación (van a la caja de abajo).
