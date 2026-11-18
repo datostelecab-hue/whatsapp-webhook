@@ -74,6 +74,10 @@ async function permiso(cual, tipo, duenoId, quien) {
   const d = dueno(tipo);
   let si = false;
   try { si = !!(quien && quien.id && await d[cual](quien, duenoId)); } catch (e) {
+    // EL DUEÑO PUEDE DECIR POR QUÉ NO (18/11/2026): un error suyo con estado
+    // 4xx se enseña tal cual («es el único comprobante: sube otro antes»). Lo
+    // demás (un fallo de la base) sigue siendo un «no puedes» sin detalles.
+    if (e && e.status >= 400 && e.status < 500) throw e;
     console.error(`❌ [Adjuntos] ${tipo}.${cual}:`, e.message);
   }
   if (!si) {

@@ -68,6 +68,7 @@ adjuntos.registrarDueno('siniestro', {
 <script nonce="…">Adjuntos.montar(document.querySelector('#adjuntos'), { tipo: 'siniestro', dueno: 42, puedeQuitar: true });</script>
 ```
 
+- **El dueño puede decir por qué no** (18/11/2026): si su función lanza un error con estado 4xx, se enseña tal cual («Es el único comprobante de la remesa: sube otro antes de quitar este»). Cualquier otro fallo sigue siendo el «No puedes…» de siempre, sin detalles.
 - **El permiso lo decide el dueño, no el rol:** ni el superadmin ve los adjuntos de algo que su módulo no le deja ver. Por eso `/adjuntos` no está en el catálogo de permisos: entra cualquiera con sesión, y cada fichero se comprueba.
 - **Las rutas son las mismas para todos** (`modules/Adjuntos`):
   - `POST /adjuntos/api/:tipo/:dueno` sube un fichero;

@@ -29,6 +29,16 @@
 // EL DINERO: el movimiento de una remesa pagada con efectivo se escribe y se
 // anula en LA MISMA transacción que su estado (libro.conFirma). No se anula a
 // mano desde la ficha del conductor (recaudacion.service.anular lo para).
+//
+// EL COMPROBANTE DE PAGO, SÍ O SÍ (18/11/2026). Camilo: «obligatoriamente debe
+// de haber un comprobante de pago, puede ser en cualquier formato, pero sí o sí
+// debe de haber uno». Es el ticket o la factura de lo que pagó (foto, PDF, lo
+// que sea), con el servicio de adjuntos (R2):
+//   · no se apunta una remesa sin él: se sube antes, a un borrador de quien la
+//     apunta, y al apuntarla pasa a la remesa en la misma transacción;
+//   · no se le cambia el estado a una que no lo tenga (las que entraron del
+//     Excel): primero se sube en su ficha;
+//   · el último no se quita: se sube otro antes.
 'use strict';
 
 const crypto = require('crypto');
@@ -37,6 +47,7 @@ const libro = require('../../services/libro');
 const permisos = require('../../services/permisos');
 const cripto = require('../../services/cripto');
 const contadores = require('../../services/contadores');
+const adjuntos = require('../../services/adjuntos');
 
 const CLAVE_APROBAR = '/recaudacion/remesas/aprobar';
 const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
@@ -91,6 +102,7 @@ async function pendientes() {
 }
 
 const publica = (r, { aprueba, pendiente }) => ({
+  comprobantes: r.comprobantes || 0,
   id: r.id, conductorId: r.conductor_id, conductor: r.conductor || null, beneficiario: r.beneficiario,
   fecha: r.fecha, fechaDocumento: r.fecha_documento, concepto: r.concepto || '', cif: r.cif || '', numeroDocumento: r.numero_documento || '',
   importe: r.importe_cent / 100, estado: r.estado, estadoTexto: ETIQUETA[r.estado] || r.estado,
@@ -106,7 +118,7 @@ async function lista(ctx) {
   let filas;
   try { filas = await repo.lista(); } catch (e) { if (repo.faltaMigracion(e)) return { sinMigracion: true, filas: [] }; throw e; }
   const [aprueba, pendiente] = await Promise.all([puedeAprobar(ctx), pendientes()]);
-  return { filas: filas.map(r => publica(r, { aprueba, pendiente })), estados: ESTADOS, puedeAprobar: aprueba };
+  return { filas: filas.map(r => publica(r, { aprueba, pendiente })), estados: ESTADOS, puedeAprobar: aprueba, yo: ctx.usuarioId || null };
 }
 
 /** Para el selector: los conductores, con lo que tienen pendiente de entregar. */
@@ -187,6 +199,50 @@ async function exigirCuenta(cli, estado, ibanCifrado, conductorId) {
   throw error('Para pagarla en su cuenta falta el IBAN: ponlo en la remesa (o en su ficha)');
 }
 
+// ── El comprobante: los dueños de los adjuntos ──────────────────────────────
+const SIN_COMPROBANTE = 'Falta el comprobante de pago (el ticket o la factura, en el formato que sea): súbelo antes';
+const BORRADOR = /^(\d{1,9})-[a-z0-9]{8,40}$/;
+/** El borrador, si es de esa persona; si no, null. */
+function borradorValido(v, usuarioId) {
+  const s = String(v || '').trim().toLowerCase();
+  const m = BORRADOR.exec(s);
+  return m && Number(m[1]) === Number(usuarioId) ? s : null;
+}
+/** ¿Entra en Recaudación? (quien = { id, rol }, el de los adjuntos) */
+async function entra(quien) {
+  if (!quien || !quien.id) return false;
+  if (ADMIN_TOTAL.includes(quien.rol)) return true;
+  try { return (await permisos.clavesDe(quien.id)).has('/recaudacion'); } catch (_) { return false; }
+}
+const ctxDe = quien => ({ usuario: { rol: quien.rol }, usuarioId: quien.id });
+
+adjuntos.registrarDueno('remesa_borrador', {
+  etiqueta: 'Comprobante de una remesa sin apuntar',
+  ver: async (quien, id) => !!borradorValido(id, quien.id) && entra(quien),
+  adjuntar: async (quien, id) => !!borradorValido(id, quien.id) && entra(quien),
+  anular: async (quien, id) => !!borradorValido(id, quien.id),
+});
+adjuntos.registrarDueno('remesa', {
+  etiqueta: 'Remesa',
+  ver: entra,
+  // Sube un comprobante quien puede tocarla: quien aprueba, o cualquiera de
+  // Recaudación mientras espera aprobación.
+  adjuntar: async (quien, id) => {
+    if (!await entra(quien)) return false;
+    const r = await repo.porId(null, id);
+    if (!r || r.anulado_at) return false;
+    return r.estado === 'pendiente_aprobacion' || puedeAprobar(ctxDe(quien));
+  },
+  anular: async (quien, id) => {
+    if (!await entra(quien)) return false;
+    const r = await repo.porId(null, id);
+    if (!r || r.anulado_at) return false;
+    if (r.estado !== 'pendiente_aprobacion' && !await puedeAprobar(ctxDe(quien))) return false;
+    if (r.comprobantes <= 1) throw error('Es el único comprobante de la remesa: sube otro antes de quitar este', 409);
+    return true;
+  },
+});
+
 // ── Apuntar ─────────────────────────────────────────────────────────────────
 async function crear(d = {}, ctx) {
   const aprueba = await puedeAprobar(ctx);
@@ -199,13 +255,18 @@ async function crear(d = {}, ctx) {
     if (ESTADOS.some(e => e.codigo === d.estado)) estado = d.estado;
     else estado = ((await pendientes()).get(Number(d.conductorId)) || 0) > 0.005 ? 'efectivo_bolt' : 'pendiente_pago';
   }
+  const borrador = borradorValido(d.borrador, ctx.usuarioId);
+  if (!borrador) throw error(SIN_COMPROBANTE);
   const id = await libro.conFirma({ usuarioId: ctx.usuarioId, origen: ORIGEN, accion: 'alta', motivo: 'Remesa' }, async cli => {
+    // El comprobante, lo primero: sin él no se apunta nada.
+    if (!await repo.ficherosDeBorrador(cli, borrador, ctx.usuarioId)) throw error(SIN_COMPROBANTE);
     const o = await leerDatos(cli, d);
     const c = (await repo.conductores(cli)).find(x => x.id === o.conductorId);
     if (!c) throw error('Ese conductor no está en la plantilla', 404);
     await exigirCuenta(cli, estado, o.ibanCifrado, o.conductorId);
     const nueva = await repo.insertar(cli, { ...o, beneficiario: c.nombre, estado, creadoPor: ctx.usuarioId,
       aprobadaPor: estado !== 'pendiente_aprobacion' ? ctx.usuarioId : null });
+    await repo.pasarBorrador(cli, borrador, ctx.usuarioId, nueva);
     if (estado === 'efectivo_bolt') {
       const r = await repo.porId(cli, nueva);
       const mov = await cuadrarMovimiento(cli, r, { estado, importeCent: o.importeCent, conductorId: o.conductorId, concepto: o.concepto }, ctx.usuarioId, 'alta');
@@ -260,6 +321,7 @@ async function cambiarEstado(id, { estado, nota } = {}, ctx) {
     if (!r || r.anulado_at) throw error('Esa remesa no existe', 404);
     antes = r.estado;
     if (r.estado === estado) return;
+    if (!r.comprobantes) throw error(`${SIN_COMPROBANTE}: en su ficha, «Comprobante de pago»`);
     if ((r.estado === 'pendiente_aprobacion' || estado === 'pendiente_aprobacion') && !aprueba) {
       throw error('Aprobar una remesa (o volverla a pendiente de aprobación) es de quien aprueba las remesas', 403);
     }

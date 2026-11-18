@@ -206,7 +206,7 @@
   const DIA_LARGO = ['', 'Lunes', 'Martes', 'Miércoles (X)', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   // Los tipos de campo que son varios controles juntos: su etiqueta no puede
   // llevar `for` y nombra al grupo entero.
-  const COMPUESTOS = ['lista', 'opciones', 'items', 'semana', 'horas'];
+  const COMPUESTOS = ['lista', 'opciones', 'items', 'semana', 'horas', 'ficheros'];
 
   /** dd/mm/aaaa → aaaa-mm-dd, que es lo que entiende la base. */
   const aISO = v => {
@@ -218,7 +218,12 @@
    * Ventana pequeña para pedir unos datos. Se usa para todas las acciones de la
    * ficha en vez de repetir el mismo modal seis veces.
    *
-   * `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'semana', opciones, valor, ayuda }]
+   * `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'semana'|'ficheros', opciones, valor, ayuda }]
+   *
+   * 'ficheros' (18/11/2026): elegir uno o varios ficheros (o soltarlos encima).
+   * Devuelve la lista de File, sin subir: los sube la pantalla, que sabe a
+   * dónde (Adjuntos.subir). Con `obligatorio`, sin ninguno no se cierra.
+   * `accept` como en el <input>; `multiple: false` para uno solo.
    * Devuelve los valores, o null si se cancela.
    *
    * `textoCancelar`: el botón de cerrar dice «Cancelar», salvo que la acción ya
@@ -342,6 +347,18 @@
                 const min = c.minutos != null ? c.minutos : global.HorasMin.deHoras(c.valor);
                 campo = global.HorasMin.html({ id: 'pd-' + c.id, minutos: min,
                   clase: 'px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40' });
+              } else if (c.tipo === 'ficheros') {
+                campo = `<div id="pd-${c.id}" data-ficheros class="rounded-xl border border-dashed border-telecab-border bg-telecab-card2 p-3">
+                  <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition
+                                bg-telecab-card border-telecab-border text-telecab-muted hover:border-telecab-gold/50 hover:text-telecab-gold
+                                focus-within:ring-2 focus-within:ring-telecab-gold/40">
+                    <i class="fa-solid fa-paperclip" aria-hidden="true"></i>${c.multiple === false ? 'Elegir el fichero' : 'Elegir ficheros'}
+                    <input type="file" class="sr-only" data-input${c.multiple === false ? '' : ' multiple'}${c.accept ? ` accept="${esc(c.accept)}"` : ''}
+                           aria-label="${esc(c.etiqueta)}">
+                  </label>
+                  <span class="text-[11px] text-telecab-muted ml-1">o suéltalos aquí</span>
+                  <ul data-elegidos class="mt-2 space-y-1"></ul>
+                </div>`;
               } else if (c.tipo === 'texto-largo') {
                 // El `marcador` también aquí (21/10/2026): se pasaba en varios
                 // formularios («Obligatoria si se anula…») y no se pintaba.
@@ -392,6 +409,45 @@
           caja.setAttribute('aria-labelledby', 'pd-' + c.id + '-et');
         }
         if (c.ayuda) caja.setAttribute('aria-describedby', 'pd-' + c.id + '-ayuda');
+      });
+
+      // ── Los ficheros (18/11/2026): se eligen o se sueltan, y se quitan ──
+      campos.filter(c => c.tipo === 'ficheros').forEach(c => {
+        const caja = fondo.querySelector('#pd-' + c.id);
+        const input = caja.querySelector('[data-input]');
+        const ul = caja.querySelector('[data-elegidos]');
+        const elegidos = [];
+        caja._ficheros = elegidos;
+        const pintar = () => {
+          ul.innerHTML = elegidos.map((f, i) => `<li class="flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-file text-telecab-muted text-xs" aria-hidden="true"></i>
+              <span class="truncate flex-1" title="${esc(f.name)}">${esc(f.name)}</span>
+              <span class="text-[11px] text-telecab-muted tabular-nums">${global.Adjuntos ? esc(global.Adjuntos.tamano(f.size)) : ''}</span>
+              <button type="button" data-quitar="${i}" aria-label="Quitar ${esc(f.name)}"
+                      class="w-6 h-6 rounded-md text-telecab-muted hover:text-telecab-gold"><i class="fa-solid fa-xmark text-xs" aria-hidden="true"></i></button>
+            </li>`).join('');
+        };
+        const poner = lista => {
+          if (c.multiple === false) elegidos.length = 0;
+          [...lista].slice(0, c.multiple === false ? 1 : 20).forEach(f => elegidos.push(f));
+          pintar();
+        };
+        input.addEventListener('change', () => { poner(input.files); input.value = ''; });
+        ul.addEventListener('click', e => {
+          const b = e.target.closest('[data-quitar]');
+          if (!b) return;
+          elegidos.splice(Number(b.dataset.quitar), 1);
+          pintar();
+          input.focus();
+        });
+        caja.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); caja.classList.add('border-telecab-gold'); } });
+        caja.addEventListener('dragleave', () => caja.classList.remove('border-telecab-gold'));
+        caja.addEventListener('drop', e => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          caja.classList.remove('border-telecab-gold');
+          poner(e.dataTransfer.files);
+        });
       });
 
       // ── El selector de la casa: grupo arriba, casos debajo ──────────────
@@ -601,6 +657,8 @@
                 comentario: f.querySelector('[data-comentario]').value.trim(),
               }));
             salida[c.id] = marcados;
+          } else if (c.tipo === 'ficheros') {
+            salida[c.id] = [...(el._ficheros || [])];
           } else if (c.tipo === 'horas') {
             const r = global.HorasMin.leer(el);
             salida[c.id] = r.horas;
@@ -627,6 +685,8 @@
             if ((salida[c.id] || []).some(x => !x.comentario)) {
               fallos.push('Escribe qué te ha dicho en cada una de las que marcas.');
             }
+          } else if (c.tipo === 'ficheros') {
+            if (c.obligatorio && !(salida[c.id] || []).length) fallos.push(`Adjunta «${c.etiqueta}».`);
           } else if (c.tipo === 'semana' && c.exactos && (salida[c.id] || []).length !== c.exactos) {
             // CUÁNTOS DÍAS, EXACTOS (06/11/2026): los que libra en unas
             // vacaciones son dos, ni uno ni tres. Se queda abierta y lo dice.

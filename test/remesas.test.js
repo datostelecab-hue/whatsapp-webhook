@@ -10,7 +10,9 @@
 //   · con la base: pagada con su efectivo baja lo que debe entregar (y no toca
 //     el cajón); cambiar de estado o anular lo deshace; quien no aprueba la deja
 //     pendiente de aprobación y no la aprueba; el movimiento no se anula a mano;
-//     el Excel entra una vez, sin tocar la recaudación.
+//     el Excel entra una vez, sin tocar la recaudación;
+//   · el comprobante de pago (18/11/2026), sí o sí: sin él no se apunta ni se
+//     le cambia el estado, pasa del borrador a la remesa y el último no se quita.
 'use strict';
 
 const { conBase } = require('./apoyo/base');   // primero: sustituye services/db
@@ -23,6 +25,7 @@ const recaudacion = require('../modules/Administracion/recaudacion.service');
 const recRepo = require('../modules/Administracion/recaudacion.repo');
 const permisos = require('../services/permisos');
 const push = require('../services/notificacionesPush');
+const adjuntos = require('../services/adjuntos');
 
 const credAntes = process.env.CRED_KEY;
 const enviar = push.enviar;
@@ -53,6 +56,17 @@ test('del Excel: el conductor por todas sus palabras (y solo si es uno), el esta
   assert.throws(() => remesas._ibanLimpio('12345'), /IBAN/);
 });
 
+/** Un comprobante subido al borrador de alguien (la fila; los bytes no hacen falta aquí). */
+let nComprobante = 0;
+async function comprobante(consulta, usuarioId) {
+  const borrador = `${usuarioId}-${(++nComprobante).toString(16).padStart(8, '0')}abcd`;
+  await consulta(
+    `INSERT INTO adjunto (dueno_tipo, dueno_id, almacen, ruta, nombre, mime, bytes, sha256, creado_por)
+     VALUES ('remesa_borrador', $1, 'disco', $2, 'ticket.jpg', 'image/jpeg', 1234, $3, $4)`,
+    [borrador, `pruebas/remesas/${borrador}`, 'a'.repeat(64), usuarioId]);
+  return borrador;
+}
+
 async function escenario({ fabrica, consulta }) {
   const jefe = await fabrica.usuario({ nombre: 'Aprueba' });
   await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/recaudacion'), ($1, '/recaudacion/remesas/aprobar')`, [jefe.id]);
@@ -76,10 +90,24 @@ test('con la base: pagada con su efectivo de BOLT baja lo que debe entregar (no 
   assert.equal(await p.debe(), 100);
   const cajon = await p.efectivo();
 
+  // EL COMPROBANTE, SÍ O SÍ: sin él, o con el borrador de otro, no se apunta.
+  const datos = { conductorId: p.c.id, importe: '30,50', concepto: 'Combustible', fechaDocumento: '2026-11-10', numeroDocumento: 'FS80', cif: 'B85509669' };
+  await assert.rejects(remesas.crear(datos, p.jefe), /comprobante/);
+  await assert.rejects(remesas.crear({ ...datos, borrador: `${p.jefe.usuarioId}-00000000vacio` }, p.jefe), /comprobante/, 'un borrador sin ficheros');
+  await assert.rejects(remesas.crear({ ...datos, borrador: await comprobante(h.consulta, p.caja.usuarioId) }, p.jefe), /comprobante/, 'el borrador de otro');
+  assert.equal(await p.debe(), 100, 'nada apuntado');
+
   // Quien aprueba, sin elegir estado: tiene efectivo por entregar → con él («sí o sí»).
-  const r = await remesas.crear({ conductorId: p.c.id, importe: '30,50', concepto: 'Combustible', fechaDocumento: '2026-11-10', numeroDocumento: 'FS80', cif: 'B85509669' }, p.jefe);
+  const b = await comprobante(h.consulta, p.jefe.usuarioId);
+  const r = await remesas.crear({ ...datos, borrador: b }, p.jefe);
   assert.equal(r.estado, 'efectivo_bolt');
   assert.equal(await p.debe(), 69.5, 'debe 30,50 € menos');
+  const pasado = (await h.consulta(`SELECT id, dueno_tipo, dueno_id FROM adjunto WHERE ruta = $1`, [`pruebas/remesas/${b}`])).rows[0];
+  assert.deepEqual([pasado.dueno_tipo, pasado.dueno_id], ['remesa', String(r.id)], 'el comprobante pasa del borrador a la remesa');
+  assert.equal((await remesas.lista(p.jefe)).filas[0].comprobantes, 1);
+  // El último no se quita (y se dice por qué).
+  const jefe = { id: p.jefe.usuarioId, rol: 'oficina' };
+  await assert.rejects(adjuntos.anular(pasado.id, 'Me equivoqué', jefe), e => e.status === 409 && /único comprobante/.test(e.message));
   assert.equal(await p.efectivo(), cajon, 'el cajón no se mueve');
   const mov = (await h.consulta(`SELECT id, tipo, importe FROM recaudacion_movimiento WHERE tipo = 'remesa' AND anulado_at IS NULL`)).rows;
   assert.equal(mov.length, 1);
@@ -103,7 +131,8 @@ test('con la base: pagada con su efectivo de BOLT baja lo que debe entregar (no 
 
 test('con la base: quien no aprueba la deja pendiente de aprobación y no la aprueba; en su cuenta hace falta un IBAN', () => conBase(async h => {
   const p = await escenario(h);
-  const r = await remesas.crear({ conductorId: p.c.id, importe: 12, concepto: 'Parking', estado: 'efectivo_bolt' }, p.caja);
+  const r = await remesas.crear({ conductorId: p.c.id, importe: 12, concepto: 'Parking', estado: 'efectivo_bolt',
+    borrador: await comprobante(h.consulta, p.caja.usuarioId) }, p.caja);
   assert.equal(r.estado, 'pendiente_aprobacion', 'aunque pida otro estado');
   assert.equal(await p.debe(), 100, 'esperando aprobación no baja nada');
   await assert.rejects(remesas.cambiarEstado(r.id, { estado: 'pendiente_pago' }, p.caja), e => e.status === 403);
@@ -144,5 +173,12 @@ test('con la base: el Excel entra una vez, con su estado, su conductor y sin toc
   assert.equal(filas.find(f => f.importe === 20).iban, '•••• 1655');
   assert.equal(filas.find(f => f.importe === 5.8).concepto.toLowerCase().includes('lavado'), true, 'el concepto, del paréntesis');
   assert.equal(await p.debe(), 100, 'lo del Excel no toca la recaudación');
+  // Las del Excel no traen comprobante: salen sin él y no se les cambia el estado hasta subirlo.
+  assert.ok(filas.every(f => f.comprobantes === 0));
+  const cinco = filas.find(f => f.importe === 5.8);
+  await assert.rejects(remesas.cambiarEstado(cinco.id, { estado: 'nomina' }, p.jefe), /comprobante/);
+  const b = await comprobante(h.consulta, p.jefe.usuarioId);
+  await h.consulta(`UPDATE adjunto SET dueno_tipo = 'remesa', dueno_id = $2 WHERE dueno_id = $1`, [b, String(cinco.id)]);
+  await remesas.cambiarEstado(cinco.id, { estado: 'nomina' }, p.jefe);
   assert.equal((await remesas.importar({ base64, confirmar: true }, p.jefe)).resumen.nuevas, 0, 'dos veces, no se repite');
 }));

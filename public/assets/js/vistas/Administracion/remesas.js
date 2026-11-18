@@ -8,6 +8,12 @@
 // servidor (modules/Administracion/remesas.service.js); aquí se pintan.
 //
 // También las pestañas de la pantalla: «Efectivo» (lo de siempre) y «Remesas».
+//
+// EL COMPROBANTE DE PAGO, SÍ O SÍ (18/11/2026). Camilo: «obligatoriamente debe
+// de haber un comprobante de pago, puede ser en cualquier formato». Al apuntarla
+// se elige el fichero (o varios) en el formulario; se suben a un borrador y la
+// remesa se apunta con él. Las que no lo tienen (las del Excel) salen en rojo, y
+// en su ficha se sube.
 (function (global) {
   'use strict';
   const esc = Casa.esc;
@@ -22,7 +28,8 @@
     efectivo_bolt: 'tc-pastilla--verde', nomina: 'tc-pastilla--verde', cuenta: 'tc-pastilla--verde',
   };
   const pastilla = f => `<span class="tc-pastilla ${TONO[f.estado] || ''}">${esc(f.estadoTexto)}</span>`;
-  let lst = null, ESTADOS = [], APRUEBA = false;
+  const sinComprobante = '<span class="tc-pastilla tc-pastilla--rojo" title="Súbelo en su ficha: sin él no se le puede cambiar el estado">sin comprobante</span>';
+  let lst = null, ESTADOS = [], APRUEBA = false, YO = null;
 
   // ── Las pestañas ───────────────────────────────────────────────────────────
   function verPestana(p) {
@@ -63,6 +70,7 @@
     }
     ESTADOS = primero.estados || [];
     APRUEBA = !!primero.puedeAprobar;
+    YO = primero.yo || null;
     const mes = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date()).slice(0, 7);
     const suma = xs => xs.reduce((s, f) => s + f.importe, 0);
     lst = Listado.montar({
@@ -88,6 +96,8 @@
             pie: 'con efectivo, en nómina o en su cuenta' },
           { etiqueta: 'Con su efectivo de BOLT', valor: eur(suma(por('efectivo_bolt'))), tono: 'muted',
             pie: 'lo que se descontó de lo que entregan', filtro: { id: 'estado', valor: 'efectivo_bolt' } },
+          { etiqueta: 'Sin comprobante', valor: filas.filter(f => !f.comprobantes).length, tono: filas.some(f => !f.comprobantes) ? 'red' : 'muted',
+            pie: 'súbelo en su ficha', filtro: { id: 'comprobante', valor: 'sin' } },
         ];
       },
       filtros: [{
@@ -98,6 +108,10 @@
         id: 'sin', etiqueta: 'Conductor', textoTodos: 'Con y sin conductor',
         opciones: filas => [{ valor: 'sin', texto: 'Sin conductor (del Excel)', cuenta: filas.filter(f => !f.conductorId).length }].filter(o => o.cuenta),
         pasa: f => !f.conductorId,
+      }, {
+        id: 'comprobante', etiqueta: 'Comprobante', textoTodos: 'Con y sin comprobante',
+        opciones: filas => [{ valor: 'sin', texto: 'Sin comprobante de pago', cuenta: filas.filter(f => !f.comprobantes).length }].filter(o => o.cuenta),
+        pasa: f => !f.comprobantes,
       }],
       claseFila: f => (f.estado === 'pendiente_aprobacion' ? 'bg-telecab-warn/5' : ''),
       columnas: [
@@ -109,7 +123,8 @@
           pinta: (v, f) => `${esc(f.concepto || '—')}${f.numeroDocumento || f.fechaDocumento
             ? `<span class="block text-[11px] text-telecab-muted">${esc([f.fechaDocumento ? `ticket del ${dia(f.fechaDocumento)}` : '', f.numeroDocumento ? `nº ${f.numeroDocumento}` : '', f.cif].filter(Boolean).join(' · '))}</span>` : ''}` },
         { titulo: 'Importe', campo: 'importe', clase: 'text-right tabular-nums whitespace-nowrap', pinta: v => `<b>${eur(v)}</b>` },
-        { titulo: 'Estado', campo: 'estado', valor: f => f.estadoTexto, pinta: (v, f) => pastilla(f) },
+        { titulo: 'Estado', campo: 'estado', valor: f => f.estadoTexto,
+          pinta: (v, f) => `<span class="inline-flex flex-wrap gap-1">${pastilla(f)}${f.comprobantes ? '' : sinComprobante}</span>` },
       ],
       acciones: [
         { texto: 'Nueva remesa', icono: 'fa-plus', onClick: () => nueva() },
@@ -145,7 +160,12 @@
   async function nueva() {
     let cs;
     try { cs = await conductores(); } catch (e) { Dialogo.aviso({ titulo: 'No se puede', texto: e.message, tono: 'error' }); return; }
-    const campos = [{ id: 'conductorId', etiqueta: 'Conductor', tipo: 'lista', obligatorio: true, opciones: opcionesConductor(cs) }, ...camposDatos()];
+    const campos = [
+      { id: 'conductorId', etiqueta: 'Conductor', tipo: 'lista', obligatorio: true, opciones: opcionesConductor(cs) },
+      { id: 'comprobante', etiqueta: 'Comprobante de pago', tipo: 'ficheros', obligatorio: true,
+        ayuda: 'El ticket o la factura de lo que pagó: foto, PDF o el formato que sea. Sin él no se apunta.' },
+      ...camposDatos(),
+    ];
     if (APRUEBA) {
       campos.push({ id: 'estado', etiqueta: 'Estado', tipo: 'lista', obligatorio: true, valor: 'auto',
         opciones: [{ valor: 'auto', texto: 'El que toque: con su efectivo si tiene por entregar; si no, pendiente de pago' },
@@ -157,10 +177,30 @@
         : 'Queda pendiente de aprobación: la aprueba quien tiene esa llave.',
     });
     if (!v) return;
-    const r = await Api.post(API, { ...v, iban: v.iban || undefined }, { aviso: 'No se ha podido apuntar' });
+    // El comprobante, primero: a un borrador mío. Si no sube, no se apunta nada.
+    const borrador = nuevoBorrador();
+    const ficheros = v.comprobante || [];
+    delete v.comprobante;
+    try {
+      for (const [i, fichero] of ficheros.entries()) {
+        Dialogo.hecho(ficheros.length > 1 ? `Subiendo el comprobante (${i + 1} de ${ficheros.length})…` : 'Subiendo el comprobante…', { tono: 'info', segundos: 2 });
+        await Adjuntos.subir({ tipo: 'remesa_borrador', dueno: borrador, fichero });
+      }
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se ha subido el comprobante', texto: `${e.message} La remesa no se ha apuntado.`, tono: 'error' });
+      return;
+    }
+    const r = await Api.post(API, { ...v, iban: v.iban || undefined, borrador }, { aviso: 'No se ha podido apuntar' });
     if (!r) return;
     Dialogo.hecho(`Remesa apuntada · ${(ESTADOS.find(e => e.codigo === r.estado) || {}).etiqueta || ''}`);
     recargar();
+  }
+
+  /** «<mi id>-<al azar>»: donde se sube el comprobante antes de apuntar la remesa. */
+  function nuevoBorrador() {
+    const b = new Uint8Array(12);
+    crypto.getRandomValues(b);
+    return `${YO}-${[...b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
   }
 
   async function editar(f) {
@@ -232,7 +272,8 @@
     const p = Panel.abrir({
       titulo: `${eur(f.importe)} · ${f.conductor || f.beneficiario}`,
       subtitulo: `Remesa nº ${f.id} · ${f.concepto || ''}`,
-      html: `<div class="flex flex-wrap items-center gap-2 mb-3">${pastilla(f)}${f.conMovimiento ? '<span class="text-xs text-telecab-muted">descontada de lo que entrega</span>' : ''}</div>
+      html: `<div class="flex flex-wrap items-center gap-2 mb-3">${pastilla(f)}${f.comprobantes ? '' : sinComprobante}${f.conMovimiento ? '<span class="text-xs text-telecab-muted">descontada de lo que entrega</span>' : ''}</div>
+        ${f.comprobantes ? '' : `<p class="mb-3 rounded-xl border border-telecab-red/40 bg-telecab-red/5 px-3 py-2 text-sm">Falta el comprobante de pago. Súbelo abajo: sin él no se le puede cambiar el estado.</p>`}
         <div class="text-sm">
           ${fila('Fecha', dia(f.fecha))}
           ${fila('Conductor', f.conductorId ? esc(f.conductor) : `${esc(f.beneficiario)} <span class="tc-pastilla tc-pastilla--rojo">sin conductor</span>`)}
@@ -249,7 +290,14 @@
           ${f.puedeTocar ? '<button type="button" class="tc-boton tc-boton--chico" data-editar><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar</button>' : ''}
           ${f.puedeTocar || APRUEBA ? `<button type="button" class="tc-boton tc-boton--chico tc-boton--principal" data-estado><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>${f.estado === 'pendiente_aprobacion' && APRUEBA ? 'Aprobar' : 'Cambiar estado'}</button>` : ''}
           ${APRUEBA || f.estado === 'pendiente_aprobacion' ? '<button type="button" class="tc-boton tc-boton--chico tc-boton--peligro" data-anular>Anular</button>' : ''}
-        </div>`,
+        </div>
+        <div class="mt-4" data-comprobante></div>`,
+    });
+    // El comprobante de pago: verlo, subir otro, quitar uno que sobre (el último no).
+    let tenia = f.comprobantes;
+    Adjuntos.montar(p.cuerpo.querySelector('[data-comprobante]'), {
+      tipo: 'remesa', dueno: f.id, titulo: 'Comprobante de pago', puedeAdjuntar: f.puedeTocar, puedeQuitar: f.puedeTocar,
+      alCambiar: lista => { if ((lista.length > 0) !== (tenia > 0)) recargar(); tenia = lista.length; f.comprobantes = lista.length; },
     });
     const en = (sel, fn) => { const b = p.cuerpo.querySelector(sel); if (b) b.addEventListener('click', () => fn(f, b)); };
     en('[data-editar]', editar);

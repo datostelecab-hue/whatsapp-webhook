@@ -19,7 +19,8 @@ const COLUMNAS = `
   r.creado_por, r.creado_at, r.aprobada_por, r.aprobada_at, r.actualizado_at, r.anulado_at, r.anulado_motivo,
   CASE WHEN c.id IS NOT NULL THEN COALESCE(NULLIF(btrim(c.nombre_bolt), ''), ${NOMBRE('c')}) END AS conductor,
   c.iban_cifrado AS iban_ficha,
-  ${NOMBRE_USUARIO('uc')} AS creado_por_nombre, ${NOMBRE_USUARIO('ua')} AS aprobada_por_nombre`;
+  ${NOMBRE_USUARIO('uc')} AS creado_por_nombre, ${NOMBRE_USUARIO('ua')} AS aprobada_por_nombre,
+  (SELECT count(*) FROM adjunto a WHERE a.dueno_tipo = 'remesa' AND a.dueno_id = r.id::text AND a.anulado_at IS NULL)::int AS comprobantes`;
 const DESDE = `
   FROM recaudacion_remesa r
   LEFT JOIN conductor c ON c.id = r.conductor_id
@@ -27,6 +28,7 @@ const DESDE = `
   LEFT JOIN usuario ua ON ua.id = r.aprobada_por`;
 
 const aFila = x => x && ({ ...x, id: Number(x.id), conductor_id: x.conductor_id == null ? null : Number(x.conductor_id),
+  comprobantes: Number(x.comprobantes) || 0,
   movimiento_id: x.movimiento_id == null ? null : Number(x.movimiento_id), importe_cent: Number(x.importe_cent) });
 
 /** Las vivas (sin anular), las más nuevas primero. */
@@ -114,9 +116,38 @@ async function cuantasPorAprobar() {
   return r.rows[0].n;
 }
 
+// ── EL COMPROBANTE DE PAGO (18/11/2026) ─────────────────────────────────────
+// Se sube antes de apuntarla, a un borrador de quien la apunta
+// ('remesa_borrador', «<su id>-<al azar>»), y al apuntarla pasa a la remesa
+// ('remesa', su id), en la misma transacción. El libro apunta el cambio de dueño.
+
+/** Los ficheros del borrador de alguien (y los bloquea hasta que acabe la transacción). */
+async function ficherosDeBorrador(cli, borrador, autorId) {
+  const r = await q(cli,
+    `SELECT id FROM adjunto
+      WHERE dueno_tipo = 'remesa_borrador' AND dueno_id = $1 AND creado_por = $2 AND anulado_at IS NULL
+      FOR UPDATE`, [borrador, autorId]);
+  return r.rows.length;
+}
+/** Los ficheros del borrador pasan a la remesa. */
+async function pasarBorrador(cli, borrador, autorId, remesaId) {
+  const r = await q(cli,
+    `UPDATE adjunto SET dueno_tipo = 'remesa', dueno_id = $3
+      WHERE dueno_tipo = 'remesa_borrador' AND dueno_id = $1 AND creado_por = $2 AND anulado_at IS NULL
+      RETURNING id`, [borrador, autorId, String(remesaId)]);
+  return r.rows.length;
+}
+/** Cuántos comprobantes tiene una remesa (sin los quitados). */
+async function comprobantes(cli, remesaId) {
+  const r = await q(cli,
+    `SELECT count(*)::int AS n FROM adjunto
+      WHERE dueno_tipo = 'remesa' AND dueno_id = $1 AND anulado_at IS NULL`, [String(remesaId)]);
+  return r.rows[0].n;
+}
+
 const faltaMigracion = e => e && (e.code === '42P01' || /recaudacion_remesa/.test(String(e.message || '')));
 
 module.exports = {
   lista, porId, insertar, actualizar, apuntarMovimiento, anularMovimiento, conductores, ibanDeConductor,
-  origenesYa, aprobadores, cuantasPorAprobar, faltaMigracion,
+  origenesYa, aprobadores, cuantasPorAprobar, faltaMigracion, ficherosDeBorrador, pasarBorrador, comprobantes,
 };

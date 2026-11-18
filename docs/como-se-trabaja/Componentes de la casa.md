@@ -79,7 +79,9 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 { id, etiqueta, tipo, valor, ayuda, grupo, obligatorio, marcador, opciones, max }
 ```
 
-`tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista`, `opciones` u `horas`.
+`tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista`, `opciones`, `horas` o `ficheros`.
+
+- **`ficheros`** (18/11/2026, para el comprobante de las remesas): un botón para elegir uno o varios ficheros, o soltarlos encima, con la lista de los elegidos y su ✕. Devuelve la lista de `File` **sin subir**: los sube la pantalla, que sabe a qué dueño (`Adjuntos.subir`, ver [[Adjuntos]]). Con `obligatorio`, sin ninguno la ventana no se cierra («Adjunta «…»»). `accept` como en el `<input>`; `multiple: false` para uno solo. Si lo que se apunta no puede existir sin el fichero, súbelo antes a un borrador de quien lo apunta y que el servidor lo pase al dueño en la misma transacción (así lo hacen el chat y las remesas).
 
 - **`horas`** (29/10/2026) son dos casillas, horas y minutos, con lo que da en decimal al lado («= 1,33 h»). Lo que trae puesto va en `minutos` (o en `valor`, en horas decimales) y devuelve las horas en decimal **como cadena** y sin redondear —`'0.5'` para 0 h 30 min, `''` si se deja en blanco—, así que `v.horas || ''` sigue distinguiendo «sin horas» de «0 h». Valida él (minutos de 0 a 59, hasta 24 h) y lo dice en la ventana. Para un formulario propio, el mismo campo es `HorasMin` (`horasMin.js`, cargado en `layout-gestion`). Por él el formulario va con `novalidate`: los errores los dice la ventana, no el globo del navegador.
 

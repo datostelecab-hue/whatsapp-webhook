@@ -197,6 +197,15 @@ Una **remesa** es un gasto que pagó el conductor y que la casa le devuelve (com
 - **El IBAN va cifrado** (`services/cripto.js`, como el de la ficha) y en la lista sale enmascarado («•••• 1266»); entero, solo a quien aprueba, al pulsar «Ver entero».
 - **Las cuentas** llevan el tipo `remesa` en todas partes: el cuadro (resta en «a recaudar»), el cuadre de caja (en el pendiente, no en el efectivo), la ficha del conductor, su portal («Gasto que te devolvimos (remesa)») y una comprobación más de «¿Cuadra?» (las remesas, tabla contra caja).
 
+### El comprobante de pago, sí o sí (18/11/2026)
+
+Camilo: *«Una cosa en remesas muy importante, obligatoriamente debe de haber un comprobante de pago, puede ser en cualquier formato, pero sí o sí debe de haber uno»*. Es el ticket o la factura de lo que pagó el conductor (foto, PDF, lo que sea), con la pieza de [[Adjuntos]] (R2):
+
+- **No se apunta una remesa sin él.** En «Nueva remesa» el campo «Comprobante de pago» es obligatorio (`tipo: 'ficheros'` de `Dialogo.formulario`). La pantalla lo sube primero a un borrador de quien la apunta (dueño `remesa_borrador`, «<su id>-<al azar>») y apunta la remesa con él; el servidor comprueba que el borrador es suyo y tiene algún fichero, y lo pasa a la remesa (dueño `remesa`) **en la misma transacción**. Si la subida falla, no se apunta nada.
+- **No se le cambia el estado a una que no lo tenga** (las que entraron del Excel): salen con «sin comprobante» en rojo, una cifra arriba que las filtra, y en su ficha se sube.
+- **El último no se quita**: se sube otro antes («Es el único comprobante de la remesa…»).
+- **Quién**: lo ve quien entra en Recaudación; sube y quita quien puede tocar la remesa (quien aprueba, o cualquiera mientras espera aprobación).
+
 ### El Excel, una vez
 
 Camilo: *«Sí, subiendo el Excel una vez»*. Lleva IBAN: no va en una migración (el repositorio es público). **«Importar el Excel»** (quien aprueba) lee la hoja **«Remesas»** (la de Madrid; «CARNET VTC» no, que es dinero que el conductor debe a la casa, y Barcelona tampoco por ahora) y primero dice lo que haría:
