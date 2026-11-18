@@ -47,6 +47,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 ## Los módulos — lo que se ve y se usa
 
 - **[[Administracion]]** — Hoy este módulo es, en la práctica, recaudación: el dinero que el conductor debe a la casa. Desde el 16/10/2026 también lo que pagan por transferencia, con su ID (db/208).
+- **[[Banco de KM]]** — Los km fuera de BOLT de cada conductor en la semana contra su límite (17,5 km por día que le toca o que sale), y de quién son los de cada matrícula.
 - **[[Auditoria de flota]]** — Compara los kilómetros que hizo el coche con lo que ese coche facturó en BOLT, y reparte cada metro según en qué estado estaba el conductor cuando lo recorrió.
 - **[[Bitacora]]** — El calendario de la plantilla: qué hizo cada persona cada día —cuántas horas, si libró, si estaba de vacaciones o de baja, si hay una J puesta—.
 - **[[Portal de conductores]]** — conductorestelecab.es (19/10/2026): cada conductor ve desde el móvil sus turnos de hoy a 7 días y su puntuación semana a semana. Entra con su DNI y un código que le llega al email.

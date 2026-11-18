@@ -288,8 +288,17 @@ function textoFichaje(lista) {
 /**
  * El reporte de un día. `key`: 0=Hoy, 1=Ayer, 2=Hace 2, 3=Hace 3, o una fecha
  * ISO (AAAA-MM-DD), que es como se comprueba con un día pasado.
+ *
+ * `conKmFuera` (el banco de KM, 18/11/2026): quien libraba y no trabajó, pero
+ * se le apuntan km fuera de BOLT (el coche anduvo y él fue el último en BOLT
+ * con él), también sale. El Excel no lo pide: ahí no es una falta.
+ *
+ * Cada fila lleva además `persona` (quién es: 'c<id>' el conductor, 'u<id>'
+ * alguien de la oficina, 'b<uuid>' una cuenta de BOLT sin ficha, 't<teléfono>'
+ * quien fichó sin ficha), `conductorId` y `kmFueraPorCoche` (matrícula → km
+ * fuera de BOLT, sin los coches de otra sede): de ahí sale el banco de KM.
  */
-async function reporteDia(key) {
+async function reporteDia(key, { conKmFuera = false } = {}) {
   const { str: fecha, iso, idx } = /^\d{4}-\d{2}-\d{2}$/.test(String(key)) ? fechaDeIso(String(key)) : fechaDeClave(key);
   const rutas = require('../../services/flotaViva/rutas');
   const repoJust = require('../../services/repo/justificantes');
@@ -376,6 +385,17 @@ async function reporteDia(key) {
     const m = restaDe.get(k);
     m.set(x.matricula, r1((m.get(x.matricula) || 0) + (Number(x.km_fuera) || 0)));
   }));
+  /** Los km fuera de BOLT de una actividad, coche a coche (sin los de otra sede). */
+  const fueraPorCoche = a => {
+    const o = {};
+    Object.entries(a.kmPorCoche || {}).forEach(([mat, k]) => {
+      const km = Number(k.kmFuera) || 0;
+      if (km > 0 && !otraSede.get(normPlaca(mat))) o[mat] = r1((o[mat] || 0) + km);
+    });
+    return o;
+  };
+  const sumarCoches = (a, b) => { const o = { ...(a || {}) }; Object.entries(b || {}).forEach(([m, k]) => { o[m] = r1((o[m] || 0) + k); }); return o; };
+
   /** La actividad con sus km de fuera ya sin lo que se lleva el fichaje. */
   const conResta = (a, codigo) => {
     const m = restaDe.get(`${codigo}|${a.uuid}`);
@@ -437,6 +457,7 @@ async function reporteDia(key) {
       // km por bueno. Lo cuadra Tráfico, que conoce el apaño del taller.
       revisar: !!(a.matriculas && a.matriculas.length) && !a.km && !a.kmFuera && (a.minutos || 0) > 0,
       just: cid ? justPorId.get(cid) : null,
+      porCoche: fueraPorCoche(a),
     };
     // Los km de un coche de Barcelona no cuentan: ver `apartarOtraSede`.
     apartarOtraSede(fila, a, otraSede);
@@ -459,6 +480,7 @@ async function reporteDia(key) {
     f.kmDesc = soloOtra || Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10;
     f.revisar = revisar;
     f.otraSede = soloOtra;
+    f.porCoche = sumarCoches(f.porCoche, fila.porCoche);
     if (fila.kmAparte) {
       f.kmAparte = f.kmAparte
         ? { sede: f.kmAparte.sede, matriculas: [...new Set([...f.kmAparte.matriculas, ...fila.kmAparte.matriculas])],
@@ -529,6 +551,7 @@ async function reporteDia(key) {
         return;
       }
       kf += k;
+      if (k > 0) fila.porCoche = sumarCoches(fila.porCoche, { [x.matricula]: r1(k) });
       if (x.hay_can) can = true;
       if (x.hay_gps) gps = true;
     });
@@ -573,9 +596,11 @@ async function reporteDia(key) {
     });
   }
 
-  // Quien libraba y no trabajó no sale en el reporte: no es una falta.
+  // Quien libraba y no trabajó no sale en el reporte: no es una falta. Para el
+  // banco de KM sí, si se le apuntan km fuera de BOLT (`conKmFuera`).
   const bruto = [...filasPorId.values(), ...sueltos]
-    .filter(f => f.horas > 0 || f.debiaSalir || f.just || (f.fichajes && f.fichajes.length));
+    .filter(f => f.horas > 0 || f.debiaSalir || f.just || (f.fichajes && f.fichajes.length)
+      || (conKmFuera && typeof f.kmDesc === 'number' && f.kmDesc > 0));
 
   // ORGANIZADO POR TURNO. Tráfico lee el reporte por turnos, no en una lista
   // de 138 nombres mezclados: primero el bloque de DÍA, luego el de NOCHE, luego
@@ -592,6 +617,12 @@ async function reporteDia(key) {
   const filas = orden.map((f, i) => {
     const comun = {
       nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas,
+      // Quién es y sus km fuera coche a coche (el banco de KM, 18/11/2026).
+      persona: f.conductorId ? `c${f.conductorId}`
+        : (f.uuids && f.uuids.length) ? `b${f.uuids[0]}`
+        : (f.fichajes && f.fichajes.length) ? duenoFichaje(f.fichajes[0]) : `n${f.nombre}`,
+      conductorId: f.conductorId || null,
+      kmFueraPorCoche: f.porCoche || {},
       // null cuando no hay promedio: alguien recién dado de alta, o un NN sin
       // ficha. Se deja vacío en vez de poner un cero que parecería un suspenso.
       promedioMes: (f.conductorId && (prom.get(Number(f.conductorId)) || {}).horas) ?? null,

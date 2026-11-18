@@ -1,0 +1,29 @@
+<%#
+  EL BANCO DE KM (db/267, 18/11/2026)
+  Los km fuera de BOLT de cada conductor en la semana, contra su límite: 17,5 km
+  (el parámetro banco_km.km_dia) por cada día que le tocaba en el planificador
+  o que salió sin tocarle. Y las matrículas, con quién les hizo esos km.
+  Servicio: modules/Operaciones/bancoKm.service.js
+%>
+<div class="px-4 lg:px-6 pt-4 lg:pt-6">
+  <div class="flex flex-wrap items-end gap-3">
+    <div id="bk-pestanas" aria-label="Banco de KM"></div>
+    <div class="ml-auto flex flex-wrap items-center gap-1.5 pb-1.5" role="group" aria-label="Semana">
+      <button type="button" id="bk-ant" class="tc-boton tc-boton--chico" aria-label="Semana anterior" title="Semana anterior">
+        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+      <span id="bk-semana" class="text-sm font-semibold tabular-nums px-2 min-w-[13rem] text-center" aria-live="polite">Cargando…</span>
+      <button type="button" id="bk-sig" class="tc-boton tc-boton--chico" aria-label="Semana siguiente" title="Semana siguiente">
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+      <button type="button" id="bk-recalcular" class="tc-boton tc-boton--chico"
+              title="Vuelve a calcular las jornadas cerradas de esta semana (por ejemplo, después de corregir un fichaje)">
+        <i class="fa-solid fa-rotate" aria-hidden="true"></i>Recalcular</button>
+    </div>
+  </div>
+  <p id="bk-aviso" class="hidden mt-3 rounded-xl border px-3 py-2 text-sm"></p>
+</div>
+<div id="bk-conductores"></div>
+<div id="bk-coches" class="hidden"></div>
+
+<script src="<%= est('/assets/js/pestanas.js') %>"></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Operaciones/bancoKm.js') %>"></script>

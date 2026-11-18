@@ -149,6 +149,8 @@ const CATALOGO = [
   { grupo: 'Operaciones', items: [
     { clave: '/operaciones', etiqueta: 'Alertas Mapon', hijos: [
       { clave: '/operaciones/auditoria', etiqueta: 'Auditoría flota' },
+      // El banco de KM (db/267, 18/11/2026): los km fuera de BOLT de cada uno con su límite.
+      { clave: '/operaciones/banco-km', etiqueta: 'Banco de KM' },
     ] },
     { clave: '/sanciones',  etiqueta: 'Sanciones velocidad' },
     { clave: '/callcenter', etiqueta: 'Call Center' },

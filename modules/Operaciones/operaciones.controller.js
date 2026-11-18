@@ -4,6 +4,7 @@
 //   /operaciones                     las alertas de Mapon
 //   /operaciones/auditoria           KM del GPS vs KM facturado, y repostajes
 //   /operaciones/fichaje/diagnostico la herramienta de Mapon (por URL, sin botón)
+//   /operaciones/banco-km            el banco de KM (bancoKm.controller.js, db/267)
 
 const express = require('express');
 const router = express.Router();
@@ -105,5 +106,8 @@ router.get('/fichaje/diagnostico', async (req, res) => {
   try { res.json(await require('./mapon.diagnostico').diagnostico(req.query || {})); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── El banco de KM (db/267, 18/11/2026) ─────────────────────────────────────
+router.use('/banco-km', require('./bancoKm.controller'));
 
 module.exports = router;

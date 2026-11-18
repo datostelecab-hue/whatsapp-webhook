@@ -13,6 +13,7 @@ Qué hace la flota cuando nadie mira: los avisos del coche, los kilómetros que 
 | Ruta | Qué es | Permiso |
 |---|---|---|
 | `/operaciones` | Las alertas de [[Mapon]] (exceso, frenazo, golpe, batería, zonas) | `/operaciones` |
+| `/operaciones/banco-km` | [[Banco de KM]]: los km fuera de BOLT de cada uno contra su límite semanal, y de quién son los de cada coche | `/operaciones/banco-km` |
 | `/operaciones/auditoria` | [[Auditoria de flota]]: km del coche contra lo facturado en [[BOLT]] | `/operaciones/auditoria` |
 | `/operaciones/fichaje/diagnostico` | La herramienta de Mapon. Sin pantalla ni enlace: se llama por URL | — |
 | `/operaciones/sin-traza` | Bandeja de la Ticketera con lo que el reparto automático no supo clasificar | `/operaciones` |

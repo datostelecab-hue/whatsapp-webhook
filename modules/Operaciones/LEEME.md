@@ -6,6 +6,7 @@ cuadran, quién corre de más y el calendario de lo que de verdad pasó cada dí
 ```
 /operaciones                      las alertas de Mapon
 /operaciones/auditoria            KM del GPS vs KM facturado, y repostajes
+/operaciones/banco-km             el banco de KM: km fuera de BOLT contra el límite semanal (db/267)
 /operaciones/fichaje/diagnostico  la herramienta de Mapon (por URL, sin botón)
 /sanciones                        excesos de velocidad
 /bitacora  ·  /bitacora/general   el calendario de la plantilla
@@ -20,6 +21,7 @@ auditoria.service.js        el cálculo de la auditoría · auditoria.repo.js  s
 auditoria.excel.js          las cinco tablas, un Excel por cada una
 alertasMapon.repo.js        SQL de los avisos que trae la ingesta
 mapon.diagnostico.js        la herramienta: preguntarle a Mapon en crudo
+bancoKm.service.js          el banco de KM: la foto de cada jornada (del reporte de Control) y la semana · .repo · .controller
 sanciones.controller.js     /sanciones · sanciones.service.js · velocidad.repo.js
 bitacora.controller.js      /bitacora · bitacora.service.js · bitacora.repo.js
 vistas/  operaciones · auditoriaFlota · sanciones · bitacora · bitacoraGeneral

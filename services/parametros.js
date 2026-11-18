@@ -38,6 +38,7 @@ const UNIDADES = {
   dias: { una: 'día', varias: 'días' },
   anios: { una: 'año', varias: 'años' },
   mb: { una: 'MB', varias: 'MB' },
+  km: { una: 'km', varias: 'km' },
   dia_mes: null,   // «el día 20 de cada mes»
 };
 
@@ -63,6 +64,12 @@ const CATALOGO = [
       + 'Cloudflare, que va delante del ERP, corta las subidas de más de 100 MB.',
     usa: 'La subida de adjuntos (services/adjuntos.js)' },
 
+  // El banco de KM (db/267, 18/11/2026)
+  { clave: 'banco_km.km_dia', modulo: 'Operaciones', tipo: 'decimal', unidad: 'km', decimales: 1, min: 0, max: 500, defecto: 17.5,
+    etiqueta: 'Banco de KM: km fuera de BOLT por cada día',
+    descripcion: 'Lo que suma al límite de la semana cada día que le tocaba en el planificador o que salió (NN, día extra). Camilo: «un límite de 17,5 km por fuera al día». '
+      + 'Un cambio vale para las jornadas que se calculen desde entonces: las ya calculadas guardan el de su día.',
+    usa: 'Banco de KM (modules/Operaciones/bancoKm.service.js)' },
   // Vacaciones de la oficina (db/263, 17/11/2026)
   { clave: 'oficina.vacaciones.tope_mes', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'dias', decimales: 2, min: 0, max: 31, defecto: 1.84,
     etiqueta: 'Vacaciones de la oficina: lo más que genera un mes',
