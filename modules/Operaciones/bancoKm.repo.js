@@ -13,9 +13,12 @@ const n1 = v => Math.round((Number(v) || 0) * 10) / 10;
 /**
  * Los días ya calculados entre dos fechas: Map('aaaa-mm-dd' → versión de la
  * regla con que se calcularon). Sin db/268 falla (faltaMigracion): la tarea no
- * hace nada hasta que esté, en vez de gastar sus reintentos.
+ * hace nada hasta que esté, en vez de gastar sus reintentos. Lo mismo sin db/269.
  */
 async function calculados(desde, hasta, cli = null) {
+  // Sin db/269 (las columnas del desglose), falla aquí y no al guardar: la tarea
+  // no gasta sus reintentos en días que no podría guardar.
+  await q(cli, 'SELECT km_no_desfichar FROM km_banco_coche LIMIT 0');
   const r = await q(cli, `SELECT to_char(dia, 'YYYY-MM-DD') AS dia, version FROM km_banco_calculo WHERE dia BETWEEN $1::date AND $2::date`, [desde, hasta]);
   return new Map(r.rows.map(x => [x.dia, Number(x.version) || 1]));
 }
@@ -51,9 +54,10 @@ async function guardarDia(cli, dia, { filas, coches, milisegundos, usuarioId, ve
   }
   if (coches.length) {
     await cli.query(
-      `INSERT INTO km_banco_coche (dia, persona, matricula, km_fuera)
-       SELECT $1::date, x.persona, x.matricula, x.km_fuera
-         FROM jsonb_to_recordset($2::jsonb) AS x(persona text, matricula text, km_fuera numeric)`,
+      `INSERT INTO km_banco_coche (dia, persona, matricula, km_fuera, km_descanso, km_desconectado, km_fichado_sin_bolt, km_no_desfichar)
+       SELECT $1::date, x.persona, x.matricula, x.km_fuera, x.km_descanso, x.km_desconectado, x.km_fichado_sin_bolt, x.km_no_desfichar
+         FROM jsonb_to_recordset($2::jsonb) AS x(persona text, matricula text, km_fuera numeric, km_descanso numeric,
+              km_desconectado numeric, km_fichado_sin_bolt numeric, km_no_desfichar numeric)`,
       [dia, JSON.stringify(coches)]);
   }
   await cli.query(
@@ -74,7 +78,8 @@ async function dias(desde, hasta) {
         WHERE d.dia BETWEEN $1::date AND $2::date
         ORDER BY d.dia`, [desde, hasta]),
     db.consulta(
-      `SELECT to_char(dia, 'YYYY-MM-DD') AS dia, persona, matricula, km_fuera
+      `SELECT to_char(dia, 'YYYY-MM-DD') AS dia, persona, matricula, km_fuera,
+              km_descanso, km_desconectado, km_fichado_sin_bolt, km_no_desfichar
          FROM km_banco_coche WHERE dia BETWEEN $1::date AND $2::date ORDER BY dia, km_fuera DESC`, [desde, hasta]),
   ]);
   return {
@@ -85,7 +90,12 @@ async function dias(desde, hasta) {
       horasViaje: Math.round((Number(x.horas_viaje) || 0) * 100) / 100,
       fichaje: x.fichaje, sinFichar: x.sin_fichar,
     })),
-    coches: c.rows.map(x => ({ dia: x.dia, persona: x.persona, matricula: x.matricula, km: n1(x.km_fuera) })),
+    coches: c.rows.map(x => ({ dia: x.dia, persona: x.persona, matricula: x.matricula, km: n1(x.km_fuera),
+      // De dónde salen (db/269); null = ese día sin desglose.
+      kmDescanso: x.km_descanso == null ? null : n1(x.km_descanso),
+      kmDesconectado: x.km_desconectado == null ? null : n1(x.km_desconectado),
+      kmFichadoSinBolt: x.km_fichado_sin_bolt == null ? null : n1(x.km_fichado_sin_bolt),
+      kmNoDesfichar: x.km_no_desfichar == null ? null : n1(x.km_no_desfichar) })),
   };
 }
 
@@ -199,7 +209,7 @@ async function crudoDesglose({ matriculas, ini, fin }) {
   };
 }
 
-// 42P01: falta la tabla (db/267); 42703: falta una columna (db/268).
+// 42P01: falta la tabla (db/267); 42703: falta una columna (db/268, db/269).
 const faltaMigracion = e => e && (e.code === '42P01' || e.code === '42703' || /km_banco_|horas_viaje/.test(String(e.message || '')));
 
 module.exports = { calculados, calculos, guardarDia, dias, semanasDe, diasDe, crudoDesglose, faltaMigracion };

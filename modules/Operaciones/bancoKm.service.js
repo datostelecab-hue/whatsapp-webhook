@@ -58,8 +58,12 @@ const DESDE = process.env.BANCO_KM_DESDE || '2026-10-26';
 /** Margen tras el cierre de la jornada, para que entre lo último de BOLT y Mapon. */
 const MARGEN_MS = 60 * 60 * 1000;
 const POR_VUELTA = 3;
-/** La regla con la que se calcula la foto: 2 = por horas de viaje (db/268). Un día de otra versión se rehace. */
-const VERSION = 2;
+/**
+ * La regla con la que se calcula la foto. Un día de otra versión se rehace.
+ *   2 = por horas de viaje (db/268)
+ *   3 = además, el desglose por causa de cada coche (db/269)
+ */
+const VERSION = 3;
 const kmj = require('../../services/repo/kmJustificacion');
 
 function error(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
@@ -145,6 +149,15 @@ async function calcularDia(dia, { cli, usuarioId = null, ahora = new Date() } = 
   if (rep.parcial) throw error('Esa jornada aún no está cerrada');
   if (rep.sinFichaje) throw error(`Los km con el fichaje no salieron (${rep.sinFichaje}): se reintenta más tarde`);
   const { filas, coches } = filasDelDia(rep.filas || [], await regla());
+  // DE DÓNDE SALE CADA KM (db/269), coche a coche: lo mismo que la ficha, para
+  // toda la jornada de una vez. Si no sale, el día se guarda igual, sin él
+  // (NULL): los km fuera de BOLT siguen valiendo.
+  try {
+    const porCoche = await desglosarDia(dia, filas, coches);
+    coches.forEach((c, i) => Object.assign(c, porCoche[i]));
+  } catch (e) {
+    console.warn(`⚠️ [Banco de KM] ${dia}: sin el desglose por causa (${e.message})`);
+  }
   const guardar = c => repo.guardarDia(c, dia, { filas, coches, milisegundos: Date.now() - t0, usuarioId, version: VERSION });
   if (cli) await guardar(cli);
   else await require('../../services/db').transaccion(guardar);
@@ -237,7 +250,8 @@ async function semana(lunesPedido) {
   datos.coches.forEach(c => {
     const k = `${c.dia}|${c.persona}`;
     if (!cochesDe.has(k)) cochesDe.set(k, []);
-    cochesDe.get(k).push({ matricula: c.matricula, km: c.km });
+    cochesDe.get(k).push({ matricula: c.matricula, km: c.km, kmDescanso: c.kmDescanso, kmDesconectado: c.kmDesconectado,
+      kmFichadoSinBolt: c.kmFichadoSinBolt, kmNoDesfichar: c.kmNoDesfichar });
   });
 
   // ── Por conductor ──
@@ -246,7 +260,11 @@ async function semana(lunesPedido) {
     if (!porPersona.has(p.persona)) {
       porPersona.set(p.persona, { persona: p.persona, conductorId: p.conductorId, nombre: p.nombre, turno: p.turno,
         sinFicha: !p.conductorId, programados: 0, extra: 0, limite: 0, km: 0, revisar: false, sinFichar: 0, dias: [],
-        horasViaje: 0, kmFuera: 0, justificados: 0, pendientes: 0 });
+        horasViaje: 0, kmFuera: 0, justificados: 0, pendientes: 0,
+        // De dónde salen (db/269): suyos (desconectado, descanso o fichado sin
+        // BOLT) y por no desfichar; `kmDesglosado`, la suma de los dos (los %
+        // son de ahí: lo que quedó «sin desglose», menos del 1 %, no cuenta).
+        kmSuyos: 0, kmNoDesfichar: 0, kmDesglosado: 0 });
     }
     const x = porPersona.get(p.persona);
     // Lo justificado de ese día (solo las de un conductor de la plantilla).
@@ -264,6 +282,12 @@ async function semana(lunesPedido) {
     x.justificados = r1(x.justificados + aprobados);
     x.pendientes = r1(x.pendientes + (j ? j.pendientes : 0));
     x.horasViaje = Math.round((x.horasViaje + p.horasViaje) * 100) / 100;
+    (cochesDe.get(`${p.dia}|${p.persona}`) || []).forEach(c => {
+      if (c.kmNoDesfichar == null) return;
+      x.kmSuyos = r1(x.kmSuyos + c.kmDescanso + c.kmDesconectado + c.kmFichadoSinBolt);
+      x.kmNoDesfichar = r1(x.kmNoDesfichar + c.kmNoDesfichar);
+      x.kmDesglosado = r1(x.kmDesglosado + c.kmDescanso + c.kmDesconectado + c.kmFichadoSinBolt + c.kmNoDesfichar);
+    });
     if (p.revisar) x.revisar = true;
     if (p.sinFichar) x.sinFichar++;
     x.dias.push({ dia: p.dia, programado: p.programado, trabajo: p.trabajo, justificado: p.justificado, horas: p.horas,
@@ -279,7 +303,10 @@ async function semana(lunesPedido) {
       // Las matrículas de la semana, la de más km primero.
       const mats = new Map();
       x.dias.forEach(d => d.coches.forEach(c => mats.set(c.matricula, r1((mats.get(c.matricula) || 0) + c.km))));
+      // Los % de sus km fuera (db/269): de lo desglosado (casi siempre, todo).
+      const pctDe = k => (x.kmDesglosado > 0 ? Math.round(k / x.kmDesglosado * 100) : null);
       return { ...x, saldo, estado, pct: x.limite > 0 ? Math.round(x.km / x.limite * 100) : null,
+        pctSuyos: pctDe(x.kmSuyos), pctNoDesfichar: pctDe(x.kmNoDesfichar),
         matriculas: [...mats.entries()].sort((a, b) => b[1] - a[1]).map(([matricula, km]) => ({ matricula, km })) };
     })
     .sort((a, b) => a.saldo - b.saldo || a.nombre.localeCompare(b.nombre, 'es'));
@@ -351,6 +378,81 @@ function ventana(dia, turno) {
 const PERSONA = /^[a-z][^\u0000-\u001f]{1,79}$/i;
 
 /**
+ * EL REPARTO POR CAUSA de unos km: `items` = [{ dia, persona, matricula, km,
+ * turno }], con los datos crudos de esos coches ya leídos (repo.crudoDesglose).
+ * Devuelve, en el mismo orden, la lista de causas de cada uno, escalada a sus
+ * km (bancoKm.desglose.js). Lo usan la ficha (una persona, una semana) y la
+ * foto (toda la jornada).
+ */
+function repartir(items, crudo, ahora = Date.now()) {
+  const fines = desg.finesKm(crudo.tramos, ahora);
+  const agrupar = (lista, k) => {
+    const m = new Map();
+    lista.forEach(x => { if (!m.has(x[k])) m.set(x[k], []); m.get(x[k]).push(x); });
+    return m;
+  };
+  const tramosDe = agrupar(crudo.tramos.map(t => ({ ...t, fin: fines.get(t.id) })), 'vehiculo');
+  const odo = agrupar(crudo.odometro, 'unit'), rut = agrupar(crudo.rutas, 'unit');
+  const vehDe = new Map(crudo.vehiculos.map(v => [v.matricula, v]));
+  // Quién es cada cuenta un día (las prestadas, de quien la usaba) y su nombre.
+  const base = new Map(crudo.cuentas.map(c => [c.cuenta, c]));
+  const prestada = (cuenta, dia) => crudo.fantasmas.find(f => f.cuenta === cuenta && f.desde <= dia && (!f.hasta || f.hasta >= dia));
+  const personaDe = (cuenta, dia) => {
+    const p = prestada(cuenta, dia);
+    if (p) return `c${p.conductorId}`;
+    const b = base.get(cuenta);
+    return b && b.conductorId ? `c${b.conductorId}` : `b${cuenta}`;
+  };
+  const nombreDe = dia => cuenta => {
+    const p = prestada(cuenta, dia);
+    return (p && p.nombre) || (base.get(cuenta) || {}).nombre || 'otra cuenta de BOLT';
+  };
+  return items.map(it => {
+    const v = vehDe.get(it.matricula);
+    if (!v) return desg.escalar(new Map(), it.km);
+    const [a, b] = ventana(it.dia, it.turno);
+    const tz = desg.trozos({ odometro: odo.get(v.unit) || [], rutas: rut.get(v.unit) || [] }, a, b);
+    const delCoche = tramosDe.get(v.uuid) || [];
+    const suyas = new Set(delCoche.map(t => t.cuenta).filter(cu => personaDe(cu, it.dia) === it.persona));
+    const fichajes = crudo.fichajes.filter(f => (v.unit && f.unit === v.unit) || f.matricula === it.matricula);
+    return desg.escalar(desg.clasificar(tz, { tramos: delCoche, fichajes, persona: it.persona, suyas, nombreDe: nombreDe(it.dia), ahora }), it.km);
+  });
+}
+
+/**
+ * Las cuatro columnas de la foto (db/269) de una lista de causas. Puro. Si no
+ * hay nada desglosado (solo «sin desglose»), las cuatro van a null: no es un 0 %.
+ */
+function columnasDeCausas(causas) {
+  const de = c => r1(causas.filter(x => x.causa === c).reduce((s, x) => s + x.km, 0));
+  if (!causas.some(x => x.causa !== 'sin_desglose' && x.km > 0)) {
+    return { km_descanso: null, km_desconectado: null, km_fichado_sin_bolt: null, km_no_desfichar: null };
+  }
+  return { km_descanso: de('descanso'), km_desconectado: de('desconectado'),
+    km_fichado_sin_bolt: de('fichado_sin_bolt'), km_no_desfichar: de('fichaje_abierto') };
+}
+
+/**
+ * El desglose de una jornada entera, para la foto: por cada coche de `coches`
+ * (las filas de km_banco_coche), sus cuatro columnas. Una lectura de los datos
+ * crudos de todos los coches del día, de las 00:00 a las 12:00 del día siguiente
+ * (lo que cubren las ventanas de todos los turnos).
+ */
+async function desglosarDia(dia, filas, coches) {
+  const conKm = coches.filter(c => c.km_fuera > 0);
+  if (!conKm.length) return coches.map(() => ({}));
+  const turnoDe = new Map(filas.map(f => [f.persona, f.turno]));
+  const crudo = await repo.crudoDesglose({
+    matriculas: [...new Set(conKm.map(c => c.matricula))],
+    ini: +calendario.instante(dia, 0), fin: +calendario.instante(sumarDias(dia, 1), 12 * 60),
+  });
+  const items = coches.map(c => ({ dia, persona: c.persona, matricula: c.matricula, km: c.km_fuera, turno: turnoDe.get(c.persona) }));
+  const reparto = repartir(items.filter(x => x.km > 0), crudo);
+  let i = 0;
+  return items.map(x => (x.km > 0 ? columnasDeCausas(reparto[i++]) : {}));
+}
+
+/**
  * De dónde salen los km fuera de BOLT de una persona en una semana, día a día y
  * coche a coche. Solo lee: sus días de la foto y los datos crudos de sus coches.
  */
@@ -369,43 +471,18 @@ async function desglose(persona, lunesPedido) {
   const fin = Math.max(...[...ventanas.values()].map(v => v[1]));
   const crudo = await repo.crudoDesglose({ matriculas: [...new Set(conKm.map(c => c.matricula))], ini, fin });
 
-  const ahora = Date.now();
-  const fines = desg.finesKm(crudo.tramos, ahora);
-  const tramos = crudo.tramos.map(t => ({ ...t, fin: fines.get(t.id) }));
-  // Quién es cada cuenta un día (las prestadas, de quien la usaba) y su nombre.
-  const base = new Map(crudo.cuentas.map(c => [c.cuenta, c]));
-  const prestada = (cuenta, dia) => crudo.fantasmas.find(f => f.cuenta === cuenta && f.desde <= dia && (!f.hasta || f.hasta >= dia));
-  const personaDe = (cuenta, dia) => {
-    const p = prestada(cuenta, dia);
-    if (p) return `c${p.conductorId}`;
-    const b = base.get(cuenta);
-    return b && b.conductorId ? `c${b.conductorId}` : `b${cuenta}`;
-  };
-  const nombreDe = dia => cuenta => {
-    const p = prestada(cuenta, dia);
-    return (p && p.nombre) || (base.get(cuenta) || {}).nombre || 'otra cuenta de BOLT';
-  };
+  const repartos = repartir(conKm.map(c => ({ dia: c.dia, persona, matricula: c.matricula, km: c.km, turno: turnoDe.get(c.dia) })), crudo);
 
   const dias = new Map();
   const usados = new Set();
-  for (const c of conKm) {
-    const v = crudo.vehiculos.find(x => x.matricula === c.matricula);
-    let causas;
-    if (!v) causas = desg.escalar(new Map(), c.km);
-    else {
-      const [a, b] = ventanas.get(c.dia);
-      const tz = desg.trozos({ odometro: crudo.odometro.filter(s => s.unit === v.unit), rutas: crudo.rutas.filter(s => s.unit === v.unit) }, a, b);
-      const delCoche = tramos.filter(t => t.vehiculo === v.uuid);
-      const suyas = new Set(delCoche.map(t => t.cuenta).filter(cu => personaDe(cu, c.dia) === persona));
-      const fichajes = crudo.fichajes.filter(f => (v.unit && f.unit === v.unit) || f.matricula === c.matricula);
-      causas = desg.escalar(desg.clasificar(tz, { tramos: delCoche, fichajes, persona, suyas, nombreDe: nombreDe(c.dia), ahora }), c.km);
-    }
+  conKm.forEach((c, i) => {
+    const causas = repartos[i];
     causas.forEach(x => { if (x.fichajeId) usados.add(x.fichajeId); });
     if (!dias.has(c.dia)) dias.set(c.dia, { dia: c.dia, km: 0, coches: [] });
     const d = dias.get(c.dia);
     d.km = r1(d.km + c.km);
     d.coches.push({ matricula: c.matricula, km: c.km, causas: causas.map(x => ({ ...x, etiqueta: etiquetas[x.causa] })) });
-  }
+  });
 
   // La semana, por causa (y, por no terminar el turno, con quién llevaba el coche).
   const sem = new Map();
@@ -427,7 +504,7 @@ async function desglose(persona, lunesPedido) {
 
 module.exports = {
   semana, historia, recalcular, calcularDia, pendientes, desglose, justificar, DESDE, VERSION,
-  _generado: generado,
+  _generado: generado, _columnasDeCausas: columnasDeCausas, _desglosarDia: desglosarDia,
   // Para las pruebas:
   _filasDelDia: filasDelDia, _lunesDe: lunesDe, _ultimaCerrada: ultimaCerrada,
   _conReporte: fn => { _reporte = fn; },

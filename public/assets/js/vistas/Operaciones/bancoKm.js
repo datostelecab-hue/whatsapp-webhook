@@ -16,6 +16,11 @@
 // LA REGLA NUEVA (18/11/2026, db/268): cada hora de VIAJE en BOLT genera 8,8 km,
 // con tope de 53 al día; y los km justificados y aprobados (llave
 // «/justificantes/km») no cuentan. Desde la ficha, «Justificar km» en cada día.
+//
+// SUYOS Y POR NO DESFICHAR (db/269): en la lista, el % de sus km fuera que hizo
+// él (desconectado o en descanso) y el que se le imputa por no terminar el
+// turno (tenía el coche fichado y lo llevaba otro). Camilo: «solo necesito esa
+// capilaridad extra… el % de desconectado y el % que se le imputa por no desfichar».
 (function (global) {
   'use strict';
   const esc = Casa.esc;
@@ -100,7 +105,7 @@
   function pintarCabecera() {
     if (datos.sinMigracion) {
       $('#bk-semana').textContent = '—';
-      aviso('Para el banco de KM falta aplicar las migraciones db/267 y db/268 en /migraciones.', 'aviso');
+      aviso('Para el banco de KM falta aplicar las migraciones db/267, db/268 y db/269 en /migraciones.', 'aviso');
       return;
     }
     $('#bk-semana').textContent = textoSemana(datos.lunes, datos.domingo);
@@ -193,6 +198,13 @@
             pie: de('pasado').length ? `${km(exceso)} por encima, entre todos` : 'nadie', filtro: { id: 'estado', valor: 'pasado' } },
           { etiqueta: 'Cerca del límite', valor: de('cerca').length, tono: 'warn', pie: 'desde el 80 %', filtro: { id: 'estado', valor: 'cerca' } },
           { etiqueta: 'Dentro', valor: de('dentro').length, tono: 'green', filtro: { id: 'estado', valor: 'dentro' } },
+          (() => {
+            const des = filas.reduce((s, f) => s + (f.kmNoDesfichar || 0), 0);
+            const base = filas.reduce((s, f) => s + (f.kmDesglosado || 0), 0);
+            return { etiqueta: 'Por no desfichar', valor: km(des), tono: des > 0 ? 'warn' : 'muted',
+              pie: base > 0 ? `el ${Math.round(des / base * 100)} % de sus km fuera` : 'sin desglose todavía',
+              filtro: { id: 'desfichar', valor: 'algo' } };
+          })(),
           { etiqueta: 'Km fuera de BOLT', valor: km(filas.reduce((s, f) => s + f.km, 0)), tono: 'muted',
             pie: `de ${km(filas.reduce((s, f) => s + f.limite, 0))} de límite${filas.some(f => f.justificados > 0) ? ` · ${km(filas.reduce((s, f) => s + f.justificados, 0))} justificados` : ''}` },
         ];
@@ -201,6 +213,14 @@
         id: 'estado', etiqueta: 'Estado', textoTodos: 'Todos',
         opciones: filas => Object.keys(ESTADO).map(e => ({ valor: e, texto: ESTADO[e].texto, cuenta: filas.filter(f => f.estado === e).length })).filter(o => o.cuenta),
         pasa: (f, v) => f.estado === v,
+      }, {
+        id: 'desfichar', etiqueta: 'Por no desfichar', textoTodos: 'Todos',
+        opciones: filas => [
+          { valor: 'mitad', texto: 'La mitad o más, por no desfichar', cuenta: filas.filter(f => f.pctNoDesfichar >= 50).length },
+          { valor: 'algo', texto: 'Con km por no desfichar', cuenta: filas.filter(f => f.kmNoDesfichar > 0).length },
+          { valor: 'nada', texto: 'Todo suyo', cuenta: filas.filter(f => f.kmDesglosado > 0 && !(f.kmNoDesfichar > 0)).length },
+        ].filter(o => o.cuenta),
+        pasa: (f, v) => (v === 'mitad' ? f.pctNoDesfichar >= 50 : v === 'algo' ? f.kmNoDesfichar > 0 : f.kmDesglosado > 0 && !(f.kmNoDesfichar > 0)),
       }, {
         id: 'turno', etiqueta: 'Turno', textoTodos: 'Todos los turnos',
         opciones: filas => [...new Set(filas.map(f => f.turno || 'Sin turno'))].sort()
@@ -223,6 +243,16 @@
               f.pendientes > 0 ? `${num(f.pendientes)} por aprobar` : ''].filter(Boolean).join(' · ')}</span>` : ''}
             <span class="block h-1.5 mt-1 rounded-full bg-telecab-card2 overflow-hidden min-w-[6rem]" aria-hidden="true">
               <span class="block h-full ${ESTADO[f.estado].barra}" style="width:${Math.min(100, f.pct == null ? 100 : f.pct)}%"></span></span>` },
+        { titulo: 'Suyos', campo: 'pctSuyos', clase: 'text-right tabular-nums whitespace-nowrap',
+          ayuda: 'De sus km fuera de BOLT, los que hizo él: desconectado o en descanso en BOLT (o con el coche fichado sin conectarse).',
+          valor: f => (f.pctSuyos == null ? -1 : f.pctSuyos),
+          pinta: (v, f) => (f.pctSuyos == null ? '<span class="text-telecab-muted">—</span>'
+            : `<span class="font-semibold">${f.pctSuyos} %</span><span class="block text-[10px] text-telecab-muted">${km(f.kmSuyos)}</span>`) },
+        { titulo: 'Por no desfichar', campo: 'pctNoDesfichar', clase: 'text-right tabular-nums whitespace-nowrap',
+          ayuda: 'De sus km fuera de BOLT, los que se le imputan por no terminar el turno: tenía el coche fichado y quien estaba en BOLT con él era otro.',
+          valor: f => (f.pctNoDesfichar == null ? -1 : f.pctNoDesfichar),
+          pinta: (v, f) => (f.pctNoDesfichar == null ? '<span class="text-telecab-muted">—</span>'
+            : `<span class="font-semibold ${f.pctNoDesfichar >= 50 ? 'text-telecab-red' : f.pctNoDesfichar > 0 ? 'text-telecab-warn' : 'text-telecab-muted'}">${f.pctNoDesfichar} %</span><span class="block text-[10px] text-telecab-muted">${km(f.kmNoDesfichar)}</span>`) },
         { titulo: 'Saldo', campo: 'saldo', clase: 'text-right tabular-nums whitespace-nowrap',
           pinta: (v, f) => (v < 0
             ? `<b class="text-telecab-red">pasado ${km(-v)}</b>`

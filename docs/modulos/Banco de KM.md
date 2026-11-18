@@ -95,6 +95,15 @@ Y decidió: generan **solo las horas de viaje**; Control apunta la justificació
   - **Se leen en vivo**, no van en la foto: aprobar una no obliga a recalcular nada.
 - **En la pantalla**: la columna «Viaje» (horas de la semana) sustituye a «Días»; «Km fuera de BOLT» es lo que gasta, con «50,0 − 28,0 justificados» y lo que está por aprobar debajo; en la ficha, cada día dice sus horas de viaje, lo que genera, sus justificaciones y el botón para justificar.
 
+## Suyos y por no desfichar, en la lista (18/11/2026, db/269)
+
+Camilo: *«Hay mucha gente haciendo KM por fuera, pero se meten con los que se les olvida cerrar el turno; solo necesito esa capilaridad extra de KM por fuera: cuál es el % de desconectado (desconectado + descanso) y el % que se le imputa por no desfichar»*.
+
+- **En la lista**, dos columnas detrás de «Km fuera de BOLT»: **Suyos** (desconectado, en descanso o con el coche fichado sin conectarse: los hizo él) y **Por no desfichar** (tenía el coche fichado y quien estaba en BOLT con él era otro), cada una con su % y sus km. En rojo desde el 50 % por no desfichar. Arriba, la cifra «Por no desfichar» (km y % de lo que se ve), y un filtro: la mitad o más por no desfichar, con algo por no desfichar, todo suyo.
+- **De dónde sale**: el mismo reparto que la ficha (`repartir` en `bancoKm.service.js`, sobre `bancoKm.desglose.js`), hecho al calcular la foto de cada jornada para toda la flota de una vez (`desglosarDia`: una lectura de los datos crudos de todos los coches del día, de las 00:00 a las 12:00 del día siguiente). Se guarda coche a coche en `km_banco_coche` (`km_descanso`, `km_desconectado`, `km_fichado_sin_bolt`, `km_no_desfichar`), escalado a sus km. Si un día no se puede desglosar, va a NULL y los % salen de los días que sí; nunca un 0 % inventado.
+- **Medido contra producción** (solo lectura): una jornada entera, de 1 a 2,4 s. El 12/11 y el 16/11, el **85 %** de los km fuera eran suyos y el **14–15 %** por no desfichar (unos 750 km al día); menos del 1 % sin desglose. Francisco el 12/11: 148,4 en descanso y 35,4 por no desfichar, lo mismo que su ficha.
+- **Todo el banco se rehace** con esto (`km_banco_calculo.version` 3), solo y poco a poco. Sin db/269, la tarea no hace nada y la pantalla dice que falta.
+
 ## Permisos
 
 La llave **`/operaciones/banco-km`** («Banco de KM»). db/267 se la da a quien ya veía la [[Auditoria de flota]].

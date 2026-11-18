@@ -192,3 +192,32 @@ test('el desglose: descanso, desconectado, por no terminar el turno (lo llevaba 
   assert.equal(Math.round(esc.reduce((s, x) => s + x.km, 0) * 10) / 10, 45);
   assert.deepEqual(desg.escalar(new Map(), 7.5), [{ causa: 'sin_desglose', con: null, fichajeId: null, km: 7.5 }]);
 });
+
+// ── Suyos y por no desfichar (db/269) ────────────────────────────────────────
+test('suyos y por no desfichar: las columnas de la foto y los % de la semana', () => conBase(async ({ fabrica, consulta }) => {
+  // Puro: de las causas a las columnas; sin nada desglosado, null (no un 0 %).
+  assert.deepEqual(banco._columnasDeCausas([{ causa: 'descanso', km: 148.4 }, { causa: 'fichaje_abierto', km: 35.4 }]),
+    { km_descanso: 148.4, km_desconectado: 0, km_fichado_sin_bolt: 0, km_no_desfichar: 35.4 });
+  assert.deepEqual(banco._columnasDeCausas([{ causa: 'sin_desglose', km: 7 }]),
+    { km_descanso: null, km_desconectado: null, km_fichado_sin_bolt: null, km_no_desfichar: null });
+
+  // El caso de Francisco el 12/11: 183,8 km, 148,4 en descanso y 35,4 por no desfichar.
+  const fran = await fabrica.conductor({ nombre: 'Francisco' });
+  const P = `c${fran.id}`;
+  banco._conReporte(async d => ({ parcial: false, sinFichaje: null, filas: d === '2026-11-12' ? [
+    fila({ persona: P, conductorId: fran.id, nombre: 'Francisco', turno: 'Noche', debiaSalir: true, horas: 7, horasViaje: 5, kmDesc: 183.8, kmFueraPorCoche: { '8083KXD': 183.8 } }),
+  ] : [
+    fila({ persona: P, conductorId: fran.id, nombre: 'Francisco', turno: 'Noche', debiaSalir: true, horas: 7, horasViaje: 5, kmDesc: 20, kmFueraPorCoche: { '8083KXD': 20 } }),
+  ] }));
+  const ahora = new Date('2026-11-16T12:00:00Z');
+  await banco.calcularDia('2026-11-12', { ahora });
+  await banco.calcularDia('2026-11-13', { ahora });
+  // Sin datos de Mapon en la base de pruebas, el desglose sale vacío (null): así se ve que no cuenta como 0 %.
+  let x = (await banco.semana('2026-11-12')).conductores.find(c => c.persona === P);
+  assert.deepEqual([x.pctSuyos, x.pctNoDesfichar], [null, null]);
+  await consulta(`UPDATE km_banco_coche SET km_descanso = 148.4, km_desconectado = 0, km_fichado_sin_bolt = 0, km_no_desfichar = 35.4
+                   WHERE persona = $1 AND dia = '2026-11-12'`, [P]);
+  x = (await banco.semana('2026-11-12')).conductores.find(c => c.persona === P);
+  assert.deepEqual([x.kmSuyos, x.kmNoDesfichar, x.pctSuyos, x.pctNoDesfichar], [148.4, 35.4, 81, 19],
+    'el día sin desglose (el 13) no cuenta en los %');
+}));
