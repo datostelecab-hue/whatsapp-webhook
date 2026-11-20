@@ -30,8 +30,10 @@ const db = require('./db');
 const TZ = 'Europe/Madrid';
 
 // El último día en que el botón sale en el bot (incluido): el de la caducidad
-// de la tanda que queda. Era el 15/10/2026 hasta la tanda del 20/10.
-const LAVADO_HASTA = '2026-11-17';
+// de la tanda que queda. Era el 15/10/2026 hasta la tanda del 20/10, y el
+// 17/11/2026 hasta la de noviembre (db/273, 20/11/2026: 88 códigos que nos
+// dieron el 02/11 y vencen el 17/12/2026).
+const LAVADO_HASTA = '2026-12-17';
 
 // Un doble toque en el botón no puede gastar dos bonos: si el mismo teléfono ya
 // se llevó uno hace menos de esto, se le repite ese mismo.
