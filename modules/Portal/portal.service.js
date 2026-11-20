@@ -30,7 +30,15 @@ const { nombrePropio } = require('./formato');
 
 const CODIGO_MINUTOS = 10;
 const CODIGO_INTENTOS = 5;
-const SESION_DIAS = 30;
+// LA SESIÓN NO CADUCA (20/11/2026, Camilo: «que la sesión nunca expire: una vez
+// que haya iniciado sesión, ya no se cierra a menos de que él apriete en salir»).
+// En la base, cien años, que se renuevan con el uso; la baja la sigue cortando
+// (PUEDE_ENTRAR). Antes eran 30 días desde el último uso.
+const SESION_DIAS = 36500;
+// La cookie no puede durar tanto: los navegadores la recortan a unos 400 días
+// (Chrome). Por eso se vuelve a poner en cada visita (portal.controller): mientras
+// abra el portal una vez al año, no se le cierra nunca.
+const COOKIE_DIAS = 400;
 // Cuántos códigos se pueden pedir en VENTANA minutos: por persona y por IP.
 const VENTANA = 15, MAX_PERSONA = 3, MAX_IP = 10;
 // Y cuántas búsquedas de DNI por IP y hora (las de DNIs que no existen no
@@ -348,7 +356,7 @@ async function inicio(persona) {
 
 module.exports = {
   pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero, efectivo,
-  SESION_DIAS,
+  SESION_DIAS, COOKIE_DIAS,
   // Para el comprobador.
   _normalizarDni: normalizarDni, _ocultarEmail: ocultarEmail, _pilaDe: pilaDe, _correoDelCodigo: correoDelCodigo, _enDosColumnas: enDosColumnas,
 };

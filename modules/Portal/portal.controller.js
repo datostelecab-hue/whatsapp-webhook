@@ -42,8 +42,12 @@ router.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent:
 
 // Quién es, por su cookie. Si la base no contesta, como si no hubiera entrado.
 router.use(async (req, res, next) => {
-  try { req.conductor = await portal.quienEs(leerCookie(req)); }
+  const testigo = leerCookie(req);
+  try { req.conductor = await portal.quienEs(testigo); }
   catch (e) { console.error('❌ [Portal] sesión:', e.message); req.conductor = null; }
+  // La sesión no caduca (20/11/2026): la cookie se vuelve a poner en cada visita,
+  // porque el navegador no la deja durar más de unos 400 días.
+  if (req.conductor && testigo) res.cookie(COOKIE, testigo, { ...opcionesCookie, maxAge: portal.COOKIE_DIAS * 86400000 });
   next();
 });
 
@@ -89,7 +93,7 @@ router.post('/entrar/codigo', async (req, res) => {
   try {
     const r = await portal.entrar({ dni, codigo: (req.body || {}).codigo, ip: req.ip, agente: req.get('user-agent') });
     if (r.ok) {
-      res.cookie(COOKIE, r.testigo, { ...opcionesCookie, maxAge: portal.SESION_DIAS * 86400000 });
+      res.cookie(COOKIE, r.testigo, { ...opcionesCookie, maxAge: portal.COOKIE_DIAS * 86400000 });
       return res.redirect(303, '/');
     }
     // Con el código caducado o agotado, se vuelve a pedir: el paso del DNI con el DNI puesto.
