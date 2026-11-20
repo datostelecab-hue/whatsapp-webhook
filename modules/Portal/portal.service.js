@@ -122,11 +122,14 @@ function correoDelCodigo(pila, codigo) {
 // los conductores: PORTAL_CODIGOS_A vacía en Render, o quitar esto.
 const CODIGOS_A = String(process.env.PORTAL_CODIGOS_A !== undefined ? process.env.PORTAL_CODIGOS_A : 'datostelecab@gmail.com').trim();
 // Y CON COPIA A IGNACIO (Camilo, el mismo día: «con copia a Ignacio por cada
-// correo»). Su email se lee de su usuario (el 1) al mandar, para no escribirlo
-// en el repositorio: si cambia en /usuarios, cambia aquí. Solo con el buzón de pruebas.
+// correo»). La dirección que dio va en PORTAL_CODIGOS_CC (Render), no aquí: el
+// repositorio es público. Sin ella, el email de su usuario (el 1), leído al
+// mandar. Solo con el buzón de pruebas.
 const CODIGOS_CC_USUARIO = 1;
 async function copiaDePruebas() {
   if (!CODIGOS_A) return null;
+  const fija = String(process.env.PORTAL_CODIGOS_CC || '').trim();
+  if (fija) return pareceEmail(fija) ? fija : null;
   try {
     const r = await require('../../services/db').consulta(
       `SELECT NULLIF(btrim(email), '') AS email FROM usuario WHERE id = $1 AND estado <> 'bloqueado'`, [CODIGOS_CC_USUARIO]);

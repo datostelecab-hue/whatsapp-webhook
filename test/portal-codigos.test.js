@@ -55,6 +55,11 @@ test('todo código va a datostelecab@gmail.com, con copia a Ignacio, y el asunto
   const ana = await svc.pedirCodigo({ dni: 'X1234567L', ip: '1.1.1.1' });
   assert.equal(ana.ok, true);
   assert.equal(enviados[1].to, 'datostelecab@gmail.com');
+  // Con PORTAL_CODIGOS_CC puesta en Render, esa dirección manda.
+  process.env.PORTAL_CODIGOS_CC = 'copia@ejemplo.com';
+  await svc.pedirCodigo({ dni: '12345678Z', ip: '1.1.1.1' });
+  assert.equal(enviados[2].cc, 'copia@ejemplo.com');
+  delete process.env.PORTAL_CODIGOS_CC;
   // Un DNI que no es de nadie, igual que siempre.
   assert.deepEqual(await svc.pedirCodigo({ dni: '99999999R', ip: '1.1.1.1' }), { ok: false, motivo: 'no-podemos' });
 });
