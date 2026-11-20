@@ -15,7 +15,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="<%= est('/assets/css/portal.css') %>">
 </head>
-<body>
+<body<%- locals.paso ? ' class="es-acceso"' : '' %>>
+  <%# En el acceso, la marca va en la foto (portalEntrar): sin la cabecera de siempre. %>
+  <% if (!locals.paso) { %>
   <header class="cab">
     <div class="cab-in">
       <a class="cab-marca" href="/" aria-label="Telecab, inicio">
@@ -36,8 +38,9 @@
       <% } %>
     </div>
   </header>
+  <% } %>
 
-  <main class="col<%= conductor ? '' : ' col-acceso' %>">
+  <main class="<%= locals.paso ? 'ent-pagina' : 'col' + (conductor ? '' : ' col-acceso') %>">
     <%- body %>
   </main>
 

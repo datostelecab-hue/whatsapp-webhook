@@ -279,3 +279,51 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .efe-lista b { font-size: 1.0625rem; font-weight: 700; }
 .efe-detalle { font-size: .75rem; color: rgb(var(--suave)); line-height: 1.35; word-break: break-word; }
 .efe-vacio { padding: .9rem .85rem; color: rgb(var(--suave)); font-size: .875rem; }
+
+/* ── El acceso (rediseño 20/11/2026: «haz mejor el login, qué soso») ─────── */
+.ent-pagina { min-height: 100svh; }
+.ent { max-width: 30rem; margin: 0 auto; padding-bottom: 2rem; }
+/* La foto del Corolla de noche, a sangre, que se funde con la página. */
+.ent-foto {
+  position: relative; min-height: 46svh; display: flex; align-items: flex-end; color: #fff;
+  background: linear-gradient(180deg, rgb(8 14 30 / .55) 0%, rgb(8 14 30 / .1) 38%, rgb(8 14 30 / .55) 70%, rgb(var(--fondo)) 95%),
+              url('/assets/acceso/portada-900.webp') center 40% / cover no-repeat, rgb(var(--fondo));
+}
+.ent-foto-in { padding: 1.1rem 1.25rem 4.6rem; width: 100%; display: flex; flex-direction: column; gap: .35rem; }
+.ent-marca { position: absolute; top: 1rem; left: 1.25rem; color: #fff; }
+.ent-marca .tc-marca-via { stroke: rgb(255 255 255 / .9); }
+.ent-marca .tc-marca-carril { stroke: rgb(255 255 255 / .55); }
+.ent-marca .tc-marca-sombra { fill: rgb(255 255 255 / .25); }
+.ent-marca .tc-marca-pin path { fill: rgb(96 165 250); }
+.ent-marca .cab-nombre span { color: rgb(96 165 250); }
+.ent-lema { font-size: .8125rem; font-weight: 600; color: rgb(255 255 255 / .8); }
+.ent-tit { font-size: 2.15rem; line-height: 1.08; font-weight: 800; letter-spacing: -.035em; color: #fff; text-shadow: 0 2px 18px rgb(0 0 0 / .35); }
+/* La tarjeta, montada sobre el final de la foto. */
+.ent-tarjeta {
+  position: relative; margin: -3.4rem 1rem 0; background: rgb(var(--sup)); border: 1px solid rgb(var(--linea));
+  border-radius: 20px; padding: 1.2rem 1.15rem 1.3rem; display: flex; flex-direction: column; gap: .8rem;
+  box-shadow: 0 24px 48px -16px rgb(16 24 40 / .28), 0 4px 12px rgb(16 24 40 / .06);
+}
+.ent-h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; }
+.ent-form { display: flex; flex-direction: column; gap: .9rem; margin-top: .2rem; }
+/* Los dos pasos: dónde está y lo que le queda. */
+.ent-pasos { list-style: none; margin: 0; padding: 0; display: flex; gap: .4rem; }
+.ent-pasos li { flex: 1; display: flex; align-items: center; gap: .45rem; font-size: .8125rem; font-weight: 600; color: rgb(var(--suave));
+  padding: .45rem .55rem; border-radius: 10px; background: rgb(var(--sup2)); }
+.ent-pasos li span { width: 1.35rem; height: 1.35rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: .75rem; font-weight: 800; background: rgb(var(--linea)); color: rgb(var(--suave)); flex: none; }
+.ent-pasos li.actual { color: rgb(var(--acento)); background: rgb(var(--acento) / .09); }
+.ent-pasos li.actual span { background: rgb(var(--acento)); color: #fff; }
+.ent-pasos li.hecho { color: rgb(var(--verde)); }
+.ent-pasos li.hecho span { background: rgb(var(--verde)); color: #fff; }
+/* Lo que hay dentro. */
+.ent-dentro { list-style: none; margin: 1.1rem 1rem 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+.ent-dentro li { display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; padding: .7rem .65rem; border-radius: 14px;
+  background: rgb(var(--sup)); border: 1px solid rgb(var(--linea)); }
+.ent-dentro svg { width: 22px; height: 22px; color: rgb(var(--acento)); margin-bottom: .3rem; }
+.ent-dentro b { font-size: .8125rem; font-weight: 700; }
+.ent-dentro span { font-size: .6875rem; color: rgb(var(--suave)); line-height: 1.3; }
+@media (min-width: 640px) {
+  .ent { padding-top: 1.5rem; }
+  .ent-foto { border-radius: 24px; overflow: hidden; margin: 0 1rem; min-height: 22rem; }
+}

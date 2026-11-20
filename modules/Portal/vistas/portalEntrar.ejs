@@ -1,42 +1,83 @@
-<section class="acceso" aria-labelledby="titulo">
-<% if (paso === 'dni') { %>
-  <div class="acceso-cab">
-    <h1 id="titulo">Entra con tu DNI</h1>
-    <p class="suave">Te mandamos un código al email que diste al empezar en Telecab.</p>
-  </div>
-  <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
-  <form class="acceso" style="margin:0" method="post" action="/entrar">
-    <div class="campo">
-      <label for="dni">DNI o NIE</label>
-      <input id="dni" name="dni" value="<%= dni %>" required maxlength="20" autocomplete="username"
-             autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="12345678Z" autofocus>
+<%#
+  EL ACCESO (rediseño 20/11/2026, Camilo: «haz mejor el login, qué soso»).
+  Arriba, la foto del Corolla de noche en Madrid (la misma del acceso del ERP,
+  public/assets/acceso/portada-900.webp, 69 KB) con la marca y el titular; encima,
+  la tarjeta con el paso en el que está (1 DNI → 2 código); debajo, lo que va a
+  encontrar dentro. Sin JavaScript: formularios normales, como siempre.
+%>
+<div class="ent">
+  <header class="ent-foto">
+    <div class="ent-foto-in">
+      <span class="cab-marca ent-marca">
+        <svg class="tc-marca" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+          <path class="tc-marca-via" d="M5 53 Q31 37 61 39"/>
+          <path class="tc-marca-carril" d="M12 58.5 Q35 45 61 44"/>
+          <path class="tc-marca-via" d="M20 64 Q41 51 61 49"/>
+          <ellipse class="tc-marca-sombra" cx="32" cy="41.2" rx="6" ry="1.5"/>
+          <g class="tc-marca-pin"><path fill-rule="evenodd" d="M32 39.5C28.6 35.2 19 26.2 19 17.5a13 13 0 0 1 26 0c0 8.7-9.6 17.7-13 22Z M32 12.3a5.2 5.2 0 1 0 0 10.4a5.2 5.2 0 1 0 0-10.4Z"/></g>
+        </svg>
+        <span class="cab-nombre">Tele<span>cab</span></span>
+      </span>
+      <p class="ent-lema">Portal de conductores</p>
+      <h1 class="ent-tit">Tu Telecab,<br>en el móvil</h1>
     </div>
-    <button class="boton" type="submit">Mandarme el código</button>
-  </form>
-<% } else { %>
-  <div class="acceso-cab">
-    <h1 id="titulo">Escribe el código</h1>
-    <p class="suave">Te lo hemos mandado a <b><%= email %></b>. Caduca en 10 minutos.</p>
-    <p class="suave peq">Si no reconoces este correo, comunícate con RRHH para confirmarlo.</p>
-  </div>
-  <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
-  <form class="acceso" style="margin:0" method="post" action="/entrar/codigo">
-    <input type="hidden" name="dni" value="<%= dni %>">
-    <input type="hidden" name="email" value="<%= email %>">
-    <div class="campo campo-codigo">
-      <label for="codigo">Código de 6 cifras</label>
-      <input id="codigo" name="codigo" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}"
-             autocomplete="one-time-code" autofocus>
-    </div>
-    <button class="boton" type="submit">Entrar</button>
-  </form>
-  <div class="acceso-pie">
-    <form method="post" action="/entrar">
-      <input type="hidden" name="dni" value="<%= dni %>">
-      <button class="boton-sec" type="submit">No me ha llegado: mandar otro</button>
+  </header>
+
+  <section class="ent-tarjeta" aria-labelledby="titulo">
+    <ol class="ent-pasos" aria-label="Pasos para entrar">
+      <li class="<%= paso === 'dni' ? 'actual' : 'hecho' %>"><span>1</span>Tu DNI</li>
+      <li class="<%= paso === 'dni' ? '' : 'actual' %>"><span>2</span>El código</li>
+    </ol>
+
+  <% if (paso === 'dni') { %>
+    <h2 id="titulo" class="ent-h2">Entra con tu DNI</h2>
+    <p class="suave peq">Sin contraseñas: te mandamos un código de 6 cifras al email que diste al empezar en Telecab.</p>
+    <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
+    <form class="ent-form" method="post" action="/entrar">
+      <div class="campo">
+        <label for="dni">DNI o NIE</label>
+        <input id="dni" name="dni" value="<%= dni %>" required maxlength="20" autocomplete="username"
+               autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="12345678Z" autofocus>
+      </div>
+      <button class="boton" type="submit">Mandarme el código</button>
     </form>
-    <a href="/entrar">Usar otro DNI</a>
-  </div>
-  <p class="suave peq">Si no lo ves, mira en la carpeta de spam o de correo no deseado.</p>
-<% } %>
-</section>
+  <% } else { %>
+    <h2 id="titulo" class="ent-h2">Escribe el código</h2>
+    <p class="suave peq">Te lo hemos mandado a <b><%= email %></b>. Caduca en 10 minutos.</p>
+    <% if (error) { %><p class="error" role="alert"><%= error %></p><% } %>
+    <form class="ent-form" method="post" action="/entrar/codigo">
+      <input type="hidden" name="dni" value="<%= dni %>">
+      <input type="hidden" name="email" value="<%= email %>">
+      <div class="campo campo-codigo">
+        <label for="codigo">Código de 6 cifras</label>
+        <input id="codigo" name="codigo" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}"
+               autocomplete="one-time-code" placeholder="······" autofocus>
+      </div>
+      <button class="boton" type="submit">Entrar</button>
+    </form>
+    <div class="acceso-pie">
+      <form method="post" action="/entrar">
+        <input type="hidden" name="dni" value="<%= dni %>">
+        <button class="boton-sec" type="submit">No me ha llegado: mandar otro</button>
+      </form>
+      <a href="/entrar">Usar otro DNI</a>
+    </div>
+    <p class="suave peq">Si no lo ves, mira en spam o correo no deseado. Si no reconoces el correo, habla con RRHH.</p>
+  <% } %>
+  </section>
+
+  <ul class="ent-dentro" aria-label="Lo que vas a encontrar dentro">
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      <b>Tus turnos</b><span>de hoy a 7 días</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16.5V12l1.8-4.6A2 2 0 0 1 8.7 6h6.6a2 2 0 0 1 1.9 1.4L19 12v4.5"/><path d="M3.5 16.5h17v2a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-.5h-10v.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M5 12h14"/></svg>
+      <b>Tu coche</b><span>vincular y puertas</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>
+      <b>Tu efectivo</b><span>y tu nota semanal</span>
+    </li>
+  </ul>
+</div>

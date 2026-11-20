@@ -74,6 +74,8 @@ Camilo: *«Por el momento, quema mi correo para que todos los códigos de inicio
 
 **La V3 y siempre en claro** (20/11/2026, Camilo: *«aplica el rediseño, no quiero que lo vean oscuro»*). Los colores del tema claro de la V3 del ERP ([[Identidad visual]]): azul vivo sobre blanco y gris muy claro, estados saturados, esquinas de 12–16 px, el botón principal con la sombra de su color, lo elegido de la barra teñido, **Plus Jakarta Sans**. Ya **no sigue el modo oscuro del móvil** (antes lo decidía el teléfono, y quien lo tenía en oscuro lo veía negro): `color-scheme: light` y un solo `theme-color`. Sigue en una hoja propia y pequeña (`public/assets/css/portal.css`), **sin Tailwind**: se abre desde el móvil, a veces con poca cobertura. Las letras: A en el acento, B neutra, C en ámbar, D en rojo.
 
+**El acceso, rediseñado** (20/11/2026, Camilo: *«haz mejor el login, qué soso»*): arriba, a sangre, la foto del Corolla de noche en Madrid (la del acceso del ERP, `public/assets/acceso/portada-900.webp`, 69 KB) con la marca en blanco y el titular «Tu Telecab, en el móvil»; encima del final de la foto, la tarjeta con los dos pasos (1 Tu DNI → 2 El código) y el formulario; debajo, lo que hay dentro (turnos, coche, efectivo y nota). Sin la cabecera de siempre (el armazón la quita cuando la página trae `paso`). Sin animación de entrada: con la página en segundo plano se quedaba invisible.
+
 ## Mi coche: vincular, puertas y desvincular (20/11/2026)
 
 Camilo: *«Créales el módulo de vincular coche, ahí podrán abrir y cerrar coches, solo luego de vincularse, sino no. Es empezar a migrar el ciclo de motor sacándolo de WhatsApp y dejándolo en su app»*.
