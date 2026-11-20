@@ -89,7 +89,7 @@ const CATALOGO = [
   // Vacaciones de la oficina (db/263, 17/11/2026)
   { clave: 'oficina.vacaciones.tope_mes', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'dias', decimales: 2, min: 0, max: 31, defecto: 1.84,
     etiqueta: 'Vacaciones de la oficina: lo más que genera un mes',
-    descripcion: 'Lo que genera cada mes completo de 2026, tenga los días laborables que tenga (todo 2026 se ve ya entero). El mes del alta genera esto entre los días de un mes medio por cada día del horario. '
+    descripcion: 'Lo que genera cada mes completo de 2026, tenga los días laborables que tenga. El mes en curso (y el del alta) genera esto entre los días de un mes medio por cada día del horario. '
       + 'Los conductores tienen su propio tope (1,85).',
     usa: 'Mis vacaciones (modules/VacacionesOficina)' },
   // Desde 2027, de una vez cada 1 de enero (20/11/2026)
