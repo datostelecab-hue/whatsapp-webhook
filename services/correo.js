@@ -133,8 +133,9 @@ async function estadoCorreo() {
 }
 
 /** Envía (o registra) un correo. Nunca lanza: un fallo de correo no rompe el flujo. */
-async function enviarCorreo({ to, subject, text, html } = {}) {
+async function enviarCorreo({ to, cc, subject, text, html } = {}) {
   try {
+    // En pruebas todo va al buzón falso o al desvío: la copia no sale a nadie.
     if (pruebas.ACTIVO) return await enviarEnPruebas({ from: 'Telecab <pruebas@telecab.local>', to, subject, text, html });
     const a = await ajustesEnvio();
     if (!a) {
@@ -150,8 +151,9 @@ async function enviarCorreo({ to, subject, text, html } = {}) {
       auth: { user: a.user, pass: a.pass },
       connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000
     });
-    const info = await transport.sendMail({ from: a.from, to, subject, text, html });
-    console.log(`✅ [CORREO] Enviado a ${to} · id=${info.messageId || '?'} · ${info.response || ''}`);
+    // `cc`: con copia (20/11/2026, los códigos del portal en pruebas, con copia a quien dirige operaciones).
+    const info = await transport.sendMail({ from: a.from, to, ...(cc ? { cc } : {}), subject, text, html });
+    console.log(`✅ [CORREO] Enviado a ${to}${cc ? ` (cc ${cc})` : ''} · id=${info.messageId || '?'} · ${info.response || ''}`);
     return { enviado: true, id: info.messageId };
   } catch (e) {
     // Detalle SMTP completo para diagnosticar (código, respuesta del servidor…).

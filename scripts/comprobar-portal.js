@@ -7,6 +7,8 @@
 // dominio del portal y el del ERP. No toca la base ni manda correos: el
 // repositorio y el correo son dobles.
 
+// Lo normal: cada código al email de su ficha. El buzón de pruebas se mira aparte, abajo.
+process.env.PORTAL_CODIGOS_A = '';
 const repo = require('../modules/Portal/portal.repo');
 const correo = require('../services/correo');
 const svc = require('../modules/Portal/portal.service');
@@ -107,7 +109,7 @@ const codigoDe = m => m.subject.match(/(\d{6})$/)[1];
   igual('El mismo código no sirve dos veces', (await svc.entrar({ dni: '12345678Z', codigo: bueno })).motivo, 'caducado');
 
   const quien = await svc.quienEs(r.testigo);
-  igual('Con la cookie se sabe quién es, con su nombre bien escrito', quien, { id: '7', nombre: 'Juan Carlos Pérez', pila: 'Juan' });
+  igual('Con la cookie se sabe quién es, con su nombre bien escrito', quien, { id: '7', nombre: 'Juan Carlos Pérez', pila: 'Juan', telefono: null });
   igual('Una cookie inventada no es nadie', await svc.quienEs('x'.repeat(43)), null);
   await svc.salir(r.testigo);
   igual('Al salir, la sesión deja de valer', await svc.quienEs(r.testigo), null);

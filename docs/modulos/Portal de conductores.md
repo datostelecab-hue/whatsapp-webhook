@@ -62,6 +62,14 @@ El correo sale por el «Correo para procesos» de siempre ([[Correo]]). El asunt
 
 **Ni horas ni porcentajes**: el promedio y la utilización se quedan en el ERP.
 
+## Los códigos, a un solo buzón mientras se prueba (20/11/2026)
+
+Camilo: *«Por el momento, quema mi correo para que todos los códigos de inicio de sesión me lleguen a mí en datostelecab@gmail.com para probar en producción, me han dicho que por el momento ellos no van a usarlo hasta que lo tengamos listo al 100%»* y *«con copia a Ignacio por cada correo»*.
+
+- **Todo código va a datostelecab@gmail.com**, sea de quien sea (también de quien no tiene email en su ficha), **con copia a Ignacio**. El asunto dice de qué ficha es: «[Portal en pruebas] Código de Juan Carlos Pérez (ficha 7): 123456». La pantalla enseña el buzón al que ha ido de verdad (da•••@gmail.com).
+- El email de Ignacio **no está en el código**: se lee de su usuario (el 1) al mandar cada código (`copiaDePruebas`). `services/correo.enviarCorreo` admite ahora `cc`.
+- **Para abrírselo a los conductores**: poner `PORTAL_CODIGOS_A` vacía en Render (o quitar `CODIGOS_A` de `portal.service.js`); entonces cada código vuelve al email de su ficha y sin copia. El comprobador (`scripts/comprobar-portal.js`) prueba el envío normal; `test/portal-codigos.test.js`, el de pruebas.
+
 ## El aspecto
 
 **La V3 y siempre en claro** (20/11/2026, Camilo: *«aplica el rediseño, no quiero que lo vean oscuro»*). Los colores del tema claro de la V3 del ERP ([[Identidad visual]]): azul vivo sobre blanco y gris muy claro, estados saturados, esquinas de 12–16 px, el botón principal con la sombra de su color, lo elegido de la barra teñido, **Plus Jakarta Sans**. Ya **no sigue el modo oscuro del móvil** (antes lo decidía el teléfono, y quien lo tenía en oscuro lo veía negro): `color-scheme: light` y un solo `theme-color`. Sigue en una hoja propia y pequeña (`public/assets/css/portal.css`), **sin Tailwind**: se abre desde el móvil, a veces con poca cobertura. Las letras: A en el acento, B neutra, C en ámbar, D en rojo.

@@ -113,29 +113,55 @@ function correoDelCodigo(pila, codigo) {
  * (no está, sin contrato o sin email: se contesta lo mismo), 'espera'
  * (demasiados intentos) o 'correo' (el correo no salió).
  */
+// LOS CÓDIGOS, A UN SOLO BUZÓN MIENTRAS SE PRUEBA EN PRODUCCIÓN (20/11/2026,
+// Camilo: «quema mi correo para que todos los códigos de inicio de sesión me
+// lleguen a mí en datostelecab@gmail.com para probar en producción; por el
+// momento ellos no van a usarlo hasta que lo tengamos listo al 100%»). Mientras
+// tenga una dirección, TODO código va ahí, sea de quien sea (también de quien no
+// tiene email en su ficha), y el asunto dice de qué ficha es. Para abrírselo a
+// los conductores: PORTAL_CODIGOS_A vacía en Render, o quitar esto.
+const CODIGOS_A = String(process.env.PORTAL_CODIGOS_A !== undefined ? process.env.PORTAL_CODIGOS_A : 'datostelecab@gmail.com').trim();
+// Y CON COPIA A IGNACIO (Camilo, el mismo día: «con copia a Ignacio por cada
+// correo»). Su email se lee de su usuario (el 1) al mandar, para no escribirlo
+// en el repositorio: si cambia en /usuarios, cambia aquí. Solo con el buzón de pruebas.
+const CODIGOS_CC_USUARIO = 1;
+async function copiaDePruebas() {
+  if (!CODIGOS_A) return null;
+  try {
+    const r = await require('../../services/db').consulta(
+      `SELECT NULLIF(btrim(email), '') AS email FROM usuario WHERE id = $1 AND estado <> 'bloqueado'`, [CODIGOS_CC_USUARIO]);
+    const e = r.rows[0] && r.rows[0].email;
+    return pareceEmail(e) && e.toLowerCase() !== CODIGOS_A.toLowerCase() ? e : null;
+  } catch (err) { console.error('❌ [Portal] la copia de los códigos:', err.message); return null; }
+}
+
 async function pedirCodigo({ dni, ip }) {
   const doc = normalizarDni(dni);
   if (!pareceDni(doc)) return { ok: false, motivo: 'dni' };
   if (!busquedaPermitida(ip || '')) return { ok: false, motivo: 'espera' };
 
   const p = await repo.porDni(doc);
-  if (!p || !pareceEmail(p.email)) return { ok: false, motivo: 'no-podemos' };
+  const destino = p ? (CODIGOS_A || p.email) : null;
+  if (!p || !pareceEmail(destino)) return { ok: false, motivo: 'no-podemos' };
 
   const n = await repo.codigosRecientes({ conductorId: p.id, ip, minutos: VENTANA });
   if (n.persona >= MAX_PERSONA || n.ip >= MAX_IP) return { ok: false, motivo: 'espera' };
 
   const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   const id = await repo.nuevoCodigo({
-    conductorId: p.id, huella: huellaCodigo(p.id, codigo), email: p.email, minutos: CODIGO_MINUTOS, ip,
+    conductorId: p.id, huella: huellaCodigo(p.id, codigo), email: destino, minutos: CODIGO_MINUTOS, ip,
   });
-  const envio = await correo.enviarCorreo({ to: p.email, ...correoDelCodigo(pilaDe(p.nombre), codigo) });
+  const mensaje = correoDelCodigo(pilaDe(p.nombre), codigo);
+  if (CODIGOS_A) mensaje.subject = `[Portal en pruebas] Código de ${nombrePropio(p.nombre_completo || p.nombre)} (ficha ${p.id}): ${codigo}`;
+  const cc = await copiaDePruebas();
+  const envio = await correo.enviarCorreo({ to: destino, ...(cc ? { cc } : {}), ...mensaje });
   if (!envio.enviado) {
     console.error(`❌ [Portal] el código de la ficha ${p.id} no salió: ${envio.motivo}`);
     return { ok: false, motivo: 'correo' };
   }
   await repo.marcarEnviado(id);
-  console.log(`🔑 [Portal] código mandado a la ficha ${p.id} (${ocultarEmail(p.email)})`);
-  return { ok: true, email: ocultarEmail(p.email) };
+  console.log(`🔑 [Portal] código de la ficha ${p.id} mandado a ${ocultarEmail(destino)}${CODIGOS_A ? ' (buzón de pruebas)' : ''}`);
+  return { ok: true, email: ocultarEmail(destino) };
 }
 
 /**
