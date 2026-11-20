@@ -1,46 +1,39 @@
 /* ============================================================
    PORTAL DE CONDUCTORES — conductorestelecab.es (19/10/2026)
    ============================================================
-   La identidad de la casa (telecab.css): un solo acento, el oro del logo;
-   superficies lisas con un borde fino; IBM Plex Sans; el ámbar avisa y el rojo
-   es lo negativo. Pero en una hoja aparte y pequeña, sin Tailwind: el portal
-   se abre desde el móvil, a veces con poca cobertura, y no puede cargar los
-   300 KB del ERP para enseñar ocho días de turnos.
+   En una hoja aparte y pequeña, sin Tailwind: el portal se abre desde el
+   móvil, a veces con poca cobertura, y no puede cargar los 300 KB del ERP.
 
-   EL TEMA LO DECIDE EL MÓVIL (claro u oscuro, prefers-color-scheme): el
-   conductor no tiene ajustes que tocar. Los valores son los de telecab.css. */
+   LA V3, Y SIEMPRE EN CLARO (20/11/2026, Camilo: «aplica el rediseño, no
+   quiero que lo vean oscuro»). Los colores son los del tema claro de la V3 del
+   ERP (telecab.css): azul vivo sobre blanco limpio y gris muy claro, estados
+   saturados, esquinas de 12–16 px, el botón principal con la sombra de su
+   color, lo elegido de la barra teñido, Plus Jakarta Sans. Ya no sigue el
+   modo oscuro del móvil: antes lo decidía el teléfono. Se mantiene: sin
+   emojis, sin cristal, un solo acento, el ámbar avisa y el rojo es negativo. */
 
 :root {
   color-scheme: light;
-  --fondo: 244 245 247; --sup: 255 255 255; --sup2: 241 243 245; --linea: 222 226 231;
-  --texto: 24 28 34; --suave: 98 106 118;
-  --acento: 150 106 0; --sobre-acento: 255 255 255;
-  --verde: 22 122 82; --aviso: 176 90 10; --rojo: 196 50 46; --azul: 44 98 170;
-  --sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .06);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --fondo: 14 16 19; --sup: 22 24 28; --sup2: 31 34 39; --linea: 44 48 55;
-    --texto: 232 234 237; --suave: 142 148 158;
-    --acento: 227 178 60; --sobre-acento: 20 17 10;
-    --verde: 76 178 130; --aviso: 222 142 62; --rojo: 224 92 84; --azul: 112 150 208;
-    --sombra: 0 1px 2px rgb(0 0 0 / .35);
-  }
+  --fondo: 243 245 249; --sup: 255 255 255; --sup2: 241 244 249; --linea: 226 231 240;
+  --texto: 16 24 40; --suave: 99 110 132;
+  --acento: 37 99 235; --acento-hondo: 29 78 216; --sobre-acento: 255 255 255;
+  --verde: 4 135 95; --aviso: 194 89 6; --rojo: 220 38 38; --azul: 2 132 199;
+  --sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .07);
+  --sombra-boton: 0 6px 16px -6px rgb(37 99 235 / .55);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: rgb(var(--fondo)); color: rgb(var(--texto));
-  font: 400 16px/1.5 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 400 16px/1.5 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-variant-numeric: tabular-nums;
   min-height: 100svh;
 }
 a { color: rgb(var(--acento)); text-underline-offset: 3px; }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: 1.5rem; line-height: 1.25; font-weight: 600; letter-spacing: -.02em; text-wrap: balance; }
-h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
+h1 { font-size: 1.625rem; line-height: 1.2; font-weight: 800; letter-spacing: -.025em; text-wrap: balance; }
+h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 :focus-visible { outline: 2px solid rgb(var(--acento)); outline-offset: 2px; border-radius: 6px; }
 .suave { color: rgb(var(--suave)); }
 .peq { font-size: .875rem; }
@@ -52,7 +45,7 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
   backdrop-filter: saturate(1.2) blur(8px); border-bottom: 1px solid rgb(var(--linea));
 }
 .cab-in { max-width: 36rem; margin: 0 auto; padding: .7rem 1rem; display: flex; align-items: center; gap: .6rem; }
-.cab-marca { display: flex; align-items: center; gap: .5rem; text-decoration: none; color: inherit; font-weight: 600; letter-spacing: -.02em; }
+.cab-marca { display: flex; align-items: center; gap: .5rem; text-decoration: none; color: inherit; font-weight: 800; letter-spacing: -.02em; }
 .cab-nombre span { color: rgb(var(--acento)); }
 .cab-quien { margin-left: auto; text-align: right; font-size: .8125rem; line-height: 1.25; color: rgb(var(--suave)); min-width: 0; }
 .cab-quien b { display: block; color: rgb(var(--texto)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 11rem; }
@@ -73,18 +66,19 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
   background: rgb(var(--sup)); border-top: 1px solid rgb(var(--linea));
   padding-bottom: env(safe-area-inset-bottom);
 }
-.barra-in { max-width: 36rem; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+.barra-in { max-width: 36rem; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: .15rem; padding: .3rem .35rem 0; }
 .barra a {
   display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .55rem .25rem .6rem;
-  min-height: 56px; text-decoration: none; color: rgb(var(--suave)); font-size: .75rem; font-weight: 500;
+  min-height: 56px; text-decoration: none; color: rgb(var(--suave)); font-size: .72rem; font-weight: 600; border-radius: 12px;
 }
 .barra a svg { width: 22px; height: 22px; }
-.barra a[aria-current='page'] { color: rgb(var(--acento)); }
+/* Lo elegido, teñido del acento (V3). */
+.barra a[aria-current='page'] { color: rgb(var(--acento)); background: rgb(var(--acento) / .09); }
 .barra a:hover { color: rgb(var(--texto)); }
 .barra a[aria-current='page']:hover { color: rgb(var(--acento)); }
 
 /* ── Superficies ─────────────────────────────────────────────────────────── */
-.caja { background: rgb(var(--sup)); border: 1px solid rgb(var(--linea)); border-radius: 14px; box-shadow: var(--sombra); }
+.caja { background: rgb(var(--sup)); border: 1px solid rgb(var(--linea)); border-radius: 16px; box-shadow: var(--sombra); }
 .caja-in { padding: 1rem 1.1rem; }
 .caja-tit { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; padding: .85rem 1.1rem 0; }
 .caja-tit a { font-size: .875rem; white-space: nowrap; }
@@ -98,16 +92,18 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
 .campo { display: flex; flex-direction: column; gap: .4rem; }
 .campo label { font-size: .875rem; font-weight: 500; }
 .campo input {
-  font: inherit; font-size: 1.125rem; padding: .8rem .9rem; border-radius: 10px; width: 100%;
+  font: inherit; font-size: 1.125rem; padding: .8rem .9rem; border-radius: 12px; width: 100%;
   border: 1px solid rgb(var(--linea)); background: rgb(var(--sup)); color: rgb(var(--texto));
 }
 .campo input:focus { outline: none; border-color: rgb(var(--acento)); box-shadow: 0 0 0 3px rgb(var(--acento) / .2); }
 .campo-codigo input { font-size: 1.75rem; letter-spacing: .4em; text-align: center; font-weight: 600; padding-left: 1.2rem; }
 .boton {
-  font: inherit; font-weight: 600; font-size: 1rem; min-height: 50px; padding: .8rem 1rem; border-radius: 10px; border: 0; cursor: pointer;
-  background: rgb(var(--acento)); color: rgb(var(--sobre-acento)); width: 100%;
+  font: inherit; font-weight: 700; font-size: 1rem; min-height: 50px; padding: .8rem 1rem; border-radius: 12px; border: 0; cursor: pointer;
+  background: rgb(var(--acento)); color: rgb(var(--sobre-acento)); width: 100%; box-shadow: var(--sombra-boton);
+  display: inline-flex; align-items: center; justify-content: center; gap: .55rem;
+  transition: background-color .15s ease, transform .1s ease;
 }
-.boton:hover { filter: brightness(1.06); }
+.boton:hover { background: rgb(var(--acento-hondo)); }
 .boton:active { transform: translateY(1px); }
 .boton-sec { background: none; border: 0; padding: .4rem 0; color: rgb(var(--acento)); font: inherit; font-size: .9375rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .acceso-pie { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; align-items: center; }
@@ -230,3 +226,30 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 600; }
   .col { padding-top: 2rem; }
   .dia { grid-template-columns: 8rem 1fr; }
 }
+
+/* ── Mi coche (20/11/2026) ───────────────────────────────────────────────── */
+.resultado { border-radius: 14px; padding: .85rem 1rem; display: flex; flex-direction: column; gap: .3rem; font-size: .9375rem;
+  border: 1px solid rgb(var(--linea)); background: rgb(var(--sup)); box-shadow: var(--sombra); border-left-width: 4px; }
+.resultado-tit { font-weight: 700; font-size: 1rem; }
+.resultado-ok { border-left-color: rgb(var(--verde)); }
+.resultado-ok .resultado-tit { color: rgb(var(--verde)); }
+.resultado-aviso { border-left-color: rgb(var(--aviso)); }
+.resultado-aviso .resultado-tit { color: rgb(var(--aviso)); }
+.resultado-error { border-left-color: rgb(var(--rojo)); }
+.resultado-error .resultado-tit { color: rgb(var(--rojo)); }
+.coche { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .35rem; padding-top: 1.25rem; padding-bottom: 1.25rem; }
+.coche-etq { font-size: .8125rem; font-weight: 600; color: rgb(var(--verde)); display: inline-flex; align-items: center; gap: .4rem; }
+.coche-etq::before { content: ''; width: .5rem; height: .5rem; border-radius: 50%; background: rgb(var(--verde)); box-shadow: 0 0 0 3px rgb(var(--verde) / .18); }
+/* La matrícula como una placa: el dato que hay que reconocer de un vistazo. */
+.coche-placa { font-size: 2.1rem; font-weight: 800; letter-spacing: .08em; line-height: 1.1; padding: .3rem 1rem; margin: .2rem 0;
+  border: 2px solid rgb(var(--texto)); border-radius: 10px; background: rgb(var(--sup)); }
+.coche-puertas { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; width: 100%; margin-top: .9rem; }
+.boton-grande { min-height: 64px; flex-direction: column; gap: .3rem; font-size: .9375rem; }
+.boton-grande svg { width: 24px; height: 24px; }
+.boton-claro { background: rgb(var(--sup)); color: rgb(var(--texto)); border: 1px solid rgb(var(--linea)); box-shadow: var(--sombra); }
+.boton-claro:hover { background: rgb(var(--sup2)); }
+.boton-peligro { background: rgb(var(--sup)); color: rgb(var(--rojo)); border: 1px solid rgb(var(--rojo) / .45); box-shadow: none; }
+.boton-peligro:hover { background: rgb(var(--rojo) / .06); }
+.coche-desv, .coche-vincular { display: flex; flex-direction: column; gap: .75rem; }
+.coche-vincular .campo input { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; text-align: center; font-size: 1.5rem; }
+.coche-pie { text-align: center; padding: 0 .5rem; }

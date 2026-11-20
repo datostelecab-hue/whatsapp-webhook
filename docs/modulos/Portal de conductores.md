@@ -62,7 +62,18 @@ El correo sale por el «Correo para procesos» de siempre ([[Correo]]). El asunt
 
 ## El aspecto
 
-La identidad de la casa ([[Identidad visual]]): un solo acento, superficies lisas, IBM Plex Sans. Pero en una hoja propia y pequeña (`public/assets/css/portal.css`), **sin Tailwind**: se abre desde el móvil, a veces con poca cobertura. **El tema lo decide el móvil** (claro u oscuro), porque el conductor no tiene ajustes que tocar. Las letras: A en el acento, B neutra, C en ámbar, D en rojo.
+**La V3 y siempre en claro** (20/11/2026, Camilo: *«aplica el rediseño, no quiero que lo vean oscuro»*). Los colores del tema claro de la V3 del ERP ([[Identidad visual]]): azul vivo sobre blanco y gris muy claro, estados saturados, esquinas de 12–16 px, el botón principal con la sombra de su color, lo elegido de la barra teñido, **Plus Jakarta Sans**. Ya **no sigue el modo oscuro del móvil** (antes lo decidía el teléfono, y quien lo tenía en oscuro lo veía negro): `color-scheme: light` y un solo `theme-color`. Sigue en una hoja propia y pequeña (`public/assets/css/portal.css`), **sin Tailwind**: se abre desde el móvil, a veces con poca cobertura. Las letras: A en el acento, B neutra, C en ámbar, D en rojo.
+
+## Mi coche: vincular, puertas y desvincular (20/11/2026)
+
+Camilo: *«Créales el módulo de vincular coche, ahí podrán abrir y cerrar coches, solo luego de vincularse, sino no. Es empezar a migrar el ciclo de motor sacándolo de WhatsApp y dejándolo en su app»*.
+
+- **Pestaña «Coche»** (`/coche`, entre Inicio y Turnos). Sin coche: escribe la **matrícula** y «Vincular coche» (se desbloquea el motor). Con coche: la matrícula como una placa, desde cuándo, **Abrir puertas** / **Cerrar puertas** y **Desvincular vehículo** (bloquea el motor; pide confirmación).
+- **Las puertas, solo con un coche vinculado**, y solo el suyo: sin coche vinculado no se manda ninguna orden.
+- **No hay una segunda lógica del coche**: `modules/Portal/portal.coche.js` llama a las MISMAS funciones que el bot (`fichaje.iniciar`, `fichaje.estado`, `fichaje.terminar`, `puertasBot.ejecutar`) con el **teléfono vigente de su ficha** (`conductor_telefono`), que es como el bot sabe quién es. Así vincular aquí y desvincular por WhatsApp (o al revés) es el mismo coche, y las reglas del motor no se duplican: nunca cortar con el contacto puesto ni en marcha (no deja desvincular y lo dice), las órdenes de un coche en fila, el coche que pasa de manos (a quien lo tenía se le avisa por WhatsApp, `fichajeBot.avisarAlQueEntrega`), Mapon caído…
+- Sin teléfono en la ficha, o sin el uso de coches, se le dice y no se toca nada. Palabras del bot desde el 13/11: «vincular», nunca «turno» ni «fichar».
+- **Formularios normales** (sin JavaScript en el móvil): cada acción vuelve a la página del coche con lo que ha pasado arriba, en verde, ámbar o rojo.
+- **Lo que aún se queda en WhatsApp**: «Entregar coche», «No tengo yo el coche», el código de lavado y los avisos (la pregunta de las 14 h, el coche que pasa de manos). Pruebas: `test/portal-coche.test.js`.
 
 ## Para subirlo a producción
 

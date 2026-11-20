@@ -168,7 +168,7 @@ async function quienEs(testigo) {
   const s = await repo.sesion(huellaTestigo(testigo));
   if (!s) return null;
   if (s.renovar) await repo.renovar(s.sesion_id, SESION_DIAS).catch(() => {});
-  return { id: s.id, nombre: nombrePropio(s.nombre_completo), pila: pilaDe(s.nombre) };
+  return { id: s.id, nombre: nombrePropio(s.nombre_completo), pila: pilaDe(s.nombre), telefono: s.telefono || null };
 }
 
 async function salir(testigo) {

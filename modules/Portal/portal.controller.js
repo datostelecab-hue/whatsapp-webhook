@@ -122,6 +122,22 @@ router.get('/turnos', pagina('portalTurnos', 'Mis turnos', portal.turnos));
 router.get('/puntuacion', pagina('portalPuntuacion', 'Mi puntuación', portal.semanas));
 router.get('/efectivo', pagina('portalEfectivo', 'Mi efectivo', async p => ({ efectivo: await portal.efectivo(p) })));
 
+// ── El coche (20/11/2026): vincular, puertas y desvincular, como en WhatsApp ──
+// Las mismas funciones que el bot (portal.coche.js). Cada acción contesta con
+// la página del coche y lo que ha pasado arriba; sin JavaScript en el móvil.
+const coche = require('./portal.coche');
+const paginaCoche = async (req, res, resultado = null) => {
+  vista(res, 'portalCoche', { titulo: 'Mi coche', pagina: 'portalCoche', conductor: req.conductor,
+    coche: await coche.estado(req.conductor), resultado, matricula: '' });
+};
+const accionCoche = fn => async (req, res, next) => {
+  try { await paginaCoche(req, res, await fn(req)); } catch (e) { next(e); }
+};
+router.get('/coche', accionCoche(async () => null));
+router.post('/coche/vincular', accionCoche(req => coche.vincular(req.conductor, (req.body || {}).matricula)));
+router.post('/coche/puertas', accionCoche(req => coche.moverPuertas(req.conductor, (req.body || {}).accion === 'abrir')));
+router.post('/coche/desvincular', accionCoche(req => coche.desvincular(req.conductor)));
+
 /**
  * Lo que app.js monta delante del ERP. Si la petición no es del dominio del
  * portal, sigue al ERP; si lo es, se acaba aquí: con su página, su 404 o su

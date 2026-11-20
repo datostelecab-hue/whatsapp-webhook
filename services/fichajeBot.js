@@ -1050,4 +1050,5 @@ async function cerrar(telefono) {
     'Cuando vuelvas a coger un coche, escríbeme su matrícula.');
 }
 
-module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado };
+// avisarAlQueEntrega: también cuando el coche se vincula desde el portal de conductores (20/11/2026).
+module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado, avisarAlQueEntrega };

@@ -19,7 +19,12 @@ const PUEDE_ENTRAR = `
 const COLUMNAS = `
   c.id::text AS id, btrim(c.nombre) AS nombre,
   btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre_completo,
-  NULLIF(btrim(c.email), '') AS email`;
+  NULLIF(btrim(c.email), '') AS email,
+  -- El teléfono vigente de su ficha (el principal): con él el portal hace lo del
+  -- coche, como el bot, que reconoce al conductor por su teléfono (20/11/2026).
+  (SELECT t.e164 FROM conductor_telefono t
+    WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
+    ORDER BY t.principal DESC, t.id LIMIT 1) AS telefono`;
 
 /**
  * La persona de un DNI o NIE ya normalizado (sin espacios ni guiones, en

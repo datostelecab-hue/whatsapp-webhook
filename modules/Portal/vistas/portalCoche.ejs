@@ -1,0 +1,73 @@
+<%#
+  MI COCHE (20/11/2026): vincular un coche con su matrícula y, ya vinculado,
+  abrir y cerrar las puertas o desvincularlo. Lo mismo que el bot de WhatsApp,
+  con las mismas reglas (modules/Portal/portal.coche.js). Formularios normales:
+  funciona sin JavaScript y con poca cobertura.
+%>
+<h1>Mi coche</h1>
+
+<% if (resultado) { %>
+<div class="resultado resultado-<%= resultado.tono %>" role="status">
+  <p class="resultado-tit"><%= resultado.titulo %></p>
+  <% (resultado.texto || []).forEach(function (t) { %><p><%= t %></p><% }) %>
+</div>
+<% } %>
+
+<% if (!coche.puede) { %>
+  <% if (!resultado) { %>
+  <div class="resultado resultado-<%= coche.aviso.tono %>" role="status">
+    <p class="resultado-tit"><%= coche.aviso.titulo %></p>
+    <% (coche.aviso.texto || []).forEach(function (t) { %><p><%= t %></p><% }) %>
+  </div>
+  <% } %>
+<% } else if (coche.vinculado) { %>
+<section class="caja" aria-labelledby="t-coche">
+  <div class="caja-in coche">
+    <p class="coche-etq" id="t-coche">Vehículo vinculado</p>
+    <p class="coche-placa"><%= coche.matricula %></p>
+    <p class="suave peq">Vinculado desde <%= coche.desde %><%= coche.entregando ? '. Saliste a entregarlo: ' + coche.entregando : '' %></p>
+
+    <div class="coche-puertas">
+      <form method="post" action="/coche/puertas">
+        <input type="hidden" name="accion" value="abrir">
+        <button class="boton boton-grande" type="submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/></svg>
+          Abrir puertas
+        </button>
+      </form>
+      <form method="post" action="/coche/puertas">
+        <input type="hidden" name="accion" value="cerrar">
+        <button class="boton boton-grande boton-claro" type="submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
+          Cerrar puertas
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="caja" aria-labelledby="t-desv">
+  <div class="caja-in coche-desv">
+    <h2 id="t-desv">¿Has terminado con el coche?</h2>
+    <p class="suave peq">Al desvincularlo se bloquea el motor. Antes, <b>aparca y apaga el coche</b>: en marcha o con el contacto puesto no se desvincula.</p>
+    <form method="post" action="/coche/desvincular" onsubmit="return confirm('¿Desvincular el <%= coche.matricula %>? Se bloqueará el motor.');">
+      <button class="boton boton-peligro" type="submit">Desvincular vehículo</button>
+    </form>
+  </div>
+</section>
+<% } else { %>
+<section class="caja" aria-labelledby="t-vincular">
+  <form class="caja-in coche-vincular" method="post" action="/coche/vincular">
+    <h2 id="t-vincular">Vincula el coche que vas a llevar</h2>
+    <div class="campo">
+      <label for="matricula">Matrícula</label>
+      <input id="matricula" name="matricula" type="text" required minlength="4" maxlength="12"
+             autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="1234ABC" value="<%= matricula %>">
+    </div>
+    <button class="boton" type="submit">Vincular coche</button>
+    <p class="suave peq">Al vincularlo se desbloquea el motor y, desde aquí, podrás abrir y cerrar las puertas. Sin un coche vinculado, las puertas no se tocan.</p>
+  </form>
+</section>
+<% } %>
+
+<p class="suave peq coche-pie">Es el mismo coche que en WhatsApp: si lo vinculas aquí, el bot también lo sabe, y al revés.</p>
