@@ -3,9 +3,8 @@
 
   Cuatro vistas en pestañas (?vista=):
     · Mi tablero: lo que llevo, lo que pedí y donde colaboro;
-    · Equipo: la carga de cada persona de mi gente (todos, si reparto o lo veo todo)
-      y, al pulsar una, su tablero con lo que LLEVA (?persona=ID; ?persona=todos,
-      el de todo el equipo mezclado);
+    · Equipo: lo de mi gente (todo, si reparto o lo veo todo); encima, una tarjeta
+      por persona: pulsarla deja solo lo que LLEVA ella (?persona=ID);
     · Por repartir: lo que espera mi aprobación o mi asignación (solo a quien le toca);
     · Lista: todas las que veo, con buscador, filtros y Excel (Listado).
   La ficha de una tarjeta se abre al lado (Panel), también por enlace (?tarjeta=ID,
@@ -23,8 +22,7 @@
       <i class="fa-solid fa-plus" aria-hidden="true"></i> Nueva tarea
     </button>
   </div>
-  <%# «Equipo» (20/11/2026): la carga de cada persona y, al pulsar una, su tablero. %>
-  <div id="t-equipo" class="hidden"></div>
+  <%# Encima del tablero del equipo, una tarjeta por persona como filtro (20/11/2026). %>
   <div id="t-persona" class="hidden"></div>
   <div id="t-tablero" aria-live="polite"></div>
   <div id="t-lista" class="hidden"></div>

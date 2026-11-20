@@ -171,12 +171,12 @@ La primera vez que alguien entra en el tablero le sale un recorrido de un minuto
 
 **Tablero** en el menú, para todos, como Inicio; qué ve cada uno lo decide el tablero. Su número (`tareas.menu`) suma las tarjetas que lleva y, a quien reparte o aprueba, lo que espera por él. Va en rojo si hay algo vencido o esperando.
 
-Hay cuatro pestañas, y la elegida va en `?vista=` (en «Equipo», la persona en `?persona=`):
+Hay cuatro pestañas, y la elegida va en `?vista=` (en la del equipo, la persona elegida en `?persona=`):
 
 | Pestaña | Qué enseña |
 |---|---|
 | **Mi tablero** | Lo que lleva, lo que pidió y donde colabora, en columnas: por aprobar, por hacer, en curso, bloqueada y cerrada (los últimos 14 días) |
-| **Equipo** | La carga de cada persona de su gente (todos, si reparte o lo ve todo) y, al pulsar una, **su tablero**. Ver «El equipo, persona a persona» |
+| **Mi equipo** / **Todo el equipo** | Lo mismo con lo de su gente (todo, si reparte o lo ve todo); encima, **una tarjeta por persona** que filtra el tablero. Ver «El equipo, persona a persona» |
 | **Por repartir** | Solo a quien aprueba o reparte: por aprobar y por asignar, con su contador |
 | **Lista** | Todas las que ve, en el [[Componentes de la casa\|Listado]]: buscador, filtros (estado, responsable, tipo, plazo), KPIs y Excel |
 
@@ -194,12 +194,11 @@ Todo con las **piezas globales de la casa** (Pestanas, Kanban, Panel, Listado, D
 
 ## El equipo, persona a persona (20/11/2026)
 
-Camilo: *«¿Se pueden ver tableros por persona para que la gestión del equipo sea más sencilla?»*. Eligió la carga del equipo con el tablero de cada uno dentro (opción C con la A), y que cuente **solo lo que cada uno lleva** (no lo que pidió ni donde colabora).
+Camilo: *«¿Se pueden ver tableros por persona para que la gestión del equipo sea más sencilla?»*, contando **solo lo que cada uno lleva** (no lo que pidió ni donde colabora). Primero se hizo una pestaña aparte con la carga de cada uno en una lista; el mismo día la cambió: *«no es muy práctica, la idea es que estén las tarjetas de todos encima del tablero de Ignacio como "filtro"… al clickear en uno ya no se vea el tablero general sino el individual»*.
 
-- **La pestaña «Equipo»** abre la carga, en el Listado: una fila por persona (también las que no llevan nada, para ver quién tiene hueco) con abiertas, por hacer, en curso, bloqueadas, **vencidas**, cerradas en los últimos 7 días y el próximo vencimiento. KPIs pulsables (vencidas, bloqueadas, sin nada abierto) y el filtro «Situación». Sale de `tablero.carga` (`GET /tablero/api/equipo`). Vencida = su último día hábil ya pasó, como en el número del menú.
-- **Al pulsar a alguien**, su tablero con las columnas de siempre (`?vista=equipo&persona=ID`, `GET /tablero/api/tarjetas?vista=persona&persona=ID`): solo las tarjetas de las que es responsable. Arriba, «Carga del equipo» para volver, cuántas lleva y cuántas vencidas, y **«Ver tablero de»** para saltar a otra persona o a **«Todo el equipo»** (`?persona=todos`, el tablero mezclado que había antes).
+- **En la pestaña del equipo** («Todo el equipo», o «Mi equipo» a quien no lo ve todo), encima de las columnas, **una tarjeta por persona**: sus iniciales, el nombre, cuántas lleva abiertas y, en rojo, cuántas vencidas. Delante, «Todo el equipo» con el total. Ordenadas de más vencidas y abiertas a menos; quien no lleva nada, al final y apagada (se ve quién tiene hueco). Salen de `tablero.carga` (`GET /tablero/api/equipo`), que se relee con cada recarga del tablero. Vencida = su último día hábil ya pasó, como en el número del menú.
+- **Pulsar una tarjeta** deja el tablero con **solo lo que lleva esa persona** (`?persona=ID`, `GET /tablero/api/tarjetas?vista=persona&persona=ID`), con su tarjeta resaltada y una línea que lo dice. Pulsarla otra vez, o «Todo el equipo», vuelve al general. Al cambiar de pestaña se quita el filtro; un enlace con `?vista=equipo&persona=ID` lo abre filtrado.
 - **Quién ve a quién**, con las reglas de siempre (`puedeVer`): quien reparte o lo ve todo, a todos; quien lleva un área o es superior, a su gente y a sí mismo; el resto, solo a sí mismo. El tablero de alguien que no se ve da 404.
-- Al cambiar de pestaña se sale del tablero de la persona; un enlace con `?persona=` lo abre directamente.
 
 ## La API (`/tablero/api`)
 

@@ -30,11 +30,11 @@
   let vista = 'mias';
   let kanban = null;
   let lista = null;
-  // «EQUIPO» (20/11/2026, Camilo: «tableros por persona para que la gestión del
-  // equipo sea más sencilla»; solo lo que cada uno LLEVA). Sin ?persona, la
-  // pestaña enseña la carga de cada uno; con ?persona=ID, su tablero; con
-  // ?persona=todos, el de todo el equipo mezclado, que era lo que había.
-  let equipoLista = null;
+  // EL EQUIPO, PERSONA A PERSONA (20/11/2026, Camilo: «que estén las tarjetas
+  // de todos encima del tablero de Ignacio como "filtro"… al clickear en uno ya
+  // no se vea el tablero general sino el individual»). En la pestaña del equipo,
+  // una tarjeta por persona encima del tablero; pulsarla deja solo lo que LLEVA
+  // ella (?persona=ID); pulsarla otra vez, o «Todos», vuelve al general.
   let carga = [];
   let persona = leerPersona();
   let panel = null;          // { id, p } la ficha abierta
@@ -99,11 +99,9 @@
     return partes.join(', ');
   }
 
-  // ── La persona de «Equipo», en la URL ───────────────────────────────────
+  // ── La persona elegida en el tablero del equipo, en la URL ──────────────
   function leerPersona() {
-    const v = new URLSearchParams(location.search).get('persona');
-    if (v === 'todos') return 'todos';
-    const n = Number(v);
+    const n = Number(new URLSearchParams(location.search).get('persona'));
     return Number.isSafeInteger(n) && n > 0 ? n : null;
   }
   function ponerPersona(p) {
@@ -115,9 +113,9 @@
   const textoTodos = () => (yo.todos ? 'Todo el equipo' : 'Mi equipo');
 
   // ── Traer ───────────────────────────────────────────────────────────────
-  /** Las de una vista. En «Equipo» con una persona elegida, solo lo que lleva ella. */
+  /** Las de una vista. En la del equipo con una persona elegida, solo lo que lleva ella. */
   async function traer(v, p = null) {
-    const q = v === 'equipo' && p && p !== 'todos' ? `vista=persona&persona=${encodeURIComponent(p)}` : `vista=${encodeURIComponent(v)}`;
+    const q = v === 'equipo' && p ? `vista=persona&persona=${encodeURIComponent(p)}` : `vista=${encodeURIComponent(v)}`;
     const r = await Api.get(`${API}/tarjetas?${q}`);
     return r.tarjetas || [];
   }
@@ -161,7 +159,6 @@
 
   async function recargar() {
     if (vista === 'lista') { if (lista) await lista.recargar(); return; }
-    if (vista === 'equipo' && !persona) { if (equipoLista) await equipoLista.recargar(); return; }
     // Con una recarga en marcha, se repite al acabar: la que va puede ser de
     // antes de un cambio, y lo nuevo no se perdería.
     if (pidiendo) { otraVez = true; return pidiendo; }
@@ -170,10 +167,11 @@
         do {
           otraVez = false;
           const v = vista, p = persona;
-          const tarjetas = await traer(v, v === 'equipo' ? p : null);
+          // En la del equipo, también cuántas lleva cada uno (las tarjetas del filtro).
+          const [tarjetas] = await Promise.all([traer(v, v === 'equipo' ? p : null), v === 'equipo' ? traerCarga().catch(() => carga) : null]);
           if (v !== vista || p !== persona) continue;
           if (kanban) kanban.poner(tarjetas);
-          if (v === 'equipo' && p) pintarCabecera(tarjetas);
+          if (v === 'equipo') pintarFiltro();
         } while (otraVez);
       } catch (e) { document.querySelector('#t-tablero').innerHTML = `<p class="text-sm text-telecab-warn">No se ha podido cargar el tablero: ${esc(e.message)}</p>`; }
       finally { pidiendo = null; }
@@ -230,86 +228,53 @@
     });
   }
 
-  // ── «Equipo»: la carga de cada persona (Listado) ────────────────────────
-  const suma = (filas, k) => filas.reduce((s, p) => s + (p[k] || 0), 0);
-  const SITUACIONES = [
-    ['vencidas', 'Con vencidas', p => p.vencidas > 0],
-    ['bloqueadas', 'Con bloqueadas', p => p.bloqueadas > 0],
-    ['libres', 'Sin nada abierto', p => !p.abiertas],
-  ];
-  const numero = (v, tono) => (v ? `<span class="font-semibold${tono ? ' text-telecab-' + tono : ''}">${esc(v)}</span>` : '<span class="text-telecab-muted">0</span>');
+  // ── El filtro por persona, encima del tablero del equipo ────────────────
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
-  function montarEquipo() {
-    equipoLista = Listado.montar({
-      raiz: '#t-equipo',
-      titulo: yo.todos ? 'La carga de todo el equipo' : 'La carga de tu equipo',
-      icono: 'fa-people-group',
-      clave: 'id',
-      origen: traerCarga,
-      vacio: 'No hay nadie que coincida.',
-      alAbrir: p => abrirPersona(p.id),
-      buscar: { texto: 'Persona…', campos: ['nombre'] },
-      kpis: filas => [
-        { etiqueta: 'Tareas abiertas', valor: suma(filas, 'abiertas'), tono: 'gold' },
-        { etiqueta: 'Vencidas', valor: suma(filas, 'vencidas'), tono: suma(filas, 'vencidas') ? 'red' : 'text', filtro: { id: 'situacion', valor: 'vencidas' } },
-        { etiqueta: 'Bloqueadas', valor: suma(filas, 'bloqueadas'), filtro: { id: 'situacion', valor: 'bloqueadas' } },
-        { etiqueta: 'Sin nada abierto', valor: filas.filter(p => !p.abiertas).length, filtro: { id: 'situacion', valor: 'libres' } },
-      ],
-      filtros: [
-        { id: 'situacion', etiqueta: 'Situación', textoTodos: 'Todas',
-          opciones: filas => SITUACIONES.map(([valor, texto, pasa]) => ({ valor, texto, cuenta: filas.filter(pasa).length })),
-          pasa: (p, v) => (SITUACIONES.find(s => s[0] === v) || [, , () => true])[2](p) },
-      ],
-      columnas: [
-        { titulo: 'Persona', campo: 'nombre', pinta: v => `<span class="font-semibold">${esc(v)}</span>` },
-        { titulo: 'Abiertas', campo: 'abiertas', clase: 'tabular-nums', pinta: v => numero(v) },
-        { titulo: 'Por hacer', campo: 'porHacer', clase: 'tabular-nums', pinta: v => numero(v) },
-        { titulo: 'En curso', campo: 'enCurso', clase: 'tabular-nums', pinta: v => numero(v) },
-        { titulo: 'Bloqueadas', campo: 'bloqueadas', clase: 'tabular-nums', pinta: v => numero(v, 'warn') },
-        { titulo: 'Vencidas', campo: 'vencidas', clase: 'tabular-nums', pinta: v => numero(v, 'red') },
-        { titulo: 'Cerradas en 7 días', campo: 'cerradas7', clase: 'tabular-nums', pinta: v => numero(v) },
-        { titulo: 'Próximo vencimiento', campo: 'proximo', clase: 'whitespace-nowrap tabular-nums',
-          pinta: v => (v ? esc(dia(v)) : '<span class="text-telecab-muted text-xs">Sin plazos</span>') },
-      ],
-    });
-  }
-
-  // ── «Equipo»: el tablero de una persona ─────────────────────────────────
-  /** La cabecera: volver, de quién es, cuántas lleva y el selector para saltar a otra persona. */
-  function pintarCabecera(tarjetas) {
+  /**
+   * Una tarjeta por persona que se ve (de las que más vencidas y abiertas lleva
+   * a las que menos; quien no lleva nada, al final y apagada), y «Todos» delante.
+   * La elegida, resaltada. Cuenta solo lo que cada uno LLEVA.
+   */
+  function pintarFiltro() {
     const caja = document.querySelector('#t-persona');
-    const nombre = persona === 'todos' ? textoTodos() : ((carga.find(p => p.id === persona) || {}).nombre || nombreDe(persona));
-    const opciones = [['todos', textoTodos()], ...carga.map(p => [String(p.id), p.nombre])];
-    if (!opciones.some(([v]) => v === String(persona))) opciones.push([String(persona), nombre]);
-    const abiertas = tarjetas ? tarjetas.filter(t => TRABAJANDO.includes(t.estado)).length : null;
-    const vencidas = tarjetas ? tarjetas.filter(t => t.plazo && t.plazo.semaforo === 'rojo').length : 0;
+    const gente = [...carga].sort((a, b) => (b.vencidas - a.vencidas) || (b.abiertas - a.abiertas) || String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    const abiertas = gente.reduce((n, x) => n + x.abiertas, 0);
+    const vencidas = gente.reduce((n, x) => n + x.vencidas, 0);
+    const resalte = 'border-color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .12);';
+    const sub = (a, v) => `<span class="block text-[11px] text-telecab-muted whitespace-nowrap">${plural(a, 'abierta', 'abiertas')}${
+      v ? ` · <span class="text-telecab-red font-semibold">${plural(v, 'vencida', 'vencidas')}</span>` : ''}</span>`;
+    const boton = (id, cabeza, nombre, a, v, apagada) => {
+      const elegida = String(id) === String(persona == null ? 'todos' : persona);
+      return `<button type="button" data-filtro-persona="${esc(id)}" aria-pressed="${elegida}"
+          class="flex-none flex items-center gap-2 px-3 py-2 rounded-xl border border-telecab-border bg-telecab-card2 hover:border-telecab-gold text-left transition"
+          style="${elegida ? resalte : ''}${apagada && !elegida ? 'opacity:.55;' : ''}"
+          title="${id === 'todos' ? 'El tablero de todo el equipo' : `El tablero de ${esc(nombre)}: solo lo que lleva`}">
+        ${cabeza}
+        <span class="min-w-0"><span class="block text-sm font-semibold truncate max-w-[11rem]">${esc(nombre)}</span>${sub(a, v)}</span>
+      </button>`;
+    };
+    const elegido = persona ? ((carga.find(x => x.id === persona) || {}).nombre || nombreDe(persona)) : '';
     caja.innerHTML = `
-      <div class="flex flex-wrap items-center gap-3">
-        <button type="button" class="tc-boton" data-atras><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Carga del equipo</button>
-        <div class="flex-1 min-w-0">
-          <h2 class="text-lg font-bold truncate">${persona === 'todos' ? esc(nombre) : `Tablero de ${esc(nombre)}`}</h2>
-          ${abiertas == null ? '' : `<p class="text-xs text-telecab-muted">${abiertas === 1 ? '1 tarea abierta' : `${abiertas} tareas abiertas`}${vencidas
-            ? `, <span class="text-telecab-red font-semibold">${vencidas === 1 ? '1 vencida' : `${vencidas} vencidas`}</span>` : ''}${persona === 'todos' ? '' : '. Solo lo que lleva.'}</p>`}
-        </div>
-        <label class="flex items-center gap-2 text-sm">
-          <span class="text-telecab-muted">Ver tablero de</span>
-          <select data-persona class="text-sm bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text">
-            ${opciones.map(([v, t]) => `<option value="${esc(v)}"${v === String(persona) ? ' selected' : ''}>${esc(t)}</option>`).join('')}
-          </select>
-        </label>
-      </div>`;
-    caja.querySelector('[data-atras]').addEventListener('click', () => abrirPersona(null));
-    caja.querySelector('[data-persona]').addEventListener('change', e => abrirPersona(e.target.value === 'todos' ? 'todos' : Number(e.target.value)));
+      <div class="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Ver el tablero de una persona">
+        ${boton('todos', '<span class="tc-iniciales"><i class="fa-solid fa-people-group" aria-hidden="true"></i></span>', textoTodos(), abiertas, vencidas, false)}
+        ${gente.map(x => boton(x.id, `<span class="tc-iniciales">${esc(iniciales(x.nombre))}</span>`, x.nombre, x.abiertas, x.vencidas, !x.abiertas)).join('')}
+      </div>
+      ${persona ? `<p class="text-xs text-telecab-muted mt-1">Tablero de <b class="text-telecab-text">${esc(elegido)}</b>: solo lo que lleva. Pulsa otra vez su tarjeta, o «${esc(textoTodos())}», para volver al general.</p>` : ''}`;
+    caja.querySelectorAll('[data-filtro-persona]').forEach(el => el.addEventListener('click', () => {
+      const id = el.dataset.filtroPersona === 'todos' ? null : Number(el.dataset.filtroPersona);
+      elegirPersona(id === persona ? null : id);
+    }));
   }
 
-  /** Entra en el tablero de una persona (o en el de todos), o vuelve a la carga con null. */
-  function abrirPersona(p) {
+  /** El tablero de una persona, o el general con null. */
+  function elegirPersona(p) {
     ponerPersona(p);
     mostrar();
   }
 
   // ── Elegir vista ────────────────────────────────────────────────────────
-  /** Al cambiar de pestaña se sale del tablero de una persona; al abrir la página, no (viene en el enlace). */
+  /** Al cambiar de pestaña se quita el filtro por persona; al abrir la página, no (viene en el enlace). */
   function cambiarVista(v, { conservarPersona = false } = {}) {
     if (!conservarPersona && persona != null) ponerPersona(null);
     vista = v;
@@ -317,21 +282,13 @@
   }
 
   function mostrar() {
-    const v = vista;
-    const enLista = v === 'lista';
-    const enCarga = v === 'equipo' && !persona;
-    const enPersona = v === 'equipo' && !!persona;
-    document.querySelector('#t-tablero').classList.toggle('hidden', enLista || enCarga);
+    const enLista = vista === 'lista';
+    const enEquipo = vista === 'equipo';
+    document.querySelector('#t-tablero').classList.toggle('hidden', enLista);
     document.querySelector('#t-lista').classList.toggle('hidden', !enLista);
-    document.querySelector('#t-equipo').classList.toggle('hidden', !enCarga);
-    document.querySelector('#t-persona').classList.toggle('hidden', !enPersona);
+    document.querySelector('#t-persona').classList.toggle('hidden', !enEquipo);
     if (enLista) { if (!lista) montarLista(); else lista.recargar(); return; }
-    if (enCarga) { if (!equipoLista) montarEquipo(); else equipoLista.recargar(); return; }
-    if (enPersona) {
-      pintarCabecera(null);
-      // Entrando por enlace aún no hay carga: el selector se rellena al llegar.
-      if (!carga.length) traerCarga().then(() => { if (vista === v && persona) recargar(); }).catch(() => {});
-    }
+    if (enEquipo) pintarFiltro();
     montarKanban();
     recargar();
   }
@@ -818,7 +775,7 @@
       { icono: 'fa-table-columns', titulo: 'El tablero de tareas',
         texto: 'Todo lo que hay que hacer en la oficina, en un solo sitio: lo que te piden, lo que pides y lo que llega solo de otras pantallas. Te lo enseño en un minuto.' },
       { sel: '#t-pestanas', icono: 'fa-layer-group', titulo: 'Las vistas',
-        texto: '«Mi tablero»: lo que llevas, lo que pediste y donde colaboras. «Equipo»: cuántas lleva cada persona de tu gente y, al pulsar una, su tablero. «Por repartir», solo a quien aprueba o reparte. «Lista»: todo, con buscador, filtros y Excel.' },
+        texto: '«Mi tablero»: lo que llevas, lo que pediste y donde colaboras. «Mi equipo»: lo de tu gente; arriba, una tarjeta por persona: púlsala y ves solo lo que lleva. «Por repartir», solo a quien aprueba o reparte. «Lista»: todo, con buscador, filtros y Excel.' },
       { sel: '#t-nueva', icono: 'fa-plus', titulo: 'Nueva tarea',
         texto: 'Para ti o para otra persona: qué hay que hacer, quién la hace y el plazo en días hábiles (sin fines de semana ni festivos). También nace desde un mensaje del chat, con «Convertir en tarea».' },
       { sel: '[data-columna="por_aprobar"]', icono: 'fa-user-check', titulo: 'Por aprobar',
@@ -854,7 +811,7 @@
     }
     const pestanas = [
       { id: 'mias', texto: 'Mi tablero', icono: 'fa-table-columns', contador: 'tareas.mias' },
-      { id: 'equipo', texto: 'Equipo', icono: 'fa-people-group' },
+      { id: 'equipo', texto: textoTodos(), icono: 'fa-people-group' },
     ];
     if (yo.aprueba || yo.asigna) pestanas.push({ id: 'pendientes', texto: 'Por repartir', icono: 'fa-inbox', contador: yo.asigna ? 'tareas.por_asignar' : 'tareas.por_aprobar' });
     pestanas.push({ id: 'lista', texto: 'Lista', icono: 'fa-list' });
