@@ -120,7 +120,7 @@ function crear({ repo, claveNomina = '/recaudacion/nomina' }) {
     const saldoInicial = antes.length ? antes[0].saldo : 0;
     const vivas = f.quincenas.filter(desde);
     const quincenas = vivas.map((q, i) => ({
-      etiqueta: q.etiqueta,
+      etiqueta: q.etiqueta, anio: q.anio, mes: q.mes,   // el mes, para agruparlas (portal, 20/11/2026)
       enCurso: q.anio === hoy.anio && q.mes === hoy.mes && q.quincena === hoy.quincena,
       // Con lo que llegaba de la quincena anterior, la cuenta de cada una se hace
       // sola: arrastre + cobrado − entregado + lo que se le dio = saldo.

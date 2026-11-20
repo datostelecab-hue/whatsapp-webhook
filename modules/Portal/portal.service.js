@@ -254,10 +254,43 @@ async function dinero(persona, hoy = hoyMadrid()) {
  * quincena a quincena desde junio, de la ficha de Recaudación
  * (recaudacion.extractoDe). Quien no tiene ficha allí, sin nada.
  */
+const r2 = n => Math.round(n * 100) / 100;
+
+/**
+ * SU EFECTIVO EN DOS COLUMNAS (20/11/2026, Camilo: «un desglose más de ingresos
+ * y egresos: en una columna lo que ha recibido durante los meses y en otra las
+ * veces que ha venido a dejar dinero, algo más limpio y no tan complicado»).
+ * Del extracto de Recaudación (el mismo de la ventanilla, al céntimo):
+ *   · porMes: lo que RECIBIÓ cada mes: lo cobrado en efectivo en BOLT (con la
+ *     corrección de la oficina, si la hubo) y el dinero que se le dio (cambio,
+ *     devoluciones), de lo más nuevo a lo más viejo;
+ *   · entregas: cada vez que DEJÓ dinero (en mano, nómina, transferencia o un
+ *     gasto suyo devuelto), de la más nueva a la más vieja.
+ * recibido − entregado + lo que traía de antes de junio = el pendiente.
+ */
+function enDosColumnas(e) {
+  const meses = new Map();
+  const entregas = [];
+  for (const q of e.quincenas) {
+    const k = `${q.anio}-${String(q.mes).padStart(2, '0')}`;
+    if (!meses.has(k)) meses.set(k, { clave: k, nombre: `${MESES[q.mes - 1]} ${q.anio}`, cobrado: 0, dado: 0, enCurso: false });
+    const m = meses.get(k);
+    m.cobrado = r2(m.cobrado + q.cobrado);
+    if (q.enCurso) m.enCurso = true;
+    for (const mv of q.movimientos) {
+      if (mv.baja) entregas.push({ fecha: mv.fecha, que: mv.que, importe: mv.importe, referencia: mv.referencia });
+      else m.dado = r2(m.dado + mv.importe);
+    }
+  }
+  const porMes = [...meses.values()].filter(m => m.cobrado || m.dado).sort((a, b) => b.clave.localeCompare(a.clave));
+  entregas.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  return { ...e, recibido: r2(e.cobrado + e.dado), porMes, entregas };
+}
+
 async function efectivo(persona) {
-  try { return await recaudacion.extractoDe(persona.id); }
+  try { return enDosColumnas(await recaudacion.extractoDe(persona.id)); }
   catch (e) {
-    if (/no existe/.test(e.message)) return { pendiente: 0, saldoInicial: 0, cobrado: 0, entregado: 0, dado: 0, quincenas: [] };
+    if (/no existe/.test(e.message)) return { pendiente: 0, saldoInicial: 0, cobrado: 0, entregado: 0, dado: 0, recibido: 0, quincenas: [], porMes: [], entregas: [] };
     throw e;
   }
 }
@@ -285,5 +318,5 @@ module.exports = {
   pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero, efectivo,
   SESION_DIAS,
   // Para el comprobador.
-  _normalizarDni: normalizarDni, _ocultarEmail: ocultarEmail, _pilaDe: pilaDe, _correoDelCodigo: correoDelCodigo,
+  _normalizarDni: normalizarDni, _ocultarEmail: ocultarEmail, _pilaDe: pilaDe, _correoDelCodigo: correoDelCodigo, _enDosColumnas: enDosColumnas,
 };

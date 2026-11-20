@@ -253,3 +253,29 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .coche-desv, .coche-vincular { display: flex; flex-direction: column; gap: .75rem; }
 .coche-vincular .campo input { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; text-align: center; font-size: 1.5rem; }
 .coche-pie { text-align: center; padding: 0 .5rem; }
+
+/* ── Mi efectivo en dos columnas (20/11/2026) ────────────────────────────── */
+.efe-resumen { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .35rem; padding-top: 1.25rem; padding-bottom: 1.25rem; }
+.efe-etq { font-size: .8125rem; font-weight: 600; color: rgb(var(--suave)); }
+.efe-total { font-size: 2.5rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+.efe-total-a-favor { color: rgb(var(--verde)); }
+/* La cuenta, a la vista: recibiste − entregaste. */
+.efe-cuenta { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-top: .6rem; width: 100%; }
+.efe-cuenta div { flex: 1; max-width: 10rem; background: rgb(var(--sup2)); border-radius: 12px; padding: .55rem .75rem; display: flex; flex-direction: column; }
+.efe-cuenta span { font-size: .75rem; color: rgb(var(--suave)); font-weight: 600; }
+.efe-cuenta b { font-size: 1.0625rem; font-weight: 700; }
+.efe-menos { font-size: 1.5rem; font-weight: 300; color: rgb(var(--suave)); }
+.efe-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; align-items: start; }
+.efe-col { overflow: hidden; }
+.efe-col-tit { display: flex; align-items: center; gap: .45rem; padding: .8rem .85rem .55rem; font-size: .9375rem; border-bottom: 1px solid rgb(var(--linea)); }
+.efe-punto { width: .55rem; height: .55rem; border-radius: 50%; flex: none; }
+.efe-punto-entra { background: rgb(var(--acento)); }
+.efe-punto-sale { background: rgb(var(--verde)); }
+.efe-lista { list-style: none; margin: 0; padding: 0; }
+.efe-lista li { display: flex; flex-direction: column; gap: .05rem; padding: .6rem .85rem; border-top: 1px solid rgb(var(--linea)); }
+.efe-lista li:first-child { border-top: 0; }
+.efe-cuando { font-size: .8125rem; color: rgb(var(--suave)); font-weight: 600; }
+.efe-cuando small { font-weight: 500; font-size: .6875rem; }
+.efe-lista b { font-size: 1.0625rem; font-weight: 700; }
+.efe-detalle { font-size: .75rem; color: rgb(var(--suave)); line-height: 1.35; word-break: break-word; }
+.efe-vacio { padding: .9rem .85rem; color: rgb(var(--suave)); font-size: .875rem; }

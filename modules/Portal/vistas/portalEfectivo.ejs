@@ -1,69 +1,76 @@
 <%
-  /* Su efectivo, de la ficha de Recaudación (recaudacion.extractoDe): lo que
-     BOLT dice que cobró en efectivo y lo que ha entregado, quincena a quincena
-     desde junio. En las cifras, «−» es lo que baja lo que debe (lo que entrega)
-     y «+», lo que lo sube (lo cobrado, el cambio que se le da). */
+  /* SU EFECTIVO EN DOS COLUMNAS (20/11/2026, Camilo: «en una columna lo que ha
+     recibido durante los meses y en otra las veces que ha venido a dejar dinero,
+     algo más limpio y no tan complicado para ellos»). Arriba lo que tiene por
+     entregar, con la cuenta; debajo, lo que recibió mes a mes y lo que entregó
+     vez a vez. Las cifras son las de la ventanilla (portal.service.efectivo). */
   const e = efectivo;
-  const signo = (n, baja) => (baja ? '−' : '+') + ' ' + f.euros(Math.abs(n));
-  const dia = iso => { const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : ''; };
+  const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const dia = iso => { const p = String(iso || '').slice(0, 10).split('-'); return p.length === 3 ? `${Number(p[2])} ${MESES_CORTOS[Number(p[1]) - 1]}` : ''; };
+  const CORTO = { 'Entregado en mano': 'En mano', 'Descontado de tu nómina': 'De tu nómina', 'Gasto que te devolvimos (remesa)': 'Gasto devuelto' };
 %>
 <div>
   <h1>Mi efectivo</h1>
-  <p class="suave" style="margin-top:.25rem">Lo que has cobrado en efectivo en BOLT y lo que has entregado, desde junio.</p>
+  <p class="suave" style="margin-top:.25rem">Lo que cobras en efectivo en BOLT y lo que vienes a dejar, desde junio.</p>
 </div>
 
 <section class="caja" aria-labelledby="t-pendiente">
-  <div class="caja-tit"><h2 id="t-pendiente">Por entregar</h2></div>
-  <div class="caja-in dinero">
+  <div class="caja-in efe-resumen">
+    <p class="efe-etq" id="t-pendiente">Por entregar</p>
   <% if (e.pendiente > 0) { %>
-    <p class="dinero-cifra"><b><%= f.euros(e.pendiente) %></b></p>
+    <p class="efe-total"><%= f.euros(e.pendiente) %></p>
   <% } else if (e.pendiente < 0) { %>
-    <p>Has entregado <b><%= f.euros(-e.pendiente) %></b> de más.</p>
+    <p class="efe-total efe-total-a-favor"><%= f.euros(-e.pendiente) %></p>
+    <p class="peq">Has entregado de más: lo tienes a tu favor.</p>
   <% } else { %>
-    <p>Estás al día: no tienes efectivo por entregar.</p>
+    <p class="efe-total efe-total-a-favor">0,00 €</p>
+    <p class="peq">Estás al día.</p>
   <% } %>
-    <dl class="extras">
-      <div><dt>Cobrado en efectivo</dt><dd><%= f.euros(e.cobrado) %></dd></div>
-      <div><dt>Entregado</dt><dd><%= f.euros(e.entregado) %></dd></div>
-    <% if (e.dado) { %>
-      <div><dt>Cambio y devoluciones que te dimos</dt><dd><%= f.euros(e.dado) %></dd></div>
-    <% } %>
-    </dl>
+    <div class="efe-cuenta" aria-label="Cómo sale">
+      <div><span>Recibiste</span><b><%= f.euros(e.recibido) %></b></div>
+      <span class="efe-menos" aria-hidden="true">−</span>
+      <div><span>Entregaste</span><b><%= f.euros(e.entregado) %></b></div>
+    </div>
   <% if (e.saldoInicial) { %>
-    <p class="suave peq">Venías de antes de junio con <%= f.euros(e.saldoInicial) %> por entregar.</p>
+    <p class="suave peq">Y venías de antes de junio con <%= f.euros(e.saldoInicial) %> por entregar.</p>
   <% } %>
-    <p class="suave peq">Lo de la quincena en curso se actualiza cada media hora.</p>
   </div>
 </section>
 
-<section class="caja" aria-labelledby="t-quincenas">
-  <div class="caja-tit"><h2 id="t-quincenas">Quincena a quincena</h2></div>
-<% if (!e.quincenas.length) { %>
-  <p class="vacio">No tienes efectivo apuntado desde junio.</p>
-<% } else { %>
-  <ul class="semanas" style="margin-top:.35rem">
-  <% e.quincenas.forEach((q, i) => { %>
-    <li>
-      <details <%= i === 0 ? 'open' : '' %>>
-        <summary>
-          <span class="sem-fecha"><%= q.etiqueta %><% if (q.enCurso) { %><span class="chip">en curso</span><% } %></span>
-          <span class="sem-saldo"><small>por entregar</small><b><%= f.euros(q.saldo) %></b></span>
-        </summary>
-        <ul class="movs">
-        <% if (q.arrastre) { %>
-          <li><span><%= q.arrastre > 0 ? 'Traías de antes' : 'Llevabas entregado de más' %></span><span class="imp"><%= signo(q.arrastre, q.arrastre < 0) %></span></li>
-        <% } %>
-          <li><span>Cobraste en efectivo</span><span class="imp"><%= signo(q.cobrado, false) %></span>
-            <% if (q.ajuste) { %><span class="nota">Incluye una corrección de la oficina de <%= signo(q.ajuste, q.ajuste < 0) %>.</span><% } %></li>
-        <% q.movimientos.forEach(m => { %>
-          <li><span><%= dia(m.fecha) %> · <%= m.que %></span><span class="imp<%= m.baja ? ' baja' : '' %>"><%= signo(m.importe, m.baja) %></span>
-            <% if (m.referencia) { %><span class="nota">ID de la transferencia: <%= m.referencia %></span><% } %></li>
-        <% }) %>
-          <li class="cierre"><span><%= q.enCurso ? 'Por entregar, hasta hoy' : 'Por entregar al cerrar la quincena' %></span><span class="imp"><%= f.euros(q.saldo) %></span></li>
-        </ul>
-      </details>
-    </li>
-  <% }) %>
-  </ul>
-<% } %>
-</section>
+<div class="efe-columnas">
+  <section class="caja efe-col" aria-labelledby="t-recibido">
+    <h2 class="efe-col-tit" id="t-recibido"><span class="efe-punto efe-punto-entra" aria-hidden="true"></span>Recibiste</h2>
+  <% if (!e.porMes.length) { %>
+    <p class="efe-vacio">Nada desde junio.</p>
+  <% } else { %>
+    <ul class="efe-lista">
+    <% e.porMes.forEach(m => { %>
+      <li>
+        <span class="efe-cuando"><%= m.nombre.charAt(0).toUpperCase() + m.nombre.slice(1) %><% if (m.enCurso) { %> <small>hasta hoy</small><% } %></span>
+        <b><%= f.euros(m.cobrado + m.dado) %></b>
+        <% if (m.dado) { %><small class="efe-detalle"><%= f.euros(m.cobrado) %> en BOLT y <%= f.euros(m.dado) %> que te dimos</small><% } %>
+      </li>
+    <% }) %>
+    </ul>
+  <% } %>
+  </section>
+
+  <section class="caja efe-col" aria-labelledby="t-entregado">
+    <h2 class="efe-col-tit" id="t-entregado"><span class="efe-punto efe-punto-sale" aria-hidden="true"></span>Entregaste</h2>
+  <% if (!e.entregas.length) { %>
+    <p class="efe-vacio">Aún no has entregado nada.</p>
+  <% } else { %>
+    <ul class="efe-lista">
+    <% e.entregas.forEach(x => { %>
+      <li>
+        <span class="efe-cuando"><%= dia(x.fecha) %></span>
+        <b><%= f.euros(x.importe) %></b>
+        <small class="efe-detalle"><%= CORTO[x.que] || x.que %><%= x.referencia ? ' · ' + x.referencia : '' %></small>
+      </li>
+    <% }) %>
+    </ul>
+  <% } %>
+  </section>
+</div>
+
+<p class="suave peq" style="text-align:center">Lo cobrado de la quincena en curso se actualiza cada media hora. Si algo no te cuadra, pregunta en la oficina.</p>
