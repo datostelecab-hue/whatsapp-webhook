@@ -8,6 +8,8 @@
 // sesión, y cada tarjeta se comprueba).
 //
 //   GET  /tablero/api/tarjetas?vista=mias|equipo|pendientes     las de una vista
+//   GET  /tablero/api/tarjetas?vista=persona&persona=ID         lo que lleva esa persona
+//   GET  /tablero/api/equipo                                    la carga de cada persona que se ve
 //   GET  /tablero/api/tarjetas/:id                              la ficha, con su historia
 //   POST /tablero/api/tarjetas                                  una tarea a mano
 //   POST /tablero/api/tarjetas/:id/aprobar | rechazar           (quien aprueba)
@@ -53,8 +55,10 @@ router.get('/', (req, res) => {
 router.get('/api/yo', responde(async id => ({ yo: await tablero.quienSoy(id) })));
 
 router.get('/api/tarjetas', responde(async (id, req) => ({
-  tarjetas: await tablero.listar(id, { vista: req.query.vista || 'mias', acabadasDias: req.query.acabadas }),
+  tarjetas: await tablero.listar(id, { vista: req.query.vista || 'mias', acabadasDias: req.query.acabadas, persona: req.query.persona }),
 })));
+// La carga de cada persona que se ve (pestaña «Equipo», 20/11/2026).
+router.get('/api/equipo', responde(async id => ({ personas: await tablero.carga(id) })));
 router.get('/api/tarjetas/:id(\\d+)', responde(async (id, req) => ({ tarjeta: await tablero.ficha(id, req.params.id) })));
 router.post('/api/tarjetas', responde(async (id, req) => ({ tarjeta: await tablero.crear(id, cuerpo(req)) })));
 

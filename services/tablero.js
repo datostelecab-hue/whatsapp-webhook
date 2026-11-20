@@ -176,10 +176,10 @@ function publica(ctx, t, sem) {
 /**
  * Las tarjetas de una vista: 'mias' (de las que es responsable, creó o
  * colabora, y a quien aprueba, todas las que esperan aprobación), 'equipo'
- * (las de su gente; todas si ve todos los tableros) o 'pendientes' (las que
- * esperan su aprobación o su asignación).
+ * (las de su gente; todas si ve todos los tableros), 'pendientes' (las que
+ * esperan su aprobación o su asignación) o 'persona' (lo que lleva `persona`).
  */
-async function listar(usuarioId, { vista = 'mias', acabadasDias = 14 } = {}) {
+async function listar(usuarioId, { vista = 'mias', acabadasDias = 14, persona = null } = {}) {
   const ctx = await contexto(usuarioId);
   const dias = Math.min(Math.max(Number(acabadasDias) || 14, 0), 90);
   let filas;
@@ -193,6 +193,13 @@ async function listar(usuarioId, { vista = 'mias', acabadasDias = 14 } = {}) {
     const estados = [...(ctx.aprueba ? ['por_aprobar'] : []), ...(ctx.asigna ? ['por_asignar'] : [])];
     filas = estados.length ? await repo.listar({ estados, acabadasDias: 0 }) : [];
     filas = filas.filter(t => estados.includes(t.estado));
+  } else if (vista === 'persona') {
+    // El tablero de UNA persona (20/11/2026): solo lo que LLEVA ella, no lo que
+    // pidió ni donde colabora. Se ve si es uno mismo, de su gente o lo ve todo;
+    // si no, 404 como una tarjeta que no se ve: ni se sabe que existe.
+    const pid = entero(persona);
+    if (!pid || !(ctx.todos || pid === ctx.id || ctx.equipo.has(pid))) throw error('No existe ese tablero', 404);
+    filas = (await repo.listar({ responsables: [pid], acabadasDias: dias })).filter(t => t.responsable_id === pid);
   } else throw error(`Vista desconocida: «${vista}»`);
   const cal = await calendario.de('madrid');
   const hoy = calendario.hoy();
@@ -617,6 +624,42 @@ async function colaborador(usuarioId, id, { usuarioId: otro, quitar = false } = 
   return ficha(ctx.id, r.id);
 }
 
+/**
+ * LA CARGA DEL EQUIPO (20/11/2026, Camilo: «tableros por persona para que la
+ * gestión del equipo sea más sencilla»; cuenta solo lo que cada uno LLEVA).
+ * Una fila por persona que se puede ver —todas si reparte o lo ve todo; si no,
+ * uno mismo y su gente—, también las que no llevan nada: así se ve quién tiene
+ * hueco antes de repartir. → [{ id, nombre, porHacer, enCurso, bloqueadas,
+ * abiertas, vencidas, cerradas7, proximo }] (proximo: el vencimiento más
+ * cercano de lo abierto, aaaa-mm-dd o null). Vencida = su último día hábil ya
+ * pasó, como en los números del menú.
+ */
+async function carga(usuarioId) {
+  const ctx = await contexto(usuarioId);
+  const gente = await repo.personas();
+  const ves = ctx.todos ? gente : gente.filter(p => p.id === ctx.id || ctx.equipo.has(p.id));
+  if (!ves.length) return [];
+  const filas = ctx.todos ? await repo.listar({ todas: true, acabadasDias: 7 })
+    : await repo.listar({ responsables: ves.map(p => p.id), acabadasDias: 7 });
+  const hoy = calendario.hoy();
+  const porId = new Map(ves.map(p => [p.id, {
+    id: p.id, nombre: p.nombre || `#${p.id}`, porHacer: 0, enCurso: 0, bloqueadas: 0, abiertas: 0, vencidas: 0, cerradas7: 0, proximo: null,
+  }]));
+  filas.forEach(t => {
+    const c = porId.get(t.responsable_id);
+    if (!c) return;
+    if (t.estado === 'cerrada') { c.cerradas7++; return; }
+    if (!TRABAJANDO.includes(t.estado)) return;
+    c.abiertas++;
+    if (t.estado === 'por_hacer') c.porHacer++;
+    else if (t.estado === 'en_curso') c.enCurso++;
+    else c.bloqueadas++;
+    if (t.vence_el && t.vence_el < hoy) c.vencidas++;
+    else if (t.vence_el && (!c.proximo || t.vence_el < c.proximo)) c.proximo = t.vence_el;
+  });
+  return [...porId.values()];
+}
+
 /** Para la pantalla: qué hace quien mira (si aprueba, si reparte, si lo ve todo). */
 async function quienSoy(usuarioId) {
   const ctx = await contexto(usuarioId);
@@ -767,7 +810,7 @@ module.exports = {
   registrarTipo, listar, ficha, crear, nacer, ajustarPorOrigen, aprobar, rechazar, asignar, reasignar, cambiarPlazo, mover,
   cerrar, cerrarPorOrigen, asignarPorOrigen, anular, comentar, anularComentario, colaborador, avisar,
   buscarGifs, gifABorrador,
-  personas: () => repo.personas(), quienSoy,
+  personas: () => repo.personas(), quienSoy, carga,
   // Para las pruebas:
   plazoDe, avisarVencidas, contexto, permisos,
 };

@@ -171,12 +171,12 @@ La primera vez que alguien entra en el tablero le sale un recorrido de un minuto
 
 **Tablero** en el menú, para todos, como Inicio; qué ve cada uno lo decide el tablero. Su número (`tareas.menu`) suma las tarjetas que lleva y, a quien reparte o aprueba, lo que espera por él. Va en rojo si hay algo vencido o esperando.
 
-Hay cuatro pestañas, y la elegida va en `?vista=`:
+Hay cuatro pestañas, y la elegida va en `?vista=` (en «Equipo», la persona en `?persona=`):
 
 | Pestaña | Qué enseña |
 |---|---|
 | **Mi tablero** | Lo que lleva, lo que pidió y donde colabora, en columnas: por aprobar, por hacer, en curso, bloqueada y cerrada (los últimos 14 días) |
-| **Mi equipo** / **Todo el equipo** | Lo mismo con lo de su gente (todo, si reparte o lo ve todo) |
+| **Equipo** | La carga de cada persona de su gente (todos, si reparte o lo ve todo) y, al pulsar una, **su tablero**. Ver «El equipo, persona a persona» |
 | **Por repartir** | Solo a quien aprueba o reparte: por aprobar y por asignar, con su contador |
 | **Lista** | Todas las que ve, en el [[Componentes de la casa\|Listado]]: buscador, filtros (estado, responsable, tipo, plazo), KPIs y Excel |
 
@@ -192,10 +192,21 @@ Hay cuatro pestañas, y la elegida va en `?vista=`:
 
 Todo con las **piezas globales de la casa** (Pestanas, Kanban, Panel, Listado, Dialogo y las clases `.tc-*`), como pidió Camilo para el rediseño de Telecab V3. Ver [[Componentes de la casa]].
 
+## El equipo, persona a persona (20/11/2026)
+
+Camilo: *«¿Se pueden ver tableros por persona para que la gestión del equipo sea más sencilla?»*. Eligió la carga del equipo con el tablero de cada uno dentro (opción C con la A), y que cuente **solo lo que cada uno lleva** (no lo que pidió ni donde colabora).
+
+- **La pestaña «Equipo»** abre la carga, en el Listado: una fila por persona (también las que no llevan nada, para ver quién tiene hueco) con abiertas, por hacer, en curso, bloqueadas, **vencidas**, cerradas en los últimos 7 días y el próximo vencimiento. KPIs pulsables (vencidas, bloqueadas, sin nada abierto) y el filtro «Situación». Sale de `tablero.carga` (`GET /tablero/api/equipo`). Vencida = su último día hábil ya pasó, como en el número del menú.
+- **Al pulsar a alguien**, su tablero con las columnas de siempre (`?vista=equipo&persona=ID`, `GET /tablero/api/tarjetas?vista=persona&persona=ID`): solo las tarjetas de las que es responsable. Arriba, «Carga del equipo» para volver, cuántas lleva y cuántas vencidas, y **«Ver tablero de»** para saltar a otra persona o a **«Todo el equipo»** (`?persona=todos`, el tablero mezclado que había antes).
+- **Quién ve a quién**, con las reglas de siempre (`puedeVer`): quien reparte o lo ve todo, a todos; quien lleva un área o es superior, a su gente y a sí mismo; el resto, solo a sí mismo. El tablero de alguien que no se ve da 404.
+- Al cambiar de pestaña se sale del tablero de la persona; un enlace con `?persona=` lo abre directamente.
+
 ## La API (`/tablero/api`)
 
 ```
 GET  /tablero/api/tarjetas?vista=mias|equipo|pendientes
+GET  /tablero/api/tarjetas?vista=persona&persona=ID      lo que lleva esa persona
+GET  /tablero/api/equipo                               la carga de cada persona que se ve
 GET  /tablero/api/tarjetas/:id
 POST /tablero/api/tarjetas                         { titulo, descripcion, responsableId, plazoDias | venceEl }
 POST /tablero/api/tarjetas/:id/aprobar | rechazar | asignar | reasignar | plazo | mover | cerrar | anular

@@ -187,6 +187,44 @@ test('quién ve qué: lo suyo, lo de su gente si lleva un área, y todo quien re
   assert.deepEqual((await tablero.listar(p.laura, { vista: 'mias' })).map(x => x.id), [t.id]);
 }));
 
+test('«Equipo»: la carga de cada persona y su tablero, con solo lo que LLEVA (20/11/2026)', () => conBase(async h => {
+  const p = await gente(h);
+  const laura1 = await tablero.crear(p.ignacio, { titulo: 'De Laura, en plazo', responsableId: p.laura, plazoDias: 3 });
+  const laura2 = await tablero.crear(p.ignacio, { titulo: 'De Laura, en curso', responsableId: p.laura, plazoDias: 5 });
+  await tablero.mover(p.laura, laura2.id, { estado: 'en_curso' });
+  // Una vencida: el plazo pasó ayer.
+  const vieja = await tablero.crear(p.ignacio, { titulo: 'De Laura, vencida', responsableId: p.laura, plazoDias: 1 });
+  await h.consulta(`UPDATE tarea SET vence_el = CURRENT_DATE - 1 WHERE id = $1`, [vieja.id]);
+  // Laura la pide para Diana: Laura la creó, pero no la LLEVA.
+  const pedida = await tablero.crear(p.ignacio, { titulo: 'La lleva Diana', responsableId: p.diana, plazoDias: 2 });
+  await h.consulta(`UPDATE tarea SET creada_por = $1 WHERE id = $2`, [p.laura, pedida.id]);
+  await tablero.colaborador(p.diana, pedida.id, { usuarioId: p.laura });
+  const cerrada = await tablero.crear(p.ignacio, { titulo: 'De Laura, hecha', responsableId: p.laura, plazoDias: 2 });
+  await tablero.cerrar(p.laura, cerrada.id, { nota: 'Hecho' });
+
+  const carga = await tablero.carga(p.ignacio);
+  const de = id => carga.find(x => x.id === id);
+  assert.ok(de(p.otra), 'quien reparte ve a todos, también a quien no lleva nada');
+  assert.deepEqual(['abiertas', 'porHacer', 'enCurso', 'bloqueadas', 'vencidas', 'cerradas7'].map(k => de(p.laura)[k]), [3, 2, 1, 0, 1, 1]);
+  assert.ok(de(p.laura).proximo, 'el próximo vencimiento de lo que no ha vencido');
+  assert.equal(de(p.diana).abiertas, 1);
+  assert.equal(de(p.otra).abiertas, 0);
+
+  const deLaura = await tablero.listar(p.ignacio, { vista: 'persona', persona: p.laura });
+  assert.deepEqual(deLaura.map(t => t.id).sort((a, b) => a - b), [laura1.id, laura2.id, vieja.id, cerrada.id].sort((a, b) => a - b),
+    'solo lo que lleva: ni la que pidió ni donde colabora');
+
+  // Quien no reparte: se ve a sí misma y nada más; el tablero de otro, 404.
+  assert.deepEqual((await tablero.carga(p.otra)).map(x => x.id), [p.otra]);
+  await assert.rejects(tablero.listar(p.otra, { vista: 'persona', persona: p.laura }), e => e.status === 404);
+  assert.equal((await tablero.listar(p.laura, { vista: 'persona', persona: p.laura })).length, 4, 'el suyo, sí');
+  // Quien lleva el área de Laura la ve en su carga y entra en su tablero.
+  await h.consulta(`INSERT INTO cat_area (codigo, etiqueta, orden, activa, responsable_id) VALUES ('test_rrhh', 'RRHH de prueba', 99, TRUE, $1)`, [p.diana]);
+  await h.consulta(`UPDATE usuario SET area_codigo = 'test_rrhh' WHERE id = $1`, [p.laura]);
+  assert.deepEqual((await tablero.carga(p.diana)).map(x => x.id).sort((a, b) => a - b), [p.laura, p.diana].sort((a, b) => a - b));
+  assert.equal((await tablero.listar(p.diana, { vista: 'persona', persona: p.laura })).length, 4);
+}));
+
 test('la historia no se cambia ni se borra, y todo queda en el libro', () => conBase(async h => {
   const p = await gente(h);
   const t = await tablero.crear(p.laura, { titulo: 'Algo', responsableId: p.laura, plazoDias: 1 });
