@@ -1497,6 +1497,10 @@
             `<span class="font-semibold">${esc(v)}</span>` +
             (f.zona ? ` <span class="text-telecab-muted text-xs">${esc(f.zona)}</span>` : '') },
       { titulo: 'Teléfono', campo: 'telefono', clase: 'whitespace-nowrap tabular-nums' },
+      // EL CORREO, SOLO EN EL EXCEL (20/11/2026, Camilo): es al que le llega el
+      // código del portal de conductores. Vacío si no lo tiene en la ficha, para
+      // que RRHH filtre las celdas vacías y sepa a quién pedírselo.
+      { titulo: 'Correo electrónico', soloExcel: true, valor: f => (f.email || '').trim() },
       // LA DIRECCIÓN Y LA ZONA, SOLO EN EL EXCEL (26/10/2026, Camilo): «que me
       // salga también la dirección de los conductores y la zona que tienen
       // puesta en el planificador». La zona es la de la casita del planificador

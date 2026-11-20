@@ -48,6 +48,12 @@ Camilo: *«Cuando bajemos el Excel de Plantilla me salga también la dirección 
 
 En la copia local del 23/10, de las 219 personas de alta, 165 tienen dirección, 54 salen «Sin dirección en plantilla» y 190 tienen zona. La dirección ya viajaba en la ficha a cualquiera que vea Plantilla, igual que el DNI y el NAF en la lista: el ámbito «sensible» decide quién la edita, no quién la ve.
 
+### Y el correo electrónico (20/11/2026)
+
+Camilo: *«Añade en el excel de plantilla también el correo electrónico»*. Una columna más, solo en el Excel, justo detrás del teléfono: **«Correo electrónico»**, el `conductor.email` de la ficha. Es al que le llega el código del [[Portal de conductores]], así que quien no lo tiene **no puede entrar al portal**. Sin correo, la celda va **en blanco**, y no con un texto como la dirección: así RRHH filtra las vacías en Excel y sabe a quién pedírselo. El email ya viajaba en cada fila de la lista; solo faltaba la columna.
+
+En la copia local del 20/11, de las 232 personas de alta, 178 tienen correo y 54 lo tienen vacío. El Excel de la gestoría ya lo llevaba (`gestoria.excel.js`).
+
 ### Y el promedio de horas: BOLT + justificadas, ausencias a 0 (14/10/2026)
 
 Se llegó en tres pasos, todos de Camilo el mismo día:
