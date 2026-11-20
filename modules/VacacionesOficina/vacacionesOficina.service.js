@@ -108,7 +108,11 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
   // parte proporcional de los días naturales que le quedan. Lo que sobra o
   // falta se arrastra: es un banco. Se guarda lo de cada mes sin redondear.
   const meses = new Map();
-  const generadasHasta = hasta => {
+  // `anoMax`: los años cuyos `anual` días cuentan. El simulador y la previsión
+  // solo cuentan los de años que ya empezaron (20/11/2026, Camilo: «esas
+  // todavía no se han generado»): unas vacaciones que cruzan el 1 de enero no
+  // suman los 22 del año que viene; entran en el saldo cuando llegue el día.
+  const generadasHasta = (hasta, anoMax = Infinity) => {
     if (!inicio || hasta < inicio) return { total: 0, meses: [] };
     const lista = [];
     const fin2026 = min(hasta, CIERRE_2026);
@@ -121,7 +125,7 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
       const crudo = completo ? tope : Math.min(tope, tasa * dias);
       lista.push({ mes: m, dias, completo, crudo, generadas: r2(crudo) });
     }
-    for (let y = 2027; y <= Number(hasta.slice(0, 4)); y++) {
+    for (let y = 2027; y <= Math.min(Number(hasta.slice(0, 4)), anoMax); y++) {
       const ini = `${y}-01-01`, fin = `${y}-12-31`;
       if (inicio > fin) continue;
       const desdeY = max(inicio, ini);
@@ -170,7 +174,7 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
   }
   return {
     inicio, generadas: hoyGen.total, disfrutadas, programadas, pedidas, saldo, saldoTras: r2(saldo - programadas), cierre2026,
-    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: d => generadasHasta(d).total,
+    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: d => generadasHasta(d, Number(hoy.slice(0, 4))).total,
     gasta, tasa, anual,
   };
 }

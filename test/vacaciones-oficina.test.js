@@ -81,7 +81,7 @@ test('gastan las aprobadas sin sus dos días de libranza ni festivos; las pedida
   assert.equal(otra.disfrutadas, 5);
 });
 
-test('el simulador suma lo que generará hasta irse y durante las vacaciones, con los días reales («el otro mes, 11,84»); el 1 de enero, los 22', () => {
+test('el simulador suma lo que generará hasta irse y durante las vacaciones, con los días reales («el otro mes, 11,84»); los 22 del año que viene, no', () => {
   // Hasta el 30/06/2026, seis meses completos: 6 × 1,84 = 11,04.
   const s = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-30' });
   assert.equal(s.saldo, 11.04);
@@ -93,10 +93,11 @@ test('el simulador suma lo que generará hasta irse y durante las vacaciones, co
   assert.deepEqual([sim.alVolver, sim.generaDurante], [3.73, 0.85]);
   assert.deepEqual(sim.dias.slice(0, 7).map(d => d.banco), [11.96, 11.05, 10.13, 9.22, 8.3, 8.3, 8.3],
     'el banco de cada día: + 0,0846 − 1 los laborables; el fin de semana, igual');
-  // Del 28/12/2026 al 08/01/2027: el 31/12 tiene todo 2026 (22,08) menos 4; el 01/01, + 22 − 1.
+  // Del 28/12/2026 al 08/01/2027: el 31/12 tiene todo 2026 (22,08) menos 4; el
+  // 01/01 NO suma los 22 de 2027 («esas todavía no se han generado»): − 1.
   const cruza = vac._simularSobre(s, { desde: '2026-12-28', hasta: '2027-01-08', libra: [6, 7], hoy: '2026-06-30', festivos: new Set() });
   const dia = d => cruza.dias.find(x => x.dia === d).banco;
-  assert.deepEqual([dia('2026-12-31'), dia('2027-01-01')], [18.08, 39.08]);
+  assert.deepEqual([dia('2026-12-31'), dia('2027-01-01')], [18.08, 17.08]);
   // A mitad de mes (15/06: 11 días, 0,93): si se va el 01/07, junio se completa (+0,91).
   const mitad = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-15' });
   const julio = vac._simularSobre(mitad, { desde: '2026-07-01', hasta: '2026-07-03', libra: [6, 7], hoy: '2026-06-15', festivos: new Set() });
@@ -197,7 +198,7 @@ test('«Vacaciones por meses» de la oficina: quién se va y cuándo, solo para 
   assert.deepEqual(otra.periodos.filter(x => x.id === p.ana.id), [], 'las no aprobadas ya no salen');
 }));
 
-test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de enero, festivos seguros); al irse tendrá 11,49 y al volver 22,89 (con los 22 de 2027); hasta el 26/02, se pasa', () => {
+test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de enero, festivos seguros); al irse tendrá 11,49 y al volver 0,89 (los 22 de 2027 no cuentan); hasta el 26/02, se pasa', () => {
   // El caso de Camilo (17/11/2026): alta el 17/06/2026, hoy 9,22. De 2027 no
   // hay festivos cargados: el 1 y el 6 de enero van igual.
   const e = { hoy: '2026-11-17', festivos: vac._festivosDe({ festivos: ['2026-12-07', '2026-12-08', '2026-12-25'] }, '2026-11-17') };
@@ -206,12 +207,14 @@ test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de ener
   const s = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [v] });
   assert.equal(s.saldo, 9.22);
   const pv = vac._previsionDe(s, v, { ...e, laborables: LV });
-  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.generaDurante, pv.sePasa], [11, 11.49, 22.89, 22.4, false],
-    'lo que genera hasta el 31/12 y, el 01/01, los 22 de 2027');
+  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.generaDurante, pv.sePasa], [11, 11.49, 0.89, 0.4, false],
+    'lo que genera hasta el 31/12; los 22 de 2027, no: aún no se han generado');
   const larga = { ...v, hasta: '2027-02-26' };
   const s2 = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [larga] });
   const pv2 = vac._previsionDe(s2, larga, { ...e, laborables: LV });
-  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [44, true, -10.11], 'se pasa 10,11 días');
+  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [44, true, -32.11], 'se pasa 32,11 días');
+  // En el saldo de verdad, los 22 entran el 01/01/2027.
+  assert.equal(vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2027-01-01' }).saldo, 33.89);
 });
 
 test('registrar unas ya disfrutadas: del 20 al 30 de agosto son 7 días, y se restan de las de hoy', () => conBase(async h => {
