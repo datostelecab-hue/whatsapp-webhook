@@ -3,8 +3,8 @@
 // ============================================================
 // «Quema mi correo para que todos los códigos de inicio de sesión me lleguen a
 // mí en datostelecab@gmail.com para probar en producción» y «con copia a
-// Ignacio por cada correo». Sin PORTAL_CODIGOS_A, todo código va al buzón de
-// pruebas, con copia al usuario 1, y el asunto dice de qué ficha es; también el
+// Ignacio por cada correo». Con PORTAL_CODIGOS_A (apagado por defecto desde el
+// mismo día), todo código va a ese buzón, con copia al usuario 1, y el asunto dice de qué ficha es; también el
 // de quien no tiene email en su ficha.
 'use strict';
 
@@ -21,7 +21,8 @@ let enviados = [];
 let svc;
 
 before(() => {
-  delete process.env.PORTAL_CODIGOS_A;
+  // Apagado desde el 20/11/2026: se enciende con la variable, como en Render.
+  process.env.PORTAL_CODIGOS_A = 'datostelecab@gmail.com';
   delete require.cache[require.resolve('../modules/Portal/portal.service')];
   svc = require('../modules/Portal/portal.service');
   for (const k of ['porDni', 'codigosRecientes', 'nuevoCodigo', 'marcarEnviado']) guardado[k] = repo[k];
@@ -38,6 +39,7 @@ before(() => {
   correo.enviarCorreo = async m => { enviados.push(m); return { enviado: true }; };
 });
 after(() => {
+  delete process.env.PORTAL_CODIGOS_A;
   Object.assign(repo, { porDni: guardado.porDni, codigosRecientes: guardado.codigosRecientes, nuevoCodigo: guardado.nuevoCodigo, marcarEnviado: guardado.marcarEnviado });
   db.consulta = guardado.consulta;
   correo.enviarCorreo = guardado.enviar;

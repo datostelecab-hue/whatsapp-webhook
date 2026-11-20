@@ -118,9 +118,12 @@ function correoDelCodigo(pila, codigo) {
 // lleguen a mí en datostelecab@gmail.com para probar en producción; por el
 // momento ellos no van a usarlo hasta que lo tengamos listo al 100%»). Mientras
 // tenga una dirección, TODO código va ahí, sea de quien sea (también de quien no
-// tiene email en su ficha), y el asunto dice de qué ficha es. Para abrírselo a
-// los conductores: PORTAL_CODIGOS_A vacía en Render, o quitar esto.
-const CODIGOS_A = String(process.env.PORTAL_CODIGOS_A !== undefined ? process.env.PORTAL_CODIGOS_A : 'datostelecab@gmail.com').trim();
+// tiene email en su ficha), y el asunto dice de qué ficha es.
+// APAGADO EL 20/11/2026 (Camilo, ya probado: «desactiva lo del correo para mí,
+// que vaya al correo de la persona del DNI/NIE que pide el código»). Cada código
+// va al email de su ficha, sin copia. Para volver a probar: PORTAL_CODIGOS_A con
+// el buzón en Render (y PORTAL_CODIGOS_CC para la copia).
+const CODIGOS_A = String(process.env.PORTAL_CODIGOS_A || '').trim();
 // Y CON COPIA A IGNACIO (Camilo, el mismo día: «con copia a Ignacio por cada
 // correo»). La dirección que dio va en PORTAL_CODIGOS_CC (Render), no aquí: el
 // repositorio es público. Sin ella, el email de su usuario (el 1), leído al

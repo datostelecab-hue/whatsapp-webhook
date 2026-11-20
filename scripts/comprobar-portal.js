@@ -7,8 +7,8 @@
 // dominio del portal y el del ERP. No toca la base ni manda correos: el
 // repositorio y el correo son dobles.
 
-// Lo normal: cada código al email de su ficha. El buzón de pruebas se mira aparte, abajo.
-process.env.PORTAL_CODIGOS_A = '';
+// Lo normal: cada código al email de su ficha (el buzón de pruebas, en test/portal-codigos.test.js).
+delete process.env.PORTAL_CODIGOS_A;
 const repo = require('../modules/Portal/portal.repo');
 const correo = require('../services/correo');
 const svc = require('../modules/Portal/portal.service');

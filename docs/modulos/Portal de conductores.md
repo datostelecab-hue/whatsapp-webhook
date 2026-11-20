@@ -64,11 +64,13 @@ El correo sale por el «Correo para procesos» de siempre ([[Correo]]). El asunt
 
 ## Los códigos, a un solo buzón mientras se prueba (20/11/2026)
 
+**Apagado el mismo 20/11/2026**, ya probado: *«Desactiva lo del correo para mí, que vaya al correo de la persona del DNI/NIE que pide el código»*. Cada código vuelve al email de su ficha, sin copia, y quien no tiene email no recibe código (como antes). Lo de abajo queda para volver a probar: se enciende con `PORTAL_CODIGOS_A` en Render.
+
 Camilo: *«Por el momento, quema mi correo para que todos los códigos de inicio de sesión me lleguen a mí en datostelecab@gmail.com para probar en producción, me han dicho que por el momento ellos no van a usarlo hasta que lo tengamos listo al 100%»* y *«con copia a Ignacio por cada correo»*.
 
 - **Todo código va a datostelecab@gmail.com**, sea de quien sea (también de quien no tiene email en su ficha), **con copia a Ignacio**. El asunto dice de qué ficha es: «[Portal en pruebas] Código de Juan Carlos Pérez (ficha 7): 123456». La pantalla enseña el buzón al que ha ido de verdad (da•••@gmail.com).
 - La dirección de la copia **no está en el código** (el repositorio es público): va en la variable **`PORTAL_CODIGOS_CC`** de Render, con la que dio Camilo; sin ella, el email del usuario de Ignacio (el 1), leído al mandar cada código (`copiaDePruebas`). `services/correo.enviarCorreo` admite ahora `cc`.
-- **Para abrírselo a los conductores**: poner `PORTAL_CODIGOS_A` vacía en Render (o quitar `CODIGOS_A` de `portal.service.js`); entonces cada código vuelve al email de su ficha y sin copia. El comprobador (`scripts/comprobar-portal.js`) prueba el envío normal; `test/portal-codigos.test.js`, el de pruebas.
+- **Encenderlo**: `PORTAL_CODIGOS_A` con el buzón en Render (y `PORTAL_CODIGOS_CC` para la copia). Sin ella, cada código va al email de su ficha y sin copia. El comprobador (`scripts/comprobar-portal.js`) prueba el envío normal; `test/portal-codigos.test.js`, el de pruebas.
 
 ## El aspecto
 
