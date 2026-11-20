@@ -13,6 +13,7 @@
 //   GET  /mis-vacaciones/api/personas/:id        las de una persona (quien aprueba, o uno mismo)
 //   POST /mis-vacaciones/api/simular             { desde, hasta, libra: [d, d], usuarioId? }
 //   POST /mis-vacaciones/api/pedir               { desde, hasta, libra, nota }
+//   POST /mis-vacaciones/api/permisos/registrar { usuarioId, tipo, desde, hasta, fraccion, nota }  uno ya pasado (quien aprueba)
 //   POST /mis-vacaciones/api/:id/aprobar
 //   POST /mis-vacaciones/api/:id/rechazar        { motivo }
 //   POST /mis-vacaciones/api/:id/retirar         (quien las pidió, mientras esperan)
@@ -52,6 +53,8 @@ router.get('/api/permisos/mios', responde(q => vac.permisosMios(q)));
 router.get('/api/permisos/lista', responde((q, req) => vac.permisosLista(q, { estado: req.query.estado })));
 router.post('/api/permisos/simular', responde((q, req) => vac.simularPermiso(q, b(req)).then(simulacion => ({ simulacion }))));
 router.post('/api/permisos/pedir', responde((q, req) => vac.pedirPermiso(q, b(req))));
+// Uno ya pasado, apuntado después (quien aprueba, 20/11/2026): nace aprobado.
+router.post('/api/permisos/registrar', responde((q, req) => vac.registrarPermiso(q, b(req))));
 router.post('/api/permisos/:grupo(\\d+)/aprobar', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'aprobar', b(req))));
 router.post('/api/permisos/:grupo(\\d+)/rechazar', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'rechazar', b(req))));
 router.post('/api/permisos/:grupo(\\d+)/anular', responde((q, req) => vac.resolverPermiso(q, req.params.grupo, 'anular', b(req))));

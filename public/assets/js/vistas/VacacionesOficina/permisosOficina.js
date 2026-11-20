@@ -1,4 +1,5 @@
-// Los permisos de la oficina (db/271, 18/11/2026): asuntos propios y teletrabajo.
+// Los permisos de la oficina (db/271, 18/11/2026): asuntos propios y teletrabajo;
+// y desde db/272 (20/11/2026), el permiso retribuido (con motivo) y apuntar uno ya pasado.
 //
 // Camilo: «que también podamos solicitar 2 días de asuntos propios o permisos
 // especiales, como medio día de teletrabajo, todo un día de teletrabajo, etc., y
@@ -17,6 +18,10 @@
   const TONO = { pedido: 'tc-pastilla--aviso', aprobado: 'tc-pastilla--verde', rechazado: 'tc-pastilla--rojo', anulado: 'tc-pastilla--rojo', retirado: '' };
   const pastilla = (g) => `<span class="tc-pastilla ${TONO[g.estado] || ''}">${esc(g.etiquetaEstado)}</span>`;
   const rango = g => (g.desde === g.hasta ? f(g.desde) : `${f(g.desde)} al ${f(g.hasta)}`);
+  const TIPOS = [{ valor: 'asuntos_propios', texto: 'Asuntos propios' }, { valor: 'retribuido', texto: 'Permiso retribuido o especial' }, { valor: 'teletrabajo', texto: 'Teletrabajo' }];
+  const FRACCIONES = [{ valor: 'dia', texto: 'Día completo' }, { valor: 'manana', texto: 'Media mañana' }, { valor: 'tarde', texto: 'Media tarde' }];
+  const NOTA_TIPOS = 'Los asuntos propios salen de tu banco de 2 días al año. El permiso retribuido (matrimonio, nacimiento, fallecimiento, mudanza, médico…) no gasta nada, pero lleva su motivo. El teletrabajo solo se pide y se aprueba.';
+  const MOTIVO = 'Di el motivo del permiso retribuido (matrimonio, nacimiento, fallecimiento, mudanza, médico…)';
   const aviso = (texto, tono = 'warn') => `<p class="px-5 py-3 text-sm ${tono === 'warn' ? 'text-telecab-warn' : 'text-telecab-muted'}">${texto}</p>`;
 
   /** El banco de asuntos propios: lo que tiene, lo gastado y lo programado. */
@@ -68,7 +73,7 @@
       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
         <div class="px-5 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
           <i class="fa-solid fa-user-clock text-telecab-gold text-sm" aria-hidden="true"></i>
-          <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Asuntos propios y teletrabajo</h3>
+          <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Asuntos propios, permisos y teletrabajo</h3>
           <button type="button" class="tc-boton tc-boton--chico tc-boton--principal ml-auto" data-permiso-pedir><i class="fa-solid fa-plus" aria-hidden="true"></i>Pedir un permiso</button>
         </div>
         ${bancoHtml(mios.banco, mios.alta)}
@@ -87,14 +92,15 @@
   async function pedir(recargar) {
     const v = await Dialogo.formulario('Pedir un permiso', [
       { id: 'tipo', etiqueta: 'Qué es', tipo: 'lista', obligatorio: true, valor: 'asuntos_propios',
-        opciones: [{ valor: 'asuntos_propios', texto: 'Asuntos propios' }, { valor: 'teletrabajo', texto: 'Teletrabajo' }] },
+        opciones: TIPOS },
       { id: 'fraccion', etiqueta: 'Cuánto', tipo: 'lista', obligatorio: true, valor: 'dia',
         opciones: [{ valor: 'dia', texto: 'Día completo' }, { valor: 'manana', texto: 'Media mañana' }, { valor: 'tarde', texto: 'Media tarde' }] },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', obligatorio: true, valor: f(hoyIso()) },
       { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', ayuda: 'Déjalo vacío si es un solo día. El medio día es siempre un solo día.' },
-      { id: 'nota', etiqueta: 'Motivo (opcional)', tipo: 'texto-largo', max: 1000 },
-    ], { textoBoton: 'Seguir', nota: 'Los asuntos propios salen de tu banco de 2 días al año; el teletrabajo solo se pide y se aprueba.' });
+      { id: 'nota', etiqueta: 'Motivo (obligatorio en el permiso retribuido)', tipo: 'texto-largo', max: 1000 },
+    ], { textoBoton: 'Seguir', nota: NOTA_TIPOS });
     if (!v) return;
+    if (v.tipo === 'retribuido' && String(v.nota || '').trim().length < 3) { await Dialogo.aviso({ titulo: 'Falta el motivo', texto: MOTIVO, tono: 'error' }); return pedir(recargar); }
     const tipo = v.tipo, fraccion = v.fraccion, desde = v.desde, hasta = v.hasta || v.desde;
     const sim = await Api.post(`${API}/simular`, { tipo, fraccion, desde, hasta }, { aviso: 'No se puede pedir eso' });
     if (!sim) return;
@@ -102,7 +108,7 @@
     let detalle = `${esc(s.etiquetaTipo)} · ${esc(s.etiquetaFraccion.toLowerCase())} · <b>${esc(dias(s.cuentan))}</b>`;
     detalle += s.banco
       ? `<p class="mt-2">Te quedarían <b class="${s.quedaria < 0 ? 'text-telecab-red' : ''}">${num(s.quedaria)} días</b> de asuntos propios, contando lo ya pedido.</p>`
-      : '<p class="mt-2">El teletrabajo no gasta nada: queda en tu histórico.</p>';
+      : `<p class="mt-2">${esc(s.etiquetaTipo)}: no gasta nada, queda en tu histórico.</p>`;
     if (s.sePasa) detalle += `<p class="mt-2 text-telecab-red">Te pasas ${num(-s.quedaria)} días de tu banco. Se puede pedir igualmente, pero quien aprueba lo verá.</p>`;
     const ok = await Dialogo.confirmar({ titulo: 'Pedir este permiso', html: detalle, si: 'Pedirlo', no: 'Cambiar' });
     if (!ok) return;
@@ -110,6 +116,34 @@
     if (!r) return;
     Dialogo.hecho('Pedido: lo aprueba quien lleva Usuarios y permisos');
     recargar();
+  }
+
+  /**
+   * APUNTAR UN PERMISO YA PASADO (20/11/2026): quien lleva Usuarios y permisos,
+   * como «Registrar unas ya disfrutadas». Nace aprobado y sale en «Vacaciones
+   * por meses». `personas`: [{ id, nombre }]; `persona`: la elegida de entrada.
+   */
+  async function registrarPasado({ personas = [], persona = null, alAcabar = null } = {}) {
+    const ayer = new Date(Date.parse(hoyIso() + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+    const v = await Dialogo.formulario('Apuntar un permiso ya pasado', [
+      { id: 'usuarioId', etiqueta: 'De quién', tipo: 'lista', obligatorio: true, valor: persona ? String(persona) : '',
+        opciones: personas.map(p => ({ valor: String(p.id), texto: p.nombre })) },
+      { id: 'tipo', etiqueta: 'Qué fue', tipo: 'lista', obligatorio: true, valor: 'asuntos_propios', opciones: TIPOS },
+      { id: 'fraccion', etiqueta: 'Cuánto', tipo: 'lista', obligatorio: true, valor: 'dia', opciones: FRACCIONES },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', obligatorio: true, valor: f(ayer) },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', ayuda: 'Déjalo vacío si fue un solo día. Tiene que haber acabado antes de hoy.' },
+      { id: 'nota', etiqueta: 'Motivo (obligatorio en el permiso retribuido)', tipo: 'texto-largo', max: 1000 },
+    ], { textoBoton: 'Apuntarlo', nota: 'Queda aprobado y en su histórico. Los asuntos propios se restan de su banco.' });
+    if (!v) return;
+    if (v.tipo === 'retribuido' && String(v.nota || '').trim().length < 3) {
+      await Dialogo.aviso({ titulo: 'Falta el motivo', texto: MOTIVO, tono: 'error' });
+      return registrarPasado({ personas, persona: v.usuarioId, alAcabar });
+    }
+    const r = await Api.post(`${API}/registrar`, { usuarioId: Number(v.usuarioId), tipo: v.tipo, fraccion: v.fraccion, desde: v.desde, hasta: v.hasta || v.desde, nota: v.nota || '' },
+      { aviso: 'No se ha podido apuntar' });
+    if (!r) return;
+    Dialogo.hecho(r.sePasa ? `Apuntado (${dias(r.valor)}). Ojo: se pasa de su banco de asuntos propios` : `Apuntado: ${dias(r.valor)}`);
+    if (alAcabar) alAcabar();
   }
 
   /** Aprobar, no aprobar, anular o retirar una solicitud (con su motivo cuando hace falta). */
@@ -173,5 +207,5 @@
     await recargar();
   }
 
-  global.PermisosOficina = { montar };
+  global.PermisosOficina = { montar, registrarPasado };
 })(window);

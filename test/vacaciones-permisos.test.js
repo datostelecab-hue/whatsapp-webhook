@@ -146,3 +146,63 @@ test('el banco se pasa: se deja pedir y quien aprueba lo ve; un día con vacacio
   await vrepo.resolver(null, vid, { estado: 'aprobada', por: p.jefe.id, nota: '', desdeEstados: ['pedida'] });
   await assert.rejects(vac.pedirPermiso(p.ana, { tipo: 'teletrabajo', desde: dia, hasta: dia, fraccion: 'dia' }), /tienes vacaciones/);
 }));
+
+// ── db/272 (20/11/2026): el permiso retribuido, apuntar uno pasado y el mapa ──
+// Camilo: «que aparezca en el mapa que hicimos de meses los permisos especiales,
+// permisos retribuidos y asuntos propios, a parte de apuntar asuntos propios
+// pasados o permisos especiales/retribuidos pasados para verlo en el tablero».
+
+/** El primer lunes ANTERIOR a una fecha que no sea festivo (un día laborable ya pasado). */
+function lunesAntes(d) {
+  let x = calendario.sumarDias(d, -1);
+  while (new Date(x + 'T12:00:00Z').getUTCDay() !== 1 || FESTIVOS.has(x)) x = calendario.sumarDias(x, -1);
+  return x;
+}
+
+test('el permiso retribuido lleva su motivo y no gasta banco; uno pasado lo apunta quien aprueba y nace aprobado', () => conBase(async h => {
+  await cargarFestivos();
+  const p = await oficina(h);
+  await usuarios.fijarFechaAlta(p.ana.id, '2025-01-01', p.firma);
+  const hoy = calendario.hoy();
+  const lunes = lunesDespues(hoy);
+  await assert.rejects(vac.pedirPermiso(p.ana, { tipo: 'retribuido', desde: lunes, hasta: lunes, fraccion: 'dia' }), /motivo/);
+  const r = await vac.pedirPermiso(p.ana, { tipo: 'retribuido', desde: lunes, hasta: lunes, fraccion: 'dia', nota: 'Mudanza' });
+  const mios = await vac.permisosMios(p.ana);
+  assert.equal(mios.permisos.find(g => g.grupo === r.grupo).etiquetaTipo, 'Permiso retribuido');
+  assert.equal(mios.banco.pedidos, 0, 'no sale del banco de asuntos propios');
+
+  // Uno ya pasado: solo quien aprueba, solo lo que ya acabó, y nace aprobado.
+  const pasado = lunesAntes(calendario.sumarDias(hoy, -7));
+  await assert.rejects(vac.registrarPermiso(p.ana, { usuarioId: p.ana.id, tipo: 'asuntos_propios', desde: pasado }), e => e.status === 403);
+  await assert.rejects(vac.registrarPermiso(p.jefe, { usuarioId: p.ana.id, tipo: 'asuntos_propios', desde: lunes }), /ya pasaron/);
+  await assert.rejects(vac.registrarPermiso(p.jefe, { usuarioId: p.ana.id, tipo: 'retribuido', desde: pasado }), /motivo/);
+  const a = await vac.registrarPermiso(p.jefe, { usuarioId: p.ana.id, tipo: 'asuntos_propios', desde: pasado, fraccion: 'dia' });
+  assert.equal(a.dias, 1);
+  const g = (await vac.permisosMios(p.ana)).permisos.find(x => x.grupo === a.grupo);
+  assert.equal(g.estado, 'aprobado');
+  assert.equal((await vac.permisosMios(p.ana)).banco.usados, 1, 'el pasado resta de su banco');
+  await assert.rejects(vac.registrarPermiso(p.jefe, { usuarioId: p.ana.id, tipo: 'teletrabajo', desde: pasado }), e => e.status === 409, 'no encima de otro');
+}));
+
+test('«Vacaciones por meses» enseña los asuntos propios y los retribuidos con su clase; el teletrabajo no', () => conBase(async h => {
+  await cargarFestivos();
+  const p = await oficina(h);
+  await usuarios.fijarFechaAlta(p.ana.id, '2025-01-01', p.firma);
+  const hoy = calendario.hoy();
+  const l1 = lunesDespues(hoy), l2 = lunesDespues(l1), l3 = lunesDespues(l2);
+  await vac.pedirPermiso(p.ana, { tipo: 'asuntos_propios', desde: l1, hasta: calendario.sumarDias(l1, 4), fraccion: 'dia' });
+  const ret = await vac.pedirPermiso(p.ana, { tipo: 'retribuido', desde: l2, hasta: l2, fraccion: 'manana', nota: 'Médico' });
+  await vac.resolverPermiso(p.jefe, ret.grupo, 'aprobar');
+  await vac.pedirPermiso(p.ana, { tipo: 'teletrabajo', desde: l3, hasta: l3, fraccion: 'dia' });
+
+  const c = await vac.calendarioOficina(p.jefe);
+  const suyos = c.periodos.filter(x => x.id === p.ana.id && x.clase).map(x => [x.clase, x.desde, x.pendiente, x.etiqueta]);
+  assert.deepEqual(suyos.sort(), [
+    ['asuntos', l1, true, 'Asuntos propios'],
+    ['retribuido', l2, false, 'Permiso retribuido (media mañana)'],
+  ].sort(), 'una barra por solicitud; el teletrabajo no sale');
+  const asuntos = c.periodos.find(x => x.clase === 'asuntos');
+  assert.ok(asuntos.hasta > l1 && asuntos.hasta <= calendario.sumarDias(l1, 4), 'la barra va del primer al último día de la solicitud');
+  assert.deepEqual(asuntos.libra, [6, 7], 'lo que no es del horario de la oficina, en gris');
+  assert.ok(c.sinVacaciones.some(x => x.id === p.ana.id), 'los permisos no son vacaciones: sigue en «sin vacaciones»');
+}));

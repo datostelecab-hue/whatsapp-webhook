@@ -161,3 +161,11 @@ modules/VacacionesOficina/vacacionesOficina.controller.js /mis-vacaciones/api/pe
 public/assets/js/vistas/VacacionesOficina/permisosOficina.js   el bloque: el banco, pedir, el histórico y lo que espera aprobación
 test/vacaciones-permisos.test.js               4 pruebas: el banco, los días, el flujo completo y el banco que se pasa
 ```
+
+## Permiso retribuido, permisos pasados y permisos en el mapa (20/11/2026, db/272)
+
+Camilo: *«Que aparezca en el mapa que hicimos de meses los permisos especiales, permisos retribuidos y asuntos propios, a parte de apuntar asuntos propios pasados o permisos especiales/retribuidos pasados para verlo en el tablero también»*.
+
+- **Tipo nuevo, «Permiso retribuido o especial»** (`retribuido`, db/272 amplía la regla de `oficina_permiso.tipo`): matrimonio, nacimiento, fallecimiento, mudanza, médico… Sin banco y sin restar vacaciones, pero **siempre con su motivo** (sin él, el servidor no lo deja pedir ni apuntar). Los especiales y los retribuidos son el mismo tipo.
+- **Apuntar un permiso pasado** (`registrarPermiso`, `POST /mis-vacaciones/api/permisos/registrar`): como «Registrar unas ya disfrutadas». Solo quien aprueba; solo lo que ya acabó (antes de hoy) y desde el 01/01/2026; no encima de otro permiso ni de unas vacaciones. Nace **aprobado** y le llega aviso a la persona. Los asuntos propios restan de su banco aunque se pase (ya ocurrió): lo dice `sePasa` y la pantalla lo avisa. Botón «Apuntar un permiso pasado» en el mapa de «La oficina» y en la ficha de cada persona.
+- **En «Vacaciones por meses»** salen los **asuntos propios en violeta** y los **permisos retribuidos en verde**, una barra por solicitud (de su primer a su último día; el fin de semana en medio, en gris), con lo pendiente con el borde discontinuo como las vacaciones. **El teletrabajo no sale**: quien teletrabaja no falta. Cuentan en «a la vez» (esa persona falta, y la fila pasa a decir «fuera»), pero no en las cifras de arriba ni en los días de vacaciones de cada persona, ni la sacan de «Sin vacaciones todavía». La pieza global (`vacacionesPorMeses.js`) lo hace con `clase` y `etiqueta` en cada periodo; sin `clase` (la bitácora de los conductores) todo sigue igual.

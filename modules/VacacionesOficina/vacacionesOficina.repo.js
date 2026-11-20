@@ -119,6 +119,22 @@ async function permisosPorEstado(estado) {
   return r.rows.map(x => ({ ...x, id: Number(x.id), grupo: Number(x.grupo), usuario_id: Number(x.usuario_id) }));
 }
 
+/**
+ * Los permisos que se ven en «Vacaciones por meses» (20/11/2026): aprobados o
+ * pendientes, de unas personas, desde una fecha. Sin el teletrabajo: quien
+ * teletrabaja no falta.
+ */
+async function permisosMapa(ids, desde) {
+  if (!ids.length) return [];
+  const r = await db.consulta(
+    `SELECT p.grupo, p.usuario_id, p.tipo, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.fraccion, p.estado
+       FROM oficina_permiso p
+      WHERE p.usuario_id = ANY($1::int[]) AND p.estado IN ('pedido', 'aprobado') AND p.tipo <> 'teletrabajo'
+        AND p.fecha >= $2::date
+      ORDER BY p.grupo, p.fecha`, [ids, desde]);
+  return r.rows.map(x => ({ ...x, grupo: Number(x.grupo), usuario_id: Number(x.usuario_id) }));
+}
+
 /** Ya tiene algo de esos días (permisos activos). Devuelve las filas que chocan. */
 async function permisosActivosEntre(cli, usuarioId, desde, hasta) {
   const r = await q(cli,
@@ -160,5 +176,5 @@ async function cuantosPermisosPedidos() {
 module.exports = {
   faltaMigracion, persona, oficina, vacacionesDe, vacacion, solapadas, insertar, resolver, cuantasPedidas, aprobadores,
   permisosDe, permisosDeGrupo, permisosPorEstado, permisosActivosEntre, insertarPermisos, siguienteGrupo, resolverGrupo,
-  cuantosPermisosPedidos,
+  cuantosPermisosPedidos, permisosMapa,
 };

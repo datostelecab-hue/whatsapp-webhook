@@ -21,7 +21,9 @@
 //   VacacionesPorMeses.pintar(caja, {
 //     hoy: 'AAAA-MM-DD',
 //     periodos: [{ id, nombre, detalle, desde, hasta (null = sin fecha de vuelta),
-//                  abierta, pendiente, libra: [1..7] }],
+//                  abierta, pendiente, libra: [1..7],
+//                  clase, etiqueta }],   // clase: 'asuntos' | 'retribuido' (permisos de la
+//                                        // oficina, 20/11/2026), con su color; sin clase, vacaciones
 //     festivos: ['AAAA-MM-DD'],      // no gastan (opcional)
 //     desde: 'AAAA-MM',              // el primer mes de la tira
 //     sinVacaciones: [{ id, nombre, detalle }],   // opcional
@@ -77,6 +79,12 @@
     const tipo = (t, iso) => (!gasta(t, iso) ? 'libra' : t.pendiente ? 'pend' : iso > hoy ? 'prog' : 'on');
     const diasDe = t => { let n = 0; for (let d = t.a; d <= t.b; d = isoDe(ms(d) + DIA)) if (gasta(t, d)) n++; return n; };
 
+    // Los permisos (con `clase`) se pintan y cuentan en «a la vez» (esa persona
+    // falta), pero no en las cifras ni en los días de vacaciones de cada uno.
+    const esVac = t => !t.clase;
+    const hayPermisos = tramos.some(t => t.clase);
+    const quien = hayPermisos ? 'fuera' : 'de vacaciones';
+
     // «A la vez»: lo aprobado, los días que gastan.
     const cuenta = new Array(N).fill(0);
     tramos.forEach(t => { if (!t.pendiente) for (let i = idx(t.a); i <= idx(t.b); i++) if (gasta(t, dias[i])) cuenta[i]++; });
@@ -93,15 +101,16 @@
     });
     const filas = [...porPersona.values()].map(r => {
       const vivos = r.tramos.filter(t => (t.hasta || '9999-12-31') >= hoy);
-      return { ...r, dias: r.tramos.reduce((n, t) => n + diasDe(t), 0),
+      return { ...r, dias: r.tramos.filter(esVac).reduce((n, t) => n + diasDe(t), 0),
+        permisos: r.tramos.filter(t => !esVac(t)).reduce((n, t) => n + diasDe(t), 0),
         orden: vivos.length ? [0, vivos.map(t => t.desde).sort()[0]] : [1, r.tramos.map(t => t.b).sort().pop()] };
     }).sort((x, z) => x.orden[0] - z.orden[0]
       || (x.orden[0] === 0 ? x.orden[1].localeCompare(z.orden[1]) : z.orden[1].localeCompare(x.orden[1]))
       || x.nombre.localeCompare(z.nombre, 'es'));
 
     // Las cifras de arriba.
-    const fueraHoy = new Set(tramos.filter(t => !t.pendiente && t.a <= hoy && t.b >= hoy).map(t => String(t.id)));
-    const programadas = new Set(periodos.filter(p => !p.pendiente && p.desde > hoy).map(p => String(p.id)));
+    const fueraHoy = new Set(tramos.filter(t => esVac(t) && !t.pendiente && t.a <= hoy && t.b >= hoy).map(t => String(t.id)));
+    const programadas = new Set(periodos.filter(p => esVac(p) && !p.pendiente && p.desde > hoy).map(p => String(p.id)));
     const pendientes = periodos.filter(p => p.pendiente).length;
     let pico = 0, picoDia = null;
     for (let i = Math.max(0, idx(hoy)); i < N; i++) if (cuenta[i] > pico) { pico = cuenta[i]; picoDia = dias[i]; }
@@ -124,10 +133,12 @@
       }
       const n = diasDe(t);
       const conGris = trozos.some(x => x.k === 'libra');
-      const estado = t.pendiente ? NOMBRE_T.pend : t.b < hoy ? NOMBRE_T.on : t.a > hoy ? NOMBRE_T.prog : 'de vacaciones ahora';
-      const texto = `${t.nombre}: del ${f(t.desde)} ${t.hasta ? `al ${f(t.hasta)}` : 'sin fecha de vuelta'} · ${n} ${n === 1 ? 'día' : 'días'}${conGris ? ' (sin contar libranzas ni festivos)' : ''} · ${estado}`;
+      const estado = t.pendiente ? NOMBRE_T.pend
+        : esVac(t) ? (t.b < hoy ? NOMBRE_T.on : t.a > hoy ? NOMBRE_T.prog : 'de vacaciones ahora')
+          : (t.b < hoy ? 'ya pasado' : t.a > hoy ? 'programado' : 'ahora');
+      const texto = `${t.nombre}: ${t.etiqueta ? t.etiqueta + ', ' : ''}${t.desde === t.hasta ? `el ${f(t.desde)}` : `del ${f(t.desde)} ${t.hasta ? `al ${f(t.hasta)}` : 'sin fecha de vuelta'}`} · ${n} ${n === 1 ? 'día' : 'días'}${conGris ? ' (sin contar libranzas ni festivos)' : ''} · ${estado}`;
       const clases = ['tc-vpm-barra', t.pendiente ? 'tc-vpm-barra--pend' : '', t.corteIzq ? 'tc-vpm-barra--corte-izq' : '', t.corteDer ? 'tc-vpm-barra--corte-der' : ''].filter(Boolean).join(' ');
-      return `<button type="button" class="${clases}" data-abrir="${esc(t.id)}" style="left:${idx(t.a) * W + 1}px;width:${(idx(t.b) - idx(t.a) + 1) * W - 2}px" title="${esc(texto)}" aria-label="${esc(texto)}">${
+      return `<button type="button" class="${clases}"${t.clase ? ` data-vpm-clase="${esc(t.clase)}"` : ''} data-abrir="${esc(t.id)}" style="left:${idx(t.a) * W + 1}px;width:${(idx(t.b) - idx(t.a) + 1) * W - 2}px" title="${esc(texto)}" aria-label="${esc(texto)}">${
         trozos.map(x => `<i class="tc-vpm-${x.k}" style="flex-grow:${x.n}"></i>`).join('')}</button>`;
     };
 
@@ -167,10 +178,10 @@
             <div class="tc-vpm-fila"><span class="tc-vpm-izq"></span><div class="tc-vpm-pista tc-vpm-dias">${dias.map(d =>
               `<span class="${d === hoy ? 'hoy' : descanso(d) ? 'descanso' : ''}"${festivos.has(d) ? ' title="Festivo"' : ''}>${Number(d.slice(8))}</span>`).join('')}</div></div>
             <div class="tc-vpm-fila"><span class="tc-vpm-izq text-[11px] text-telecab-muted">a la vez</span><div class="tc-vpm-pista tc-vpm-vez">${cuenta.map((c, i) =>
-              `<b style="background: rgb(var(--tc-vac) / ${c ? (0.14 + 0.66 * c / maxC).toFixed(2) : 0.04})" title="${c} de vacaciones el ${f(dias[i])}">${c || ''}</b>`).join('')}</div></div>
+              `<b style="background: rgb(var(--tc-vac) / ${c ? (0.14 + 0.66 * c / maxC).toFixed(2) : 0.04})" title="${c} ${quien} el ${f(dias[i])}">${c || ''}</b>`).join('')}</div></div>
           </div>
           ${filas.map(r => `<div class="tc-vpm-fila tc-vpm-fila--persona">
-            <span class="tc-vpm-izq"><button type="button" class="tc-vpm-nombre" data-abrir="${esc(r.id)}" title="${esc(r.nombre + (r.detalle ? ' · ' + r.detalle : '') + ' · ' + r.dias + ' día(s) en la parrilla')}">
+            <span class="tc-vpm-izq"><button type="button" class="tc-vpm-nombre" data-abrir="${esc(r.id)}" title="${esc(r.nombre + (r.detalle ? ' · ' + r.detalle : '') + ' · ' + r.dias + ' día(s) de vacaciones en la parrilla' + (r.permisos ? ` y ${r.permisos} de permisos` : ''))}">
               <span class="truncate">${esc(r.nombre)}</span><span class="tc-vpm-nombre-dias">${r.dias}d</span></button></span>
             <div class="tc-vpm-pista tc-vpm-persona">${r.tramos.map(barra).join('')}</div></div>`).join('')}
         </div>
@@ -179,6 +190,8 @@
         <span><i class="tc-vpm-on"></i>Disfrutadas</span>
         <span><i class="tc-vpm-prog"></i>Programadas</span>
         ${pendientes ? '<span><i class="tc-vpm-pend tc-vpm-muestra-pend"></i>Esperan aprobación</span>' : ''}
+        ${tramos.some(t => t.clase === 'asuntos') ? '<span><i class="tc-vpm-on" data-vpm-clase="asuntos"></i>Asuntos propios</span>' : ''}
+        ${tramos.some(t => t.clase === 'retribuido') ? '<span><i class="tc-vpm-on" data-vpm-clase="retribuido"></i>Permisos retribuidos</span>' : ''}
         <span><i class="tc-vpm-libra"></i>No gasta (su libranza o festivo)</span>
         <span><i class="tc-vpm-muestra-hoy"></i>Hoy</span>
         <span>Arrastra la parrilla para moverte en el tiempo</span>

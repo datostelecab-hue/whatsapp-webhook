@@ -311,6 +311,28 @@ async function calendarioOficina(quien) {
     }));
     if (!suyas.some(v => v.hasta >= enero)) sinVacaciones.push({ id: p.id, nombre: p.nombre, detalle: p.puesto || (p.alta ? '' : 'Sin fecha de alta') });
   }
+  // LOS PERMISOS EN EL MAPA (20/11/2026): asuntos propios y retribuidos, una
+  // barra por solicitud, de su color. Sus días de fuera del horario (el fin de
+  // semana en medio de un permiso de varios días) van en gris, como la libranza.
+  const libraOficina = [1, 2, 3, 4, 5, 6, 7].filter(d => !e.laborables.includes(d));
+  const porNombre = new Map(gente.map(p => [p.id, p]));
+  const grupos = new Map();
+  for (const x of await repo.permisosMapa(gente.map(p => p.id), DESDE).catch(err => { if (repo.faltaMigracion(err)) return []; throw err; })) {
+    if (!PERMISO_TIPOS[x.tipo] || !PERMISO_TIPOS[x.tipo].enMapa) continue;
+    if (!grupos.has(x.grupo)) grupos.set(x.grupo, { ...x, dias: [] });
+    grupos.get(x.grupo).dias.push(x.fecha);
+  }
+  for (const g of grupos.values()) {
+    const p = porNombre.get(g.usuario_id);
+    if (!p) continue;
+    const dias = g.dias.sort();
+    periodos.push({
+      id: p.id, nombre: p.nombre, detalle: p.puesto || '', desde: dias[0], hasta: dias[dias.length - 1],
+      pendiente: g.estado === 'pedido', libra: libraOficina,
+      clase: g.tipo === 'asuntos_propios' ? 'asuntos' : 'retribuido',
+      etiqueta: PERMISO_TIPOS[g.tipo].etiqueta + (g.fraccion !== 'dia' ? ` (${FRACCIONES[g.fraccion].etiqueta.toLowerCase()})` : ''),
+    });
+  }
   return {
     hoy: e.hoy, desde: DESDE.slice(0, 7),
     festivos: [...e.festivos].filter(d => d >= DESDE).sort(),
@@ -461,10 +483,17 @@ contadores.registrarFuente(ORIGEN, {
 //     lleva Usuarios y permisos, y queda en el histórico. No consume nada.
 //   · Una solicitud son sus días (un grupo). Aprobar, rechazar o anular es de
 //     una vez, y el histórico no se borra.
+//   · PERMISO RETRIBUIDO (db/272, 20/11/2026): los especiales y retribuidos
+//     (matrimonio, nacimiento, fallecimiento, mudanza, médico…). Sin banco y
+//     sin restar vacaciones, pero SIEMPRE con su motivo.
+// `enMapa`: sale en «Vacaciones por meses» (20/11/2026). El teletrabajo no:
+// quien teletrabaja no falta.
 const PERMISO_TIPOS = {
-  asuntos_propios: { etiqueta: 'Asuntos propios', banco: true },
+  asuntos_propios: { etiqueta: 'Asuntos propios', banco: true, enMapa: true },
   teletrabajo: { etiqueta: 'Teletrabajo', banco: false },
+  retribuido: { etiqueta: 'Permiso retribuido', banco: false, motivo: true, enMapa: true },
 };
+const MOTIVO_OBLIGATORIO = 'Di el motivo del permiso retribuido (matrimonio, nacimiento, fallecimiento, mudanza, médico…)';
 const FRACCIONES = {
   dia: { etiqueta: 'Día completo', valor: 1 },
   manana: { etiqueta: 'Media mañana', valor: 0.5 },
@@ -560,6 +589,7 @@ async function pedirPermiso(quien, { tipo, desde, hasta, fraccion, nota } = {}) 
   const sim = await simularPermiso(quien, { tipo, desde, hasta, fraccion });
   if (!sim.cuentan) throw error('Esos días no cuentan: son fin de semana, festivo o fuera del horario de la oficina');
   const texto = String(nota || '').trim().slice(0, 1000);
+  if (PERMISO_TIPOS[tipo].motivo && texto.length < 3) throw error(MOTIVO_OBLIGATORIO);
   const p = await repo.persona(quien.id);
   if (!p) throw error('Esa persona no es de la oficina', 403);
   const grupo = await libro.conFirma({ usuarioId: quien.id, origen: ORIGEN_PERMISO, accion: 'alta', motivo: 'Permiso de la oficina' }, async cli => {
@@ -582,6 +612,49 @@ async function pedirPermiso(quien, { tipo, desde, hasta, fraccion, nota } = {}) 
     etiqueta: `permiso-oficina-${grupo}`,
   });
   return { grupo, dias: sim.cuentan, sePasa: sim.sePasa, quedaria: sim.quedaria };
+}
+
+/**
+ * APUNTAR UN PERMISO YA PASADO (20/11/2026, Camilo: «apuntar asuntos propios
+ * pasados o permisos especiales/retribuidos pasados para verlo en el tablero
+ * también»). Como «Registrar unas ya disfrutadas» de las vacaciones: lo hace
+ * quien lleva Usuarios y permisos, nace aprobado y queda en el histórico y en
+ * «Vacaciones por meses». Solo lo que ya empezó (lo de hoy en adelante se
+ * pide) y desde el 01/01/2026. Los asuntos propios restan de su banco aunque se
+ * pase: lo dice `sePasa`, no lo impide (ya ocurrió).
+ */
+async function registrarPermiso(quien, { usuarioId, tipo, desde, hasta, fraccion = 'dia', nota } = {}) {
+  if (!await puedeAprobar(quien)) throw error('Los apunta quien lleva Usuarios y permisos', 403);
+  const id = Number(usuarioId);
+  if (!id) throw error('Falta de quién es');
+  hasta = hasta || desde;
+  validarPermiso({ tipo, desde, hasta, fraccion });
+  const e = await entorno();
+  if (desde >= e.hoy) throw error('Aquí van los que ya pasaron: los de hoy en adelante se piden');
+  if (hasta >= e.hoy) throw error('Un permiso pasado acaba antes de hoy: lo que queda se pide aparte');
+  if (desde < DESDE) throw error('La cuenta empieza el 01/01/2026: lo de antes no se apunta');
+  const texto = String(nota || '').trim().slice(0, 1000);
+  if (PERMISO_TIPOS[tipo].motivo && texto.length < 3) throw error(MOTIVO_OBLIGATORIO);
+  const dias = diasDelPermiso(desde, hasta, e);
+  if (!dias.length) throw error('Esos días no cuentan: son fin de semana, festivo o fuera del horario de la oficina');
+  const { p, banco } = await bancoDe(id, e);
+  const valor = r2(dias.length * FRACCIONES[fraccion].valor);
+  const sePasa = PERMISO_TIPOS[tipo].banco ? r2(banco.saldo - valor) < 0 : false;
+  const grupo = await libro.conFirma({ usuarioId: quien.id, origen: ORIGEN_PERMISO, accion: 'alta', motivo: 'Permiso ya pasado, apuntado después' }, async cli => {
+    for (const x of await repo.permisosActivosEntre(cli, id, desde, hasta)) {
+      if (x.fraccion === 'dia' || fraccion === 'dia' || x.fraccion === fraccion) throw error(`Ya tiene un permiso el ${fecha(x.fecha)}`, 409);
+    }
+    const vac = await choqueDeVacaciones(cli, id, dias);
+    if (vac) throw error(`Ese día tiene vacaciones (del ${fecha(vac.desde)} al ${fecha(vac.hasta)})`, 409);
+    const g = await repo.siguienteGrupo(cli);
+    await repo.insertarPermisos(cli, { grupo: g, usuarioId: id, tipo, fraccion, nota: texto, por: quien.id, fechas: dias });
+    await repo.resolverGrupo(cli, g, { estado: 'aprobado', por: quien.id, nota: 'Ya pasado: apuntado después', desdeEstados: ['pedido'] });
+    return g;
+  });
+  await avisarPermisos(id !== quien.id ? [id] : [], {
+    titulo: 'Permiso apuntado', cuerpo: descripcionPermiso(tipo, fraccion, dias.length), etiqueta: `permiso-oficina-${grupo}`,
+  });
+  return { grupo, nombre: p.nombre, dias: dias.length, valor, sePasa };
 }
 
 /** Agrupa los permisos por solicitud, con su tipo, sus días y su estado. */
@@ -703,7 +776,7 @@ module.exports = {
   mias, de, lista, calendarioOficina, simular, registrar, pedir, aprobar, rechazar, retirar, anular, puedeAprobar,
   // Para las pruebas:
   _saldoDe: saldoDe, _simularSobre: simularSobre, _previsionDe: previsionDe, _festivosDe: festivosDe, _dosDias: dosDias, _tasaDe: tasaDe, DESDE,
-  permisosMios, permisosLista, simularPermiso, pedirPermiso, resolverPermiso,
+  permisosMios, permisosLista, simularPermiso, pedirPermiso, resolverPermiso, registrarPermiso,
   // Para las pruebas de los permisos:
   _bancoAsuntos: bancoAsuntos, _diasDelPermiso: diasDelPermiso, _validarPermiso: validarPermiso, PERMISO_TIPOS, FRACCIONES,
 };

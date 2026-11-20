@@ -372,7 +372,11 @@
     VacacionesPorMeses.pintar(calCaja, {
       hoy: c.hoy, desde: c.desde, festivos: c.festivos, periodos: c.periodos, sinVacaciones: c.sinVacaciones,
       titulo: 'Vacaciones por meses',
-      ayuda: 'Quién se va y cuándo, seguido: arrastra la parrilla para ver quién pisa a quién. En gris, sus días de libranza y los festivos, que no gastan. Pulsa a alguien para ver su ficha y aprobar.',
+      ayuda: 'Quién se va y cuándo, seguido: arrastra la parrilla para ver quién pisa a quién. En violeta, los asuntos propios; en verde, los permisos retribuidos. En gris, sus días de libranza y los festivos, que no gastan. Pulsa a alguien para ver su ficha y aprobar.',
+      // Un permiso que ya pasó y no se pidió (20/11/2026): se apunta y sale aquí.
+      botones: [{ html: '<i class="fa-solid fa-clock-rotate-left mr-1" aria-hidden="true"></i>Apuntar un permiso pasado',
+        titulo: 'Asuntos propios, un permiso retribuido o teletrabajo que ya pasó: queda aprobado y en el mapa',
+        alPulsar: () => PermisosOficina.registrarPasado({ personas: c.personas, alAcabar: cargarCalendario }) }],
       alAbrir: id => { const p = c.personas.find(x => String(x.id) === String(id)); if (p) abrirPersona(p); },
     });
   }
@@ -387,12 +391,18 @@
         <div class="flex justify-end flex-wrap gap-2 mt-3">
           <button type="button" class="tc-boton tc-boton--chico" data-registrar ${d.alta ? '' : 'disabled'} title="Unas vacaciones que ya disfrutó: se restan de lo que tiene hoy">
             <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Registrar unas ya disfrutadas</button>
+          <button type="button" class="tc-boton tc-boton--chico" data-permiso-pasado title="Asuntos propios, un permiso retribuido o teletrabajo que ya pasó">
+            <i class="fa-solid fa-user-clock" aria-hidden="true"></i>Apuntar un permiso pasado</button>
           <button type="button" class="tc-boton tc-boton--chico" data-simular-otro ${d.alta ? '' : 'disabled'}>
           <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Simular sus vacaciones</button></div>
         <section class="tc-panel-seccion"><h4>Sus vacaciones</h4>${tablaVacaciones(d, { propio: d.id === yo.id, aprueba: true })}</section>
         <section class="tc-panel-seccion"><h4>Mes a mes</h4>${tablaMeses(d)}</section>` });
       p.cuerpo.querySelector('[data-simular-otro]').addEventListener('click', () => simular(d));
       p.cuerpo.querySelector('[data-registrar]').addEventListener('click', () => registrar(d, cargar));
+      p.cuerpo.querySelector('[data-permiso-pasado]').addEventListener('click', () => PermisosOficina.registrarPasado({
+        personas: [{ id: x.id, nombre: x.nombre }], persona: x.id,
+        alAcabar: async () => { await cargar(); if (calCargado) cargarCalendario(); },
+      }));
     };
     engancharAcciones(p.cuerpo, () => (d && !d.error ? d : null), { recargar: async () => { await cargar(); if (d && d.id === yo.id) await cargarMias(); } });
     await cargar();

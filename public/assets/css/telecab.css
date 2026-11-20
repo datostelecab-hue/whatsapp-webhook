@@ -1535,8 +1535,12 @@ a.tc-aviso-titulo:hover { color: rgb(var(--tc-gold)); text-decoration: underline
 .tc-vpm-barra--pend::after, .tc-vpm-muestra-pend { box-sizing: border-box; border: 1.5px dashed rgb(var(--tc-warn)); }
 .tc-vpm-barra--pend::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
 .tc-vpm-barra:hover, .tc-vpm-barra:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
-.tc-vpm-on { background: rgb(var(--tc-vac)); }
-.tc-vpm-prog { background: repeating-linear-gradient(45deg, rgb(var(--tc-vac) / .9) 0 5px, rgb(var(--tc-vac) / .30) 5px 10px); }
+/* El color de la barra: vacaciones por defecto; los permisos de la oficina, el
+   suyo (20/11/2026): asuntos propios en violeta, permisos retribuidos en verde. */
+.tc-vpm-on { background: rgb(var(--vpm-c, var(--tc-vac))); }
+.tc-vpm-prog { background: repeating-linear-gradient(45deg, rgb(var(--vpm-c, var(--tc-vac)) / .9) 0 5px, rgb(var(--vpm-c, var(--tc-vac)) / .30) 5px 10px); }
+[data-vpm-clase='asuntos'] { --vpm-c: var(--tc-violet); }
+[data-vpm-clase='retribuido'] { --vpm-c: var(--tc-green); }
 .tc-vpm-pend { background: rgb(var(--tc-warn) / .32); }
 .tc-vpm-libra { background: rgb(var(--tc-muted) / .5); }
 .tc-vpm-nombre {
