@@ -65,6 +65,15 @@ function instalarCortafuegos() {
       return respuestaFalsa({ messaging_product: 'whatsapp', messages: [{ id: 'PRUEBAS-' + Date.now() }] });
     }
 
+    // LAS PUERTAS (23/11/2026): van por un Apps Script de Google, que a su vez
+    // manda la orden a Mapon. Es un GET a script.google.com, así que la regla de
+    // Mapon de abajo no lo veía: desde el entorno local se abrieron y cerraron de
+    // verdad las puertas de un coche. Cualquier acción del Apps Script que no sea
+    // leer, frenada.
+    if (/script\.google\.com\/macros\//.test(u) && !/[?&]accion=(buscar|consultar|leer|listar|estado)/i.test(u)) {
+      anotar('Apps Script (puertas)', `${metodo} ${u.replace(/\/macros\/s\/[^/]+/, '/macros/s/***')}`);
+      return respuestaFalsa({ status: 'ok', simulado: true, msg: 'Simulado en modo pruebas: no se ha mandado nada al coche' });
+    }
     // Mapon: los POST cambian cosas, y algunos GET también (relés, comandos).
     if (/mapon\.com/.test(u) && (metodo !== 'GET' || ESCRITURAS_MAPON.test(u))) {
       anotar('Mapon', `${metodo} ${u.replace(/key=[^&]*/, 'key=***')}`);
