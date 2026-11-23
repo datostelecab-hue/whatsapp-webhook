@@ -49,11 +49,9 @@ const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', '
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
 
-// Los colores de los turnos: los del Excel de rendimiento (FONDO) y los de la
-// hoja impresa que había; el todoturno, gris claro (cubre los dos turnos: ni
-// verde ni morado), más oscuro que el gris de «libra» para no confundirlos.
-const FONDO = { fijoDia: 'FFDDEBF7', fijoNoche: 'FFEDE3C5', dia: 'FFE2EFDA', noche: 'FFE4DFEC', todoturno: 'FFE5E7EB' };
-const FONDO_CUADRANTE = 'FFFDF3D7';
+// Sin colores de turno (23/11/2026, Camilo): las celdas en blanco y las cabeceras
+// y los títulos, oscuros. El estado lo dice el color de la letra.
+const BLANCO = 'FFFFFFFF';
 const NEGRO = 'FF1F2430', GRIS = 'FF6B7280', ROJO = 'FFC00000', AMBAR = 'FF9C5A00', VIOLETA = 'FF5B3FA8', CLARO = 'FFC9CED6';
 
 // La tarjeta «Sin zona» de la pantalla (los cuadrantes sin zona y los coches sin
@@ -393,14 +391,11 @@ async function generar({ tablero, zona, q, ahora } = {}) {
     const textos = ['Matrícula', 'Descanso', '☀ Fijo día', '☾ Fijo noche'];
     casillas.forEach(k => { textos.push(CABECERA_CT[k.jornada]); if (ocupa(k) === 2) textos.push(''); });
     E.cabeceraTabla(ws, f, textos, { alto: 20 });
-    // Las columnas de turno con su color, como el Excel de rendimiento: el ojo las sigue hacia abajo.
-    const pinta = (col, argb) => { const c = ws.getCell(f, col); c.fill = E.relleno(argb); c.font = { size: 10, bold: true, color: { argb: NEGRO } }; };
-    pinta(3, FONDO.fijoDia);
-    pinta(4, FONDO.fijoNoche);
+    // Todas las cabeceras con el mismo fondo, el de «Matrícula» (23/11/2026,
+    // Camilo: los colores de «Fijo día», «Fijo noche» y «CT», «también chau»).
     let col = ANCHOS.length + 1;
     casillas.forEach(k => {
-      pinta(col, FONDO[k.jornada]);
-      if (ocupa(k) === 2) { pinta(col + 1, FONDO[k.jornada]); ws.mergeCells(f, col, f, col + 1); }
+      if (ocupa(k) === 2) ws.mergeCells(f, col, f, col + 1);
       col += ocupa(k);
     });
     f++;
@@ -595,11 +590,11 @@ async function generar({ tablero, zona, q, ahora } = {}) {
     g.cuadrantes.forEach(({ cu, coches }) => {
       f++;
       titulo([
-        { text: `C${cu.numero}${cu.nombre ? ' · ' + cu.nombre : ''} · ${cu.zona || 'sin zona'}`, font: { size: 11, bold: true, color: { argb: NEGRO } } },
+        { text: `C${cu.numero}${cu.nombre ? ' · ' + cu.nombre : ''} · ${cu.zona || 'sin zona'}`, font: { size: 11, bold: true, color: { argb: BLANCO } } },
         { text: `   —   ${plural((cu.coches || []).length, 'coche')}` +
           (casillasDe(cu).length ? ` · CT: ${casillasDe(cu).map(x => CABECERA_CT[x.jornada].replace('CT ', '')).join(' + ')}` : ' · sin casillas de CT'),
-        font: { size: 10, color: { argb: GRIS } } },
-      ], { fill: FONDO_CUADRANTE, alto: 20 });
+        font: { size: 10, color: { argb: CLARO } } },
+      ], { fill: E.DARK, alto: 20 });   // oscuro, como la zona (23/11/2026)
       tabla(cu, coches);
     });
     f++;
