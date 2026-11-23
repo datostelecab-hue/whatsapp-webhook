@@ -339,13 +339,15 @@ async function efectivo(persona) {
 async function inicio(persona) {
   // Si el dinero o el efectivo no se pueden leer, la portada sale igual, sin esa tarjeta.
   const fallo = que => e => { console.error(`❌ [Portal] ${que}:`, e.message); return null; };
-  const [t, s, d, ef] = await Promise.all([
+  const [t, s, d, ef, co] = await Promise.all([
     turnos(persona), puntuacion.semanasDe(persona.id),
     dinero(persona).catch(fallo('dinero')),
     efectivo(persona).catch(fallo('efectivo')),
+    // El coche vinculado, para el resumen (require aquí: portal.coche usa este módulo).
+    require('./portal.coche').estado(persona).catch(fallo('coche')),
   ]);
   return {
-    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef,
+    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef, coche: co,
     proximo: t.dias.find(d => d.trabaja) || null,
     hayPlan: t.dias.some(d => !d.sinPlan),
     evento: t.evento,

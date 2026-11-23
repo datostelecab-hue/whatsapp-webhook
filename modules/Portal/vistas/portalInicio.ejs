@@ -4,8 +4,7 @@
 <p class="aviso"><b><%= evento.nombre %>.</b> Del <%= f.fecha(evento.desde) %> al <%= f.fecha(evento.hasta) %> los turnos son temporales.</p>
 <% } %>
 
-<section class="caja" aria-labelledby="t-proximo">
-  <div class="caja-tit"><h2 id="t-proximo">Tu próximo turno</h2><a href="/turnos">Ver los 8 días</a></div>
+<%- include('portalTarjeta', { id: 't-proximo', href: '/turnos', icono: 'turnos', titulo: 'Tu próximo turno', ir: 'Ver los 8 días' }) %>
   <div class="caja-in proximo">
   <% if (proximo) { const n = f.nombreDia(proximo.fecha, hoy); %>
     <p class="suave"><%= n.nombre %>, <%= n.fecha %></p>
@@ -20,9 +19,23 @@
   </div>
 </section>
 
+<% const coche = locals.coche; if (coche && coche.puede) { %>
+<%- include('portalTarjeta', { id: 't-coche', href: '/coche', icono: 'coche', titulo: 'Tu coche', ir: coche.vinculado ? 'Puertas y desvincular' : 'Vincular' }) %>
+  <div class="caja-in">
+  <% if (coche.vinculado) { %>
+    <p class="coche-resumen"><span class="matricula"><%= coche.matricula %></span> <span>Vinculado desde <%= String(coche.desde).includes('/') ? 'el ' : 'las ' %><%= coche.desde %></span></p>
+    <p class="suave peq">Desde aquí abres, cierras y lo desvinculas al terminar.</p>
+  <% } else { %>
+    <p>No tienes ningún coche vinculado.</p>
+    <p class="suave peq">Vincúlalo al empezar el turno: se desbloquea el motor.</p>
+  <% } %>
+  </div>
+</section>
+<% } %>
+
 <% if (dinero) { const d = dinero, mes = d.mes; %>
 <section class="caja" aria-labelledby="t-dinero">
-  <div class="caja-tit"><h2 id="t-dinero"><%= d.ett ? 'Tus propinas y peajes de ' + mes.nombre : 'Tu facturación de ' + mes.nombre %></h2></div>
+  <div class="caja-tit"><span class="caja-ico"><%- include('portalIcono', { n: 'dinero' }) %></span><h2 id="t-dinero"><%= d.ett ? 'Tus propinas y peajes de ' + mes.nombre : 'Tu facturación de ' + mes.nombre %></h2></div>
   <div class="caja-in dinero">
   <% if (!d.ett && d.objetivo) {
        const pct = Math.max(0, Math.min(100, mes.neto / d.objetivo * 100));
@@ -49,8 +62,7 @@
 <% } %>
 
 <% if (efectivo) { const e = efectivo; %>
-<section class="caja" aria-labelledby="t-efectivo">
-  <div class="caja-tit"><h2 id="t-efectivo">Efectivo por entregar</h2><a href="/efectivo">Ver el detalle</a></div>
+<%- include('portalTarjeta', { id: 't-efectivo', href: '/efectivo', icono: 'efectivo', titulo: 'Efectivo por entregar', ir: 'Ver el detalle' }) %>
   <div class="caja-in dinero">
   <% if (e.pendiente > 0) { %>
     <p class="dinero-cifra"><b><%= f.euros(e.pendiente) %></b></p>
@@ -64,8 +76,7 @@
 </section>
 <% } %>
 
-<section class="caja" aria-labelledby="t-nota">
-  <div class="caja-tit"><h2 id="t-nota">Tu última nota</h2><% if (ultima) { %><a href="/puntuacion">Todas las semanas</a><% } %></div>
+<%- include('portalTarjeta', { id: 't-nota', href: '/puntuacion', icono: 'puntuacion', titulo: 'Tu última nota', ir: 'Todas las semanas' }) %>
   <div class="caja-in">
   <% if (!ultima) { %>
     <p class="suave">Todavía no tienes ninguna semana con nota. La de cada semana sale el lunes.</p>

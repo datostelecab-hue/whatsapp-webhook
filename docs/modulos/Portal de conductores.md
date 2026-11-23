@@ -101,6 +101,23 @@ Camilo: *«en el apartado del coche que le toca, tiene que poner "Ver ubicación
 - **WhatsApp sigue igual**: «Desvincular vehículo» del bot no pide fotos, a propósito (transición).
 - Pruebas: `test/portal-fotos.test.js`.
 
+## El inicio, un resumen que lleva a cada sitio (23/11/2026, a medias)
+
+Camilo: *«que el inicio sea un resumen de lo que hay, al darle tap o click a la pantalla sí lo lleve allí, con iconos de referencia modernos y buenos»*.
+
+Hecho y commiteado (probado en local a 375 px):
+
+- **Cada tarjeta entera lleva a su sección**: el título es un enlace estirado sobre la tarjeta (`::after`); los teléfonos de dentro siguen pulsables. Pieza nueva `vistas/portalTarjeta.ejs` (abre el `<section>`; quien la usa pone el contenido y lo cierra).
+- **Iconos en una sola pieza**: `vistas/portalIcono.ejs`, que usan la barra de abajo y las tarjetas (en una pastilla teñida del acento).
+- **Tarjeta nueva «Tu coche»**: el vinculado y desde cuándo, o «vincúlalo al empezar». Sale de `portal.coche.estado`; si falla, el inicio sale sin ella.
+- La de la facturación no lleva a ningún sitio (no hay página): lleva icono, pero no pulsa.
+
+Falta (mañana):
+
+1. Aplicar lo que diga el agente revisor (lanzado a las 17:5x; su informe queda en la sesión).
+2. Probar a 320 px y en las pantallas bajas.
+3. **El vídeo explicativo** para los conductores de todo lo que tiene la app: **al final, cuando ya se pueda lanzar** (Camilo, 23/11). Con voz generada y montaje en local, como los vídeos anteriores.
+
 ## Para subirlo a producción
 
 1. Desplegar y aplicar **db/210** (la puntuación semanal) y **db/211** (el acceso) desde `/migraciones`.
