@@ -38,13 +38,29 @@ async function responsablesTaller(cli = null) {
   return r.rows.map(x => Number(x.id));
 }
 
-/** Los avisos ya dados: Set('vehiculoId|cambioId'). */
-async function avisados(cli = null) {
-  const r = await q(cli, 'SELECT vehiculo_id, cambio_id FROM ruedas_aviso');
-  return new Set(r.rows.map(x => `${x.vehiculo_id}|${x.cambio_id || 0}`));
+// db/276: el aviso es por cambio Y por revisión. Sin ella, por cambio, como antes.
+let _con276 = null;
+async function con276(cli) {
+  if (_con276) return true;
+  const r = await q(cli, `SELECT 1 FROM information_schema.columns WHERE table_name = 'ruedas_aviso' AND column_name = 'revision_id'`);
+  _con276 = r.rows.length > 0;
+  return _con276;
 }
 
-async function apuntarAviso(cli, { vehiculoId, cambioId, kmDesde, mensajeId }) {
+/** Los avisos ya dados: Set('vehiculoId|cambioId|revisionId'). */
+async function avisados(cli = null) {
+  const con = await con276(cli);
+  const r = await q(cli, `SELECT vehiculo_id, cambio_id${con ? ', revision_id' : ''} FROM ruedas_aviso`);
+  return new Set(r.rows.map(x => `${x.vehiculo_id}|${x.cambio_id || 0}|${x.revision_id || 0}`));
+}
+
+async function apuntarAviso(cli, { vehiculoId, cambioId, revisionId, kmDesde, mensajeId }) {
+  if (await con276(cli)) {
+    await q(cli,
+      `INSERT INTO ruedas_aviso (vehiculo_id, cambio_id, revision_id, km_desde, mensaje_id) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT DO NOTHING`, [vehiculoId, cambioId || null, revisionId || null, kmDesde, mensajeId || null]);
+    return;
+  }
   await q(cli,
     `INSERT INTO ruedas_aviso (vehiculo_id, cambio_id, km_desde, mensaje_id) VALUES ($1, $2, $3, $4)
      ON CONFLICT DO NOTHING`, [vehiculoId, cambioId || null, kmDesde, mensajeId || null]);

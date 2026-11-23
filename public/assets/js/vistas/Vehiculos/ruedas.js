@@ -14,6 +14,8 @@
 // observación»): el día, los km si se saben y lo visto. No son un cambio: no
 // mueven los km. Columna «Última revisión», su historia en el Panel y
 // «Apuntar una revisión»; una mal apuntada se anula con su motivo.
+// Desde db/276 (23/11/2026): la revisión da 15.000 km más (el cambio toca a los
+// 45.000) y hay UNA por tramo (desde el último cambio).
 //
 // La monta taller.js al abrir la pestaña: TallerRuedas.montar({ base, puede }).
 (function (global) {
@@ -41,6 +43,7 @@
   let lst = null;
   // Cada cuántos km (lo dice el servidor: TALLER_KM_RUEDAS, 30.000 desde el 18/11).
   let intervalo = 30000;
+  let prorroga = 15000;
   let cfg = { base: '/taller', puede: false };
 
   function montar(opciones) {
@@ -55,10 +58,13 @@
       origen: `${cfg.base}/api/ruedas`,
       vacio: 'No hay coches.',
       buscar: { texto: 'Matrícula, modelo o zona…', campos: [f => `${f.matricula} ${String(f.matricula).replace(/^(\d{4})/, '$1 ')}`, 'vehiculo', 'zona'] },
-      subtitulo: (v, todas, extra) => `Cada ${miles((extra && extra.intervalo) || intervalo)} km, un cambio de ruedas. Cuentan los de las facturas (los pinchazos no) y los apuntados a mano.`,
-      kpis: filas => { if (filas[0] && filas[0].intervalo) intervalo = filas[0].intervalo; return [
+      subtitulo: (v, todas, extra) => `Cada ${miles((extra && extra.intervalo) || intervalo)} km, un cambio de ruedas; con una revisión en el tramo, a los ${miles(((extra && extra.intervalo) || intervalo) + ((extra && extra.prorroga) || prorroga))}. Cuentan los de las facturas (los pinchazos no) y los apuntados a mano.`,
+      kpis: (filas, extra) => {
+        if (extra && extra.intervalo) intervalo = extra.intervalo;
+        if (extra && extra.prorroga) prorroga = extra.prorroga;
+        return [
         { etiqueta: 'Toca cambiar', valor: filas.filter(f => f.estado === 'toca').length, tono: filas.some(f => f.estado === 'toca') ? 'red' : 'muted',
-          pie: `han pasado de los ${miles(intervalo)} km`, filtro: { id: 'estado', valor: 'toca' } },
+          pie: `pasados de ${miles(intervalo)} km, o de ${miles(intervalo + prorroga)} con revisión`, filtro: { id: 'estado', valor: 'toca' } },
         { etiqueta: 'A punto', valor: filas.filter(f => f.estado === 'pronto').length, tono: 'warn',
           pie: 'desde el 85 % o a 15 días', filtro: { id: 'estado', valor: 'pronto' } },
         { etiqueta: 'Al día', valor: filas.filter(f => f.estado === 'ok').length, tono: 'green', filtro: { id: 'estado', valor: 'ok' } },
@@ -78,7 +84,8 @@
         // Con `valor` (el texto del Excel), `pinta` recibe ese texto: lo de la fila se lee de `f`.
         { titulo: 'Estado', campo: 'estado', pinta: (v, f) => pastilla(f.estado), valor: f => (ESTADO[f.estado] || [])[1] || f.estado },
         { titulo: 'Último cambio', campo: 'cambio', valor: f => (f.cambio ? deDonde(f.cambio) : ''),
-          pinta: (v, f) => (f.cambio ? `<span class="tabular-nums">${esc(deDonde(f.cambio))}</span>${f.cambio.ruedas ? `<span class="block text-[11px] text-telecab-muted">${f.cambio.ruedas} ruedas</span>` : ''}`
+          pinta: (v, f) => (f.cambio ? `<span class="tabular-nums">${esc(deDonde(f.cambio))}</span>${f.cambio.ruedas ? `<span class="block text-[11px] text-telecab-muted">${f.cambio.ruedas} ruedas</span>` : ''}` +
+              (f.revisionTramo ? `<span class="block text-[11px] text-telecab-gold">Revisada: hasta ${miles(f.intervalo)} km</span>` : '')
             : `<span class="text-xs text-telecab-muted">${esc(MOTIVO[f.motivo] || '—')}</span>`) },
         { titulo: 'Última revisión', campo: 'revision',
           valor: f => (f.revision ? `${dia(f.revision.fecha)}${f.revision.km != null ? ` · ${miles(f.revision.km)} km` : ''} · ${f.revision.observacion}` : ''),
@@ -128,11 +135,12 @@
             f.estado === 'toca' ? `pasado ${miles(-f.restan)} km` : f.restan != null ? `le quedan ${miles(f.restan)} km${f.dias != null ? ` (unos ${f.dias} días)` : ''}` : '')}
         </div>
         ${cfg.puede ? `<div class="flex flex-wrap justify-end gap-2 mt-3">
-          <button type="button" class="tc-boton tc-boton--chico" data-revisar>
-            <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>Apuntar una revisión</button>
+          ${f.revisionTramo ? '' : `<button type="button" class="tc-boton tc-boton--chico" data-revisar>
+            <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>Apuntar una revisión</button>`}
           <button type="button" class="tc-boton tc-boton--chico" data-apuntar>
             <i class="fa-solid fa-plus" aria-hidden="true"></i>Apuntar un cambio de ruedas</button></div>` : ''}
-        <section class="tc-panel-seccion"><h4>Revisiones <span class="font-normal text-telecab-muted">· no cuentan como cambio</span></h4>
+        <section class="tc-panel-seccion"><h4>Revisiones <span class="font-normal text-telecab-muted">· una por tramo: da ${miles(prorroga)} km más</span></h4>
+          ${f.revisionTramo ? `<p class="text-xs text-telecab-muted mb-2">Ya revisada en este tramo (${esc(dia(f.revisionTramo.fecha))}): el cambio toca a los ${esc(miles(f.intervalo))} km. La próxima revisión, después de cambiar las ruedas.</p>` : ''}
           ${f.revisiones && f.revisiones.length ? `<ul class="divide-y divide-telecab-border/60">${f.revisiones.map(r => `<li class="py-2.5">
               <div class="flex items-baseline gap-2">
                 <b class="text-sm tabular-nums">${esc(dia(r.fecha))}</b>
@@ -164,7 +172,8 @@
     const campos = [];
     if (!fila) {
       campos.push({ id: 'coche', etiqueta: 'Coche', tipo: 'lista', obligatorio: true,
-        opciones: (filas || []).map(f => ({ valor: String(f.id), texto: `${f.matricula}${f.vehiculo ? ` · ${f.vehiculo}` : ''}` })) });
+        opciones: (filas || []).filter(f => !f.revisionTramo)
+          .map(f => ({ valor: String(f.id), texto: `${f.matricula}${f.vehiculo ? ` · ${f.vehiculo}` : ''}` })) });
     }
     campos.push(
       { id: 'fecha', etiqueta: 'Día de la revisión', tipo: 'fecha', obligatorio: true, valor: dia(hoy) },
@@ -173,7 +182,7 @@
         marcador: 'Cómo están: dibujo, desgaste, presión, lo que haya que vigilar…' },
     );
     const v = await global.Dialogo.formulario(fila ? `Revisión de ruedas de ${fila.matricula}` : 'Apuntar una revisión de ruedas', campos,
-      { textoBoton: 'Apuntar', nota: 'Una revisión no es un cambio: los km hasta el próximo cambio no se mueven.' });
+      { textoBoton: 'Apuntar', nota: `La revisión da ${miles(prorroga)} km más: el cambio tocará a los ${miles(intervalo + prorroga)} km desde el último. Solo una por tramo, hasta el próximo cambio.` });
     if (!v) return;
     const r = await global.Api.post(`${cfg.base}/api/ruedas/revision`, {
       vehiculoId: fila ? fila.id : Number(v.coche), fecha: v.fecha, km: v.km || '', observacion: v.observacion || '',

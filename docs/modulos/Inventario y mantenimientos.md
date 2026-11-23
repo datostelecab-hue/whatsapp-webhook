@@ -136,6 +136,11 @@ Camilo: *«que se pueda inputar también la última revisión, no mantenimiento 
 - En la lista, la columna **«Última revisión»** (día, km y la observación); en la ficha, todas, con quién las apuntó.
 - Una mal apuntada se **anula con su motivo**; no se borra. Escribir y anular van firmados en el libro (`taller.ruedas`).
 - Sin db/275 aplicada, la pestaña se ve igual, sin revisiones. Prueba: `test/ruedas-revision.test.js`.
+- **La revisión da 15.000 km más, una por tramo** (db/276, 23/11/2026; Camilo: *«si hay unas ruedas con 30000 KM recorridos y se apunta una revisión, entonces sí o sí se cambia a los 45000, no hay más revisiones, solo una revisión por tramo»*):
+  - el **tramo** es desde el último cambio; con una revisión dentro, el límite pasa a **45.000 km** (`PRORROGA`), **fijo**, se revise a los km que se revise;
+  - **una por tramo**: la segunda se rechaza hasta el próximo cambio, y tampoco se apunta una de antes del último cambio. Anulada la del tramo, se puede apuntar otra;
+  - el aviso por el chat es una vez por cambio **y revisión** (`ruedas_aviso.revision_id`): el coche avisado a los 30.000 y luego revisado vuelve a avisar a los 45.000;
+  - en la lista, «Revisada: hasta 45.000 km» bajo el último cambio; en la ficha, ya sin botón de otra revisión.
 
 ### Ruedas: el aviso
 
