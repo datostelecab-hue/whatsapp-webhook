@@ -66,6 +66,11 @@ router.post('/api/canales/:id/leido', responde((id, req) => chat.leido(id, req.p
 router.post('/api/canales', responde((id, req) => chat.crearCanal(id, b(req)).then(canal => ({ canal }))));
 router.post('/api/canales/:id/miembros', responde((id, req) => chat.anadir(id, req.params.id, { usuarioId: b(req).usuarioId }).then(canal => ({ canal }))));
 router.post('/api/canales/:id/miembros/quitar', responde((id, req) => chat.quitar(id, req.params.id, { usuarioId: b(req).usuarioId })));
+// db/274 (23/11/2026): ocultar un directo, archivar un canal y «eliminar» un chat (nunca se borra).
+router.post('/api/canales/:id/ocultar', responde((id, req) => chat.ocultar(id, req.params.id, { ocultar: b(req).ocultar !== false })));
+router.post('/api/canales/:id/archivar', responde((id, req) => chat.archivar(id, req.params.id, { archivar: b(req).archivar !== false }).then(canal => ({ canal }))));
+router.post('/api/canales/:id/eliminar', responde((id, req) => chat.eliminar(id, req.params.id)));
+router.get('/api/eliminados', responde(id => chat.eliminados(id)));
 router.post('/api/directos', responde((id, req) => chat.directo(id, { usuarios: b(req).usuarios }).then(canal => ({ canal }))));
 router.get('/api/mensajes/:id', responde((id, req) => chat.uno(id, req.params.id)));
 router.get('/api/mensajes/:id/hilo', responde((id, req) => chat.hilo(id, req.params.id)));

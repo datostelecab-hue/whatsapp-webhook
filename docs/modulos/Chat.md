@@ -127,6 +127,21 @@ Camilo: *«¿el chat puede enviar GIF?»* (ya se podía: adjuntando el `.gif`, q
 
 Camilo: *«que le llegue al chat de Óscar… pero el chat de Telecab, que se llame "Notificaciones Telecab"»*. Un canal **privado**, `notificaciones-telecab`, que en la lista y en la notificación del móvil se llama **«Notificaciones Telecab»**. Ahí escribe el ERP solo: `chat.avisoDelSistema({ para, texto })` crea el canal la primera vez, mete a esas personas, escribe sin autor (firma «Telecab») con el evento **`aviso`** y las menciona, así que les llega como cualquier mención. Lo estrenan las ruedas: [[Inventario y mantenimientos]].
 
+## Ocultar, grupos, archivar y «eliminar» (db/274, 23/11/2026)
+
+Camilo: *«en los chats me deja crear grupos, pero no me deja luego eliminarlos o quitar gente de los grupos creados»* y *«que se "borren" los chats, pero que nunca se borre de la base de datos, que se guarden siempre como "Mensajes eliminados"»*. Todo sale del botón **⋯ (Opciones del chat)** de la cabecera, o del de la gente: el panel «Quién está dentro» lleva abajo las opciones.
+
+- **Ocultar conversación** (directos): sale de tu lista, solo de la tuya. Vuelve sola si alguien escribe después (`oculto_hasta_id`: el último mensaje que había) o si la abres otra vez desde «Mensaje directo».
+- **Grupos (directos de 3 o más)**: quien está dentro añade gente (hasta 9); **sacar a alguien**, quien lo creó o quien lleva los canales; **salir**, cualquiera. Un grupo al que se le cambia la gente deja de ser «el directo de esas personas»: su clave pasa a `g<id>`, y con las mismas personas se empieza otro. Un directo de 1 a 1 sigue sin sumar ni sacar a nadie.
+- **Archivar canal** (`archivado_at`, que ya existía): quien lo creó o quien lleva los canales. Sale aparte en la lista, en «Archivados», y se lee pero no se escribe. Se puede sacar del archivo.
+- **Eliminar chat**: desaparece para todos, pero **nada se borra**. Es una marca (`eliminado_at`, `eliminado_por`), queda en el libro y el directo suelta su clave (`e<id>`). Lo eliminan: un canal, quien lo creó o quien lleva los canales; un 1 a 1, cualquiera de los dos; un grupo, quien lo creó o quien lleva los canales.
+- **«Mensajes eliminados»**: solo el **rol desarrollador** (lo eligió Claude por prudencia; Camilo puede cambiarlo). Sección plegable al final de la lista; cada chat se abre de solo lectura con quién lo eliminó y cuándo.
+- Hasta aplicar db/274 el chat sigue como antes (`repo.con274`); ocultar y eliminar avisan de que falta la migración.
+
+### Las fotos: zoom y descarga (23/11/2026)
+
+Camilo: *«hacer zoom a las imágenes y descargarlas directamente del chat»*. Es el visor global (`public/assets/js/visorFoto.js`), así que vale en todas las pantallas que lo usan: rueda (hacia donde apunta el ratón), doble clic o clic (2,5×), pellizco en el móvil, botones − / % / + y teclas `+ − 0`; con la foto acercada, se arrastra. **Descargar**, con la descarga de [[Adjuntos]] (avisa si la sesión ha caducado).
+
 ## Las tablas (db/256, db/257, db/259 y db/260)
 
 - `chat_canal`: tipo (público, privado, directo), nombre, tema, descripción, `clave_directo` (los ids de un directo, en orden), archivado.
@@ -151,9 +166,13 @@ POST /chat/api/canales/:id/mensajes          { texto, padreId?, borrador? }   (b
 GET  /chat/api/canales/:id/fijados           lo fijado en el canal
 POST /chat/api/canales/:id/leido             { hasta }
 POST /chat/api/canales                       { nombre, tipo, tema, descripcion }   (chat_canales)
-POST /chat/api/canales/:id/miembros          { usuarioId }    (añadir a un privado)
+POST /chat/api/canales/:id/miembros          { usuarioId }    (añadir a un privado o a un grupo)
 POST /chat/api/canales/:id/miembros/quitar   { usuarioId }
 POST /chat/api/directos                      { usuarios }
+POST /chat/api/canales/:id/ocultar           { ocultar }      (directos; solo de su lista; db/274)
+POST /chat/api/canales/:id/archivar          { archivar }     (canales; quien lo creó o quien lleva los canales)
+POST /chat/api/canales/:id/eliminar                           (marca, nunca borra)
+GET  /chat/api/eliminados                                     «Mensajes eliminados» (rol desarrollador)
 GET  /chat/api/mensajes/:id  ·  /chat/api/mensajes/:id/hilo  ·  /chat/api/personas
 GET  /chat/api/guardados                     lo que guardó quien mira
 POST /chat/api/mensajes/:id/editar           { texto }        (solo su autor)

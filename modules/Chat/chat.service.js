@@ -84,10 +84,22 @@ async function contexto(usuarioId) {
 }
 const puedeGestionar = id => organizacion.tiene(id, 'chat_canales');
 
+// Un canal en el que ya no se escribe: archivado o eliminado (db/274).
+const cerrado = c => !!(c.archivado_at || c.eliminado_at);
+// Un directo DE GRUPO (no de 1 a 1): el que nació con 3 o más, o al que ya se le
+// cambió la gente (su clave pasa a «g<id>», ver repo.soltarClave).
+const esGrupo = c => c.tipo === 'directo' && (/^g/.test(c.clave_directo || '') || String(c.clave_directo || '').split(',').length > 2);
+
 /** El canal, si quien mira puede verlo: los públicos, todos; los demás, si está dentro. */
 async function acceso(ctx, canalId, { cli = null } = {}) {
   const c = entero(canalId) ? await repo.canal(cli, entero(canalId)) : null;
   if (!c) throw error(NO_ESTA, 404);
+  // Un chat eliminado (db/274) no existe para nadie... salvo para el rol
+  // desarrollador, que lo lee en «Mensajes eliminados» (solo leer: está cerrado).
+  if (c.eliminado_at) {
+    if (!await repo.esDesarrollador(ctx.id)) throw error(NO_ESTA, 404);
+    return { canal: c, dentro: false };
+  }
   const yo = await repo.miembro(cli, c.id, ctx.id);
   const dentro = !!(yo && !yo.salido_at);
   if (!dentro && c.tipo !== 'publico') throw error(NO_ESTA, 404);
@@ -99,7 +111,7 @@ async function delMensaje(ctx, mensajeId) {
   const m = entero(mensajeId) ? await repo.mensajeCrudo(null, entero(mensajeId)) : null;
   if (!m) throw error('Ese mensaje no existe', 404);
   const { canal, dentro } = await acceso(ctx, m.canal_id);
-  return { m, canal, dentro, puedeEscribir: !canal.archivado_at && (dentro || canal.tipo === 'publico') };
+  return { m, canal, dentro, puedeEscribir: !cerrado(canal) && (dentro || canal.tipo === 'publico') };
 }
 
 // ── Lo que ve la pantalla ──────────────────────────────────────────────────
@@ -112,13 +124,13 @@ function tituloDe(c, otros) {
 /** Sus canales y directos, con los no leídos, y si puede crear canales. */
 async function canales(usuarioId) {
   const ctx = await contexto(usuarioId);
-  const [filas, puede] = await Promise.all([repo.canalesDe(ctx.id), puedeGestionar(ctx.id)]);
+  const [filas, puede, dev] = await Promise.all([repo.canalesDe(ctx.id), puedeGestionar(ctx.id), repo.esDesarrollador(ctx.id)]);
   return {
-    yo: { id: ctx.id, puedeCrear: puede, gestiona: puede },
+    yo: { id: ctx.id, puedeCrear: puede, gestiona: puede, veEliminados: dev },
     canales: filas.map(c => ({
       id: Number(c.id), tipo: c.tipo, nombre: c.nombre, titulo: tituloDe(c, c.otros), tema: c.tema,
       sinLeer: c.sin_leer, menciones: c.menciones, miembros: c.miembros, ultimoAt: c.ultimo_mensaje_at,
-      otros: c.otros || null,
+      otros: c.otros || null, archivado: !!c.archivado,
     })),
   };
 }
@@ -129,15 +141,27 @@ async function ficha(usuarioId, canalId) {
   const { canal: c, dentro } = await acceso(ctx, canalId);
   const [gente, gestiona, fijados] = await Promise.all([repo.miembros(null, c.id), puedeGestionar(ctx.id), repo.cuantosFijados(c.id)]);
   const otros = c.tipo === 'directo' ? gente.filter(p => Number(p.id) !== ctx.id) : null;
+  const creador = Number(c.creado_por) === ctx.id;
+  const grupo = esGrupo(c);
+  const vivo = !c.eliminado_at;
   return {
     id: Number(c.id), tipo: c.tipo, nombre: c.nombre, titulo: tituloDe(c, otros), tema: c.tema, descripcion: c.descripcion,
-    creadoPor: c.creado_por_nombre || null, creadoAt: c.creado_at, archivado: !!c.archivado_at,
+    creadoPor: c.creado_por_nombre || null, creadoAt: c.creado_at, archivado: !!c.archivado_at, grupo,
+    eliminado: c.eliminado_at ? { at: c.eliminado_at, por: c.eliminado_por ? await repo.nombreDe(null, c.eliminado_por) : null } : null,
     miembros: gente.map(p => ({ id: Number(p.id), nombre: p.nombre, puesto: p.puesto })),
     dentro, fijados,
     puede: {
-      escribir: !c.archivado_at && (dentro || c.tipo === 'publico'),
-      anadir: c.tipo === 'privado' && !c.archivado_at && (dentro || gestiona),
-      quitar: c.tipo === 'privado' && !c.archivado_at && (gestiona || c.creado_por === ctx.id),
+      escribir: !cerrado(c) && (dentro || c.tipo === 'publico'),
+      anadir: (c.tipo === 'privado' || grupo) && !cerrado(c) && (dentro || (gestiona && !grupo)),
+      quitar: (c.tipo === 'privado' || grupo) && !cerrado(c) && (gestiona || creador),
+      // db/274 (23/11/2026): ocultar, salir, archivar y eliminar.
+      ocultar: vivo && dentro && c.tipo === 'directo',
+      salir: vivo && dentro && (c.tipo === 'privado' || grupo),
+      archivar: vivo && c.tipo !== 'directo' && !c.archivado_at && (gestiona || creador),
+      desarchivar: vivo && c.tipo !== 'directo' && !!c.archivado_at && (gestiona || creador),
+      eliminar: vivo && (c.tipo === 'directo'
+        ? dentro && (!grupo || creador || gestiona)
+        : gestiona || creador),
       anularDeOtros: gestiona,
     },
   };
@@ -273,7 +297,7 @@ async function enviar(usuarioId, canalId, { texto: txt, padreId = null, borrador
   if (!t && !b) throw error('Escribe el mensaje');
   if (t.length > MAX_TEXTO) throw error(`Un mensaje no puede pasar de ${MAX_TEXTO} caracteres`);
   const { canal: c, dentro } = await acceso(ctx, canalId);
-  if (c.archivado_at) throw error('Ese canal está archivado: ya no se escribe en él', 409);
+  if (cerrado(c)) throw error('Ese canal está cerrado: ya no se escribe en él', 409);
   const enlaceUrl = primerEnlace(t);
 
   const r = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'alta' }, async cli => {
@@ -323,7 +347,7 @@ async function editar(usuarioId, mensajeId, { texto: txt } = {}) {
   if (Number(m.autor_id) !== ctx.id) throw error('Solo quien lo escribió puede editarlo', 403);
   if (m.anulado_at) throw error('Ese mensaje está anulado', 409);
   if (m.evento) throw error('Ese mensaje lo puso el sistema: no se edita', 409);
-  if (c.archivado_at) throw error('Ese canal está archivado', 409);
+  if (cerrado(c)) throw error('Ese canal está cerrado', 409);
   const t = limpiarTexto(txt);
   if (!t && !m.con_adjuntos) throw error('Escribe el mensaje (o anúlalo)');
   if (t.length > MAX_TEXTO) throw error(`Un mensaje no puede pasar de ${MAX_TEXTO} caracteres`);
@@ -383,7 +407,7 @@ async function reaccionar(usuarioId, mensajeId, { emoji } = {}) {
   if (!EMOJIS.includes(String(emoji))) throw error('Esa reacción no existe');
   const { m, canal: c, puedeEscribir } = await delMensaje(ctx, mensajeId);
   if (m.anulado_at) throw error('Ese mensaje está anulado', 409);
-  if (!puedeEscribir) throw error('Ese canal está archivado', 409);
+  if (!puedeEscribir) throw error('Ese canal está cerrado', 409);
   const puesta = await repo.reaccionar(null, m.id, ctx.id, String(emoji));
   avisarCambio(c.id, await repo.idsMiembros(null, c.id), { id: Number(m.id), padre: m.padre_id });
   // A su autor, cuando otro la pone (quitarla no avisa).
@@ -401,7 +425,7 @@ async function reaccionar(usuarioId, mensajeId, { emoji } = {}) {
 async function fijar(usuarioId, mensajeId, { fijar: si = true } = {}) {
   const ctx = await contexto(usuarioId);
   const { m, canal: c, puedeEscribir } = await delMensaje(ctx, mensajeId);
-  if (!puedeEscribir) throw error('Ese canal está archivado', 409);
+  if (!puedeEscribir) throw error('Ese canal está cerrado', 409);
   if (si && m.anulado_at) throw error('Ese mensaje está anulado', 409);
   const hecho = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: si ? 'alta' : 'baja' },
     cli => (si ? repo.fijar(cli, m.id, c.id, ctx.id) : repo.desfijar(cli, m.id, ctx.id)));
@@ -472,9 +496,10 @@ adjuntos.registrarDueno('chat_borrador', {
 async function puedeFichero(cual, quien, duenoId) {
   try {
     const ctx = await contexto(quien && quien.id);
-    const { m } = await delMensaje(ctx, duenoId);
+    const { m, canal } = await delMensaje(ctx, duenoId);
     if (m.anulado_at) return false;
     if (cual === 'ver') return true;
+    if (cerrado(canal)) return false;
     if (cual === 'adjuntar') return false;
     return Number(m.autor_id) === ctx.id || await puedeGestionar(ctx.id);
   } catch (_) {
@@ -604,7 +629,11 @@ async function directo(usuarioId, { usuarios = [] } = {}) {
   const clave = ids.join(',');
   const id = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'alta' }, async cli => {
     const ya = await repo.directoPorClave(cli, clave);
-    if (ya) return Number(ya.id);
+    if (ya) {
+      // Si lo había ocultado, vuelve a su lista (db/274).
+      if (await repo.con274()) await repo.ocultar(cli, Number(ya.id), ctx.id, false);
+      return Number(ya.id);
+    }
     const nuevo = await repo.crearCanal(cli, { tipo: 'directo', claveDirecto: clave, creadoPor: ctx.id });
     for (const u of ids) await repo.meter(cli, nuevo, u, ctx.id);
     return nuevo;
@@ -612,7 +641,11 @@ async function directo(usuarioId, { usuarios = [] } = {}) {
   return ficha(ctx.id, id);
 }
 
-/** Añade a alguien a un privado: quien está dentro, o quien lleva los canales. */
+/**
+ * Añade a alguien a un privado (quien está dentro, o quien lleva los canales) o
+ * a un directo DE GRUPO (quien está dentro, hasta 9; 23/11/2026). Un directo de
+ * 1 a 1 no: para hablar con otro más, se empieza un grupo.
+ */
 async function anadir(usuarioId, canalId, { usuarioId: otro } = {}) {
   const ctx = await contexto(usuarioId);
   const c = entero(canalId) ? await repo.canal(null, entero(canalId)) : null;
@@ -620,15 +653,23 @@ async function anadir(usuarioId, canalId, { usuarioId: otro } = {}) {
   const yo = await repo.miembro(null, c.id, ctx.id);
   const dentro = !!(yo && !yo.salido_at);
   const gestiona = await puedeGestionar(ctx.id);
-  if (c.tipo !== 'privado') {
+  if (c.eliminado_at) throw error(NO_ESTA, 404);
+  const grupo = esGrupo(c);
+  if (c.tipo !== 'privado' && !grupo) {
     if (!dentro && c.tipo !== 'publico') throw error(NO_ESTA, 404);
-    throw error(c.tipo === 'publico' ? 'En los públicos ya está toda la oficina' : 'Un mensaje directo es de un grupo fijo: para sumar a alguien, empieza otro', 409);
+    throw error(c.tipo === 'publico' ? 'En los públicos ya está toda la oficina' : 'Un mensaje directo de 1 a 1 no suma a nadie: para hablar con más gente, empieza un grupo', 409);
   }
-  if (!dentro && !gestiona) throw error(NO_ESTA, 404);
-  if (c.archivado_at) throw error('Ese canal está archivado', 409);
+  if (!dentro && (grupo || !gestiona)) throw error(NO_ESTA, 404);
+  if (cerrado(c)) throw error('Ese canal está cerrado', 409);
+  if (grupo && (await repo.idsMiembros(null, c.id)).length >= MAX_DIRECTO) {
+    throw error(`Un grupo es de hasta ${MAX_DIRECTO} personas: para más, un canal`, 409);
+  }
   const u = entero(otro);
   if (!u || !await repo.esDeLaOficina(u)) throw error('Esa persona no es de la oficina o está bloqueada');
-  await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'alta' }, cli => repo.meter(cli, c.id, u, ctx.id));
+  await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'alta' }, async cli => {
+    await repo.meter(cli, c.id, u, ctx.id);
+    if (grupo) await repo.soltarClave(cli, c.id);
+  });
   const para = await repo.idsMiembros(null, c.id);
   tiempoReal.publicar('chat', { canal: Number(c.id), tipo: 'miembros' }, { para });
   contadores.cambio('chat', { para: [u] });
@@ -642,18 +683,28 @@ async function anadir(usuarioId, canalId, { usuarioId: otro } = {}) {
   return dentro ? ficha(ctx.id, c.id) : { ok: true };
 }
 
-/** Saca a alguien de un privado: quien lo creó o quien lleva los canales; o uno mismo, que se sale. */
+/**
+ * Saca a alguien de un privado o de un directo de grupo (23/11/2026): quien lo
+ * creó o quien lleva los canales; o uno mismo, que se sale. Nada se borra: es la
+ * marca de salida (salido_at), y lo escrito se queda.
+ */
 async function quitar(usuarioId, canalId, { usuarioId: otro } = {}) {
   const ctx = await contexto(usuarioId);
   const c = entero(canalId) ? await repo.canal(null, entero(canalId)) : null;
-  if (!c || c.tipo !== 'privado') throw error(NO_ESTA, 404);
+  if (!c || c.eliminado_at || (c.tipo !== 'privado' && !esGrupo(c))) throw error(NO_ESTA, 404);
   const u = entero(otro);
   const gestiona = await puedeGestionar(ctx.id);
   const yo = await repo.miembro(null, c.id, ctx.id);
   const dentro = !!(yo && !yo.salido_at);
-  if (!dentro && !gestiona) throw error(NO_ESTA, 404);
-  if (u !== ctx.id && !gestiona && c.creado_por !== ctx.id) throw error('Solo quien creó el canal, o quien lleva los canales, saca a alguien', 403);
-  const hecho = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'baja' }, cli => repo.sacar(cli, c.id, u, ctx.id));
+  if (!dentro && (c.tipo === 'directo' || !gestiona)) throw error(NO_ESTA, 404);
+  if (u !== ctx.id && !gestiona && Number(c.creado_por) !== ctx.id) {
+    throw error(c.tipo === 'directo' ? 'Solo quien creó el grupo, o quien lleva los canales, saca a alguien' : 'Solo quien creó el canal, o quien lleva los canales, saca a alguien', 403);
+  }
+  const hecho = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'baja' }, async cli => {
+    const ok = await repo.sacar(cli, c.id, u, ctx.id);
+    if (ok && c.tipo === 'directo') await repo.soltarClave(cli, c.id);
+    return ok;
+  });
   if (!hecho) throw error('Esa persona no está en el canal', 409);
   const para = [...await repo.idsMiembros(null, c.id), u];
   tiempoReal.publicar('chat', { canal: c.id, tipo: 'miembros' }, { para });
@@ -667,6 +718,77 @@ async function quitar(usuarioId, canalId, { usuarioId: otro } = {}) {
     }));
   }
   return { ok: true };
+}
+
+// ── Ocultar, archivar y eliminar (db/274, 23/11/2026) ──────────────────────
+// Camilo: «que se "borren" los chats, pero que nunca se borre de la base de
+// datos, que se guarden siempre como "Mensajes eliminados"». Nada de esto
+// borra una fila: son marcas, y quedan en el libro.
+
+/** Ocultar un directo de SU lista (o volver a enseñarlo). Vuelve solo si alguien escribe. */
+async function ocultar(usuarioId, canalId, { ocultar: si = true } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { canal: c, dentro } = await acceso(ctx, canalId);
+  if (!dentro || c.tipo !== 'directo') throw error('Solo se ocultan los mensajes directos en los que estás', 409);
+  await repo.ocultar(null, c.id, ctx.id, si);
+  contadores.cambio('chat', { para: [ctx.id] });
+  return { ok: true };
+}
+
+/** Archivar un canal (o sacarlo del archivo): quien lo creó o quien lleva los canales. */
+async function archivar(usuarioId, canalId, { archivar: si = true } = {}) {
+  const ctx = await contexto(usuarioId);
+  const { canal: c } = await acceso(ctx, canalId);
+  if (c.tipo === 'directo') throw error('Los mensajes directos no se archivan: se ocultan', 409);
+  if (c.eliminado_at) throw error(NO_ESTA, 404);
+  if (!await puedeGestionar(ctx.id) && Number(c.creado_por) !== ctx.id) {
+    throw error('Solo quien creó el canal, o quien lleva los canales, lo archiva', 403);
+  }
+  const hecho = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: si ? 'baja' : 'alta' },
+    cli => repo.archivar(cli, c.id, ctx.id, si));
+  if (!hecho) throw error(si ? 'Ese canal ya está archivado' : 'Ese canal no está archivado', 409);
+  const para = await repo.idsMiembros(null, c.id);
+  tiempoReal.publicar('chat', { canal: Number(c.id), tipo: 'canal' }, { para });
+  contadores.cambio('chat', { para });
+  return ficha(ctx.id, c.id);
+}
+
+/**
+ * «Eliminar» un chat para todos: una marca, nunca un borrado. Un canal, quien lo
+ * creó o quien lleva los canales; un directo de 1 a 1, cualquiera de los dos; un
+ * grupo, quien lo creó o quien lleva los canales. Lo sigue leyendo el rol
+ * desarrollador en «Mensajes eliminados».
+ */
+async function eliminar(usuarioId, canalId) {
+  const ctx = await contexto(usuarioId);
+  const { canal: c, dentro } = await acceso(ctx, canalId);
+  if (c.eliminado_at) throw error('Ese chat ya está eliminado', 409);
+  const gestiona = await puedeGestionar(ctx.id);
+  const creador = Number(c.creado_por) === ctx.id;
+  const puede = c.tipo === 'directo' ? dentro && (!esGrupo(c) || creador || gestiona) : gestiona || creador;
+  if (!puede) {
+    throw error(c.tipo === 'directo' ? 'Solo quien creó el grupo, o quien lleva los canales, lo elimina'
+      : 'Solo quien creó el canal, o quien lleva los canales, lo elimina', 403);
+  }
+  const para = await repo.idsMiembros(null, c.id);
+  const hecho = await libro.conFirma({ usuarioId: ctx.id, origen: 'chat', accion: 'baja' }, cli => repo.eliminar(cli, c.id, ctx.id));
+  if (!hecho) throw error('Ese chat ya está eliminado', 409);
+  tiempoReal.publicar('chat', { canal: Number(c.id), tipo: 'canal', eliminado: true }, { para });
+  contadores.cambio('chat', { para });
+  return { ok: true };
+}
+
+/** «Mensajes eliminados»: los chats eliminados, solo para el rol desarrollador. */
+async function eliminados(usuarioId) {
+  const ctx = await contexto(usuarioId);
+  if (!await repo.esDesarrollador(ctx.id)) throw error('Solo el rol desarrollador ve los mensajes eliminados', 403);
+  return {
+    eliminados: (await repo.eliminados()).map(c => ({
+      id: Number(c.id), tipo: c.tipo, nombre: c.nombre,
+      titulo: c.tipo === 'directo' ? ((c.otros || []).map(o => o.nombre).join(', ') || 'Sin nadie') : c.nombre,
+      eliminadoAt: c.eliminado_at, eliminadoPor: c.eliminado_por_nombre || null, mensajes: c.mensajes, ultimoAt: c.ultimo_mensaje_at,
+    })),
+  };
 }
 
 const personas = async usuarioId => { await contexto(usuarioId); return { personas: (await repo.personas()).map(p => ({ id: Number(p.id), nombre: p.nombre, puesto: p.puesto })) }; };
@@ -885,6 +1007,7 @@ const esperarPendientes = () => Promise.all([...pendientes]);
 module.exports = {
   nombreCorto,
   canales, ficha, mensajes, uno, hilo, enviar, leido, crearCanal, directo, anadir, quitar, personas,
+  ocultar, archivar, eliminar, eliminados,
   editar, anular, reaccionar, fijar, fijados, guardar, guardados, convertirEnTarea,
   nombreDeCanal, primerEnlace, EMOJIS, olvidar, usarVistaPrevia, esperarPendientes,
   avisoDelSistema, CANAL_AVISOS,

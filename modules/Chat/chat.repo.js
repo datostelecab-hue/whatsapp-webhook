@@ -19,6 +19,21 @@ const NOMBRE = a => `btrim(${a}.nombre || COALESCE(' ' || (
 // Quién es de la oficina: con sesión en la gestión (no los conductores) y sin bloquear.
 const OFICINA = a => `${a}.estado <> 'bloqueado' AND NOT EXISTS (SELECT 1 FROM rol r WHERE r.id = ${a}.rol_id AND r.codigo = 'conductor')`;
 
+// ── db/274 (23/11/2026): ocultar y «eliminar» ──────────────────────────────
+// Hasta que se aplique, el chat sigue como antes: las consultas no nombran las
+// columnas nuevas. Se mira una vez; si falta, se vuelve a mirar cada 5 minutos.
+let _con274 = null, _mirado274 = 0;
+async function con274() {
+  if (_con274 || Date.now() - _mirado274 < 300000) return !!_con274;
+  _mirado274 = Date.now();
+  const r = await db.consulta(
+    `SELECT count(*)::int AS n FROM information_schema.columns
+      WHERE (table_name, column_name) IN (('chat_canal', 'eliminado_at'), ('chat_miembro', 'oculto_hasta_id'))`);
+  _con274 = r.rows[0].n === 2;
+  return _con274;
+}
+const SIN_ELIMINAR = async (a = 'c') => ((await con274()) ? ` AND ${a}.eliminado_at IS NULL` : '');
+
 /** La gente de la oficina, para mencionar y para los directos. */
 async function personas() {
   const r = await db.consulta(
@@ -33,6 +48,12 @@ async function personas() {
 async function nombreDe(cli, usuarioId) {
   const r = await q(cli, `SELECT ${NOMBRE('u')} AS nombre FROM usuario u WHERE u.id = $1`, [usuarioId]);
   return r.rows[0] ? r.rows[0].nombre : null;
+}
+
+/** ¿Tiene el rol desarrollador? Solo él ve «Mensajes eliminados». */
+async function esDesarrollador(usuarioId) {
+  const r = await db.consulta(`SELECT 1 FROM usuario u JOIN rol r ON r.id = u.rol_id WHERE u.id = $1 AND r.codigo = 'desarrollador'`, [usuarioId]);
+  return r.rows.length > 0;
 }
 
 async function esDeLaOficina(usuarioId) {
@@ -50,7 +71,7 @@ async function asegurarPublicos(usuarioId) {
     `INSERT INTO chat_miembro (canal_id, usuario_id, ultimo_leido_id)
      SELECT c.id, $1, COALESCE((SELECT max(m.id) FROM chat_mensaje m WHERE m.canal_id = c.id), 0)
        FROM chat_canal c
-      WHERE c.tipo = 'publico' AND c.archivado_at IS NULL
+      WHERE c.tipo = 'publico' AND c.archivado_at IS NULL${await SIN_ELIMINAR()}
         AND EXISTS (SELECT 1 FROM usuario u WHERE u.id = $1 AND ${OFICINA('u')})
      ON CONFLICT (canal_id, usuario_id) DO NOTHING
      RETURNING canal_id`, [usuarioId]);
@@ -73,14 +94,74 @@ async function canalesDe(usuarioId) {
     `SELECT c.id, c.tipo, c.nombre, c.tema, c.descripcion, c.creado_por, c.ultimo_mensaje_at, mi.ultimo_leido_id,
             ${NO_LEIDOS} AS sin_leer, ${MENCIONES} AS menciones,
             (SELECT count(*) FROM chat_miembro o WHERE o.canal_id = c.id AND o.salido_at IS NULL)::int AS miembros,
+            (c.archivado_at IS NOT NULL) AS archivado,
             CASE WHEN c.tipo = 'directo' THEN
               (SELECT COALESCE(json_agg(json_build_object('id', u.id, 'nombre', ${NOMBRE('u')}) ORDER BY u.nombre), '[]')
                  FROM chat_miembro o JOIN usuario u ON u.id = o.usuario_id
                 WHERE o.canal_id = c.id AND o.salido_at IS NULL AND o.usuario_id <> mi.usuario_id) END AS otros
        FROM chat_miembro mi
        JOIN chat_canal c ON c.id = mi.canal_id
-      WHERE mi.usuario_id = $1 AND mi.salido_at IS NULL AND c.archivado_at IS NULL`, [usuarioId]);
+      WHERE mi.usuario_id = $1 AND mi.salido_at IS NULL${await SIN_ELIMINAR()}${(await con274())
+        ? ` AND (mi.oculto_hasta_id IS NULL OR EXISTS (SELECT 1 FROM chat_mensaje m
+                 WHERE m.canal_id = c.id AND m.id > mi.oculto_hasta_id AND m.anulado_at IS NULL))` : ''}`, [usuarioId]);
   return r.rows;
+}
+
+/** Los chats eliminados (db/274), para «Mensajes eliminados» del desarrollador. */
+async function eliminados() {
+  if (!await con274()) return [];
+  const r = await db.consulta(
+    `SELECT c.id, c.tipo, c.nombre, c.eliminado_at, ${NOMBRE('ue')} AS eliminado_por_nombre, c.ultimo_mensaje_at,
+            (SELECT count(*) FROM chat_mensaje m WHERE m.canal_id = c.id)::int AS mensajes,
+            CASE WHEN c.tipo = 'directo' THEN
+              (SELECT COALESCE(json_agg(json_build_object('id', u.id, 'nombre', ${NOMBRE('u')}) ORDER BY u.nombre), '[]')
+                 FROM chat_miembro o JOIN usuario u ON u.id = o.usuario_id
+                WHERE o.canal_id = c.id AND o.salido_at IS NULL) END AS otros
+       FROM chat_canal c LEFT JOIN usuario ue ON ue.id = c.eliminado_por
+      WHERE c.eliminado_at IS NOT NULL
+      ORDER BY c.eliminado_at DESC
+      LIMIT 300`);
+  return r.rows;
+}
+
+/** Ocultar (o volver a enseñar) una conversación en la lista de esa persona. */
+async function ocultar(cli, canalId, usuarioId, si) {
+  if (!await con274()) throw Object.assign(new Error('Falta aplicar la migración db/274'), { status: 409 });
+  const r = await q(cli,
+    `UPDATE chat_miembro SET oculto_at = CASE WHEN $3 THEN now() END,
+            oculto_hasta_id = CASE WHEN $3 THEN COALESCE((SELECT max(id) FROM chat_mensaje WHERE canal_id = $1), 0) END
+      WHERE canal_id = $1 AND usuario_id = $2 AND salido_at IS NULL RETURNING usuario_id`, [canalId, usuarioId, !!si]);
+  return r.rows.length > 0;
+}
+
+/** Archivar o desarchivar un canal. */
+async function archivar(cli, canalId, por, si) {
+  const r = await q(cli,
+    `UPDATE chat_canal SET archivado_at = CASE WHEN $3 THEN now() END, archivado_por = CASE WHEN $3 THEN $2::int END
+      WHERE id = $1 AND (archivado_at IS NULL) = $3 RETURNING id`, [canalId, por, !!si]);
+  return r.rows.length > 0;
+}
+
+/**
+ * «Eliminar» un chat (db/274): una marca, nunca un DELETE. Un directo suelta
+ * además su clave (la del grupo de personas), para que con esas mismas personas
+ * se pueda empezar otro: la nueva es «e<id>», que no es la de nadie.
+ */
+async function eliminar(cli, canalId, por) {
+  if (!await con274()) throw Object.assign(new Error('Falta aplicar la migración db/274'), { status: 409 });
+  const r = await q(cli,
+    `UPDATE chat_canal SET eliminado_at = now(), eliminado_por = $2,
+            clave_directo = CASE WHEN tipo = 'directo' THEN 'e' || id ELSE clave_directo END
+      WHERE id = $1 AND eliminado_at IS NULL RETURNING id`, [canalId, por]);
+  return r.rows.length > 0;
+}
+
+/**
+ * Un directo de grupo al que se le cambia la gente deja de ser «el directo de
+ * esas personas»: su clave pasa a ser «g<id>». Con las de antes, se empieza otro.
+ */
+async function soltarClave(cli, canalId) {
+  await q(cli, `UPDATE chat_canal SET clave_directo = 'g' || id WHERE id = $1 AND tipo = 'directo' AND clave_directo NOT LIKE 'g%'`, [canalId]);
 }
 
 /** Los números de una persona: no leídos de canales, de directos y menciones. */
@@ -90,7 +171,7 @@ async function resumen(usuarioId) {
             COALESCE(sum(${NO_LEIDOS}) FILTER (WHERE c.tipo = 'directo'), 0)::int AS directos,
             COALESCE(sum(${MENCIONES}) FILTER (WHERE c.tipo <> 'directo'), 0)::int AS menciones
        FROM chat_miembro mi JOIN chat_canal c ON c.id = mi.canal_id
-      WHERE mi.usuario_id = $1 AND mi.salido_at IS NULL AND c.archivado_at IS NULL`, [usuarioId]);
+      WHERE mi.usuario_id = $1 AND mi.salido_at IS NULL AND c.archivado_at IS NULL${await SIN_ELIMINAR()}`, [usuarioId]);
   return r.rows[0];
 }
 
@@ -427,6 +508,7 @@ async function leer(canalId, usuarioId, hasta) {
 }
 
 module.exports = {
+  con274, esDesarrollador, eliminados, ocultar, archivar, eliminar, soltarClave,
   personas, nombreDe, esDeLaOficina, asegurarPublicos, canalesDe, resumen, canal, canalPorNombre, directoPorClave,
   miembro, miembros, idsMiembros, crearCanal, meter, meterOficina, sacar,
   mensajes, mensaje, mensajeCrudo, respuestas, participantesHilo, escribir, mencionar, mencionesDe, leer,

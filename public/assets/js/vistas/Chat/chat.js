@@ -140,7 +140,8 @@
   function pintarLista() {
     const q = filtro.value.trim().toLowerCase();
     const pasa = c => !q || String(c.titulo || '').toLowerCase().includes(q);
-    const deCanal = canales.filter(c => c.tipo !== 'directo').filter(pasa).sort(orden);
+    const deCanal = canales.filter(c => c.tipo !== 'directo' && !c.archivado).filter(pasa).sort(orden);
+    const archivados = canales.filter(c => c.tipo !== 'directo' && c.archivado).filter(pasa).sort(orden);
     const directos = canales.filter(c => c.tipo === 'directo').filter(pasa)
       .sort((a, b) => String(b.ultimoAt || '').localeCompare(String(a.ultimoAt || '')));
     const item = c => {
@@ -157,7 +158,30 @@
     };
     lista.innerHTML = `
       <section class="tc-chat-seccion"><h3>Canales</h3>${deCanal.map(item).join('') || '<p class="tc-chat-nada">Ninguno</p>'}</section>
-      <section class="tc-chat-seccion"><h3>Mensajes directos</h3>${directos.map(item).join('') || '<p class="tc-chat-nada">Aún no has escrito a nadie</p>'}</section>`;
+      <section class="tc-chat-seccion"><h3>Mensajes directos</h3>${directos.map(item).join('') || '<p class="tc-chat-nada">Aún no has escrito a nadie</p>'}</section>
+      ${archivados.length ? `<details class="tc-chat-seccion tc-chat-plegable"${abiertoArchivados ? ' open' : ''} data-plegable="archivados">
+        <summary><h3>Archivados · ${archivados.length}</h3></summary>${archivados.map(item).join('')}</details>` : ''}
+      ${yo && yo.veEliminados ? `<details class="tc-chat-seccion tc-chat-plegable"${eliminados ? ' open' : ''} data-plegable="eliminados">
+        <summary><h3>Mensajes eliminados</h3></summary>${eliminadosHtml()}</details>` : ''}`;
+  }
+  // «Mensajes eliminados» (db/274): los chats eliminados, que nunca se borran.
+  // Solo el rol desarrollador; se traen al abrir la sección.
+  let eliminados = null;
+  let abiertoArchivados = false;
+  function eliminadosHtml() {
+    if (!eliminados) return '<p class="tc-chat-nada">Cargando…</p>';
+    if (!eliminados.length) return '<p class="tc-chat-nada">Ninguno</p>';
+    return eliminados.map(c => `<button type="button" class="tc-chat-item tc-chat-item--eliminado${actual && actual.id === c.id ? ' tc-chat-item--activo' : ''}"
+        data-canal="${c.id}" title="Eliminado${c.eliminadoPor ? ' por ' + esc(c.eliminadoPor) : ''} ${esc(haceCuanto(c.eliminadoAt))}">
+        <i class="fa-regular fa-trash-can tc-chat-item-icono" aria-hidden="true"></i>
+        <span class="tc-chat-item-nombre">${esc(c.tipo === 'directo' ? c.titulo : '#' + c.titulo)}</span>
+        <small class="tc-chat-item-pie">${c.mensajes}</small>
+      </button>`).join('');
+  }
+  async function cargarEliminados() {
+    const r = await Api.get(`${API}/eliminados`).catch(() => null);
+    eliminados = r ? r.eliminados : [];
+    pintarLista();
   }
   async function cargarLista() {
     const r = await Api.get(`${API}/canales`).catch(() => null);
@@ -174,6 +198,12 @@
     const b = ev.target.closest('[data-canal]');
     if (b) abrir(Number(b.dataset.canal));
   });
+  lista.addEventListener('toggle', ev => {
+    const d = ev.target.closest && ev.target.closest('[data-plegable]');
+    if (!d) return;
+    if (d.dataset.plegable === 'archivados') abiertoArchivados = d.open;
+    if (d.dataset.plegable === 'eliminados') { if (d.open && !eliminados) cargarEliminados(); else if (!d.open) eliminados = null; }
+  }, true);
   filtro.addEventListener('input', pintarLista);
 
   // ── Un mensaje ────────────────────────────────────────────────────────────
@@ -300,6 +330,8 @@
         <button type="button" class="tc-boton tc-boton--chico" data-miembros title="Quién está dentro">
           <i class="fa-solid fa-user-group" aria-hidden="true"></i>${c.miembros.length}</button>
         ${c.puede.anadir ? `<button type="button" class="tc-boton tc-boton--chico" data-anadir title="Añadir a alguien"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Añadir</button>` : ''}
+        <button type="button" class="tc-boton tc-boton--chico" data-miembros title="Opciones del chat" aria-label="Opciones del chat">
+          <i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
       </header>`;
   }
   function escribirHtml(donde, marcador) {
@@ -340,7 +372,9 @@
         ${mensajes.length ? '' : `<div class="tc-chat-vacio"><i class="fa-regular fa-comment" aria-hidden="true"></i><p>Aún no hay mensajes. Escribe el primero.</p></div>`}
       </div>
       ${actual.puede.escribir ? escribirHtml('canal', actual.tipo === 'directo' ? `Escribe a ${actual.titulo}` : `Escribe en #${actual.nombre}`)
-        : '<p class="tc-chat-pista p-4">Este canal está archivado: ya no se escribe en él.</p>'}`;
+        : `<p class="tc-chat-pista p-4">${actual.eliminado
+          ? `Chat eliminado${actual.eliminado.por ? ' por ' + esc(actual.eliminado.por) : ''} ${esc(haceCuanto(actual.eliminado.at))}. Se guarda para consulta: solo se lee.`
+          : 'Este canal está archivado: ya no se escribe en él.'}</p>`}`;
     const caja = conv.querySelector('[data-mensajes]');
     const nuevo = caja.querySelector('.tc-chat-nuevos');
     if (nuevo && !mantener) nuevo.scrollIntoView({ block: 'center' }); else caja.scrollTop = caja.scrollHeight;
@@ -1080,25 +1114,50 @@
   }
 
   // ── Canales, directos y miembros ─────────────────────────────────────────
+  // El panel del chat (23/11/2026, db/274): quién está dentro, sacar a alguien
+  // (también de un grupo), salir, ocultar, archivar y eliminar. Nada borra una
+  // fila: lo eliminado lo sigue leyendo el rol desarrollador.
+  const donde = () => (actual.tipo === 'directo' ? (actual.grupo ? 'este grupo' : 'esta conversación') : `#${actual.nombre}`);
+  function opcionesHtml() {
+    const p = actual.puede;
+    const b = (dato, icono, texto, ayuda, peligro = false) => `<li>
+        <button type="button" class="tc-chat-opcion${peligro ? ' tc-chat-opcion--peligro' : ''}" ${dato}>
+          <i class="fa-solid ${icono}" aria-hidden="true"></i><span><b>${texto}</b><small>${ayuda}</small></span></button></li>`;
+    const filas = [
+      p.ocultar ? b('data-ocultar', 'fa-eye-slash', 'Ocultar conversación', 'Sale de tu lista. Vuelve sola si alguien escribe.') : '',
+      p.salir ? b('data-salir', 'fa-right-from-bracket', actual.tipo === 'directo' ? 'Salir del grupo' : 'Salir del canal', 'Dejas de ver sus mensajes; los demás siguen.') : '',
+      p.archivar ? b('data-archivar', 'fa-box-archive', 'Archivar canal', 'Se queda para leer, pero ya no se escribe en él.') : '',
+      p.desarchivar ? b('data-desarchivar', 'fa-box-open', 'Sacar del archivo', 'Se vuelve a escribir en él.') : '',
+      p.eliminar ? b('data-eliminar', 'fa-trash-can', 'Eliminar chat', 'Desaparece para todos. No se borra: queda guardado.', true) : '',
+    ].join('');
+    return filas ? `<h3 class="tc-chat-panel-titulo">Opciones</h3><ul class="tc-chat-opciones">${filas}</ul>` : '';
+  }
   function verMiembros() {
     if (!actual) return;
     const quitar = actual.puede.quitar;
-    Panel.abrir({
+    const panel = Panel.abrir({
       titulo: 'Quién está dentro', subtitulo: actual.tipo === 'directo' ? actual.titulo : `#${actual.nombre}`,
       html: `<ul class="tc-chat-miembros">${actual.miembros.map(p => `<li>
           <span class="tc-avatar tc-avatar--chico" aria-hidden="true">${esc(iniciales(p.nombre))}</span>
           <span class="min-w-0 flex-1"><b>${esc(p.nombre)}</b>${p.puesto ? `<small>${esc(p.puesto)}</small>` : ''}</span>
           ${quitar && p.id !== yo.id ? `<button type="button" class="tc-boton tc-boton--chico tc-boton--peligro" data-quitar="${p.id}">Sacar</button>` : ''}
-          ${actual.tipo === 'privado' && p.id === yo.id ? '<button type="button" class="tc-boton tc-boton--chico" data-salir>Salir</button>' : ''}
-        </li>`).join('')}</ul>`,
+        </li>`).join('')}</ul>
+        ${actual.puede.anadir ? '<button type="button" class="tc-boton tc-boton--chico mt-3" data-anadir-panel><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Añadir a alguien</button>' : ''}
+        ${opcionesHtml()}`,
       alCerrar: () => {},
-    }).cuerpo.addEventListener('click', async ev => {
-      const q = ev.target.closest('[data-quitar]');
-      const salir = ev.target.closest('[data-salir]');
+    });
+    panel.cuerpo.addEventListener('click', async ev => {
+      const t = ev.target;
+      if (t.closest('[data-anadir-panel]')) { panel.cerrar(); anadir(); return; }
+      if (t.closest('[data-ocultar]')) { await ocultarChat(); return; }
+      if (t.closest('[data-archivar]') || t.closest('[data-desarchivar]')) { await archivarCanal(!!t.closest('[data-archivar]')); return; }
+      if (t.closest('[data-eliminar]')) { await eliminarChat(); return; }
+      const q = t.closest('[data-quitar]');
+      const salir = t.closest('[data-salir]');
       if (!q && !salir) return;
       const quien = q ? Number(q.dataset.quitar) : yo.id;
       const nombre = (actual.miembros.find(p => p.id === quien) || {}).nombre || '';
-      const si = await Dialogo.confirmar({ titulo: salir ? `¿Salir de #${actual.nombre}?` : `¿Sacar a ${nombre} de #${actual.nombre}?`,
+      const si = await Dialogo.confirmar({ titulo: salir ? `¿Salir de ${donde()}?` : `¿Sacar a ${nombre} de ${donde()}?`,
         texto: salir ? 'Dejarás de ver sus mensajes. Te pueden volver a añadir.' : 'Dejará de ver sus mensajes. Se le puede volver a añadir.',
         si: salir ? 'Salir' : 'Sacarle', no: 'Volver' });
       if (!si) return;
@@ -1109,15 +1168,55 @@
       verMiembros();
     });
   }
+  const cerrarPanel = () => { const p = window.Panel && Panel.abierto(); if (p) p.cerrar(); };
+  // Cerrar la conversación abierta y volver a la lista (tras ocultar o eliminar).
+  function dejarConversacion() {
+    actual = null;
+    conv.innerHTML = '<div class="tc-chat-vacio"><i class="fa-regular fa-comments" aria-hidden="true"></i><p>Elige un canal o una conversación.</p></div>';
+    raiz.dataset.vista = 'lista';
+    const u = new URL(location.href); u.searchParams.delete('canal'); u.searchParams.delete('mensaje'); history.replaceState(history.state, '', u);
+    cerrarPanel();
+  }
+  async function ocultarChat() {
+    const r = await Api.post(`${API}/canales/${actual.id}/ocultar`, { ocultar: true }, { aviso: 'No se ha podido ocultar' });
+    if (!r) return;
+    dejarConversacion();
+    Dialogo.hecho('Conversación oculta');
+    cargarLista();
+  }
+  async function archivarCanal(si) {
+    const ok = await Dialogo.confirmar(si
+      ? { titulo: `¿Archivar #${actual.nombre}?`, texto: 'Lo escrito se queda y se puede leer, pero ya no se escribe en él. Se puede sacar del archivo.', si: 'Archivar', no: 'Volver' }
+      : { titulo: `¿Sacar #${actual.nombre} del archivo?`, texto: 'Se vuelve a escribir en él.', si: 'Sacar del archivo', no: 'Volver' });
+    if (!ok) return;
+    const r = await Api.post(`${API}/canales/${actual.id}/archivar`, { archivar: si }, { aviso: 'No se ha podido' });
+    if (!r) return;
+    cerrarPanel();
+    Dialogo.hecho(si ? 'Canal archivado' : 'Canal sacado del archivo');
+    await cargarLista();
+    await abrir(actual.id, { mantener: true });
+  }
+  async function eliminarChat() {
+    const ok = await Dialogo.confirmar({ titulo: `¿Eliminar ${donde()}?`, tono: 'peligro',
+      texto: 'Desaparece para todos los que están dentro. No se borra nada: queda guardado como mensajes eliminados.',
+      si: 'Eliminar', no: 'Volver' });
+    if (!ok) return;
+    const r = await Api.post(`${API}/canales/${actual.id}/eliminar`, {}, { aviso: 'No se ha podido eliminar' });
+    if (!r) return;
+    dejarConversacion();
+    Dialogo.hecho('Chat eliminado');
+    if (yo.veEliminados) eliminados = null;
+    cargarLista();
+  }
 
   async function anadir() {
     const dentro = new Set(actual.miembros.map(p => p.id));
     const fuera = [...personas.values()].filter(p => !dentro.has(p.id));
-    if (!fuera.length) { await Dialogo.aviso({ titulo: 'Ya están todos', texto: 'Toda la oficina está dentro de este canal.' }); return; }
-    const v = await Dialogo.formulario(`Añadir a #${actual.nombre}`, [
+    if (!fuera.length) { await Dialogo.aviso({ titulo: 'Ya están todos', texto: 'Toda la oficina está dentro.' }); return; }
+    const v = await Dialogo.formulario(`Añadir a ${actual.tipo === 'directo' ? 'este grupo' : '#' + actual.nombre}`, [
       { id: 'quien', etiqueta: 'Quién', tipo: 'lista', obligatorio: true, multiple: true,
         opciones: fuera.map(p => ({ valor: String(p.id), texto: p.nombre + (p.puesto ? ` · ${p.puesto}` : '') })) },
-    ], { textoBoton: 'Añadir', nota: 'Verán todo lo que se ha escrito en el canal.' });
+    ], { textoBoton: 'Añadir', nota: actual.tipo === 'directo' ? 'Verán todo lo que se ha escrito en el grupo. Un grupo es de hasta 9 personas.' : 'Verán todo lo que se ha escrito en el canal.' });
     if (!v) return;
     for (const id of [].concat(v.quien)) {
       const r = await Api.post(`${API}/canales/${actual.id}/miembros`, { usuarioId: Number(id) }, { aviso: 'No se ha podido añadir' });
@@ -1172,7 +1271,11 @@
         if (d.fijados) refrescarFijados();
         return;
       }
-      if ((d.tipo === 'miembros' || d.tipo === 'canal') && actual && d.canal === actual.id) abrir(actual.id, { mantener: true });
+      if (d.eliminado && actual && d.canal === actual.id && !yo.veEliminados) {
+        dejarConversacion();
+        Dialogo.aviso({ titulo: 'Chat eliminado', texto: 'Este chat se ha eliminado: ya no está en tu lista.' });
+      } else if ((d.tipo === 'miembros' || d.tipo === 'canal') && actual && d.canal === actual.id) abrir(actual.id, { mantener: true });
+      if (d.eliminado && yo && yo.veEliminados) eliminados = null;
       cargarListaPronto();
     },
     sondear: () => { cargarLista(); cargarNuevos(); recargarHilo(); },

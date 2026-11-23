@@ -99,7 +99,7 @@
   async function ver(a) {
     const pie = `${tamano(a.bytes)}${a.creadoPor ? ' · ' + a.creadoPor : ''}${a.creadoAt ? ' · ' + fecha(a.creadoAt) : ''}`;
     if (a.clase === 'imagen' && global.VisorFoto) {
-      global.VisorFoto.abrir({ src: a.url, titulo: a.nombre, pie });
+      global.VisorFoto.abrir({ src: a.url, titulo: a.nombre, pie, descargar: () => descargar(a) });
       return;
     }
     const caja = {
