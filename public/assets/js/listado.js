@@ -35,7 +35,18 @@
   // ---------- utilidades ----------
 
   /** Escapa texto para meterlo en HTML. Todo lo que venga de la base pasa por aquí. */
-  function esc(v) {
+  // LA CABECERA, ALINEADA COMO SU COLUMNA (24/11/2026, Camilo: «los datos no quedan
+// debajo de su respectiva cabecera»). Las pantallas ponían `text-right` (los
+// números) o `text-center` en la `clase` de las celdas y la cabecera seguía a
+// la izquierda: la cifra quedaba torcida respecto a su título. Ahora la cabecera
+// coge la alineación de la columna, salvo que `claseCabecera` diga la suya.
+function alineacionDe(col) {
+  const alin = clases => (String(clases || '').split(/\s+/).find(x => /^text-(left|right|center)$/.test(x)) || '');
+  if (alin(col.claseCabecera)) return '';
+  return alin(col.clase) || 'text-left';
+}
+
+function esc(v) {
     if (v === null || v === undefined) return '';
     return String(v)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -308,7 +319,7 @@
       // explicación de un dato —«¿qué es exactamente esta columna?»— y así la
       // gana de golpe cualquier pantalla que use el Listado.
       this.el.cabecera.innerHTML = casillaCab + c.columnas.filter(enTabla).map(col =>
-        `<th class="text-left font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wider
+        `<th class="${alineacionDe(col)} font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wider
                     text-telecab-text/70 border-b-2 border-telecab-border whitespace-nowrap
                     ${esc(col.claseCabecera || '')}"${
           col.ayuda ? ` title="${esc(col.ayuda)}"` : ''}>${esc(col.titulo || '')}</th>`
@@ -1144,7 +1155,7 @@
         hueco.innerHTML = `
           <table class="w-full text-sm">
             <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
-              <tr>${b.tabla.columnas.map(c => `<th class="text-left font-semibold px-5 py-2.5">${esc(c.titulo)}</th>`).join('')
+              <tr>${b.tabla.columnas.map(c => `<th class="${alineacionDe(c)} font-semibold px-5 py-2.5">${esc(c.titulo)}</th>`).join('')
                 }${acc ? '<th class="px-5 py-2.5"></th>' : ''}</tr>
             </thead>
             <tbody class="divide-y divide-telecab-border/60">${cuerpo}</tbody>
