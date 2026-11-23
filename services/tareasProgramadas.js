@@ -214,7 +214,9 @@ async function revisar(ahora = new Date()) {
       continue;
     }
     for (const periodo of [...new Set(periodos)].sort()) {
-      const r = await una(t.clave, periodo, ({ periodo: p, cli }) => t.hacer({ periodo: p, cli, ahora }));
+      // Para el libro de auditoría (db/278): lo que escriba, «tarea · <clave>».
+      const r = await require('./contexto').correr({ usuarioId: null, origen: `tarea · ${t.clave}`.slice(0, 60) },
+        () => una(t.clave, periodo, ({ periodo: p, cli }) => t.hacer({ periodo: p, cli, ahora })));
       if (r.hecha) console.log(`⏱️  [TAREAS] ${t.clave} (${periodo}) hecha`);
       hechas.push({ clave: t.clave, periodo, ...r });
     }

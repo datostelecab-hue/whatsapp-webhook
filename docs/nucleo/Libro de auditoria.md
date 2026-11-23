@@ -68,6 +68,19 @@ await libro.conFirma({ usuarioId, origen: 'tablero', accion: 'reasignacion', mot
 - **Si un camino se olvida de firmar, el cambio se apunta igual**, con el origen «sin decir (SQL a mano o migración)». Lo que no puede es no quedar.
 - Quién y desde dónde (`telecab.usuario_id`, `telecab.origen`) son las variables del libro de las J; **la acción y el motivo van en variables propias** (`telecab.libro_accion`, `telecab.libro_motivo`) para no cruzarse con el vocabulario de las J. Por eso el origen va como mucho con 40 letras, lo que cabe en el libro de las J.
 
+## El planificador y los conductores, también (db/278, 23/11/2026)
+
+Camilo: *«el planificador está bien auditado? y la subida de datos, ediciones, borrado, etc, de los conductores también?»* y *«no necesito verlo visualmente, sino que se guarde en base de datos y ya. Que yo te pregunte (…) quién le cambió este dato a X conductor, o quién le dio de alta a Y persona y con qué datos»*.
+
+- **Bajo el libro desde db/278**:
+  - el planificador de Madrid: `asignacion`, `asignacion_dia`, `plaza`, `libranza_excepcional`, `vehiculo_descanso(_dia)`, `vehiculo_sin_ct`, `plan_relevo`, `cuadrante`, `base_zona` y `evento_operativo`;
+  - el de Barcelona: `sede_asignacion`, `sede_coche`, `sede_coche_cuadrante`, `sede_cuadrante(_ct)`, `sede_coche_ct`, `sede_descanso` y `sede_zona`;
+  - la ficha del conductor: `conductor`, `conductor_telefono`, `conductor_periodo_empleo`, `contrato`, las bajas programadas y canceladas, `conductor_estado_hist`, `conductor_turno_hist`, `conductor_alias`, `documento`, `candidatura`, `incorporacion` y `conductor_externo` (sus cuentas de BOLT).
+- **Fuera del libro**: lo que BOLT refresca solo (`visto_*`, nota y puntuación de `conductor_externo`), `actualizado_at` y el **IBAN cifrado** (db/247 no deja copiar secretos al libro).
+- Las tablas de los días y `sede_coche` tenían clave compuesta: db/278 les da un `id` propio (sus INSERT nombran columnas).
+- **EL QUIÉN SIN TOCAR CADA FUNCIÓN** (`services/contexto.js`): `app.js` abre un contexto por petición con la ruta y le pone el usuario al cargar la sesión; el portal pone «portal · ficha N»; una tarea programada, «tarea · <clave>». `services/db.js` lo pasa a la base (`telecab.usuario_id`, `telecab.origen`): en cada `transaccion`, al empezar; y en una `consulta` suelta que escribe con una persona detrás, en una transacción corta. Lo que firme el código con `libro.conFirma` manda sobre esto.
+- Para contestar «¿quién le cambió X a tal conductor?»: `SELECT en, usuario_id, origen, cambios FROM auditoria WHERE tabla = 'conductor' AND registro = '<id>' ORDER BY en`. Para «¿quién le dio de alta y con qué datos?»: la fila `alta` de `conductor` y de `conductor_periodo_empleo` (con `despues`).
+
 ## Lo que no es una fila
 
 Una **lectura** de un aviso, un aviso resuelto o una reasignación que se quiere dejar con su motivo se apuntan a mano:

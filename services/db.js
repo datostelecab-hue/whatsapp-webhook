@@ -46,8 +46,38 @@ function pool() {
   return _pool;
 }
 
-/** Una consulta suelta. Devuelve el resultado de pg tal cual. */
-const consulta = (sql, params) => pool().query(sql, params);
+// ── QUIÉN ESCRIBE, PARA EL LIBRO DE AUDITORÍA (23/11/2026, db/278) ─────────
+// El disparador del libro lee telecab.usuario_id y telecab.origen. Se ponen
+// aquí, con lo que sabe el contexto de la petición (services/contexto.js),
+// para que cada escritura diga quién la hizo sin que cada función lo pase a
+// mano. Lo que firme el código después (libro.conFirma) manda sobre esto.
+const contexto = require('./contexto');
+const ES_ESCRITURA = /\b(INSERT\s+INTO|UPDATE\s+[\w."]+\s+SET|DELETE\s+FROM)\b/i;
+const MANEJA_TRANSACCION = /\b(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i;
+
+async function firmarDelContexto(cli) {
+  const c = contexto.actual();
+  if (!c || (!c.usuarioId && !c.origen)) return;
+  await cli.query(
+    `SELECT set_config('telecab.usuario_id', $1, true), set_config('telecab.origen', $2, true)`,
+    [c.usuarioId ? String(c.usuarioId) : '', String(c.origen || '').slice(0, 60)]);
+}
+
+/**
+ * Una consulta suelta. Devuelve el resultado de pg tal cual.
+ *
+ * Si ESCRIBE y hay una persona detrás (una petición con sesión), va en una
+ * transacción corta firmada con quién es: así el libro sabe quién lo hizo. Lo
+ * demás (leer, las tareas sin persona, un SQL que lleva su propia
+ * transacción) va como siempre, sin coste.
+ */
+async function consulta(sql, params) {
+  const c = contexto.actual();
+  if (c && c.usuarioId && ES_ESCRITURA.test(String(sql)) && !MANEJA_TRANSACCION.test(String(sql))) {
+    return transaccion(cli => cli.query(sql, params));
+  }
+  return pool().query(sql, params);
+}
 
 /**
  * Varias consultas en una transacción. Si el callback lanza, se deshace todo.
@@ -58,6 +88,7 @@ async function transaccion(fn) {
   const cli = await pool().connect();
   try {
     await cli.query('BEGIN');
+    await firmarDelContexto(cli);
     const r = await fn(cli);
     await cli.query('COMMIT');
     return r;

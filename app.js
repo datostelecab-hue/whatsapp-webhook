@@ -301,6 +301,11 @@ const sesion = require('./services/sesion');
 // personas a erptelecab.es (26/10/2026), y deja pasar al webhook de Meta y a
 // cualquier otra máquina. Apagado hasta que exista DOMINIO_ERP en Render. Ver
 // services/dominioErp.js.
+// EL CONTEXTO DE CADA PETICIÓN (23/11/2026): la ruta y, en cuanto se sabe, el
+// usuario. Lo lee services/db.js al escribir para que el libro de auditoría
+// sepa quién hizo cada cambio (db/278). Ver services/contexto.js.
+app.use(require('./services/contexto').middleware);
+
 app.use(require('./services/dominioErp').aLaDireccionBuena);
 
 // EL PORTAL DE CONDUCTORES (conductorestelecab.es, 19/10/2026) va ANTES que todo
@@ -311,6 +316,10 @@ app.use(require('./modules/Portal/portal.controller').porDominio);
 
 // Carga la sesión (si hay cookie) en req.usuario / res.locals para todas las peticiones.
 app.use(sesion.cargarSesion);
+app.use((req, res, next) => {
+  if (req.usuario && req.usuario.id) require('./services/contexto').poner({ usuarioId: req.usuario.id });
+  next();
+});
 
 // ============================================================
 // VERIFICACIÓN DEL WEBHOOK (Meta) + ENTRADA A LA APP

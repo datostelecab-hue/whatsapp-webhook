@@ -45,6 +45,8 @@ router.use(async (req, res, next) => {
   const testigo = leerCookie(req);
   try { req.conductor = await portal.quienEs(testigo); }
   catch (e) { console.error('❌ [Portal] sesión:', e.message); req.conductor = null; }
+  // Para el libro de auditoría: lo que se escriba desde aquí, del portal y de esta ficha.
+  if (req.conductor) require('../../services/contexto').poner({ origen: `portal · ficha ${req.conductor.id} · ${req.method} ${req.path}`.slice(0, 60) });
   // La sesión no caduca (20/11/2026): la cookie se vuelve a poner en cada visita,
   // porque el navegador no la deja durar más de unos 400 días.
   if (req.conductor && testigo) res.cookie(COOKIE, testigo, { ...opcionesCookie, maxAge: portal.COOKIE_DIAS * 86400000 });
