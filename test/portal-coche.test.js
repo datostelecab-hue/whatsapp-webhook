@@ -61,7 +61,7 @@ test('las puertas, solo con un coche vinculado, y del suyo', async () => {
   assert.equal(llamadas.length, 0, 'sin coche vinculado no se manda ninguna orden');
   fichaje.estado = async () => ({ abierto: true, turno });
   const r = await coche.moverPuertas(yo, false);
-  assert.deepEqual([r.ok, r.titulo], [true, 'Puertas cerradas']);
+  assert.deepEqual([r.ok, r.titulo], [true, 'Orden de cerrar enviada'], 'una orden enviada, no un coche cerrado (Mapon solo la acepta)');
   assert.deepEqual([llamadas[0].matricula, llamadas[0].unitId, llamadas[0].abrir, llamadas[0].telefono, llamadas[0].sede],
     ['1234ABC', 'u1', false, yo.telefono, 'madrid'], 'el coche de su turno, con su teléfono y su sede');
   puertas.ejecutar = async () => ({ ok: false, sinMapon: true });

@@ -221,7 +221,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
   Se arreglan pasando esas llamadas a `justificantes.service` / `bitacora.service`, con su traza contra el commit anterior ([[ARQUITECTURA]]). Además quedan 6 avisos y 1 controlador de `routes/` que se salta la capa de servicio (deuda de la Fase 2).
 - **Credenciales escritas en el código.** Casi todo está bien puesto en variables de entorno, pero quedan dos cosas:
   - `services/bolt.js` lleva el `client_id` y el `client_secret` de OAuth de BOLT **en texto plano**. Es la única credencial del sistema fuera del entorno, y está en el historial de git: sacarla al entorno **y rotarla**, porque quitarla del fichero no la borra del historial.
-  - `services/puertasBot.js` (antes en `routes/botPuertas.js`) lleva la URL del despliegue de Apps Script que **abre y cierra los coches**. No es una clave, pero un despliegue publicado de Apps Script no pide autenticación: quien tenga la URL acciona puertas.
+  - ~~La URL del Apps Script de las puertas en `services/puertasBot.js`~~: **fuera del código el 23/11/2026** (las puertas van por Mapon directo). Queda **desactivar el despliegue en Google** y cambiar la clave de Mapon que tenga dentro.
 - **Rotar la clave de Mapon y la cuenta de servicio de Google.** Están en el entorno, como debe ser, pero han circulado.
 - **Revisión de seguridad (del laboratorio, 18/09/2026).** Puntos a verificar/endurecer que salieron al auditar el sistema en el lab aislado; el detalle y cómo se prueba cada uno están en [[Seguridad]]:
   - **IDOR en `/documentos/api/doc/:id`** — comprobar la propiedad/ámbito **por registro** en `documentos.service`, no solo el permiso de módulo. Si no, cambiar el número del id lee papeles de otros.

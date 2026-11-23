@@ -261,7 +261,7 @@ async function bienvenida(telefono, p, cabecera) {
 async function mensajePuertas(telefono, t, cabecera, vehiculo) {
   const pu = puertasDe.get(tel9(telefono));
   const estadoPuertas = pu && pu.matricula === t.matricula
-    ? `\n${pu.abierta ? '🔓 Puertas abiertas' : '🔒 Puertas cerradas'}` : '';
+    ? `\n${pu.abierta ? '🔓 Orden de abrir enviada' : '🔒 Orden de cerrar enviada'}` : '';
   const entrega = t.relevo
     ? `\n🚗 Saliste a entregar el coche a las ${hora(t.relevo)}`
     : `\n\n${AYUDA_ENTREGAR}`;
@@ -501,8 +501,7 @@ async function puertasConductor(telefono, p, abrirlas) {
     sede: p && p.soloCerrar ? null : ((p && p.sede) || SEDE_FLOTA),
   });
   if (!r.ok) {
-    await enviarTexto(telefono, r.sinMapon ? puertas.SIN_SERVICIO
-      : `❌ No he podido ${abrirlas ? 'abrir' : 'cerrar'} las puertas. Inténtalo de nuevo; si sigue igual, comunícate con Tráfico.`);
+    await enviarTexto(telefono, r.sinMapon ? puertas.SIN_SERVICIO : `${puertas.emojiFallo(r)} ${puertas.textoFallo(r, abrirlas)}`);
     return;
   }
   puertasDe.set(tel9(telefono), { matricula: turno.matricula, abierta: abrirlas });

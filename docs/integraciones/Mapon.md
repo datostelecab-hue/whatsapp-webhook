@@ -45,8 +45,8 @@ Hay coches con **dos equipos** dados de alta con la misma matrícula: el viejo, 
 
 Todo el ERP usa **`mapon.elegirEquipo()`**: gana el que da CAN, luego el del relé de corte, luego el que tiene GPS; a igualdad se queda el que ya se usaba y, si no, el de `unit_id` más alto. Lo aplican `unidadPorMatricula` (fichaje, puertas del fichaje, diagnóstico), `flotaMapon` + el motor (`fv_vehiculo.mapon_unit`, del que cuelgan los km, el odómetro CAN y el mapa) y el enlace de Vehículos (`vehiculo_alias`). Por qué hacía falta, en [[Trampas conocidas]].
 
-> [!note] Las puertas del bot van por el Apps Script
-> El bot abre y cierra por matrícula a través de un despliegue de Apps Script que no está en el repo: qué equipo coge ahí no lo decide esta regla. Con la unidad vieja dada de baja en Mapon, deja de haber duda.
+> [!note] Las puertas, por Mapon directo (23/11/2026)
+> Hasta ese día el bot abría y cerraba a través de un Apps Script de Google (una dirección pública, sin clave). Desde el 23/11/2026 la orden va del servidor a Mapon (`unit_commands/execute`, `services/puertasBot.js`), con el equipo de `unidadPorMatricula` (y el del turno si es tan bueno como el mejor): esta regla manda también en las puertas. Camilo lo decidió sin prueba previa en un coche. Ver «Las puertas» más abajo.
 
 ## 🚨 `mileage` NO es el odómetro
 
@@ -189,6 +189,27 @@ Probado en la flota el **18/08/2026** y el resultado es doble negativo:
 2. **Ni siquiera llegan al coche.** En la unidad 893922 (Hyundai Ioniq, parado), `open_windows` responde `{"status":"ok"}` y las ventanillas no se abren. Mismo resultado en dos marcas distintas, así que no es cosa de un coche: ese `ok` es un acuse de recibo de Mapon, no una confirmación de ejecución. La hipótesis es que hace falta el servicio conectado del fabricante, que es una suscripción aparte.
 
 Conclusión: para bloqueo de motor vale `unit/change_relay` y nada más.
+
+### Las puertas, por aquí (23/11/2026)
+
+Camilo: *«vamos con la apertura y cierre de puertas de forma directa, revisa la API de Mapon primero (…) vamos sin pruebas en prod (…) hagámosla de una directo»*. Las puertas dejan el Apps Script y van por `unit_commands/execute` desde el servidor (`services/puertasBot.js` → `mapon.ejecutarComandoSeguro`). Lo que se miró antes, en la documentación oficial (https://mapon.com/api):
+
+- `get_available.json` (GET; `key`, `unit_id`) → `{"data": ["open_doors", …]}`; **vacío** si la unidad no admite comandos. `execute.json` (POST; `key`, `unit_id`, `command`) → `{"data": {"status": "ok" | "failed"}}`.
+- **«ok» es que Mapon la aceptó**, no que el coche abriera: no hay id ni estado de la orden. Por eso las tres pantallas (bot del conductor, panel de la oficina y portal) dicen **«Orden de abrir enviada»**, no «Puertas abiertas». Lo del 18/08 (ok sin efecto) sigue siendo la única prueba en un coche.
+- Errores: 1010 «Error sending command to device», **1011 «Request limit reached» (5 peticiones a la vez por clave)**, 1006, 1004/1005 la clave, 1012 la cuenta… Con 1011 se reintenta una vez; con un plazo vencido o un 1010, nunca (podría estar en camino).
+
+Cómo queda en el código:
+
+- `ejecutarComando` solo da por buena una respuesta con `status: "ok"` (antes, un `failed` contaba como bueno). Los errores llevan su `codigo`.
+- El catálogo de cada equipo va **en caché** (12 h con comandos, 10 min vacío): cada orden suele ser una sola llamada. Si el comando no está en la caché, se pregunta otra vez antes de decir que no.
+- Plazos propios: 8 s el catálogo y 15 s la orden. Un 401/403 de un comando **no** da Mapon por caído (sí un error de cuenta).
+- El equipo: `unidadPorMatricula(matricula, { actual })`. **Nunca** se manda a un equipo que no lleve esa matrícula: si llega uno así (del turno o de la sesión), se usa el de la matrícula y se apunta. Nunca se manda a los `otros` de una matrícula con dos equipos.
+- **La fila de puertas**, por equipo y aparte de la del motor: dos órdenes al mismo coche van una detrás de otra (tope de espera 60 s, más que lo que puede durar una orden con su reintento). **El doble toque**: la misma orden pulsada otra vez mientras la primera sigue en camino no sale; comparte su resultado (bueno o malo). Ya contestada, volver a pulsar sí la manda: es lo que se le pide al conductor si el coche no responde.
+- **Saber si salió**: un plazo vencido, un corte o una respuesta que no es de Mapon (un 502, o un `execute` sin `status`) **con la orden ya mandada** es «no se sabe si llegó» (`sin-respuesta`: ⚠️ en el bot, «Sin confirmación de Mapon» en el portal). Si el plazo vence **leyendo** (el padrón o el catálogo), la orden no salió (`no-enviada`: «inténtalo de nuevo»). Un error con código de Mapon es un «no» claro.
+- `puerta_comando` guarda el equipo **usado** (también cuando falla) y, siempre, un JSON con `via: mapon`, el resultado (aceptada / no enviada o rechazada / desconocida / misma-orden-en-camino), el motivo, el equipo pedido y los `otros`.
+- El panel de la oficina vuelve a mirar `quienPuedeAbrir` al pulsar «Abrir»/«Cerrar»: la sesión vive en memoria y un botón de un mensaje viejo no puede abrir a quien ya no tiene permiso. Si Mapon no contesta al buscar la matrícula, lo dice («no he podido consultar Mapon»), en vez de «no encuentro la matrícula».
+- El panel de la oficina busca la matrícula **exacta** con `unidadPorMatricula` (antes hacía su propia petición, cogía el primer equipo y casaba matrículas parciales o por etiqueta); lo parecido solo se sugiere.
+- Pruebas: `test/puertas-mapon.test.js`; `scripts/probar-corte-motor.js` (secciones 15 y 16).
 
 ## Las trampas, juntas
 

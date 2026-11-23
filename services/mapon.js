@@ -147,9 +147,18 @@ function apuntarVuelta() {
 const disponible = () => !caida || Date.now() - caida.visto > REPROBAR_MS;
 const estadoCaida = () => (caida ? { ...caida } : null);
 
-async function fetchMapon(url, opciones) {
+/**
+ * `extra.plazoMs`: otro plazo que el de siempre (las órdenes de puertas, que
+ * tienen a alguien esperando delante del coche). `extra.caidaPorHttp: false`:
+ * un 401/402/403 de ESTA llamada no da Mapon por caído (un comando sin permiso
+ * no dice nada de la cuenta; sin esto, una sola orden rechazada apagaba bot,
+ * motor y puertas de toda la flota hasta la siguiente respuesta buena). Los
+ * errores de cuenta («suspended»…) siguen contando siempre.
+ */
+async function fetchMapon(url, opciones, extra = {}) {
+  const plazo = Number(extra.plazoMs) || TIMEOUT_MAPON;
   const ac = new AbortController();
-  const reloj = setTimeout(() => ac.abort(), TIMEOUT_MAPON);
+  const reloj = setTimeout(() => ac.abort(), plazo);
   try {
     const r = await fetch(url, { ...(opciones || {}), signal: ac.signal });
     // Se mira la respuesta sin gastarla: quien llama la lee entera después.
@@ -158,7 +167,7 @@ async function fetchMapon(url, opciones) {
       if (/^\s*\{\s*"error"/.test(t)) {
         const err = (JSON.parse(t) || {}).error || {};
         const motivo = String(err.msg || err.text || err.code || `HTTP ${r.status}`);
-        if (ERROR_DE_CUENTA.test(motivo) || [401, 402, 403].includes(r.status)) apuntarCaida(motivo);
+        if (ERROR_DE_CUENTA.test(motivo) || (extra.caidaPorHttp !== false && [401, 402, 403].includes(r.status))) apuntarCaida(motivo);
       } else if (r.ok) {
         apuntarVuelta();
       }
@@ -166,7 +175,9 @@ async function fetchMapon(url, opciones) {
     return r;
   } catch (e) {
     if (e.name === 'AbortError') {
-      throw new Error(`Mapon no respondio en ${TIMEOUT_MAPON / 1000}s (${String(url).split('?')[0]})`);
+      const e2 = new Error(`Mapon no respondio en ${plazo / 1000}s (${String(url).split('?')[0]})`);
+      e2.sinRespuesta = true;
+      throw e2;
     }
     throw e;
   } finally {
@@ -445,11 +456,14 @@ function resolverRango({ desde, hasta } = {}, porDefectoDias = 7) {
 }
 
 /** GET a la API de Mapon con control del formato de error {error:{code,msg}}. */
-async function pedir(ruta, params) {
-  const r = await fetchMapon(`${API}/${ruta}?key=${KEY}&${params}`);
+async function pedir(ruta, params, extra) {
+  const r = await fetchMapon(`${API}/${ruta}?key=${KEY}&${params}`, undefined, extra);
   const json = await r.json();
   if (json && json.error) {
-    throw new Error(`Mapon (${ruta}): ${json.error.msg || json.error.code || 'error desconocido'}`);
+    const e = new Error(`Mapon (${ruta}): ${json.error.msg || json.error.code || 'error desconocido'}`);
+    // El código de Mapon (1006, 1010, 1011…): con él se decide qué decirle a quien espera.
+    e.codigo = Number(json.error.code) || null;
+    throw e;
   }
   return json;
 }
@@ -463,7 +477,7 @@ async function pedir(ruta, params) {
  * El error se propaga con el cuerpo crudo, que es lo único que permite diagnosticar
  * (p. ej. una clave sin permiso de escritura).
  */
-async function pedirPost(ruta, params) {
+async function pedirPost(ruta, params, extra) {
   const qs = new URLSearchParams({ key: KEY });
   const body = new URLSearchParams();
   Object.entries(params || {}).forEach(([k, v]) => {
@@ -476,14 +490,16 @@ async function pedirPost(ruta, params) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
-  });
+  }, extra);
   const texto = await r.text();
   let json = null;
   try { json = JSON.parse(texto); } catch (e) { /* respuesta no-JSON: se ve en el error */ }
   if (!json) throw new Error(`Mapon (${ruta}) HTTP ${r.status}: ${texto.slice(0, 200)}`);
   if (json.error) {
     const e = json.error;
-    throw new Error(`Mapon (${ruta}) error ${e.code || '?'}: ${e.msg || e.text || JSON.stringify(e)}`);
+    const err = new Error(`Mapon (${ruta}) error ${e.code || '?'}: ${e.msg || e.text || JSON.stringify(e)}`);
+    err.codigo = Number(e.code) || null;
+    throw err;
   }
   return json;
 }
@@ -496,11 +512,28 @@ async function pedirPost(ruta, params) {
 // El catálogo de comandos lo define cada instalación: NO se adivinan los nombres,
 // se preguntan con comandosDisponibles() y se ejecuta uno de esos exactamente.
 
+// LAS ÓRDENES DE PUERTAS VAN POR AQUÍ (23/11/2026, sin el Apps Script). Lo que
+// dice la documentación oficial (https://mapon.com/api, «Unit_commands»):
+//   · get_available.json (GET; key, unit_id) → {"data": ["open_doors", …]};
+//     un array VACÍO si esa unidad no admite comandos.
+//   · execute.json (POST; key, unit_id, command) → {"data": {"status": "ok" |
+//     "failed"}}. «ok» es que Mapon la ACEPTÓ: no hay id ni forma documentada de
+//     saber si llegó al coche (en agosto, open_windows dio «ok» y no hizo nada).
+//   · Errores {"error": {code, msg}}: 1010 «Error sending command to device»,
+//     1011 «Request limit reached» (5 peticiones a la vez por clave), 1006
+//     «Method not available», 1004/1005 la clave, 1012 cuenta suspendida…
+const PLAZO_CATALOGO_MS = 8000;
+const PLAZO_ORDEN_MS = 15000;
+const catalogos = new Map();   // unitId → { nombres, ts } o { prom } mientras se pide
+const VIDA_CATALOGO_MS = 12 * 60 * 60 * 1000;   // con comandos: cambian muy poco
+const VIDA_CATALOGO_VACIO_MS = 10 * 60 * 1000;  // vacío: se vuelve a mirar pronto
+
 /** Comandos que admite esa unidad. Devuelve la lista tal cual la da Mapon. */
 async function comandosDisponibles(unitId) {
-  const j = await pedir('unit_commands/get_available.json', `unit_id=${encodeURIComponent(unitId)}`);
+  const j = await pedir('unit_commands/get_available.json', `unit_id=${encodeURIComponent(unitId)}`,
+    { plazoMs: PLAZO_CATALOGO_MS, caidaPorHttp: false });
   const d = (j && j.data) || {};
-  // Mapon no documenta la forma exacta; se acepta lista suelta o envuelta.
+  // La documentación da una lista suelta de cadenas; se acepta también envuelta.
   const lista = Array.isArray(d) ? d
     : Array.isArray(d.commands) ? d.commands
     : Array.isArray(d.units) ? (d.units[0] || {}).commands || []
@@ -513,31 +546,90 @@ async function comandosDisponibles(unitId) {
 }
 
 /**
+ * Los nombres de los comandos de una unidad, de la caché si están (y no se pide
+ * `fresco`). Dos órdenes a la vez al mismo coche comparten la misma petición.
+ * Un error no se guarda: la siguiente vez se vuelve a preguntar.
+ */
+async function nombresDeComandos(unitId, { fresco = false } = {}) {
+  const k = String(unitId);
+  const c = catalogos.get(k);
+  if (!fresco && c) {
+    if (c.prom) return c.prom;
+    const vida = c.nombres.length ? VIDA_CATALOGO_MS : VIDA_CATALOGO_VACIO_MS;
+    if (Date.now() - c.ts < vida) return { nombres: c.nombres, deCache: true };
+  }
+  const prom = comandosDisponibles(unitId).then(({ comandos }) => {
+    const nombres = comandos.map(x => x.command || x.name || x.id).filter(Boolean).map(String);
+    catalogos.set(k, { nombres, ts: Date.now() });
+    return { nombres, deCache: false };
+  }, e => { catalogos.delete(k); throw e; });
+  catalogos.set(k, { prom });
+  return prom;
+}
+const olvidarCatalogo = unitId => catalogos.delete(String(unitId));
+
+/**
  * Ejecuta un comando en la unidad. `command` DEBE ser uno de los que devuelve
- * comandosDisponibles: mandar un nombre inventado es la forma más rápida de
- * llevarse un error o, peor, de no saber si hizo algo.
+ * comandosDisponibles. `ok` es que Mapon contestó status «ok» (la ACEPTÓ); un
+ * «failed», o una respuesta sin status, es `ok: false`. Con el servidor
+ * saturado (1011) se reintenta UNA vez: esa orden no llegó a entrar. Nunca se
+ * reintenta tras un plazo vencido o un 1010: podría estar ya en camino.
  */
 async function ejecutarComando({ unitId, command }) {
   if (!unitId) throw new Error('Falta unit_id');
   if (!command) throw new Error('Falta el comando');
-  const j = await pedirPost('unit_commands/execute.json', { unit_id: unitId, command });
-  return { ok: true, unitId: Number(unitId), command, respuesta: (j && j.data) || j };
+  let j, intentos = 0;
+  for (;;) {
+    intentos++;
+    try {
+      j = await pedirPost('unit_commands/execute.json', { unit_id: unitId, command }, { plazoMs: PLAZO_ORDEN_MS, caidaPorHttp: false });
+      break;
+    } catch (e) {
+      if (e.codigo === 1011 && intentos === 1) { await new Promise(r => setTimeout(r, 1200 + Math.round(Math.random() * 1300))); continue; }
+      e.intentos = intentos;
+      // LA ORDEN PUDO SALIR: un plazo vencido, un corte de red o una respuesta que
+      // no es de Mapon (un 502 de pasarela) con el POST ya mandado. No se sabe si
+      // Mapon la aceptó. Un error CON código de Mapon sí es un «no» claro.
+      if (!e.codigo) e.ordenEnVuelo = true;
+      throw e;
+    }
+  }
+  const datos = (j && j.data) || {};
+  const status = String(datos.status || '').toLowerCase();
+  // Sin estado no es un «no»: Mapon documenta ok | failed. Una respuesta sin él
+  // (otra cosa que contestó por el camino) deja la orden en el aire.
+  if (!status) {
+    const e = new Error('Mapon (unit_commands/execute) contestó sin estado');
+    e.intentos = intentos; e.ordenEnVuelo = true;
+    throw e;
+  }
+  // El modo pruebas contesta {status:'ok', simulado:true}: nada salió hacia el coche.
+  const ok = status === 'ok';
+  return { ok, motivo: ok ? null : 'rechazada', status: datos.status || null, simulado: !!datos.simulado,
+    unitId: Number(unitId), command, intentos, respuesta: datos };
 }
 
 /**
- * Comprueba que un comando existe ANTES de mandarlo, y lo ejecuta. Se usa desde
- * el bloqueo de motor: si el nombre no está en el catálogo de esa unidad, se
- * avisa con la lista real en vez de disparar a ciegas.
+ * Comprueba que un comando existe en el catálogo de esa unidad ANTES de
+ * mandarlo, y lo ejecuta. Si no está en el catálogo guardado, se pregunta otra
+ * vez a Mapon (pudo cambiar) antes de decir que no.
  */
 async function ejecutarComandoSeguro({ unitId, command }) {
-  const { comandos } = await comandosDisponibles(unitId);
-  const nombres = comandos.map(c => c.command || c.name || c.id).filter(Boolean);
-  const existe = nombres.some(n => String(n).toLowerCase() === String(command).toLowerCase());
-  if (!existe) {
-    return { ok: false, motivo: 'comando-no-disponible', command, disponibles: nombres };
+  const buscar = nombres => nombres.find(n => n.toLowerCase() === String(command).toLowerCase());
+  let { nombres, deCache } = await nombresDeComandos(unitId);
+  let real = buscar(nombres);
+  if (!real && deCache) {
+    ({ nombres } = await nombresDeComandos(unitId, { fresco: true }));
+    real = buscar(nombres);
   }
-  const real = nombres.find(n => String(n).toLowerCase() === String(command).toLowerCase());
-  return await ejecutarComando({ unitId, command: real });
+  if (!real) return { ok: false, motivo: 'comando-no-disponible', command, disponibles: nombres };
+  try {
+    return await ejecutarComando({ unitId, command: real });
+  } catch (e) {
+    // El catálogo ya no vale para esta unidad: la próxima vez se pregunta.
+    if (e.codigo === 2 || e.codigo === 1006) olvidarCatalogo(unitId);
+    throw e;
+  }
 }
 
 // ── Conductores en Mapon (para enlazar quién lleva cada coche) ────────────────
@@ -596,7 +688,7 @@ function elegirEquipo(candidatos, { actual } = {}) {
  * Si la matrícula tiene varios equipos, el de elegirEquipo, y en `otros` los que
  * se han dejado de lado.
  */
-async function unidadPorMatricula(matricula) {
+async function unidadPorMatricula(matricula, { actual } = {}) {
   const buscada = normMat(matricula);
   if (!buscada) return null;
   const mapa = await unidades();
@@ -604,7 +696,9 @@ async function unidadPorMatricula(matricula) {
   for (const [unitId, info] of mapa) {
     if (normMat(info.matricula) === buscada) candidatos.push({ unitId, ...info });
   }
-  const elegido = elegirEquipo(candidatos);
+  // `actual`: el equipo que ya se estaba usando (el del turno). Si es tan bueno
+  // como el mejor, se queda: el motor y las puertas van al mismo.
+  const elegido = elegirEquipo(candidatos, { actual });
   if (!elegido) return null;
   if (candidatos.length > 1) {
     elegido.otros = candidatos.filter(u => u !== elegido).map(u => u.unitId);
@@ -1238,7 +1332,7 @@ module.exports = {
   nivelDeposito, nivelPorcentaje, gastadoYKm, paradasUnidad, posicionEn, capacidadDeposito,
   unidadPorMatricula, elegirEquipo, tieneReleCorte, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
-  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
+  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro, olvidarCatalogo,
   relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar,
   disponible, estadoCaida,

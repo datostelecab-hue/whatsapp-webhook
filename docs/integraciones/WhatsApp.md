@@ -136,7 +136,7 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 **Qué entiende (el panel de oficina):**
 
 - Una **matrícula** → busca el coche en Mapon y abre el menú de botones. El filtro es `/^(?=.*\d)[A-Za-z0-9]{6,8}$/`: exige al menos un dígito porque con `{4,8}` a secas *"hola"* era una matrícula válida — Ignacio saludó al bot y le contestó «Matrícula "HOLA" no encontrada» sin saludarle siquiera. Lo mismo pasaba con "buenas", "gracias" o "vale".
-- **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio (`services/puertasBot.js`, que usan las dos conversaciones).
+- **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors` **por la API de Mapon, directo** desde el 23/11/2026 (`services/puertasBot.js`, que usan las dos conversaciones y el portal). Hasta ese día iba por un Apps Script intermedio. El panel dice «Orden de abrir enviada»: Mapon solo confirma que la aceptó. Ver [[Mapon]].
 - **Códigos de lavado Ballenoil**: vuelven del 28/09 al 15/10/2026 con una tanda (566 códigos, db/164; vencían el 17/10). El 20/10/2026 llega otra: *«Nuevos códigos de ballenoil, el botón sigue vigente, mételos directamente a la base de datos»*. Son **338 códigos que caducan el 17/11/2026**, metidos directo en `ballenoil_codigo` desde el relevamiento del portal de Ballenoil de ese día; el 26440296 ya estaba (repartido en septiembre) y se quedó con su historia. `services/lavadoBallenoil.js`: `visible()` enseña el botón hasta `LAVADO_HASTA` (ahora el **17/12/2026**: ver abajo la tanda de noviembre), y un doble toque no gasta dos bonos (en 30 min se repite el mismo). Se reparte primero el que antes caduca. El PIN de repostaje **no** vuelve: si alguien pulsa «VER PIN» en una bienvenida vieja, se le dice que ya no se usa.
 - **La tanda de noviembre (20/11/2026, db/273)**: *«Nuevos códigos de lavado Ballenoil. La fecha 02/11/2026 fue la fecha que nos dieron estos códigos, pero vencen el 17/12/2026 todos»*. **88 códigos** que caducan el **17/12/2026**, esta vez **por migración** (la apuesta Camilo en /migraciones; la base de producción solo se lee desde aquí). Ninguno estaba ya en la tabla y no quedaba ni uno libre vigente: el botón llevaba sin salir desde el 18/11. `LAVADO_HASTA` pasa al 17/12/2026.
 - **Ver turnos** → sus turnos **de hoy a 7 días** en texto libre (`turnos.service.textoTurnos`, ver [[Planificacion]]). Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
@@ -144,8 +144,8 @@ Las reglas de Meta, comprobadas en su documentación el 19/10/2026 ([pricing](ht
 
 Los botones llegan de dos formas distintas y hay que tratarlas aparte: los de un mensaje interactivo son `type: interactive` con `button_reply.id`, y los de una **plantilla** (quick reply) llegan como `type: button` con `button.text`/`payload`.
 
-> [!danger] Riesgo abierto: la URL del Apps Script
-> La URL de despliegue del Apps Script que abre y cierra los coches está **escrita en `services/puertasBot.js`**. Un despliegue de Apps Script publicado no lleva autenticación propia: quien tenga esa URL puede accionar puertas. Pendiente de sacar a variable de entorno.
+> [!warning] El Apps Script de las puertas, ya sin uso (23/11/2026)
+> El código ya no lo llama: las puertas van por Mapon directo. Pero el despliegue sigue publicado en Google hasta que se desactive, y su dirección estuvo en el código: **desactivarlo** (y cambiar la clave de Mapon que tenga dentro).
 
 ## Qué se registra
 

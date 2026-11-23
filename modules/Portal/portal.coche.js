@@ -137,9 +137,14 @@ async function moverPuertas(persona, abrir) {
   } catch (e) { console.error('❌ [Portal] puertas:', e.message); r = { ok: false }; }
   if (!r.ok) {
     return r.sinMapon ? { ok: false, tono: 'error', titulo: 'No se pueden mover las puertas', texto: [SIN_MAPON] }
-      : FALLO(abrir ? 'abrir las puertas' : 'cerrar las puertas');
+      : r.motivo === 'sin-respuesta'
+        // No se sabe si llegó: no es un «no se ha podido».
+        ? { ok: false, tono: 'aviso', titulo: 'Sin confirmación de Mapon', texto: [puertas.textoFallo(r, abrir)] }
+        : { ok: false, tono: 'error', titulo: `No se ha podido ${abrir ? 'abrir' : 'cerrar'}`, texto: [puertas.textoFallo(r, abrir)] };
   }
-  return { ok: true, tono: 'ok', titulo: abrir ? 'Puertas abiertas' : 'Puertas cerradas', texto: [turno.matricula] };
+  // Una orden ENVIADA, no un coche abierto: Mapon solo dice que la aceptó (23/11/2026).
+  return { ok: true, tono: 'ok', titulo: abrir ? 'Orden de abrir enviada' : 'Orden de cerrar enviada',
+    texto: [`${turno.matricula}. Si en unos segundos no responde, vuelve a pulsar una vez; si sigue igual, comunícate con Tráfico.`] };
 }
 
 /**

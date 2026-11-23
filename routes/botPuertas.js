@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 
 const PHONE_NUMBER_ID = '1256923474160518';
-const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
 const fichajeBot = require('../services/fichajeBot');
 const puertas = require('../services/puertasBot');
 const lavado = require('../services/lavadoBallenoil');
@@ -244,8 +243,16 @@ async function handleText(phone, text) {
     const resultado = await buscarEnMapon(matricula);
     console.log(`📋 Resultado Mapon:`, JSON.stringify(resultado));
 
+    // Si lo que ha fallado es Mapon (no contesta), se dice eso: la matrícula
+    // puede estar bien.
+    if (resultado && resultado.error) {
+      await sendText(phone, '⚠️ Ahora mismo no he podido consultar Mapon. Prueba otra vez en un momento; si sigue igual, comunícate con Tráfico.');
+      return;
+    }
     if (!resultado || !resultado.encontrado) {
-      await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC). Si es correcta, comunícate con Tráfico.`);
+      const parecidas = (resultado && resultado.similares) || [];
+      await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC).` +
+        (parecidas.length ? ` ¿Querías decir ${parecidas.join(', ')}?` : '') + ' Si es correcta, comunícate con Tráfico.');
       return;
     }
     // Un coche de otra sede que la suya no se abre desde aquí (services/otraSede.js).
@@ -274,14 +281,16 @@ async function handleText(phone, text) {
       matricula: resultado.matricula,
       unitId: resultado.unit_id,
       vehiculo: resultado.vehiculo,
-      estado: 'cerrada'
+      // La última orden que se mandó (null: ninguna todavía). No es el estado del
+      // coche: Mapon no lo dice.
+      estado: null
     };
 
-    await sendButtonsEstado(phone, nombre, resultado.matricula, resultado.vehiculo, 'cerrada');
+    await sendButtonsEstado(phone, nombre, resultado.matricula, resultado.vehiculo, null);
 
   } else if (sesiones[phone]) {
     const s = sesiones[phone];
-    await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, s.estado || 'cerrada');
+    await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, s.estado || null);
   } else {
     // El ejemplo NO puede ser un coche de verdad: era el 1888LTJ, de Barcelona,
     // y la gente lo escribía tal cual (30/09/2026, ver services/otraSede.js).
@@ -300,7 +309,7 @@ async function handleButton(phone, buttonId) {
 
   if (buttonId === 'ver_turnos') {
     await enviarTurnos(phone, sesion && sesion.nombre);
-    if (sesion) await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
+    if (sesion) await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || null);
     return;
   }
 
@@ -311,6 +320,15 @@ async function handleButton(phone, buttonId) {
 
   if (buttonId === 'abrir_puertas' || buttonId === 'cerrar_puertas') {
     const abrir = buttonId === 'abrir_puertas';
+    // SE VUELVE A MIRAR SI PUEDE (23/11/2026): la sesión vive en memoria, y quien
+    // causó baja o perdió el permiso seguía abriendo con los botones de un
+    // mensaje viejo. Ante la duda (la base no contesta), no se abre.
+    const acceso = await require('../services/repo/puertas').quienPuedeAbrir(phone).catch(() => null);
+    if (!acceso || !acceso.puede) {
+      delete sesiones[phone];
+      await sendText(phone, '❌ Ahora mismo no puedes abrir ni cerrar coches desde aquí. Si crees que es un error, comunícate con Tráfico.');
+      return;
+    }
     const r = await puertas.ejecutar({
       telefono: phone, conductorId: sesion.conductorId, nombre: sesion.nombre,
       matricula: sesion.matricula, unitId: sesion.unitId, abrir, sede: sesion.sede,
@@ -322,7 +340,7 @@ async function handleButton(phone, buttonId) {
       await sendText(phone, r.otraSede
         ? `❌ El ${sesion.matricula} es un coche de ${require('../services/otraSede').nombreSede(r.otraSede)}: por aquí no se abre ni se cierra.`
         : r.sinMapon ? puertas.SIN_SERVICIO
-        : `❌ Error al ${abrir ? 'abrir' : 'cerrar'} puertas. Inténtalo de nuevo; si sigue igual, comunícate con Tráfico.`);
+        : `${puertas.emojiFallo(r)} ${puertas.textoFallo(r, abrir)}`);
     }
 
   } else if (buttonId === 'cambiar_matricula') {
@@ -339,7 +357,7 @@ async function handleButton(phone, buttonId) {
       catch (e) { console.error('❌ [Lavado] solicitar:', e.message); }
       await sendText(phone, lavado.mensaje(r));
     }
-    await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
+    await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || null);
   }
 }
 
@@ -387,9 +405,11 @@ async function handleTemplateButton(phone, label, contextoId = null) {
 
 // El panel de puertas de la gente de OFICINA (los conductores tienen el suyo).
 async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
-  const puertaAbierta = estado === 'abierta';
-  const emoji = puertaAbierta ? '🔓' : '🔒';
-  const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
+  // La ÚLTIMA ORDEN mandada, no el estado del coche: Mapon solo dice que la
+  // aceptó (23/11/2026). Sin orden todavía, qué hacer.
+  const emoji = estado === 'abierta' ? '🔓' : estado === 'cerrada' ? '🔒' : '🚪';
+  const textoEstado = estado === 'abierta' ? 'Orden de abrir enviada'
+    : estado === 'cerrada' ? 'Orden de cerrar enviada' : 'Elige: abrir o cerrar';
 
   // El botón del viaje, si esa persona lo tiene encendido. Con la matrícula ya
   // elegida EMPIEZA el viaje en este coche: «indica la matrícula → inicia». Si
@@ -425,73 +445,28 @@ async function sendText(to, text) {
 }
 
 // ============================================================
-// BUSCAR MATRÍCULA EN MAPON DIRECTAMENTE
+// BUSCAR LA MATRÍCULA EN MAPON
 // ============================================================
+// EXACTA, con el padrón de Mapon del ERP (23/11/2026): la misma búsqueda que el
+// fichaje, con su plazo, la detección de caída y, si la matrícula tiene dos
+// equipos, el bueno (mapon.elegirEquipo). Antes este panel hacía su propia
+// petición y se quedaba con el PRIMER equipo de esa matrícula —en los coches con
+// dos, podía ser el viejo—, y si no había una exacta cogía una PARCIAL o por
+// etiqueta: con una unidad sin matrícula, cualquier cosa mal escrita «casaba».
+// Ahora lo parecido solo se SUGIERE; la orden va siempre a la matrícula exacta.
 async function buscarEnMapon(matricula) {
-  const url = `https://www.mapon.com/api/v1/unit/list.json?key=${MAPON_API_KEY}`;
-
+  const mapon = require('../services/mapon');
+  const norm = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   try {
-    const response = await fetch(url);
-    const json = await response.json();
-    const units = json.data.units;
-    console.log(`📊 Total unidades recibidas: ${units.length}`);
-
-    const matriculaLimpia = matricula.replace(/\s/g, '').toUpperCase();
-    console.log(`🔍 Buscando "${matriculaLimpia}" entre ${units.length} unidades...`);
-
-    // 1. Búsqueda exacta sin espacios
-    for (const u of units) {
-      const numLimpio = (u.number || '').replace(/\s/g, '').toUpperCase();
-      if (numLimpio === matriculaLimpia) {
-        console.log(`✅ Encontrado exacto: ${u.number}`);
-        return {
-          encontrado: true,
-          unit_id: u.unit_id,
-          vehiculo: `${u.make || ''} ${u.modelo || ''}`.trim() || u.label || 'Vehículo',
-          matricula: u.number
-        };
-      }
-    }
-
-    // 2. Búsqueda parcial
-    for (const u of units) {
-      const numLimpio = (u.number || '').replace(/\s/g, '').toUpperCase();
-      if (numLimpio.includes(matriculaLimpia) || matriculaLimpia.includes(numLimpio)) {
-        console.log(`✅ Encontrado parcial: ${u.number}`);
-        return {
-          encontrado: true,
-          unit_id: u.unit_id,
-          vehiculo: `${u.make || ''} ${u.modelo || ''}`.trim() || u.label || 'Vehículo',
-          matricula: u.number
-        };
-      }
-    }
-
-    // 3. Búsqueda por label
-    for (const u of units) {
-      const labelLimpio = (u.label || '').replace(/\s/g, '').toUpperCase();
-      if (labelLimpio.includes(matriculaLimpia)) {
-        console.log(`✅ Encontrado por label: ${u.label}`);
-        return {
-          encontrado: true,
-          unit_id: u.unit_id,
-          vehiculo: `${u.make || ''} ${u.modelo || ''}`.trim() || u.label || 'Vehículo',
-          matricula: u.number
-        };
-      }
-    }
-
-    const similares = units
-      .filter(u => (u.number || '').replace(/\s/g, '').toUpperCase().includes(matriculaLimpia.substring(0, 4)))
-      .slice(0, 5)
-      .map(u => u.number);
-
-    console.log(`❌ No encontrado. Similares: ${similares.join(', ')}`);
-
+    const u = await mapon.unidadPorMatricula(matricula);
+    if (u) return { encontrado: true, unit_id: u.unitId, vehiculo: u.vehiculo || 'Vehículo', matricula: u.matricula };
+    const limpia = norm(matricula);
+    const mapa = await mapon.unidades();
+    const similares = limpia.length < 4 ? [] : [...new Set([...mapa.values()].map(x => x.matricula)
+      .filter(m => norm(m).length >= 4 && (norm(m).includes(limpia.slice(0, 4)) || norm(m).includes(limpia.slice(-3)))))].slice(0, 5);
     return { encontrado: false, similares };
-
   } catch (error) {
-    console.error('Error buscando en Mapon:', error);
+    console.error('❌ [Puertas] buscando en Mapon:', error.message);
     return { encontrado: false, error: error.message };
   }
 }

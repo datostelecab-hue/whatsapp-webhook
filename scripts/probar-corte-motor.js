@@ -72,6 +72,7 @@ let maponVivo = true;
 let retrasoRele = 0;
 let alCortar = null;
 const espera = ms => new Promise(r => setTimeout(r, ms));
+const puertasMapon = [];   // las órdenes de puertas que llegan a Mapon
 const falsoMapon = {
   disponible: () => maponVivo,
   estadoCaida: () => (maponVivo ? null : { motivo: 'Company suspended' }),
@@ -107,6 +108,12 @@ const falsoMapon = {
     if (estado && alCortar) alCortar(coches[unitId]);
     // Como el de verdad: con lo que leyó al confirmar (contacto, marcha).
     return { ok: true, confirmado: true, intentos: 1, info: await falsoMapon.relesDeUnidad(unitId) };
+  },
+  // Las puertas (23/11/2026): van a Mapon directo, sin Apps Script.
+  configurado: () => true,
+  ejecutarComandoSeguro: async ({ unitId, command }) => {
+    puertasMapon.push(`${unitId}:${command}`);
+    return { ok: true, status: 'ok', intentos: 1, command };
   },
   relesDeFlota: async () => ({ vehiculos: Object.values(coches).map(c => ({
     unitId: c.unitId, matricula: c.matricula, estado: c.enMarcha ? 'driving' : 'standing',
@@ -545,8 +552,7 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('un número que no es de nadie sigue sin participar', pa === null);
 
   console.log('\n== 15. Las puertas, por sede ==');
-  const apps = [];
-  global.fetch = async url => { apps.push(String(url)); return { status: 200, text: async () => '{"status":"ok"}' }; };
+  const apps = puertasMapon;   // las órdenes que llegan a Mapon (antes, al Apps Script; 23/11/2026)
   const puertas = require(path.join(RAIZ, 'services/puertasBot.js'));
   const abre = (matricula, extra) => puertas.ejecutar({ telefono: MARTA, nombre: 'prueba', matricula, abrir: true, ...extra });
   r = await abre('5555BCN', { sede: 'barcelona' });
@@ -559,6 +565,7 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('sin decir sede, como hasta ahora: uno de Barcelona no se abre', !r.ok && r.otraSede === 'barcelona' && apps.length === 1);
   r = await abre('1111AAA', { sede: 'madrid' });
   comprobar('un conductor de Madrid, uno de Madrid sí', r.ok && apps.length === 2);
+  puertas._filas.clear();   // la misma orden enseguida no se repite (23/11/2026): aquí se mira la sede
   r = await abre('5555BCN', { sede: null });
   comprobar('la oficina con /puertas (sede vacía) abre el de Barcelona', r.ok && apps.length === 3);
 
