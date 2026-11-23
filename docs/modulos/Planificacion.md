@@ -359,6 +359,10 @@ Y las tres cuentan lo mismo: **los días escritos en sus cuadrantes**, sumados s
 
 El filtro del tablero mira la matrícula, quien está puesto, **quien está por llegar** (`p.futuro`) y la vacante que tiene prometida la plaza. Una plaza vacía hoy puede tener dueño para el lunes, y buscar su nombre contestaba «no hay nada» justo cuando querías ver dónde cae.
 
+## Los coches de cada cuadrante, por su libranza (23/11/2026)
+
+Camilo: *«hay cuadrantes con 2 o 3 coches que están desordenados (…) si ambos libran por ejemplo L M, esos serán los primeros, luego los que libran X J»*. Dentro de cada cuadrante, en la pantalla (`cuadrante.js`, `porLibranza`) y en la parrilla (`parrilla.excel.js`): por la libranza del coche (o de cada fijo, en un coche sin correturnos), los días en orden; sin libranza, al final; luego, la matrícula. La regla es `services/ordenLibranza.js` (la pantalla lleva una copia). El orden de los cuadrantes entre sí no cambia (iceberg o número).
+
 ## Plazas reservadas: adiós a las vacantes (db/277, 23/11/2026)
 
 Camilo: *«vamos a eliminar completamente el módulo de vacantes en RRHH y Generar vacantes en tráfico, se harán directamente desde el planificador. Cuando tengo un "Hueco" en un cuadrante, puedo separar esa plaza para alguien que esté en proceso de terminar su alta, tanto de ETT como propia (…) la plaza se puede guardar como "Sin nombre"»*. Y: *«se la planifica sí o sí, para algo se le guardó el puesto»*.

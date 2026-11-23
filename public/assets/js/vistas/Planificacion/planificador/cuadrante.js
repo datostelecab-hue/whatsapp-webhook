@@ -31,6 +31,29 @@
   const zonaDe = x => (x && x.iceberg && x.iceberg.zona) || SIN_BASE;
   const ordenIce = x => (x && x.iceberg && x.iceberg.orden != null ? x.iceberg.orden : 1e6);
   const ordenBase = clave => { const i = bases().findIndex(b => b.clave === clave); return i < 0 ? 1e3 : i; };
+  // LOS COCHES DE UN CUADRANTE, POR LA LIBRANZA DE SUS FIJOS (23/11/2026,
+  // Camilo: «si ambos libran por ejemplo L M, esos serán los primeros, luego los
+  // que libran X J y así sucesivamente»). La misma regla que el servidor
+  // (services/ordenLibranza.js): los días en orden; sin libranza, al final; si
+  // empatan, la del fijo de noche y la matrícula.
+  const diasOrden = d => [...new Set((d || []).map(Number).filter(n => n >= 1 && n <= 7))].sort((a, b) => a - b);
+  function compararDias(a, b) {
+    const x = diasOrden(a), y = diasOrden(b);
+    if (!x.length || !y.length) return Number(!x.length) - Number(!y.length);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      if (x[i] == null) return -1;
+      if (y[i] == null) return 1;
+      if (x[i] !== y[i]) return x[i] - y[i];
+    }
+    return 0;
+  }
+  const libranzaDe = c => (c.sinCT ? { dia: (c.descansoTurno || {}).dia, noche: (c.descansoTurno || {}).noche }
+    : { dia: c.descanso, noche: c.descanso });
+  const porLibranza = (a, b) => {
+    const la = libranzaDe(a), lb = libranzaDe(b);
+    return compararDias(la.dia, lb.dia) || compararDias(la.noche, lb.noche) || String(a.matricula).localeCompare(String(b.matricula));
+  };
+
   function cochesVisibles() {
     const soloHuecos = $('#f-huecos').checked;
     const q = plano($('#f-busca').value).trim();
@@ -319,6 +342,7 @@
       if (c.cuadranteId) { const k = String(c.cuadranteId); if (!porCua.has(k)) porCua.set(k, []); porCua.get(k).push(c); }
       else sueltos.push(c);
     });
+    porCua.forEach(lista => lista.sort(porLibranza));
 
     // Los cuadrantes de la base (incluidos los vacíos, recién creados). Al
     // FILTRAR (buscando o solo-huecos), un cuadrante sin coches que pasen el

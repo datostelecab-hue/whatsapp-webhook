@@ -378,7 +378,10 @@ function armarTablero({ dia, conductores, coches, plan, est, promedioDe }) {
 
   // ── Los cuadrantes, con sus casillas de CT, y las zonas.
   const zonaPorId = new Map(est.zonas.map(z => [String(z.id), z]));
-  const cochesDe = id => filas.filter(f => f.cuadranteId === String(id)).map(f => f.matricula).sort();
+  // Por la libranza de sus fijos (23/11/2026): L M primero, luego M X, X J…
+  // De este orden tiran la pantalla y el Excel (services/ordenLibranza.js).
+  const porLibranza = require('../../services/ordenLibranza').porLibranza(f => f.descansoTurno || {});
+  const cochesDe = id => filas.filter(f => f.cuadranteId === String(id)).sort(porLibranza).map(f => f.matricula);
   const casilla = c => {
     const hoy = reglas.cubreEl(c, dia);
     return {

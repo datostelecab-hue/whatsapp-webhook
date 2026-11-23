@@ -330,6 +330,12 @@ Camilo: *«pon también las citas del taller para Barcelona… pero sin envíos 
 - **Lo que lo decide es la sede del coche**, no la pantalla. Una cita de un coche que no es de Madrid es de agenda (`citas.service.esAgenda`), y avisar, marcarla avisada, la llamada de Control y la respuesta a un botón la rechazan aunque alguien mande su id a mano. El aviso automático de las 10:00 solo busca citas de Madrid (`repo.paraAvisar(fecha, sede)`, que sin sede se niega a buscar). Las listas de Madrid y de Control piden solo las de Madrid.
 - Van en la **misma tabla** (`taller_cita`, db/187): no hace falta migración.
 
+## Los coches de cada cuadrante, por su libranza; y el Excel en blanco (23/11/2026)
+
+Camilo: *«los cuadrantes y el excel deben de ordenarse por día (…) si ambos libran por ejemplo L M, esos serán los primeros, luego los que libran X J y así sucesivamente»*. Dentro de cada cuadrante, los coches van por la libranza de sus fijos: la del de día y, si empata, la del de noche; sin libranza, al final; luego, la matrícula (`services/ordenLibranza.js`, en `cochesDe` de `armarTablero`: de ahí tiran la pantalla y el Excel). Lo mismo en Madrid ([[Planificacion]]).
+
+Y en el Excel del planificador, **las celdas de los conductores en blanco** (*«solo deja los colores de fondo de los títulos y sus fuentes»*): fijos, casillas de CT, huecos, «libra» y la matrícula de un coche parado. El estado lo sigue diciendo el color de la letra; los títulos, la franja de cada cuadrante y la fila de cabeceras conservan su color.
+
 ## La recaudación del efectivo (`/barcelona/recaudacion`, 05/11/2026, db/230)
 
 Camilo: *«Déjame listo la recaudación de efectivo en Barcelona, de la misma forma»*. Es **la misma recaudación de Madrid** ([[Administracion]]): la misma pantalla y el mismo código, con quincenas, el cierre de BOLT congelado, ajustes con motivo, caja, cambio, transferencias y «¿Cuadra?». Lo que cambia:

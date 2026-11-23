@@ -107,6 +107,11 @@ const borde = () => {
  *
  * @returns { grupos: [{ nombre, numero, zona, coches, ctIds }], sueltos: [coche] }
  */
+/** La libranza de los fijos de un coche de Madrid: la del coche, o la de cada turno si no lleva correturnos. */
+const porLibranzaMadrid = require('../../services/ordenLibranza').porLibranza(c => (c.sinCT
+  ? { dia: (c.descansoTurno || {}).dia, noche: (c.descansoTurno || {}).noche }
+  : { dia: c.descanso, noche: c.descanso }));
+
 function agruparPorCuadrante(coches, cuadrantes) {
   const idsCT = coche =>
     [2, 3, 4, 5].map(s => (coche.personas[s] || {}).id).filter(Boolean);
@@ -145,7 +150,9 @@ function agruparPorCuadrante(coches, cuadrantes) {
   });
 
   const grupos = [...porCuadrante.values()];
-  grupos.forEach(g => g.coches.sort((a, b) => a.matricula.localeCompare(b.matricula)));
+  // Dentro de cada cuadrante, por la libranza de sus fijos (23/11/2026): los que
+  // libran L M primero, luego M X, X J… (services/ordenLibranza.js).
+  grupos.forEach(g => g.coches.sort(porLibranzaMadrid));
   grupos.sort((a, b) => a.numero - b.numero || a.nombre.localeCompare(b.nombre));
 
   return { grupos, sueltos: sueltos.sort((a, b) => a.matricula.localeCompare(b.matricula)) };

@@ -53,8 +53,6 @@ const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'se
 // hoja impresa que había; el todoturno, gris claro (cubre los dos turnos: ni
 // verde ni morado), más oscuro que el gris de «libra» para no confundirlos.
 const FONDO = { fijoDia: 'FFDDEBF7', fijoNoche: 'FFEDE3C5', dia: 'FFE2EFDA', noche: 'FFE4DFEC', todoturno: 'FFE5E7EB' };
-const FONDO_HUECO = 'FFFDE2E2';
-const FONDO_LIBRA = 'FFF3F4F6';
 const FONDO_CUADRANTE = 'FFFDF3D7';
 const NEGRO = 'FF1F2430', GRIS = 'FF6B7280', ROJO = 'FFC00000', AMBAR = 'FF9C5A00', VIOLETA = 'FF5B3FA8', CLARO = 'FFC9CED6';
 
@@ -488,9 +486,11 @@ async function generar({ tablero, zona, q, ahora } = {}) {
       const color = st.tono === 'hueco' ? ROJO : st.tono === 'ct' ? VIOLETA : GRIS;
       t.linea(st.texto, { bold: true, color: { argb: color } });
     }
-    const fill = st && st.tono === 'hueco' ? FONDO_HUECO : st && st.tono === 'libra' ? FONDO_LIBRA
-      : turno === 'dia' ? FONDO.fijoDia : FONDO.fijoNoche;
-    return { t, fill, nota: p ? notaPromedio(p) : null };
+    // Las celdas de la gente, en BLANCO (23/11/2026, Camilo: «quita los colores
+    // (…) solo deja los colores de fondo de los títulos y sus fuentes, pero las
+    // celdas de los conductores, todas en blanco ya que ahora se pintan»). El
+    // estado lo sigue diciendo el color de la letra.
+    return { t, fill: null, nota: p ? notaPromedio(p) : null };
   }
 
   /**
@@ -539,7 +539,7 @@ async function generar({ tablero, zona, q, ahora } = {}) {
     if (k.hoy && p) t.linea(`cubre ${cuando} ${k.hoy.matricula} de ${nombreTurno(k.hoy.turno)}`, { bold: true, color: { argb: VIOLETA } });
     else if (k.hoy) t.linea(`hueco ${cuando} · ${k.hoy.matricula} de ${nombreTurno(k.hoy.turno)}`, { bold: true, color: { argb: ROJO } });
     else if (p) t.linea(`libra ${cuando}`, { bold: true, color: { argb: GRIS } });
-    return { t, fill: FONDO[k.jornada], nota: p ? notaPromedio(p) : null };
+    return { t, fill: null, nota: p ? notaPromedio(p) : null };   // en blanco (23/11/2026)
   }
 
   /**
@@ -558,7 +558,7 @@ async function generar({ tablero, zona, q, ahora } = {}) {
     }
     coches.forEach(c => {
       const piezas = [
-        { t: celdaMatricula(c), fill: c.activo === false ? FONDO_LIBRA : null },
+        { t: celdaMatricula(c), fill: null },   // en blanco (23/11/2026); «apagado» lo dice la letra
         { t: celdaDescanso(c) },
         celdaFijo(c, 'dia', cu),
         celdaFijo(c, 'noche', cu),
