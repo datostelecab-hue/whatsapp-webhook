@@ -82,8 +82,14 @@
     <p class="suave peq">Al desvincularlo se bloquea el motor. Antes, <b>aparca y apaga el coche</b>: en marcha o con el contacto puesto no se desvincula.</p>
     <p class="suave peq">Haz las <b>cinco fotos</b> de cómo lo dejas: son obligatorias, y el siguiente conductor las verá.</p>
     <form method="post" action="/coche/desvincular" enctype="multipart/form-data" class="fotos-form" data-fotos-form>
+      <%# EL PACK (23/11/2026): un botón abre la cámara de la app y guía las cinco
+          seguidas. Sin cámara desde el navegador, las cinco casillas de siempre. %>
+      <button class="boton fotos-pack" type="button" data-pack hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        <span data-pack-texto>Hacer las 5 fotos</span>
+      </button>
       <% fotos.forEach(function (f, i) { %>
-      <label class="foto-campo" for="<%= f.campo %>">
+      <label class="foto-campo" for="<%= f.campo %>" data-foto-i="<%= i %>">
         <span class="foto-num"><%= i + 1 %></span>
         <span class="foto-texto"><b><%= f.etiqueta %></b><small data-foto-estado>Pulsa para hacer la foto</small></span>
         <img class="foto-mini" alt="" data-foto-mini hidden>
@@ -93,6 +99,32 @@
       <button class="boton boton-peligro" type="submit" data-fotos-enviar>Desvincular vehículo</button>
       <p class="suave peq" data-fotos-aviso hidden></p>
     </form>
+
+    <%# La cámara de la app, a pantalla completa. %>
+    <div class="cam" data-cam hidden role="dialog" aria-modal="true" aria-labelledby="cam-tit">
+      <video class="cam-video" data-cam-video playsinline muted autoplay></video>
+      <div class="cam-arriba">
+        <button class="cam-cerrar" type="button" data-cam-cerrar aria-label="Cerrar la cámara">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+        <div class="cam-guia">
+          <p class="cam-paso" data-cam-paso>1 de 5</p>
+          <p class="cam-tit" id="cam-tit" data-cam-tit></p>
+        </div>
+      </div>
+      <p class="cam-error" data-cam-error hidden></p>
+      <div class="cam-abajo">
+        <ol class="cam-tira" data-cam-tira aria-label="Las cinco fotos">
+          <% fotos.forEach(function (f, i) { %><li><button type="button" data-cam-ir="<%= i %>" aria-label="Foto <%= i + 1 %>: <%= f.etiqueta %>"><span><%= i + 1 %></span></button></li><% }) %>
+        </ol>
+        <div class="cam-botones">
+          <span></span>
+          <button class="cam-disparo" type="button" data-cam-disparo aria-label="Hacer la foto"><span></span></button>
+          <button class="cam-listo" type="button" data-cam-listo hidden>Listo</button>
+        </div>
+      </div>
+      <canvas data-cam-lienzo hidden></canvas>
+    </div>
   </div>
 </section>
 <% } else { %>

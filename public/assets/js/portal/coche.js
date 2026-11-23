@@ -83,19 +83,127 @@
   const form = document.querySelector('[data-fotos-form]');
   if (!form) return;
 
-  form.querySelectorAll('input[type=file]').forEach(input => {
-    input.addEventListener('change', () => {
-      const campo = input.closest('.foto-campo');
-      const mini = campo.querySelector('[data-foto-mini]');
-      const estado = campo.querySelector('[data-foto-estado]');
-      const f = input.files && input.files[0];
-      if (!f) { mini.hidden = true; estado.textContent = 'Pulsa para hacer la foto'; campo.classList.remove('foto-hecha'); return; }
-      mini.src = URL.createObjectURL(f);
-      mini.hidden = false;
-      estado.textContent = 'Hecha. Pulsa para repetirla';
-      campo.classList.add('foto-hecha');
+  const inputs = [...form.querySelectorAll('input[type=file]')];
+  const campos = inputs.map(i => i.closest('.foto-campo'));
+  const etiquetas = campos.map(c => c.querySelector('b').textContent);
+
+  /** Pinta una casilla según tenga foto o no. */
+  function pintarCasilla(i) {
+    const campo = campos[i];
+    const mini = campo.querySelector('[data-foto-mini]');
+    const estado = campo.querySelector('[data-foto-estado]');
+    const f = inputs[i].files && inputs[i].files[0];
+    if (!f) { mini.hidden = true; estado.textContent = 'Pulsa para hacer la foto'; campo.classList.remove('foto-hecha'); return; }
+    mini.src = URL.createObjectURL(f);
+    mini.hidden = false;
+    estado.textContent = 'Hecha. Pulsa para repetirla';
+    campo.classList.add('foto-hecha');
+  }
+  inputs.forEach((input, i) => input.addEventListener('change', () => { pintarCasilla(i); pintarPack(); }));
+
+  // ── EL PACK: las cinco seguidas con la cámara de la app (23/11/2026) ───────
+  // Camilo: «un solo botón para subir 5 fotos, sin tener que salir una por una
+  // (…) abra su cámara y pueda tomar las 5 fotos de una vez, como un "pack"».
+  // La cámara del navegador (getUserMedia), a pantalla completa, diciendo cuál
+  // toca; cada foto se mete en su casilla (y se ve), y se puede repetir
+  // cualquiera tocando su miniatura. Sin cámara desde el navegador (o si se
+  // niega el permiso), las cinco casillas de siempre.
+  const pack = form.querySelector('[data-pack]');
+  const cam = document.querySelector('[data-cam]');
+  const hayCamara = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.DataTransfer && cam);
+  const hechas = () => inputs.filter(i => i.files && i.files[0]).length;
+  function pintarPack() {
+    if (!pack) return;
+    const n = hechas();
+    pack.querySelector('[data-pack-texto]').textContent =
+      n === 0 ? 'Hacer las 5 fotos' : n < inputs.length ? `Seguir con las fotos (${n} de ${inputs.length})` : 'Repetir las fotos';
+    pack.classList.toggle('boton-claro', n === inputs.length);
+  }
+
+  if (hayCamara) {
+    const video = cam.querySelector('[data-cam-video]');
+    const lienzo = cam.querySelector('[data-cam-lienzo]');
+    const paso = cam.querySelector('[data-cam-paso]');
+    const tit = cam.querySelector('[data-cam-tit]');
+    const error = cam.querySelector('[data-cam-error]');
+    const disparo = cam.querySelector('[data-cam-disparo]');
+    const listo = cam.querySelector('[data-cam-listo]');
+    const tira = [...cam.querySelectorAll('[data-cam-ir]')];
+    let flujo = null, actual = 0;
+
+    form.classList.add('con-camara');
+    pack.hidden = false;
+    pintarPack();
+
+    const pintarCam = () => {
+      paso.textContent = `${actual + 1} de ${inputs.length}`;
+      tit.textContent = etiquetas[actual];
+      tira.forEach((b, i) => {
+        const f = inputs[i].files && inputs[i].files[0];
+        b.classList.toggle('cam-hecha', !!f);
+        b.classList.toggle('cam-actual', i === actual);
+        b.style.backgroundImage = f ? `url("${URL.createObjectURL(f)}")` : '';
+      });
+      listo.hidden = hechas() < inputs.length;
+    };
+
+    async function abrir(desde) {
+      actual = desde != null ? desde : Math.max(0, inputs.findIndex(i => !(i.files && i.files[0])));
+      cam.hidden = false;
+      document.body.classList.add('con-cam');
+      error.hidden = true;
+      pintarCam();
+      try {
+        flujo = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        video.srcObject = flujo;
+        await video.play().catch(() => {});
+        disparo.disabled = false;
+      } catch (e) {
+        // Sin permiso o sin cámara: se dice, y quedan las casillas de siempre.
+        disparo.disabled = true;
+        error.hidden = false;
+        error.textContent = 'No se puede abrir la cámara desde aquí. Permite el acceso a la cámara en el navegador, o cierra y haz las fotos una a una en las casillas.';
+      }
+    }
+    function cerrar() {
+      if (flujo) flujo.getTracks().forEach(t => t.stop());
+      flujo = null;
+      video.srcObject = null;
+      cam.hidden = true;
+      document.body.classList.remove('con-cam');
+      pintarPack();
+    }
+
+    disparo.addEventListener('click', async () => {
+      if (!flujo || !video.videoWidth) return;
+      disparo.disabled = true;
+      // Como mucho 1600 px de lado, en JPEG: ligera desde el principio.
+      const escala = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+      lienzo.width = Math.round(video.videoWidth * escala);
+      lienzo.height = Math.round(video.videoHeight * escala);
+      lienzo.getContext('2d').drawImage(video, 0, 0, lienzo.width, lienzo.height);
+      const blob = await new Promise(ok => lienzo.toBlob(ok, 'image/jpeg', 0.85));
+      disparo.disabled = false;
+      if (!blob) return;
+      const dt = new DataTransfer();
+      dt.items.add(new File([blob], `foto-${actual + 1}.jpg`, { type: 'image/jpeg' }));
+      inputs[actual].files = dt.files;
+      pintarCasilla(actual);
+      cam.classList.remove('cam-flash'); void cam.offsetWidth; cam.classList.add('cam-flash');
+      // A la siguiente que falte; si ya están las cinco, se queda y sale «Listo».
+      const falta = inputs.findIndex(i => !(i.files && i.files[0]));
+      if (falta >= 0) actual = falta;
+      pintarCam();
     });
-  });
+    tira.forEach((b, i) => b.addEventListener('click', () => { actual = i; pintarCam(); }));
+    listo.addEventListener('click', cerrar);
+    cam.querySelector('[data-cam-cerrar]').addEventListener('click', cerrar);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !cam.hidden) cerrar(); });
+    pack.addEventListener('click', () => abrir(hechas() === inputs.length ? 0 : null));
+    // Tocar una casilla también abre la cámara, en esa foto.
+    campos.forEach((c, i) => c.addEventListener('click', ev => { ev.preventDefault(); abrir(i); }));
+  }
 
   /** Una foto aligerada: como mucho 1600 px de lado, en JPEG. null si no se puede. */
   async function aligerar(f) {
