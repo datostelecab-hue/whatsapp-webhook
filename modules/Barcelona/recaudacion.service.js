@@ -38,4 +38,8 @@ const repo = fabricaRepo.crear({
 
 const servicio = fabricaServicio.crear({ repo, claveNomina: CLAVE_NOMINA });
 
-module.exports = { ...servicio, repo, SEDE, CLAVE, CLAVE_NOMINA };
+// POR FECHAS (23/11/2026): de X a Y, lo cobrado, lo entregado y lo que se le
+// dio a cada cuenta. Solo Barcelona (Camilo). Ver recaudacion.repo.porFechas.
+const porFechas = rango => repo.porFechas(rango);
+
+module.exports = { ...servicio, porFechas, repo, SEDE, CLAVE, CLAVE_NOMINA };

@@ -498,7 +498,7 @@ async function participa(telefono) {
         sede: SEDE_FLOTA };
     } else if (otra) {
       valor = { tipo: 'turno', nombre: otra.nombre, pila: otra.pila, conductorId: null, usuarioId: null, motor: false,
-        sede: otra.sede, cuentaBolt: otra.id };
+        sede: otra.sede, cuentaBolt: otra.id, boltUuid: otra.uuid || null };
     } else if (p.abierto) {
       // Con algo abierto: el tipo lo dice lo que tenga abierto.
       const t = await repo.abiertoDe(t9);
@@ -1025,6 +1025,23 @@ async function estado(telefono) {
  * Abre turno: resuelve la matrícula en Mapon, comprueba que nadie más la tenga,
  * asigna el conductor en Mapon y apunta el turno en el libro.
  */
+const normalizar = m => String(m || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+
+/**
+ * Los coches que el planificador de Barcelona le da hoy a esa cuenta de BOLT
+ * (con el de noche de ayer hasta las 12:00). null si no se ha podido leer el
+ * plan: entonces no se bloquea a nadie. Se carga al usarse, porque el módulo de
+ * Barcelona es grande y el bot de Madrid no lo necesita.
+ */
+async function cochesDelPlanDeSede(uuid) {
+  try {
+    return await require('../modules/Barcelona/barcelona.service').cochesPlanificados(uuid);
+  } catch (e) {
+    console.error('⚠️ [FICHAJE] no se pudo leer el plan de Barcelona; se deja vincular:', e.message);
+    return null;
+  }
+}
+
 async function iniciar({ telefono, nombre, matricula, soloSiLibre = false }) {
   await cerrarOlvidados();
 
@@ -1065,6 +1082,17 @@ async function iniciar({ telefono, nombre, matricula, soloSiLibre = false }) {
   if (sedeCoche !== sedePersona) {
     return { ok: false, motivo: sedeConocida ? 'otra-sede' : 'coche-sin-sede', matricula: unidad.matricula,
       sede: otraSede.nombreSede(sedeCoche), sedePersona: otraSede.nombreSede(sedePersona) };
+  }
+  // BARCELONA: SOLO EL COCHE QUE TIENE PLANIFICADO ESE DÍA (23/11/2026, Camilo:
+  // «el bot le dejará vincular el vehículo, pero si no, le dirá que ese no es
+  // el coche que tiene asignado para ese día»). Lo dice su planificador
+  // (modules/Barcelona). Si el plan no se puede leer, no se le deja tirado:
+  // se vincula como antes y queda en el registro.
+  if (sedePersona !== SEDE_FLOTA && p.boltUuid) {
+    const asignados = await cochesDelPlanDeSede(p.boltUuid);
+    if (asignados && !asignados.some(a => normalizar(a.matricula) === normalizar(unidad.matricula))) {
+      return { ok: false, motivo: 'no-es-su-coche', matricula: unidad.matricula, asignados };
+    }
   }
   // El motor, solo el de Madrid. Uno de otra sede no se corta nunca (`motor`) y
   // al empezar tampoco se suelta: si Barcelona lo ha cortado, ha sido desde

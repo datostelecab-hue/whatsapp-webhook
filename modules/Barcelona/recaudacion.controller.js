@@ -9,9 +9,22 @@
 const { crear } = require('../Administracion/recaudacion.controller');
 const servicio = require('./recaudacion.service');
 
-module.exports = crear(servicio, {
+const router = crear(servicio, {
   titulo: 'Recaudación · Barcelona',
   seccion: 'bcn-recaudacion',
   etiqueta: 'Recaudación Barcelona',
-  vista: { base: '/barcelona/recaudacion', sedeNombre: 'Barcelona', soloCuentas: true },
+  // conFechas: la pestaña «Por fechas», solo de Barcelona (23/11/2026).
+  vista: { base: '/barcelona/recaudacion', sedeNombre: 'Barcelona', soloCuentas: true, conFechas: true },
 });
+
+// POR FECHAS, DE X A Y (23/11/2026): lo cobrado, entregado y dado de cada cuenta
+// en esos días. Una consulta: no congela ni cambia nada. La llave, la de la ruta.
+router.get('/api/fechas', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await servicio.porFechas({ desde: req.query.desde, hasta: req.query.hasta })) }); }
+  catch (e) {
+    console.error('❌ [Recaudación Barcelona] por fechas:', e.message);
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
+module.exports = router;

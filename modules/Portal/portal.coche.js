@@ -70,6 +70,9 @@ async function vincular(persona, matriculaEscrita) {
       'otra-sede': { titulo: `El ${r.matricula} es un coche de ${r.sede}`, texto: ['Desde aquí no se lleva.', revisa] },
       'coche-sin-sede': { titulo: `El ${r.matricula} no es un coche de ${r.sedePersona}`, texto: [revisa] },
       'sin-matricula': { titulo: `No encuentro la matrícula ${matricula}`, texto: [revisa] },
+      // Barcelona: solo el coche que le da el planificador ese día (23/11/2026).
+      'no-es-su-coche': { titulo: `El ${r.matricula} no es tu coche de hoy`,
+        texto: [require('../../services/fichajeBot').textoNoEsSuCoche(r).replace(/^❌ /, '')] },
       'ocupado-en-marcha': { titulo: `El ${r.turno && r.turno.matricula} está en marcha`,
         texto: [`Va a ${r.velocidad} km/h y lo tiene ${r.turno && r.turno.nombre}. Cuando esté parado y apagado, vuelve a vincularlo y pasa a ser tuyo.`] },
       'ocupado-encendido': { titulo: `El ${r.turno && r.turno.matricula} tiene el contacto puesto`,

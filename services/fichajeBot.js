@@ -349,6 +349,20 @@ async function textoCoche(telefono, t, p) {
   return true;
 }
 
+/**
+ * «Ese no es tu coche de hoy» (Barcelona, 23/11/2026). `b` es la marca de
+ * negrita: '*' en WhatsApp, '' en el portal.
+ */
+function textoNoEsSuCoche(r, b = '') {
+  const turno = t => (t === 'noche' ? 'turno de noche' : 'turno de día');
+  const lista = (r.asignados || []).map(a => `${b}${a.matricula}${b} (${turno(a.turno)})`);
+  const suyo = !lista.length
+    ? 'Hoy no tienes ningún coche asignado en el planificador.'
+    : lista.length === 1 ? `Tu coche de hoy es el ${lista[0]}.` : `Tus coches de hoy son: ${lista.join(' y ')}.`;
+  return `❌ El ${b}${r.matricula}${b} no es el coche que tienes asignado para hoy. ${suyo} ` +
+    'Si tienes que llevar otro, comunícate con Tráfico.';
+}
+
 /** Empieza el turno (o el viaje de la oficina) en ese coche y enseña el panel. */
 async function abrir(telefono, matricula) {
   const p = await fichaje.participa(telefono);
@@ -376,6 +390,11 @@ async function abrir(telefono, matricula) {
     if (r.motivo === 'coche-sin-sede') {
       await enviarTexto(telefono, `❌ El *${r.matricula}* no lo tengo como coche de ${r.sedePersona}. ` +
         'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*). Si es de allí, comunícate con Tráfico.');
+      return;
+    }
+    // Barcelona: solo el coche que le da el planificador ese día (23/11/2026).
+    if (r.motivo === 'no-es-su-coche') {
+      await enviarTexto(telefono, textoNoEsSuCoche(r, '*'));
       return;
     }
     if (r.motivo === 'sin-matricula') {
@@ -1051,4 +1070,4 @@ async function cerrar(telefono) {
 }
 
 // avisarAlQueEntrega: también cuando el coche se vincula desde el portal de conductores (20/11/2026).
-module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado, avisarAlQueEntrega };
+module.exports = { textoNoEsSuCoche, manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado, avisarAlQueEntrega };

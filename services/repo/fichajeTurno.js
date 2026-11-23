@@ -283,7 +283,7 @@ async function cuentaDeOtraSede(telefono) {
   let r;
   try {
     r = await db.consulta(
-      `SELECT ce.id, btrim(COALESCE(ce.externo_nombre, '')) AS nombre, fs.sede
+      `SELECT ce.id, ce.externo_id AS uuid, btrim(COALESCE(ce.externo_nombre, '')) AS nombre, fs.sede
          FROM conductor_externo ce
          JOIN flota fs ON fs.company_id = ce.bolt_company_id AND fs.sede <> $2
         WHERE ce.sistema = 'bolt' AND ce.externo_sufijo9 = $1 AND ce.estado_externo = 'active'
@@ -295,7 +295,7 @@ async function cuentaDeOtraSede(telefono) {
   }
   const x = r.rows[0];
   if (!x) return null;
-  return { id: String(x.id), nombre: x.nombre, pila: nombreDePila({ nombreBolt: x.nombre }), sede: x.sede };
+  return { id: String(x.id), uuid: x.uuid || null, nombre: x.nombre, pila: nombreDePila({ nombreBolt: x.nombre }), sede: x.sede };
 }
 
 // EL DÍA OPERATIVO, en la base: de 05:00 a 05:00. El de noche que pregunta a

@@ -929,6 +929,11 @@ function crear(cfg) {
    */
   async function efectivoBolt(q) {
     const { desde, hasta } = rangoQuincena(q);
+    return efectivoEntre(desde, hasta);
+  }
+
+  /** Lo cobrado en efectivo en BOLT del día `desde` al `hasta` (las dos incluidas), por cuenta o por conductor. */
+  async function efectivoEntre(desde, hasta) {
     // Se agrupa por CUENTA de BOLT y no por conductor: hay cuentas que rodaron y
     // cobraron en efectivo sin estar enlazadas con nadie de la plantilla, y esas
     // eran justo las que se perdían en silencio. Cada una trae su conductor si lo
@@ -965,6 +970,74 @@ function crear(cfg) {
       }
     });
     return [...porConductor.values(), ...sinFicha];
+  }
+
+  /**
+   * POR FECHAS, DE X A Y (23/11/2026, Camilo: «en Barcelona la recaudación se
+   * pueda elegir de fecha X a fecha Y, para elegir los montos correspondientes
+   * por rango de fechas, solo en Barcelona»). Una consulta, no un cierre: no
+   * congela nada ni toca las quincenas. Por cada persona (su cuenta de BOLT en
+   * Barcelona), en esos días:
+   *   cobrado    lo cobrado en efectivo en BOLT (sus pedidos, como el cierre);
+   *   entregado  lo que bajó lo que debe: en mano, nómina, transferencia, remesa;
+   *   dado       lo que se le dio: cambio y devoluciones;
+   *   diferencia cobrado + dado − entregado (lo que quedó sin entregar de esos días).
+   * Desde el corte de la sede y hasta hoy; como mucho, un año.
+   */
+  async function porFechas({ desde, hasta } = {}) {
+    const d = diaIso(desde), h = diaIso(hasta);
+    if (!d || !h) throw new Error('Elige las dos fechas: desde y hasta');
+    if (h < d) throw new Error('La fecha «hasta» no puede ser anterior a «desde»');
+    const hoy = diaIso(new Date());
+    if (d > hoy) throw new Error('Las fechas no pueden ser futuras');
+    const corte = rangoQuincena(CORTE).desde;
+    if (h < corte) throw new Error(`Aquí no hay nada antes del ${corte.split('-').reverse().join('/')}`);
+    const ini = d < corte ? corte : d, fin = h > hoy ? hoy : h;
+    if (diasEntre(ini, fin) > 370) throw new Error('Como mucho, un año de una vez');
+    const colPersona = SOLO_CUENTAS ? 'bolt_uuid' : 'conductor_id';
+    const BAJA = TIPOS.filter(t => t.conductor && t.deuda > 0).map(t => t.codigo);
+    const SUBE = TIPOS.filter(t => t.conductor && t.deuda < 0).map(t => t.codigo);
+    const [cobros, movs, nombres] = await Promise.all([
+      efectivoEntre(ini, fin),
+      db.consulta(
+        `SELECT ${colPersona}::text AS persona,
+                sum(importe) FILTER (WHERE tipo = ANY($3::text[]))::numeric(12,2) AS entregado,
+                sum(importe) FILTER (WHERE tipo = ANY($4::text[]))::numeric(12,2) AS dado,
+                count(*) FILTER (WHERE tipo = ANY($3::text[]))::int AS entregas
+           FROM ${TM}
+          WHERE anulado_at IS NULL AND ${colPersona} IS NOT NULL AND fecha BETWEEN $1::date AND $2::date
+          GROUP BY 1`, [ini, fin, BAJA, SUBE]),
+      SOLO_CUENTAS
+        ? db.consulta(`SELECT externo_id AS id, externo_nombre AS nombre FROM (${CUENTAS_SEDE}) s`)
+        : db.consulta(`SELECT id::text AS id, btrim(nombre || ' ' || COALESCE(apellidos, '')) AS nombre FROM conductor`),
+    ]);
+    const nombreDe = new Map(nombres.rows.map(x => [String(x.id), x.nombre]));
+    const filas = new Map();
+    const fila = id => {
+      if (!filas.has(id)) filas.set(id, { id, nombre: nombreDe.get(id) || ('Cuenta ' + id.slice(0, 8)), viajes: 0, cobrado: 0, entregado: 0, dado: 0, entregas: 0 });
+      return filas.get(id);
+    };
+    cobros.forEach(x => {
+      const f = fila(String(x.boltUuid || x.conductorId));
+      if (x.nombre && !nombreDe.get(f.id)) f.nombre = x.nombre;
+      f.viajes += x.viajes; f.cobrado = +(f.cobrado + x.importe).toFixed(2);
+    });
+    movs.rows.forEach(x => {
+      const f = fila(String(x.persona));
+      f.entregado = +Number(x.entregado || 0).toFixed(2);
+      f.dado = +Number(x.dado || 0).toFixed(2);
+      f.entregas = x.entregas;
+    });
+    const lista = [...filas.values()]
+      .map(f => ({ ...f, diferencia: +(f.cobrado + f.dado - f.entregado).toFixed(2) }))
+      .filter(f => f.cobrado || f.entregado || f.dado)
+      .sort((a, b) => b.diferencia - a.diferencia || String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    const suma = k => +lista.reduce((t, f) => t + f[k], 0).toFixed(2);
+    return {
+      desde: ini, hasta: fin, recortado: ini !== d || fin !== h,
+      filas: lista,
+      total: { viajes: lista.reduce((t, f) => t + f.viajes, 0), cobrado: suma('cobrado'), entregado: suma('entregado'), dado: suma('dado'), diferencia: suma('diferencia') },
+    };
   }
 
   /**
@@ -1385,6 +1458,7 @@ function crear(cfg) {
   }
 
   return {
+    porFechas,
     DIAS_REZAGADO,
     recalcularReciente,
     quincenasVivas,

@@ -190,6 +190,31 @@ async function planParaHoras(desde, hasta) {
 }
 
 /**
+ * LOS COCHES QUE EL PLANIFICADOR LE DA HOY A UNA CUENTA (23/11/2026, Camilo:
+ * «los conductores en Barcelona solo puedan fichar en el coche que tiene
+ * planificado para ese día»). Lo que pregunta el bot al vincular. Turnos de
+ * Barcelona: el de día de 00 a 24 y el de noche de 12 a 12, así que hasta las
+ * 12:00 sigue valiendo el coche del turno de noche de AYER. Lista de
+ * { matricula, turno, dia }; vacía si hoy no tiene ninguno.
+ */
+async function cochesPlanificados(uuid, ahora = new Date()) {
+  const id = String(uuid || '').trim();
+  if (!id) return [];
+  const partes = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit',
+    day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(ahora);
+  const v = t => (partes.find(x => x.type === t) || {}).value;
+  const hoy = `${v('year')}-${v('month')}-${v('day')}`;
+  const ayer = sumar(hoy, -1);
+  const reglas = P.crear(await planParaHoras(ayer, hoy));
+  const de = (dia, turnos) => reglas.planDelDia(dia)
+    .filter(a => a.uuid === id && turnos.includes(a.turno))
+    .map(a => ({ matricula: a.matricula, turno: a.turno, dia }));
+  const lista = [...(Number(v('hour')) < 12 ? de(ayer, ['noche']) : []), ...de(hoy, TURNOS)];
+  const vistos = new Set();   // el de noche de ayer y el de hoy, si es el mismo coche, una vez
+  return lista.filter(x => { const k = normMat(x.matricula) + x.turno; return !vistos.has(k) && vistos.add(k); });
+}
+
+/**
  * Los ratos de trabajo de la sede en [iniMs, finMs), con el catálogo de estados
  * de Madrid. Se leen los apuntes desde un día antes: el último de antes de la
  * ventana dice en qué estado estaba cada uno al empezar.
@@ -1071,5 +1096,5 @@ module.exports = {
   SEDE, tablero, asignar, fijarDescanso, ctPorCoche,
   crearZona, cambiarZona, crearCuadrante, cambiarCuadrante, borrarCuadrante, cocheEnCuadrante,
   agregarCasilla, personaCasilla, quitarCasilla, planificadorExcel,
-  hoyMadrid, ratos, planParaHoras, reporte, reporteExcel, cocheActivo, reporteSemanal, reporteSemanalExcel,
+  hoyMadrid, ratos, planParaHoras, cochesPlanificados, reporte, reporteExcel, cocheActivo, reporteSemanal, reporteSemanalExcel,
 };

@@ -7,6 +7,8 @@
   const SOLO_CUENTAS = (typeof soloCuentas !== 'undefined') && !!soloCuentas;
   // LAS REMESAS (db/266, 18/11/2026): solo Madrid por ahora.
   const CON_REMESAS = (typeof conRemesas !== 'undefined') && !!conRemesas;
+  // POR FECHAS, DE X A Y (23/11/2026): solo Barcelona.
+  const CON_FECHAS = (typeof conFechas !== 'undefined') && !!conFechas;
 %>
 <div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
 
@@ -47,18 +49,44 @@
     </div>
   </div>
 
-  <% if (CON_REMESAS) { %>
-  <%# Las dos partes de la recaudación (db/266): el efectivo de siempre y las remesas. %>
+  <% if (CON_REMESAS || CON_FECHAS) { %>
+  <%# Las partes de la recaudación: el efectivo de siempre y, en Madrid, las remesas
+      (db/266); en Barcelona, la consulta por fechas (23/11/2026). %>
   <div id="r-pestanas" class="flex flex-wrap items-center gap-2 mb-4" role="tablist">
     <button type="button" role="tab" data-r-pestana="efectivo" class="r-pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
       <i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i> Efectivo
     </button>
+    <% if (CON_REMESAS) { %>
     <button type="button" role="tab" data-r-pestana="remesas" class="r-pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
       <i class="fa-solid fa-receipt" aria-hidden="true"></i> Remesas
       <span class="tc-contador" data-contador="remesas.aprobar" hidden></span>
     </button>
+    <% } %>
+    <% if (CON_FECHAS) { %>
+    <button type="button" role="tab" data-r-pestana="fechas" class="r-pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Por fechas
+    </button>
+    <% } %>
   </div>
-  <div id="v-remesas" class="hidden -mx-4 lg:-mx-6 -mt-4 lg:-mt-6"><div id="rm-lista"></div></div>
+  <% if (CON_REMESAS) { %><div id="v-remesas" class="hidden -mx-4 lg:-mx-6 -mt-4 lg:-mt-6"><div id="rm-lista"></div></div><% } %>
+  <% if (CON_FECHAS) { %>
+  <div id="v-fechas" class="hidden">
+    <div class="tc-panel-seccion flex flex-wrap items-end gap-3 mb-4 bg-telecab-card border border-telecab-border rounded-2xl p-4">
+      <label class="flex flex-col gap-1 text-xs text-telecab-muted">Desde
+        <input id="rf-desde" type="date" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"></label>
+      <label class="flex flex-col gap-1 text-xs text-telecab-muted">Hasta
+        <input id="rf-hasta" type="date" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"></label>
+      <button id="rf-ver" type="button" class="tc-boton tc-boton--principal">Ver</button>
+      <div class="flex flex-wrap gap-1.5" id="rf-atajos" role="group" aria-label="Rangos rápidos">
+        <button type="button" class="tc-boton" data-rf-atajo="semana">Esta semana</button>
+        <button type="button" class="tc-boton" data-rf-atajo="semana-pasada">Semana pasada</button>
+        <button type="button" class="tc-boton" data-rf-atajo="mes">Este mes</button>
+        <button type="button" class="tc-boton" data-rf-atajo="mes-pasado">Mes pasado</button>
+      </div>
+    </div>
+    <div id="rf-lista"></div>
+  </div>
+  <% } %>
   <% } %>
   <div id="v-efectivo">
 
@@ -170,6 +198,9 @@
 
 <script type="application/json" id="datos-servidor"><%- json({ denominaciones: denominaciones || [], tiposMovimiento: tiposMovimiento || [], salidasCaja: salidasCaja || [], etiquetasSalida: etiquetasSalida || salidasCaja || [], puedeNomina: !!(puedeNomina), base: BASE, soloCuentas: SOLO_CUENTAS, sedeNombre: SEDE_NOMBRE }) %></script>
 <script src="<%= est('/assets/js/vistas/Administracion/recaudacion.js') %>"></script>
+<% if (CON_FECHAS) { %>
+<script src="<%= est('/assets/js/vistas/Barcelona/recaudacionFechas.js') %>"></script>
+<% } %>
 <% if (CON_REMESAS) { %>
 <script src="<%= est('/assets/js/panel.js') %>"></script>
 <%# El comprobante de pago de cada remesa (18/11/2026), con la pieza de adjuntos. %>

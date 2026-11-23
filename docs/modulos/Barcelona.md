@@ -345,6 +345,23 @@ Camilo: *«Déjame listo la recaudación de efectivo en Barcelona, de la misma f
 
 Comprobador: `scripts/comprobar-recaudacion-sedes.js` (sin base: mira que cada sede solo nombre sus tablas y su efectivo).
 
+### «Por fechas»: de X a Y (23/11/2026)
+
+Camilo: *«en Barcelona la recaudación se pueda elegir de fecha X a fecha Y, para elegir los montos correspondientes por rango de fechas, solo en Barcelona»*. Una pestaña más, al lado de «Efectivo» (`?vista=fechas`). Se eligen las dos fechas, o un atajo (esta semana, la pasada, este mes, el pasado), y sale por cada cuenta de BOLT: viajes en efectivo, **cobrado** (sus pedidos, como el cierre), **entregado** (en mano, nómina, transferencia, remesa; con cuántas veces), **le dimos** (cambio, devoluciones) y la **diferencia** = cobrado + le dimos − entregado. Con totales arriba, buscador y Excel (componente Listado).
+
+- Es **una consulta**: no congela nada ni toca las quincenas (`recaudacion.repo.porFechas`, la ruta `GET /barcelona/recaudacion/api/fechas?desde&hasta`).
+- Se recorta al corte (1 de noviembre) y a hoy; como mucho un año de una vez.
+- Solo Barcelona: Madrid no pasa `conFechas` a la vista. El script es `public/assets/js/vistas/Barcelona/recaudacionFechas.js`. Prueba: `test/recaudacion-por-fechas.test.js`.
+
+## El bot: solo el coche planificado de ese día (23/11/2026)
+
+Camilo: *«los conductores en Barcelona solo puedan fichar en el coche que tiene planificado para ese día, entonces el BOT le dejará vincular el vehículo, pero si no, entonces le dirá que ese no es el coche que tiene asignado para ese día»*.
+
+- Al vincular (bot y portal, `fichaje.iniciar`), después de mirar que el coche es de su sede, se pregunta al planificador (`barcelona.service.cochesPlanificados`, con `planDelDia`) qué coches tiene **hoy** esa cuenta de BOLT, los dos turnos. **Hasta las 12:00 vale también el de noche de ayer** (el turno de noche va de 12 a 12).
+- Si la matrícula no está, `motivo: 'no-es-su-coche'` y el bot contesta: *«El X no es el coche que tienes asignado para hoy. Tu coche de hoy es el Y (turno de día). Si tienes que llevar otro, comunícate con Tráfico»*. Sin coche en el plan: *«Hoy no tienes ningún coche asignado en el planificador»*. El portal dice lo mismo (`textoNoEsSuCoche`).
+- **Si el plan no se puede leer, se deja vincular** (y queda en el registro): un fallo de la base no deja a nadie en la calle.
+- La cuenta sale del teléfono (`cuentaDeOtraSede`, que ahora trae `externo_id` como `uuid`). Prueba: `test/barcelona-coche-planificado.test.js`.
+
 ## Las piezas
 
 ```
