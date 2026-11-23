@@ -21,10 +21,12 @@ const OFICINA = a => `${a}.estado <> 'bloqueado' AND NOT EXISTS (SELECT 1 FROM r
 
 // ── db/274 (23/11/2026): ocultar y «eliminar» ──────────────────────────────
 // Hasta que se aplique, el chat sigue como antes: las consultas no nombran las
-// columnas nuevas. Se mira una vez; si falta, se vuelve a mirar cada 5 minutos.
+// columnas nuevas. Se mira una vez; si falta, se vuelve a mirar cada 5 minutos
+// para leer y AL MOMENTO para ocultar o eliminar (`ahora`): recién aplicada, el
+// botón no puede decir que falta (23/11/2026).
 let _con274 = null, _mirado274 = 0;
-async function con274() {
-  if (_con274 || Date.now() - _mirado274 < 300000) return !!_con274;
+async function con274({ ahora = false } = {}) {
+  if (_con274 || (!ahora && Date.now() - _mirado274 < 300000)) return !!_con274;
   _mirado274 = Date.now();
   const r = await db.consulta(
     `SELECT count(*)::int AS n FROM information_schema.columns
@@ -126,7 +128,7 @@ async function eliminados() {
 
 /** Ocultar (o volver a enseñar) una conversación en la lista de esa persona. */
 async function ocultar(cli, canalId, usuarioId, si) {
-  if (!await con274()) throw Object.assign(new Error('Falta aplicar la migración db/274'), { status: 409 });
+  if (!await con274({ ahora: true })) throw Object.assign(new Error('Falta aplicar la migración db/274'), { status: 409 });
   const r = await q(cli,
     `UPDATE chat_miembro SET oculto_at = CASE WHEN $3 THEN now() END,
             oculto_hasta_id = CASE WHEN $3 THEN COALESCE((SELECT max(id) FROM chat_mensaje WHERE canal_id = $1), 0) END
@@ -148,7 +150,7 @@ async function archivar(cli, canalId, por, si) {
  * se pueda empezar otro: la nueva es «e<id>», que no es la de nadie.
  */
 async function eliminar(cli, canalId, por) {
-  if (!await con274()) throw Object.assign(new Error('Falta aplicar la migración db/274'), { status: 409 });
+  if (!await con274({ ahora: true })) throw Object.assign(new Error('Falta aplicar la migración db/274'), { status: 409 });
   const r = await q(cli,
     `UPDATE chat_canal SET eliminado_at = now(), eliminado_por = $2,
             clave_directo = CASE WHEN tipo = 'directo' THEN 'e' || id ELSE clave_directo END
