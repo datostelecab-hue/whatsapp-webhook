@@ -133,8 +133,10 @@ router.get('/efectivo', pagina('portalEfectivo', 'Mi efectivo', async p => ({ ef
 // la página del coche y lo que ha pasado arriba; sin JavaScript en el móvil.
 const coche = require('./portal.coche');
 const paginaCoche = async (req, res, resultado = null) => {
+  const [estado, previas] = await Promise.all([coche.estado(req.conductor),
+    coche.fotosAnteriores(req.conductor).catch(e => { console.error('❌ [Portal] fotos anteriores:', e.message); return null; })]);
   vista(res, 'portalCoche', { titulo: 'Mi coche', pagina: 'portalCoche', conductor: req.conductor,
-    coche: await coche.estado(req.conductor), resultado, matricula: '' });
+    coche: estado, previas, fotos: coche.FOTOS, resultado, matricula: '' });
 };
 const accionCoche = fn => async (req, res, next) => {
   try { await paginaCoche(req, res, await fn(req)); } catch (e) { next(e); }
@@ -142,7 +144,35 @@ const accionCoche = fn => async (req, res, next) => {
 router.get('/coche', accionCoche(async () => null));
 router.post('/coche/vincular', accionCoche(req => coche.vincular(req.conductor, (req.body || {}).matricula)));
 router.post('/coche/puertas', accionCoche(req => coche.moverPuertas(req.conductor, (req.body || {}).accion === 'abrir')));
-router.post('/coche/desvincular', accionCoche(req => coche.desvincular(req.conductor)));
+// DESVINCULAR, CON LAS CINCO FOTOS (23/11/2026): obligatorias desde el portal.
+// Llegan en el mismo formulario (multipart); en memoria, como mucho 5 y de 20 MB.
+const multer = require('multer');
+const subidaFotos = multer({ storage: multer.memoryStorage(), limits: { fileSize: coche.TOPE_FOTO, files: coche.FOTOS.length } })
+  .fields(coche.FOTOS.map(f => ({ name: f.campo, maxCount: 1 })));
+router.post('/coche/desvincular', (req, res, next) => subidaFotos(req, res, err => {
+  if (!err) return next();
+  const texto = err.code === 'LIMIT_FILE_SIZE' ? 'Alguna foto pasa de 20 MB. Hazla otra vez (o con menos calidad) y vuelve a probar.'
+    : 'No se han podido recibir las fotos. Prueba otra vez.';
+  paginaCoche(req, res, { ok: false, tono: 'aviso', titulo: 'Las fotos no han llegado', texto: [texto] }).catch(next);
+}), accionCoche(req => coche.desvincularConFotos(req.conductor, req.files || {})));
+
+// EN VIVO (23/11/2026): dónde y cómo está el coche que le toca. La pantalla lo
+// pide cada 15 s.
+router.get('/coche/vivo', async (req, res) => {
+  try { res.json(await coche.enVivo(req.conductor)); }
+  catch (e) { console.error('❌ [Portal] en vivo:', e.message); res.status(500).json({ ok: false }); }
+});
+
+// Una foto del turno anterior, si es del coche que le toca hoy.
+router.get('/coche/foto/:id', async (req, res) => {
+  try {
+    const r = await coche.foto(req.conductor, req.params.id);
+    res.status(r.estado).set(r.cabeceras);
+    if (r.cuerpo) r.cuerpo.pipe(res); else res.end();
+  } catch (e) {
+    res.status(e.status || 500).type('text/plain').send(e.status === 403 || e.status === 404 ? 'No existe' : 'No se ha podido cargar');
+  }
+});
 
 /**
  * Lo que app.js monta delante del ERP. Si la petición no es del dominio del

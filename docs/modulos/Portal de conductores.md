@@ -89,6 +89,17 @@ Camilo: *«Créales el módulo de vincular coche, ahí podrán abrir y cerrar co
 - **Formularios normales** (sin JavaScript en el móvil): cada acción vuelve a la página del coche con lo que ha pasado arriba, en verde, ámbar o rojo.
 - **Lo que aún se queda en WhatsApp**: «Entregar coche», «No tengo yo el coche», el código de lavado y los avisos (la pregunta de las 14 h, el coche que pasa de manos). Pruebas: `test/portal-coche.test.js`.
 
+## Mi coche: ubicación en vivo y las cinco fotos (23/11/2026)
+
+Camilo: *«en el apartado del coche que le toca, tiene que poner "Ver ubicación en vivo". Que le aparezca el estado tal cual, si está rodando, si está parado y bloqueado, si está fichado por alguien, etc. Pero que pueda ver dónde está»*. Y: *«cuando termine el turno, el sistema le pedirá 5 fotos (…) las fotos tendrán que ser obligatorias para cerrar el turno, ojo, es una transición, así que todavía se puede terminar el turno por WhatsApp sin pedir fotos, pero en la app tiene que ser obligatorio»*.
+
+- **El coche que le toca**: el que tiene vinculado; si no, el de hoy en su planificación (`portal.coche.matriculaDeHoy`).
+- **Ver ubicación en vivo**: el botón abre el mapa (MapLibre + OpenFreeMap, como el mapa de flota) y el estado, refrescados cada 15 s mientras está abierto (`GET /coche/vivo`). Sale de `modules/Mapa` (`frente`, caché de 5 s): rodando (con su velocidad) o parado, **parado y bloqueado** si el motor está cortado, **quién lo tiene vinculado** (solo el nombre de pila; nunca un teléfono), si está conectado a BOLT y en qué, y si el coche no está operativo. En el móvil el mapa se mueve con dos dedos (un dedo baja la página).
+- **Las cinco fotos al desvincular**, obligatorias en el portal: lateral de la puerta del conductor, frontal, lateral del copiloto, trasera y asientos de atrás. Sin las cinco no se desvincula (y se dice cuáles faltan). En el móvil se aligeran antes de subir (1600 px, JPEG); como mucho 20 MB cada una. Se guardan en **R2** como adjuntos del turno (`turno_fotos`, dueño = la fila de `fichaje_turno`), **después** de desvincular: si R2 falla, el coche ya está desvinculado y se dice («avisa a Tráfico»).
+- **Cómo dejaron el coche**: las fotos del último turno cerrado de ese coche, para quien lo tiene hoy (`GET /coche/foto/:id`, solo si la foto es de su coche de hoy). Si ese turno se cerró por WhatsApp (que aún no pide fotos), *«Próximamente aquí estarán las fotos con las que se dejó el coche»*.
+- **WhatsApp sigue igual**: «Desvincular vehículo» del bot no pide fotos, a propósito (transición).
+- Pruebas: `test/portal-fotos.test.js`.
+
 ## Para subirlo a producción
 
 1. Desplegar y aplicar **db/210** (la puntuación semanal) y **db/211** (el acceso) desde `/migraciones`.

@@ -15,7 +15,26 @@
 //   · abrir y cerrar solo con un coche vinculado, y solo el SUYO.
 // Aquí solo se traduce cada respuesta a un mensaje para la web, con las
 // palabras del bot desde el 13/11/2026: «vincular», nunca «turno» ni «fichar».
+//
+// UBICACIÓN EN VIVO Y LAS CINCO FOTOS (23/11/2026). Camilo: «en el apartado
+// del coche que le toca, tiene que poner "Ver ubicación en vivo". Que le
+// aparezca el estado tal cual, si está rodando, si está parado y bloqueado, si
+// está fichado por alguien, etc.» Y: «cuando termine el turno, el sistema le
+// pedirá 5 fotos (…) los conductores ligados al coche pueden ver las fotos con
+// las que terminó el turno anterior a él, todo eso se guardará en R2, las
+// fotos tendrán que ser obligatorias para cerrar el turno (…) es una
+// transición, así que todavía se puede terminar el turno por WhatsApp sin
+// pedir fotos, pero en la app tiene que ser obligatorio».
+//   · EL COCHE QUE LE TOCA: el que tiene vinculado; si no, el de hoy en su
+//     planificación («Mis turnos»).
+//   · EN VIVO: lo del mapa de flota (modules/Mapa: Mapon, el motor y quién lo
+//     tiene vinculado), solo de ese coche.
+//   · LAS FOTOS: adjuntos del turno de fichaje (tipo «turno_fotos», dueño el
+//     id de su fila en fichaje_turno), en R2. Las ve quien tiene ese coche hoy.
+//     El turno cerrado por WhatsApp no tiene: se dice que estarán próximamente.
 'use strict';
+
+const { Readable } = require('stream');
 
 const fichaje = require('../../services/fichaje');
 const puertas = require('../../services/puertasBot');
@@ -159,4 +178,158 @@ async function desvincular(persona) {
   return { ok: true, tono: 'ok', titulo: `${t.matricula} desvinculado`, texto };
 }
 
-module.exports = { estado, vincular, moverPuertas, desvincular, _limpiar: limpiar };
+// ── El coche que le toca: el vinculado, o el de hoy en su planificación ─────
+async function matriculaDeHoy(persona) {
+  const e = await estado(persona);
+  if (e.vinculado) return { matricula: limpiar(e.matricula), vinculado: true };
+  try {
+    const t = await require('./portal.service').turnos(persona);
+    const hoy = (t.dias || []).find(d => d.hoy && d.matricula);
+    if (hoy) return { matricula: limpiar(hoy.matricula), vinculado: false, turno: hoy.turno || '' };
+  } catch (err) { console.error('❌ [Portal] el coche de hoy:', err.message); }
+  return { matricula: null, vinculado: false };
+}
+
+const nombreDePila = n => String(n || '').trim().split(/\s+/)[0] || '';
+const haceTexto = s => (s == null ? '' : s < 90 ? 'hace un momento' : s < 3600 ? `hace ${Math.round(s / 60)} min`
+  : s < 86400 ? `hace ${Math.round(s / 3600)} h` : `hace ${Math.round(s / 86400)} días`);
+
+/**
+ * EN VIVO: dónde está y cómo está el coche que le toca. Lo dice el mapa de
+ * flota (caché de 5 s): la posición de Mapon, si rueda, el motor y quién lo
+ * tiene vinculado. Nunca el teléfono de nadie.
+ */
+async function enVivo(persona) {
+  const hoy = await matriculaDeHoy(persona);
+  if (!hoy.matricula) return { ok: true, matricula: null };
+  let c = null;
+  try {
+    const f = await require('../Mapa/mapa.service').frente({ sedes: [SEDE_FLOTA] });
+    c = (f.coches || []).find(x => limpiar(x.matricula) === hoy.matricula) || null;
+  } catch (err) { console.error('❌ [Portal] en vivo:', err.message); return { ok: false, matricula: hoy.matricula }; }
+  if (!c) return { ok: true, matricula: hoy.matricula, sinDatos: true };
+  const lineas = [];
+  let tono = 'ok';
+  if (c.rueda) lineas.push(`Rodando${c.velocidad != null ? ` a ${Math.round(c.velocidad)} km/h` : ''}`);
+  else if (c.motor && c.motor.cortado) { lineas.push('Parado y bloqueado'); tono = 'gris'; }
+  else lineas.push('Parado');
+  if (hoy.vinculado) lineas.push('Lo tienes vinculado tú');
+  else if (c.fichaje && c.fichaje.nombre) { lineas.push(`Vinculado a ${nombreDePila(c.fichaje.nombre)}`); tono = 'aviso'; }
+  else lineas.push('Nadie lo tiene vinculado');
+  if (c.conectado && c.situacionEtiqueta) lineas.push(`En BOLT: ${String(c.situacionEtiqueta).toLowerCase()}`);
+  if (c.estadoVehiculo && c.operativo === false) { lineas.push(`Estado: ${c.estadoVehiculo}`); tono = 'aviso'; }
+  return {
+    ok: true, matricula: hoy.matricula, vinculado: hoy.vinculado,
+    lat: c.lat, lng: c.lng, rumbo: c.rumbo, rueda: !!c.rueda,
+    tono, lineas, posicion: c.lat == null ? 'Sin posición del GPS' : `Posición ${haceTexto(c.antiguedad)}`,
+  };
+}
+
+// ── LAS CINCO FOTOS al desvincular (23/11/2026) ──────────────────────────────
+const FOTOS = [
+  { campo: 'foto_conductor', etiqueta: 'Lateral de tu puerta (la del conductor)' },
+  { campo: 'foto_frontal', etiqueta: 'Frontal' },
+  { campo: 'foto_copiloto', etiqueta: 'Lateral del copiloto' },
+  { campo: 'foto_trasera', etiqueta: 'Trasera' },
+  { campo: 'foto_asientos', etiqueta: 'Asientos de atrás (los del pasajero)' },
+];
+const TIPO_FOTOS = 'turno_fotos';
+const TOPE_FOTO = 20 * 1024 * 1024;
+const db = require('../../services/db');
+const adjuntos = require('../../services/adjuntos');
+
+/** La matrícula de un turno de fichaje (por su fila). */
+async function matriculaDelTurno(filaId) {
+  const r = await db.consulta('SELECT matricula FROM fichaje_turno WHERE id = $1', [Number(filaId)]);
+  return r.rows[0] ? limpiar(r.rows[0].matricula) : null;
+}
+
+// Quién ve las fotos: en el portal, quien tiene ESE coche hoy; en el ERP, la
+// oficina. Las sube solo el sistema (al desvincular desde el portal).
+adjuntos.registrarDueno(TIPO_FOTOS, {
+  etiqueta: 'Fotos del coche al terminar',
+  ver: async (quien, id) => (quien.portal
+    ? (quien.portal.matriculas || []).includes(await matriculaDelTurno(id))
+    : true),
+  adjuntar: async () => false,
+});
+
+/** Quien mira desde el portal, para los adjuntos: el coche que le toca hoy. */
+async function quienPortal(persona) {
+  const hoy = await matriculaDeHoy(persona);
+  return { id: `portal-${persona.id}`, portal: { conductorId: persona.id, matriculas: hoy.matricula ? [hoy.matricula] : [] } };
+}
+
+/**
+ * LAS FOTOS DEL TURNO ANTERIOR del coche que le toca: el último turno cerrado
+ * de esa matrícula (de otra persona o suyo). Sin fotos (se cerró por WhatsApp),
+ * se dice que estarán próximamente.
+ */
+async function fotosAnteriores(persona) {
+  const hoy = await matriculaDeHoy(persona);
+  if (!hoy.matricula) return null;
+  const r = await db.consulta(
+    `SELECT id, nombre, fin FROM fichaje_turno
+      WHERE estado <> 'abierto' AND fin IS NOT NULL
+        AND upper(regexp_replace(matricula, '[^A-Za-z0-9]', '', 'g')) = $1
+      ORDER BY fin DESC LIMIT 1`, [hoy.matricula]);
+  const t = r.rows[0];
+  if (!t) return { matricula: hoy.matricula, turno: null, fotos: [] };
+  let fotos = [];
+  try {
+    fotos = (await adjuntos.lista(TIPO_FOTOS, String(t.id), await quienPortal(persona)))
+      .filter(a => /^image\//.test(a.mime || ''))
+      .map(a => ({ id: a.id, etiqueta: (FOTOS[Number(String(a.nombre).split('-')[0]) - 1] || {}).etiqueta || 'Foto' }));
+  } catch (err) { console.error('❌ [Portal] fotos anteriores:', err.message); }
+  return { matricula: hoy.matricula, turno: { nombre: nombreDePila(t.nombre), fin: hora(Math.floor(new Date(t.fin).getTime() / 1000)) }, fotos };
+}
+
+/** Una foto, si es del coche que le toca hoy: { estado, cabeceras, cuerpo }. */
+async function foto(persona, adjuntoId) {
+  return adjuntos.servir(adjuntoId, await quienPortal(persona));
+}
+
+/**
+ * DESVINCULAR DESDE EL PORTAL: con las CINCO fotos, obligatorias. Primero se
+ * mira que estén las cinco y que sean fotos; luego se desvincula (con sus
+ * reglas: no en marcha, no con el contacto); y con el coche ya desvinculado,
+ * las fotos se guardan en R2 atadas a ese turno. Si guardarlas falla, el coche
+ * ya está desvinculado: se dice, para avisar a Tráfico.
+ */
+async function desvincularConFotos(persona, ficheros = {}) {
+  const faltan = FOTOS.filter(f => !(ficheros[f.campo] && ficheros[f.campo][0] && ficheros[f.campo][0].size));
+  if (faltan.length) {
+    return { ok: false, tono: 'aviso', titulo: 'Faltan fotos', texto: [
+      `Para desvincular hacen falta las cinco fotos. Te falta${faltan.length === 1 ? '' : 'n'}: ${faltan.map(f => f.etiqueta.toLowerCase()).join(', ')}.`] };
+  }
+  const noFoto = FOTOS.filter(f => !/^image\//.test(ficheros[f.campo][0].mimetype || ''));
+  if (noFoto.length) {
+    return { ok: false, tono: 'aviso', titulo: 'Eso no es una foto', texto: [`Revisa: ${noFoto.map(f => f.etiqueta.toLowerCase()).join(', ')}.`] };
+  }
+  const q = await quien(persona);
+  if (q.error) return q.error;
+  const antes = await fichaje.estado(q.telefono);
+  const filaId = antes.abierto && antes.turno ? antes.turno.filaId : null;
+  const r = await desvincular(persona);
+  if (!r.ok || !filaId) return r;
+  let guardadas = 0;
+  for (let i = 0; i < FOTOS.length; i++) {
+    const f = ficheros[FOTOS[i].campo][0];
+    try {
+      await adjuntos.subirDelSistema({
+        tipo: TIPO_FOTOS, duenoId: String(filaId), nombre: `${i + 1}-${FOTOS[i].campo.replace('foto_', '')}.jpg`,
+        mime: f.mimetype, cuerpo: Readable.from(f.buffer), firmante: null, creadoPor: null,
+        origen: `portal · ficha ${persona.id}`, tope: TOPE_FOTO,
+      });
+      guardadas++;
+    } catch (err) { console.error(`❌ [Portal] foto ${FOTOS[i].campo} del turno ${filaId}:`, err.message); }
+  }
+  if (guardadas < FOTOS.length) {
+    return { ...r, tono: 'aviso', texto: [...r.texto,
+      `Se han guardado ${guardadas} de las 5 fotos: avisa a Tráfico de que el coche se ha desvinculado sin todas las fotos.`] };
+  }
+  return { ...r, texto: [...r.texto, 'Fotos guardadas: el siguiente conductor verá cómo dejaste el coche.'] };
+}
+
+module.exports = { estado, vincular, moverPuertas, desvincular, desvincularConFotos, enVivo, fotosAnteriores, foto,
+  matriculaDeHoy, FOTOS, TOPE_FOTO, _limpiar: limpiar };

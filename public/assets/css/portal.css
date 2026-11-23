@@ -23,6 +23,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: rgb(var(--fondo)); color: rgb(var(--texto));
@@ -253,6 +254,45 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .coche-desv, .coche-vincular { display: flex; flex-direction: column; gap: .75rem; }
 .coche-vincular .campo input { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; text-align: center; font-size: 1.5rem; }
 .coche-pie { text-align: center; padding: 0 .5rem; }
+
+/* ── En vivo y las cinco fotos (23/11/2026) ──────────────────────────────── */
+.vivo { display: flex; flex-direction: column; gap: .75rem; }
+.vivo-cab { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.vivo-etq { font-size: .8125rem; font-weight: 600; color: rgb(var(--suave)); }
+.vivo-placa { font-size: 1.35rem; font-weight: 800; letter-spacing: .08em; }
+.vivo-boton { gap: .45rem; }
+.vivo-boton svg { width: 20px; height: 20px; }
+.vivo-cuerpo { display: flex; flex-direction: column; gap: .6rem; }
+.vivo-estado { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .15rem; font-size: .9375rem; }
+.vivo-principal { font-weight: 700; font-size: 1.05rem; display: inline-flex; align-items: center; gap: .45rem; }
+.vivo-principal::before { content: ''; width: .6rem; height: .6rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgb(0 0 0 / .06); }
+.vivo-ok { color: rgb(var(--verde)); }
+.vivo-aviso { color: rgb(var(--aviso)); }
+.vivo-gris { color: rgb(var(--suave)); }
+.vivo-mapa { height: 260px; border-radius: 12px; overflow: hidden; border: 1px solid rgb(var(--linea)); background: rgb(var(--sup2)); }
+.vivo-marca { width: 20px; height: 20px; border-radius: 50%; background: rgb(var(--suave)); border: 3px solid #fff; box-shadow: 0 1px 4px rgb(16 24 40 / .35); }
+.vivo-marca--rueda { background: rgb(var(--verde)); box-shadow: 0 0 0 6px rgb(var(--verde) / .2), 0 1px 4px rgb(16 24 40 / .35); }
+
+.fotos-form { display: flex; flex-direction: column; gap: .5rem; }
+.foto-campo { display: flex; align-items: center; gap: .75rem; padding: .7rem .8rem; border: 1px dashed rgb(var(--linea)); border-radius: 12px;
+  background: rgb(var(--sup)); cursor: pointer; position: relative; min-height: 56px; }
+.foto-campo:focus-within { outline: 2px solid rgb(var(--acento)); outline-offset: 2px; }
+.foto-campo input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.foto-num { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font-size: .8125rem; font-weight: 700;
+  background: rgb(var(--sup2)); color: rgb(var(--suave)); }
+.foto-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.foto-texto b { font-size: .9375rem; font-weight: 600; }
+.foto-texto small { font-size: .8125rem; color: rgb(var(--suave)); }
+.foto-mini { flex: none; width: 48px; height: 48px; border-radius: 8px; object-fit: cover; }
+.foto-hecha { border-style: solid; border-color: rgb(var(--verde) / .5); }
+.foto-hecha .foto-num { background: rgb(var(--verde)); color: #fff; }
+
+.previas { display: flex; flex-direction: column; gap: .6rem; }
+.previas-fotos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; }
+.previas-fotos li { display: flex; flex-direction: column; gap: .25rem; font-size: .8125rem; color: rgb(var(--suave)); }
+.previas-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid rgb(var(--linea)); background: rgb(var(--sup2)); display: block; }
+.previas-vacio { font-size: .9375rem; padding: .8rem .9rem; border-radius: 10px; background: rgb(var(--sup2)); color: rgb(var(--suave)); }
+@media (min-width: 640px) { .previas-fotos { grid-template-columns: repeat(3, 1fr); } }
 
 /* ── Mi efectivo en dos columnas (20/11/2026) ────────────────────────────── */
 .efe-resumen { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .35rem; padding-top: 1.25rem; padding-bottom: 1.25rem; }

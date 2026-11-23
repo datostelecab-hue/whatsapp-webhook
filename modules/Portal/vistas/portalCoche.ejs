@@ -3,7 +3,14 @@
   abrir y cerrar las puertas o desvincularlo. Lo mismo que el bot de WhatsApp,
   con las mismas reglas (modules/Portal/portal.coche.js). Formularios normales:
   funciona sin JavaScript y con poca cobertura.
+
+  23/11/2026: «Ver ubicación en vivo» del coche que le toca (el vinculado o el
+  de hoy), las fotos con las que se dejó en el turno anterior y, para
+  desvincular, las CINCO fotos obligatorias. El mapa y el aligerar las fotos
+  antes de subirlas van con JavaScript (/assets/js/portal/coche.js); sin él, el
+  formulario funciona igual.
 %>
+<% const hoyMat = (previas && previas.matricula) || (coche.vinculado ? coche.matricula : null); %>
 <h1>Mi coche</h1>
 
 <% if (resultado) { %>
@@ -11,6 +18,29 @@
   <p class="resultado-tit"><%= resultado.titulo %></p>
   <% (resultado.texto || []).forEach(function (t) { %><p><%= t %></p><% }) %>
 </div>
+<% } %>
+
+<% if (coche.puede && hoyMat) { %>
+<section class="caja" aria-labelledby="t-vivo">
+  <div class="caja-in vivo" data-vivo>
+    <div class="vivo-cab">
+      <div>
+        <p class="vivo-etq" id="t-vivo"><%= coche.vinculado ? 'Tu coche' : 'Tu coche de hoy' %></p>
+        <p class="vivo-placa"><%= hoyMat %></p>
+      </div>
+      <button class="boton boton-claro vivo-boton" type="button" data-vivo-abrir aria-expanded="false" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>
+        Ver ubicación en vivo
+      </button>
+    </div>
+    <div class="vivo-cuerpo" data-vivo-cuerpo hidden>
+      <ul class="vivo-estado" data-vivo-estado aria-live="polite"><li>Cargando…</li></ul>
+      <div class="vivo-mapa" data-vivo-mapa role="img" aria-label="Mapa con la posición del coche"></div>
+      <p class="suave peq" data-vivo-pie></p>
+    </div>
+    <noscript><p class="suave peq">Para ver el mapa hace falta activar JavaScript en el navegador.</p></noscript>
+  </div>
+</section>
 <% } %>
 
 <% if (!coche.puede) { %>
@@ -50,8 +80,18 @@
   <div class="caja-in coche-desv">
     <h2 id="t-desv">¿Has terminado con el coche?</h2>
     <p class="suave peq">Al desvincularlo se bloquea el motor. Antes, <b>aparca y apaga el coche</b>: en marcha o con el contacto puesto no se desvincula.</p>
-    <form method="post" action="/coche/desvincular">
-      <button class="boton boton-peligro" type="submit">Desvincular vehículo</button>
+    <p class="suave peq">Haz las <b>cinco fotos</b> de cómo lo dejas: son obligatorias, y el siguiente conductor las verá.</p>
+    <form method="post" action="/coche/desvincular" enctype="multipart/form-data" class="fotos-form" data-fotos-form>
+      <% fotos.forEach(function (f, i) { %>
+      <label class="foto-campo" for="<%= f.campo %>">
+        <span class="foto-num"><%= i + 1 %></span>
+        <span class="foto-texto"><b><%= f.etiqueta %></b><small data-foto-estado>Pulsa para hacer la foto</small></span>
+        <img class="foto-mini" alt="" data-foto-mini hidden>
+        <input id="<%= f.campo %>" name="<%= f.campo %>" type="file" accept="image/*" capture="environment" required>
+      </label>
+      <% }) %>
+      <button class="boton boton-peligro" type="submit" data-fotos-enviar>Desvincular vehículo</button>
+      <p class="suave peq" data-fotos-aviso hidden></p>
     </form>
   </div>
 </section>
@@ -70,4 +110,28 @@
 </section>
 <% } %>
 
+<% if (coche.puede && previas && previas.turno) { %>
+<section class="caja" aria-labelledby="t-previas">
+  <div class="caja-in previas">
+    <h2 id="t-previas">Cómo dejaron el <%= previas.matricula %></h2>
+    <p class="suave peq">El turno anterior lo terminó <%= previas.turno.nombre || 'otra persona' %> el <%= previas.turno.fin %>.</p>
+    <% if (previas.fotos.length) { %>
+    <ul class="previas-fotos">
+      <% previas.fotos.forEach(function (f) { %>
+      <li><a href="/coche/foto/<%= f.id %>" target="_blank" rel="noopener"><img src="/coche/foto/<%= f.id %>" alt="<%= f.etiqueta %>" loading="lazy"></a><span><%= f.etiqueta %></span></li>
+      <% }) %>
+    </ul>
+    <% } else { %>
+    <p class="previas-vacio">Próximamente aquí estarán las fotos con las que se dejó el coche. Este turno se terminó por WhatsApp, que todavía no las pide.</p>
+    <% } %>
+  </div>
+</section>
+<% } %>
+
 <p class="suave peq coche-pie">Es el mismo coche que en WhatsApp: si lo vinculas aquí, el bot también lo sabe, y al revés.</p>
+
+<% if (coche.puede && hoyMat) { %>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.css">
+<script nonce="<%= nonce %>" src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.js" defer></script>
+<% } %>
+<script nonce="<%= nonce %>" src="<%= est('/assets/js/portal/coche.js') %>" defer></script>
