@@ -8,6 +8,14 @@
 //
 // La orden va a Mapon a través del Apps Script (`ejecutar_comando`), que hace de
 // relé: no es una hoja, es el único sitio con las credenciales de comandos.
+//
+// MAPON DIRECTO (23/11/2026, Camilo: «pásalo a Mapon directo, no usemos más
+// AppScript»). Con PUERTAS_MAPON_DIRECTO=1 en el entorno, la orden va del
+// servidor a Mapon (`unit_commands/execute`, con open_doors/close_doors del
+// catálogo de esa unidad), como el motor: sin Google por medio, sin una
+// dirección pública que abra coches. Va detrás del interruptor hasta probarlo en
+// un coche de verdad: en agosto Mapon contestaba «ok» a estos comandos sin que
+// el coche hiciera nada (docs/API_MAPON.md). Probado, se quita el Apps Script.
 
 const otraSede = require('./otraSede');
 const { SEDE_FLOTA } = require('./nucleo');
@@ -31,6 +39,27 @@ async function callAppsScript(accion, params = {}) {
     console.error(`❌ Apps Script "${accion}" no devolvió JSON (HTTP ${response.status}). Inicio de la respuesta: ${texto.slice(0, 300).replace(/\s+/g, ' ')}`);
     return { status: 'error', msg: 'El servicio de comandos no respondió (revisa el Apps Script)', _sinJson: true };
   }
+}
+
+const DIRECTO = () => process.env.PUERTAS_MAPON_DIRECTO === '1';
+
+/** La orden por Mapon directo: la unidad del coche y el comando de su catálogo. */
+async function porMapon({ matricula, unitId, comando }) {
+  const mapon = require('./mapon');
+  let unidad = unitId || null;
+  if (!unidad) {
+    const u = await mapon.unidadPorMatricula(matricula);
+    unidad = u ? u.unitId : null;
+  }
+  if (!unidad) return { status: 'error', msg: `No encuentro el ${matricula} en Mapon` };
+  console.log(`📡 Mapon directo: ${comando} → ${matricula} (unidad ${unidad})`);
+  const r = await mapon.ejecutarComandoSeguro({ unitId: unidad, command: comando });
+  if (!r.ok) {
+    return { status: 'error', msg: r.motivo === 'comando-no-disponible'
+      ? `Este coche no admite «${comando}» en Mapon (admite: ${(r.disponibles || []).join(', ') || 'nada'})`
+      : 'Mapon no aceptó la orden' };
+  }
+  return { status: 'ok', unidad };
 }
 
 /**
@@ -69,9 +98,12 @@ async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, 
     } catch (e) { result = { status: 'error', msg: 'No se puede comprobar de qué sede es el coche' }; }
   }
   if (!result) {
-    console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${matricula} (${nombre || telefono})`);
-    try { result = await callAppsScript('ejecutar_comando', { matricula, comando }); }
-    catch (e) { result = { status: 'error', msg: e.message }; }
+    console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${matricula} (${nombre || telefono})${DIRECTO() ? ' · Mapon directo' : ''}`);
+    try {
+      result = DIRECTO()
+        ? await porMapon({ matricula, unitId, comando })
+        : await callAppsScript('ejecutar_comando', { matricula, comando });
+    } catch (e) { result = { status: 'error', msg: e.message }; }
   }
   const ok = result.status === 'ok';
 
