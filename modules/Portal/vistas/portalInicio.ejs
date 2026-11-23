@@ -23,8 +23,8 @@
 <%- include('portalTarjeta', { id: 't-coche', href: '/coche', icono: 'coche', titulo: 'Tu coche', ir: coche.vinculado ? 'Puertas y desvincular' : 'Vincular' }) %>
   <div class="caja-in">
   <% if (coche.vinculado) { %>
-    <p class="coche-resumen"><span class="matricula"><%= coche.matricula %></span> <span>Vinculado desde <%= String(coche.desde).includes('/') ? 'el ' : 'las ' %><%= coche.desde %></span></p>
-    <p class="suave peq">Desde aquí abres, cierras y lo desvinculas al terminar.</p>
+    <p class="coche-resumen"><span class="matricula"><%= coche.matricula %></span> <span>Vinculado desde el <%= String(coche.desde).replace(', ', ' a las ') %></span></p>
+    <p class="suave peq">En Coche abres y cierras las puertas, y lo desvinculas al terminar.</p>
   <% } else { %>
     <p>No tienes ningún coche vinculado.</p>
     <p class="suave peq">Vincúlalo al empezar el turno: se desbloquea el motor.</p>
@@ -35,7 +35,7 @@
 
 <% if (dinero) { const d = dinero, mes = d.mes; %>
 <section class="caja" aria-labelledby="t-dinero">
-  <div class="caja-tit"><span class="caja-ico"><%- include('portalIcono', { n: 'dinero' }) %></span><h2 id="t-dinero"><%= d.ett ? 'Tus propinas y peajes de ' + mes.nombre : 'Tu facturación de ' + mes.nombre %></h2></div>
+  <div class="caja-tit caja-tit-ico"><span class="caja-ico"><%- include('portalIcono', { n: 'dinero' }) %></span><h2 id="t-dinero"><%= d.ett ? 'Tus propinas y peajes de ' + mes.nombre : 'Tu facturación de ' + mes.nombre %></h2></div>
   <div class="caja-in dinero">
   <% if (!d.ett && d.objetivo) {
        const pct = Math.max(0, Math.min(100, mes.neto / d.objetivo * 100));

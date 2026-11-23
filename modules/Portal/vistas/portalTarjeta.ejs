@@ -3,8 +3,8 @@
     y lo cierra. Toda la tarjeta pulsa: el enlace del título se estira por encima (::after), y los
     enlaces de dentro (un teléfono) siguen funcionando por encima de él. %>
 <section class="caja caja-ir" aria-labelledby="<%= id %>">
-  <div class="caja-tit">
+  <div class="caja-tit caja-tit-ico">
     <span class="caja-ico"><%- include('portalIcono', { n: icono }) %></span>
-    <h2 id="<%= id %>"><a class="caja-enlace" href="<%= href %>"><%= titulo %></a></h2>
-    <span class="caja-ir-texto"><%= ir %><%- include('portalIcono', { n: 'seguir' }) %></span>
+    <h2 id="<%= id %>"><a class="caja-enlace" href="<%= href %>" aria-describedby="<%= id %>-ir"><%= titulo %></a></h2>
+    <span class="caja-ir-texto" id="<%= id %>-ir"><%= ir %><%- include('portalIcono', { n: 'seguir' }) %></span>
   </div>

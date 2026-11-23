@@ -114,8 +114,12 @@ Hecho y commiteado (probado en local a 375 px):
 
 Falta (mañana):
 
-1. Aplicar lo que diga el agente revisor (lanzado a las 17:5x; su informe queda en la sesión).
-2. Probar a 320 px y en las pantallas bajas.
+El agente revisor (23/11, 17:52) ya está aplicado en lo rápido: el título de la tarjeta a su tamaño (se montaba sobre «Ver el detalle» a 390 px), más zona de toque en los teléfonos, sin rectángulo azul al tocar en Android, sin `:has()` (móviles viejos), la etiqueta del lector de pantalla y los textos del coche. Queda de lo suyo:
+
+1. Una sola forma de decir «vinculado desde»: hoy «desde las 06:02», otro día «desde el 22/11 a las 23:40», igual en el inicio y en Coche (ahora el inicio dice siempre «el 20/11 a las 09:06»).
+2. Si ya pulsó «Entregar coche», que el resumen lo diga; y, con coche vinculado, poner su tarjeta la primera.
+3. Una prueba de `inicio()`: si el coche no se puede leer, la portada sale igual.
+4. Mirar `:active` en un iPhone de verdad (a veces no se activa sin `ontouchstart`), y probar a 320 px y en las pantallas bajas.
 3. **El vídeo explicativo** para los conductores de todo lo que tiene la app: **al final, cuando ya se pueda lanzar** (Camilo, 23/11). Con voz generada y montaje en local, como los vídeos anteriores.
 
 ## Para subirlo a producción
