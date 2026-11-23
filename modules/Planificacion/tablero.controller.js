@@ -198,6 +198,16 @@ router.post('/api/eventos/:id/restaurar', responde(async req =>
 router.get('/api/eventos/mensaje', responde(async req =>
   ({ mensaje: await tablero.mensajeDeEvento(req.query.telefono) })));
 
+// ── Plazas reservadas (db/277) ─────────────────────────────────────────────
+// Reservar y quitar son POST: los cierra `controlAcceso` con la llave de editar.
+router.get('/api/reservas/candidatos', responde(() => tablero.candidatosReserva()));
+router.post('/api/reservas', responde(async req => {
+  const b = req.body || {};
+  return tablero.reservarPlaza({ plazaId: b.plazaId, conductorId: b.conductorId, nota: b.nota }, b.dia, await quien(req));
+}));
+router.post('/api/reservas/:id/quitar', responde(async req =>
+  tablero.quitarReserva(req.params.id, (req.body || {}).dia, await quien(req))));
+
 // ── Incorporaciones ────────────────────────────────────────────────────────
 // La alerta que no se va hasta aceptarla o rechazarla. Sustituye al módulo
 // /incorporaciones.

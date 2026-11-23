@@ -50,7 +50,7 @@
   <div class="caja-in coche-desv">
     <h2 id="t-desv">¿Has terminado con el coche?</h2>
     <p class="suave peq">Al desvincularlo se bloquea el motor. Antes, <b>aparca y apaga el coche</b>: en marcha o con el contacto puesto no se desvincula.</p>
-    <form method="post" action="/coche/desvincular" onsubmit="return confirm('¿Desvincular el <%= coche.matricula %>? Se bloqueará el motor.');">
+    <form method="post" action="/coche/desvincular">
       <button class="boton boton-peligro" type="submit">Desvincular vehículo</button>
     </form>
   </div>

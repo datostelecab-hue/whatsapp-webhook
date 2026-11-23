@@ -104,7 +104,7 @@
     div.className = 'min-w-0';
     const notas = [];
     if (p.futuro) notas.push(`<span class="text-telecab-gold"><i class="fa-solid fa-arrow-right-long"></i> ${esc((p.futuro.nombre || '').split(' ')[0])} llega ${esc(isoAes(p.futuro.desde).slice(0, 5))}</span>`);
-    if (p.vacante) notas.push(`<span class="${p.vacante.estado === 'proceso' ? 'text-telecab-violet' : 'text-sky-400'}" title="${esc('Vacante ' + p.vacante.codigo + (p.vacante.candidato ? ' · ' + p.vacante.candidato : ' · sin candidato todavía'))}"><i class="fa-solid fa-briefcase text-[9px]"></i> ${esc(p.vacante.codigo)}</span>`);
+    if (p.reserva) notas.push(`<span class="text-sky-400" title="${esc('Plaza reservada · ' + (p.reserva.nombre || 'Sin nombre') + (p.reserva.llega ? ' · llega ' + isoAes(p.reserva.llega) : ''))}"><i class="fa-solid fa-bookmark text-[9px]"></i> ${esc(p.reserva.nombre ? p.reserva.nombre.split(' ')[0] : 'Reservada')}</span>`);
 
     if (p.id) {
       const av = avisoAusencia(persona);
@@ -133,12 +133,12 @@
     } else {
       // Un hueco salta a la vista: el de fijo en rojo, el de CT en naranja, el que
       // ya está prometido en una vacante en azul (hay que esperarlo, no buscarlo).
-      const cls = p.vacante ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
+      const cls = p.reserva ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
         : esFijo ? 'border-telecab-red/60 bg-telecab-red/10 text-telecab-red'
           : 'border-telecab-warn/60 bg-telecab-warn/10 text-telecab-warn';
       div.innerHTML = `
         <button type="button" data-asignar class="w-full text-left px-2 py-1 rounded-lg border border-dashed text-xs font-semibold transition hover:brightness-110 ${cls}">
-          <span class="text-[10px] w-7 inline-block">${rol}</span>${p.vacante ? 'En vacante' : 'Hueco'}
+          <span class="text-[10px] w-7 inline-block">${rol}</span>${p.reserva ? 'Reservada' : 'Hueco'}
         </button>
         ${notas.length ? `<span class="flex flex-wrap gap-x-2 pl-[2.125rem] mt-0.5 text-[10px] leading-tight text-telecab-muted">${notas.join('')}</span>` : ''}`;
     }

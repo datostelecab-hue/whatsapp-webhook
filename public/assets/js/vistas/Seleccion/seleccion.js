@@ -9,7 +9,6 @@
   const opcionesJornadaContratar = () => (CAT.jornadas || []).flatMap(x => Number(x.horas) === 40
     ? [{ valor: '40x5', texto: '40x5' }, { valor: '40x4', texto: '40x4' }]
     : [{ valor: String(Number(x.horas)), texto: x.etiqueta }]);
-  const VACANTES = DEL_SERVIDOR.vacantes;
   const DOCS = DEL_SERVIDOR.documentos;
   const { fecha, hace, esc } = Listado.fmt;
 
@@ -141,16 +140,6 @@
       canal: (CAT.canales || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })),
       turno_id: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })),
       base_zona_id: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })),
-      // La vacante se elige de la LISTA de las abiertas, y el texto dice todo lo
-      // que hace falta para no elegir a ciegas: puesto y jornada, zona,
-      // matrículas, libranza y, si es un recambio, a quién sustituye.
-      vacante_id: VACANTES.map(x => ({
-        valor: x.id,
-        texto: [x.puesto, x.zonas, x.matriculas,
-          x.libranzas ? 'libra ' + x.libranzas : '',
-          x.motivo === 'recambio' && x.sustituye ? '↔ releva a ' + x.sustituye : '',
-        ].filter(Boolean).join(' · '),
-      })),
     };
 
     // UN SÍ O UN NO SE ELIGE, NO SE TECLEA. El diálogo no conoce el tipo
@@ -608,7 +597,6 @@
             { etiqueta: 'Etapa', valor: d => d.etapa_etiqueta },
             { etiqueta: 'Canal', valor: d => d.canal_etiqueta },
             { etiqueta: 'Responsable', valor: d => d.responsable },
-            { etiqueta: 'Vacante', valor: d => d.vacante_ref, ancho: 'sm:col-span-2' },
             { etiqueta: 'Turno', valor: d => d.turno },
             { etiqueta: 'Zona', valor: d => d.zona },
             { etiqueta: 'Inicio previsto', valor: d => fecha(d.inicio_previsto) },

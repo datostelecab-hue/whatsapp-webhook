@@ -253,6 +253,13 @@ const restaurarEvento = async (id, b, quien) => conTablero(
  */
 const mensajeDeEvento = telefono => require('./turnos.service').mensajeSiHayEvento({ phone: telefono });
 
+// ── Plazas reservadas (db/277, 23/11/2026) ─────────────────────────────────
+// Sustituyen a las vacantes. La lógica, en reservas.service.js.
+const reservas = () => require('./reservas.service');
+const candidatosReserva = () => reservas().candidatos();
+const reservarPlaza = async (datos, dia, quien) => conTablero(await reservas().reservar(datos, quien), dia);
+const quitarReserva = async (id, dia, quien) => conTablero(await reservas().quitar(id, quien), dia);
+
 // ── Incorporaciones ────────────────────────────────────────────────────────
 // La alerta que no se va hasta aceptarla o rechazarla. Nace al dar de alta con
 // vacante (ETT). Aceptar = auto-colocar en las plazas de la vacante, todo o
@@ -422,6 +429,7 @@ module.exports = {
   crearZona, editarZona, cambiarZonaCuadrante,
   eventoEstado, crearEvento, editarEvento, cancelarEvento, restaurarEvento, mensajeDeEvento,
   incorporaciones, colocarIncorporacion, aceptarIncorporacion, rechazarIncorporacion,
+  candidatosReserva, reservarPlaza, quitarReserva,
   guardarBarrio,
   fichajeEstado, fichajeConductor,
   // La puerta

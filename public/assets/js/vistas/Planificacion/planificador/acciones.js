@@ -59,6 +59,61 @@
       <table class="w-full text-sm"><tbody>${plan.filas.map(fila).join('')}</tbody></table>`;
   }
 
+  // ── Reservar una plaza (db/277, 23/11/2026) ──────────────────────────────
+  // En un hueco: para alguien en proceso de alta (ETT o propia) o «Sin nombre».
+  // Con persona y fecha, el servidor la planifica ya desde ese día.
+  async function reservarPlaza(coche, p, col) {
+    let r;
+    try {
+      r = await (await fetchPlan('/planificador-v2/api/reservas/candidatos')).json();
+    } catch (_) { r = null; }
+    if (!r || r.status === 'error') { await Dialogo.aviso({ titulo: 'No se ha podido', texto: (r && r.msg) || 'No se ha podido cargar quién está en proceso de alta.', tono: 'error' }); return; }
+    const libres = (r.personas || []).filter(x => !x.reservada);
+    const v = await Dialogo.formulario(`Reservar plaza · ${coche.matricula} · ${p.etiqueta || col.titulo || ''}`, [
+      { id: 'quien', etiqueta: 'Para quién', tipo: 'lista', obligatorio: true, valor: '',
+        opciones: [{ valor: 'sin', texto: 'Sin nombre (aún no hay nadie)' },
+          ...libres.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')).map(x => ({ valor: String(x.id),
+            texto: `${x.nombre} · ${x.tipo === 'ett' ? 'ETT' : 'propia'} · ${x.llega ? 'llega ' + isoAes(x.llega) : 'sin fecha'} · ${x.estado}` }))],
+        ayuda: 'Quien está en proceso de alta. Con fecha de alta, se le planifica ya desde ese día.' },
+      { id: 'nota', etiqueta: 'Nota', tipo: 'texto', max: 500, marcador: 'Opcional' },
+    ], { textoBoton: 'Reservar', nota: 'Se puede planificar a alguien encima. Si la persona tiene fecha, quien se ponga acaba la víspera de su llegada.' });
+    if (!v) return;
+    try {
+      const resp = await fetchPlan('/planificador-v2/api/reservas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dia: DIA, plazaId: p.plazaId, conductorId: v.quien === 'sin' ? null : Number(v.quien), nota: v.nota || '' }),
+      });
+      const j = await resp.json();
+      if (!resp.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo reservar');
+      if (j.tablero) aplicar(j.tablero);
+      if (j.aviso) await Dialogo.aviso({ titulo: 'Plaza reservada', texto: j.aviso, tono: 'aviso' });
+      else Dialogo.hecho(j.planificadaDesde ? `Plaza reservada · planificada desde el ${isoAes(j.planificadaDesde)}` : 'Plaza reservada');
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se ha reservado', texto: e.message, tono: 'error' });
+    }
+  }
+
+  async function quitarReserva(coche, p) {
+    const res = p.reserva;
+    const si = await Dialogo.confirmar({ titulo: `¿Quitar la reserva de ${coche.matricula}?`,
+      texto: res && res.planificadaDesde
+        ? `${res.nombre} estaba planificado desde el ${isoAes(res.planificadaDesde)}: si aún no ha empezado, se le quita también. A quien estuviera antes no se le devuelve la plaza sola.`
+        : 'La plaza deja de estar reservada.',
+      si: 'Quitar', no: 'Volver' });
+    if (!si) return;
+    try {
+      const resp = await fetchPlan(`/planificador-v2/api/reservas/${res.id}/quitar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dia: DIA }),
+      });
+      const j = await resp.json();
+      if (!resp.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo quitar');
+      if (j.tablero) aplicar(j.tablero);
+      Dialogo.hecho('Reserva quitada');
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se ha quitado', texto: e.message, tono: 'error' });
+    }
+  }
+
   // Colocar / cambiar / quitar a alguien en un puesto.
   //
   // Colocar ya no es "elige a alguien y listo". Antes de guardar hay que saber

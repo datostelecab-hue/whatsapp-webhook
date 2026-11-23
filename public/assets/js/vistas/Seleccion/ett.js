@@ -9,8 +9,6 @@
   const opcionesJornadaContratar = () => (CAT.jornadas || []).flatMap(x => Number(x.horas) === 40
     ? [{ valor: '40x5', texto: '40x5' }, { valor: '40x4', texto: '40x4' }]
     : [{ valor: String(Number(x.horas)), texto: x.etiqueta }]);
-  // Los contratos del alta rápida, en horas: los decide el servidor (ett.service).
-  const CONTRATOS = DEL_SERVIDOR.contratos;
   const { fecha, fechaHora, esc } = Listado.fmt;
 
   async function api(url, opciones) {
@@ -324,92 +322,36 @@
    * dónde lo dice el catálogo, así que esta pantalla no elige ningún estado:
    * manda el motivo y ya está.
    */
-  // Las vacantes abiertas del generador, para elegirla al dar de alta: la
-  // persona nace con destino y a Tráfico le llega la alerta de incorporación.
-  // Hoy en dd/mm/aaaa, que es como trabajan los campos de fecha de la casa.
-  function hoyES() {
-    const d = new Date();
-    const p = n => String(n).padStart(2, '0');
-    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
-  }
-
-  async function vacantesAbiertas() {
-    try {
-      const r = await (await fetch('/ett/api/vacantes-abiertas')).json();
-      return (r.vacantes || []).map(v => ({ valor: v.id, texto: v.texto }));
-    } catch (_) { return []; }
-  }
-
-  // Las casillas de la dirección, en el orden de Selección y de la ficha.
-  const DIRECCION = ['via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
-    'codigo_postal', 'localidad', 'provincia'];
-
-  // Alta rápida: teléfono + nombre → alta ETT directa + enlace BOLT por teléfono.
-  // Pasa directa al planificador (no entra en la bolsa de candidatos).
-  async function altaRapida() {
-    const vacs = await vacantesAbiertas();
-    const v = await Dialogo.formulario('Alta rápida ETT', [
-      { id: 'nombre', etiqueta: 'Nombre y apellidos', tipo: 'texto', obligatorio: true },
-      { id: 'telefono', etiqueta: 'Teléfono', tipo: 'texto', obligatorio: true,
-        ayuda: 'Se enlaza solo con su cuenta de BOLT por este número.' },
-      // MANDA ESTA FECHA, no el día en que se rellena el formulario: es la del
-      // contrato y la del día desde el que ocupa el coche. A quien empieza el
-      // lunes se le abría el contrato el jueves anterior.
-      { id: 'alta', etiqueta: 'Fecha prevista de alta', tipo: 'fecha', valor: hoyES(),
-        ayuda: 'Desde este día cuenta su contrato y ocupa la plaza de la vacante.' },
-      // JORNADA Y CONTRATO (14/10/2026). Sin turno nadie se puede planificar, y
-      // hasta hoy el alta rápida no lo preguntaba. La jornada se le pone en la
-      // ficha desde la fecha de alta; con vacante, si no se marca, sale de ella.
-      { id: 'turnoId', etiqueta: 'Jornada', tipo: 'lista', obligatorio: true, obligatorioSalvo: 'vacanteId',
-        opciones: (CAT.turnos || []).filter(x => x.asignable).map(x => ({ valor: x.id, texto: x.etiqueta })),
-        ayuda: 'Se le pone sola en su ficha y en el planificador. Con vacante, si no la marcas, es la de la vacante.' },
-      { id: 'jornadaHoras', etiqueta: 'Contrato', tipo: 'lista', obligatorio: true,
-        opciones: CONTRATOS },
-      { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
-        ayuda: 'Si eliges una, OCUPA esas plazas desde la fecha de arriba, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
-      // LA DIRECCIÓN EXACTA (15/10/2026), en su propio bloque y despiezada como
-      // en Selección y en la ficha. Las etiquetas y lo que cabe en cada casilla
-      // vienen del servidor (CAT.campos), no de una lista de aquí.
-      { id: 'barrio', etiqueta: 'Zona (barrio)', tipo: 'texto', grupo: 'Dirección',
-        ayuda: 'La zona del conductor: Aluche, San Blas… Sale en el planificador, debajo del teléfono.' },
-      ...DIRECCION.map(id => (CAT.campos || []).find(c => c.id === id)).filter(Boolean)
-        .map(c => ({ id: c.id, etiqueta: c.etiqueta || c.id, tipo: 'texto', grupo: 'Dirección', max: c.max, ayuda: c.ayuda })),
+  // ── ALTA A MANO (23/11/2026) ─────────────────────────────────────────────
+  // Camilo: «quita el "Alta rápida", eso ya no se puede, toca que se deje
+  // solamente lo de "Pegar tabla del correo" y crear uno que diga "Alta a mano",
+  // en donde se tenga que inputar todo obligatoriamente». Es una fila de la
+  // tabla del correo escrita a mano: los datos de la persona, todos
+  // obligatorios. La jornada, el turno y la entrevista, después, como con la
+  // tabla. Lo comprueba el servidor (DNI/NIE con su letra, teléfono, correo).
+  async function altaAMano() {
+    const v = await Dialogo.formulario('Alta a mano', [
+      { id: 'nombre', etiqueta: 'Nombre', obligatorio: true, max: 80, grupo: 'La persona' },
+      { id: 'apellidos', etiqueta: 'Apellidos', obligatorio: true, max: 120 },
+      { id: 'dni', etiqueta: 'DNI o NIE', obligatorio: true, max: 12, marcador: '12345678Z' },
+      { id: 'nacimiento', etiqueta: 'Fecha de nacimiento', tipo: 'fecha', obligatorio: true },
+      { id: 'telefono', etiqueta: 'Teléfono', obligatorio: true, max: 16, marcador: '612345678' },
+      { id: 'correo', etiqueta: 'Correo', obligatorio: true, max: 120, marcador: 'nombre@correo.com' },
+      { id: 'direccion', etiqueta: 'Dirección', obligatorio: true, max: 200, marcador: 'Calle, número, piso', grupo: 'Dónde vive' },
+      { id: 'cp', etiqueta: 'Código postal', obligatorio: true, max: 5, marcador: '28001' },
     ], { columnas: 2, ancho: 'max-w-2xl', textoBoton: 'Dar de alta',
-         // SOLO PARA LA ETT (13/10/2026): Aaron Borja venía de InfoJobs con
-         // contrato propio y se le dio de alta por aquí, y su contrato salió de ETT.
-         nota: 'Solo para quien entra por la ETT: el contrato se abre SIEMPRE como ETT (GiGroup). '
-             + 'Si viene por InfoJobs u otro canal con contrato propio, dale de alta desde Selección. '
-             + 'Crea la ficha con su jornada y la pasa directa al planificador, como si ya estuviera contratado. '
-             + 'Con vacante, la plaza queda ocupada en el acto; sin ella, a Tráfico le llega igual '
-             + 'el aviso de que hay alguien nuevo esperando coche.' });
-    if (!v || !v.nombre || !v.telefono) return;
-    const r = await hacer(() => enviar('/ett/api/alta-rapida', 'POST', v), false);
+         nota: 'Entra en la bolsa como una fila de la tabla del correo. La jornada, el turno y la entrevista se ponen después.' });
+    if (!v) return;
+    const r = await hacer(() => enviar('/ett/api/alta-a-mano', 'POST', v), false);
     if (!r) return;
-    let bolt;
-    if (r.faltaBolt) bolt = '<p class="text-sm mt-2 text-telecab-warn"><b>Sin cuenta de BOLT</b> con ese número: hay que darle de alta en BOLT.</p>';
-    else if (r.boltEnlazada) bolt = '<p class="text-sm mt-2">Su cuenta de BOLT queda <b>enlazada</b> a la ficha.</p>';
-    else bolt = '<p class="text-sm mt-2">Cuenta de BOLT localizada.</p>';
-    const puesto = (r.incorporacion && r.incorporacion.colocada && r.incorporacion.colocada.plazas)
-      ? '<p class="text-sm mt-2 text-telecab-green"><b>Ya ocupa '
-        + r.incorporacion.colocada.plazas + ' plaza(s)</b> desde el '
-        + esc(fecha(r.incorporacion.colocada.desde)) + '.'
-        + (r.incorporacion.colocada.relevados
-            ? ' Se cierra la asignación de ' + r.incorporacion.colocada.relevados + ' persona(s) la víspera.' : '')
-        + '</p>'
-      : '';
-    const avisos = (r.avisos && r.avisos.length)
-      ? '<ul class="text-sm mt-2 text-telecab-warn" style="list-style:disc;padding-left:1.25rem;">'
-        + r.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>' : '';
-    const jornada = r.jornada
-      ? '<p class="text-sm mt-2">Jornada de <b>' + esc(r.jornada.turno.toLowerCase()) + '</b>'
-        + (r.jornada.deLaVacante ? ' (la de la vacante)' : '') + ', contrato de <b>'
-        + esc(r.jornada.horas) + ' horas</b>, desde el ' + esc(fecha(r.alta)) + '.</p>'
-      : '';
-    await Dialogo.aviso({
-      titulo: 'Alta rápida hecha',
-      html: '<p class="text-sm">Ficha nº ' + esc(r.id) + ' creada y en el planificador.</p>' + jornada + bolt + puesto + avisos,
-      tono: (r.faltaBolt || (r.avisos && r.avisos.length)) ? 'aviso' : 'ok',
-    });
+    const DICE = {
+      creada: ['ok', 'Dada de alta en la bolsa', 'Entra en preselección.'],
+      vuelve: ['aviso', 'Ya pasó por aquí', r.nota],
+      ya_estaba: ['aviso', 'Ya estaba en la bolsa', r.nota],
+      ya_trabaja: ['error', 'Ya trabaja aquí', r.nota],
+    };
+    const [tono, titulo, texto] = DICE[r.que] || ['ok', 'Hecho', r.nota || ''];
+    await Dialogo.aviso({ titulo: `${titulo}: ${r.nombre}`, texto: texto || '', tono });
   }
 
   async function accionDescartar(d) {
@@ -506,7 +448,6 @@
     // antes por otro a poner turno y zona. Lo que pasaba de verdad es que se
     // contrataba sin turno, y esa persona llegaba al planificador sin poder
     // colocarse — el dato se había quedado en la cabeza de quien la entrevistó.
-    const vacs = await vacantesAbiertas();
     const v = await Dialogo.formulario('Contratar a ' + d.quien, [
       { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha',
         valor: fecha(d.inicio_previsto), obligatorio: true },
@@ -526,8 +467,6 @@
       // "gigroup", "ETT" y "GiGroup" y parecían tres empresas distintas.
       { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: 'GiGroup',
         ayuda: 'Cámbialo solo si esta persona viene de otra ETT' },
-      { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
-        ayuda: 'Al darle de alta OCUPA esas plazas desde la fecha de alta, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
     ], { columnas: 2,
          nota: 'Se le abre el periodo de empleo con contrato de ETT y su turno empieza el día '
              + 'del alta. A los tres meses pasa a plantilla propia.' });
@@ -602,7 +541,7 @@
     // día que se cierra sola al mandar el último envío.
     acciones: [
       { texto: 'Pegar tabla del correo', icono: 'fa-table', onClick: importar },
-      { texto: 'Alta rápida', icono: 'fa-bolt', principal: false, onClick: altaRapida },
+      { texto: 'Alta a mano', icono: 'fa-pen', principal: false, onClick: altaAMano },
       { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
         onClick: descargarExcel },
       { id: 'elegidos', texto: 'Excel de los elegidos', icono: 'fa-square-check',

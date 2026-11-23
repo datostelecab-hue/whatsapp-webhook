@@ -37,7 +37,6 @@ const CATALOGO = [
     { clave: '/documentos', etiqueta: 'Documentos' },
   ] },
   { grupo: 'Contratación', items: [
-    { clave: '/vacantes',  etiqueta: 'Vacantes' },
     { clave: '/seleccion', etiqueta: 'Selección' },
     { clave: '/ett',       etiqueta: 'ETT' },
   ] },
@@ -85,7 +84,6 @@ const CATALOGO = [
     { clave: '/bloqueo-motor', etiqueta: 'Ciclo de bloqueo de motor', hijos: [
       { clave: '/bloqueo-motor/soltar', etiqueta: 'Ciclo de bloqueo de motor · soltar un coche', escribir: true },
     ] },
-    { clave: '/generador',   etiqueta: 'Generar vacantes' },
     // El chat de WhatsApp del bot (db/185, 07/10/2026). Leerlo es saber qué se
     // les dice a los conductores y qué contestan; ESCRIBIRLES (y pausar el bot
     // con alguien) va aparte: cualquier petición que no sea un GET la exige.
@@ -431,7 +429,7 @@ function semillaDeRol(rol) {
     // Quien recluta necesita el embudo entero y ver la plantilla para saber
     // qué hueco está tapando. Las nóminas y las fichas sensibles, no.
     case 'reclutador': return ['/pendientes', '/plantilla', '/documentos',
-      ...G('Contratación'), '/generador', '/cobertura'];
+      ...G('Contratación'), '/cobertura'];
 
     // Administración es el papel y el dinero: contratos, nóminas, convenio.
     // No planifica ni ve el directo.

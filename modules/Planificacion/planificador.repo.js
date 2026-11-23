@@ -255,11 +255,9 @@ async function tablero({ dia } = {}) {
         WHERE a.desde > $1 AND a.retirada_at IS NULL
         ORDER BY a.plaza_id, a.desde`, [efectivo]),
 
-    // QUÉ PLAZAS ESTÁN PROMETIDAS en una vacante viva. Es lo que faltaba para
-    // que el cuadrante no fuera el último en enterarse: una plaza que Tráfico
-    // ve vacía puede estar reclutándose desde hace dos semanas, y una que ve
-    // ocupada puede tener ya al relevo buscado.
-    db.consulta('SELECT * FROM v_plaza_comprometida'),
+    // LAS PLAZAS RESERVADAS (db/277, 23/11/2026): para quién y cuándo llega.
+    // Sustituyen a las vacantes: «Plaza reservada» en la celda.
+    require('./reservas.repo').abiertas(),
 
     // LAS BAJAS DE LOS ÚLTIMOS DÍAS (29/09/2026, lo pidió Camilo): quién se ha
     // ido de la empresa y por qué. Cuenta desde HOY, no desde el día que se mire:
@@ -323,14 +321,15 @@ async function tablero({ dia } = {}) {
   const relevoDe = new Map();
   relevos.forEach(r => relevoDe.set(`${r.vehiculoId}|${r.turnoCodigo}|${r.dia}`, r));
 
-  // Plaza → la vacante que la tiene prometida.
-  const vacanteDe = new Map(comprometidas.rows.map(r => [String(r.plaza_id), {
-    codigo: r.codigo, estado: r.estado, motivo: r.motivo,
-    letras: r.letras || '',
-    // En un recambio, quién se va y cuándo.
-    sale: r.ocupa || '', salidaPrevista: fechaDe(r.salida_prevista),
-    // Y quién viene, si Selección ya le enganchó candidato.
-    candidato: r.candidato || '', inicioPrevisto: fechaDe(r.inicio_previsto),
+  // Plaza → su reserva (db/277): para quién (null = «Sin nombre») y cuándo llega.
+  const reservaDe = new Map(comprometidas.map(r => [String(r.plaza_id), {
+    id: Number(r.id),
+    conductorId: r.conductor_id ? String(r.conductor_id) : null,
+    nombre: r.conductor_id ? r.nombre : null,
+    tipo: r.conductor_id ? r.tipo || null : null,
+    llega: r.llega || null,
+    planificadaDesde: r.planificada_desde || null,
+    nota: r.nota || '',
   }]));
 
   const sugeridoDe = new Map(sugeridos.rows.map(r => [String(r.plaza_id), r.dias_sugeridos || []]));
@@ -549,8 +548,8 @@ async function tablero({ dia } = {}) {
       // El PRÓXIMO DUEÑO, si esta plaza tiene una asignación futura: para avisar
       // "→ Carlos, llega el X" aunque ahora esté vacía o con un temporal.
       futuro: proximoDe.get(String(p.plaza_id)) || null,
-      // La vacante que tiene prometida esta plaza, si la hay.
-      vacante: vacanteDe.get(String(p.plaza_id)) || null,
+      // Su reserva, si la tiene (db/277): «Plaza reservada».
+      reserva: reservaDe.get(String(p.plaza_id)) || null,
     };
   });
 
@@ -567,7 +566,7 @@ async function tablero({ dia } = {}) {
           k % 2 === 0 ? 'Día' : 'Noche'),
         id: '', nombre: '', asignacionId: '', desde: '', hasta: '',
         diasManual: new Array(DIAS).fill(false), diasSugeridos: [], huerfano: false,
-        vacante: null,
+        reserva: null,
       };
     }
   });
@@ -2186,14 +2185,13 @@ async function quitarCorreturnos(vehiculoId, { dia, usuarioId } = {}) {
     await cli.query('INSERT INTO vehiculo_sin_ct (vehiculo_id, desde, usuario_id) VALUES ($1, $2, $3)',
       [vehiculoId, efectivo, usuarioId || null]);
 
-    // Una vacante viva que tenía prometida una de sus plazas de correturnos: no
-    // se toca (es de Selección), se dice.
-    const vacantes = (await cli.query(
-      `SELECT DISTINCT c.codigo FROM v_plaza_comprometida c
-         JOIN v_plaza w ON w.plaza_id = c.plaza_id
-        WHERE w.vehiculo_id = $1 AND w.rol = 'CT'`, [vehiculoId])).rows.map(r => r.codigo);
+    // Una plaza de correturnos RESERVADA (db/277): no se toca, se dice.
+    const plazasCt = new Set((await cli.query(
+      `SELECT plaza_id FROM v_plaza WHERE vehiculo_id = $1 AND rol = 'CT'`, [vehiculoId])).rows.map(r => String(r.plaza_id)));
+    const reservas = (await require('./reservas.repo').abiertas())
+      .filter(r => plazasCt.has(String(r.plaza_id))).map(r => r.conductor_id ? r.nombre : 'Sin nombre');
 
-    return { dia: efectivo, matricula: v.matricula, quitados, descanso: dias, vacantes };
+    return { dia: efectivo, matricula: v.matricula, quitados, descanso: dias, reservas };
   });
 }
 
@@ -2692,6 +2690,9 @@ async function salidasPorCoche(dia) {
                                   WHERE le.conductor_id = a.conductor_id AND le.dia_libra = $1::date)
             END)`;
 
+  // Las plazas reservadas (db/277): un coche parado con la plaza ya guardada
+  // para alguien no es el mismo problema.
+  const reservaDe = new Map((await require('./reservas.repo').abiertas()).map(r => [String(r.plaza_id), r]));
   const [universo, previstos, cobertura] = await Promise.all([
     // Un coche del cuadrante, por turno. Se cuelga de la plaza de FIJO porque
     // todo coche tiene exactamente una por turno: así sale una fila por
@@ -2718,12 +2719,7 @@ async function salidasPorCoche(dia) {
               EXISTS (SELECT 1 FROM vehiculo_sin_ct x
                        WHERE x.vehiculo_id = vp.vehiculo_id
                          AND x.desde <= $1::date AND (x.hasta IS NULL OR x.hasta >= $1::date)) AS sin_ct,
-              -- La vacante que tenga prometida alguna de sus plazas de este turno:
-              -- un coche parado que YA se está reclutando no es el mismo problema.
-              (SELECT c.codigo FROM v_plaza_comprometida c
-                 JOIN v_plaza w ON w.plaza_id = c.plaza_id
-                WHERE w.vehiculo_id = vp.vehiculo_id AND w.turno_id = vp.turno_id
-                LIMIT 1) AS vacante
+              vp.plaza_id
          FROM v_plaza vp
          LEFT JOIN cat_estado_vehiculo cev ON cev.codigo = vp.estado_operativo
         WHERE vp.rol = 'FIJO'
@@ -2822,7 +2818,8 @@ async function salidasPorCoche(dia) {
         ? 'El coche descansa hoy (' + descanso.map(x => LETRAS[x - 1]).join(' ') + ') y no tiene correturnos'
         : 'Plaza sin asignar';
       if (!v.es_operativo) motivo = 'Coche no operativo: ' + v.estado_coche;
-      if (v.vacante) motivo += ' · en la vacante ' + v.vacante;
+      const res = reservaDe.get(String(v.plaza_id));
+      if (res) motivo += ' · plaza reservada' + (res.conductor_id ? ' para ' + res.nombre : '');
     }
 
     const q = cuad.get(String(v.cuadrante_id));
@@ -2836,7 +2833,7 @@ async function salidasPorCoche(dia) {
       operativo: !!v.es_operativo,
       descanso, descansaHoy: !!v.descansa_hoy, sinCT: !!v.sin_ct,
       descansoLetras: descanso.map(x => LETRAS[x - 1]).join(' '),
-      vacante: v.vacante || '',
+      reserva: reservaDe.has(String(v.plaza_id)) ? (reservaDe.get(String(v.plaza_id)).nombre || 'Sin nombre') : '',
       grupo, motivo,
       conductor: quien ? quien.conductor : '',
       conductorId: quien ? quien.conductorId : null,

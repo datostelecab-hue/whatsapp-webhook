@@ -278,8 +278,6 @@ const vehiculosRoutes = require('./modules/Vehiculos/vehiculos.controller');
 const plantillaRoutes = require('./modules/Conductores/plantilla.controller');
 const documentosRoutes = require('./modules/Documentos/documentos.controller');
 const controlRoutes = require('./modules/Control/control.controller');
-const vacantesRoutes = require('./modules/Seleccion/vacantes.controller');
-const generadorRoutes = require('./modules/Seleccion/generador.controller');
 const seleccionRoutes = require('./modules/Seleccion/seleccion.controller');
 const ettRoutes = require('./modules/Seleccion/ett.controller');
 const rrhhRoutes = require('./routes/rrhh');
@@ -421,8 +419,9 @@ app.use('/barcelona', require('./modules/Barcelona/barcelona.controller'));
 app.use('/mapa', require('./modules/Mapa/mapa.controller'));   // piloto: la flota en el mapa
 app.use('/alertas', require('./modules/Control/alertas.controller'));
 app.use('/bi', require('./routes/bi'));   // inteligencia de negocio (solo dirección)
-app.use('/vacantes', vacantesRoutes);
-app.use('/generador', generadorRoutes);
+// Las vacantes y «Generar vacantes» se fueron el 23/11/2026 (db/277): la plaza se
+// reserva desde el planificador. Un enlace viejo lleva allí.
+app.get(['/vacantes', '/generador'], (req, res) => res.redirect(302, '/planificador'));
 app.use('/seleccion', seleccionRoutes);
 app.use('/ett', ettRoutes);
 app.use('/rrhh', rrhhRoutes);

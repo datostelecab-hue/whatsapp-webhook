@@ -340,14 +340,6 @@ async function guardar(id, datos = {}, quien = {}) {
 
   if (Object.keys(deProceso).length) await repo.guardarProceso(id, deProceso);
 
-  // LA VACANTE SE RESERVA AL ENGANCHARLA, Y SE SUELTA AL SOLTARLA.
-  //
-  // Una vacante con candidato deja de ofrecerse: si no, dos reclutadores
-  // trabajan la misma plaza y el segundo se entera el día del alta. Y si a este
-  // candidato se le quita, vuelve a estar disponible — a esa vacante nunca
-  // llegó a entrar nadie.
-  if (deProceso.vacante_id !== undefined) await repo.engancharVacante(Number(id), deProceso.vacante_id, quien);
-
   // El teléfono no es un campo de la ficha: tiene su propia tabla y su propia
   // vigencia, así que va por su función.
   if (datos.telefono) await conductores.guardarTelefono(c.conductor_id, datos.telefono, quien);
@@ -476,37 +468,21 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   // el día que tiene que salir.
   const sb = await repo.situacionBolt(c.conductor_id);
 
-  // LA VACANTE TIENE QUE LLEGAR AL PLANIFICADOR.
-  //
-  // Contratar a alguien para una vacante y que Tráfico no se entere es el
-  // agujero que quedaba: la alerta de incorporación solo nacía por la vía de la
-  // ETT, así que a quien venía por Selección se le abría el contrato y su plaza
-  // seguía figurando vacía. Alguien tenía que acordarse de colocarlo, mirando
-  // una pantalla distinta.
-  //
-  // Ahora nace aquí también, con la foto de las plazas prometidas y la fecha de
-  // alta: en el planificador sale "entra Fulano el día X" antes de que llegue, y
-  // si era un RECAMBIO, sale al lado de quien se va.
-  // Y SIN VACANTE TAMBIÉN AVISA. Quien entra sin plaza prometida necesita una
-  // igual; la alerta se queda en el planificador hasta que alguien le dé una.
+  // EL PLANIFICADOR SE ENTERA de que entra alguien: la alerta de «hay alguien
+  // nuevo y no tiene coche», que se va sola en cuanto se le da una plaza. Y si
+  // tenía una PLAZA RESERVADA (db/277, 23/11/2026: las vacantes se fueron), se
+  // le planifica en ella desde su alta.
   let incorporacion = null, avisoVacante = null;
-  const vref = await repo.vacanteRefDe(id);
   try {
     incorporacion = await require('./incorporaciones.repo').crear({
-      conductorId: c.conductor_id, vacanteId: vref || null, origen: 'seleccion',
-      desde: contrato.alta, usuarioId: quien.usuarioId,
+      conductorId: c.conductor_id, origen: 'seleccion', desde: contrato.alta, usuarioId: quien.usuarioId,
     });
-    if (incorporacion) {
-      console.log(`🔔 [CANDIDATURA] Incorporación ${incorporacion.id} · ${c.quien} → ` +
-        (vref ? `${vref} (${incorporacion.plazas} plaza(s), desde ${contrato.alta})`
-              : `sin vacante, desde ${contrato.alta}`));
-    }
+    if (incorporacion) console.log(`🔔 [CANDIDATURA] Incorporación ${incorporacion.id} · ${c.quien}, desde ${contrato.alta}`);
   } catch (e) {
-    avisoVacante = vref
-      ? `El alta salió bien, pero la vacante ${vref} no se pudo reservar: ${e.message}`
-      : `El alta salió bien, pero no se pudo avisar al planificador: ${e.message}`;
+    avisoVacante = `El alta salió bien, pero no se pudo avisar al planificador: ${e.message}`;
     console.error(`⚠️  [CANDIDATURA] ${avisoVacante}`);
   }
+  const reserva = await require('../Planificacion/reservas.service').alDarDeAlta({ conductorId: c.conductor_id, usuarioId: quien.usuarioId });
 
   return {
     id: Number(id), conductorId: c.conductor_id, quien: c.quien,
@@ -515,15 +491,9 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
     bolt: sb || null,
     // Dónde y cuándo cae en el planificador. Es lo que Selección tiene que poder
     // contestar sin llamar a Tráfico.
-    vacante: vref || null,
-    incorporacion: incorporacion ? {
-      id: incorporacion.id, plazas: incorporacion.plazas,
-      puesto: (incorporacion.detalle || {}).puesto || '',
-      matriculas: ((incorporacion.detalle || {}).plazas || []).map(x => x.matricula).join(' · '),
-      libranzas: (incorporacion.detalle || {}).libranzas || '',
-      sustituye: (incorporacion.detalle || {}).sustituye || '',
-      desde: contrato.alta,
-    } : null,
+    incorporacion: incorporacion ? { id: incorporacion.id, desde: contrato.alta } : null,
+    // Si tenía plaza reservada: desde qué día queda planificado en ella.
+    reserva: reserva ? { planificadaDesde: reserva } : null,
     avisoVacante,
     // Resultado del auto-enlace: si se enganchó, en qué estado está la cuenta, y los
     // avisos (p.ej. "está desactivada, reactívala en BOLT").
@@ -538,6 +508,111 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
 // `parsearMatriz`, en el repositorio: es leer texto, no coordinar a nadie.
 
 const horasDe = v => { const m = String(v == null ? '' : v).match(/(\d{1,2})/); return m ? Number(m[1]) : null; };
+
+// Lo que la agencia da de cada persona. Se arma una vez y se usa en los dos
+// caminos: al crear la candidatura y al rellenar huecos de una que ya existe.
+const dePersona = f => ({
+  dni_nie: f.dni || undefined,
+  email: f.correo || undefined,
+  via_nombre: f.direccion || undefined,
+  codigo_postal: f.cp || f.cpDeDireccion || undefined,
+  fecha_nacimiento: f.nacimiento || undefined,
+});
+
+/** Cómo se reconocen el turno y la zona que escribe la agencia. */
+async function lectores() {
+  const { turnos, zonas } = await catalogos();
+  const sinTildes = s => String(s == null ? '' : s).normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  return {
+    turnoDe: v => (turnos.find(x => sinTildes(x.etiqueta) === sinTildes(v)
+      || sinTildes(x.codigo) === sinTildes(v)) || {}).id || null,
+    zonaDe: v => (zonas.find(x => sinTildes(x.nombre) === sinTildes(v)) || {}).id || null,
+  };
+}
+
+/**
+ * UNA FILA de la tabla de la ETT (o un «Alta a mano», que es una fila escrita a
+ * mano): ya trabaja aquí, ya tiene proceso, ya se importó esa cita, vuelve, o es
+ * nueva. Lo que pasa lo apunta `anota(f, que, nota)`.
+ */
+async function procesarFila(f, { solicitud, quien, turnoDe, zonaDe, anota }) {
+  const { situacion, candidatura } = await repo.porTelefono(f.telefono);
+  // ¿Conocemos a esta persona? Por el DNI, aunque venga con otro número.
+  const porElDni = situacion.ficha ? null : await repo.personaPorDni(f.dni);
+  const conocida = situacion.ficha || porElDni;
+
+  // ── Ya trabaja aquí ──
+  // Es el aviso que importa. La agencia lo manda como candidato nuevo y
+  // resulta que es alguien de la plantilla. No se abre nada.
+  if (conocida && (conocida.empleoVigente || conocida.empleo_vigente)) {
+    anota(f, 'ya_trabaja',
+      `${conocida.quien} ya tiene contrato abierto con nosotros` +
+      (porElDni ? ` (le hemos reconocido por el DNI; su número aquí es ${porElDni.telefono || 'otro'})` : ''));
+    return;
+  }
+
+  // ── Ya tiene un proceso vivo ──
+  // No se abre otro, pero se aprovecha la fila: la agencia manda una versión
+  // más completa a la semana siguiente, y repegar la tabla tiene que servir
+  // para algo más que decir "ya estaba".
+  if (candidatura) {
+    // Aunque ya estuviera, se le ata a esta solicitud si no tenía ninguna:
+    // así una tabla reenviada no deja filas huérfanas.
+    await repo.atarASolicitud(candidatura.id, solicitud);
+    const puestos = await rellenarHuecos(candidatura.conductor_id, dePersona(f), quien);
+    const n = Object.keys(puestos).length;
+    anota(f, 'ya_estaba', n ? `Ya estaba en el proceso. Se han rellenado ${n} dato(s) que faltaban.`
+                            : 'Ya estaba en el proceso, sin nada nuevo que añadir.');
+    return;
+  }
+
+  // ── Esta misma cita ya se importó ──
+  // `porTelefono` solo devuelve la candidatura VIVA, así que sin esto pasaba
+  // lo siguiente: se pega la tabla, se descarta a alguien, se vuelve a pegar
+  // —que es lo normal— y reaparecía con una candidatura nueva, dejando dos.
+  //
+  // Se compara por la CITA: si vuelve a presentarse dentro de unos meses la
+  // fecha será otra, y entonces sí son dos procesos distintos y las dos son
+  // historia legítima. Sin cita no se puede distinguir, y ante la duda no se
+  // duplica.
+  if (situacion.ficha) {
+    if (await repo.yaImportada(situacion.ficha.id, f.entrevista)) {
+      const puestos = await rellenarHuecos(situacion.ficha.id, dePersona(f), quien);
+      const n = Object.keys(puestos).length;
+      anota(f, 'ya_estaba', 'Esta entrevista ya se importó' +
+        (n ? `. Se han rellenado ${n} dato(s) que faltaban.` : '.'));
+      return;
+    }
+  }
+
+  // ── Le conocemos, pero no está en ningún proceso ──
+  // Ya pasó por aquí antes. Se le abre uno nuevo sobre SU ficha, no otra.
+  const vuelve = Boolean(conocida);
+
+  const r = await abrir(porElDni ? porElDni.telefono || f.telefono : f.telefono, {
+    nombre: f.nombre,
+    ...(f.apellidos ? { apellidos: f.apellidos } : {}),
+    canal: 'bolsa_ett',
+    ...dePersona(f),
+  }, quien);
+
+  // El resto va en una segunda pasada: `abrir` crea a la persona y arranca
+  // el proceso, y esto es lo que la agencia añade encima.
+  await repo.completarDeMatriz(r.id, solicitud, {
+    // Con cita puesta ya no esta en preseleccion: hay entrevista acordada.
+    estado: f.noSePresento ? 'no_presentado' : (f.entrevista ? 'coord_entrevista' : 'preseleccion'),
+    entrevista: f.entrevista, jornadaEtt: f.jornada_ett, turnoEtt: f.turno_ett,
+    jornadaHoras: horasDe(f.jornada), turnoId: turnoDe(f.turno), zonaId: zonaDe(f.zona),
+    inicioPrevisto: f.alta && /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}$/.test(f.alta)
+      ? f.alta.split(/[\/\-.]/).reverse().join('-') : null,
+  });
+
+  anota(f, vuelve ? 'vuelve' : 'creada',
+    vuelve ? `Ya teníamos ficha de ${conocida.quien}: no se ha creado otra, se le abre un proceso nuevo` +
+             (porElDni ? ' (reconocido por el DNI, viene con otro número)' : '')
+           : null);
+}
 
 /**
  * Crea las candidaturas de una matriz pegada, y DICE qué ha pasado con cada una.
@@ -561,23 +636,7 @@ async function importarMatriz(texto, quien = {}, { solicitudId, referencia, reci
     throw new Error('No he reconocido ninguna fila. Copia la tabla del correo con sus columnas, ' +
                     'incluyendo la del teléfono.');
   }
-
-  const [{ turnos, zonas }, ] = await Promise.all([catalogos()]);
-  const sinTildes = s => String(s == null ? '' : s).normalize('NFD')
-    .replace(/[̀-ͯ]/g, '').trim().toLowerCase();
-  const turnoDe = v => (turnos.find(x => sinTildes(x.etiqueta) === sinTildes(v)
-    || sinTildes(x.codigo) === sinTildes(v)) || {}).id || null;
-  const zonaDe = v => (zonas.find(x => sinTildes(x.nombre) === sinTildes(v)) || {}).id || null;
-
-  // Lo que la agencia da de cada persona. Se arma una vez y se usa en los dos
-  // caminos: al crear la candidatura y al rellenar huecos de una que ya existe.
-  const dePersona = f => ({
-    dni_nie: f.dni || undefined,
-    email: f.correo || undefined,
-    via_nombre: f.direccion || undefined,
-    codigo_postal: f.cp || f.cpDeDireccion || undefined,
-    fecha_nacimiento: f.nacimiento || undefined,
-  });
+  const { turnoDe, zonaDe } = await lectores();
 
   // LA SOLICITUD. Una tabla pegada es una solicitud, y esa es la unidad con la
   // que se le responde a la agencia. Si se pasa un `solicitudId` se añade a una
@@ -588,85 +647,12 @@ async function importarMatriz(texto, quien = {}, { solicitudId, referencia, reci
 
   const detalle = [];
   const anota = (f, que, nota) => detalle.push({
-    nombre: f.nombre || '(sin nombre)', telefono: f.telefono, dni: f.dni || null, que, nota: nota || null,
+    nombre: [f.nombre, f.apellidos].filter(Boolean).join(' ') || '(sin nombre)', telefono: f.telefono, dni: f.dni || null, que, nota: nota || null,
   });
 
   for (const f of filas) {
     try {
-      const { situacion, candidatura } = await repo.porTelefono(f.telefono);
-      // ¿Conocemos a esta persona? Por el DNI, aunque venga con otro número.
-      const porElDni = situacion.ficha ? null : await repo.personaPorDni(f.dni);
-      const conocida = situacion.ficha || porElDni;
-
-      // ── Ya trabaja aquí ──
-      // Es el aviso que importa. La agencia lo manda como candidato nuevo y
-      // resulta que es alguien de la plantilla. No se abre nada.
-      if (conocida && (conocida.empleoVigente || conocida.empleo_vigente)) {
-        anota(f, 'ya_trabaja',
-          `${conocida.quien} ya tiene contrato abierto con nosotros` +
-          (porElDni ? ` (le hemos reconocido por el DNI; su número aquí es ${porElDni.telefono || 'otro'})` : ''));
-        continue;
-      }
-
-      // ── Ya tiene un proceso vivo ──
-      // No se abre otro, pero se aprovecha la fila: la agencia manda una versión
-      // más completa a la semana siguiente, y repegar la tabla tiene que servir
-      // para algo más que decir "ya estaba".
-      if (candidatura) {
-        // Aunque ya estuviera, se le ata a esta solicitud si no tenía ninguna:
-        // así una tabla reenviada no deja filas huérfanas.
-        await repo.atarASolicitud(candidatura.id, solicitud);
-        const puestos = await rellenarHuecos(candidatura.conductor_id, dePersona(f), quien);
-        const n = Object.keys(puestos).length;
-        anota(f, 'ya_estaba', n ? `Ya estaba en el proceso. Se han rellenado ${n} dato(s) que faltaban.`
-                                : 'Ya estaba en el proceso, sin nada nuevo que añadir.');
-        continue;
-      }
-
-      // ── Esta misma cita ya se importó ──
-      // `porTelefono` solo devuelve la candidatura VIVA, así que sin esto pasaba
-      // lo siguiente: se pega la tabla, se descarta a alguien, se vuelve a pegar
-      // —que es lo normal— y reaparecía con una candidatura nueva, dejando dos.
-      //
-      // Se compara por la CITA: si vuelve a presentarse dentro de unos meses la
-      // fecha será otra, y entonces sí son dos procesos distintos y las dos son
-      // historia legítima. Sin cita no se puede distinguir, y ante la duda no se
-      // duplica.
-      if (situacion.ficha) {
-        if (await repo.yaImportada(situacion.ficha.id, f.entrevista)) {
-          const puestos = await rellenarHuecos(situacion.ficha.id, dePersona(f), quien);
-          const n = Object.keys(puestos).length;
-          anota(f, 'ya_estaba', 'Esta entrevista ya se importó' +
-            (n ? `. Se han rellenado ${n} dato(s) que faltaban.` : '.'));
-          continue;
-        }
-      }
-
-      // ── Le conocemos, pero no está en ningún proceso ──
-      // Ya pasó por aquí antes. Se le abre uno nuevo sobre SU ficha, no otra.
-      const vuelve = Boolean(conocida);
-
-      const r = await abrir(porElDni ? porElDni.telefono || f.telefono : f.telefono, {
-        nombre: f.nombre,
-        canal: 'bolsa_ett',
-        ...dePersona(f),
-      }, quien);
-
-      // El resto va en una segunda pasada: `abrir` crea a la persona y arranca
-      // el proceso, y esto es lo que la agencia añade encima.
-      await repo.completarDeMatriz(r.id, solicitud, {
-        // Con cita puesta ya no esta en preseleccion: hay entrevista acordada.
-        estado: f.noSePresento ? 'no_presentado' : (f.entrevista ? 'coord_entrevista' : 'preseleccion'),
-        entrevista: f.entrevista, jornadaEtt: f.jornada_ett, turnoEtt: f.turno_ett,
-        jornadaHoras: horasDe(f.jornada), turnoId: turnoDe(f.turno), zonaId: zonaDe(f.zona),
-        inicioPrevisto: f.alta && /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}$/.test(f.alta)
-          ? f.alta.split(/[\/\-.]/).reverse().join('-') : null,
-      });
-
-      anota(f, vuelve ? 'vuelve' : 'creada',
-        vuelve ? `Ya teníamos ficha de ${conocida.quien}: no se ha creado otra, se le abre un proceso nuevo` +
-                 (porElDni ? ' (reconocido por el DNI, viene con otro número)' : '')
-               : null);
+      await procesarFila(f, { solicitud, quien, turnoDe, zonaDe, anota });
     } catch (e) {
       anota(f, 'error', String(e.message).split('\n')[0]);
     }
@@ -686,6 +672,61 @@ async function importarMatriz(texto, quien = {}, { solicitudId, referencia, reci
     // acabaron en una candidatura nueva.
     avisos: detalle.filter(d => d.que === 'error').map(d => `${d.nombre}: ${d.nota}`),
   };
+}
+
+// ── «ALTA A MANO» DE LA ETT (23/11/2026) ───────────────────────────────────
+// Camilo: «en la ETT quita el "Alta rápida", eso ya no se puede, toca que se
+// deje solamente lo de "Pegar tabla del correo" y crear uno que diga "Alta a
+// mano", en donde se tenga que inputar todo obligatoriamente». Es UNA fila de
+// la tabla escrita a mano: los datos de la persona, todos obligatorios (la
+// jornada, el turno y la entrevista, después, como con la tabla). Entra igual
+// que una fila pegada: en la bolsa, en preselección, con su solicitud.
+
+const LETRAS_DNI = 'TRWAGMYFPDXBNJZSQVHLCKE';
+/** ¿Es un DNI o NIE de verdad (con su letra de control)? → normalizado o null. Puro. */
+function dniValido(v) {
+  const s = String(v == null ? '' : v).toUpperCase().replace(/[^0-9A-Z]/g, '');
+  let m = s.match(/^(\d{8})([A-Z])$/);
+  if (m) return LETRAS_DNI[Number(m[1]) % 23] === m[2] ? s : null;
+  m = s.match(/^([XYZ])(\d{7})([A-Z])$/);
+  if (m) return LETRAS_DNI[Number('XYZ'.indexOf(m[1]) + m[2]) % 23] === m[3] ? s : null;
+  return null;
+}
+
+async function altaAMano(datos = {}, quien = {}) {
+  const t = k => String(datos[k] == null ? '' : datos[k]).trim();
+  const falta = [];
+  const nombre = t('nombre'), apellidos = t('apellidos');
+  if (!nombre) falta.push('el nombre');
+  if (!apellidos) falta.push('los apellidos');
+  if (!t('dni')) falta.push('el DNI o NIE');
+  if (!t('telefono')) falta.push('el teléfono');
+  if (!t('correo')) falta.push('el correo');
+  if (!t('direccion')) falta.push('la dirección');
+  if (!t('cp')) falta.push('el código postal');
+  if (!t('nacimiento')) falta.push('la fecha de nacimiento');
+  if (falta.length) throw new Error(`Falta ${falta.join(', ')}: en el alta a mano todo es obligatorio.`);
+
+  const dni = dniValido(t('dni'));
+  if (!dni) throw new Error('Ese DNI o NIE no es válido: revisa los números y la letra.');
+  const telefono = t('telefono').replace(/\D/g, '').replace(/^(0034|34)(?=\d{9}$)/, '');
+  if (!/^[6789]\d{8}$/.test(telefono)) throw new Error('El teléfono va con sus 9 cifras (por ejemplo 612345678).');
+  const correo = t('correo').toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Ese correo no parece válido.');
+  const cp = t('cp').replace(/\D/g, '');
+  if (!/^\d{5}$/.test(cp)) throw new Error('El código postal son 5 cifras.');
+  const nacimiento = t('nacimiento');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nacimiento)) throw new Error('La fecha de nacimiento va en dd/mm/aaaa.');
+  const anio = Number(nacimiento.slice(0, 4)), esteAnio = new Date().getFullYear();
+  if (esteAnio - anio < 18 || esteAnio - anio > 80) throw new Error('Esa fecha de nacimiento no puede ser: revisa el año.');
+
+  const f = { nombre, apellidos, dni, telefono, correo, direccion: t('direccion'), cp, nacimiento,
+    entrevista: null, jornada_ett: null, turno_ett: null, jornada: null, turno: null, zona: null, alta: null, noSePresento: false };
+  const { turnoDe, zonaDe } = await lectores();
+  const solicitud = await repo.abrirSolicitud(null, 'Alta a mano', quien.usuarioId);
+  let resultado = null;
+  await procesarFila(f, { solicitud, quien, turnoDe, zonaDe, anota: (x, que, nota) => { resultado = { que, nota: nota || null }; } });
+  return { solicitudId: solicitud, ...(resultado || { que: 'creada', nota: null }), nombre: `${nombre} ${apellidos}` };
 }
 
 /**
@@ -717,7 +758,7 @@ async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {})
 
 module.exports = {
   // Lo que coordina con Conductores y Documentos: vive aquí.
-  catalogos, ficha, abrir, abrirContratada, guardar, pasarARRHH, importarMatriz, tramitarAlta,
+  catalogos, ficha, abrir, abrirContratada, guardar, pasarARRHH, importarMatriz, altaAMano, tramitarAlta, dniValido,
   // Lo demás es del repositorio tal cual.
   CAMPOS: repo.CAMPOS,
   listar: (...a) => repo.listar(...a),

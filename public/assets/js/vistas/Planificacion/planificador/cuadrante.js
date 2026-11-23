@@ -47,7 +47,7 @@
           const per = p.id ? (porId.get(String(p.id)) || {}) : {};
           return [p.nombre, per.telefono, per.barrio,
             p.futuro && p.futuro.nombre,
-            p.vacante && (p.vacante.codigo || p.vacante.sustituye)].filter(Boolean).join(' ');
+            p.reserva && ('reservada ' + (p.reserva.nombre || 'sin nombre'))].filter(Boolean).join(' ');
         }).join(' '));
         if (!txt.includes(q)) return false;
       }

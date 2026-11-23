@@ -359,6 +359,19 @@ Y las tres cuentan lo mismo: **los días escritos en sus cuadrantes**, sumados s
 
 El filtro del tablero mira la matrícula, quien está puesto, **quien está por llegar** (`p.futuro`) y la vacante que tiene prometida la plaza. Una plaza vacía hoy puede tener dueño para el lunes, y buscar su nombre contestaba «no hay nada» justo cuando querías ver dónde cae.
 
+## Plazas reservadas: adiós a las vacantes (db/277, 23/11/2026)
+
+Camilo: *«vamos a eliminar completamente el módulo de vacantes en RRHH y Generar vacantes en tráfico, se harán directamente desde el planificador. Cuando tengo un "Hueco" en un cuadrante, puedo separar esa plaza para alguien que esté en proceso de terminar su alta, tanto de ETT como propia (…) la plaza se puede guardar como "Sin nombre"»*. Y: *«se la planifica sí o sí, para algo se le guardó el puesto»*.
+
+- **Reservar plaza**: botón bajo cada hueco. Para alguien **en proceso de alta** (candidaturas vivas que no han salido ni están colocadas, ETT o propia, y quien ya tiene el alta con fecha futura) o **«Sin nombre»**, con una nota. Una reserva abierta por plaza y por persona (`plaza_reserva`).
+- La celda dice **«Plaza reservada · Nombre · llega dd/mm»** (o «Sin nombre»), en el horizontal, el vertical, la búsqueda y la parrilla impresa. Se puede planificar a alguien encima.
+- **Con persona y fecha** (su alta, o el inicio previsto de su candidatura): se la **planifica en el acto desde ese día**. Si había alguien en la plaza, acaba la víspera (se libera la plaza desde ese día y se la coloca en el mismo movimiento); y quien se planifique después acaba solo la víspera (el auto-corte de `colocar`).
+- **Sin nombre, o sin fecha**: solo el cartel; quien se planifique, sin hasta. Cuando la fecha se sepa, la planifica la tarea de cada mañana (`planificador.reservas`, 06:00) o el alta misma (ETT y Selección llaman a `reservas.alDarDeAlta`).
+- **Quitar la reserva**: también quita su planificación si aún no había empezado. A quien estuviera antes **no** se le devuelve la plaza sola (se dice al quitarla).
+- Se cierra sola como **cumplida** cuando la persona ya está en su plaza. Nada se borra: reservar y quitar van firmados en el libro.
+- Las tablas de vacantes (db/90) se quedan como histórico; nada las lee ni las escribe. «Buscar recambio» se fue con el generador (Camilo: «cuando alguien se va, tendremos una baja futura, por lo que moviendo las fechas ya tendremos el hueco»). Las alertas de incorporación siguen, sin vacante: «ha entrado alguien y no tiene coche».
+- Código: `modules/Planificacion/reservas.service.js` y `reservas.repo.js`; rutas `GET /planificador-v2/api/reservas/candidatos`, `POST /planificador-v2/api/reservas`, `POST /planificador-v2/api/reservas/:id/quitar` (escribir pide la llave de editar el planificador). Prueba: `test/plaza-reservada.test.js`.
+
 ## Incorporaciones: el traspaso desde Selección
 
 **El nombre lleva a su ficha** (08/10/2026): en los avisos de quien acaba de entrar («se dio de alta · Sin plaza prometida» y las incorporaciones con vacante), pinchar el nombre abre su ficha en Plantilla (`/plantilla#id`).

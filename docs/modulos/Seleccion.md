@@ -51,6 +51,9 @@ La regla de reparto: **en la candidatura solo vive el proceso**. El nombre, el D
 
 Desde el 01/10/2026 eso se ve también en los ficheros: lo que toca a la persona está en `candidaturas.service.js`, que entra por `Conductores/conductores.service` y `Documentos/documentos.service`; el SQL de la candidatura está en `candidaturas.repo.js`, en funciones pequeñas. Antes el repositorio entraba en el de Conductores por un puente. Ver [[ARQUITECTURA]].
 
+> [!warning] Vacantes y «Generar vacantes», retirados (23/11/2026)
+> Camilo: *«vamos a eliminar completamente el módulo de vacantes en RRHH y Generar vacantes en tráfico, se harán directamente desde el planificador»*. Las pantallas `/vacantes` y `/generador` ya no existen (un enlace viejo lleva al planificador) y la plaza se reserva desde el cuadrante: ver [[Planificacion#Plazas reservadas: adiós a las vacantes (db/277, 23/11/2026)]]. Lo de abajo sobre vacantes es historia.
+
 ## La vacante cuesta plazas, no unidades
 
 `modules/Seleccion/vacantes.repo.js`: una vacante es un conjunto de **plazas reales** que se prometen a alguien que todavía no está. Antes era una fila de hoja con las matrículas metidas en una celda en JSON; ahora son plazas colgando, y eso cambia tres cosas que se notan:
@@ -154,6 +157,9 @@ La regla: **"obligatorio" no es una propiedad del dato, es de la relación**.
 La agencia no da más por protección de datos y los papeles los manda después; exigirlos antes bloquearía a gente que **ya está trabajando**.
 
 ## La bolsa de empleo ETT
+
+> [!note] «Alta a mano» en vez de «Alta rápida» (23/11/2026)
+> Camilo: *«en la ETT quita el "Alta rápida", eso ya no se puede, toca que se deje solamente lo de "Pegar tabla del correo" y crear uno que diga "Alta a mano", en donde se tenga que inputar todo obligatoriamente»*. El alta a mano es **una fila de la tabla del correo escrita a mano**: nombre, apellidos, DNI/NIE (con su letra de control), teléfono (9 cifras), correo, dirección, código postal y fecha de nacimiento, todo obligatorio. La jornada, el turno y la entrevista, después, como con la tabla. Entra igual que una fila pegada (`candidaturas.service.procesarFila`): en la bolsa, en preselección y con su solicitud («Alta a mano»); si ya trabaja aquí, si ya estaba o si vuelve, lo dice. Ruta `POST /ett/api/alta-a-mano`. Lo de abajo sobre el alta rápida es historia.
 
 Sus candidatos son candidaturas como las demás, con `canal = bolsa_ett` (`modules/Seleccion/ett.service.js`). Una tabla, dos puertas: en Selección se escribe un teléfono, aquí se pega la tabla del correo.
 

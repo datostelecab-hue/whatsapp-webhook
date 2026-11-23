@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const seleccion = require('../modules/Seleccion/seleccion.service');
 const plantilla = require('../modules/Conductores/plantilla.service');
-const vacantes = require('../modules/Seleccion/vacantes.service');
 const repoInc = require('../modules/Seleccion/incorporaciones.service');
 const ticketera = require('../modules/Ticketera/ticketera.service');
 
@@ -12,10 +11,9 @@ let cache = null, cacheTs = 0;
 const TTL = 60 * 1000;
 
 async function calcular() {
-  const [tramo, gente, vacantesAll, ticketsItLista, incPend] = await Promise.all([
+  const [tramo, gente, ticketsItLista, incPend] = await Promise.all([
     seleccion.tramoFinal().catch(() => ({ porTramitar: [], hechas: [], noAlta: [] })),
     plantilla.lista({}).then(r => r.filas).catch(() => []),
-    vacantes.listar({ incluirCerradas: false }).catch(() => []),
     ticketera.datos('IT', { cerrados: false }).then(r => r.tickets).catch(() => []),
     repoInc.pendientes().catch(() => [])
   ]);
@@ -46,21 +44,13 @@ async function calcular() {
   const pendienteAsignar = (gente || [])
     .filter(c => c.empleo_vigente && !c.es_centinela && !c.matricula && !c.ausente
              && !incIds.has(String(c.id)));
-  // Vacantes que Selección debe reclutar. «Por reclutar» es SOLO «abierta»: una
-  // «en proceso» ya tiene candidato, y ofrecerla otra vez es cómo dos
-  // reclutadores acababan trabajando la misma plaza.
-  const vacantesAbiertas = (vacantesAll || []).filter(v => v.estado === 'abierta');
 
   return {
-    // Reclutador (Selección): vacantes abiertas por llenar + fichas que RRHH
-    // devolvió. Cada enlace abre directamente lo que hay que resolver.
+    // Reclutador (Selección): las fichas que RRHH devolvió. (Las vacantes se
+    // fueron el 23/11/2026: la plaza se reserva en el planificador.)
     reclutador: {
-      total: vacantesAbiertas.length + rechazadosRRHH.length,
+      total: rechazadosRRHH.length,
       items: [
-        ...vacantesAbiertas.map(v => ({
-          texto: `Vacante por reclutar: ${v.puesto || 'CT'}${v.zonas ? ' · ' + v.zonas : ''}`,
-          detalle: v.libranzas ? `Libra: ${v.libranzas}` : '', href: '/vacantes'
-        })),
         ...rechazadosRRHH.map(c => ({
           texto: `${c.quien} — devuelto por RRHH`,
           detalle: c.motivo || '', href: `/seleccion?tel=${encodeURIComponent(c.telefono || '')}`

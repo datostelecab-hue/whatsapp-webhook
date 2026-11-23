@@ -66,9 +66,6 @@ router.get('/api/ficha/:id', responde(req => ett.ficha(req.params.id)));
 
 router.get('/api/catalogos', responde(() => ett.catalogos()));
 
-// Vacantes ABIERTAS (las del generador) para elegir al dar de alta.
-router.get('/api/vacantes-abiertas', responde(() => ett.vacantesAbiertas()));
-
 // ── Importar la matriz del correo ──────────────────────────────────────────
 router.post('/api/importar', responde(async req => {
   const b = req.body || {};
@@ -96,8 +93,10 @@ router.post('/api/candidatura/:id/descartar', responde(async req => {
 router.post('/api/candidatura/:id/rrhh', responde(async req =>
   ett.pasarARRHH(req.params.id, req.body || {}, await quien(req))));
 
-router.post('/api/alta-rapida', responde(async req =>
-  ett.altaRapida(req.body || {}, await quien(req))));
+// El «Alta a mano» (23/11/2026): una fila de la tabla del correo, con todo
+// obligatorio. Sustituye al alta rápida.
+router.post('/api/alta-a-mano', responde(async req =>
+  ett.altaAMano(req.body || {}, await quien(req))));
 
 // Borrar una candidatura que no debería existir: un teléfono mal tecleado, una
 // fila duplicada, una prueba. NO es descartar — descartar deja rastro porque es

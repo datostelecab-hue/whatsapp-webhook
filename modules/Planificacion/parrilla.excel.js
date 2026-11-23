@@ -240,18 +240,13 @@ async function exportar(tablero) {
     } else if (p && !(esRefuerzo(p) && !refuerzoAbierto)) {
       // EL HUECO, dicho con palabras. Un cuadro amarillo en blanco no distingue
       // "hay que buscar a alguien" de "ya viene de camino".
-      const vac = p.vacante;
-      linea(vac ? (vac.candidato ? '⚠ Hueco · candidato en camino' : '⚠ Hueco · en vacante')
-                : (esFijo ? '⚠ Hueco · sin fijo' : '⚠ Hueco · colocar CT'),
-        { size: 9, bold: true, color: { argb: vac ? AZUL_TXT : (esFijo ? ROJO : AMBAR) } });
-      if (vac) {
-        if (vac.codigo) linea('Vacante ' + vac.codigo + (vac.letras ? ' · ' + vac.letras : ''),
+      // La plaza RESERVADA (db/277): para quién y cuándo llega.
+      const res = p.reserva;
+      linea(res ? '⚠ Hueco · plaza reservada' : (esFijo ? '⚠ Hueco · sin fijo' : '⚠ Hueco · colocar CT'),
+        { size: 9, bold: true, color: { argb: res ? AZUL_TXT : (esFijo ? ROJO : AMBAR) } });
+      if (res) {
+        linea((res.nombre || 'Sin nombre') + (res.llega ? ' · llega ' + fechaLarga(res.llega) : ''),
           { size: 8, color: { argb: AZUL_TXT } });
-        if (vac.candidato) linea(vac.candidato + (vac.inicioPrevisto ? ' · previsto ' + fechaLarga(vac.inicioPrevisto) : ''),
-          { size: 8, color: { argb: AZUL_TXT } });
-        // En un recambio, quién se va y cuándo: explica por qué el hueco existe.
-        if (vac.sale) linea('Sale ' + vac.sale + (vac.salidaPrevista ? ' el ' + fechaLarga(vac.salidaPrevista) : ''),
-          { size: 8, italic: true, color: { argb: AZUL_TXT } });
       }
     }
 
@@ -333,7 +328,7 @@ async function exportar(tablero) {
         .filter(p => !(coche.sinCT && p.rol === 'CT'));
       if (!plazas.length) { cel.fill = relleno(BLANCO); continue; }
       const falta = plazas.some(p => !hayPersona(p));
-      const prometida = plazas.every(p => hayPersona(p) || p.vacante);
+      const prometida = plazas.every(p => hayPersona(p) || p.reserva);
       cel.fill = relleno(!falta ? BLANCO : (prometida ? AZUL_SUAVE : AMARILLO));
     }
     if (coche.operativo) r.getCell(3).font = { bold: true, color: { argb: NEGRO }, size: 10 };

@@ -66,8 +66,6 @@ const PARES = [
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],
   ['modules/Seleccion/vistas/seleccion.ejs', 'modules/Seleccion/seleccion.controller.js', '/seleccion'],
   ['modules/Seleccion/vistas/ett.ejs', 'modules/Seleccion/ett.controller.js', '/ett'],
-  ['modules/Seleccion/vistas/vacantes.ejs', 'modules/Seleccion/vacantes.controller.js', '/vacantes'],
-  ['modules/Seleccion/vistas/generador.ejs', 'modules/Seleccion/generador.controller.js', '/generador'],
 ];
 
 let fallos = 0;

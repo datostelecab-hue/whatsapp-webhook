@@ -46,10 +46,6 @@ const CAMPOS = {
   experiencia:       { etiqueta: 'Experiencia', tipo: 'booleano' },
   prueba_conduccion: { etiqueta: 'Prueba de conducción', tipo: 'booleano' },
   apto_medico:       { etiqueta: 'Apto médico', tipo: 'booleano' },
-  // La vacante que este candidato viene a cubrir. `vacante_ref` era el id de la
-  // hoja y se queda por lo escrito; la verdad es la foránea.
-  vacante_id:        { etiqueta: 'Vacante', tipo: 'numero' },
-  vacante_ref:       { etiqueta: 'Vacante (referencia vieja)' },
   turno_id:          { etiqueta: 'Turno', tipo: 'numero' },
   base_zona_id:      { etiqueta: 'Zona', tipo: 'numero' },
   inicio_previsto:   { etiqueta: 'Fecha de inicio', tipo: 'fecha' },
@@ -286,67 +282,6 @@ async function guardarProceso(id, deProceso) {
 }
 
 /**
- * Engancha (o suelta) la vacante de una candidatura y mueve su estado.
- *
- * Se llama al guardar la ficha y al cerrarla. Nunca lanza por culpa de la
- * vacante: que una reserva no se pueda mover no puede impedir guardar los datos
- * de una persona, pero sí tiene que quedar dicho en el registro.
- */
-async function engancharVacante(id, vacanteId, quien = {}) {
-  const vac = require('./vacantes.repo');
-  try {
-    const k = (await db.consulta(
-      'SELECT vacante_id, vacante_ref, estado, conductor_id FROM candidatura WHERE id = $1',
-      [Number(id)])).rows[0] || {};
-    const nueva = vacanteId ? String(vacanteId) : null;
-
-    // SI YA SE DIO DE ALTA, LA VACANTE TIENE QUE LLEGAR A SU INCORPORACIÓN.
-    // La incorporación se crea en el alta con la vacante de ese momento; una
-    // puesta después se quedaba en la candidatura y el planificador seguía
-    // diciendo "sin plaza prometida". Solo si aún no ha entrado: ver
-    // `ponerVacante`.
-    const aLaIncorporacion = async ref => {
-      if (k.estado !== 'alta' || !k.conductor_id) return null;
-      return require('./incorporaciones.repo')
-        .ponerVacante(k.conductor_id, ref, { usuarioId: quien.usuarioId });
-    };
-
-    // La que tenía antes, si es otra, vuelve a estar disponible.
-    if (k.vacante_ref && (!nueva || String(k.vacante_id) !== nueva)) {
-      await vac.cambiarEstado(k.vacante_ref, 'abierta', { usuarioId: quien.usuarioId });
-    }
-    if (!nueva) {
-      await db.consulta('UPDATE candidatura SET vacante_ref = NULL WHERE id = $1', [Number(id)]);
-      await aLaIncorporacion(null);
-      return { vacante: null };
-    }
-    const v = await vac.ficha(nueva);
-    if (!v) throw new Error(`No existe la vacante ${nueva}`);
-    // El código se guarda al lado: es lo que se lee en la ficha y lo que
-    // entienden los módulos que todavía hablan el idioma de la hoja.
-    await db.consulta('UPDATE candidatura SET vacante_ref = $2 WHERE id = $1', [Number(id), v.codigo]);
-    await vac.cambiarEstado(v.id, 'proceso', { usuarioId: quien.usuarioId });
-    const inc = await aLaIncorporacion(v.codigo);
-    return { vacante: v.codigo, puesto: v.puesto, incorporacion: inc ? inc.id : null };
-  } catch (e) {
-    console.error(`⚠️  [CANDIDATURA ${id}] vacante ${vacanteId}: ${e.message}`);
-    return { vacante: null, aviso: e.message };
-  }
-}
-
-/** Suelta la vacante de una candidatura que se cierra: nadie llegó a ocuparla. */
-async function soltarVacante(id, quien = {}) {
-  const k = (await db.consulta(
-    'SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)])).rows[0] || {};
-  if (!k.vacante_ref) return;
-  try {
-    await require('./vacantes.repo').cambiarEstado(k.vacante_ref, 'abierta', { usuarioId: quien.usuarioId });
-  } catch (e) {
-    console.error(`⚠️  [CANDIDATURA ${id}] no se pudo liberar ${k.vacante_ref}: ${e.message}`);
-  }
-}
-
-/**
  * Mueve la candidatura de estado.
  *
  * La etapa NO se toca: la dice el catálogo. Guardar las dos era como se
@@ -381,11 +316,6 @@ async function cambiarEstado(id, estado, { motivo, motivoCodigo, usuarioId } = {
             actualizado_at = now()
       WHERE id = $4`,
     [estado, motivo || null, e.es_salida, Number(id), limpia, motivoCodigo || null]);
-
-  // Se cae del proceso: su vacante vuelve a ofrecerse. Sin esto, un descarte
-  // dejaba la plaza bloqueada para siempre y había que acordarse de reabrirla a
-  // mano —o sea, nunca—.
-  if (e.es_salida) await soltarVacante(id, { usuarioId });
 
   await audit.registrar({
     tabla: 'candidatura', id: Number(id), usuarioId,
@@ -463,11 +393,6 @@ async function situacionBolt(conductorId) {
     [conductorId])).rows[0];
 }
 
-/** El código de la vacante que viene a cubrir, si tiene. */
-async function vacanteRefDe(id) {
-  return (await db.consulta('SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)]))
-    .rows.map(x => x.vacante_ref)[0];
-}
 
 /**
  * Qué le falta a esta candidatura para poder contratarla.
@@ -1196,8 +1121,8 @@ module.exports = {
   tramoFinal, paraAltasExcel, marcarExcelAlta,
   // Las consultas de lo que coordina `candidaturas.service.js`.
   catalogosBase, filaFicha, personaCruda, insertarPreseleccion, vivaDe, adelantarAListo,
-  insertarContratada, conductorDe, guardarProceso, engancharVacante,
-  paraContratar, pactado, marcarDadoDeAlta, situacionBolt, vacanteRefDe,
+  insertarContratada, conductorDe, guardarProceso,
+  paraContratar, pactado, marcarDadoDeAlta, situacionBolt,
   personaPorDni, abrirSolicitud, atarASolicitud, yaImportada, completarDeMatriz,
   paraTramitar, tramitar,
 };

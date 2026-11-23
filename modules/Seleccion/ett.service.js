@@ -11,13 +11,13 @@
 // LO QUE ESTE FICHERO SE TRAJO DEL CONTROLADOR, que es lo que de verdad es de
 // negocio y no de HTTP:
 //   · El NOMBRE DE LA ETT, y el orden en que se decide.
-//   · Las dos altas —la de una candidatura y la rápida— con su reserva de
-//     vacante, que puede fallar sin tumbar el alta.
+//   · El alta de una candidatura, con el aviso al planificador (y su plaza
+//     reservada, si la tenía), que puede fallar sin tumbar el alta.
+//   · El «Alta a mano» (23/11/2026), que sustituye al alta rápida: una fila de la
+//     tabla del correo escrita a mano, con todo obligatorio.
 
 const cand = require('./candidaturas.service');
-const vacantes = require('./vacantes.service');
 const excel = require('./ett.excel');
-const conductores = require('../Conductores/conductores.service');   // la puerta de Conductores
 const incorporaciones = require('./incorporaciones.repo');
 const modalidad = require('../Conductores/jornada');
 
@@ -41,7 +41,7 @@ const ettNombre = pedido =>
   String(pedido || '').trim() || process.env.ETT_NOMBRE || POR_DEFECTO;
 
 /**
- * Los contratos que ofrece el ALTA RÁPIDA, en horas (Camilo, 14/10/2026:
+ * Los contratos que se ofrecen al contratar en la ETT, en horas (Camilo, 14/10/2026:
  * «el contrato (40, 32, 20 horas)»).
  *
  * No salen de `cat_jornada`, como los de «Contratar», y es a propósito: ese
@@ -50,7 +50,7 @@ const ettNombre = pedido =>
  * el cuadrante. Meter ahí las 20 horas cambiaría las dos cosas sin que nadie lo
  * haya pedido.
  */
-// Las horas que se ofrecen en el alta rápida. El 40 se reparte en 40x5 o 40x4.
+// El 40 se reparte en 40x5 o 40x4.
 const CONTRATOS = [40, 32, 20];
 const CONTRATOS_OPCIONES = [
   ...modalidad.DIAS_40.map(d => ({ valor: `40x${d}`, texto: `40x${d}` })),
@@ -97,25 +97,6 @@ async function ficha(id) {
 }
 
 const catalogos = () => cand.catalogos();
-
-/**
- * Las vacantes ABIERTAS para elegir al dar de alta.
- *
- * El texto lleva la jornada y, si es un recambio, a quién releva: quien
- * contrata desde aquí tiene que saber qué está ofreciendo antes de prometerlo.
- */
-async function vacantesAbiertas() {
-  const abiertas = await vacantes.disponibles();
-  return {
-    vacantes: abiertas.map(v => ({
-      id: v.codigo,
-      texto: [v.puesto, v.zonas, v.matriculas,
-        v.libranzas ? 'libra ' + v.libranzas : '',
-        v.motivo === 'recambio' && v.sustituye ? '↔ releva a ' + v.sustituye : '',
-      ].filter(Boolean).join(' · ') + ` (${v.codigo})`,
-    })),
-  };
-}
 
 // ── La matriz del correo ───────────────────────────────────────────────────
 
@@ -165,70 +146,42 @@ async function descartar(id, { motivoCodigo, detalle }, quien) {
 }
 
 /**
- * AVISA AL PLANIFICADOR de que ha entrado alguien. Siempre, con vacante o sin
- * ella —son dos avisos distintos y los dos hacen falta—:
+ * AVISA AL PLANIFICADOR de que ha entrado alguien: la alerta de «hay alguien
+ * nuevo y no tiene coche», que se va sola en cuanto se le da una plaza. Y si
+ * tenía una PLAZA RESERVADA (db/277), se le planifica en ella desde su alta.
  *
- *   CON vacante  nace la alerta con la foto de lo prometido y, acto seguido,
- *                la persona OCUPA esas plazas desde `desde`.
- *   SIN vacante  nace la alerta de «hay alguien nuevo y no tiene coche», que no
- *                hay nada que aceptar y se va sola en cuanto se le da una plaza.
- *
- * LO SEGUNDO FALTABA, y es justo lo que le pasó a Óscar Góngora el 23/09/2026:
- * se le dio el alta rápida sin elegir vacante, se quedó contratado y en la
- * lista de la ETT —y el cuadrante no se enteró de que había una persona nueva
- * esperando coche—. `incorporaciones.crear` ya sabía hacerlo desde el
- * 18/09; lo que pasaba es que esta función se salía antes de llamárselo.
- *
- * El orden importa y es el de siempre: primero queda escrito qué se le
- * prometió, y después se escribe en el cuadrante. Si lo segundo falla, lo
- * primero sigue ahí y se puede colocar a mano.
+ * Las vacantes se fueron el 23/11/2026 (Camilo: «vamos a eliminar completamente
+ * el módulo de vacantes»): la plaza se guarda desde el planificador.
  *
  * SI FALLA, EL ALTA NO SE CAE. La persona ya está dada de alta y eso es lo que
- * importa; que la vacante no quedara amarrada es un aviso, no un motivo para
- * deshacerlo todo y dejar a alguien a medio contratar.
+ * importa; lo demás es un aviso.
  */
-async function avisarAlPlanificador(r, conductorId, vacanteId, origen, usuarioId, desde) {
+async function avisarAlPlanificador(r, conductorId, origen, usuarioId, desde) {
   if (!conductorId) return null;
   let i = null;
   try {
-    i = await incorporaciones.crear({ conductorId, vacanteId, origen, desde, usuarioId });
-    console.log(`🔔 [ETT] Incorporación ${i.id} · ficha ${conductorId}` +
-      (vacanteId ? ` → vacante ${vacanteId}` : ' · SIN vacante: hay que darle coche'));
+    i = await incorporaciones.crear({ conductorId, origen, desde, usuarioId });
+    console.log(`🔔 [ETT] Incorporación ${i && i.id} · ficha ${conductorId}`);
   } catch (e) {
     console.error('⚠️ [ETT] no se pudo crear la incorporación:', e.message);
-    r.avisos = [...(r.avisos || []), vacanteId
-      ? 'El alta salió bien, pero la vacante no se pudo reservar: ' + e.message
-      : 'El alta salió bien, pero el planificador no se ha enterado de que entra alguien: ' + e.message];
-    return null;
-  }
-
-  // Sin vacante no hay plazas que ocupar: la alerta ya dice lo que tenía que
-  // decir y se irá sola en cuanto alguien le dé un coche.
-  if (!i || !i.vacanteId) return i;
-
-  // Y SE COLOCA EN EL ACTO, desde su fecha prevista de alta.
-  //
-  // Antes esto dejaba solo una alerta y la plaza seguía libre a la vista de
-  // todos hasta que alguien de Tráfico entraba a aceptarla: se la podía llevar
-  // otro, y el que acababa de firmar no estaba en ningún sitio. Ahora la plaza
-  // es suya desde el minuto uno y la alerta pasa a ser un aviso de lo hecho:
-  // Tráfico solo tiene que tocar algo si NO le vale, y entonces rechaza —lo
-  // que ahora también lo SACA del cuadrante—.
-  //
-  // Por la puerta del módulo de Planificación, y pedido aquí dentro para que
-  // dos servicios que se llaman no se queden a medio cargar.
-  try {
-    const tablero = require('../Planificacion/tablero.service');
-    i.colocada = await tablero.colocarIncorporacion(i.id, desde, { usuarioId });
-  } catch (e) {
-    // El alta NO se cae por esto: la persona ya está contratada. Se dice, y
-    // la alerta se queda pendiente para colocarla a mano.
-    console.error('⚠️ [ETT] no se pudo colocar en la vacante:', e.message);
     r.avisos = [...(r.avisos || []),
-      'El alta salió bien y la vacante queda reservada, pero no se pudo colocar en el cuadrante: '
-      + e.message + '. Hay que aceptar la incorporación a mano en el planificador.'];
+      'El alta salió bien, pero el planificador no se ha enterado de que entra alguien: ' + e.message];
   }
+  // LA PLAZA RESERVADA (db/277, 23/11/2026): si tenía una, se le planifica en
+  // ella desde su alta. Nunca tumba el alta (lo dice el propio servicio).
+  const desdeReserva = await require('../Planificacion/reservas.service').alDarDeAlta({ conductorId, usuarioId });
+  if (desdeReserva) r.reserva = { planificadaDesde: desdeReserva };
   return i;
+}
+
+/**
+ * ALTA A MANO (23/11/2026): una fila de la tabla del correo, escrita a mano y
+ * con todo obligatorio. Ver candidaturas.service.altaAMano.
+ */
+async function altaAMano(datos, quien) {
+  const r = await cand.altaAMano(datos || {}, quien);
+  console.log(`✍️ [ETT] Alta a mano: ${r.nombre} → ${r.que}`);
+  return r;
 }
 
 /** Pasa a RRHH. Por esta vía el contrato es de ETT salvo que se diga otra cosa. */
@@ -239,159 +192,10 @@ async function pasarARRHH(id, datos, quien) {
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
     (r.boltEnlazada ? ` — BOLT enlazada${r.boltReactivar ? ` (${r.boltEstado}: REACTIVAR)` : ''}`
       : r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
-  // Mismo criterio que el alta rápida: si se elige vacante, se ocupa desde la
-  // fecha de alta. Dos campos con el mismo nombre en la misma pantalla no
-  // pueden hacer cosas distintas.
-  const incorporacion = await avisarAlPlanificador(
-    r, r.conductorId, b.vacanteId, 'ett', quien.usuarioId, b.alta);
+  // A Tráfico le llega el aviso de que entra alguien; y si tenía plaza
+  // reservada en el planificador, se le planifica en ella desde su alta.
+  const incorporacion = await avisarAlPlanificador(r, r.conductorId, 'ett', quien.usuarioId, b.alta);
   return { ...r, incorporacion };
-}
-
-/**
- * LA JORNADA Y EL CONTRATO DEL ALTA RÁPIDA (14/10/2026).
- *
- * Hasta aquí el alta rápida no preguntaba ninguna de las dos: el 14/10 había 16
- * contratos de ETT abiertos sin horas, todos de esta puerta, y el turno se lo
- * ponía el planificador al colocarlos en un coche (a uno, ni eso). Y sin turno
- * nadie se puede planificar.
- *
- * Con vacante, la jornada sale SOLA de la vacante si no se elige: es la de las
- * plazas que va a ocupar. Si se elige y no coincide, no se da el alta: quedaría
- * de día en la ficha y de noche en el coche, y el planificador no corrige un
- * turno puesto a mano. Las horas no se bloquean —es el contrato que se firma—,
- * pero si no son las de la vacante se avisa.
- *
- * Se decide ANTES de crear nada: un alta que se cae a medias deja una ficha.
- */
-async function jornadaDelAlta(b) {
-  const jor = modalidad.parseJornada(b.jornadaHoras);
-  const horas = jor.horas;
-  if (!CONTRATOS.includes(horas)) {
-    throw new Error('Elige el contrato: 40x5, 40x4, 32 o 20 horas.');
-  }
-
-  // Día o noche: los turnos que se eligen al contratar, de la base.
-  const turnos = ((await cand.catalogos()).turnos || []).filter(t => t.asignable);
-  const turnoDe = id => turnos.find(t => Number(t.id) === Number(id)) || null;
-
-  const vacante = String(b.vacanteId || '').trim() ? await vacantes.ficha(b.vacanteId) : null;
-  const deLaVacante = vacante ? turnoDe(vacante.turnoId) : null;
-
-  const elegida = String(b.turnoId == null ? '' : b.turnoId).trim();
-  let turno = null;
-  if (elegida) {
-    turno = turnoDe(elegida);
-    if (!turno) throw new Error('Esa jornada no vale: tiene que ser de día o de noche.');
-  }
-  if (!turno) turno = deLaVacante;
-  if (!turno) {
-    throw new Error(vacante
-      ? `La vacante ${vacante.codigo} no es de un solo turno: elige la jornada, día o noche.`
-      : 'Elige la jornada: día o noche.');
-  }
-  if (deLaVacante && Number(deLaVacante.id) !== Number(turno.id)) {
-    throw new Error(`La vacante ${vacante.codigo} es de ${deLaVacante.etiqueta.toLowerCase()} ` +
-      `y has elegido ${turno.etiqueta.toLowerCase()}. Cambia la jornada o elige otra vacante.`);
-  }
-
-  const avisos = [];
-  if (vacante && vacante.jornadaHoras && Number(vacante.jornadaHoras) !== horas) {
-    avisos.push(`La vacante ${vacante.codigo} es de ${vacante.jornadaHoras} h y el contrato queda de ${horas} h.`);
-  }
-  return { horas, dias: jor.dias, valor: modalidad.valorJornada(horas, jor.dias),
-           turno, deLaVacante: !elegida, avisos };
-}
-
-/**
- * ALTA RÁPIDA: teléfono + nombre → alta de ETT directa, sin matriz ni
- * candidatura, y enlace AUTOMÁTICO a BOLT por teléfono —incluidas las cuentas
- * desactivadas, con aviso de reactivarlas—.
- *
- * Reutiliza `conductores.realizarAlta`, la puerta de Conductores: crea la ficha,
- * abre el periodo de empleo (así pasa directo al planificador, como si ya
- * estuviera contratado) y engancha su BOLT.
- * Y le abre su candidatura YA TERMINADA, para que la agencia lo vea: sin ella
- * esta persona trabaja pero no sale ni en esta pantalla ni en el Excel que se
- * le manda a la ETT.
- */
-// LA DIRECCIÓN EXACTA, despiezada como en Selección y en la ficha: es como la
-// pide la gestoría (15/10/2026). La pantalla pinta estos campos con la
-// etiqueta y el tope de cada uno, que salen de Conductores.
-const DIRECCION = ['via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
-  'codigo_postal', 'localidad', 'provincia'];
-
-async function altaRapida(datos, quien) {
-  const b = datos || {};
-  const nombre = String(b.nombre || '').trim();
-  const telefono = String(b.telefono || '').trim();
-  if (!nombre) throw new Error('Falta el nombre');
-  if (telefono.replace(/\D/g, '').length < 9) throw new Error('El teléfono no parece válido');
-
-  // LA FECHA PREVISTA DE ALTA, que es la que manda en todo lo que viene
-  // detrás: el periodo de empleo, la candidatura y —sobre todo— el día desde
-  // el que ocupa la plaza. Antes se forzaba HOY, y a quien empezaba el lunes
-  // se le abría el contrato el jueves anterior y su coche quedaba ocupado
-  // cuatro días de más.
-  const hoy = new Date().toISOString().slice(0, 10);
-  const alta_dia = /^\d{4}-\d{2}-\d{2}$/.test(String(b.alta || '')) ? String(b.alta) : hoy;
-
-  const jornada = await jornadaDelAlta(b);
-
-  // La dirección, si se ha escrito, y que quepa: se comprueba ANTES de crear la
-  // ficha, porque un alta que se cae a medias deja una ficha sin contrato.
-  const direccion = {};
-  for (const k of DIRECCION) {
-    const v = String(b[k] == null ? '' : b[k]).trim();
-    if (v) direccion[k] = v;
-  }
-  if (Object.keys(direccion).length) {
-    await require('../../services/repo/largos').comprobar('conductor', direccion,
-      k => (conductores.CAMPOS[k] && conductores.CAMPOS[k].etiqueta) || k);
-  }
-
-  // EL TURNO VA A LA FICHA DESDE EL DÍA DEL ALTA, como en «Contratar»: es lo
-  // que lee el planificador, y con él ya sale de día o de noche en el
-  // banquillo, listo para colocarlo.
-  const r = await conductores.realizarAlta({
-    nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: alta_dia,
-    jornadaHoras: jornada.valor, turnoId: jornada.turno.id,
-    barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
-    ...direccion,
-  }, quien);
-  if (jornada.avisos.length) r.avisos = [...(r.avisos || []), ...jornada.avisos];
-
-  // SU CANDIDATURA, aunque no haya habido proceso.
-  //
-  // Esta pantalla y el Excel que se le manda a la agencia leen CANDIDATURAS. Sin
-  // esto, quien entra por el alta rápida trabaja desde el primer día pero no
-  // existe para la ETT —y es exactamente a quien hay que facturarle—: no salía
-  // en la lista, no se le podía elegir y no viajaba en el Excel.
-  //
-  // Se abre ya terminada (ver `abrirContratada`) y con la fecha de alta puesta,
-  // que es lo que hace que la agencia lea «Contratado». Si falla, el alta no se
-  // cae: la persona ya tiene contrato y coche, y esto se puede arreglar después.
-  let candidatura = null;
-  try {
-    candidatura = await cand.abrirContratada(r.id, {
-      canal: CANAL, alta: alta_dia, tipoContrato: 'ETT',
-      jornadaHoras: jornada.valor, turnoId: jornada.turno.id,
-    }, quien);
-  } catch (e) {
-    console.error('⚠️ [ETT] no se pudo abrir la candidatura:', e.message);
-    r.avisos = [...(r.avisos || []),
-      'El alta salió bien, pero no aparecerá en la lista de la ETT: ' + e.message];
-  }
-
-  console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id}) · ${jornada.turno.etiqueta} ${jornada.horas} h` +
-    (candidatura ? ` · candidatura ${candidatura.id}${candidatura.yaExistia ? ' (ya la tenía)' : ''}` : '') +
-    (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
-
-  const incorporacion = await avisarAlPlanificador(
-    r, r.id, b.vacanteId, 'ett-rapida', quien.usuarioId, alta_dia);
-  return {
-    ...r, alta: alta_dia, candidatura, incorporacion,
-    jornada: { turno: jornada.turno.etiqueta, horas: jornada.horas, deLaVacante: jornada.deLaVacante },
-  };
 }
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
@@ -433,9 +237,9 @@ const excelDeElegidos = async ids =>
 module.exports = {
   foto, subirFoto,
   CANAL, POR_DEFECTO, CONTRATOS,
-  paraLaPantalla, lista, ficha, catalogos, vacantesAbiertas,
+  paraLaPantalla, lista, ficha, catalogos,
   importar, guardar, cambiarEstado, descartar, eliminar,
-  pasarARRHH, altaRapida,
+  pasarARRHH, altaAMano,
   registrarEnvio, comprobar, excelDeTanda, excelDeElegidos,
   _ettNombre: ettNombre,
 };

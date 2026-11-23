@@ -16,7 +16,6 @@
 //     la ficha de alta en PDF con sus adjuntos.
 
 const cand = require('./candidaturas.service');
-const vacantes = require('./vacantes.service');
 // Por la PUERTA del módulo de Documentos, nunca por su repositorio.
 const docs = require('../Documentos/documentos.service');
 const { generarFichaPDF } = require('../../services/fichaAlta');
@@ -86,18 +85,9 @@ function faltaParaLaFicha(datos, ficha) {
  */
 async function paraLaPantalla() {
   const vacio = { estados: [], canales: [], turnos: [], zonas: [], funnel: [] };
-  const [v, c] = await Promise.all([
-    // Solo las ABIERTAS: una vacante "en proceso" ya tiene candidato, y ofrecerla
-    // otra vez es cómo dos reclutadores acababan trabajando la misma plaza.
-    //
-    // Vienen con TODO lo que hace falta para elegir bien: matrículas, zona,
-    // libranzas, la jornada que se ofrece y —si es un recambio— a quién
-    // sustituye. Antes era un texto con el puesto y la zona, y quien reclutaba
-    // no sabía si estaba ofreciendo 32 h o 40.
-    vacantes.disponibles().catch(e => { console.error('❌ [Selección] vacantes:', e.message); return []; }),
-    cand.catalogos().catch(e => { console.error('❌ [Selección] catálogos:', e.message); return vacio; }),
-  ]);
-  return { vacantes: v, catalogos: c, documentos: DOCUMENTOS };
+  // Las vacantes se fueron el 23/11/2026: la plaza se reserva en el planificador.
+  const c = await cand.catalogos().catch(e => { console.error('❌ [Selección] catálogos:', e.message); return vacio; });
+  return { catalogos: c, documentos: DOCUMENTOS };
 }
 
 /**

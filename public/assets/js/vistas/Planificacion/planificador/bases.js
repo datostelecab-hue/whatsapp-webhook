@@ -357,11 +357,11 @@
     try {
       const j = await pedirTablero('/planificador-v2/api/sin-correturnos', { vehiculoId: coche.vehiculoId, dia: DIA });
       const quitados = (j.quitados || []).map(q => `${q.nombre} (CT ${String(q.turno || '').toLowerCase()})`);
-      if (quitados.length || (j.vacantes || []).length) {
+      if (quitados.length || (j.reservas || []).length) {
         await Dialogo.aviso({
           titulo: `${coche.matricula} ya no lleva correturnos`, tono: 'aviso',
           texto: (quitados.length ? `Se han quitado de este coche: ${quitados.join(', ')}. Si no tienen otra plaza, están en el banquillo. ` : '') +
-            ((j.vacantes || []).length ? `Ojo: la vacante ${j.vacantes.join(', ')} tenía prometida una de sus plazas de correturnos; díselo a Selección.` : ''),
+            ((j.reservas || []).length ? `Ojo: una de sus plazas de correturnos está reservada (${j.reservas.join(', ')}); la reserva sigue.` : ''),
         });
       } else {
         Dialogo.hecho(`${coche.matricula} sin correturnos`);

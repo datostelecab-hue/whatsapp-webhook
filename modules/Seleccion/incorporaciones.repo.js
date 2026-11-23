@@ -34,7 +34,6 @@
 // relevo queda encadenado sin un solo día de coche parado.
 
 const db = require('../../services/db');
-const vacantes = require('./vacantes.repo');
 
 // Las letras de la semana, para traducir los días de un CT. Del núcleo.
 const { LETRAS_DIA: LETRAS } = require('../../services/nucleo');
@@ -42,119 +41,17 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const fecha = d => (ISO.test(String(d || '')) ? String(d) : null);
 
 /**
- * Crea la alerta al dar de alta. Si viene con vacante, toma su foto y la marca
- * "en proceso" para que Selección deje de ofrecerla.
+ * Crea la alerta al dar de alta: «este ha entrado, hay que colocarlo». Se va
+ * sola en cuanto se le da una plaza en el cuadrante.
  *
- * SIN VACANTE TAMBIÉN NACE LA ALERTA (18/09/2026). Antes no: alguien se daba de
- * alta sin plaza prometida y el planificador no se enteraba de que había una
- * persona nueva esperando coche. La alerta sin vacante no tiene nada que
- * aceptar —no hay plazas prometidas— y se va sola en cuanto se le da una plaza
- * en el cuadrante, que es lo que quería decir.
- *
- * @param {{conductorId, vacanteId, origen, desde, usuarioId}} o
- *        `vacanteId` acepta el código ('V…') o el id numérico, o nada.
+ * Las vacantes se fueron el 23/11/2026 (db/277): la plaza se guarda desde el
+ * planificador (plaza reservada). Las alertas viejas con vacante se quedan
+ * como estaban, con su foto (`detalle`).
  */
-async function crear({ conductorId, vacanteId, origen = 'ett', desde, usuarioId } = {}) {
-  const ref = String(vacanteId || '').trim();
+async function crear({ conductorId, origen = 'ett', desde, usuarioId } = {}) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) return null;
-
-  if (!ref) return crearSinVacante({ conductorId: cid, origen, desde, usuarioId });
-
-  const v = await vacantes.ficha(ref);
-  if (!v) throw new Error(`No existe la vacante ${ref}`);
-  if (v.estado === 'cubierta' || v.estado === 'anulada') {
-    throw new Error(`La vacante ${v.codigo} ya está ${v.estado}`);
-  }
-
-  const detalle = fotoDe(v, desde);
-
-  const r = await db.consulta(
-    `INSERT INTO incorporacion (conductor_id, vacante_id, origen, detalle, usuario_alta)
-     VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id`,
-    [cid, v.codigo, origen, JSON.stringify(detalle), usuarioId || null]);
-
-  try { await vacantes.cambiarEstado(v.id, 'proceso', { usuarioId }); } catch (e) {
-    console.error(`⚠️  [Incorporación] no se pudo reservar ${v.codigo}: ${e.message}`);
-  }
-  return { id: String(r.rows[0].id), vacanteId: v.codigo, plazas: detalle.plazas.length, detalle };
-}
-
-/**
- * La foto de la vacante que se guarda en la incorporación.
- *
- * Si mañana alguien toca la vacante, la alerta sigue diciendo lo que se
- * prometió el día del alta. Está en su propia función porque ahora la toman
- * DOS caminos: el alta con vacante y la vacante que llega después.
- */
-function fotoDe(v, desde) {
-  return {
-    codigo: v.codigo, vacanteId: v.id, puesto: v.puesto, rol: v.rol,
-    turno: v.turno, zonas: v.zonas, libranzas: v.libranzas,
-    jornadaHoras: v.jornadaHoras, motivo: v.motivo,
-    sustituye: v.sustituye || '', sustituyeA: v.sustituyeA || null,
-    salidaPrevista: v.salidaPrevista || null,
-    desde: fecha(desde),
-    plazas: (v.plazas || []).map(p => ({
-      plazaId: p.plazaId, matricula: p.matricula, zona: p.zona,
-      rol: p.rol, turno: p.turno,
-      dias: p.dias.slice(), letras: p.letras,
-      ocupa: p.ocupa || '', ocupaId: p.ocupaId || null,
-    })),
-    // Se mantiene la forma vieja al lado para que nada de lo que aún la lee se
-    // quede sin datos. Los días, en índice 0..6, como los escribía la hoja.
-    matriculas: (v.plazas || []).map(p => ({
-      m: p.matricula, zona: p.zona, d: p.dias.map(d => d - 1), letras: p.letras.replace(/ /g, ''),
-    })),
-  };
-}
-
-/**
- * Le pone -o le quita- la vacante a quien YA SE DIO DE ALTA pero TODAVÍA NO
- * HA ENTRADO: su incorporación sigue pendiente de colocar en el cuadrante.
- *
- * ── POR QUÉ HACE FALTA (24/09/2026) ─────────────────────────────────────────
- * La incorporación se crea en el alta con la foto de la vacante que tuviera la
- * candidatura EN ESE MOMENTO. A Víctor Jiménez le dieron de alta a las 08:02
- * sin vacante y se la pusieron a las 08:23: la candidatura la aceptó, pero la
- * incorporación nunca se enteró, y el planificador siguió diciendo "sin plaza
- * prometida" con una vacante en proceso a su nombre. No estaba prohibido
- * ponerla después; simplemente no llegaba a ningún sitio.
- *
- * Solo toca la incorporación PENDIENTE. Si ya está colocada, esa persona tiene
- * su sitio en el cuadrante y moverla es cosa del planificador, no de un campo
- * de Selección. Y conserva el `desde` del alta: la fecha de entrada no cambia
- * porque cambie la plaza.
- *
- * Devuelve null si no hay nada pendiente que tocar.
- */
-async function ponerVacante(conductorId, ref, { usuarioId } = {}) {
-  const inc = (await db.consulta(
-    `SELECT id, vacante_id, detalle FROM incorporacion
-      WHERE conductor_id = $1 AND estado = 'pendiente'
-      ORDER BY id DESC LIMIT 1`, [Number(conductorId)])).rows[0];
-  if (!inc) return null;
-  const desde = fecha((inc.detalle || {}).desde);
-
-  if (!ref) {
-    await db.consulta(
-      'UPDATE incorporacion SET vacante_id = NULL, detalle = $2::jsonb WHERE id = $1',
-      [inc.id, JSON.stringify({ sinVacante: true, desde })]);
-    return { id: String(inc.id), vacanteId: '', plazas: 0 };
-  }
-
-  const v = await vacantes.ficha(ref);
-  if (!v) throw new Error(`No existe la vacante ${ref}`);
-  if (v.estado === 'cubierta' || v.estado === 'anulada') {
-    throw new Error(`La vacante ${v.codigo} ya está ${v.estado}`);
-  }
-  const detalle = fotoDe(v, desde);
-  await db.consulta(
-    'UPDATE incorporacion SET vacante_id = $2, detalle = $3::jsonb WHERE id = $1',
-    [inc.id, v.codigo, JSON.stringify(detalle)]);
-  console.log(`📌 [Incorporación ${inc.id}] ahora con la vacante ${v.codigo}` +
-              ` (${detalle.plazas.length} plaza/s), por ${usuarioId || 'el sistema'}`);
-  return { id: String(inc.id), vacanteId: v.codigo, plazas: detalle.plazas.length };
+  return crearSinVacante({ conductorId: cid, origen, desde, usuarioId });
 }
 
 /**
@@ -256,14 +153,9 @@ async function encargoDeColocar(id, { desde } = {}) {
   const inc = await viva(id);
   const det = inc.detalle || {};
 
-  // Las plazas de la foto. Si la alerta es vieja y solo trae matrículas, se
-  // resuelven contra la vacante viva antes de rendirse.
-  let plazas = (det.plazas || []).filter(p => p.plazaId);
-  if (!plazas.length && inc.vacante_id) {
-    const v = await vacantes.ficha(inc.vacante_id);
-    plazas = (v && v.plazas) || [];
-  }
-  if (!plazas.length) throw new Error('La vacante no trae plazas: colócalo a mano desde el planificador');
+  // Las plazas de la foto (solo las alertas de antes del 23/11/2026, con vacante).
+  const plazas = (det.plazas || []).filter(p => p.plazaId);
+  if (!plazas.length) throw new Error('Esta alerta no trae plazas: colócalo a mano desde el planificador');
 
   const dia = fecha(desde) || fecha(det.desde) || (await db.consulta(
     `SELECT alta::text AS alta FROM conductor_periodo_empleo
@@ -336,18 +228,10 @@ async function encargoDeQuitar(id) {
  * colocación falla —`plan.guardar` es todo o nada—, la alerta sigue pendiente y
  * se puede reintentar.
  */
-async function marcarAceptada(id, { usuarioId, vacanteId } = {}) {
+async function marcarAceptada(id, { usuarioId } = {}) {
   await db.consulta(
     `UPDATE incorporacion SET estado = 'aceptada', usuario_res = $2, resuelto_at = now()
       WHERE id = $1 AND estado = 'pendiente'`, [Number(id), usuarioId || null]);
-  if (vacanteId) {
-    try {
-      await vacantes.cambiarEstado(vacanteId, 'cubierta',
-        { motivo: 'Cubierta al aceptar la incorporación', usuarioId });
-    } catch (e) {
-      console.error(`⚠️  [Incorporación] no se pudo cerrar ${vacanteId}: ${e.message}`);
-    }
-  }
 }
 
 /**
@@ -361,15 +245,10 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
             usuario_res = $3, resuelto_at = now()
       WHERE id = $1 AND estado = 'pendiente'`,
     [inc.id, String(motivo || '').trim().slice(0, 300) || null, usuarioId || null]);
-  if (inc.vacante_id) {
-    try { await vacantes.cambiarEstado(inc.vacante_id, 'abierta', { usuarioId }); } catch (e) {
-      console.error(`⚠️  [Incorporación] no se pudo reabrir ${inc.vacante_id}: ${e.message}`);
-    }
-  }
   return { ok: true };
 }
 
 module.exports = {
-  crear, ponerVacante, pendientes, encargoDeColocar, encargoDeQuitar,
+  crear, pendientes, encargoDeColocar, encargoDeQuitar,
   marcarColocada, marcarAceptada, rechazar, viva,
 };

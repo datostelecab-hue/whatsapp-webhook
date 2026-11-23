@@ -68,25 +68,13 @@
       ? `<span class="block text-[11px] text-telecab-gold font-semibold mt-0.5"><i class="fa-solid fa-arrow-right-long"></i> ${esc(p.futuro.nombre)} · llega ${isoAes(p.futuro.desde)}</span>`
       : '';
 
-    // LA PLAZA ESTÁ PROMETIDA en una vacante. El cuadrante era el último en
-    // enterarse: un hueco que Tráfico ve rojo puede llevar dos semanas
-    // reclutándose, y se colocaba a alguien a mano encima de una plaza ya
-    // ofrecida. Ahora lo dice la propia celda, y dice qué fase lleva.
-    const vac = p.vacante;
-    const vacHtml = !vac ? '' : (() => {
-      const quien = vac.candidato
-        ? `${esc(vac.candidato)}${vac.inicioPrevisto ? ' · entra ' + isoAes(vac.inicioPrevisto) : ''}`
-        : 'sin candidato todavía';
-      const releva = vac.motivo === 'recambio'
-        ? ` · releva a ${esc((vac.sale || '').split(' ')[0] || '')}` +
-          (vac.salidaPrevista ? ` (sale ${isoAes(vac.salidaPrevista)})` : '')
-        : '';
-      const tono = vac.estado === 'proceso' ? 'text-telecab-violet' : 'text-sky-400';
-      const icono = vac.motivo === 'recambio' ? 'fa-right-left' : 'fa-briefcase';
-      return `<span class="block text-[11px] ${tono} font-semibold mt-0.5"
-                    title="Vacante ${esc(vac.codigo)}${vac.letras ? ' · días ' + esc(vac.letras) : ''}. ${vac.estado === 'proceso' ? 'Ya tiene candidato en proceso.' : 'Selección la está reclutando.'}">
-                <i class="fa-solid ${icono} text-[9px]"></i> ${esc(vac.codigo)} · ${quien}${releva}</span>`;
-    })();
+    // PLAZA RESERVADA (db/277, 23/11/2026): para alguien en proceso de alta o
+    // «Sin nombre». Se puede planificar encima: si la persona tiene fecha, ya
+    // está planificada desde ese día y quien se ponga acaba la víspera.
+    const res = p.reserva;
+    const resHtml = !res ? '' : `<span class="block text-[11px] text-sky-400 font-semibold mt-0.5"
+          title="${esc((res.nota ? res.nota + ' · ' : '') + (res.nombre ? (res.llega ? 'Llega el ' + isoAes(res.llega) + ': desde ese día la plaza es suya.' : 'Sin fecha de alta todavía.') : 'Reservada sin nombre.'))}">
+          <i class="fa-solid fa-bookmark text-[9px]"></i> Plaza reservada · ${esc(res.nombre || 'Sin nombre')}${res.tipo === 'ett' ? ' <span class="text-telecab-violet">ETT</span>' : ''}${res.llega ? ' · llega ' + isoAes(res.llega) : ''}</span>`;
 
     if (p.id) {
       // Sub-línea: para el fijo, los días que libra; para el CT, sus días.
@@ -116,7 +104,7 @@
             ? ' <span class="ml-1 px-1 rounded bg-telecab-gold/15 text-telecab-gold text-[10px] font-semibold" title="Contrato de 40 horas repartido en 4 días">40x4</span>' : ''}</span>
           ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
           ${fut}
-          ${vacHtml}
+          ${resHtml}
         </button>`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
       // La zona se edita desde su propia línea, sin disparar el "asignar" de la carta.
@@ -130,22 +118,30 @@
       // Un hueco YA PROMETIDO no es el mismo hueco: no hay que salir a buscar a
       // nadie, hay que esperar a que llegue. Se pinta distinto para que no se
       // cuente dos veces la misma falta.
-      const cls = vac
+      const cls = res
         ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
         : esFijo
           ? 'border-telecab-red/60 bg-telecab-red/10 text-telecab-red'
           : 'border-telecab-warn/60 bg-telecab-warn/10 text-telecab-warn';
-      const texto = vac
-        ? (vac.candidato ? 'Hueco · candidato en camino' : 'Hueco · en vacante')
-        : (esFijo ? 'Hueco · sin fijo' : 'Hueco · colocar CT');
+      const texto = res ? 'Hueco · plaza reservada' : (esFijo ? 'Hueco · sin fijo' : 'Hueco · colocar CT');
       wrap.innerHTML = `
         <button class="text-left w-full px-2 py-1 rounded-lg border border-dashed font-semibold transition ${cls} hover:brightness-110"
                 data-asignar>
-          <i class="fa-solid ${vac ? 'fa-hourglass-half' : 'fa-triangle-exclamation'} text-xs"></i> ${texto}
+          <i class="fa-solid ${res ? 'fa-bookmark' : 'fa-triangle-exclamation'} text-xs"></i> ${texto}
         </button>
-        ${vacHtml}
+        ${resHtml}
         ${fut}`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
+    }
+
+    // RESERVAR / QUITAR LA RESERVA (db/277): reservar, solo en un hueco; quitar,
+    // donde la haya (también con alguien planificado encima).
+    if (p.plazaId && (res || !p.id)) {
+      const b = document.createElement('button');
+      b.className = 'mt-1 text-[11px] text-telecab-muted hover:text-sky-400 transition';
+      b.innerHTML = res ? '<i class="fa-regular fa-bookmark"></i> quitar la reserva' : '<i class="fa-solid fa-bookmark"></i> Reservar plaza';
+      b.addEventListener('click', e => { e.stopPropagation(); if (res) quitarReserva(coche, p, col); else reservarPlaza(coche, p, col); });
+      wrap.appendChild(b);
     }
 
     // AUSENTE Y OCUPANDO PLAZA: la casilla para poner a quien lo cubre. Va aquí,

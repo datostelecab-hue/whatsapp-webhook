@@ -10,6 +10,7 @@ trabaja y la parrilla que se imprime.
 /planificador-v2/api/guardar     POST  mover gente entre plazas
 /planificador-v2/api/eventos           el modo eventos (CT2 abiertas unos días)
 /planificador-v2/api/incorporaciones   la alerta de quien acaba de entrar
+/planificador-v2/api/reservas    POST  reservar un hueco (db/277); /candidatos, /:id/quitar
 /planificador-v2/api/zonas       POST  crear una zona (/:id, editarla)
 /planificador-v2/api/cuadrantes/:id/zona  POST  pasar un cuadrante a otra zona
 /cobertura                             qué plazas quedan sin cubrir
@@ -26,6 +27,8 @@ iceberg.js                las bases y el orden de mejor a peor (puro, sin base)
 zonas.repo.js             las zonas: crear, renombrar, pasar un cuadrante a otra
 ubicacion.js              las coordenadas de una zona desde lo que se pega (puro)
 eventos.repo.js           las plazas de refuerzo con fecha de caducidad
+reservas.service.js       las plazas reservadas (db/277): reservar, quitar, planificar a quien llega
+reservas.repo.js          su SQL
 cobertura.controller.js   HTTP de la semana y del aviso
 cobertura.service.js      a quién se avisa, a qué ritmo y qué se apunta
 cobertura.repo.js         el SQL de la semana, y la ventana de hoy a 7 días · avisos.repo.js  el registro de avisos
