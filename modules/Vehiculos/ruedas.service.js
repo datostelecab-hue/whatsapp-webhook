@@ -21,6 +21,10 @@
 //     los últimos 30 días le quedan 15 días o menos), «a punto».
 //   · SIN CAMBIO APUNTADO, o con un cambio sin km: «sin dato» hasta que se
 //     apunte a mano (Camilo: «Sin dato y apuntarlo a mano»).
+//   · LAS REVISIONES (db/275, 23/11/2026, Camilo: «que se pueda inputar
+//     también la última revisión, no mantenimiento sino revisión con su
+//     respectiva observación»): el día, los km si se saben y lo visto. NO son
+//     un cambio: no reinician los 30.000 km. Se anulan con motivo, no se borran.
 //   · EL AVISO: un número en «Mantenimientos» del menú con los que tocan, y una
 //     vez al día, por el chat (canal «notificaciones-telecab»), a quien tenga el
 //     puesto de responsable de taller, los coches que han pasado de 30.000 km
@@ -30,6 +34,7 @@
 const repo = require('./ruedas.repo');
 const taller = require('./taller.repo');
 const contadores = require('../../services/contadores');
+const libro = require('../../services/libro');
 const tareasProgramadas = require('../../services/tareasProgramadas');
 const { SEDE_FLOTA } = require('../../services/nucleo');
 
@@ -110,8 +115,13 @@ function semaforo({ odometro, cambio, kmDia, intervalo = INTERVALO }) {
 // ── La pestaña ─────────────────────────────────────────────────────────────
 /** La flota con su último cambio de ruedas y su semáforo. `sedes`, las de quien mira. */
 async function cuadro({ sedes } = {}) {
-  const [coches, candidatos] = await Promise.all([taller.cuadro({ sedes }), repo.candidatos()]);
+  const [coches, candidatos, revs] = await Promise.all([taller.cuadro({ sedes }), repo.candidatos(), repo.revisiones()]);
   const historial = historialRuedas(candidatos);
+  const revisionesDe = new Map();
+  revs.forEach(x => {
+    if (!revisionesDe.has(x.vehiculo_id)) revisionesDe.set(x.vehiculo_id, []);
+    revisionesDe.get(x.vehiculo_id).push({ id: x.id, fecha: x.fecha, km: x.km, observacion: x.observacion, por: x.por });
+  });
   const filas = coches.map(c => {
     const h = historial.get(Number(c.id)) || { cambios: [], pinchazos: [] };
     const cambio = h.cambios[0] || null;
@@ -119,6 +129,7 @@ async function cuadro({ sedes } = {}) {
       id: c.id, matricula: c.matricula, vehiculo: c.vehiculo, zona: c.zona, estadoOperativo: c.estadoOperativo,
       conMapon: c.conMapon, odometro: c.odometro, odometroFuente: c.odometroFuente, kmDia: c.kmDia,
       cambio, cambios: h.cambios, pinchazos: h.pinchazos,
+      revision: (revisionesDe.get(Number(c.id)) || [])[0] || null, revisiones: revisionesDe.get(Number(c.id)) || [],
       intervalo: INTERVALO, ...semaforo({ odometro: c.odometro, cambio, kmDia: c.kmDia }),
     };
   });
@@ -147,6 +158,56 @@ async function apuntar(datos = {}, { usuarioId, sedes } = {}) {
   }, { usuarioId });
   olvidar();
   return r;
+}
+
+// ── Las revisiones (db/275) ────────────────────────────────────────────────
+const MAX_OBSERVACION = 1000;
+const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+
+/** Una fecha escrita como sea → 'AAAA-MM-DD', por componentes (nunca new Date(cadena)). Puro. */
+function aIso(v) {
+  const s = String(v == null ? '' : v).trim();
+  const dd = n => String(n).padStart(2, '0');
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${dd(+m[2])}-${dd(+m[1])}`;
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  return m ? `${m[1]}-${dd(+m[2])}-${dd(+m[3])}` : null;
+}
+
+/** Apuntar una revisión de ruedas: el día, los km (si se saben) y lo visto. No es un cambio. */
+async function apuntarRevision(datos = {}, { usuarioId, sedes } = {}) {
+  const fecha = aIso(datos.fecha);
+  if (!fecha) throw new Error('Pon el día de la revisión (dd/mm/aaaa)');
+  if (fecha > hoyMadrid()) throw new Error('La revisión no puede ser de un día que no ha llegado');
+  const observacion = String(datos.observacion || '').trim();
+  if (!observacion) throw new Error('Escribe la observación: cómo están las ruedas');
+  if (observacion.length > MAX_OBSERVACION) throw new Error(`La observación, como mucho de ${MAX_OBSERVACION} letras`);
+  let km = null;
+  if (datos.km != null && String(datos.km).trim() !== '') {
+    km = Math.round(Number(String(datos.km).replace(/[.\s]/g, '').replace(',', '.')));
+    if (!Number.isFinite(km) || km < 0 || km > 2000000) throw new Error('Esos km no pueden ser');
+  }
+  const fila = (await taller.cuadro({ sedes })).find(c => Number(c.id) === Number(datos.vehiculoId));
+  if (!fila) throw new Error('Ese coche no es de tu sede');
+  if (km != null && fila.odometro != null && km > Number(fila.odometro) + 2000) {
+    throw new Error(`${fila.matricula} marca ${miles(fila.odometro)} km y estás apuntando ${miles(km)}. Revisa el dato.`);
+  }
+  const id = await libro.conFirma({ usuarioId, origen: 'taller.ruedas', accion: 'alta' },
+    cli => repo.apuntarRevision(cli, { vehiculoId: fila.id, fecha, km, observacion, usuarioId }));
+  return { id };
+}
+
+/** Anular una revisión mal apuntada, con su motivo (no se borra). */
+async function anularRevision({ id, motivo } = {}, { usuarioId, sedes } = {}) {
+  const m = String(motivo || '').trim();
+  if (!m) throw new Error('Di por qué se anula');
+  const r = await repo.revision(null, Number(id));
+  if (!r) throw new Error('Esa revisión no existe o ya está anulada');
+  const fila = (await taller.cuadro({ sedes })).find(c => Number(c.id) === r.vehiculoId);
+  if (!fila) throw new Error('Ese coche no es de tu sede');
+  await libro.conFirma({ usuarioId, origen: 'taller.ruedas', accion: 'anulacion', motivo: m.slice(0, 500) },
+    cli => repo.anularRevision(cli, { id: r.id, motivo: m.slice(0, 500), usuarioId }));
+  return { ok: true };
 }
 
 // ── El número del menú ─────────────────────────────────────────────────────
@@ -217,7 +278,7 @@ tareasProgramadas.registrar({
 });
 
 module.exports = {
-  cuadro, apuntar, avisar, olvidar, INTERVALO, ESTADOS,
+  cuadro, apuntar, avisar, olvidar, apuntarRevision, anularRevision, INTERVALO, ESTADOS,
   // Para las pruebas:
   _ruedasDe: ruedasDe, _historialRuedas: historialRuedas, _semaforo: semaforo, _textoAviso: textoAviso, _esRuedaNueva: esRuedaNueva,
 };

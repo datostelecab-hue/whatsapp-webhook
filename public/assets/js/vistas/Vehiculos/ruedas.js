@@ -9,6 +9,12 @@
 // y, a quien puede apuntar, «Apuntar un cambio». Las cuentas son del servidor
 // (modules/Vehiculos/ruedas.service.js); aquí solo se pintan.
 //
+// LAS REVISIONES (db/275, 23/11/2026, Camilo: «que se pueda inputar también la
+// última revisión, no mantenimiento sino revisión con su respectiva
+// observación»): el día, los km si se saben y lo visto. No son un cambio: no
+// mueven los km. Columna «Última revisión», su historia en el Panel y
+// «Apuntar una revisión»; una mal apuntada se anula con su motivo.
+//
 // La monta taller.js al abrir la pestaña: TallerRuedas.montar({ base, puede }).
 (function (global) {
   'use strict';
@@ -74,6 +80,12 @@
         { titulo: 'Último cambio', campo: 'cambio', valor: f => (f.cambio ? deDonde(f.cambio) : ''),
           pinta: (v, f) => (f.cambio ? `<span class="tabular-nums">${esc(deDonde(f.cambio))}</span>${f.cambio.ruedas ? `<span class="block text-[11px] text-telecab-muted">${f.cambio.ruedas} ruedas</span>` : ''}`
             : `<span class="text-xs text-telecab-muted">${esc(MOTIVO[f.motivo] || '—')}</span>`) },
+        { titulo: 'Última revisión', campo: 'revision',
+          valor: f => (f.revision ? `${dia(f.revision.fecha)}${f.revision.km != null ? ` · ${miles(f.revision.km)} km` : ''} · ${f.revision.observacion}` : ''),
+          pinta: (v, f) => (f.revision
+            ? `<span class="tabular-nums">${esc(dia(f.revision.fecha))}${f.revision.km != null ? ` · ${esc(miles(f.revision.km))} km` : ''}</span>` +
+              `<span class="block max-w-[16rem] truncate text-[11px] text-telecab-muted" title="${esc(f.revision.observacion)}">${esc(f.revision.observacion)}</span>`
+            : '<span class="text-xs text-telecab-muted">Sin revisión</span>') },
         { titulo: 'Odómetro', campo: 'odometro', clase: 'text-right tabular-nums', pinta: v => (v == null ? '—' : `${miles(v)} km`) },
         { titulo: 'Desde el cambio', campo: 'desde', clase: 'text-right tabular-nums',
           pinta: (v, f) => (v == null ? '—' : `<b class="${f.estado === 'toca' ? 'text-telecab-red' : ''}">${miles(v)} km</b>`) },
@@ -85,7 +97,10 @@
           pinta: (v, f) => (f.estado === 'toca' ? `<span class="text-telecab-red font-semibold">pasado ${miles(-v)} km</span>`
             : v == null ? '—' : `${miles(v)} km${f.dias != null ? ` <span class="text-telecab-muted">· ${f.dias} d</span>` : ''}`) },
       ],
-      acciones: cfg.puede ? [{ texto: 'Apuntar un cambio', icono: 'fa-plus', onClick: l => apuntar(null, l.filas) }] : [],
+      acciones: cfg.puede ? [
+        { texto: 'Apuntar una revisión', icono: 'fa-clipboard-check', onClick: l => revisar(null, l.filas) },
+        { texto: 'Apuntar un cambio', icono: 'fa-plus', onClick: l => apuntar(null, l.filas) },
+      ] : [],
       alAbrir: f => abrir(f),
     });
   }
@@ -112,8 +127,22 @@
           ${cifra('Desde el último cambio', f.desde == null ? '—' : `${miles(f.desde)} km`,
             f.estado === 'toca' ? `pasado ${miles(-f.restan)} km` : f.restan != null ? `le quedan ${miles(f.restan)} km${f.dias != null ? ` (unos ${f.dias} días)` : ''}` : '')}
         </div>
-        ${cfg.puede ? `<div class="flex justify-end mt-3"><button type="button" class="tc-boton tc-boton--chico" data-apuntar>
-          <i class="fa-solid fa-plus" aria-hidden="true"></i>Apuntar un cambio de ruedas</button></div>` : ''}
+        ${cfg.puede ? `<div class="flex flex-wrap justify-end gap-2 mt-3">
+          <button type="button" class="tc-boton tc-boton--chico" data-revisar>
+            <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>Apuntar una revisión</button>
+          <button type="button" class="tc-boton tc-boton--chico" data-apuntar>
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>Apuntar un cambio de ruedas</button></div>` : ''}
+        <section class="tc-panel-seccion"><h4>Revisiones <span class="font-normal text-telecab-muted">· no cuentan como cambio</span></h4>
+          ${f.revisiones && f.revisiones.length ? `<ul class="divide-y divide-telecab-border/60">${f.revisiones.map(r => `<li class="py-2.5">
+              <div class="flex items-baseline gap-2">
+                <b class="text-sm tabular-nums">${esc(dia(r.fecha))}</b>
+                ${r.km != null ? `<span class="text-xs text-telecab-muted tabular-nums">${esc(miles(r.km))} km</span>` : ''}
+                <span class="flex-1"></span>
+                ${cfg.puede ? `<button type="button" class="text-xs text-telecab-muted hover:text-telecab-red" data-anular-revision="${r.id}">Anular</button>` : ''}
+              </div>
+              <p class="text-sm mt-0.5 whitespace-pre-line">${esc(r.observacion)}</p>
+              ${r.por ? `<p class="text-[11px] text-telecab-muted mt-0.5">${esc(r.por)}</p>` : ''}
+            </li>`).join('')}</ul>` : '<p class="text-sm text-telecab-muted">Ninguna apuntada.</p>'}</section>
         <section class="tc-panel-seccion"><h4>Cambios de ruedas</h4>
           ${f.cambios.length ? tabla(f.cambios, true) : '<p class="text-sm text-telecab-muted">Ninguno en las facturas ni apuntado a mano.</p>'}</section>
         <section class="tc-panel-seccion"><h4>Pinchazos <span class="font-normal text-telecab-muted">· no cuentan como cambio</span></h4>
@@ -121,6 +150,52 @@
     });
     const b = p.cuerpo.querySelector('[data-apuntar]');
     if (b) b.addEventListener('click', () => apuntar(f));
+    const rv = p.cuerpo.querySelector('[data-revisar]');
+    if (rv) rv.addEventListener('click', () => revisar(f));
+    p.cuerpo.addEventListener('click', ev => {
+      const a = ev.target.closest('[data-anular-revision]');
+      if (a) anularRevision(Number(a.dataset.anularRevision));
+    });
+  }
+
+  // ── Apuntar una revisión (db/275): lo visto, sin tocar los km del cambio ──
+  async function revisar(fila, filas) {
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const campos = [];
+    if (!fila) {
+      campos.push({ id: 'coche', etiqueta: 'Coche', tipo: 'lista', obligatorio: true,
+        opciones: (filas || []).map(f => ({ valor: String(f.id), texto: `${f.matricula}${f.vehiculo ? ` · ${f.vehiculo}` : ''}` })) });
+    }
+    campos.push(
+      { id: 'fecha', etiqueta: 'Día de la revisión', tipo: 'fecha', obligatorio: true, valor: dia(hoy) },
+      { id: 'km', etiqueta: 'Km del coche ese día', marcador: fila && fila.odometro ? `opcional · hoy marca ${miles(fila.odometro)}` : 'opcional' },
+      { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', obligatorio: true, max: 1000,
+        marcador: 'Cómo están: dibujo, desgaste, presión, lo que haya que vigilar…' },
+    );
+    const v = await global.Dialogo.formulario(fila ? `Revisión de ruedas de ${fila.matricula}` : 'Apuntar una revisión de ruedas', campos,
+      { textoBoton: 'Apuntar', nota: 'Una revisión no es un cambio: los km hasta el próximo cambio no se mueven.' });
+    if (!v) return;
+    const r = await global.Api.post(`${cfg.base}/api/ruedas/revision`, {
+      vehiculoId: fila ? fila.id : Number(v.coche), fecha: v.fecha, km: v.km || '', observacion: v.observacion || '',
+    }, { aviso: 'No se ha podido apuntar' });
+    if (!r) return;
+    global.Dialogo.hecho('Revisión apuntada');
+    const abierto = global.Panel.abierto();
+    if (abierto) abierto.cerrar();
+    if (lst) lst.recargar();
+  }
+
+  async function anularRevision(id) {
+    const v = await global.Dialogo.formulario('Anular la revisión', [
+      { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto', obligatorio: true, max: 500, marcador: 'p. ej. era de otro coche' },
+    ], { textoBoton: 'Anular', nota: 'No se borra: queda guardada como anulada, con el motivo.' });
+    if (!v) return;
+    const r = await global.Api.post(`${cfg.base}/api/ruedas/revision/${id}/anular`, { motivo: v.motivo }, { aviso: 'No se ha podido anular' });
+    if (!r) return;
+    global.Dialogo.hecho('Revisión anulada');
+    const abierto = global.Panel.abierto();
+    if (abierto) abierto.cerrar();
+    if (lst) lst.recargar();
   }
 
   // ── Apuntar un cambio a mano ───────────────────────────────────────────────

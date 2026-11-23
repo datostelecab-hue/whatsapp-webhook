@@ -140,6 +140,10 @@ router.post('/api/intervalo', responde(exigeApuntar((req, quien) =>
 // Mirar, con '/taller'; apuntar un cambio a mano, con '/taller/apuntar'.
 router.get('/api/ruedas', responde(async req => ruedas.cuadro({ sedes: await sedesDe(req) })));
 router.post('/api/ruedas/apuntar', responde(exigeApuntar((req, quien) => ruedas.apuntar(req.body, quien))));
+// Las revisiones (db/275): el día, los km y lo visto. No son un cambio.
+router.post('/api/ruedas/revision', responde(exigeApuntar((req, quien) => ruedas.apuntarRevision(req.body, quien))));
+router.post('/api/ruedas/revision/:id/anular', responde(exigeApuntar((req, quien) =>
+  ruedas.anularRevision({ id: req.params.id, motivo: (req.body || {}).motivo }, quien))));
 
 // ── LAS CITAS DEL TALLER (db/187) ───────────────────────────────────────────
 // Mirarlas es de '/taller'; subir el Excel, avisar y cambiar su estado, de

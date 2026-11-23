@@ -50,7 +50,46 @@ async function apuntarAviso(cli, { vehiculoId, cambioId, kmDesde, mensajeId }) {
      ON CONFLICT DO NOTHING`, [vehiculoId, cambioId || null, kmDesde, mensajeId || null]);
 }
 
+// ── Las revisiones (db/275, 23/11/2026) ────────────────────────────────────
+// Mirar cómo están y apuntar lo visto. No son cambios: no cuentan para los km.
+
+/** Las revisiones vigentes de toda la flota, de la más nueva a la más vieja. [] sin db/275. */
+async function revisiones(cli = null) {
+  try {
+    const r = await q(cli,
+      `SELECT x.id, x.vehiculo_id, to_char(x.fecha, 'YYYY-MM-DD') AS fecha, x.km, x.observacion,
+              NULLIF(btrim(concat_ws(' ', u.nombre, u.apellidos)), '') AS por, x.creado_at
+         FROM ruedas_revision x LEFT JOIN usuario u ON u.id = x.creado_por
+        WHERE x.anulado_at IS NULL
+        ORDER BY x.fecha DESC, x.id DESC`);
+    return r.rows.map(x => ({ ...x, id: Number(x.id), vehiculo_id: Number(x.vehiculo_id), km: x.km == null ? null : Number(x.km) }));
+  } catch (e) {
+    if (e && e.code === '42P01') return [];   // db/275 sin aplicar
+    throw e;
+  }
+}
+
+async function apuntarRevision(cli, { vehiculoId, fecha, km, observacion, usuarioId }) {
+  const r = await q(cli,
+    `INSERT INTO ruedas_revision (vehiculo_id, fecha, km, observacion, creado_por)
+     VALUES ($1, $2::date, $3, $4, $5) RETURNING id`, [vehiculoId, fecha, km, observacion, usuarioId || null]);
+  return Number(r.rows[0].id);
+}
+
+/** La revisión (vigente) con su coche, para comprobar la sede antes de anularla. */
+async function revision(cli, id) {
+  const r = await q(cli, 'SELECT id, vehiculo_id FROM ruedas_revision WHERE id = $1 AND anulado_at IS NULL', [id]);
+  return r.rows[0] ? { id: Number(r.rows[0].id), vehiculoId: Number(r.rows[0].vehiculo_id) } : null;
+}
+
+async function anularRevision(cli, { id, motivo, usuarioId }) {
+  const r = await q(cli,
+    `UPDATE ruedas_revision SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
+      WHERE id = $1 AND anulado_at IS NULL RETURNING id`, [id, usuarioId || null, motivo]);
+  return r.rows.length > 0;
+}
+
 /** ¿Está aplicada db/265? Sin ella, Ruedas no avisa (la pantalla sí se ve). */
 const faltaMigracion = e => e && (e.code === '42P01' || /ruedas_aviso/.test(String(e.message || '')));
 
-module.exports = { candidatos, responsablesTaller, avisados, apuntarAviso, faltaMigracion };
+module.exports = { candidatos, responsablesTaller, avisados, apuntarAviso, faltaMigracion, revisiones, apuntarRevision, revision, anularRevision };

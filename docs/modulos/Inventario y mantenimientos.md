@@ -127,6 +127,16 @@ En Mantenimientos, al lado de Revisión por km (solo Madrid), `modules/Vehiculos
 - La ficha de cada coche (en el Panel) trae sus cambios de ruedas y, aparte, sus **pinchazos**, que no cuentan.
 - La lista es un Listado con `url: false`: el `#id` de la dirección es de la lista de Mantenimientos.
 
+### Ruedas: las revisiones (db/275, 23/11/2026)
+
+Camilo: *«que se pueda inputar también la última revisión, no mantenimiento sino revisión con su respectiva observación»*.
+
+- **Apuntar una revisión** (botón de la lista y de la ficha de cada coche): el día, los km si se saben (opcionales) y la **observación** (obligatoria: dibujo, desgaste, lo que haya que vigilar). Quien puede apuntar en el taller.
+- **No es un cambio**: va en su tabla, `ruedas_revision`, y no en `mantenimiento` (donde un apunte a mano de neumáticos sí es un cambio). Los 30.000 km no se mueven.
+- En la lista, la columna **«Última revisión»** (día, km y la observación); en la ficha, todas, con quién las apuntó.
+- Una mal apuntada se **anula con su motivo**; no se borra. Escribir y anular van firmados en el libro (`taller.ruedas`).
+- Sin db/275 aplicada, la pestaña se ve igual, sin revisiones. Prueba: `test/ruedas-revision.test.js`.
+
 ### Ruedas: el aviso
 
 - **Un número en el menú**: «Mantenimientos» suma, a lo de las citas, los coches a los que les toca (`taller.ruedas`, también en la pestaña). Se calcula cada 10 minutos como mucho.
