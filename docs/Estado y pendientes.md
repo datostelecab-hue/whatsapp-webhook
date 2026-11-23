@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-10-25
+actualizado: 2026-11-23
 ---
 
 # Estado y pendientes
@@ -207,6 +207,18 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## Pendientes técnicos
 
+- **Librerías con fallos de seguridad conocidos (`npm audit`, 23/11/2026).** El despliegue de Render avisa de 13 (8 moderadas, 4 altas, 1 crítica); en local, 14. No lo causó ningún cambio: son fallos publicados en librerías que usa el ERP. Por tandas:
+  1. **Sin romper nada** (`npm audit fix`, sin `--force`), pasando `npm test`:
+     - `proxy-addr` (**crítica**): deja falsear la IP de quien entra; el portal limita los códigos por IP.
+     - `multer`, `compression`, `body-parser`, `brace-expansion` (altas): una petición preparada puede **tumbar el servidor**; `multer` es la subida de ficheros.
+     - `ip-address` (moderada): puede saltarse la protección SSRF de las vistas previas de enlaces del chat (`services/enlaces.js`).
+     - `qs` (moderada): denegación de servicio al leer formularios.
+  2. **`nodemailer` a la 10** (alta; versión grande): fallos al armar el correo, uno lo puede mandar a otro dominio. Envía los códigos del portal y los correos del ERP: probar el envío en local con Mailpit antes de subir.
+  3. **`uuid`**, que llega por `exceljs`, `googleapis` y `node-cron` (moderadas): solo afecta si se le pasa un buffer, y el ERP no lo hace. El arreglo cambia de versión grande las tres librerías: para más adelante.
+- **Arquitectura: 3 incumplimientos de capas** (`node scripts/comprobar-capas.js`; el 01/10 eran 0). Dos controladores hablan directamente con un repositorio en vez de ir por su servicio:
+  - `modules/Control/justificantes.controller.js` → `services/repo/auditoriaJ`;
+  - `modules/Operaciones/bitacora.controller.js` → `services/repo/justificantes` y `services/repo/auditoriaJ`.
+  Se arreglan pasando esas llamadas a `justificantes.service` / `bitacora.service`, con su traza contra el commit anterior ([[ARQUITECTURA]]). Además quedan 6 avisos y 1 controlador de `routes/` que se salta la capa de servicio (deuda de la Fase 2).
 - **Credenciales escritas en el código.** Casi todo está bien puesto en variables de entorno, pero quedan dos cosas:
   - `services/bolt.js` lleva el `client_id` y el `client_secret` de OAuth de BOLT **en texto plano**. Es la única credencial del sistema fuera del entorno, y está en el historial de git: sacarla al entorno **y rotarla**, porque quitarla del fichero no la borra del historial.
   - `services/puertasBot.js` (antes en `routes/botPuertas.js`) lleva la URL del despliegue de Apps Script que **abre y cierra los coches**. No es una clave, pero un despliegue publicado de Apps Script no pide autenticación: quien tenga la URL acciona puertas.
