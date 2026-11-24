@@ -354,6 +354,10 @@ async function desvincularConFotos(persona, ficheros = {}) {
       guardadas++;
     } catch (err) { console.error(`❌ [Portal] foto ${FOTOS[i].campo} del turno ${filaId}:`, err.message); }
   }
+  // Un lote más para la revisión de fotos del taller (db/282): su número en el menú.
+  if (guardadas) {
+    try { require('../Vehiculos/revisionFotos.service').loteNuevo(); } catch (err) { console.error('❌ [Portal] aviso a la revisión de fotos:', err.message); }
+  }
   if (guardadas < FOTOS.length) {
     return { ...r, tono: 'aviso', texto: [...r.texto,
       `Se han guardado ${guardadas} de las 5 fotos: avisa a Tráfico de que el coche se ha desvinculado sin todas las fotos.`] };

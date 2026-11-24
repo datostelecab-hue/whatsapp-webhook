@@ -53,13 +53,17 @@ async function anular(cli, { id, motivo, anuladoPor }) {
  * de `dia` (fecha de Madrid), anulados o no. Para borrarlos de verdad (las
  * fotos del portal, a los 20 días). Como mucho `limite` de una vez.
  */
-async function anterioresA(cli, duenoTipo, dia, limite = 2000) {
+async function anterioresA(cli, duenoTipo, dia, limite = 2000, { exceptoDuenos = [] } = {}) {
+  // `exceptoDuenos`: los dueños cuyos ficheros se guardan aunque sean viejos
+  // (las fotos de una pareja con daños, db/282). Va en la consulta y no
+  // después: con el tope, filtrarlos fuera dejaría la purga atascada en ellos.
   const r = await cli.query(
     `SELECT a.id, a.almacen, a.ruta, a.bytes
        FROM adjunto a
       WHERE a.dueno_tipo = $1 AND (a.creado_at AT TIME ZONE 'Europe/Madrid')::date < $2::date
+        AND NOT (a.dueno_id = ANY($4::text[]))
       ORDER BY a.id
-      LIMIT $3`, [duenoTipo, dia, limite]);
+      LIMIT $3`, [duenoTipo, dia, limite, (exceptoDuenos || []).map(String)]);
   return r.rows;
 }
 

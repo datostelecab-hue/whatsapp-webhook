@@ -32,6 +32,13 @@ facturas.controller.js    idem para /facturas
 facturas.service.js       LA PUERTA de las facturas de taller
 facturas.repo.js          su SQL
 vistas/facturas.ejs       la pantalla (/facturas)
+
+revisionFotos.controller.js  idem para /revision-fotos (db/282)
+revisionFotos.service.js     LA PUERTA de la revisión de las fotos del portal: cada
+                             lote contra el anterior del mismo coche, calificar,
+                             qué fotos no borra la purga de 20 días
+revisionFotos.repo.js        su SQL (taller_revision_fotos)
+vistas/revisionFotos.ejs     la pantalla (/revision-fotos)
 ```
 
 ## Una factura NO es de un coche

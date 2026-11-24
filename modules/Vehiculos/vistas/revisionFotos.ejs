@@ -1,0 +1,14 @@
+<%#
+  REVISIÓN DE FOTOS (db/282, 24/11/2026) — submódulo de taller.
+
+  Cada lote de fotos del portal (las cinco de quien desvincula el coche) contra
+  el anterior del mismo coche. La lista es el componente de la casa (Listado):
+  una fila por pareja, las pendientes arriba. La ficha pone las cinco fotos de
+  antes y de después una al lado de la otra, y se califica «Aprobada» o «Con
+  daños». El JavaScript, en /assets/js/vistas/Vehiculos/revisionFotos.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeCalificar: !!puedeCalificar }) %></script>
+<script src="<%= est('/assets/js/vistas/Vehiculos/revisionFotos.js') %>"></script>

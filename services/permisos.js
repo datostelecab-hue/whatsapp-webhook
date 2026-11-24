@@ -121,6 +121,12 @@ const CATALOGO = [
     { clave: '/inspecciones', etiqueta: 'Inspección de vehículos', hijos: [
       { clave: '/inspecciones/apuntar', etiqueta: 'Inspección de vehículos · apuntar, anular e importar el Excel', escribir: true },
     ] },
+    // La revisión de las fotos del portal (db/282): mirar las parejas de lotes
+    // y calificarlas. Calificar va marcada `escribir`: toda petición que no sea
+    // un GET a /revision-fotos la exige sola.
+    { clave: '/revision-fotos', etiqueta: 'Revisión de fotos del portal', hijos: [
+      { clave: '/revision-fotos/calificar', etiqueta: 'Revisión de fotos · aprobar o marcar con daños', escribir: true },
+    ] },
     // MIRAR lo que se gasta en la flota lo quiere dirección; METERLO es del
     // taller. Mismo reparto que en mantenimientos, y por el mismo motivo.
     // El inventario del taller (db/241): lo que hay en el almacén sin matrícula

@@ -70,6 +70,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El portal de conductores (19/10/2026)
 
+- **Aplicar `db/282`** (24/11/2026): la revisión de fotos del taller (`/revision-fotos`). Sin ella la pantalla enseña los lotes pero no deja calificar, y la purga de los 20 días no guarda nada. Las llaves van a quien ya tenía Mantenimientos. Ver [[Revision de fotos]].
 - **Portal: poner el teléfono de Tráfico** (24/11/2026): en Parámetros, «Portal de conductores: teléfono de Tráfico» (nueve cifras). Sin él no sale el botón «Llamar a Tráfico» de los avisos y la Ayuda. Ver [[Portal de conductores#Las 10 heurísticas de Nielsen (24/11/2026)]].
 - **Portal: lo que queda para lanzarlo** (24/11/2026): el código está; faltan los 52 conductores en activo sin email o sin DNI (RRHH), mirarlo en un iPhone y, al final, el vídeo. Ver [[Portal de conductores#Lo que queda para lanzarlo (24/11/2026)]].
 - **Los dominios están pedidos**: `erptelecab.es` (el ERP) y `conductorestelecab.es` (el portal). Los gestiona otra persona. Cuando estén, hay que añadirlos en Render y pasarle a quien los gestiona los registros DNS que dé Render.

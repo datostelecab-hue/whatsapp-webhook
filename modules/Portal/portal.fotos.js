@@ -12,6 +12,8 @@
 //     de `adjunto`. Del todo: no se anulan, se borran. El libro de auditoría
 //     guarda que se borraron (la fila de antes, con su ruta y su tamaño), pero
 //     la foto ya no existe en ningún sitio.
+//   · MENOS LAS DE UNA PAREJA CON DAÑOS (db/282, la revisión de fotos del
+//     taller): los dos lotes se guardan, son la prueba.
 //   · Primero el fichero y luego la fila: si R2 falla con uno, su fila se queda
 //     y se intenta otra vez al día siguiente (borrar en R2 lo que ya no está no
 //     da error).
@@ -40,7 +42,9 @@ const primerDia = (hoy = calendario.hoy()) => calendario.sumarDias(hoy, -DIAS);
  */
 async function purgar(cli, { hoy = calendario.hoy(), limite = 2000 } = {}) {
   const antesDe = primerDia(hoy);
-  const filas = await repoAdjuntos.anterioresA(cli, TIPO, antesDe, limite);
+  // Las de las parejas con daños de la revisión del taller (db/282) se guardan: son la prueba.
+  const guardar = await require('../Vehiculos/revisionFotos.service').turnosProtegidos(cli);
+  const filas = await repoAdjuntos.anterioresA(cli, TIPO, antesDe, limite, { exceptoDuenos: guardar });
   if (!filas.length) return { borradas: 0, fallos: 0, antesDe };
   await libro.firmar(cli, { origen: `tarea · ${CLAVE}`, motivo: `Fotos del portal de más de ${DIAS} días: borradas del almacén` });
   const hechas = [];
