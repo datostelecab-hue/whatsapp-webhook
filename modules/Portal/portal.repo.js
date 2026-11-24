@@ -173,7 +173,51 @@ async function fotosDeVehiculo(vehiculoId, desdeDia) {
   return r.rows;
 }
 
+/** Sus cuentas de BOLT (el uuid de cada una): lo que le une a los tramos de BOLT. */
+async function cuentasBolt(conductorId) {
+  const r = await db.consulta(
+    `SELECT externo_id FROM conductor_externo WHERE sistema = 'bolt' AND conductor_id = $1::bigint`, [conductorId]);
+  return r.rows.map(x => String(x.externo_id));
+}
+
+/**
+ * LOS TRAMOS DE BOLT DEL CRONÓMETRO (24/11/2026): los que tocan [desde, hasta)
+ * y son suyos (de sus cuentas, con cualquier coche) o de su coche vinculado
+ * (con quien sea en BOLT). Cada uno con la parte que cae dentro y su odómetro.
+ * De Flota Viva (fv_tramo). El final de cada tramo, con la regla de la casa
+ * (rutas.FIN_KM): un tramo abierto que nadie cierra (el motor atascado, el
+ * coche que se va) no cuenta horas ni km sin fin.
+ */
+async function tramosDelCronometro({ uuids, matricula, desdeMs, hastaMs }) {
+  const fv = require('../../services/flotaViva/db');
+  const { FIN_KM } = require('../../services/flotaViva/rutas');
+  if (!fv.HAY_BD) return [];
+  await fv.preparar();
+  const r = await fv.consulta(
+    `SELECT t.situacion, s.efectivo,
+            (t.conductor_uuid = ANY($3::text[])) AS suyo,
+            (upper(regexp_replace(COALESCE(v.matricula, ''), '[^0-9A-Za-z]', '', 'g')) = $4) AS del_coche,
+            extract(epoch FROM t.desde) * 1000 AS desde_ms,
+            extract(epoch FROM ${FIN_KM}) * 1000 AS hasta_ms,
+            t.odometro_ini_m, t.odometro_fin_m
+       FROM fv_tramo t
+       JOIN fv_vehiculo v ON v.uuid = t.vehiculo_uuid
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion
+      WHERE t.desde < $2::timestamptz
+        AND (t.hasta IS NULL OR t.hasta > $1::timestamptz)
+        AND t.desde >= $1::timestamptz - interval '2 days'
+        AND (t.conductor_uuid = ANY($3::text[])
+             OR upper(regexp_replace(COALESCE(v.matricula, ''), '[^0-9A-Za-z]', '', 'g')) = $4)`,
+    [new Date(desdeMs).toISOString(), new Date(hastaMs).toISOString(), uuids, String(matricula || '')]);
+  return r.rows.map(x => ({
+    situacion: x.situacion, efectivo: !!x.efectivo, suyo: !!x.suyo, delCoche: !!x.del_coche,
+    desdeMs: Number(x.desde_ms), hastaMs: Number(x.hasta_ms),
+    odoIni: x.odometro_ini_m == null ? null : Number(x.odometro_ini_m),
+    odoFin: x.odometro_fin_m == null ? null : Number(x.odometro_fin_m),
+  }));
+}
+
 module.exports = {
   porDni, porId, contrato, codigosRecientes, nuevoCodigo, marcarEnviado, codigoVivo, intentar,
-  nuevaSesion, sesion, renovar, cerrar, fotosDeVehiculo,
+  nuevaSesion, sesion, renovar, cerrar, fotosDeVehiculo, cuentasBolt, tramosDelCronometro,
 };

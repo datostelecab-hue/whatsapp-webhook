@@ -1,0 +1,20 @@
+<%# MIS HORAS EN EL INICIO (24/11/2026): su estado en BOLT y, con el coche vinculado, las horas
+    con el coche y trabajando. Toda la tarjeta lleva a «Mis horas». %>
+<%
+  const dur = s => { s = Math.max(0, Math.round(Number(s) || 0)); const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60); return hh ? `${hh} h ${String(mm).padStart(2, '0')} min` : `${mm} min`; };
+  const b = horas.bolt;
+%>
+<%- include('portalTarjeta', { id: 't-horas', href: '/horas', icono: 'horas', titulo: 'Mis horas', ir: 'Ver el detalle' }) %>
+  <div class="caja-in">
+    <p class="hor-estado" style="font-size:1rem"><span class="hor-punto hor-<%= b ? b.situacion : 'desconectado' %>" aria-hidden="true"></span>
+      <span>En BOLT: <b><%= b ? b.etiqueta.toLowerCase() : 'sin datos' %></b></span></p>
+  <% if (horas.vinculado) { %>
+    <dl class="extras" style="margin-top:.6rem">
+      <div><dt>Con el coche</dt><dd><%= dur(horas.conCoche) %></dd></div>
+      <div><dt>Trabajando</dt><dd><%= dur(horas.trabajando) %><%= horas.utilizacion == null ? '' : ' · ' + horas.utilizacion + ' % en viaje' %></dd></div>
+    </dl>
+  <% } else { %>
+    <p class="suave peq" style="margin-top:.35rem">Tus horas empiezan a contar cuando vinculas el coche.</p>
+  <% } %>
+  </div>
+</section><%# cierra portalTarjeta %>

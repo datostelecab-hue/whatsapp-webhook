@@ -1,0 +1,87 @@
+<%
+  /* MIS HORAS (24/11/2026): el cronómetro desde que vincula el coche, el
+     desglose de BOLT (viaje, espera, utilización), sus km con y sin BOLT y su
+     estado de BOLT de ahora. Los números salen de portal.horas.cronometro; el
+     reloj de «Horas con el coche» corre en el móvil (portal/horas.js) y lo
+     demás se pide otra vez cada 30 s. */
+  const h = horas || {};
+  const dur = s => { s = Math.max(0, Math.round(Number(s) || 0)); const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60); return hh ? `${hh} h ${String(mm).padStart(2, '0')} min` : `${mm} min`; };
+  const reloj = s => { s = Math.max(0, Math.floor(Number(s) || 0)); return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+  const km = n => `${String(Number(n || 0).toFixed(1)).replace('.', ',')} km`;
+  const b = h.bolt;
+  const pctViaje = h.trabajando ? Math.round((h.viaje / h.trabajando) * 100) : 0;
+%>
+<div>
+  <h1>Mis horas</h1>
+  <p class="suave" style="margin-top:.25rem">Empiezan a contar cuando vinculas el coche.</p>
+</div>
+
+<%# Su estado en BOLT, ahora mismo. %>
+<section class="caja" aria-labelledby="t-bolt">
+  <div class="caja-in hor-bolt" data-bolt>
+    <p class="hor-etq" id="t-bolt">Ahora en BOLT</p>
+    <p class="hor-estado">
+      <span class="hor-punto hor-<%= b ? b.situacion : 'desconectado' %>" data-bolt-punto aria-hidden="true"></span>
+      <b data-bolt-etiqueta><%= b ? b.etiqueta : 'Sin datos de BOLT' %></b>
+      <span class="suave" data-bolt-desde data-desde-ms="<%= b && b.desdeMs ? b.desdeMs : '' %>"></span>
+    </p>
+  </div>
+</section>
+
+<% if (h.puede === false) { %>
+<p class="aviso"><%= (h.aviso && h.aviso.titulo) || 'No tienes activado el uso de coches.' %></p>
+<% } else if (!h.vinculado) { %>
+<section class="caja">
+  <div class="caja-in">
+    <p>No tienes ningún coche vinculado.</p>
+    <p class="suave peq">Vincúlalo al empezar el turno y aquí verás tus horas con el coche, las que trabajas en BOLT y tus km.</p>
+    <a class="boton" href="/coche" style="margin-top:.75rem; text-decoration:none">Vincular coche</a>
+  </div>
+</section>
+<% } else { %>
+<div data-horas data-inicio-ms="<%= h.inicioMs %>" data-ahora-ms="<%= h.ahoraMs %>">
+
+  <section class="caja" aria-labelledby="t-con">
+    <div class="caja-in hor-grande">
+      <p class="hor-etq" id="t-con">Horas con el coche</p>
+      <p class="hor-reloj" data-con-coche><%= reloj(h.conCoche) %></p>
+      <p class="suave peq"><span class="matricula"><%= h.matricula %></span> Vinculado <%= h.desde %></p>
+    </div>
+  </section>
+
+  <section class="caja" aria-labelledby="t-trab">
+    <div class="caja-in hor-grande">
+      <p class="hor-etq" id="t-trab">Horas trabajando</p>
+      <p class="hor-cifra" data-trabajando><%= dur(h.trabajando) %></p>
+      <p class="suave peq">En viaje y en espera en BOLT. El descanso no cuenta.</p>
+      <%# Viaje y espera, en una barra: lo verde es viaje. %>
+      <div class="hor-barra" role="img" data-barra aria-label="Viaje <%= dur(h.viaje) %> y espera <%= dur(h.espera) %>">
+        <i class="hor-barra-viaje" data-barra-viaje style="width:<%= pctViaje %>%"></i>
+      </div>
+      <dl class="extras hor-desglose">
+        <div><dt><span class="hor-punto hor-viaje" aria-hidden="true"></span> En viaje</dt><dd data-viaje><%= dur(h.viaje) %></dd></div>
+        <div><dt><span class="hor-punto hor-espera" aria-hidden="true"></span> En espera</dt><dd data-espera><%= dur(h.espera) %></dd></div>
+        <div><dt>Utilización</dt><dd data-utilizacion><%= h.utilizacion == null ? '—' : h.utilizacion + ' %' %></dd></div>
+        <div><dt><span class="hor-punto hor-descanso" aria-hidden="true"></span> En descanso</dt><dd data-descanso><%= dur(h.descanso) %></dd></div>
+      </dl>
+      <% if (h.sinCuentaBolt) { %>
+      <p class="aviso peq" style="margin-top:.75rem">Tu ficha no tiene cuenta de BOLT enlazada: no se pueden contar tus horas de BOLT. Avisa a RRHH.</p>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="caja" aria-labelledby="t-km">
+    <div class="caja-in">
+      <p class="hor-etq" id="t-km">Tus km con el coche</p>
+      <dl class="extras hor-km">
+        <div><dt>Con BOLT</dt><dd data-km-bolt><%= km(h.kmBolt) %></dd></div>
+        <div><dt>Fuera de BOLT</dt><dd data-km-fuera><%= km(h.kmFuera) %></dd></div>
+      </dl>
+      <p class="suave peq" style="margin-top:.5rem">Fuera de BOLT es lo que anda el coche contigo en descanso o desconectado. Es la cuenta en vivo: el banco de KM cierra cada día con la suya.</p>
+    </div>
+  </section>
+
+  <p class="suave peq" style="text-align:center">Se actualiza solo cada 30 segundos.</p>
+</div>
+<% } %>
+<script nonce="<%= nonce %>" src="<%= est('/assets/js/portal/horas.js') %>" defer></script>

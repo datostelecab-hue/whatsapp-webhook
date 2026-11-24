@@ -128,6 +128,16 @@ router.get('/turnos', pagina('portalTurnos', 'Mis turnos', portal.turnos));
 router.get('/puntuacion', pagina('portalPuntuacion', 'Mi puntuación', portal.semanas));
 router.get('/efectivo', pagina('portalEfectivo', 'Mi efectivo', async p => ({ efectivo: await portal.efectivo(p) })));
 
+// ── Mis horas (24/11/2026): el cronómetro desde que vincula el coche ─────────
+// La página sale ya con los números; /horas/vivo los da otra vez cada 30 s y el
+// reloj de «Horas con el coche» corre en el móvil cada segundo.
+const horas = require('./portal.horas');
+router.get('/horas', pagina('portalHoras', 'Mis horas', async p => ({ horas: await horas.cronometro(p) })));
+router.get('/horas/vivo', async (req, res) => {
+  try { res.json({ ok: true, ...(await horas.cronometro(req.conductor)) }); }
+  catch (e) { console.error('❌ [Portal] mis horas:', e.message); res.status(500).json({ ok: false }); }
+});
+
 // ── El coche (20/11/2026): vincular, puertas y desvincular, como en WhatsApp ──
 // Las mismas funciones que el bot (portal.coche.js). Cada acción contesta con
 // la página del coche y lo que ha pasado arriba; sin JavaScript en el móvil.

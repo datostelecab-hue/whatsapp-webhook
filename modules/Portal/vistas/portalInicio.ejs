@@ -5,7 +5,8 @@
 <% } %>
 
 <% const coche = locals.coche; const cocheArriba = !!(coche && coche.puede && coche.vinculado); %>
-<% if (cocheArriba) { %><%- include('portalInicioCoche', { coche }) %><% } %>
+<% const horasIni = locals.horas && locals.horas.puede !== false ? locals.horas : null; %>
+<% if (cocheArriba) { %><%- include('portalInicioCoche', { coche }) %><% if (horasIni) { %><%- include('portalInicioHoras', { horas: horasIni }) %><% } %><% } %>
 
 <%- include('portalTarjeta', { id: 't-proximo', href: '/turnos', icono: 'turnos', titulo: 'Tu próximo turno', ir: 'Ver los 8 días' }) %>
   <div class="caja-in proximo">
@@ -23,6 +24,7 @@
 </section><%# cierra portalTarjeta %>
 
 <% if (coche && coche.puede && !cocheArriba) { %><%- include('portalInicioCoche', { coche }) %><% } %>
+<% if (horasIni && !cocheArriba) { %><%- include('portalInicioHoras', { horas: horasIni }) %><% } %>
 
 <% if (dinero) { const d = dinero, mes = d.mes; %>
 <section class="caja" aria-labelledby="t-dinero">

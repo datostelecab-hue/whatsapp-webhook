@@ -87,6 +87,8 @@ async function estado(persona) {
   if (!abierto) return { puede: true, vinculado: false };
   return {
     puede: true, vinculado: true, matricula: turno.matricula,
+    // El instante en que lo vinculó (segundos): de ahí cuenta el cronómetro (portal.horas).
+    inicioSeg: Number(turno.inicio) || null,
     // «desde las 06:02» / «desde el 22/11 a las 23:40» (y lo mismo, «a las…», al entregar).
     desde: desdeTxt(momento(turno.inicio)),
     entregando: turno.relevo ? cuandoTxt(momento(turno.relevo)) : null, oficina: turno.tipo === 'viaje',

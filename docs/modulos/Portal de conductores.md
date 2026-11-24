@@ -116,6 +116,19 @@ Camilo: *«que el inicio sea un resumen de lo que hay, al darle tap o click a la
 - La de la facturación no lleva a ningún sitio (no hay página): lleva icono, pero no pulsa.
 - Revisado por un agente el 23/11 y aplicado lo suyo. Probado en local a 320 × 568, 375 y 390 px: sin desbordes ni errores. Prueba: `test/portal-inicio.test.js`.
 
+## Mis horas: el cronómetro desde que vincula el coche (24/11/2026)
+
+Camilo: *«el cronómetro de horas en la app, pero desglosada, de viaje, en espera y la utilización total, además de sus KM, tanto por BOLT como por fuera, es un módulo de ellos a parte, que empiece cuando se vincule el coche, que diga "Horas con el coche" y "Horas trabajando". Que le diga su estado actual en BOLT, si en espera, si en viaje, si en descanso, etc»*.
+
+- **Pestaña «Horas»** (`/horas`, la sexta de la barra, entre Coche y Turnos) y una tarjeta «Mis horas» en el inicio. `modules/Portal/portal.horas.js`; el reloj en `public/assets/js/portal/horas.js`.
+- **Ahora en BOLT**: su situación y desde cuándo, de la foto del ahora (la misma del mapa y de Control), de su cuenta más reciente.
+- **Con el coche vinculado** (sin él, «vincúlalo y empezará a contar»):
+  - **Horas con el coche**: desde que lo vinculó; el reloj corre cada segundo con la hora del servidor.
+  - **Horas trabajando**: viaje + espera de sus cuentas de BOLT en ese rato (el descanso no cuenta, como en todo el ERP), con su barra, el desglose, la **utilización** (viaje / (viaje + espera)) y el descanso aparte.
+  - **KM con BOLT y fuera de BOLT**: los de su coche vinculado en ese rato, por la situación de cada tramo (viaje o espera = con BOLT; descanso, desconectado o sin clasificar = fuera), con el odómetro de cada tramo de Flota Viva (`fv_tramo`); un tramo a medias cuenta su parte. El final de cada tramo, con la regla de la casa (`rutas.FIN_KM`): un tramo abierto que nadie cierra no suma sin fin.
+  - Se pide otra vez cada 30 s (`/horas/vivo`), y no con la pestaña escondida.
+- **Es la cuenta en vivo**: el banco de KM y el reporte de horas cierran cada día con la suya (la jornada por turno, el fichaje), así que puede haber diferencias pequeñas. Comprobado en producción (solo lectura) con tres turnos abiertos: ~9,9 h con el coche, 9,6–9,8 h trabajando, 73–87 % de utilización, 167–256 km con BOLT y 1–2 km fuera. Prueba: `test/portal-horas.test.js`.
+
 ## El conductor de pruebas (24/11/2026, db/280)
 
 Camilo: *«Crea un usuario de prueba que se pueda abrir siempre en producción simulando ser un conductor, que tenga datos sacados de un conductor al azar para que sea más realista, pero que sí pueda asignarse a un coche, abrir puertas, cerrar, desbloquear el vehículo, etc, esa la usaré yo para pruebas, hasta para las fotos»*.

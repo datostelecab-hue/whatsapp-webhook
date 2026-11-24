@@ -56,6 +56,10 @@
         <%- include('portalIcono', { n: 'coche' }) %>
         Coche
       </a>
+      <a href="/horas" <%- pagina === 'portalHoras' ? 'aria-current="page"' : '' %>>
+        <%- include('portalIcono', { n: 'horas' }) %>
+        Horas
+      </a>
       <a href="/turnos" <%- pagina === 'portalTurnos' ? 'aria-current="page"' : '' %>>
         <%- include('portalIcono', { n: 'turnos' }) %>
         Turnos
