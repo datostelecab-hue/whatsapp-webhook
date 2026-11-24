@@ -86,6 +86,8 @@
   const inputs = [...form.querySelectorAll('input[type=file]')];
   const campos = inputs.map(i => i.closest('.foto-campo'));
   const etiquetas = campos.map(c => c.querySelector('b').textContent);
+  // La imagen de referencia de cada foto (24/11/2026): se ve en la casilla y en la cámara.
+  const guias = campos.map(c => c.dataset.guia || '');
 
   /** Pinta una casilla según tenga foto o no. */
   function pintarCasilla(i) {
@@ -123,7 +125,7 @@
   if (hayCamara) {
     const video = cam.querySelector('[data-cam-video]');
     const lienzo = cam.querySelector('[data-cam-lienzo]');
-    const paso = cam.querySelector('[data-cam-paso]');
+    const ref = cam.querySelector('[data-cam-ref]');
     const tit = cam.querySelector('[data-cam-tit]');
     const error = cam.querySelector('[data-cam-error]');
     const disparo = cam.querySelector('[data-cam-disparo]');
@@ -136,13 +138,14 @@
     pintarPack();
 
     const pintarCam = () => {
-      paso.textContent = `${actual + 1} de ${inputs.length}`;
+      ref.src = guias[actual];
       tit.textContent = etiquetas[actual];
       tira.forEach((b, i) => {
         const f = inputs[i].files && inputs[i].files[0];
         b.classList.toggle('cam-hecha', !!f);
         b.classList.toggle('cam-actual', i === actual);
-        b.style.backgroundImage = f ? `url("${URL.createObjectURL(f)}")` : '';
+        // Hecha: la foto; si no, su imagen de referencia.
+        b.style.backgroundImage = `url("${f ? URL.createObjectURL(f) : guias[i]}")`;
       });
       listo.hidden = hechas() < inputs.length;
     };

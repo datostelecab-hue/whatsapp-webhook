@@ -248,12 +248,18 @@ async function enVivo(persona) {
 }
 
 // ── LAS CINCO FOTOS al desvincular (23/11/2026) ──────────────────────────────
+// CON SU IMAGEN DE REFERENCIA (24/11/2026, Camilo: «en las fotos, no pongas
+// números sino imágenes de referencia de cómo debe de ir la foto (…) con su
+// nombre»). Las del coche, sobre el mismo fondo negro; la de los asientos, tal
+// cual. Están en public/assets/portal/guia/ (.webp). El orden manda: el nombre
+// del fichero guardado empieza por su número (fotosAnteriores).
+const GUIA = '/assets/portal/guia/';
 const FOTOS = [
-  { campo: 'foto_conductor', etiqueta: 'Lateral de tu puerta (la del conductor)' },
-  { campo: 'foto_frontal', etiqueta: 'Frontal' },
-  { campo: 'foto_copiloto', etiqueta: 'Lateral del copiloto' },
-  { campo: 'foto_trasera', etiqueta: 'Trasera' },
-  { campo: 'foto_asientos', etiqueta: 'Asientos de atrás (los del pasajero)' },
+  { campo: 'foto_conductor', etiqueta: 'Lateral conductor', guia: GUIA + 'lateral-conductor.webp' },
+  { campo: 'foto_frontal', etiqueta: 'Frontal', guia: GUIA + 'frontal.webp' },
+  { campo: 'foto_copiloto', etiqueta: 'Lateral copiloto', guia: GUIA + 'lateral-copiloto.webp' },
+  { campo: 'foto_trasera', etiqueta: 'Parte trasera', guia: GUIA + 'trasera.webp' },
+  { campo: 'foto_asientos', etiqueta: 'Asientos pasajeros', guia: GUIA + 'asientos.webp' },
 ];
 const TIPO_FOTOS = 'turno_fotos';
 const TOPE_FOTO = 20 * 1024 * 1024;

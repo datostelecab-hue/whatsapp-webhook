@@ -89,8 +89,9 @@
         <span data-pack-texto>Hacer las 5 fotos</span>
       </button>
       <% fotos.forEach(function (f, i) { %>
-      <label class="foto-campo" for="<%= f.campo %>" data-foto-i="<%= i %>">
-        <span class="foto-num"><%= i + 1 %></span>
+      <label class="foto-campo" for="<%= f.campo %>" data-foto-i="<%= i %>" data-guia="<%= f.guia %>">
+        <%# La imagen de referencia de cómo va la foto (24/11/2026), no un número. %>
+        <img class="foto-guia" src="<%= f.guia %>" alt="" width="80" height="50" loading="lazy" decoding="async">
         <span class="foto-texto"><b><%= f.etiqueta %></b><small data-foto-estado>Pulsa para hacer la foto</small></span>
         <img class="foto-mini" alt="" data-foto-mini hidden>
         <input id="<%= f.campo %>" name="<%= f.campo %>" type="file" accept="image/*" capture="environment" required>
@@ -107,15 +108,16 @@
         <button class="cam-cerrar" type="button" data-cam-cerrar aria-label="Cerrar la cámara">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
         </button>
+        <%# La foto que toca: su imagen de referencia y su nombre (24/11/2026). %>
         <div class="cam-guia">
-          <p class="cam-paso" data-cam-paso>1 de 5</p>
+          <img class="cam-ref" data-cam-ref alt="" width="160" height="100">
           <p class="cam-tit" id="cam-tit" data-cam-tit></p>
         </div>
       </div>
       <p class="cam-error" data-cam-error hidden></p>
       <div class="cam-abajo">
         <ol class="cam-tira" data-cam-tira aria-label="Las cinco fotos">
-          <% fotos.forEach(function (f, i) { %><li><button type="button" data-cam-ir="<%= i %>" aria-label="Foto <%= i + 1 %>: <%= f.etiqueta %>"><span><%= i + 1 %></span></button></li><% }) %>
+          <% fotos.forEach(function (f, i) { %><li><button type="button" data-cam-ir="<%= i %>" aria-label="<%= f.etiqueta %>" style="background-image: url('<%= f.guia %>')"></button></li><% }) %>
         </ol>
         <div class="cam-botones">
           <span></span>
