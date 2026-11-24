@@ -77,6 +77,38 @@ async function revisiones() {
   return r.rows;
 }
 
+/**
+ * Los veredictos de cada foto (db/283), con quién. Sin la tabla, `null`: la
+ * pantalla dice que falta la migración.
+ */
+async function veredictos() {
+  const hay = await db.consulta(`SELECT to_regclass('public.taller_revision_foto') IS NOT NULL AS hay`);
+  if (!hay.rows[0].hay) return null;
+  const r = await db.consulta(
+    `SELECT f.turno_id::text AS turno, f.n, f.resultado, COALESCE(f.nota, '') AS nota, COALESCE(u.nombre, '') AS por,
+            to_char(f.revisado_at AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI') AS cuando
+       FROM taller_revision_foto f
+       LEFT JOIN usuario u ON u.id = f.revisado_por
+      ORDER BY f.turno_id, f.n`);
+  return r.rows;
+}
+
+/** El veredicto de UNA foto (o su cambio), dentro de la transacción firmada `cli`. */
+async function guardarFoto(cli, { turno, n, resultado, nota, usuarioId }) {
+  await cli.query(
+    `INSERT INTO taller_revision_foto (turno_id, n, resultado, nota, revisado_por)
+     VALUES ($1::bigint, $2, $3, $4, $5)
+     ON CONFLICT (turno_id, n) DO UPDATE
+        SET resultado = EXCLUDED.resultado, nota = EXCLUDED.nota,
+            revisado_por = EXCLUDED.revisado_por, revisado_at = now()
+      WHERE (taller_revision_foto.resultado, COALESCE(taller_revision_foto.nota, ''))
+            IS DISTINCT FROM (EXCLUDED.resultado, COALESCE(EXCLUDED.nota, ''))`,
+    [turno, n, resultado, nota || null, usuarioId || null]);
+  const r = await cli.query(
+    `SELECT n, resultado FROM taller_revision_foto WHERE turno_id = $1::bigint ORDER BY n`, [turno]);
+  return r.rows;
+}
+
 /** Califica un lote (o cambia su calificación), dentro de la transacción firmada `cli`. */
 async function guardar(cli, { turno, anterior, vehiculoId, resultado, nota, fotos, usuarioId }) {
   const r = await cli.query(
@@ -93,7 +125,8 @@ async function guardar(cli, { turno, anterior, vehiculoId, resultado, nota, foto
 
 /**
  * Los turnos cuyas fotos NO se borran a los 20 días: los dos lotes de cada
- * pareja calificada «con daños». Sin la tabla (db/282 sin aplicar), ninguno.
+ * pareja calificada «con daños» y el lote nuevo de una con alguna imagen no
+ * válida (la prueba para el conductor). Sin la tabla (db/282 sin aplicar), ninguno.
  */
 async function turnosProtegidos(cli = null) {
   const pedir = (q, p) => (cli ? cli.query(q, p) : db.consulta(q, p));
@@ -102,10 +135,10 @@ async function turnosProtegidos(cli = null) {
   const hay = await pedir(`SELECT to_regclass('public.taller_revision_fotos') IS NOT NULL AS hay`);
   if (!hay.rows[0].hay) return [];
   const r = await pedir(
-    `SELECT turno_id::text AS t FROM taller_revision_fotos WHERE resultado = 'danos'
+    `SELECT turno_id::text AS t FROM taller_revision_fotos WHERE resultado IN ('danos', 'no_valida')
      UNION SELECT turno_anterior_id::text FROM taller_revision_fotos
             WHERE resultado = 'danos' AND turno_anterior_id IS NOT NULL`);
   return r.rows.map(x => x.t);
 }
 
-module.exports = { lotes, fotosDe, revisiones, guardar, turnosProtegidos, faltaMigracion, TIPO };
+module.exports = { lotes, fotosDe, revisiones, veredictos, guardarFoto, guardar, turnosProtegidos, faltaMigracion, TIPO };

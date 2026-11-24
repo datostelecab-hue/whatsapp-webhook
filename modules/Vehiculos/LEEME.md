@@ -34,8 +34,8 @@ facturas.repo.js          su SQL
 vistas/facturas.ejs       la pantalla (/facturas)
 
 revisionFotos.controller.js  idem para /revision-fotos (db/282)
-revisionFotos.service.js     LA PUERTA de la revisión de las fotos del portal: cada
-                             lote contra el anterior del mismo coche, calificar,
+revisionFotos.service.js     LA PUERTA de la revisión de las fotos del portal, foto a
+                             foto contra el lote anterior del mismo coche (db/283),
                              qué fotos no borra la purga de 20 días
 revisionFotos.repo.js        su SQL (taller_revision_fotos)
 vistas/revisionFotos.ejs     la pantalla (/revision-fotos)

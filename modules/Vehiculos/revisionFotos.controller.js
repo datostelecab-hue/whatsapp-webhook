@@ -50,10 +50,11 @@ router.get('/', async (req, res) => {
 router.get('/api/lista', responde(() => revision.lista()));
 router.get('/api/par/:turno', responde(async req => ({ ficha: await revision.ficha(req.params.turno) })));
 
-router.post('/api/par/:turno/calificar', responde(async req => {
+// Foto a foto (db/283): la n del lote nuevo contra la n del anterior.
+router.post('/api/par/:turno/foto/:n', responde(async req => {
   if (!await puedeCalificar(req)) throw new Error('No tienes permiso para calificar la revisión de fotos');
   const b = req.body || {};
-  return revision.calificar(req.params.turno, { resultado: b.resultado, nota: b.nota, fotos: b.fotos },
+  return revision.calificarFoto(req.params.turno, { n: req.params.n, resultado: b.resultado, nota: b.nota },
     { usuarioId: await quienEs(req) });
 }));
 
