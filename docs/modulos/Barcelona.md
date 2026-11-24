@@ -359,6 +359,14 @@ Camilo: *«en Barcelona la recaudación se pueda elegir de fecha X a fecha Y, pa
 - Se recorta al corte (1 de noviembre) y a hoy; como mucho un año de una vez.
 - Solo Barcelona: Madrid no pasa `conFechas` a la vista. El script es `public/assets/js/vistas/Barcelona/recaudacionFechas.js`. Prueba: `test/recaudacion-por-fechas.test.js`.
 
+### «Descargar Excel»: lo que debe cada uno (24/11/2026)
+
+Camilo: *«necesito un excel de recaudación con el monto que debe cada uno según los datos de BOLT y lo que nos han dado, pero solo en Barcelona»* y, visto el primero, *«hazlo ya automático en el ERP, que sea un botón»*. Botón **«Descargar Excel»** arriba, junto a «Recalcular desde BOLT» (`GET /barcelona/recaudacion/excel`, la llave de la ruta).
+
+- **Los números son los de la pantalla**: sale del mismo `repo.cuadro()` que la pestaña «Efectivo» (comprobado contra producción el 24/11: 26 cuentas, BOLT 18.764,70 €, entregado 6.890,10 €, deben 11.874,60 €, igual en el Excel y en la pantalla).
+- Tres hojas: **Lo que debe cada uno** (de más a menos; BOLT quincena a quincena con `repo.cierresPorQuincena`; en mano, nómina, transferencia, remesas, cambio; «Total entregado» y «DEBE» como fórmulas; SUBTOTAL en los totales; última entrega y días sin entregar, «Nunca» en rojo si debe), **Entregas** (apunte a apunte sin anulados, `repo.movimientosVigentes`) y **Cómo se calcula**.
+- Solo lee. Lo pinta `modules/Barcelona/recaudacion.excel.js`; lo arma `recaudacion.service.excelDeuda`. Solo Barcelona: Madrid no pasa `conExcel`. Prueba: `test/recaudacion-barcelona-excel.test.js` (contra la base de pruebas).
+
 ## El bot: solo el coche planificado de ese día (23/11/2026) — QUITADO el 24/11/2026
 
 > [!warning] Ya no se aplica

@@ -9,6 +9,8 @@
   const CON_REMESAS = (typeof conRemesas !== 'undefined') && !!conRemesas;
   // POR FECHAS, DE X A Y (23/11/2026): solo Barcelona.
   const CON_FECHAS = (typeof conFechas !== 'undefined') && !!conFechas;
+  // EL EXCEL DE LO QUE DEBE CADA UNO (24/11/2026): solo Barcelona.
+  const CON_EXCEL = (typeof conExcel !== 'undefined') && !!conExcel;
 %>
 <div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
 
@@ -46,6 +48,13 @@
       <button id="r-calcular" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-rotate mr-1"></i> Recalcular desde BOLT
       </button>
+      <% if (CON_EXCEL) { %>
+      <a id="r-excel" href="<%= BASE %>/excel" download
+         class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+         title="Lo que debe cada uno: lo cobrado en efectivo según BOLT, lo que nos han dado y lo que queda. Las mismas cifras que esta pantalla.">
+        <i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel
+      </a>
+      <% } %>
     </div>
   </div>
 

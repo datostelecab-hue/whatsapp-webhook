@@ -14,7 +14,21 @@ const router = crear(servicio, {
   seccion: 'bcn-recaudacion',
   etiqueta: 'Recaudación Barcelona',
   // conFechas: la pestaña «Por fechas», solo de Barcelona (23/11/2026).
-  vista: { base: '/barcelona/recaudacion', sedeNombre: 'Barcelona', soloCuentas: true, conFechas: true },
+  // conExcel: el botón «Descargar Excel» de lo que debe cada uno (24/11/2026).
+  vista: { base: '/barcelona/recaudacion', sedeNombre: 'Barcelona', soloCuentas: true, conFechas: true, conExcel: true },
+});
+
+// EL EXCEL DE LO QUE DEBE CADA UNO (24/11/2026): el botón de arriba. Solo lee.
+router.get('/excel', async (req, res) => {
+  try {
+    const { bytes, nombre } = await servicio.excelDeuda();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(bytes);
+  } catch (e) {
+    console.error('❌ [Recaudación Barcelona] Excel:', e.message);
+    res.status(500).send('No se ha podido generar el Excel. Inténtalo de nuevo en un momento.');
+  }
 });
 
 // POR FECHAS, DE X A Y (23/11/2026): lo cobrado, entregado y dado de cada cuenta

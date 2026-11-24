@@ -42,4 +42,17 @@ const servicio = fabricaServicio.crear({ repo, claveNomina: CLAVE_NOMINA });
 // dio a cada cuenta. Solo Barcelona (Camilo). Ver recaudacion.repo.porFechas.
 const porFechas = rango => repo.porFechas(rango);
 
-module.exports = { ...servicio, porFechas, repo, SEDE, CLAVE, CLAVE_NOMINA };
+// EL EXCEL DE LO QUE DEBE CADA UNO (24/11/2026, Camilo: «hazlo ya automático en
+// el ERP, que sea un botón»). Los números, los del cuadro de la pantalla; por
+// quincena, los cierres; y las entregas, apunte a apunte. Lo pinta
+// recaudacion.excel.js. Solo lee.
+async function excelDeuda() {
+  const [{ filas }, cierres, movs] = await Promise.all([
+    repo.cuadro(), repo.cierresPorQuincena(), repo.movimientosVigentes(),
+  ]);
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const bytes = await require('./recaudacion.excel').generar({ filas, cierres, movs, hoy, sede: 'Barcelona' });
+  return { bytes, nombre: `Recaudacion Barcelona - lo que debe cada uno - ${hoy.split('-').reverse().join('-')}.xlsx` };
+}
+
+module.exports = { ...servicio, porFechas, excelDeuda, repo, SEDE, CLAVE, CLAVE_NOMINA };

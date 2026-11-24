@@ -973,6 +973,38 @@ function crear(cfg) {
   }
 
   /**
+   * PARA EL EXCEL DE LO QUE DEBE CADA UNO (24/11/2026, Barcelona). Lo que el
+   * cuadro da sumado, quincena a quincena: el efectivo de BOLT de cada persona
+   * en cada cierre (con su ajuste). `quien` es la misma clave que el cuadro (la
+   * ficha o, sin ficha, la cuenta de BOLT).
+   */
+  async function cierresPorQuincena() {
+    const r = await db.consulta(`
+      SELECT COALESCE(conductor_id::text, bolt_uuid) AS quien, anio, mes, quincena,
+             sum(importe + ajuste)::float AS bolt
+        FROM ${TC}
+       WHERE conductor_id IS NOT NULL OR bolt_uuid IS NOT NULL
+       GROUP BY 1, 2, 3, 4
+       ORDER BY 2, 3, 4`);
+    return r.rows;
+  }
+
+  /** Lo que nos han dado, apunte a apunte y sin anulados (el mismo Excel). */
+  async function movimientosVigentes() {
+    const r = await db.consulta(`
+      SELECT to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.tipo, m.importe::float AS importe,
+             m.observacion, m.referencia,
+             COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')),
+                      e.externo_nombre, 'Cuenta de BOLT ' || left(m.bolt_uuid, 8)) AS conductor
+        FROM ${TM} m
+        LEFT JOIN conductor c ON c.id = m.conductor_id
+        LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = m.bolt_uuid
+       WHERE m.anulado_at IS NULL
+       ORDER BY m.fecha, m.id`);
+    return r.rows;
+  }
+
+  /**
    * POR FECHAS, DE X A Y (23/11/2026, Camilo: «en Barcelona la recaudación se
    * pueda elegir de fecha X a fecha Y, para elegir los montos correspondientes
    * por rango de fechas, solo en Barcelona»). Una consulta, no un cierre: no
@@ -1459,6 +1491,8 @@ function crear(cfg) {
 
   return {
     porFechas,
+    cierresPorQuincena,
+    movimientosVigentes,
     DIAS_REZAGADO,
     recalcularReciente,
     quincenasVivas,
