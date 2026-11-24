@@ -1,11 +1,10 @@
 // ============================================================
-// BARCELONA — SOLO SE VINCULA EL COCHE PLANIFICADO DE ESE DÍA (23/11/2026)
+// BARCELONA — LOS COCHES QUE EL PLANIFICADOR DA HOY A UNA CUENTA
 // ============================================================
-// «Los conductores en Barcelona solo puedan fichar en el coche que tiene
-// planificado para ese día, entonces el BOT le dejará vincular el vehículo,
-// pero si no, entonces le dirá que ese no es el coche que tiene asignado para
-// ese día». Aquí: qué coches da el planificador a cada cuenta (con el de noche
-// de ayer hasta las 12:00) y el mensaje del bot y del portal.
+// Del 23/11/2026 el bot solo dejaba vincular ese coche; el 24/11 se quitó
+// («quita todos los bloqueos de coche en Barcelona»). La consulta se queda:
+// qué coches da el planificador a cada cuenta (con el de noche de ayer hasta
+// las 12:00). Y que el bot ya no la usa para decir que no.
 'use strict';
 
 require('./apoyo/base');   // primero: sustituye services/db
@@ -14,9 +13,6 @@ const assert = require('node:assert/strict');
 
 const repo = require('../modules/Barcelona/barcelona.repo');
 const bcn = require('../modules/Barcelona/barcelona.service');
-const { textoNoEsSuCoche } = require('../services/fichajeBot');
-const fichaje = require('../services/fichaje');
-const coche = require('../modules/Portal/portal.coche');
 
 const fijo = (uuid, matricula, turno) => ({ id: uuid + turno, uuid, matricula, turno, rol: 'fijo', dias: null, desde: '2026-11-01', hasta: null });
 let real;
@@ -49,20 +45,10 @@ test('quien no está en el planificador: ninguno', async () => {
   assert.deepEqual(await bcn.cochesPlanificados('', OCHO), []);
 });
 
-test('el mensaje del bot dice cuál es su coche de hoy', () => {
-  const t = textoNoEsSuCoche({ matricula: '9999BCN', asignados: [{ matricula: '1111BCN', turno: 'dia' }] }, '*');
-  assert.equal(t, '❌ El *9999BCN* no es el coche que tienes asignado para hoy. Tu coche de hoy es el *1111BCN* (turno de día). ' +
-    'Si tienes que llevar otro, comunícate con Tráfico.');
-  assert.match(textoNoEsSuCoche({ matricula: '9999BCN', asignados: [] }), /Hoy no tienes ningún coche asignado en el planificador\./);
-});
-
-test('en el portal, el mismo «no»', async () => {
-  const reales = { participa: fichaje.participa, iniciar: fichaje.iniciar };
-  try {
-    fichaje.participa = async () => ({ tipo: 'turno', sede: 'barcelona' });
-    fichaje.iniciar = async () => ({ ok: false, motivo: 'no-es-su-coche', matricula: '9999BCN', asignados: [{ matricula: '2222BCN', turno: 'noche' }] });
-    const r = await coche.vincular({ id: '1', telefono: '612345678' }, '9999BCN');
-    assert.equal(r.titulo, 'El 9999BCN no es tu coche de hoy');
-    assert.match(r.texto[0], /^El 9999BCN no es el coche que tienes asignado para hoy\. Tu coche de hoy es el 2222BCN \(turno de noche\)/);
-  } finally { Object.assign(fichaje, reales); }
+test('el bot ya no pregunta al planificador antes de vincular en Barcelona (24/11/2026)', () => {
+  const fs = require('fs');
+  const fichaje = fs.readFileSync(require.resolve('../services/fichaje'), 'utf8');
+  assert.doesNotMatch(fichaje, /cochesPlanificados|no-es-su-coche/);
+  assert.doesNotMatch(fs.readFileSync(require.resolve('../services/fichajeBot'), 'utf8'), /no-es-su-coche/);
+  assert.doesNotMatch(fs.readFileSync(require.resolve('../modules/Portal/portal.coche'), 'utf8'), /no-es-su-coche/);
 });

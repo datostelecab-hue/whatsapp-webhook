@@ -192,7 +192,9 @@ async function planParaHoras(desde, hasta) {
 /**
  * LOS COCHES QUE EL PLANIFICADOR LE DA HOY A UNA CUENTA (23/11/2026, Camilo:
  * «los conductores en Barcelona solo puedan fichar en el coche que tiene
- * planificado para ese día»). Lo que pregunta el bot al vincular. Turnos de
+ * planificado para ese día»). Lo preguntaba el bot al vincular hasta el
+ * 24/11/2026, cuando se quitó («quita todos los bloqueos de coche en
+ * Barcelona»); la consulta se queda por si vuelve a hacer falta. Turnos de
  * Barcelona: el de día de 00 a 24 y el de noche de 12 a 12, así que hasta las
  * 12:00 sigue valiendo el coche del turno de noche de AYER. Lista de
  * { matricula, turno, dia }; vacía si hoy no tiene ninguno.

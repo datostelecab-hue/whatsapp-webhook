@@ -359,7 +359,12 @@ Camilo: *«en Barcelona la recaudación se pueda elegir de fecha X a fecha Y, pa
 - Se recorta al corte (1 de noviembre) y a hoy; como mucho un año de una vez.
 - Solo Barcelona: Madrid no pasa `conFechas` a la vista. El script es `public/assets/js/vistas/Barcelona/recaudacionFechas.js`. Prueba: `test/recaudacion-por-fechas.test.js`.
 
-## El bot: solo el coche planificado de ese día (23/11/2026)
+## El bot: solo el coche planificado de ese día (23/11/2026) — QUITADO el 24/11/2026
+
+> [!warning] Ya no se aplica
+> Camilo, 24/11/2026: *«quita todos los bloqueos de coche en Barcelona, que inicien el turno, abran y cierren las puertas y ya»*. Esa mañana la regla dejó a **tres conductores sin poder empezar** (10 rechazos entre las 06:53 y las 07:49, uno lo intentó 8 veces): el planificador no les daba coche y el bot les decía «hoy no tienes ningún coche asignado». Se quitó de `fichaje.iniciar`, del bot y del portal. Un conductor de Barcelona vincula **cualquier coche de Barcelona**, abre y cierra las puertas, y entrega o termina; el motor no se toca (como siempre). Lo único que sigue es que el coche sea **de su sede**. La consulta `barcelona.service.cochesPlanificados` se queda, sin uso, por si vuelve a hacer falta.
+
+Lo que había (para la historia):
 
 Camilo: *«los conductores en Barcelona solo puedan fichar en el coche que tiene planificado para ese día, entonces el BOT le dejará vincular el vehículo, pero si no, entonces le dirá que ese no es el coche que tiene asignado para ese día»*.
 

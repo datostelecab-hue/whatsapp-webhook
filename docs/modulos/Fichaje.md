@@ -278,7 +278,7 @@ Se prueba con la escena 12 de `Scripts de análisis/simular-bot-conductor.js`.
 - **Dos casos en los que la matrícula no empieza el viaje sin más** (`fichajeBot.antesDelViaje`), porque a lo mejor solo quería abrirle o cerrarle el coche a alguien:
   - **El coche lo lleva otra persona ahora mismo.** Al conductor se le da sin preguntar —es su relevo—, pero a la oficina se le dice quién lo lleva y desde cuándo, y se pregunta: *Coger el coche* (le cierra el turno al otro, que recibe el aviso de siempre). Con el permiso de puertas, además le sale el panel de puertas, que trae su *Iniciar viaje*.
   - **Un coche de Barcelona**: los viajes son solo de Madrid. Con el permiso de puertas, al panel de puertas como hasta ahora; sin él, *«es un coche de Barcelona: por aquí no se lleva»*.
-  - **Un conductor de Barcelona con un coche que no es el suyo de hoy** (23/11/2026): no se vincula; se le dice cuál tiene asignado en el planificador. Ver [[Barcelona]].
+  - ~~Un conductor de Barcelona con un coche que no es el suyo de hoy (23/11/2026)~~: **quitado el 24/11/2026** («quita todos los bloqueos de coche en Barcelona»). Vincula cualquier coche de Barcelona. Ver [[Barcelona]].
 - Ya no hay «indica la matrícula» con espera de 10 minutos: los dos flujos toman la matrícula directamente.
 
 Se simula de punta a punta, en memoria, con `Scripts de análisis/simular-bot-oficina.js`.
