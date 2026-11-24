@@ -160,6 +160,13 @@ const CATALOGO = [
   { clave: 'taller.fecha_taller_dias_habiles', modulo: 'Flota y taller', item: 16, tipo: 'entero', unidad: 'dias_habiles', min: 1, max: 30, defecto: 5,
     etiqueta: 'Plazo para dar fecha de taller',
     descripcion: 'Insumos comprados y fecha y hora de taller comunicadas al conductor.' },
+  // EL TELÉFONO DE TRÁFICO EN EL PORTAL (24/11/2026, las heurísticas de Nielsen):
+  // los avisos de la app dicen «comunícate con Tráfico»; con este número, al lado
+  // sale un botón «Llamar a Tráfico». Vacío, no sale el botón.
+  { clave: 'portal.telefono_trafico', modulo: 'Operaciones', tipo: 'texto', max: 20, vacio: true, defecto: '',
+    etiqueta: 'Portal de conductores: teléfono de Tráfico',
+    descripcion: 'El número al que llama el botón «Llamar a Tráfico» del portal de conductores (en los avisos de error y en la Ayuda). Nueve cifras; vacío, no sale el botón.',
+    usa: 'Portal de conductores (modules/Portal)' },
   { clave: 'taller.acuse_texto', modulo: 'Flota y taller', item: 16, tipo: 'texto', max: 400,
     defecto: 'Recibimos tu aviso y estamos haciendo las comprobaciones para la bajada programada del coche',
     etiqueta: 'Texto del acuse de una avería' },
@@ -233,7 +240,8 @@ function aHorario(v, p) {
 
 function aTexto(v, p) {
   const s = String(v == null ? '' : v).trim();
-  if (!s) throw new Error(`«${p.etiqueta}» no puede quedar en blanco`);
+  // `vacio: true`: en blanco es un valor válido (p. ej. «sin teléfono, no sale el botón»).
+  if (!s) { if (p.vacio) return ''; throw new Error(`«${p.etiqueta}» no puede quedar en blanco`); }
   if (p.max && s.length > p.max) throw new Error(`«${p.etiqueta}» no puede pasar de ${p.max} letras`);
   return s;
 }

@@ -53,7 +53,7 @@
     <div class="caja-in hor-grande">
       <p class="hor-etq" id="t-trab">Horas trabajando</p>
       <p class="hor-cifra" data-trabajando><%= dur(h.trabajando) %></p>
-      <p class="suave peq">En viaje y en espera en BOLT. El descanso no cuenta.</p>
+      <p class="suave peq">En viaje y en espera en BOLT. El descanso no cuenta. La utilización es, de ese tiempo, el que estuviste en viaje.</p>
       <%# Viaje y espera, en una barra: lo verde es viaje. %>
       <div class="hor-barra" role="img" data-barra aria-label="Viaje <%= dur(h.viaje) %> y espera <%= dur(h.espera) %>">
         <i class="hor-barra-viaje" data-barra-viaje style="width:<%= pctViaje %>%"></i>

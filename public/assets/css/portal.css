@@ -15,7 +15,7 @@
 :root {
   color-scheme: light;
   --fondo: 243 245 249; --sup: 255 255 255; --sup2: 241 244 249; --linea: 226 231 240;
-  --texto: 16 24 40; --suave: 99 110 132;
+  --texto: 16 24 40; --suave: 82 92 112;
   --acento: 37 99 235; --acento-hondo: 29 78 216; --sobre-acento: 255 255 255;
   --verde: 4 135 95; --aviso: 194 89 6; --rojo: 220 38 38; --azul: 2 132 199;
   --sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .07);
@@ -37,7 +37,7 @@ h1 { font-size: 1.625rem; line-height: 1.2; font-weight: 800; letter-spacing: -.
 h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 :focus-visible { outline: 2px solid rgb(var(--acento)); outline-offset: 2px; border-radius: 6px; }
 .suave { color: rgb(var(--suave)); }
-.peq { font-size: .875rem; }
+.peq { font-size: .9375rem; }
 .oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ── El armazón: cabecera, columna, barra de abajo ───────────────────────── */
@@ -49,8 +49,15 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .cab-marca { display: flex; align-items: center; gap: .5rem; text-decoration: none; color: inherit; font-weight: 800; letter-spacing: -.02em; }
 .cab-nombre span { color: rgb(var(--acento)); }
 .cab-quien { margin-left: auto; text-align: right; font-size: .8125rem; line-height: 1.25; color: rgb(var(--suave)); min-width: 0; }
+/* Ayuda y Salir, con zona de toque de verdad (44 px): antes Salir era un texto de 13 px. */
+.cab-acciones { display: flex; justify-content: flex-end; align-items: center; gap: .25rem; margin-top: .1rem; }
+.cab-acciones form { display: contents; }
+.cab-ayuda { display: inline-flex; align-items: center; gap: .3rem; min-height: 44px; padding: 0 .5rem; border-radius: 10px;
+  color: rgb(var(--acento)); font-weight: 600; font-size: .875rem; text-decoration: none; }
+.cab-ayuda svg { width: 18px; height: 18px; }
+.cab-ayuda[aria-current='page'] { background: rgb(var(--acento) / .09); }
 .cab-quien b { display: block; color: rgb(var(--texto)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 11rem; }
-.cab-salir { background: none; border: 0; padding: 0; color: rgb(var(--suave)); font: inherit; font-size: .8125rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.cab-salir { background: none; border: 0; padding: 0 .5rem; min-height: 44px; color: rgb(var(--suave)); font: inherit; font-size: .875rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .cab-salir:hover { color: rgb(var(--texto)); }
 
 .tc-marca { display: block; overflow: visible; width: 28px; height: 28px; flex-shrink: 0; }
@@ -455,3 +462,37 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .hor-desglose dd, .hor-km dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hor-km dd { font-size: 1.25rem; }
 @media (prefers-reduced-motion: reduce) { .hor-barra-viaje { transition: none; } }
+
+/* ── Para todos (24/11/2026, heurísticas de Nielsen) ─────────────────────── */
+/* «Un momento…»: el botón pulsado se apaga y lo dice, con su ruedita. */
+.boton.cargando, .boton:disabled { opacity: .75; cursor: progress; }
+.girando { width: 1.05em; height: 1.05em; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent;
+  display: inline-block; animation: girar .8s linear infinite; flex: none; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .girando { animation-duration: 2.4s; } }
+/* Sin cobertura. */
+.sin-red { border-radius: 12px; padding: .75rem 1rem; background: rgb(var(--texto)); color: #fff; font-size: .9375rem; font-weight: 600; }
+/* Llamar a Tráfico, al lado de los avisos. */
+.llamar { text-decoration: none; margin-top: .5rem; }
+.llamar svg { width: 20px; height: 20px; }
+.resultado .llamar { margin-top: .75rem; }
+/* La Ayuda: preguntas que se despliegan al tocarlas. */
+.ayuda { padding: .9rem 1.1rem .4rem; }
+.ayuda-tit { font-size: .8125rem; font-weight: 700; color: rgb(var(--suave)); margin-bottom: .2rem; }
+.ayuda-p { border-top: 1px solid rgb(var(--linea)); }
+.ayuda-p:first-of-type { border-top: 0; }
+.ayuda-p summary { list-style: none; cursor: pointer; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  font-weight: 600; font-size: 1rem; padding: .5rem 0; }
+.ayuda-p summary::-webkit-details-marker { display: none; }
+/* El + y el − dibujados con dos rayas (no con letras: la fuente los deja bajos), en el centro exacto del círculo. */
+.ayuda-p summary::after { content: ''; flex: none; width: 28px; height: 28px; border-radius: 50%;
+  background-color: rgb(var(--sup2));
+  background-image: linear-gradient(rgb(var(--acento)), rgb(var(--acento))), linear-gradient(rgb(var(--acento)), rgb(var(--acento)));
+  background-size: 12px 2px, 2px 12px; background-position: center; background-repeat: no-repeat; }
+.ayuda-p[open] summary::after { background-size: 12px 2px, 2px 0; }
+.ayuda-r { display: flex; flex-direction: column; gap: .5rem; padding: 0 0 1rem; color: rgb(var(--texto)); }
+.ayuda-r a { font-weight: 600; }
+.ayuda-falla { display: flex; flex-direction: column; gap: .6rem; }
+/* El coche de hoy, de un toque: lo primero del formulario de vincular. */
+.vincular-hoy { display: flex; flex-direction: column; gap: .5rem; padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid rgb(var(--linea)); }
+.vincular-hoy .matricula { font-size: 1rem; }

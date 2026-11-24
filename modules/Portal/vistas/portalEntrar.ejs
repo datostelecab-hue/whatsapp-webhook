@@ -37,10 +37,11 @@
       <div class="campo">
         <label for="dni">DNI o NIE</label>
         <input id="dni" name="dni" value="<%= dni %>" required maxlength="20" autocomplete="username"
-               autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="12345678Z" autofocus>
+               autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="12345678Z" autofocus data-recordar>
       </div>
-      <button class="boton" type="submit">Mandarme el código</button>
+      <button class="boton" type="submit" data-enviando="Mandando el código…">Mandarme el código</button>
     </form>
+    <p class="suave peq"><a href="/ayuda">¿Problemas para entrar? Ver la ayuda</a></p>
   <% } else { %>
     <h2 id="titulo" class="ent-h2">Escribe el código</h2>
     <p class="suave peq">Te lo hemos mandado a <b><%= email %></b>. Caduca en 10 minutos.</p>
@@ -53,12 +54,12 @@
         <input id="codigo" name="codigo" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}"
                autocomplete="one-time-code" placeholder="······" autofocus>
       </div>
-      <button class="boton" type="submit">Entrar</button>
+      <button class="boton" type="submit" data-enviando="Entrando…">Entrar</button>
     </form>
     <div class="acceso-pie">
       <form method="post" action="/entrar">
         <input type="hidden" name="dni" value="<%= dni %>">
-        <button class="boton-sec" type="submit">No me ha llegado: mandar otro</button>
+        <button class="boton-sec" type="submit" data-enviando="Mandando otro…">No me ha llegado: mandar otro</button>
       </form>
       <a href="/entrar">Usar otro DNI</a>
     </div>

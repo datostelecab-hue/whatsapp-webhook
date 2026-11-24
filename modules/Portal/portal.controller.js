@@ -50,6 +50,10 @@ router.use(async (req, res, next) => {
   // La sesión no caduca (20/11/2026): la cookie se vuelve a poner en cada visita,
   // porque el navegador no la deja durar más de unos 400 días.
   if (req.conductor && testigo) res.cookie(COOKIE, testigo, { ...opcionesCookie, maxAge: portal.COOKIE_DIAS * 86400000 });
+  // EL TELÉFONO DE TRÁFICO (24/11/2026): con él, los avisos y la Ayuda llevan
+  // «Llamar a Tráfico». Es un parámetro (caché de un minuto); sin él, no sale.
+  try { res.locals.telTrafico = f.telHref(await require('../../services/parametros').valor('portal.telefono_trafico')); }
+  catch (e) { res.locals.telTrafico = ''; }
   next();
 });
 
@@ -112,6 +116,11 @@ router.post('/salir', async (req, res) => {
   res.clearCookie(COOKIE, opcionesCookie);
   res.redirect(303, '/entrar');
 });
+
+// ── La Ayuda (24/11/2026): también sin haber entrado ───────────────────────
+// Preguntas y respuestas cortas de cada parte de la app, en palabras de todos
+// los días, y a quién llamar si algo falla (heurística 10 de Nielsen).
+router.get('/ayuda', (req, res) => vista(res, 'portalAyuda', { titulo: 'Ayuda', pagina: 'portalAyuda', conductor: req.conductor || null }));
 
 // ── Lo de dentro: hace falta haber entrado ──────────────────────────────────
 

@@ -1,0 +1,57 @@
+<%
+  /* LA AYUDA (24/11/2026, las heurísticas de Nielsen: «ayuda y documentación»).
+     Preguntas cortas de cada parte de la app, con la respuesta en dos o tres
+     frases y el botón para ir allí. Se abre también sin haber entrado (por si
+     no puede entrar). Cada pregunta se despliega al tocarla: sin JavaScript. */
+  const dentro = !!conductor;
+  const pregunta = (titulo, cuerpo, enlace) => ({ titulo, cuerpo, enlace });
+  const grupos = [
+    { titulo: 'Entrar', items: [
+      pregunta('¿Cómo entro?', ['Escribe tu DNI o NIE y pulsa «Mandarme el código». Te llega un código de 6 cifras al email que diste al empezar en Telecab.', 'Escríbelo y ya estás dentro. En este móvil no te lo vuelve a pedir.']),
+      pregunta('No me llega el código', ['Mira en la carpeta de spam o correo no deseado. Si no está, pulsa «No me ha llegado: mandar otro».', 'Si el email no es el tuyo, habla con RRHH para que lo cambien.']),
+    ] },
+    { titulo: 'Mi coche', items: [
+      pregunta('¿Qué es vincular el coche?', ['Es avisar de que el coche lo llevas tú. Al vincularlo se desbloquea el motor y puedes abrir y cerrar las puertas desde aquí.', 'Si tienes un coche de hoy en el cuadrante, sale un botón para vincularlo de un toque.'], { href: '/coche', texto: 'Ir a Mi coche' }),
+      pregunta('Abrir y cerrar las puertas', ['Solo con el coche vinculado. Pulsa «Abrir puertas» o «Cerrar puertas» y espera unos segundos.', 'Si el coche no responde, pulsa otra vez una sola vez. Si sigue sin responder, llama a Tráfico.']),
+      pregunta('Cuando termino: desvincular y las 5 fotos', ['Aparca y apaga el coche. Pulsa «Hacer las 5 fotos»: la cámara te va diciendo cuál toca, con un dibujo de cómo hacerla.', 'Con las cinco hechas, pulsa «Desvincular vehículo». El motor se bloquea.']),
+      pregunta('Ver dónde está el coche', ['En Mi coche, pulsa «Ver ubicación en vivo»: sale el mapa y si está rodando, parado o bloqueado.']),
+    ] },
+    { titulo: 'Mis horas', items: [
+      pregunta('¿Qué cuenta cada número?', ['«Horas con el coche»: desde que lo vinculaste.', '«Horas trabajando»: el tiempo en viaje y en espera en BOLT. El descanso no cuenta.', '«Utilización»: de tu tiempo trabajando, el que estuviste en viaje.'], { href: '/horas', texto: 'Ir a Mis horas' }),
+      pregunta('Los km con BOLT y fuera de BOLT', ['Con BOLT: lo que anda el coche mientras estás en viaje o en espera.', 'Fuera de BOLT: lo que anda contigo en descanso o desconectado.']),
+    ] },
+    { titulo: 'Turnos, nota y efectivo', items: [
+      pregunta('Mis turnos', ['Tus turnos de hoy a 7 días, con el coche y de quién lo recibes y a quién se lo entregas.'], { href: '/turnos', texto: 'Ir a Mis turnos' }),
+      pregunta('Mi puntuación', ['Tu nota de cada semana. Sale los lunes, con la de la semana anterior.'], { href: '/puntuacion', texto: 'Ir a Mi puntuación' }),
+      pregunta('Mi efectivo', ['Lo que has cobrado en efectivo en BOLT y lo que has entregado. Arriba, lo que te queda por entregar.'], { href: '/efectivo', texto: 'Ir a Mi efectivo' }),
+    ] },
+  ];
+%>
+<div>
+  <h1>Ayuda</h1>
+  <p class="suave" style="margin-top:.25rem">Toca una pregunta para ver la respuesta.</p>
+</div>
+
+<% grupos.forEach(function (g) { %>
+<section class="caja ayuda" aria-label="<%= g.titulo %>">
+  <h2 class="ayuda-tit"><%= g.titulo %></h2>
+  <% g.items.forEach(function (p) { %>
+  <details class="ayuda-p">
+    <summary><%= p.titulo %></summary>
+    <div class="ayuda-r">
+      <% p.cuerpo.forEach(function (t) { %><p><%= t %></p><% }) %>
+      <% if (p.enlace && dentro) { %><a href="<%= p.enlace.href %>"><%= p.enlace.texto %></a><% } %>
+    </div>
+  </details>
+  <% }) %>
+</section>
+<% }) %>
+
+<section class="caja" aria-labelledby="t-falla">
+  <div class="caja-in ayuda-falla">
+    <h2 id="t-falla">Si algo no funciona</h2>
+    <p class="suave">Para el coche, las puertas o los turnos, llama a Tráfico. Para tu email, tu DNI o tu nómina, habla con RRHH.</p>
+    <%- include('portalLlamar') %>
+    <% if (!dentro) { %><a class="boton boton-claro" href="/entrar" style="text-decoration:none">Volver a entrar</a><% } %>
+  </div>
+</section>

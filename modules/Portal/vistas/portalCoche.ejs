@@ -17,6 +17,8 @@
 <div class="resultado resultado-<%= resultado.tono %>" role="status">
   <p class="resultado-tit"><%= resultado.titulo %></p>
   <% (resultado.texto || []).forEach(function (t) { %><p><%= t %></p><% }) %>
+  <%# Si no ha ido bien, a quién llamar, a un toque (heurística 9). %>
+  <% if (resultado.tono !== 'ok') { %><%- include('portalLlamar') %><% } %>
 </div>
 <% } %>
 
@@ -48,6 +50,7 @@
   <div class="resultado resultado-<%= coche.aviso.tono %>" role="status">
     <p class="resultado-tit"><%= coche.aviso.titulo %></p>
     <% (coche.aviso.texto || []).forEach(function (t) { %><p><%= t %></p><% }) %>
+    <%- include('portalLlamar') %>
   </div>
   <% } %>
 <% } else if (coche.vinculado) { %>
@@ -60,14 +63,14 @@
     <div class="coche-puertas">
       <form method="post" action="/coche/puertas">
         <input type="hidden" name="accion" value="abrir">
-        <button class="boton boton-grande" type="submit">
+        <button class="boton boton-grande" type="submit" data-enviando="Abriendo…">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/></svg>
           Abrir puertas
         </button>
       </form>
       <form method="post" action="/coche/puertas">
         <input type="hidden" name="accion" value="cerrar">
-        <button class="boton boton-grande boton-claro" type="submit">
+        <button class="boton boton-grande boton-claro" type="submit" data-enviando="Cerrando…">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
           Cerrar puertas
         </button>
@@ -131,16 +134,28 @@
 </section>
 <% } else { %>
 <section class="caja" aria-labelledby="t-vincular">
-  <form class="caja-in coche-vincular" method="post" action="/coche/vincular">
-    <h2 id="t-vincular">Vincula el coche que vas a llevar</h2>
+  <div class="caja-in">
+  <%# EL COCHE DE HOY, DE UN TOQUE (24/11/2026, heurísticas 6 y 7): el que le da el
+      cuadrante hoy, sin tener que escribir ni recordar la matrícula. %>
+  <% if (hoyMat) { %>
+  <form class="vincular-hoy" method="post" action="/coche/vincular">
+    <h2 id="t-vincular">Tu coche de hoy</h2>
+    <p><span class="matricula"><%= hoyMat %></span> <span class="suave peq">según tu cuadrante</span></p>
+    <input type="hidden" name="matricula" value="<%= hoyMat %>">
+    <button class="boton" type="submit" data-enviando="Vinculando…">Vincular el <%= hoyMat %></button>
+  </form>
+  <% } %>
+  <form class="coche-vincular" method="post" action="/coche/vincular">
+    <% if (hoyMat) { %><h2>¿Llevas otro coche?</h2><% } else { %><h2 id="t-vincular">Vincula el coche que vas a llevar</h2><% } %>
     <div class="campo">
       <label for="matricula">Matrícula</label>
       <input id="matricula" name="matricula" type="text" required minlength="4" maxlength="12"
              autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="1234ABC" value="<%= matricula %>">
     </div>
-    <button class="boton" type="submit">Vincular coche</button>
-    <p class="suave peq">Al vincularlo se desbloquea el motor y, desde aquí, podrás abrir y cerrar las puertas. Sin un coche vinculado, las puertas no se tocan.</p>
+    <button class="boton<%= hoyMat ? ' boton-claro' : '' %>" type="submit" data-enviando="Vinculando…">Vincular coche</button>
+    <p class="suave peq">Vincular es avisar de que el coche lo llevas tú: se desbloquea el motor y desde aquí podrás abrir y cerrar las puertas.</p>
   </form>
+  </div>
 </section>
 <% } %>
 

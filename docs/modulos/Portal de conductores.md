@@ -112,7 +112,7 @@ Camilo: *«que el inicio sea un resumen de lo que hay, al darle tap o click a la
 - **Iconos en una sola pieza**: `vistas/portalIcono.ejs`, que usan la barra de abajo y las tarjetas (en una pastilla teñida del acento).
 - **«Tu coche»** (`vistas/portalInicioCoche.ejs`): **la primera** si tiene un coche vinculado (es lo que va a usar), y después del próximo turno si no. Si pulsó «Entregar coche», lo dice en ámbar («sigue a tu nombre hasta que tu compañero lo vincule»). Sale de `portal.coche.estado`; si falla, el inicio sale sin ella.
 - **«Vinculado desde»**, igual en el inicio y en Coche (24/11/2026): de hoy, «desde las 06:02»; de otro día, «desde el 22/11 a las 23:40» (`portal.coche.momento`).
-- **El toque en iPhone**: `public/assets/js/portal/toque.js`, un escuchador de toques vacío para que Safari aplique `:active` (la tarjeta se hunde un poco al pulsarla).
+- **El toque en iPhone**: un escuchador de toques vacío para que Safari aplique `:active` (la tarjeta se hunde un poco al pulsarla). Desde el 24/11 vive en `public/assets/js/portal/comun.js` (antes `toque.js`), con lo demás de todas las páginas.
 - La de la facturación no lleva a ningún sitio (no hay página): lleva icono, pero no pulsa.
 - Revisado por un agente el 23/11 y aplicado lo suyo. Probado en local a 320 × 568, 375 y 390 px: sin desbordes ni errores. Prueba: `test/portal-inicio.test.js`.
 
@@ -138,7 +138,30 @@ Camilo: *«Crea un usuario de prueba que se pueda abrir siempre en producción s
 - **El teléfono, el email y el documento NO van en la migración** (el repositorio es público). Los pone Camilo en Plantilla, en la ficha «… (PRUEBAS)»: su teléfono (con él se vincula el coche y le llegan los avisos de WhatsApp), el email al que llega el código y, como «número de documento», **ese mismo teléfono**: es lo que escribe para entrar al portal (el portal acepta de 5 a 20 letras o cifras).
 - Con eso hace lo de un conductor de verdad, en coches de verdad: vincular (suelta el motor), abrir y cerrar, desvincular con las cinco fotos (corta el motor).
 
+## Las 10 heurísticas de Nielsen (24/11/2026)
+
+Camilo: *«A toda la APP aplica Las 10 heurísticas de usabilidad de Jakob Nielsen para mejorar la experiencia de usuario de los conductores, sabiendo que muchos pasan de los 30 - 40 años y no saben mucho de sistemas de software, lo de las fotos genial, eso no lo cambies»*. **Las fotos (la cámara guiada y la tira) no se tocaron.**
+
+| Heurística | Qué se hizo |
+| --- | --- |
+| 1. Que se vea qué está pasando | Al pulsar un botón, dice lo que hace («Mandando el código…», «Abriendo…», «Cerrando…», «Vinculando…», «Saliendo…»; si no dice nada, «Un momento…») con un círculo que gira, y se queda quieto hasta que contesta el servidor. Sin cobertura sale arriba «Sin conexión…». |
+| 2. Hablar como el conductor | «Vincular es avisar de que el coche lo llevas tú: se desbloquea el motor y desde aquí podrás abrir y cerrar las puertas». En Mis horas se explica qué es la utilización. El coche de hoy sale «según tu cuadrante». |
+| 3. Poder volver atrás | «Salir» pregunta antes (volver a entrar cuesta otro código por email). En las páginas de aviso, «Volver al inicio» es un botón grande. Si vuelve atrás con el navegador, los botones vuelven a estar como estaban. |
+| 4. Lo mismo, igual en todas partes | El botón de llamar es UNA pieza (`portalLlamar.ejs`), igual en Mi coche, en los avisos y en la Ayuda. Las palabras, las del bot de WhatsApp (vincular, desvincular). |
+| 5. Evitar el error | El coche de hoy se vincula de un toque, sin teclear la matrícula. Un botón no se puede pulsar dos veces mientras espera. |
+| 6. Que no tenga que acordarse | El DNI se queda escrito en ese móvil (`localStorage`, nada más que el DNI). La matrícula del cuadrante, a la vista. La Ayuda, siempre arriba. |
+| 7. Atajos | «Vincular el 1234ABC» de un toque; «¿Llevas otro coche?» sigue debajo, como botón claro. |
+| 8. Limpio y legible (gente de 30-40 años o más) | Texto gris más oscuro (`--suave` de 99 110 132 a 82 92 112), la letra pequeña de 14 a 15 px, «Salir» y «Ayuda» a 44 px de alto para el dedo. |
+| 9. Salir de un error | Cada aviso que no ha ido bien (vincular, puertas, desvincular, las páginas de error) lleva **«Llamar a Tráfico»** de un toque y «Ver la ayuda». |
+| 10. Ayuda | **`/ayuda`**: preguntas cortas por sección (Entrar, Mi coche, Mis horas, Turnos/nota/efectivo) que se despliegan al tocarlas, sin JavaScript. Se abre también sin haber entrado; desde Entrar, «¿Problemas para entrar? Ver la ayuda». |
+
+- **El teléfono de Tráfico es un parámetro**: «Portal de conductores: teléfono de Tráfico» (`portal.telefono_trafico`, en Parámetros, módulo Operaciones). Nueve cifras; **vacío, el botón no sale** (el catálogo admite `vacio: true` para los de texto). No va en el código porque el repositorio es público.
+- Piezas: `public/assets/js/portal/comun.js` (lo de todas las páginas: el toque en iPhone, «Un momento…», preguntar antes de salir con `data-confirmar`, sin conexión, el DNI con `data-recordar`), `modules/Portal/vistas/portalAyuda.ejs`, `portalLlamar.ejs`. El formulario de las fotos (`data-fotos-form`) queda fuera de «Un momento…»: tiene el suyo.
+- Probado en local a 320 y 375 px: Inicio, Mi coche (con y sin coche vinculado), Mis horas, Ayuda (con y sin sesión) y Entrar.
+
 ## Lo que queda para lanzarlo (24/11/2026)
+
+- **Poner el teléfono de Tráfico** en Parámetros (ver arriba): hasta entonces no sale «Llamar a Tráfico».
 
 - **El dominio ya funciona**: https://conductorestelecab.es abre «Entrar».
 - **52 conductores en activo no pueden entrar**: les falta el email o el DNI (49 son de ETT; 3 de plantilla propia). Es trabajo de RRHH: sin email no les llega el código.
