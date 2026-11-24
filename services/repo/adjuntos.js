@@ -48,4 +48,26 @@ async function anular(cli, { id, motivo, anuladoPor }) {
   return r.rowCount > 0;
 }
 
-module.exports = { insertar, porId, deDueno, anular };
+/**
+ * LOS QUE CADUCAN (24/11/2026): los adjuntos de un tipo de dueño subidos antes
+ * de `dia` (fecha de Madrid), anulados o no. Para borrarlos de verdad (las
+ * fotos del portal, a los 20 días). Como mucho `limite` de una vez.
+ */
+async function anterioresA(cli, duenoTipo, dia, limite = 2000) {
+  const r = await cli.query(
+    `SELECT a.id, a.almacen, a.ruta, a.bytes
+       FROM adjunto a
+      WHERE a.dueno_tipo = $1 AND (a.creado_at AT TIME ZONE 'Europe/Madrid')::date < $2::date
+      ORDER BY a.id
+      LIMIT $3`, [duenoTipo, dia, limite]);
+  return r.rows;
+}
+
+/** Borra esas filas (sus ficheros ya se han borrado del almacén). Queda en el libro. */
+async function borrar(cli, ids) {
+  if (!ids.length) return 0;
+  const r = await cli.query('DELETE FROM adjunto WHERE id = ANY($1::bigint[])', [ids]);
+  return r.rowCount;
+}
+
+module.exports = { insertar, porId, deDueno, anular, anterioresA, borrar };

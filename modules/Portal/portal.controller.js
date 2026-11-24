@@ -132,6 +132,8 @@ router.get('/efectivo', pagina('portalEfectivo', 'Mi efectivo', async p => ({ ef
 // Las mismas funciones que el bot (portal.coche.js). Cada acción contesta con
 // la página del coche y lo que ha pasado arriba; sin JavaScript en el móvil.
 const coche = require('./portal.coche');
+// Las fotos se guardan 20 días: carga la tarea diaria que borra las de antes (24/11/2026).
+require('./portal.fotos');
 const paginaCoche = async (req, res, resultado = null) => {
   const [estado, previas] = await Promise.all([coche.estado(req.conductor),
     coche.fotosAnteriores(req.conductor).catch(e => { console.error('❌ [Portal] fotos anteriores:', e.message); return null; })]);

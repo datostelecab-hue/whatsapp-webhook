@@ -89,6 +89,17 @@ router.get('/api/ficha/:id', async (req, res) => {
   }
 });
 
+// ---------- las fotos de los conductores (24/11/2026) ----------
+// Las que hicieron al desvincularlo desde el portal, por día, de los últimos
+// 20 días (después se borran del almacén: modules/Portal/portal.fotos.js).
+router.get('/api/ficha/:id/fotos', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await require('../Portal/portal.fotos').deVehiculo(req.params.id)) }); }
+  catch (error) {
+    console.error('❌ [VEHICULOS] fotos:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
 // ---------- el estado de las piezas (db/158) ----------
 // Mirar cuelga de '/vehiculos'; cambiar va por '/vehiculos/api/piezas', que la
 // matriz de permisos ata a '/vehiculos/piezas'.

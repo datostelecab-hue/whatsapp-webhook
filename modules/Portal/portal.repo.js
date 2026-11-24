@@ -150,7 +150,30 @@ async function cerrar(huella) {
   await db.consulta(`UPDATE portal_sesion SET cerrada_at = now() WHERE huella = $1 AND cerrada_at IS NULL`, [huella]);
 }
 
+/**
+ * LAS FOTOS DE UN COCHE (24/11/2026), para su ficha en el ERP: las de cada vez
+ * que alguien lo desvinculó desde el portal, desde `desdeDia` (fecha de
+ * Madrid). El turno es del coche por su equipo de la base o por su matrícula.
+ * Una fila por foto, de la más nueva a la más vieja.
+ */
+async function fotosDeVehiculo(vehiculoId, desdeDia) {
+  const r = await db.consulta(
+    `SELECT a.id::text AS adjunto, a.nombre AS fichero, f.id::text AS turno, f.tipo,
+            COALESCE(NULLIF(btrim(f.nombre), ''), 'Sin nombre') AS quien,
+            to_char(a.creado_at AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS dia,
+            to_char(f.inicio AT TIME ZONE 'Europe/Madrid', 'DD/MM HH24:MI') AS desde,
+            to_char(COALESCE(f.fin, a.creado_at) AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hasta
+       FROM adjunto a
+       JOIN fichaje_turno f ON f.id::text = a.dueno_id
+       JOIN vehiculo v ON v.id = $1
+      WHERE a.dueno_tipo = 'turno_fotos' AND a.anulado_at IS NULL
+        AND (f.vehiculo_id = v.id OR f.matricula = v.matricula_norm)
+        AND (a.creado_at AT TIME ZONE 'Europe/Madrid')::date >= $2::date
+      ORDER BY a.creado_at DESC, f.id DESC, a.nombre`, [Number(vehiculoId), desdeDia]);
+  return r.rows;
+}
+
 module.exports = {
   porDni, porId, contrato, codigosRecientes, nuevoCodigo, marcarEnviado, codigoVivo, intentar,
-  nuevaSesion, sesion, renovar, cerrar,
+  nuevaSesion, sesion, renovar, cerrar, fotosDeVehiculo,
 };

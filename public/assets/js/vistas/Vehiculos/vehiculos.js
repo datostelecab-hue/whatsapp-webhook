@@ -11,6 +11,54 @@
   const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
   const VER_SEDES = DEL_SERVIDOR.verTodasLasSedes;
 
+  // ---------- las fotos de los conductores (24/11/2026) ----------
+  const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const diaLargo = iso => {
+    const [a, m, d] = String(iso).split('-').map(Number);
+    const dt = new Date(Date.UTC(a, m - 1, d, 12));
+    return `${DIAS_SEMANA[dt.getUTCDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+  };
+  async function fotosConductores(hueco, d) {
+    hueco.innerHTML = '<p class="text-sm text-telecab-muted">Cargando las fotos…</p>';
+    let r;
+    try {
+      const res = await fetch(`/vehiculos/api/ficha/${encodeURIComponent(d.id)}/fotos`);
+      r = await res.json();
+      if (!res.ok || r.status !== 'ok') throw new Error(r.msg || `Error ${res.status}`);
+    } catch (e) {
+      hueco.innerHTML = `<p class="text-sm text-telecab-red">No se han podido cargar las fotos: ${esc(e.message)}</p>`;
+      return;
+    }
+    const nota = `<p class="text-xs text-telecab-muted mb-3">Las que hacen los conductores al desvincular el coche desde el portal. Se guardan ${r.dias} días: las de antes del ${esc(fecha(r.desde))} ya se han borrado.</p>`;
+    if (!r.porDia.length) {
+      hueco.innerHTML = nota + '<p class="text-sm text-telecab-muted">No hay fotos de este coche en los últimos ' + r.dias + ' días.</p>';
+      return;
+    }
+    hueco.innerHTML = nota + r.porDia.map(dia => `
+      <section class="mb-4 last:mb-0">
+        <h4 class="text-sm font-semibold capitalize mb-2">${esc(diaLargo(dia.dia))}</h4>
+        <div class="flex flex-col gap-3">
+          ${dia.veces.map(v => `
+            <div class="rounded-xl border border-telecab-border p-3">
+              <p class="text-sm mb-2"><span class="font-semibold">${esc(v.quien)}</span>
+                <span class="text-telecab-muted">· vinculado el ${esc(v.desde)}, desvinculado a las ${esc(v.hasta)}${v.oficina ? ' · viaje de la oficina' : ''}</span></p>
+              <ul class="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                ${v.fotos.map(f => `<li>
+                  <button type="button" class="block w-full text-left group" data-foto="${esc(f.url)}" data-titulo="${esc(d.matricula + ' · ' + f.etiqueta)}"
+                          data-pie="${esc(v.quien + ' · ' + diaLargo(dia.dia) + ', ' + v.hasta)}">
+                    <img src="${esc(f.url)}" alt="${esc(f.etiqueta)}" loading="lazy" decoding="async"
+                         class="w-full aspect-[4/3] object-cover rounded-lg border border-telecab-border bg-telecab-card2 group-hover:border-telecab-gold transition">
+                    <span class="block text-[11px] text-telecab-muted mt-1">${esc(f.etiqueta)}</span>
+                  </button></li>`).join('')}
+              </ul>
+            </div>`).join('')}
+        </div>
+      </section>`).join('');
+    // En grande, con zoom y descarga: el visor de la casa.
+    hueco.querySelectorAll('[data-foto]').forEach(b => b.addEventListener('click', () =>
+      VisorFoto.abrir({ src: b.dataset.foto, titulo: b.dataset.titulo, pie: b.dataset.pie, descargar: true })));
+  }
+
   // ---------- la pantalla ----------
 
   const flota = Listado.montar({
@@ -120,6 +168,12 @@
             { etiqueta: 'Última lectura', valor: d => d.km_odometro_at ? `${fechaHora(d.km_odometro_at)} (${hace(d.km_odometro_at)})` : '' },
             { etiqueta: 'Notas', valor: d => d.notas, ancho: 'sm:col-span-2 lg:col-span-3' },
           ],
+        },
+        {
+          // LAS FOTOS DE LOS CONDUCTORES (24/11/2026): las cinco de cada vez que
+          // alguien lo desvinculó desde el portal, por día. Se guardan 20 días.
+          titulo: 'Fotos de los conductores', icono: 'fa-camera',
+          pinta: (d, hueco) => fotosConductores(hueco, d),
         },
         {
           // El dibujo del coche para marcar el estado de cada pieza (db/158).
