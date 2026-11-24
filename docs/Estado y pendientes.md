@@ -7,6 +7,7 @@ actualizado: 2026-11-23
 
 Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
 
+- **Aplicar `db/281`** (24/11/2026), justo después de subir: marca la ficha de pruebas para que no cuente como un alta (gestoría, nómina, contratos, recuentos…). Hasta aplicarla, sigue contando.
 - **Aplicar `db/280`** (24/11/2026): el conductor de pruebas. Después, en Plantilla, a la ficha «… (PRUEBAS)»: tu teléfono, tu email y, como número de documento, el teléfono. Ver [[Portal de conductores#El conductor de pruebas (24/11/2026, db/280)]].
 - **Aplicar `db/279`** (24/11/2026): la situación «Libranza excepcional». Después, Laura pasa las vacaciones de Tarik Lajane Aamara (ficha 113, del 30/10 al 04/11) a libranza excepcional desde Vacaciones → su ficha → «Corregir», con el motivo. Ver [[Vacaciones#Corregir las que ya pasaron, auditado (24/11/2026, db/279)]].
 

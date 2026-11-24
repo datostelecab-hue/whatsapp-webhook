@@ -16,6 +16,8 @@
 
 const db = require('../../services/db');
 const vig = require('../../services/repo/vigencia');
+// La ficha de pruebas (db/281): fuera de los recuentos y de la gestoría.
+const pruebas = require('../../services/repo/fichaDePruebas');
 const audit = require('../../services/repo/auditoria');
 const jornada = require('./jornada');
 const { dosDiasLibra } = require('../Vacaciones/libranzas');
@@ -48,6 +50,8 @@ const QUIEN_BAJA = `btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS baja_
 async function listar({ id, momento, soloVigentes = false, tipo, situacion, turnoId } = {}) {
   const params = [momento || null];
   const donde = [];
+  // La ficha de pruebas (db/281) sale, con su marca: en Plantilla se edita.
+  const colPrueba = await pruebas.columna('c');
   // Por omisión salen TODOS: los de alta, los que están de vacaciones o de baja
   // médica, y los que ya se fueron. La plantilla es la gente que ha pasado por
   // aquí, y esconder a quien causó baja obliga a ir a buscarla a otro sitio.
@@ -73,7 +77,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            -- Número de afiliación a la Seguridad Social. Quien va por ETT no lo
            -- tiene con nosotros: lo cotiza la ETT.
            c.naf,
-           c.es_centinela, c.empleo_vigente,
+           c.es_centinela, ${colPrueba}, c.empleo_vigente,
 
            -- Empleo vigente en la fecha: propia o ETT, desde cuándo, y con qué
            -- jornada (para poder cambiarla desde la ficha sin adivinarla).
@@ -534,6 +538,7 @@ async function ficha(id, { momento } = {}) {
 
 /** Contadores de la cabecera. Una consulta, no una por tarjeta. */
 async function resumen({ momento } = {}) {
+  const sinP = await pruebas.fuera('c');
   const [porSituacion, porTipo, huecos] = await Promise.all([
     // Cuenta a TODO el mundo, incluidos los que ya no están: es lo que llena
     // los filtros de la pantalla, y un filtro que no ofrece "baja en la
@@ -560,7 +565,7 @@ async function resumen({ momento } = {}) {
              AND desde <= ref.dia AND (hasta IS NULL OR hasta >= ref.dia)
            ORDER BY desde DESC, id DESC LIMIT 1) s ON TRUE
         LEFT JOIN cat_estado_conductor ce ON ce.codigo = s.estado
-       WHERE NOT c.es_centinela
+       WHERE NOT c.es_centinela${sinP}
        GROUP BY 1, 2, 3 ORDER BY 3, 2`, [momento || null]),
 
     db.consulta(`
@@ -572,7 +577,7 @@ async function resumen({ momento } = {}) {
           SELECT tipo FROM conductor_periodo_empleo
            WHERE conductor_id = c.id AND (baja IS NULL OR baja >= ref.dia)
            ORDER BY (baja IS NULL) DESC, alta DESC NULLS LAST LIMIT 1) e ON TRUE
-       WHERE NOT c.es_centinela
+       WHERE NOT c.es_centinela${sinP}
        GROUP BY 1`, [momento || null]),
 
     db.consulta(`
@@ -586,7 +591,7 @@ async function resumen({ momento } = {}) {
              count(*) FILTER (WHERE NOT EXISTS (
                SELECT 1 FROM asignacion a
                 WHERE a.conductor_id = c.id AND a.hasta IS NULL))                               sin_coche
-        FROM conductor c WHERE c.empleo_vigente AND NOT c.es_centinela`),
+        FROM conductor c WHERE c.empleo_vigente AND NOT c.es_centinela${sinP}`),
   ]);
 
   return {
@@ -2149,6 +2154,7 @@ async function doblePlaza({ momento } = {}) {
  * periodo, que es como lo ve la gestoria: son dos contratos distintos.
  */
 async function paraGestoria({ estado = 'alta' } = {}) {
+  const sinP = await pruebas.fuera('c');
   const donde = estado === 'alta' ? 'AND pe.baja IS NULL'
     : estado === 'baja' ? 'AND pe.baja IS NOT NULL' : '';
   const r = await db.consulta(`
@@ -2176,7 +2182,7 @@ async function paraGestoria({ estado = 'alta' } = {}) {
         SELECT e164 FROM conductor_telefono t
          WHERE t.conductor_id = c.id AND t.principal AND t.vigente_hasta IS NULL
          ORDER BY t.id LIMIT 1) tel ON TRUE
-     WHERE NOT c.es_centinela ${donde}
+     WHERE NOT c.es_centinela${sinP} ${donde}
      -- Por legajo, que es la numeracion de la propia gestoria. Quien no lo
      -- tenga (alta reciente) va al final y no mezclado por un hueco.
      ORDER BY (c.legajo IS NULL), c.legajo, c.apellidos, c.nombre`);

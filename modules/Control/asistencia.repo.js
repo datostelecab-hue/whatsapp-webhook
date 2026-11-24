@@ -15,6 +15,8 @@
 // bueno por el que equivocarse en algo que se usa para llamar a la gente.
 
 const db = require('../../services/db');
+// La ficha de pruebas (db/281): no cuenta como un alta.
+const pruebas = require('../../services/repo/fichaDePruebas');
 
 const SQL = `
 WITH
@@ -158,7 +160,7 @@ async function faltas({ desde, hasta } = {}) {
   const h = /^\d{4}-\d{2}-\d{2}$/.test(hasta || '') ? hasta : p.hasta;
   if (h < d) throw new Error('El periodo termina antes de empezar');
 
-  const { rows } = await db.consulta(SQL, [d, h]);
+  const { rows } = await db.consulta(SQL + (await pruebas.fuera('c')), [d, h]);
   const alFinal = x => (dudoso(x, d) ? 1 : 0);
   const prom = x => (x.horas_prom == null ? Infinity : Number(x.horas_prom));
 

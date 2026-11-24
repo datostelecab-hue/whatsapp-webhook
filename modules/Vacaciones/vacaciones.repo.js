@@ -6,6 +6,8 @@
 // 'AAAA-MM-DD' con to_char: un DATE leído como Date en Madrid da el día anterior.
 
 const db = require('../../services/db');
+// La ficha de pruebas (db/281): no cuenta como un alta.
+const pruebas = require('../../services/repo/fichaDePruebas');
 
 // 'asuntos_propios' (db/225): su banco va aparte del saldo de vacaciones.
 // 'baja_medica' (06/11/2026): sus días generan vacaciones, como uno trabajado
@@ -25,6 +27,7 @@ const ESTADOS = ['vacaciones', 'permiso', 'asuntos_propios', 'suspendido', 'susp
  * fueron, solo si su baja es de `desde` en adelante (el histórico empieza ahí).
  */
 async function personas({ id = null, conEtt = false, conBajas = false, desde = '2026-01-01' } = {}) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT * FROM (
        SELECT DISTINCT ON (c.id) c.id::text AS id,
@@ -35,7 +38,7 @@ async function personas({ id = null, conEtt = false, conBajas = false, desde = '
               e.tipo, e.ett_nombre
          FROM conductor_periodo_empleo e
          JOIN conductor c ON c.id = e.conductor_id
-        WHERE NOT c.es_centinela
+        WHERE NOT c.es_centinela${sinP}
           AND ($1::bigint IS NULL OR c.id = $1::bigint)
         ORDER BY c.id, (e.baja IS NULL) DESC, e.alta DESC) x
       WHERE ($2::boolean OR x.tipo = 'propia')

@@ -163,10 +163,19 @@
         await video.play().catch(() => {});
         disparo.disabled = false;
       } catch (e) {
-        // Sin permiso o sin cámara: se dice, y quedan las casillas de siempre.
+        // Sin permiso o sin cámara: se dice POR QUÉ (24/11/2026), y quedan las
+        // casillas de siempre.
         disparo.disabled = true;
         error.hidden = false;
-        error.textContent = 'No se puede abrir la cámara desde aquí. Permite el acceso a la cámara en el navegador, o cierra y haz las fotos una a una en las casillas.';
+        const casillas = 'o cierra y haz las fotos una a una en las casillas.';
+        const nombre = e && e.name;
+        error.textContent = nombre === 'NotAllowedError' || nombre === 'SecurityError'
+          ? `No has dado permiso para usar la cámara. Permítelo en el candado de la barra de direcciones y vuelve a abrirla, ${casillas}`
+          : nombre === 'NotFoundError' || nombre === 'OverconstrainedError'
+            ? `No encuentro la cámara de este móvil: ${casillas.replace(/^o /, '')}`
+            : nombre === 'NotReadableError'
+              ? `La cámara la está usando otra aplicación. Ciérrala y vuelve a abrirla, ${casillas}`
+              : `No se puede abrir la cámara desde aquí. Si abriste el portal desde WhatsApp o el correo, ábrelo en Chrome o Safari, ${casillas}`;
       }
     }
     function cerrar() {

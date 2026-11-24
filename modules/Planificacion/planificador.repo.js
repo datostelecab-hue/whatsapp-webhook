@@ -20,6 +20,8 @@
 // que significa un correturnos, se cambia en un sitio.
 
 const db = require('../../services/db');
+// La ficha de pruebas (db/281): no es gente para el cuadrante.
+const pruebas = require('../../services/repo/fichaDePruebas');
 const jornada = require('../Conductores/jornada');
 // El estado y la zona del coche se cambian con historial, como en Vehículos.
 const vig = require('../../services/repo/vigencia');
@@ -87,6 +89,7 @@ function semanaDesde(lunes) {
  */
 async function tablero({ dia } = {}) {
   const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const sinP = await pruebas.fuera('c');
   const lunes = lunesDe(efectivo);
   const fechas = semanaDesde(lunes);
   const domingo = fechas[DIAS - 1];
@@ -179,7 +182,7 @@ async function tablero({ dia } = {}) {
              JOIN cat_estado_conductor cec ON cec.codigo = h.estado
             WHERE h.conductor_id = c.id AND cec.es_ausencia AND h.desde > $1
             ORDER BY h.desde LIMIT 1) prox ON TRUE
-        WHERE NOT c.es_centinela
+        WHERE NOT c.es_centinela${sinP}
         ORDER BY nombre`, [efectivo]),
 
     // Qué días le tocarían a un correturnos en cada plaza: los que libra el
@@ -289,7 +292,7 @@ async function tablero({ dia } = {}) {
             WHERE a.conductor_id = c.id
             ORDER BY a.desde DESC, a.id DESC LIMIT 1) ult ON TRUE
         WHERE e.baja > $1::date - $2::int AND e.baja <= $1::date
-          AND NOT c.es_centinela
+          AND NOT c.es_centinela${sinP}
           AND NOT EXISTS (SELECT 1 FROM conductor_periodo_empleo ab
                            WHERE ab.conductor_id = c.id AND ab.baja IS NULL)
         ORDER BY e.conductor_id, e.baja DESC, e.id DESC`, [hoy(), DIAS_BAJAS]),
@@ -920,6 +923,7 @@ const DIAS_TRAS_LA_VUELTA = 7;
 const AUSENCIAS_DE_VUELTA = ['vacaciones', 'baja_medica'];
 
 async function proximasIncorporaciones({ gente, cuadrantes, coches, desde = hoy() }) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT a.conductor_id, to_char(a.desde, 'YYYY-MM-DD') AS desde,
             vp.vehiculo_id, vp.matricula, vp.rol, vp.orden_ct, vp.turno, vp.cuadrante_id,
@@ -938,7 +942,7 @@ async function proximasIncorporaciones({ gente, cuadrantes, coches, desde = hoy(
             antes.claves AS antes_claves
        FROM asignacion a
        JOIN v_plaza vp  ON vp.plaza_id = a.plaza_id
-       JOIN conductor c ON c.id = a.conductor_id AND NOT c.es_centinela
+       JOIN conductor c ON c.id = a.conductor_id AND NOT c.es_centinela${sinP}
        JOIN conductor_periodo_empleo pe ON pe.conductor_id = c.id AND pe.baja IS NULL
        -- La ausencia de la que vuelve: empezó antes de esta plaza y acabó como
        -- mucho una semana antes (o sigue abierta).

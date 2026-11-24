@@ -1338,7 +1338,10 @@
       await lst.exportar();
     },
 
+    // LA FICHA DE PRUEBAS (db/281) se ve, con su etiqueta, pero no cuenta en
+    // ningún número: ni «de alta», ni disponibles, ni los filtros.
     subtitulo: (v, t) => {
+      t = t.filter(f => !f.es_prueba); v = v.filter(f => !f.es_prueba);
       const alta = t.filter(f => f.empleo_vigente !== false).length;
       const detalle = `${alta} de alta · ${t.length - alta} de baja`;
       return v.length === t.length ? `${t.length} personas · ${detalle}`
@@ -1346,6 +1349,7 @@
     },
 
     kpis: (filas, extra) => {
+      filas = filas.filter(f => !f.es_prueba);
       const r = extra.resumen || {};
       const h = r.huecos || {};
       const ett = (r.porTipo || []).find(x => x.tipo === 'ett');
@@ -1410,7 +1414,7 @@
         opciones: (filas) => {
           const entran = filas.filter(f => f.aun_no_empieza).length;
           return [
-            { valor: 'alta', texto: 'De alta', cuenta: filas.filter(f => f.empleo_vigente !== false).length },
+            { valor: 'alta', texto: 'De alta', cuenta: filas.filter(f => f.empleo_vigente !== false && !f.es_prueba).length },
             // Solo se ofrece si hay alguien: un filtro que siempre da cero es ruido.
             ...(entran ? [{ valor: 'entran', texto: 'Entran pronto', cuenta: entran }] : []),
             { valor: 'baja', texto: 'De baja', cuenta: filas.filter(f => f.empleo_vigente === false).length },
@@ -1457,7 +1461,8 @@
     columnas: [
       { titulo: 'Conductor', campo: 'nombre_completo', clase: 'font-semibold whitespace-nowrap',
         pinta: (v, f) => esc(v) + (f.empleo_tipo === 'ett'
-          ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '') },
+          ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '')
+          + (f.es_prueba ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-warn/15 text-telecab-warn border border-telecab-warn/30" title="Ficha de pruebas: no cuenta como un alta">Pruebas</span>' : '') },
       // PROPIA O ETT, SOLO EN EL EXCEL (01/10/2026). En la tabla ya lo dice la
       // etiqueta junto al nombre, pero esa etiqueta no viaja a la hoja de
       // cálculo y allí no había forma de filtrar por contrato. A quien ya no

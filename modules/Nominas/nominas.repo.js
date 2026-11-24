@@ -29,6 +29,8 @@
 // 100 % de la plantilla, propia y ETT.
 
 const db = require('../../services/db');
+// La ficha de pruebas (db/281) no cobra nómina.
+const pruebas = require('../../services/repo/fichaDePruebas');
 
 // ── LA NÓMINA CUENTA POR DÍA NATURAL, Y ES LA ÚNICA QUE LO HACE ────────────
 //
@@ -382,6 +384,7 @@ async function dineroDelMes(desdeIso, hastaIso) {
  * por un dato que falta.
  */
 async function fichasDelMes(hastaIso) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT c.id,
             btrim(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellidos, '')) AS nombre,
@@ -428,7 +431,7 @@ async function fichasDelMes(hastaIso) {
                    p.alta DESC
           LIMIT 1
        ) pe ON TRUE
-      WHERE NOT c.es_centinela`,
+      WHERE NOT c.es_centinela${sinP}`,
     [hastaIso]);
   return new Map(r.rows.map(x => [Number(x.id), {
     nombre: x.nombre || '',
@@ -458,12 +461,13 @@ async function fichasDelMes(hastaIso) {
  * ETT a plantilla propia (o al revés) dentro del mes, que va dos veces.
  */
 async function periodosDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT p.conductor_id, p.tipo, p.jornada_horas,
             to_char(p.alta, 'YYYY-MM-DD') AS alta,
             to_char(p.baja, 'YYYY-MM-DD') AS baja
        FROM conductor_periodo_empleo p
-       JOIN conductor c ON c.id = p.conductor_id AND NOT c.es_centinela
+       JOIN conductor c ON c.id = p.conductor_id AND NOT c.es_centinela${sinP}
       WHERE p.alta <= $2::date
         AND (p.baja IS NULL OR p.baja >= $1::date)
         AND ($3::bigint IS NULL OR p.conductor_id = $3::bigint)

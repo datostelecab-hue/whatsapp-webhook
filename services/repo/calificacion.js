@@ -39,6 +39,8 @@
 // especificación ya avisa (§13) de que habrá que hacerlo tras el primer mes.
 
 const db = require('../db');
+// La ficha de pruebas (db/281) no entra en la calificación.
+const pruebas = require('./fichaDePruebas');
 
 // ── EL MODELO ───────────────────────────────────────────────────────────────
 const MODELO = {
@@ -231,6 +233,7 @@ function largoDe(desde, hasta) {
  * utilización que medir y meterlo como 0 hundiría a quien no condujo.
  */
 async function metricas(desde, hasta) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `WITH
      -- EL PERIODO DE CADA UNO. El mes, pero nunca antes de su alta: a quien
@@ -242,7 +245,7 @@ async function metricas(desde, hasta) {
               GREATEST($1::date, e.alta)                  AS desde,
               LEAST($2::date, COALESCE(e.baja, $2::date)) AS hasta
          FROM conductor_periodo_empleo e
-         JOIN conductor c ON c.id = e.conductor_id AND NOT c.es_centinela
+         JOIN conductor c ON c.id = e.conductor_id AND NOT c.es_centinela${sinP}
         WHERE e.baja IS NULL
      ),
      dias AS (
@@ -398,6 +401,7 @@ async function calcular(hasta, promedioHoras, { desde } = {}) {
   }
   const fin = String(hasta).slice(0, 10);
   const ini = desde ? String(desde).slice(0, 10) : inicioDe(fin);
+  const sinP = await pruebas.fuera('c');
 
   const [filas, excesos, tele, plantilla, estandar] = await Promise.all([
     metricas(ini, fin),
@@ -410,7 +414,7 @@ async function calcular(hasta, promedioHoras, { desde } = {}) {
               e.alta::text AS alta
          FROM conductor c
          JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
-        WHERE NOT c.es_centinela`),
+        WHERE NOT c.es_centinela${sinP}`),
     promedioHoras(ini, fin),
   ]);
 

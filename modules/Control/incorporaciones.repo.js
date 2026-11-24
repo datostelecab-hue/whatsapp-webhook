@@ -10,6 +10,8 @@
 // Control llamaría a alguien para un coche que el planificador ya le ha quitado.
 
 const db = require('../../services/db');
+// La ficha de pruebas (db/281): no cuenta como un alta.
+const pruebas = require('../../services/repo/fichaDePruebas');
 
 /**
  * Los contratos que empezaron entre `desde` y `hasta` y siguen vivos ese último
@@ -17,6 +19,7 @@ const db = require('../../services/db');
  * víspera del alta es un paso de la ETT a propia, y eso no es entrar.
  */
 async function altas(desde, hasta) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT p.conductor_id::text AS id, p.tipo, p.ett_nombre, p.jornada_horas,
             to_char(p.alta, 'YYYY-MM-DD') AS alta,
@@ -24,7 +27,7 @@ async function altas(desde, hasta) {
               WHERE q.conductor_id = p.conductor_id AND q.id <> p.id
                 AND q.baja IS NOT NULL AND q.baja < p.alta) AS baja_anterior
        FROM conductor_periodo_empleo p
-       JOIN conductor c ON c.id = p.conductor_id AND NOT c.es_centinela
+       JOIN conductor c ON c.id = p.conductor_id AND NOT c.es_centinela${sinP}
       WHERE p.alta BETWEEN $1::date AND $2::date
         AND (p.baja IS NULL OR p.baja >= $2::date)`, [desde, hasta]);
   return r.rows;
@@ -32,11 +35,12 @@ async function altas(desde, hasta) {
 
 /** Las vacaciones que acaban entre `desde` y `hasta`, de quien sigue de alta. */
 async function vacaciones(desde, hasta) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT h.conductor_id::text AS id,
             to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta
        FROM conductor_estado_hist h
-       JOIN conductor c ON c.id = h.conductor_id AND NOT c.es_centinela
+       JOIN conductor c ON c.id = h.conductor_id AND NOT c.es_centinela${sinP}
       WHERE h.estado = 'vacaciones' AND h.hasta BETWEEN $1::date AND $2::date
         AND EXISTS (SELECT 1 FROM conductor_periodo_empleo p
                      WHERE p.conductor_id = h.conductor_id AND (p.baja IS NULL OR p.baja > h.hasta))`,

@@ -81,7 +81,15 @@ app.use((req, res, next) => {
 
   // Apaga funciones potentes del navegador que este ERP no usa (cámara, micro,
   // geolocalización): si un día se cuela un script ajeno, no puede pedirlas.
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  //
+  // MENOS LA CÁMARA EN EL PORTAL (24/11/2026). Las cinco fotos al desvincular
+  // abren la cámara de la app (getUserMedia), y con `camera=()` el navegador ni
+  // la pedía: fallaba al momento con «No se puede abrir la cámara» (Camilo: «El
+  // sistema no le pide permisos de cámara al navegador»). En el dominio del
+  // portal, la cámara para la propia página (`self`), nada de fuera; el ERP
+  // sigue sin ella.
+  const camara = require('./modules/Portal/portal.controller').esDelPortal(req) ? 'camera=(self)' : 'camera=()';
+  res.setHeader('Permissions-Policy', `geolocation=(), microphone=(), ${camara}, payment=()`);
 
   // ── CONTENT-SECURITY-POLICY, EN DOS PARTES A PROPÓSITO ─────────────────────
   //

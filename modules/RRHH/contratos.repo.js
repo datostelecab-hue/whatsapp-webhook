@@ -9,6 +9,8 @@
 // publicar objetivos lo decide `convenio.motor`.
 
 const db = require('../../services/db');
+// La ficha de pruebas (db/281) no necesita contrato (ni, por tanto, objetivos).
+const pruebas = require('../../services/repo/fichaDePruebas');
 
 // El convenio VTC de Madrid es el único que hay cargado, y el grupo por defecto
 // es el de conductores de aplicación (G3A), que es la inmensa mayoría de la
@@ -33,12 +35,13 @@ async function convenioVigente() {
  * y entonces la decide el motor, no esta consulta.
  */
 async function sinContrato({ tipo = 'propia' } = {}) {
+  const sinP = await pruebas.fuera('c');
   const r = await db.consulta(
     `SELECT pe.id AS periodo_id, pe.conductor_id, pe.alta::text AS alta,
             pe.jornada_horas, c.nombre
        FROM conductor_periodo_empleo pe
        JOIN conductor c ON c.id = pe.conductor_id
-      WHERE pe.baja IS NULL
+      WHERE pe.baja IS NULL${sinP}
         AND ($1::text IS NULL OR pe.tipo = $1)
         AND NOT EXISTS (
               SELECT 1 FROM contrato ct

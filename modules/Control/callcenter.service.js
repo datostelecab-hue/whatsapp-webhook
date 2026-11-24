@@ -664,7 +664,8 @@ async function conductoresForm() {
   _condCache = {
     ts: Date.now(),
     lista: filas
-      .filter(c => c.empleo_vigente && !c.es_centinela)
+      // Sin la ficha de pruebas (db/281): no es nadie a quien llamar.
+      .filter(c => c.empleo_vigente && !c.es_centinela && !c.es_prueba)
       .map(c => ({
         id: String(c.id),
         nombre: c.nombre_completo || c.nombre || `Conductor ${c.id}`,
