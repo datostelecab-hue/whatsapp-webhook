@@ -103,6 +103,8 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .caja-ir-texto { display: inline-flex; align-items: center; gap: .15rem; font-size: .8125rem; font-weight: 600;
   color: rgb(var(--acento)); white-space: nowrap; }
 .caja-ir-texto svg { width: 16px; height: 16px; }
+/* «Pulsaste Entregar coche»: lo que está a medias, en ámbar. */
+.aviso-linea { color: rgb(var(--aviso)); font-weight: 600; }
 .coche-resumen { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; font-weight: 600; margin-bottom: .35rem; }
 .caja-ir:active { transform: scale(.985); }
 @media (hover: hover) and (pointer: fine) { .caja-ir:hover { border-color: rgb(var(--acento) / .45); } }

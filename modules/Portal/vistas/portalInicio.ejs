@@ -4,6 +4,9 @@
 <p class="aviso"><b><%= evento.nombre %>.</b> Del <%= f.fecha(evento.desde) %> al <%= f.fecha(evento.hasta) %> los turnos son temporales.</p>
 <% } %>
 
+<% const coche = locals.coche; const cocheArriba = !!(coche && coche.puede && coche.vinculado); %>
+<% if (cocheArriba) { %><%- include('portalInicioCoche', { coche }) %><% } %>
+
 <%- include('portalTarjeta', { id: 't-proximo', href: '/turnos', icono: 'turnos', titulo: 'Tu próximo turno', ir: 'Ver los 8 días' }) %>
   <div class="caja-in proximo">
   <% if (proximo) { const n = f.nombreDia(proximo.fecha, hoy); %>
@@ -17,21 +20,9 @@
     <p>Todavía no están cargados tus turnos de los próximos días.</p>
   <% } %>
   </div>
-</section>
+</section><%# cierra portalTarjeta %>
 
-<% const coche = locals.coche; if (coche && coche.puede) { %>
-<%- include('portalTarjeta', { id: 't-coche', href: '/coche', icono: 'coche', titulo: 'Tu coche', ir: coche.vinculado ? 'Puertas y desvincular' : 'Vincular' }) %>
-  <div class="caja-in">
-  <% if (coche.vinculado) { %>
-    <p class="coche-resumen"><span class="matricula"><%= coche.matricula %></span> <span>Vinculado desde el <%= String(coche.desde).replace(', ', ' a las ') %></span></p>
-    <p class="suave peq">En Coche abres y cierras las puertas, y lo desvinculas al terminar.</p>
-  <% } else { %>
-    <p>No tienes ningún coche vinculado.</p>
-    <p class="suave peq">Vincúlalo al empezar el turno: se desbloquea el motor.</p>
-  <% } %>
-  </div>
-</section>
-<% } %>
+<% if (coche && coche.puede && !cocheArriba) { %><%- include('portalInicioCoche', { coche }) %><% } %>
 
 <% if (dinero) { const d = dinero, mes = d.mes; %>
 <section class="caja" aria-labelledby="t-dinero">
@@ -73,7 +64,7 @@
     <p>Estás al día: no tienes efectivo por entregar.</p>
   <% } %>
   </div>
-</section>
+</section><%# cierra portalTarjeta %>
 <% } %>
 
 <%- include('portalTarjeta', { id: 't-nota', href: '/puntuacion', icono: 'puntuacion', titulo: 'Tu última nota', ir: 'Todas las semanas' }) %>
@@ -99,4 +90,4 @@
     </div>
   <% } %>
   </div>
-</section>
+</section><%# cierra portalTarjeta %>

@@ -68,7 +68,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El portal de conductores (19/10/2026)
 
-- **El inicio como resumen (23/11/2026, a medias)**: tarjetas que llevan a su sección, iconos compartidos con la barra y la tarjeta del coche, probado en local. Mañana: aplicar lo del agente revisor y probar a 320 px. Después, cuando se pueda lanzar, **el vídeo explicativo** para los conductores. Ver [[Portal de conductores#El inicio, un resumen que lleva a cada sitio (23/11/2026, a medias)]].
+- **Portal: lo que queda para lanzarlo** (24/11/2026): el código está; faltan los 52 conductores en activo sin email o sin DNI (RRHH), mirarlo en un iPhone y, al final, el vídeo. Ver [[Portal de conductores#Lo que queda para lanzarlo (24/11/2026)]].
 - **Los dominios están pedidos**: `erptelecab.es` (el ERP) y `conductorestelecab.es` (el portal). Los gestiona otra persona. Cuando estén, hay que añadirlos en Render y pasarle a quien los gestiona los registros DNS que dé Render.
 - **Se prueba primero en el PC**, en el [[Entorno de pruebas local]], que ya está montado. El [[Portal de conductores]] funciona ahí entero: DNI, código en el buzón falso, inicio, turnos y puntuación.
 - **Al desplegar, aplicar `db/210`** (la puntuación de cada semana) **y `db/211`** (los códigos y las sesiones del portal). La primera pasada de las 12:00 sella todas las semanas desde el 01/09 de golpe. Ver [[Calificacion de conductores#La puntuación de cada semana, para el portal de conductores (19/10/2026, db/210)]].

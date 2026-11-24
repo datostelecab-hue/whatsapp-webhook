@@ -44,6 +44,24 @@ const { SEDE_FLOTA } = require('../../services/nucleo');
 const limpiar = m => String(m || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 12);
 const hora = seg => fichaje.horaES(seg);
 
+/**
+ * UN MOMENTO DICHO COMO SE DICE (24/11/2026, la revisión del inicio): de hoy,
+ * «las 06:02»; de otro día, «el 22/11 a las 23:40». Lo mismo en el inicio y
+ * en Coche. Devuelve las dos piezas para que cada frase ponga su preposición:
+ * { hoy, hora: '06:02', dia: '22/11' }.
+ */
+const ZONA = 'Europe/Madrid';
+const diaDe = d => new Intl.DateTimeFormat('es-ES', { timeZone: ZONA, day: '2-digit', month: '2-digit' }).format(d);
+function momento(seg, ahora = new Date()) {
+  const d = new Date(Number(seg) * 1000);
+  const horaTxt = new Intl.DateTimeFormat('es-ES', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+  return { hoy: diaDe(d) === diaDe(ahora), hora: horaTxt, dia: diaDe(d) };
+}
+/** «desde las 06:02» / «desde el 22/11 a las 23:40». */
+const desdeTxt = m => (m.hoy ? `desde las ${m.hora}` : `desde el ${m.dia} a las ${m.hora}`);
+/** «a las 07:10» / «el 22/11 a las 23:40». */
+const cuandoTxt = m => (m.hoy ? `a las ${m.hora}` : `el ${m.dia} a las ${m.hora}`);
+
 const SIN_TELEFONO = { ok: false, tono: 'error', titulo: 'Tu ficha no tiene teléfono',
   texto: ['El coche se vincula con el teléfono de tu ficha. Habla con RRHH para que lo pongan.'] };
 const NO_PARTICIPA = { ok: false, tono: 'error', titulo: 'No tienes activado el uso de coches',
@@ -68,8 +86,10 @@ async function estado(persona) {
   const { abierto, turno } = await fichaje.estado(q.telefono);
   if (!abierto) return { puede: true, vinculado: false };
   return {
-    puede: true, vinculado: true, matricula: turno.matricula, desde: hora(turno.inicio),
-    entregando: turno.relevo ? hora(turno.relevo) : null, oficina: turno.tipo === 'viaje',
+    puede: true, vinculado: true, matricula: turno.matricula,
+    // «desde las 06:02» / «desde el 22/11 a las 23:40» (y lo mismo, «a las…», al entregar).
+    desde: desdeTxt(momento(turno.inicio)),
+    entregando: turno.relevo ? cuandoTxt(momento(turno.relevo)) : null, oficina: turno.tipo === 'viaje',
   };
 }
 
@@ -333,5 +353,5 @@ async function desvincularConFotos(persona, ficheros = {}) {
   return { ...r, texto: [...r.texto, 'Fotos guardadas: el siguiente conductor verá cómo dejaste el coche.'] };
 }
 
-module.exports = { estado, vincular, moverPuertas, desvincular, desvincularConFotos, enVivo, fotosAnteriores, foto,
+module.exports = { _momento: momento, estado, vincular, moverPuertas, desvincular, desvincularConFotos, enVivo, fotosAnteriores, foto,
   matriculaDeHoy, FOTOS, TOPE_FOTO, _limpiar: limpiar };

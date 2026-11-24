@@ -55,7 +55,7 @@
   <div class="caja-in coche">
     <p class="coche-etq" id="t-coche">Vehículo vinculado</p>
     <p class="coche-placa"><%= coche.matricula %></p>
-    <p class="suave peq">Vinculado desde <%= coche.desde %><%= coche.entregando ? '. Saliste a entregarlo: ' + coche.entregando : '' %></p>
+    <p class="suave peq">Vinculado <%= coche.desde %><%= coche.entregando ? '. Pulsaste «Entregar coche» ' + coche.entregando : '' %>.</p>
 
     <div class="coche-puertas">
       <form method="post" action="/coche/puertas">

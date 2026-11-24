@@ -335,9 +335,9 @@ async function efectivo(persona) {
   }
 }
 
-/** La portada: el próximo turno, el dinero del mes, el efectivo y la última nota. */
+/** La portada: el coche, el próximo turno, el dinero del mes, el efectivo y la última nota. */
 async function inicio(persona) {
-  // Si el dinero o el efectivo no se pueden leer, la portada sale igual, sin esa tarjeta.
+  // Si el dinero, el efectivo o el coche no se pueden leer, la portada sale igual, sin esa tarjeta.
   const fallo = que => e => { console.error(`❌ [Portal] ${que}:`, e.message); return null; };
   const [t, s, d, ef, co] = await Promise.all([
     turnos(persona), puntuacion.semanasDe(persona.id),

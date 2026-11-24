@@ -101,26 +101,25 @@ Camilo: *«en el apartado del coche que le toca, tiene que poner "Ver ubicación
 - **WhatsApp sigue igual**: «Desvincular vehículo» del bot no pide fotos, a propósito (transición).
 - Pruebas: `test/portal-fotos.test.js`.
 
-## El inicio, un resumen que lleva a cada sitio (23/11/2026, a medias)
+## El inicio, un resumen que lleva a cada sitio (23-24/11/2026)
 
 Camilo: *«que el inicio sea un resumen de lo que hay, al darle tap o click a la pantalla sí lo lleve allí, con iconos de referencia modernos y buenos»*.
 
-Hecho y commiteado (probado en local a 375 px):
-
-- **Cada tarjeta entera lleva a su sección**: el título es un enlace estirado sobre la tarjeta (`::after`); los teléfonos de dentro siguen pulsables. Pieza nueva `vistas/portalTarjeta.ejs` (abre el `<section>`; quien la usa pone el contenido y lo cierra).
+- **Cada tarjeta entera lleva a su sección**: el título es un enlace estirado sobre la tarjeta (`::after`); los teléfonos de dentro siguen pulsables (con más zona de toque). Pieza `vistas/portalTarjeta.ejs` (abre el `<section>`; quien la usa pone el contenido y lo cierra: cada `</section>` lleva la nota «cierra portalTarjeta»).
 - **Iconos en una sola pieza**: `vistas/portalIcono.ejs`, que usan la barra de abajo y las tarjetas (en una pastilla teñida del acento).
-- **Tarjeta nueva «Tu coche»**: el vinculado y desde cuándo, o «vincúlalo al empezar». Sale de `portal.coche.estado`; si falla, el inicio sale sin ella.
+- **«Tu coche»** (`vistas/portalInicioCoche.ejs`): **la primera** si tiene un coche vinculado (es lo que va a usar), y después del próximo turno si no. Si pulsó «Entregar coche», lo dice en ámbar («sigue a tu nombre hasta que tu compañero lo vincule»). Sale de `portal.coche.estado`; si falla, el inicio sale sin ella.
+- **«Vinculado desde»**, igual en el inicio y en Coche (24/11/2026): de hoy, «desde las 06:02»; de otro día, «desde el 22/11 a las 23:40» (`portal.coche.momento`).
+- **El toque en iPhone**: `public/assets/js/portal/toque.js`, un escuchador de toques vacío para que Safari aplique `:active` (la tarjeta se hunde un poco al pulsarla).
 - La de la facturación no lleva a ningún sitio (no hay página): lleva icono, pero no pulsa.
+- Revisado por un agente el 23/11 y aplicado lo suyo. Probado en local a 320 × 568, 375 y 390 px: sin desbordes ni errores. Prueba: `test/portal-inicio.test.js`.
 
-Falta (mañana):
+## Lo que queda para lanzarlo (24/11/2026)
 
-El agente revisor (23/11, 17:52) ya está aplicado en lo rápido: el título de la tarjeta a su tamaño (se montaba sobre «Ver el detalle» a 390 px), más zona de toque en los teléfonos, sin rectángulo azul al tocar en Android, sin `:has()` (móviles viejos), la etiqueta del lector de pantalla y los textos del coche. Queda de lo suyo:
-
-1. Una sola forma de decir «vinculado desde»: hoy «desde las 06:02», otro día «desde el 22/11 a las 23:40», igual en el inicio y en Coche (ahora el inicio dice siempre «el 20/11 a las 09:06»).
-2. Si ya pulsó «Entregar coche», que el resumen lo diga; y, con coche vinculado, poner su tarjeta la primera.
-3. Una prueba de `inicio()`: si el coche no se puede leer, la portada sale igual.
-4. Mirar `:active` en un iPhone de verdad (a veces no se activa sin `ontouchstart`), y probar a 320 px y en las pantallas bajas.
-3. **El vídeo explicativo** para los conductores de todo lo que tiene la app: **al final, cuando ya se pueda lanzar** (Camilo, 23/11). Con voz generada y montaje en local, como los vídeos anteriores.
+- **El dominio ya funciona**: https://conductorestelecab.es abre «Entrar».
+- **52 conductores en activo no pueden entrar**: les falta el email o el DNI (49 son de ETT; 3 de plantilla propia). Es trabajo de RRHH: sin email no les llega el código.
+- **Mirarlo en un iPhone de verdad** (el toque de las tarjetas) antes de anunciarlo.
+- **El vídeo explicativo** para los conductores: al final, cuando se lance (Camilo, 23/11). Con voz generada y montaje en local, como los vídeos anteriores.
+- **Aún se queda en WhatsApp** (a propósito, en transición): «Entregar coche», «No tengo yo el coche», el código de lavado y los avisos (la pregunta de las 14 h, el coche que pasa de manos).
 
 ## Para subirlo a producción
 

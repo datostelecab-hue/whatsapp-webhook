@@ -1,0 +1,17 @@
+<%# LA TARJETA DEL COCHE DEL INICIO (23/11/2026). Va arriba del todo si lo tiene vinculado
+    (es lo que va a usar en ese momento) y, si no, después del próximo turno (24/11/2026). %>
+<%- include('portalTarjeta', { id: 't-coche', href: '/coche', icono: 'coche', titulo: 'Tu coche', ir: coche.vinculado ? 'Puertas y desvincular' : 'Vincular' }) %>
+  <div class="caja-in">
+  <% if (coche.vinculado) { %>
+    <p class="coche-resumen"><span class="matricula"><%= coche.matricula %></span> <span>Vinculado <%= coche.desde %></span></p>
+    <% if (coche.entregando) { %>
+    <p class="peq aviso-linea">Pulsaste «Entregar coche» <%= coche.entregando %>. Sigue a tu nombre hasta que tu compañero lo vincule.</p>
+    <% } else { %>
+    <p class="suave peq">En Coche abres y cierras las puertas, y lo desvinculas al terminar.</p>
+    <% } %>
+  <% } else { %>
+    <p>No tienes ningún coche vinculado.</p>
+    <p class="suave peq">Vincúlalo al empezar el turno: se desbloquea el motor.</p>
+  <% } %>
+  </div>
+</section><%# cierra portalTarjeta %>
