@@ -8,6 +8,9 @@ lo que aún no ha llegado, se puede también desde aquí (16/10/2026), con la mi
 llave y sin soltarlas de su ticket, que apunta el cambio (`cambiarVacaciones`).
 La regla de «solo a futuro» vive en `services/vacacionesAFuturo.js` y la aplica
 también Plantilla al corregir o borrar unas vacaciones.
+LA EXCEPCIÓN (24/11/2026): «Corregir» deja a quien tiene esa llave cambiar el tipo
+(p. ej. a «Libranza excepcional», db/279), las fechas o borrar unas que YA PASARON,
+con un motivo obligatorio que va al libro de auditoría (`plantilla.corregirVacaciones`).
 
 ```
 vacaciones.controller.js   la pantalla y la API (/api/lista, /api/ficha/:id,

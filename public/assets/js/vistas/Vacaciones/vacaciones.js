@@ -231,19 +231,27 @@
             acciones: [
               { icono: 'fa-pen', titulo: 'Cambiar las fechas', onClick: cambiar,
                 visible: x => APRUEBA.puede && x.editable },
+              // CORREGIR (24/11/2026): también las que ya pasaron. Otro tipo
+              // (libranza excepcional…), otras fechas o borrarlas, con un motivo
+              // que queda en el libro de auditoría.
+              { icono: 'fa-file-pen', titulo: 'Corregir (también si ya pasaron)', onClick: corregir,
+                visible: x => APRUEBA.puede && !x.deAntes },
             ],
           },
         },
         {
-          titulo: 'Asuntos propios, permisos y suspensiones', icono: 'fa-file-signature',
-          visible: d => d.detalle.asuntos.length > 0 || d.detalle.permisos.length > 0 || d.detalle.suspensiones.length > 0,
+          titulo: 'Asuntos propios, permisos, libranzas y suspensiones', icono: 'fa-file-signature',
+          visible: d => d.detalle.asuntos.length > 0 || d.detalle.permisos.length > 0 || d.detalle.suspensiones.length > 0
+            || (d.detalle.libranzasExc || []).length > 0,
           tabla: {
             datos: d => d.detalle.asuntos.map(x => ({ ...x, clase: 'asuntos' }))
               .concat(d.detalle.permisos.map(x => ({ ...x, clase: 'permiso' })))
+              .concat((d.detalle.libranzasExc || []).map(x => ({ ...x, clase: 'libranza' })))
               .concat(d.detalle.suspensiones.map(x => ({ ...x, clase: 'suspension' })))
               .sort((a, b) => b.desde.localeCompare(a.desde)),
             columnas: [
               { titulo: 'Qué', campo: 'clase', pinta: (v, x) => (v === 'asuntos' ? 'Asuntos propios'
+                  : v === 'libranza' ? 'Libranza excepcional'
                   : v === 'permiso'
                   ? 'Permiso retribuido' + (x.tipo ? `<span class="block text-[11px] text-telecab-muted">${esc(x.tipo)}</span>` : '')
                   : (x.estado === 'suspension_permiso' ? 'Suspensión por retirada del permiso' : 'Suspensión')) },
@@ -254,6 +262,7 @@
                   ? (x.usados ? `−${x.usados} del banco de asuntos propios` : '') +
                     (x.programados ? `${x.usados ? '<br>' : ''}<span class="text-telecab-muted">${x.programados} programado(s)</span>` : '')
                   : v === 'permiso' ? '<span class="text-telecab-muted" title="Los permisos retribuidos no tocan las vacaciones.">No resta</span>'
+                  : v === 'libranza' ? '<span class="text-telecab-muted" title="Descanso que compensa libranzas trabajadas: no toca las vacaciones.">No resta</span>'
                   : `${x.sinGenerar} día(s) de vacaciones sin generar`) },
               { titulo: 'Motivo', campo: 'motivo', pinta: v => (v ? `<span class="text-sm text-telecab-muted">${esc(v)}</span>` : DASH) },
             ],
@@ -411,6 +420,62 @@
       await lst.abrir(d.id, { historial: false });
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se han cambiado', texto: e.message, tono: 'error' });
+    }
+  }
+
+  /**
+   * CORRIGE UNAS VACACIONES, TAMBIÉN LAS QUE YA PASARON (24/11/2026). Camilo:
+   * «Laura puede modificar vacaciones ya disfrutadas o editarlas, pero siempre
+   * auditado en base de datos». Otro tipo (las de Tarik eran una libranza
+   * excepcional), otras fechas, o borrarlas. El motivo es obligatorio: va al
+   * libro de auditoría con quién y cuándo. El servidor lo vuelve a mirar todo.
+   */
+  const TIPOS_CORRECCION = [
+    { valor: 'vacaciones', texto: 'Vacaciones' },
+    { valor: 'libranza_excepcional', texto: 'Libranza excepcional (no gasta vacaciones)' },
+    { valor: 'asuntos_propios', texto: 'Asuntos propios' },
+    { valor: 'permiso', texto: 'Permiso retribuido' },
+  ];
+  const ACCIONES_CORRECCION = [
+    { valor: 'corregir', texto: 'Corregir el tipo o las fechas' },
+    { valor: 'borrar', texto: 'Borrarlas: esos días no fueron vacaciones ni otra ausencia' },
+  ];
+  async function corregir(x, d) {
+    const campos = [
+      { id: 'accion', etiqueta: 'Qué hacer', tipo: 'lista', obligatorio: true, opciones: ACCIONES_CORRECCION, valor: 'corregir' },
+      { id: 'estado', etiqueta: 'Qué fueron', tipo: 'lista', obligatorio: true, opciones: TIPOS_CORRECCION, valor: 'vacaciones',
+        ayuda: 'La libranza excepcional es descanso que compensa libranzas trabajadas: no gasta vacaciones.' },
+      { id: 'desde', etiqueta: 'Primer día', tipo: 'fecha', valor: f(x.desde) },
+      { id: 'hasta', etiqueta: 'Último día', tipo: 'fecha', valor: f(x.hasta) },
+      { id: 'motivoCorreccion', etiqueta: 'Por qué se corrigen', tipo: 'texto-largo', obligatorio: true, minimo: 5,
+        ayuda: 'Queda en el libro de auditoría, con quién lo hizo y cuándo.' },
+    ];
+    const nota = `Del ${f(x.desde)} al ${f(x.hasta) || 'sin fecha'}. Se pueden corregir aunque ya hayan pasado.` +
+      (x.ticket ? ` El ticket ${x.ticket.codigo} apunta la corrección en su historia.` : '');
+    const v = await Dialogo.formulario(`Corregir las vacaciones de ${d.nombre}`, campos, { nota, textoBoton: 'Corregir' });
+    if (!v) return;
+    const borrar = v.accion === 'borrar';
+    if (borrar) {
+      const ok = await Dialogo.confirmar({
+        titulo: '¿Borrar estas vacaciones?',
+        texto: `Las del ${f(x.desde)} al ${f(x.hasta)} dejan de existir. Queda apuntado en el libro de auditoría con tu motivo.`,
+        si: 'Borrar', tono: 'peligro',
+      });
+      if (!ok) return;
+    }
+    try {
+      const r = await fetch(`/vacaciones/api/conductor/${encodeURIComponent(d.id)}/vacaciones/${encodeURIComponent(x.fila)}/corregir`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(borrar ? { borrar: true, motivoCorreccion: v.motivoCorreccion }
+          : { estado: v.estado, desde: v.desde || x.desde, hasta: v.hasta || x.hasta, motivoCorreccion: v.motivoCorreccion }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.status !== 'ok') throw new Error(j.msg || `Error ${r.status}`);
+      Dialogo.hecho(borrar ? 'Vacaciones borradas' : 'Vacaciones corregidas');
+      await lst.recargar();
+      await lst.abrir(d.id, { historial: false });
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se han corregido', texto: e.message, tono: 'error' });
     }
   }
 

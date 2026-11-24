@@ -49,6 +49,7 @@ process.env.FLOTA_VIVA_DB_URL = URL_PRUEBAS;
 let cliente = null;        // una conexión por fichero (node --test corre cada fichero en su proceso)
 let enCurso = false;       // hay una transacción de test abierta
 let puntos = 0;            // contador de SAVEPOINT
+let profundidad = 0;       // transacciones del código abiertas ahora mismo
 
 async function conectar() {
   if (cliente) return cliente;
@@ -75,7 +76,31 @@ function actual() {
   return cliente;
 }
 
-const consulta = (sql, params) => actual().query(sql, params);
+// QUIÉN ESCRIBE (24/11/2026): lo mismo que services/db.js en producción. Una
+// escritura con una persona detrás va firmada con el contexto de la petición
+// (services/contexto.js: usuario, ruta y, si lo hay, el motivo), y así el libro
+// de auditoría dice quién y por qué también en los tests.
+const ES_ESCRITURA = /\b(INSERT\s+INTO|UPDATE\s+[\w."]+\s+SET|DELETE\s+FROM)\b/i;
+const MANEJA_TRANSACCION = /\b(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i;
+const contextoDe = () => require(path.join(RAIZ, 'services', 'contexto')).actual();
+async function firmarDelContexto(c) {
+  const ctx = contextoDe();
+  if (!ctx || (!ctx.usuarioId && !ctx.origen)) return;
+  await c.query(
+    `SELECT set_config('telecab.usuario_id', $1, true), set_config('telecab.origen', $2, true),
+            set_config('telecab.libro_motivo', $3, true)`,
+    [ctx.usuarioId ? String(ctx.usuarioId) : '', String(ctx.origen || '').slice(0, 60), String(ctx.motivo || '').slice(0, 2000)]);
+}
+
+const consulta = (sql, params) => {
+  const ctx = contextoDe();
+  // Dentro de una transacción del código ya va firmada (en producción sería otra
+  // conexión; aquí es la misma, y firmar otra vez borraría la firma de fuera).
+  if (!profundidad && ctx && ctx.usuarioId && ES_ESCRITURA.test(String(sql)) && !MANEJA_TRANSACCION.test(String(sql))) {
+    return transaccion(c => c.query(sql, params));
+  }
+  return actual().query(sql, params);
+};
 
 // Lo que `set_config(…, true)` deja puesto hasta el final de una transacción:
 // la firma de los libros de auditoría (db/228 y db/245). En producción muere al
@@ -91,7 +116,9 @@ async function transaccion(fn) {
   const c = actual();
   const p = `t${++puntos}`;
   await c.query(`SAVEPOINT ${p}`);
+  profundidad++;
   try {
+    await firmarDelContexto(c);
     const r = await fn(c);
     await c.query(`RELEASE SAVEPOINT ${p}`);
     await c.query(BORRAR_FIRMA);
@@ -100,6 +127,8 @@ async function transaccion(fn) {
     await c.query(`ROLLBACK TO SAVEPOINT ${p}`);
     await c.query(BORRAR_FIRMA);
     throw e;
+  } finally {
+    profundidad--;
   }
 }
 

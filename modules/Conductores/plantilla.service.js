@@ -382,6 +382,46 @@ const borrarAusencia = async (id, filaId, quien) => {
   return con.borrarAusencia(Number(id), Number(filaId), quien);
 };
 
+/**
+ * CORREGIR UNAS VACACIONES, TAMBIÉN LAS QUE YA PASARON (24/11/2026, Camilo:
+ * «Laura puede modificar vacaciones ya disfrutadas o editarlas, pero siempre
+ * auditado en base de datos»). El caso: las de Tarik Lajane Aamara del 30/10 al
+ * 04/11, que fueron una libranza excepcional.
+ *
+ * Es la excepción a «solo a futuro» (vacacionesAFuturo.js), y por eso pide dos
+ * cosas más que un cambio normal:
+ *   · la llave de aprobar vacaciones (una sola persona, db/189);
+ *   · un MOTIVO, que va al libro de auditoría junto con quién, cuándo, la fila
+ *     de antes y la de después (contexto.conMotivo → telecab.motivo).
+ * Se puede cambiar el tipo (`estado`: libranza excepcional, asuntos propios,
+ * permiso retribuido o seguir siendo vacaciones), las fechas, o borrarlas
+ * (`borrar`).
+ */
+const TIPOS_CORRECCION = ['vacaciones', 'libranza_excepcional', 'asuntos_propios', 'permiso'];
+const corregirVacaciones = async (id, filaId, datos = {}, quien = {}) => {
+  const t = await vacacionesDe(id, filaId, quien);   // exige la llave
+  if (!t) throw new Error('Eso no son unas vacaciones de esta persona');
+  const porque = String(datos.motivoCorreccion || '').trim();
+  if (porque.length < 5) throw new Error('Di por qué se corrigen: queda apuntado en el libro de auditoría.');
+  const nota = `Corrección de vacaciones (${t.desde} → ${t.hasta || 'sin fin'}): ${porque}`;
+  return require('../../services/contexto').conMotivo(nota, async () => {
+    if (datos.borrar) {
+      await con.borrarAusencia(Number(id), Number(filaId), quien);
+      return { borrada: true, antes: t };
+    }
+    const estado = datos.estado || 'vacaciones';
+    if (!TIPOS_CORRECCION.includes(estado)) throw new Error(`No se pueden pasar a «${estado}»`);
+    const cambios = {};
+    if (datos.desde) cambios.desde = datos.desde;
+    if (datos.hasta) cambios.hasta = datos.hasta;
+    if (datos.motivo !== undefined) cambios.motivo = String(datos.motivo || '').trim();
+    if (estado !== t.estado) cambios.estado = estado;
+    const r = await con.editarAusencia(Number(id), Number(filaId), cambios, quien);
+    if (r && r.sinCambios) throw new Error('No has cambiado nada');
+    return { corregida: true, antes: t, despues: r.editada || null };
+  });
+};
+
 const cambiarTurno = async (id, datos, quien) =>
   ({ vigencia: await con.cambiarTurno(Number(id), datos, quien) });
 
@@ -625,7 +665,7 @@ const documentosQueVencen = dias => docs.porVencer({ dias });
 module.exports = {
   paraLaPantalla, lista, mediaDelMes, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla, tiposPermiso, libranzasSugeridas,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, corregirVacaciones, vacacionesParaLaPantalla, tiposPermiso, libranzasSugeridas,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
   anulacionDeAlta, anularAlta,

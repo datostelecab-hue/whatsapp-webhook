@@ -268,6 +268,16 @@ Camilo: *«En el simulador debe de decir los días que libra pero A MANO, porque
 
 **Antes de aplicar db/233** la pantalla no se cae: Vacaciones lee sin la columna (y cuenta con el planificador) y poner unas vacaciones avisa de que falta la migración. Comprobado en la copia local: `scripts/comprobar-vacaciones-libranzas.js` y `scripts/comprobar-vacaciones-saldo.js`, más una prueba de punta a punta de las puertas (Plantilla, Vacaciones, cambiar situación), que deja el historial como estaba.
 
+## Corregir las que ya pasaron, auditado (24/11/2026, db/279)
+
+Camilo: *«Necesitamos poder modificar a Tarik las vacaciones, ya que no fueron vacaciones las solicitadas por William sino que era "descanso excepcional"»* y *«Laura puede modificar vacaciones ya disfrutadas o editarlas, pero siempre auditado en base de datos»*. Y del tipo: *«Déjalos como libranza excepcional, son 6 días»*, porque *«él trabajó prácticamente todo el mes y Tráfico le dio esos días de descanso por todos los días que trabajó»*.
+
+- **Botón «Corregir (también si ya pasaron)»** en la tabla de vacaciones de la ficha, solo para quien tiene la llave de aprobar (`/vacaciones/aprobar`, una persona). Es la excepción a «solo a futuro» ([[#Cambiar unas vacaciones ya aprobadas (16/10/2026)]], `services/vacacionesAFuturo.js`), que sigue valiendo para «Cambiar las fechas» y para Plantilla.
+- Se puede **cambiar el tipo** (vacaciones, libranza excepcional, asuntos propios, permiso retribuido), **las fechas** (aunque ya hayan pasado) o **borrarlas**. Es la MISMA fila: conserva su ticket y quién la puso. Al dejar de ser vacaciones se le quitan los dos días que libra.
+- **El motivo es obligatorio** y va al **libro de auditoría** (`auditoria`, db/245 y db/278) junto con quién, cuándo, la fila de antes y la de después: «Corrección de vacaciones (desde → hasta): <motivo>». Llega por `contexto.conMotivo` → `services/db.js` → `telecab.libro_motivo`. Si salieron de un ticket, el ticket lo apunta en su historia.
+- **«Libranza excepcional»** es una situación nueva (db/279): días de descanso que compensan libranzas trabajadas. Es ausencia, libera la plaza (como las vacaciones), en la bitácora es una «L», **no gasta vacaciones** y la nómina **no la paga como ausencia** (los días que compensa ya se pagaron como trabajados). En la ficha sale en «Asuntos propios, permisos, libranzas y suspensiones», con «No resta». No es la libranza excepcional del planificador (un cambio de un día por otro, db/54).
+- Código: `plantilla.service.corregirVacaciones` (la regla), `vacaciones.service.corregirVacaciones` (el ticket), `POST /vacaciones/api/conductor/:id/vacaciones/:fila/corregir`. Prueba: `test/vacaciones-corregir.test.js` (también que el libro dice quién y por qué: la base de pruebas firma ya con el contexto, como producción).
+
 ## La llave
 
 `/vacaciones`, en el grupo RRHH del catálogo ([[Usuarios y permisos]]). db/197 se la da a quien ya tenía `/rrhh` o la de aprobar vacaciones, que son 8 usuarios. **Mirar los saldos no da permiso para aprobar**: `/vacaciones/aprobar` se mira exacta (`services/aprobarVacaciones.js`) y no por prefijo.

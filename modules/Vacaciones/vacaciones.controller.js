@@ -52,4 +52,9 @@ router.get('/api/libranzas/:id', responde(async req => ({ libranzas: await vacac
 router.put('/api/conductor/:id/vacaciones/:filaId', responde(async req =>
   vacaciones.cambiarVacaciones(req.params.id, req.params.filaId, req.body || {}, await quien(req))));
 
+// CORREGIR unas vacaciones, también las que ya pasaron (24/11/2026): otro tipo,
+// otras fechas o borrarlas. La llave de aprobar y un motivo, que va al libro.
+router.post('/api/conductor/:id/vacaciones/:filaId/corregir', responde(async req =>
+  vacaciones.corregirVacaciones(req.params.id, req.params.filaId, req.body || {}, await quien(req))));
+
 module.exports = router;

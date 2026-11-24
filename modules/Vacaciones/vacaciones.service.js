@@ -179,7 +179,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     return porMes.get(m);
   };
   for (let m = inicio.slice(0, 7); m <= hoy.slice(0, 7); m = mesSiguiente(m)) mesDe(m + '-01');
-  const vacaciones = [], permisos = [], suspensiones = [], asuntos = [];
+  const vacaciones = [], permisos = [], suspensiones = [], asuntos = [], libranzasExc = [];
   let disfrutadas = 0, programadas = 0, diasSuspension = 0, apUsados = 0, apProgramados = 0;
   // Los días de vacaciones de a…b que cuentan: los que le tocaba trabajar. Si
   // las vacaciones llevan sus dos días de libranza puestos a mano (db/233),
@@ -245,6 +245,11 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
     } else if (t.estado === 'permiso') {
       if (!pasado && !futuro) continue;
       permisos.push({ ...linea, tipo: t.tipo_permiso || '', dentro: pasado, programados: futuro });
+    } else if (t.estado === 'libranza_excepcional') {
+      // LIBRANZA EXCEPCIONAL (db/279, 24/11/2026): días de descanso que compensan
+      // libranzas trabajadas. Ni gastan vacaciones ni las generan: se enseñan.
+      if (!pasado && !futuro) continue;
+      libranzasExc.push({ ...linea, dentro: pasado, programados: futuro, quien: t.quien || '', puesto: t.puesto || '' });
     } else if (NO_GENERAN.has(t.estado)) {
       if (!pasado) continue;
       diasSuspension += pasado;
@@ -357,7 +362,7 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
       generados: apGenerados, usados: apUsados, programados: apProgramados,
       saldo: apSaldo, saldoTras: apSaldo - apProgramados,
     },
-    detalle: { festivos: lista, vacaciones, permisos, suspensiones, asuntos, meses },
+    detalle: { festivos: lista, vacaciones, permisos, suspensiones, asuntos, libranzasExc, meses },
   };
 }
 
@@ -578,6 +583,33 @@ async function cambiarVacaciones(conductorId, filaId, datos = {}, quien = {}, { 
 }
 
 /**
+ * CORREGIR UNAS VACACIONES, TAMBIÉN LAS QUE YA PASARON (24/11/2026): otro tipo
+ * (libranza excepcional, asuntos propios, permiso), otras fechas, o borrarlas.
+ * La regla y el libro, en plantilla.corregirVacaciones (la llave de aprobar y
+ * un motivo obligatorio). Aquí, que el ticket del que salieron lo apunte.
+ */
+const TIPO_TXT = { vacaciones: 'Vacaciones', libranza_excepcional: 'Libranza excepcional',
+  asuntos_propios: 'Asuntos propios', permiso: 'Permiso retribuido' };
+async function corregirVacaciones(conductorId, filaId, datos = {}, quien = {}) {
+  const r = await plantilla.corregirVacaciones(Number(conductorId), Number(filaId), datos, quien);
+  const t = r.antes;
+  const tramo = f => `del ${ddmmaaaa(f.desde)} al ${ddmmaaaa(f.hasta)}`;
+  const d = r.despues ? { desde: String(datos.desde || t.desde), hasta: String(datos.hasta || t.hasta) } : null;
+  const queEs = TIPO_TXT[datos.estado || 'vacaciones'] || datos.estado;
+  const texto = r.borrada
+    ? `Vacaciones ${tramo(t)} borradas desde Vacaciones.`
+    : `Vacaciones ${tramo(t)} corregidas desde Vacaciones: ahora ${queEs} ${tramo(d)}.`;
+  if (t.ticket_id) {
+    await ticketera.anotarCambioDeVacaciones(t.ticket_id, {
+      nota: `${texto} Motivo: «${String(datos.motivoCorreccion || '').trim()}».`,
+      resolucion: r.borrada ? `Anulado: vacaciones borradas el ${ddmmaaaa(hoyMadrid())}` : `Aplicado: ${queEs} ${tramo(d)} (corregido el ${ddmmaaaa(hoyMadrid())})`,
+    }, quien);
+  }
+  console.log(`🏖️ [Vacaciones] conductor ${conductorId}, tramo ${filaId}: ${texto}`);
+  return { corregida: !r.borrada, borrada: !!r.borrada, texto };
+}
+
+/**
  * LAS HORAS DE LOS FESTIVOS, desde el sistema. Cada hora: los festivos desde el
  * 01/07/2026 que ya pasaron y no tienen las horas, o las tienen de antes de que
  * BOLT terminara de mandar ese día. Con la misma cuenta que la nómina.
@@ -621,6 +653,6 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
 
 module.exports = {
   TASA, TOPE_MES, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
-  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones,
+  lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones, corregirVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,
 };

@@ -58,6 +58,15 @@ const MANEJA_TRANSACCION = /\b(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i;
 async function firmarDelContexto(cli) {
   const c = contexto.actual();
   if (!c || (!c.usuarioId && !c.origen)) return;
+  // El motivo, solo si el contexto lo trae (contexto.conMotivo, 24/11/2026). El
+  // disparador del libro (db/247) lo lee de telecab.libro_motivo, en cambios y borrados.
+  if (c.motivo) {
+    await cli.query(
+      `SELECT set_config('telecab.usuario_id', $1, true), set_config('telecab.origen', $2, true),
+              set_config('telecab.libro_motivo', $3, true)`,
+      [c.usuarioId ? String(c.usuarioId) : '', String(c.origen || '').slice(0, 60), String(c.motivo).slice(0, 2000)]);
+    return;
+  }
   await cli.query(
     `SELECT set_config('telecab.usuario_id', $1, true), set_config('telecab.origen', $2, true)`,
     [c.usuarioId ? String(c.usuarioId) : '', String(c.origen || '').slice(0, 60)]);

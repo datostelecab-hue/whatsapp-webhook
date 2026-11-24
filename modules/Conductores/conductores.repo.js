@@ -1073,7 +1073,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
  * hace falta es tocar esa fila, no apilar otra encima. Hasta ahora eso solo se
  * podía por base de datos.
  */
-async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso, libraDias }, { usuarioId } = {}) {
+async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso, libraDias, estado }, { usuarioId } = {}) {
   const fila = (await db.consulta(
     `SELECT h.*, c.fin_previsible, c.etiqueta
        FROM conductor_estado_hist h
@@ -1082,17 +1082,33 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo, tipoPermiso, l
   if (!fila) throw new Error('Esa ausencia no existe (o no es de esta persona)');
 
   const cambios = {};
+  // OTRO TIPO DE AUSENCIA EN LA MISMA FILA (24/11/2026): unas vacaciones que en
+  // realidad fueron una libranza excepcional. La fila es la misma (conserva su
+  // ticket y quién la puso); cambian la situación y lo que solo vale en ella:
+  // los dos días que libra son cosa de vacaciones, y el tipo de permiso, de un
+  // permiso. Quién puede hacerlo lo decide plantilla.service.
+  if (estado !== undefined && estado !== fila.estado) {
+    const cat = (await db.consulta(
+      'SELECT codigo, etiqueta, es_ausencia, es_fin_contrato, fin_previsible FROM cat_estado_conductor WHERE codigo = $1',
+      [String(estado || '')])).rows[0];
+    if (!cat || !cat.es_ausencia || cat.es_fin_contrato) throw new Error(`Esa situación no vale para una ausencia: «${estado}»`);
+    cambios.estado = cat.codigo;
+    if (cat.codigo !== 'vacaciones' && fila.libra_dias) cambios.libra_dias = null;
+    cambios.leave_type_code = await tipoDePermiso(cat.codigo, tipoPermiso);
+    fila.fin_previsible = cat.fin_previsible;
+    fila.etiqueta = cat.etiqueta;
+  }
   if (desde !== undefined) cambios.desde = desde || fila.desde;
   if (motivo !== undefined) cambios.motivo = motivo || null;
   // Los dos días que libra en unas vacaciones (db/233): solo en vacaciones, y
   // siempre dos. Si son los mismos, no es un cambio.
-  if (libraDias !== undefined && fila.estado === 'vacaciones') {
+  if (libraDias !== undefined && fila.estado === 'vacaciones' && !('estado' in cambios)) {
     const libra = dosDiasLibra(libraDias);
     if (String(libra) !== String((fila.libra_dias || []).map(Number))) cambios.libra_dias = libra;
   }
   // El tipo de un permiso se puede corregir (los de asuntos propios ya no son
   // un permiso: tienen su situación, db/225).
-  if (tipoPermiso !== undefined && fila.estado === 'permiso') {
+  if (tipoPermiso !== undefined && fila.estado === 'permiso' && !('estado' in cambios)) {
     const tipo = await tipoDePermiso('permiso', tipoPermiso);
     if ((tipo || null) !== (fila.leave_type_code || null)) cambios.leave_type_code = tipo;
   }

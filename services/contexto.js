@@ -34,4 +34,12 @@ function poner(datos) {
 const middleware = (req, res, next) =>
   correr({ usuarioId: null, origen: `${req.method} ${String(req.originalUrl || req.url || '').split('?')[0]}`.slice(0, 60) }, next);
 
-module.exports = { correr, actual, poner, middleware };
+/**
+ * EL PORQUÉ DE UN CAMBIO (24/11/2026). Lo que se escriba dentro de `fn` lleva
+ * `motivo` en el libro (telecab.libro_motivo), con el mismo quién y desde dónde de
+ * la petición. Para los cambios que se hacen por una razón que hay que poder
+ * leer después: corregir unas vacaciones que ya pasaron.
+ */
+const conMotivo = (motivo, fn) => correr({ ...(actual() || {}), motivo: String(motivo || '').slice(0, 2000) }, fn);
+
+module.exports = { correr, actual, poner, middleware, conMotivo };

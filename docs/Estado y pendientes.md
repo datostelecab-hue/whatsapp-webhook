@@ -7,6 +7,8 @@ actualizado: 2026-11-23
 
 Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
 
+- **Aplicar `db/279`** (24/11/2026): la situación «Libranza excepcional». Después, Laura pasa las vacaciones de Tarik Lajane Aamara (ficha 113, del 30/10 al 04/11) a libranza excepcional desde Vacaciones → su ficha → «Corregir», con el motivo. Ver [[Vacaciones#Corregir las que ya pasaron, auditado (24/11/2026, db/279)]].
+
 ## Decisiones que esperan a Ricardo
 
 - **Los ocho avisos de km mal mandados.** Salieron con números inflados por el fallo del corte de tramos ([[Corte de tramos]]). Afectan a Alvaro Apezteguia (×3), Macilon Dos Santos (×2), Edison Roman Vera y David A. Ibarra (×2). Falta decidir si se marcan como anulados en el libro o se dejan con una nota.
