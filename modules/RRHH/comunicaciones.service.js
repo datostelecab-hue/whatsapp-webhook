@@ -31,7 +31,7 @@ tablero.registrarTipo(T_SEMANA, { etiqueta: 'Comunicaciones de horas', abrir: 'R
 /**
  * Las cartas de una semana, sin guardar nada: quién debe horas y cuáles.
  * `dias`: para probarlo (Map de la bitácora); si no, se piden a la bitácora.
- * → [{ conductorId, alta, baja, jornadaHoras, objetivo, horas, debe, lineas }]
+ * → [{ conductorId, alta, baja, objetivo, dias, horas, debe, lineas }] (solo las que llevan carta)
  */
 async function calcularSemana(lunes, { dias = null } = {}) {
   const { domingo } = cuenta.semanaDe(lunes);
@@ -44,9 +44,9 @@ async function calcularSemana(lunes, { dias = null } = {}) {
   for (const k of contratos) {
     if (vistos.has(k.conductor_id)) continue;   // dos contratos propios en la semana: el primero (casi nunca)
     vistos.add(k.conductor_id);
-    const c = cuenta.calcular({ dias: porDia.get(k.conductor_id) || [], jornadaHoras: k.jornada_horas, alta: k.alta, baja: k.baja,
+    const c = cuenta.calcular({ dias: porDia.get(k.conductor_id) || [], alta: k.alta, baja: k.baja,
       justificadas: justif.get(k.conductor_id) || new Set() });
-    if (c.debe > 0) out.push({ conductorId: k.conductor_id, alta: k.alta, baja: k.baja, jornadaHoras: k.jornada_horas, ...c });
+    if (c.carta) out.push({ conductorId: k.conductor_id, alta: k.alta, baja: k.baja, ...c });
   }
   return out;
 }
@@ -69,7 +69,7 @@ async function prepararSemana(lunes, { cli = null, dias = null } = {}) {
         tipo: 'comunicacion', origen: 'semana', origenId: `${lunes}|${x.conductorId}`, conductorId: Number(x.conductorId),
         titulo: `Comunicación de horas: semana del ${dm(lunes)} al ${dm(domingo)}`,
         firmante, creadoPor: bot,
-        detalle: { semana: { desde: lunes, hasta: domingo }, jornada: x.jornadaHoras || 40, objetivo: x.objetivo, horas: x.horas,
+        detalle: { semana: { desde: lunes, hasta: domingo }, dias: x.dias, objetivo: x.objetivo, horas: x.horas,
           debe: x.debe, lineas: x.lineas, ...cuenta.textos(x) },
         nota: firmante && firmante.email ? null : SIN_EMAIL,
       });

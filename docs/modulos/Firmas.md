@@ -67,13 +67,13 @@ modules/RRHH/comunicaciones.repo.js
 test/comunicaciones.test.js
 ```
 
-- **La regla** (Camilo): *«si faltó un día, pero hizo 41 horas en la semana, pues está bien, nada de carta»*. Semana de **lunes a domingo**; se le piden las horas de su contrato (sin jornada en la ficha, 40), en proporción a los días con contrato; **8 h menos** por cada día de vacaciones, baja, permiso, situación sin marca, sin plaza, o que RR. HH. dio por justificado en [[Ausencias]]. Hizo: las horas de la [[Bitacora]] (BOLT de su turno + J aprobadas). Si no llega, hay carta.
+- **La regla** (Camilo): *«si faltó un día, pero hizo 41 horas en la semana, pues está bien, nada de carta»*. Semana de **lunes a domingo**. Se le piden **8 h por cada día que le tocaba trabajar**, *«sin importar el contrato»*: 4 días de salida y 3 de descanso son 32 h. No cuentan las libranzas, ni los días de vacaciones, baja, permiso, situación sin marca, sin plaza, o que RR. HH. dio por justificados en [[Ausencias]]: lo que el cuadrante no le dio no se le pide. Hizo: las horas de la [[Bitacora]] (BOLT de su turno + J aprobadas). **Si debe menos de 2 h, no hay carta.**
 - **La carta**: cada «Ausencia» (8 h) y cada día con menos de 8 h (lo que le faltó). El **total es lo que debe en la semana** (lo que se descuenta): un día largo compensa uno corto. *«Siempre son 8»*.
 - **Solo plantilla propia.**
 - **Cada martes a las 09:00**, la semana pasada (`comunicaciones.semana`): el lunes Tráfico pide y aprueba los justificantes que falten, y no le llega a quien cumplió por un justificante. Empieza el 01/12/2026.
 - Entran en la cola como tipo **«comunicacion»**, una por persona y semana, **sin PDF** (el documento es la plantilla de YouTrust) y **sin móvil** (sin SMS). Sin email se dice en la nota y al aprobarla: *«falta el email del conductor: ponlo en su ficha (Plantilla) para poder mandársela»*.
 - **Diana**: una **tarjeta por semana** («Revisar N comunicaciones de horas»), que se cierra sola al no quedar ninguna por aprobar. En la ficha de cada una, la semana (pedido, hecho, debe) y cada día; **«Aprobar marcadas»** las aprueba de golpe y dice cuáles no se pudieron y por qué.
-- **El envío**: `create-signature-request-from-template` con la plantilla **«Comunicación al trabajador»**: firmante «Conductor» (nombre, apellidos, email; sin SMS) y los textos **«Incidencias»** (los días) y **«Total»**. `bot.js pendientes` los da hechos.
+- **El envío**: `create-signature-request-from-template` con la plantilla **«Comunicación al trabajador»** (`4dd646df-3e2d-455a-b363-664b032c446c`, espacio `8cca36ee-1d49-4385-985c-d0d98930707a`): firmante «Conductor» (nombre, apellidos, email; sin SMS) y los textos **«Incidencias»** (los días) y **«Total»**. `bot.js pendientes` los da hechos.
 
 **La plantilla de YouTrust** es la carta de RR. HH. sin datos de nadie (el nombre, los días y el total, en blanco). Campos: «Nombre del firmante» junto al nombre, texto de solo lectura **«Incidencias»** en el hueco de los días, **«Total»** tras «Horario de la ausencia sin justificar:», y la **firma** bajo «Fdo. Trabajador:»; firmante de marcador **«Conductor»**, firma simple **sin código**.
 

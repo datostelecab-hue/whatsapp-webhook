@@ -115,7 +115,7 @@
           const x = d.detalle;
           hueco.className = 'p-5 space-y-3 text-sm';
           hueco.innerHTML = `
-            <p>Del <b>${esc(dmy(x.semana.desde))}</b> al <b>${esc(dmy(x.semana.hasta))}</b> · contrato de ${esc(coma(x.jornada))} h:
+            <p>Del <b>${esc(dmy(x.semana.desde))}</b> al <b>${esc(dmy(x.semana.hasta))}</b>${x.dias != null ? ` · ${esc(x.dias)} días de trabajo a 8 h` : ''}:
               se le pedían <b>${esc(coma(x.objetivo))} h</b>, hizo <b>${esc(coma(x.horas))} h</b> y debe
               <b class="text-telecab-red">${esc(coma(x.debe))} h</b>.</p>
             <ul class="space-y-0.5">${(x.lineas || []).map(l => `<li>${esc(dmy(l.dia))} · ${l.tipo === 'ausencia'

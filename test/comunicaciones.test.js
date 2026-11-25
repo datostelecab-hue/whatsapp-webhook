@@ -22,31 +22,34 @@ const semana = (horas, extra = {}) => DIAS.map((dia, i) => ({
   clase: horas[i] === 'L' ? null : (horas[i] > 0 ? 'trabajado' : 'ausencia'), ...(extra[dia] || {}),
 })).map(d => (d.horas === 'L' ? { ...d, horas: 0, marca: 'L' } : d));
 
-test('la cuenta: semana entera, lo que compensa, lo que no se pide', () => {
-  // 40 h; libra sábado y domingo; falta el lunes, se queda corto el miércoles: debe 8 + 2,7 = 10,7.
-  const a = cuenta.calcular({ dias: semana([0, 8, 5.3, 8, 8, 'L', 'L']), jornadaHoras: 40, alta: '2026-01-01' });
-  assert.deepEqual([a.objetivo, a.horas, a.debe], [40, 29.3, 10.7]);
+test('la cuenta: 8 h por día planificado, lo que compensa, lo que no se pide', () => {
+  // 5 días de trabajo y 2 libranzas: se le piden 40. Falta el lunes, se queda corto el miércoles: debe 8 + 2,7 = 10,7.
+  const a = cuenta.calcular({ dias: semana([0, 8, 5.3, 8, 8, 'L', 'L']), alta: '2026-01-01' });
+  assert.deepEqual([a.objetivo, a.horas, a.debe, a.carta], [40, 29.3, 10.7, true]);
   assert.deepEqual(a.lineas.map(l => [l.dia, l.tipo, l.debe]), [['2026-11-16', 'ausencia', 8], ['2026-11-18', 'menos', 2.7]]);
+  // Camilo: «si tenía planificado 4 días para salir y 3 de descanso, 32 horas, sin importar el contrato».
+  const cuatro = cuenta.calcular({ dias: semana([7.8, 8.1, 8, 7.4, 'L', 'L', 'L']), alta: '2026-01-01' });
+  assert.deepEqual([cuatro.objetivo, cuatro.debe, cuatro.carta], [32, 0.7, false], 'por debajo de 2 h no hay carta');
+  const cuatroMal = cuenta.calcular({ dias: semana([0, 8, 6, 8, 'L', 'L', 'L']), alta: '2026-01-01' });
+  assert.deepEqual([cuatroMal.objetivo, cuatroMal.debe, cuatroMal.carta], [32, 10, true]);
   // Faltó un día pero hizo 41 h: nada.
-  const b = cuenta.calcular({ dias: semana([0, 10, 10, 11, 10, 'L', 'L']), jornadaHoras: 40, alta: '2026-01-01' });
-  assert.equal(b.debe, 0);
-  assert.deepEqual(b.lineas, []);
+  const b = cuenta.calcular({ dias: semana([0, 10, 10, 11, 10, 'L', 'L']), alta: '2026-01-01' });
+  assert.deepEqual([b.debe, b.carta, b.lineas], [0, false, []]);
   // Un día largo compensa: el total es lo que debe en la semana, no la suma de los días.
-  const c = cuenta.calcular({ dias: semana([6, 6, 6, 6, 12, 'L', 'L']), jornadaHoras: 40, alta: '2026-01-01' });
+  const c = cuenta.calcular({ dias: semana([6, 6, 6, 6, 12, 'L', 'L']), alta: '2026-01-01' });
   assert.equal(c.debe, 4);
-  // Vacaciones y lo justificado por RR. HH. no se piden: 2 días de vacaciones → 24 h pedidas.
+  // Más libranzas de la cuenta: lo que el cuadrante no le dio no se le pide.
+  assert.deepEqual(cuenta.calcular({ dias: semana([8, 7, 'L', 'L', 'L', 'L', 'L']), alta: '2026-01-01' }).objetivo, 16);
+  // Vacaciones y lo justificado por RR. HH. no se piden.
   const d = cuenta.calcular({ dias: semana([0, 0, 8, 8, 8, 'L', 'L'], { '2026-11-16': { marca: 'V', clase: null }, '2026-11-17': { marca: 'V', clase: null } }),
-    jornadaHoras: 40, alta: '2026-01-01' });
+    alta: '2026-01-01' });
   assert.deepEqual([d.objetivo, d.debe], [24, 0]);
-  const e = cuenta.calcular({ dias: semana([0, 8, 8, 8, 8, 'L', 'L']), jornadaHoras: 40, alta: '2026-01-01', justificadas: new Set(['2026-11-16']) });
+  const e = cuenta.calcular({ dias: semana([0, 8, 8, 8, 8, 'L', 'L']), alta: '2026-01-01', justificadas: new Set(['2026-11-16']) });
   assert.equal(e.debe, 0, 'la ausencia que RR. HH. justificó no se debe');
-  // Entra el jueves: se le piden 4/7 de 40.
-  const f = cuenta.calcular({ dias: semana([0, 0, 0, 8, 8, 'L', 'L'], Object.fromEntries(DIAS.slice(0, 3).map(x => [x, { fuera: true }]))),
-    jornadaHoras: 40, alta: '2026-11-19' });
-  assert.deepEqual([f.objetivo, f.debe], [22.9, 6.9]);
-  // 32 h y sin jornada en la ficha (40).
-  assert.equal(cuenta.calcular({ dias: semana([8, 8, 8, 6, 0, 'L', 'L']), jornadaHoras: 32, alta: '2026-01-01' }).debe, 2);
-  assert.equal(cuenta.calcular({ dias: semana([8, 8, 8, 8, 0, 'L', 'L']), jornadaHoras: null, alta: '2026-01-01' }).debe, 8);
+  // Entra el jueves: solo los días con contrato.
+  const f = cuenta.calcular({ dias: semana([0, 0, 0, 8, 0, 'L', 'L'], Object.fromEntries(DIAS.slice(0, 3).map(x => [x, { fuera: true, clase: null }]))),
+    alta: '2026-11-19' });
+  assert.deepEqual([f.objetivo, f.debe], [16, 8]);
   // Los huecos de la plantilla.
   assert.deepEqual(cuenta.textos(a), { incidencias: '• 16 de noviembre de 2026 – 8 horas\n• 18 de noviembre de 2026 – 2,7 horas', total: '10,7 h' });
   assert.deepEqual(cuenta.semanaDe('2026-11-19'), { lunes: '2026-11-16', domingo: '2026-11-22' });

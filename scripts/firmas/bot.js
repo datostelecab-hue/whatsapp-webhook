@@ -54,7 +54,8 @@ function opciones(args) {
           nombre: f.nombre_pila, apellidos: f.apellidos, email: f.firmante_email,
           movil: como.sms ? f.firmante_movil : '(sin SMS)', pdfs: como.plantilla ? `(plantilla «${como.plantilla}»)` : f.documentos,
           // Los huecos de la plantilla de YouTrust (create-signature-request-from-template).
-          ...(como.plantilla && f.detalle ? { plantilla: como.plantilla, incidencias: f.detalle.incidencias, total: f.detalle.total } : {}),
+          ...(como.plantilla && f.detalle ? { plantilla: como.plantilla, plantillaId: como.plantillaId, workspaceId: como.workspaceId,
+            incidencias: f.detalle.incidencias, total: f.detalle.total } : {}),
           aprobado: `${f.aprobado} por ${f.aprobado_por_nombre}` };
       });
       break;

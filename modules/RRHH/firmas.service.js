@@ -46,8 +46,15 @@ const TIPOS = {
 // YouTrust (no se sube PDF); `sms`: la firma lleva código por SMS (hace falta
 // el móvil). Camilo (25/11/2026), de las comunicaciones de horas: «sin SMS de
 // autenticación, directo a su correo electrónico».
+// La plantilla de YouTrust de las comunicaciones (creada el 25/11/2026):
+// firmante de marcador «Conductor» (firma simple, sin código) y los textos de
+// solo lectura «Incidencias» y «Total». Va sin espacio de trabajo: al crear la
+// solicitud hay que decir el de la cuenta («Datos telecab»).
 const COMO = {
-  comunicacion: { plantilla: 'Comunicación al trabajador', sms: false },
+  comunicacion: {
+    plantilla: 'Comunicación al trabajador', sms: false,
+    plantillaId: '4dd646df-3e2d-455a-b363-664b032c446c', workspaceId: '8cca36ee-1d49-4385-985c-d0d98930707a',
+  },
 };
 const comoSe = tipo => ({ plantilla: null, sms: true, ...(COMO[tipo] || {}) });
 const ESTADOS = {
