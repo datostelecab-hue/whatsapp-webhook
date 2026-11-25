@@ -654,7 +654,55 @@ async function sellarFestivos({ hoy = hoyMadrid() } = {}) {
   return { hechos };
 }
 
+/**
+ * LOS CUATRO DATOS PARA DECIDIR UNA SOLICITUD (módulo 2 del plan de RR. HH.,
+ * 25/11/2026). El encargo: «Cada solicitud le llega con: calificación del
+ * conductor, días disponibles, conductores ya fuera esas fechas y cobertura de
+ * planificación». No decide nada: lo enseña en el ticket, y Diana decide.
+ *   · la letra de ahora;
+ *   · el saldo: el de hoy, lo que gastaría (con los dos días que libra según
+ *     el planificador) y lo que le quedaría — el mismo simulador de la pantalla;
+ *   · quién más está fuera esas fechas, primero los de su zona y su turno;
+ *   · la cobertura: los días que le tocaría trabajar en que su coche se queda
+ *     sin nadie (f_cobertura). Se mira como mucho dos meses.
+ */
+async function paraDecidir(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) throw new Error('Falta la persona');
+  const a = aIso(desde), b = aIso(hasta) || aIso(desde);
+  if (!a) throw new Error('La solicitud no dice desde cuándo');
+  if (b < a) throw new Error('La vuelta va antes que el primer día');
+  const finCob = dias(a, b) > 62 ? mas(a, 61) : b;
+  const sug = await libranzasSugeridas(n, a, { hoy }).catch(() => ({ propuestos: [] }));
+  const libra = (sug.propuestos || []).length === 2 ? sug.propuestos.join(',') : '';
+  // Sin los dos días que libra (el planificador da otros), el saldo de hoy sin
+  // «lo que gastaría»: esos dos días se eligen al aplicarlas.
+  const [sim, letra, fuera, cob] = await Promise.all([
+    (libra ? simular(n, { desde: a, hasta: b, libra }, { hoy })
+      : ficha(n, { hoy }).then(f => ({ saldo: f.saldo, programadas: f.programadas, saldoTras: f.saldoTras, nuevos: null, quedaria: null,
+        naturales: dias(a, b), diasQueLibra: [] }))).catch(e => ({ error: e.message })),
+    repo.letraDe(n), repo.fueraEntre(n, a, b), repo.coberturaDe(n, a, finCob),
+  ]);
+  const trabaja = new Set(cob.filter(c => c.le_toca).map(c => c.dia));
+  const diasSinCubrir = [...new Set(cob.filter(c => c.le_toca && !c.cubierto).map(c => c.dia))];
+  return {
+    desde: a, hasta: b,
+    letra: letra ? { letra: letra.letra, total: letra.total, horas: letra.horas_prom } : null,
+    saldo: sim.error ? { error: sim.error } : {
+      saldo: sim.saldo, programadas: sim.programadas, saldoTras: sim.saldoTras, gastaria: sim.nuevos, quedaria: sim.quedaria,
+      naturales: sim.naturales, libra: sim.diasQueLibra, segunPlanificador: sug.texto || '',
+    },
+    fuera: { total: new Set(fuera.map(f => f.conductor_id)).size, deLosSuyos: new Set(fuera.filter(f => f.de_los_suyos).map(f => f.conductor_id)).size,
+      lista: fuera.slice(0, 40) },
+    cobertura: {
+      coches: [...new Map(cob.map(c => [`${c.matricula}|${c.turno || ''}`, { matricula: c.matricula, turno: c.turno || '' }])).values()],
+      diasDeTrabajo: trabaja.size, diasSinCubrir, recortado: finCob !== b,
+    },
+  };
+}
+
 module.exports = {
+  paraDecidir,
   TASA, TOPE_MES, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
   lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones, corregirVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,

@@ -278,6 +278,18 @@ Camilo: *«Necesitamos poder modificar a Tarik las vacaciones, ya que no fueron 
 - **«Libranza excepcional»** es una situación nueva (db/279): días de descanso que compensan libranzas trabajadas. Es ausencia, libera la plaza (como las vacaciones), en la bitácora es una «L», **no gasta vacaciones** y la nómina **no la paga como ausencia** (los días que compensa ya se pagaron como trabajados). En la ficha sale en «Asuntos propios, permisos, libranzas y suspensiones», con «No resta». No es la libranza excepcional del planificador (un cambio de un día por otro, db/54).
 - Código: `plantilla.service.corregirVacaciones` (la regla), `vacaciones.service.corregirVacaciones` (el ticket), `POST /vacaciones/api/conductor/:id/vacaciones/:fila/corregir`. Prueba: `test/vacaciones-corregir.test.js` (también que el libro dice quién y por qué: la base de pruebas firma ya con el contexto, como producción).
 
+## Para decidir una solicitud (25/11/2026, módulo 2 del plan de RR. HH.)
+
+El encargo: *«Cada solicitud le llega con: calificación del conductor, días disponibles, conductores ya fuera esas fechas y cobertura de planificación. Aprobación o rechazo con un clic»*. Decidido por Camilo: **en el propio ticket**.
+
+En la Ticketera, un ticket de vacaciones abierto y enlazado lleva **«Para decidir»** (solo para quien tiene la llave de aprobar). Enseña:
+- **La letra** de ahora (`v_conductor_calificacion`).
+- **Los días disponibles**: el saldo de hoy (y lo programado) y, con los dos días que libra según el planificador, lo que gastaría y lo que le quedaría (el mismo simulador de esta pantalla). Si el planificador no da dos días, solo el saldo: los dos días se eligen al aprobar.
+- **Quién más está fuera** esas fechas (vacaciones, baja, permiso, asuntos propios, libranza excepcional), primero los **de su zona y su turno**.
+- **La cobertura de su coche**: de los días que le toca trabajar según el planificador, en cuántos nadie más lleva su coche y turno (`f_cobertura`). Se miran como mucho dos meses.
+
+Desde ahí, **Aprobar** es «Aplicar» (con sus dos días de libranza) y **Rechazar** cierra el ticket como «Rechazado» con el motivo. `vacaciones.service.paraDecidir`, `GET /ticketera/api/vacaciones/decidir`. Prueba: `test/vacaciones-decidir.test.js`.
+
 ## La llave
 
 `/vacaciones`, en el grupo RRHH del catálogo ([[Usuarios y permisos]]). db/197 se la da a quien ya tenía `/rrhh` o la de aprobar vacaciones, que son 8 usuarios. **Mirar los saldos no da permiso para aprobar**: `/vacaciones/aprobar` se mira exacta (`services/aprobarVacaciones.js`) y no por prefijo.

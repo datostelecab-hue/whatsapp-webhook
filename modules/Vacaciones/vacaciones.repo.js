@@ -251,4 +251,71 @@ async function planes(ids) {
   return { porId: out, inicio: inicio.rows[0].inicio };
 }
 
-module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo, diasLaborados, justificados, planes };
+// ── PARA DECIDIR UNA SOLICITUD (módulo 2 del plan de RR. HH., 25/11/2026) ──
+// «Cada solicitud le llega con: calificación del conductor, días disponibles,
+// conductores ya fuera esas fechas y cobertura de planificación».
+
+/** Su letra de ahora (la de la calificación de la casa). */
+async function letraDe(conductorId) {
+  const r = await db.consulta(
+    `SELECT letra, total, horas_prom FROM v_conductor_calificacion WHERE conductor_id = $1`, [conductorId]);
+  return r.rows[0] || null;
+}
+
+/**
+ * Quién más está fuera en esas fechas (vacaciones, baja, permiso, asuntos
+ * propios, libranza excepcional), de los que tienen contrato, con su zona y su
+ * turno de ahora para ver si es de los suyos.
+ */
+async function fueraEntre(conductorId, desde, hasta) {
+  const r = await db.consulta(
+    `WITH yo AS (
+       SELECT DISTINCT v.base_zona_id, s.turno_id
+         FROM asignacion a JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN cat_slot s ON s.slot = p.slot JOIN vehiculo v ON v.id = p.vehiculo_id
+        WHERE a.conductor_id = $1 AND a.desde <= $2::date AND (a.hasta IS NULL OR a.hasta >= $2::date))
+     SELECT h.conductor_id::text AS conductor_id, btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre,
+            h.estado, COALESCE(ce.etiqueta, h.estado) AS situacion,
+            to_char(GREATEST(h.desde, $2::date), 'YYYY-MM-DD') AS desde,
+            to_char(LEAST(COALESCE(h.hasta, $3::date), $3::date), 'YYYY-MM-DD') AS hasta,
+            EXISTS (SELECT 1 FROM asignacion a2 JOIN plaza p2 ON p2.id = a2.plaza_id AND p2.baja_at IS NULL
+                      JOIN cat_slot s2 ON s2.slot = p2.slot JOIN vehiculo v2 ON v2.id = p2.vehiculo_id
+                      JOIN yo ON yo.base_zona_id IS NOT DISTINCT FROM v2.base_zona_id AND yo.turno_id IS NOT DISTINCT FROM s2.turno_id
+                     WHERE a2.conductor_id = h.conductor_id AND a2.desde <= $3::date AND (a2.hasta IS NULL OR a2.hasta >= $2::date)) AS de_los_suyos
+       FROM conductor_estado_hist h
+       JOIN conductor c ON c.id = h.conductor_id AND c.empleo_vigente AND NOT c.es_centinela
+       LEFT JOIN cat_estado_conductor ce ON ce.codigo = h.estado
+      WHERE h.conductor_id <> $1
+        AND h.estado IN ('vacaciones', 'baja_medica', 'permiso', 'asuntos_propios', 'libranza_excepcional')
+        AND h.desde <= $3::date AND COALESCE(h.hasta, 'infinity'::date) >= $2::date
+      ORDER BY de_los_suyos DESC, h.desde, nombre`, [conductorId, desde, hasta]);
+  return r.rows;
+}
+
+/**
+ * LA COBERTURA de sus plazas en esas fechas: cada día, cada coche y turno suyo,
+ * si alguien más lo cubre ese día según el planificador (f_cobertura, que ya
+ * quita a los ausentes) y si ese día le tocaba trabajar a él.
+ */
+async function coberturaDe(conductorId, desde, hasta) {
+  const r = await db.consulta(
+    `WITH mias AS (
+       SELECT DISTINCT p.vehiculo_id, s.turno_id, v.matricula, t.etiqueta AS turno
+         FROM asignacion a JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN cat_slot s ON s.slot = p.slot JOIN vehiculo v ON v.id = p.vehiculo_id
+         LEFT JOIN turno t ON t.id = s.turno_id
+        WHERE a.conductor_id = $1 AND a.desde <= $3::date AND (a.hasta IS NULL OR a.hasta >= $2::date)),
+     cob AS (SELECT * FROM f_cobertura($2::date, $3::date))
+     SELECT to_char(g.dia, 'YYYY-MM-DD') AS dia, m.matricula, m.turno,
+            -- Le toca ese día: sale en el planificador (aún no está ausente).
+            EXISTS (SELECT 1 FROM cob c WHERE c.dia = g.dia::date AND c.vehiculo_id = m.vehiculo_id
+                       AND c.turno_id IS NOT DISTINCT FROM m.turno_id AND c.conductor_id = $1) AS le_toca,
+            EXISTS (SELECT 1 FROM cob c WHERE c.dia = g.dia::date AND c.vehiculo_id = m.vehiculo_id
+                       AND c.turno_id IS NOT DISTINCT FROM m.turno_id AND c.conductor_id <> $1) AS cubierto
+       FROM generate_series($2::date, $3::date, interval '1 day') g(dia) CROSS JOIN mias m
+      ORDER BY 1, 2`, [conductorId, desde, hasta]);
+  return r.rows;
+}
+
+module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo, diasLaborados, justificados, planes,
+  letraDe, fueraEntre, coberturaDe };

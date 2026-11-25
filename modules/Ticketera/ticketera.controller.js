@@ -177,6 +177,11 @@ function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {})
 
   // Lo que libra según el planificador, para proponer a mano los dos días de
   // unas vacaciones al aplicarlas (db/233).
+  // LOS CUATRO DATOS PARA DECIDIR unas vacaciones (módulo 2 del plan de RR. HH.):
+  // letra, saldo, quién más está fuera y la cobertura de su coche.
+  router.get('/api/vacaciones/decidir', responde(async req =>
+    ({ decidir: await require('../Vacaciones/vacaciones.service').paraDecidir(req.query.conductor, { desde: req.query.desde, hasta: req.query.hasta }) })));
+
   router.get('/api/libranzas', responde(async req =>
     ({ libranzas: await require('../Vacaciones/vacaciones.service').libranzasSugeridas(req.query.id, req.query.desde) })));
 

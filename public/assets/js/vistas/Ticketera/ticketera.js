@@ -242,6 +242,12 @@
         n.innerHTML = `<i class="fa-solid fa-lock mr-1"></i>Las vacaciones las aprueba ${esc(VAC.quien || 'quien tiene la llave')}`;
         acc.appendChild(n);
       } else {
+        // PARA DECIDIR (módulo 2 del plan de RR. HH.): unas vacaciones llegan con
+        // los cuatro datos —letra, saldo, quién está fuera y la cobertura— y
+        // desde ahí se aprueban (es «Aplicar») o se rechazan.
+        if (deVacaciones && t.conductorId && t.fechaIniIso) {
+          boton('Para decidir', 'fa-scale-balanced', 'gold', () => paraDecidir(t));
+        }
         if (t.afectaPlanning && t.conductorId) {
           boton('Aplicar', 'fa-wand-magic-sparkles', 'green', () => aplicar(t));
         }
@@ -373,6 +379,54 @@
     if (!v) return;
     const r = await api('/estado', { id: t.id, estado: v.estado, resolucion: v.resolucion });
     r.status === 'ok' ? cargar() : aviso(r.msg, 'error');
+  }
+
+  /**
+   * PARA DECIDIR unas vacaciones: la letra, el saldo (lo que gastaría y lo que
+   * le quedaría), quién más está fuera esas fechas (primero los de su zona y su
+   * turno) y los días en que su coche se quedaría sin nadie. Aprobar es
+   * «Aplicar»; rechazar cierra el ticket con el motivo, que ve en su portal.
+   */
+  async function paraDecidir(t) {
+    const q = new URLSearchParams({ conductor: t.conductorId, desde: t.fechaIniIso, hasta: t.fechaFinIso || t.fechaIniIso });
+    let d;
+    try { d = (await Api.get(`${BASE}/api/vacaciones/decidir?${q}`)).decidir; }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo preparar', texto: e.message, tono: 'error' }); }
+    const fmt = n => String(n == null ? '—' : n).replace('.', ',');
+    const aEsp = iso => (iso ? iso.split('-').reverse().join('/') : '');
+    const s = d.saldo || {};
+    const bloque = (titulo, cuerpo) => `<div class="py-2.5 border-t border-telecab-border first:border-t-0">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">${titulo}</p>${cuerpo}</div>`;
+    const html = `
+      <p class="text-sm mb-2">${esc(t.quien)} · del <b>${esc(aEsp(d.desde))}</b> al <b>${esc(aEsp(d.hasta))}</b></p>
+      ${bloque('Calificación', d.letra ? `<p class="text-sm"><b class="text-lg">${esc(d.letra.letra || '—')}</b>${d.letra.horas != null ? ` · ${esc(fmt(d.letra.horas))} h de media` : ''}</p>` : '<p class="text-sm text-telecab-muted">Sin letra.</p>')}
+      ${bloque('Días disponibles', s.error ? `<p class="text-sm text-telecab-warn">${esc(s.error)}</p>`
+        : `<p class="text-sm">Tiene <b>${esc(fmt(s.saldo))}</b> días${s.programadas ? ` (${esc(fmt(s.programadas))} ya programados: le quedan ${esc(fmt(s.saldoTras))})` : ''}.
+           ${s.gastaria == null ? `Son ${esc(fmt(s.naturales))} días naturales; lo que gasta depende de los dos días que libre, que se eligen al aprobarlas.`
+             : `Esta solicitud gastaría <b>${esc(fmt(s.gastaria))}</b> de ${esc(fmt(s.naturales))} naturales y le quedarían
+           <b class="${s.quedaria < 0 ? 'text-telecab-red' : ''}">${esc(fmt(s.quedaria))}</b>.`}</p>
+           <p class="text-xs text-telecab-muted mt-0.5">${s.libra && s.libra.length ? `Libra ${esc(s.libra.join(' y '))}, según el planificador.` : esc(s.segunPlanificador || 'Sin los dos días que libra: cuentan todos.')}</p>`)}
+      ${bloque('Quién más está fuera esas fechas', d.fuera.total
+        ? `<p class="text-sm"><b>${d.fuera.total}</b> ${d.fuera.total === 1 ? 'persona' : 'personas'}${d.fuera.deLosSuyos ? `, <b class="text-telecab-warn">${d.fuera.deLosSuyos} de su zona y su turno</b>` : ''}.</p>
+           <ul class="text-xs text-telecab-muted mt-1 max-h-32 overflow-auto">${d.fuera.lista.map(f => `<li>${f.de_los_suyos ? '<b class="text-telecab-text">' : ''}${esc(f.nombre)}${f.de_los_suyos ? '</b>' : ''} · ${esc(f.situacion)} · ${esc(aEsp(f.desde))} → ${esc(aEsp(f.hasta))}</li>`).join('')}</ul>`
+        : '<p class="text-sm">Nadie más.</p>')}
+      ${bloque('Cobertura de su coche', d.cobertura.coches.length
+        ? `<p class="text-sm">${esc(d.cobertura.coches.map(c => `${c.matricula}${c.turno ? ` (${c.turno})` : ''}`).join(', '))}:
+           ${d.cobertura.diasSinCubrir.length
+             ? `<b class="text-telecab-red">${d.cobertura.diasSinCubrir.length} de sus ${d.cobertura.diasDeTrabajo} días de trabajo sin nadie</b> en el planificador.`
+             : `sus ${d.cobertura.diasDeTrabajo} días de trabajo los cubre alguien.`}</p>
+           ${d.cobertura.recortado ? '<p class="text-xs text-telecab-muted">Se miran los dos primeros meses.</p>' : ''}`
+        : '<p class="text-sm text-telecab-muted">No tiene plaza en el planificador.</p>')}`;
+    const r = await Dialogo.abrir({ titulo: 'Para decidir: vacaciones', html, ancho: 'max-w-xl', tono: 'info',
+      opciones: [{ texto: 'Cerrar', valor: null }, { texto: 'Rechazar', valor: 'rechazar' }, { texto: 'Aprobar', valor: 'aprobar', principal: true }] });
+    if (r === 'aprobar') return aplicar(t);
+    if (r !== 'rechazar') return;
+    const v = await Dialogo.formulario(`Rechazar las vacaciones de ${t.quien}`, [
+      { id: 'resolucion', etiqueta: 'Motivo (opcional)', tipo: 'texto-largo', max: 2000, ayuda: 'Lo verá en su portal.' },
+    ], { textoBoton: 'Rechazar' });
+    if (!v) return;
+    const x = await api('/estado', { id: t.id, estado: 'rechazado', resolucion: v.resolucion || 'Rechazadas' });
+    x.status === 'ok' ? (aviso('Rechazadas: lo verá en su portal.', 'ok'), cargar()) : aviso(x.msg, 'error');
   }
 
   /** MOVER: a otra bandeja, cuando el formulario lo clasificó mal. */
