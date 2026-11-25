@@ -65,6 +65,11 @@ const FUNCIONES = [
     descripcion: 'Datos sensibles: solo quien tenga esta función ve el tablero de expedientes, también en la búsqueda.' },
   { codigo: 'nomina', etiqueta: 'Lleva la nómina', item: 7, varias: false,
     descripcion: 'Recibe el informe de pendientes del día 20 y los descuentos y reintegros que entran en nómina.' },
+  // La plantilla de la gestoría (módulo 8, db/287): cada lunes le nace la
+  // tarjeta de pedir y subir el listado de la gestoría. De inicio, el puesto
+  // de administración de personal y nómina. (item: el módulo 8 del plan de RR. HH.)
+  { codigo: 'plantilla_gestoria', etiqueta: 'Sube el listado de plantilla de la gestoría', item: 8, varias: false,
+    descripcion: 'Cada lunes le nace la tarjeta de pedir a la gestoría el listado de plantilla en alta y subirlo, con vencimiento ese mismo día.' },
   { codigo: 'cartas_consulta', etiqueta: 'Consulta las cartas de descuento', item: 6, varias: true,
     descripcion: 'Ve las cartas y su firma; no las emite.' },
   { codigo: 'desactiva_baja_voluntaria', etiqueta: 'Desactiva al que se va: baja voluntaria o periodo de prueba', item: 8, varias: true,

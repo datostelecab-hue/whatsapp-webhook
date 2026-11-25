@@ -206,6 +206,19 @@ async function cargar({ base64, nombre, confirmar = false } = {}, quien = {}) {
   return { previa: false, cargaId, estructura, resumen, poner: cruce.poner, incidencias: cruce.incidencias };
 }
 
+/**
+ * PONE UN LEGAJO en una ficha (desde la plantilla de la gestoría, módulo 8),
+ * por el mismo camino que la ficha: en limpio, y diciendo de quién es si ya lo
+ * tiene otra persona. Devuelve el legajo que tenía antes (o null).
+ */
+async function asignar(conductorId, valor, quien = {}) {
+  if (!puede(quien)) throw new Error('Poner legajos es de quien lleva los datos de Seguridad Social de la ficha');
+  const antes = await repo.legajoDe(conductorId);
+  if (antes === undefined) throw new Error('No existe esa ficha');
+  await repo.actualizar(conductorId, { legajo: normalizar(valor) }, { usuarioId: quien.usuarioId, rol: quien.rol });
+  return antes;
+}
+
 /** Lo que falta: la plantilla propia en alta sin legajo, y las últimas cargas. */
 async function estado(quien = {}) {
   if (!puede(quien)) throw new Error('Los legajos los ve quien lleva los datos de Seguridad Social de la ficha');
@@ -213,4 +226,4 @@ async function estado(quien = {}) {
   return { sinLegajo, ...cargas };
 }
 
-module.exports = { normalizar, claveDni, leerExcel, cruzar, cargar, estado, MOTIVOS, TIPO_FICHERO };
+module.exports = { normalizar, claveDni, leerExcel, cruzar, cargar, estado, asignar, MOTIVOS, TIPO_FICHERO };

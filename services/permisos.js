@@ -50,6 +50,12 @@ const CATALOGO = [
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
     { clave: '/nominas',        etiqueta: 'Nóminas' },
     { clave: '/convenio',       etiqueta: 'Convenio' },
+    // LA PLANTILLA DE LA GESTORÍA (módulo 8, db/287): el cruce de su listado
+    // con la plantilla propia. Mirarlo y gestionarlo (subir, resolver, el
+    // correo); gestionar va marcada `escribir`.
+    { clave: '/gestoria', etiqueta: 'Plantilla de la gestoría', hijos: [
+      { clave: '/gestoria/gestionar', etiqueta: 'Plantilla de la gestoría · subir el listado y resolver', escribir: true },
+    ] },
     // Los SALDOS de vacaciones (14/10/2026): mirarlos. Aprobar es otra llave,
     // '/vacaciones/aprobar', de una sola persona y mirada exacta: tener esta no
     // la da (services/aprobarVacaciones.js).

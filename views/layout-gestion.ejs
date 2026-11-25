@@ -198,7 +198,9 @@
             // pantalla con el permiso de RRHH, así que quien la abría veía los
             // botones y le fallaban todos: apuntan a /control/*.
             { href: '/nominas',        icono: 'fa-money-check-dollar', texto: 'Nóminas', id: 'nominas' },
-            { href: '/convenio',       icono: 'fa-scale-balanced',   texto: 'Convenio',       id: 'convenio' }
+            { href: '/convenio',       icono: 'fa-scale-balanced',   texto: 'Convenio',       id: 'convenio' },
+            // El listado de la gestoría cruzado con la plantilla propia (módulo 8, db/287).
+            { href: '/gestoria',       icono: 'fa-building-columns', texto: 'Gestoría',       id: 'gestoria', contador: 'gestoria.pendientes' }
           ] },
           { nombre: 'Tráfico', icono: 'fa-satellite-dish', rol: 'trafico', items: [
             { href: '/planificador', icono: 'fa-table-cells-large',  texto: 'Planificador',     id: 'planificador' },

@@ -1,0 +1,11 @@
+<%#
+  LA PLANTILLA DE LA GESTORÍA (módulo 8, db/287, 25/11/2026).
+  El listado de la gestoría (la proforma de A3NOM o el de plantilla en alta)
+  cruzado por legajo con la plantilla propia: lo que no cuadra, hasta que se
+  resuelve. El JavaScript, en /assets/js/vistas/Gestoria/gestoria.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeGestionar: !!puedeGestionar }) %></script>
+<script src="<%= est('/assets/js/vistas/Gestoria/gestoria.js') %>"></script>

@@ -127,6 +127,13 @@ const CATALOGO = [
   { clave: 'cartas.margen_corte_dias_habiles', modulo: 'RR. HH.', item: 6, tipo: 'entero', unidad: 'dias_habiles', min: 0, max: 30, defecto: 4,
     etiqueta: 'Margen antes del corte de la nómina',
     descripcion: 'Lo registrado después de esa fecha pasa a la nómina del mes siguiente.' },
+  // La plantilla de la gestoría (módulo 8, db/287). Sin valor (0 o vacío), no se enseña.
+  { clave: 'gestoria.coste_ss_dia', modulo: 'RR. HH.', tipo: 'importe', min: 0, max: 500, defecto: 0, usa: 'Plantilla de la gestoría (modules/Gestoria)',
+    etiqueta: 'Coste diario estimado de Seguridad Social por trabajador',
+    descripcion: 'Para estimar lo que cuesta cada día que la gestoría tiene de alta a alguien que para nosotros ya se fue. A 0, no se calcula.' },
+  { clave: 'gestoria.correo', modulo: 'RR. HH.', tipo: 'texto', max: 120, vacio: true, defecto: '', usa: 'Plantilla de la gestoría (modules/Gestoria)',
+    etiqueta: 'Correo de la gestoría',
+    descripcion: 'A quién va el correo con las correcciones de la plantilla. Vacío, el correo se copia a mano.' },
   { clave: 'nomina.dia_corte', modulo: 'RR. HH.', item: 6, tipo: 'entero', unidad: 'dia_mes', min: 1, max: 31, defecto: 25,
     etiqueta: 'Día del corte de la nómina',
     descripcion: 'La «nómina del 25» de la hoja de ruta.' },

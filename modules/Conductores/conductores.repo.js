@@ -2346,6 +2346,12 @@ async function propiaSinLegajo() {
   return r.rows;
 }
 
+/** El legajo de una ficha: el valor, null si no tiene, undefined si la ficha no existe. */
+async function legajoDe(id) {
+  const r = await db.consulta('SELECT legajo FROM conductor WHERE id = $1', [Number(id)]);
+  return r.rows.length ? r.rows[0].legajo : undefined;
+}
+
 /** De quién es un legajo (para decir con quién choca). */
 async function duenoDeLegajo(legajo, menosId = null, cli = null) {
   const q = `SELECT c.id::text AS id, btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre
@@ -2355,7 +2361,7 @@ async function duenoDeLegajo(legajo, menosId = null, cli = null) {
 }
 
 module.exports = {
-  personasParaLegajos, ponerLegajos, propiaSinLegajo, duenoDeLegajo,
+  personasParaLegajos, ponerLegajos, propiaSinLegajo, duenoDeLegajo, legajoDe,
   paraGestoria, buscarPersona,
   ibanEnmascarado, guardarIban,
   JORNADAS, TOPE_JORNADA, OPCIONES_JORNADA: jornada.OPCIONES_JORNADA,
