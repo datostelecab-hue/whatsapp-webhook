@@ -1,0 +1,13 @@
+<%#
+  LOS FINIQUITOS (módulo 7, db/291, 25/11/2026).
+  El finiquito de cada baja (propia → gestoría, ETT → agencia): vacaciones
+  netas, recaudación pendiente y variables pendientes, con su soporte. Diana
+  revisa, Ignacio aprueba y se avisa solo.
+  El JavaScript, en /assets/js/vistas/RRHH/finiquitos.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeRevisar: !!puedeRevisar, puedeAprobar: !!puedeAprobar }) %></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/finiquitos.js') %>"></script>

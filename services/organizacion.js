@@ -74,6 +74,9 @@ const FUNCIONES = [
   // tarjeta de revisar las nuevas. De inicio, el puesto de Diana.
   { codigo: 'ausencias_validar', etiqueta: 'Revisa las ausencias de cada día', item: 1, varias: false,
     descripcion: 'Cada día le nace la tarjeta de revisar las ausencias nuevas de la plantilla propia: baja médica, permiso, justificada o injustificada (absentismo).' },
+  // Los finiquitos (módulo 7, db/291): le nace la tarjeta de revisar cada uno.
+  { codigo: 'finiquitos_revisar', etiqueta: 'Revisa los finiquitos', item: 7, varias: false,
+    descripcion: 'Cada baja le crea la tarjeta de revisar su finiquito (vacaciones, recaudación y variables) antes de que se apruebe.' },
   { codigo: 'cartas_consulta', etiqueta: 'Consulta las cartas de descuento', item: 6, varias: true,
     descripcion: 'Ve las cartas y su firma; no las emite.' },
   { codigo: 'desactiva_baja_voluntaria', etiqueta: 'Desactiva al que se va: baja voluntaria o periodo de prueba', item: 8, varias: true,

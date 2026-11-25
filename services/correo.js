@@ -133,10 +133,10 @@ async function estadoCorreo() {
 }
 
 /** Envía (o registra) un correo. Nunca lanza: un fallo de correo no rompe el flujo. */
-async function enviarCorreo({ to, cc, subject, text, html } = {}) {
+async function enviarCorreo({ to, cc, subject, text, html, attachments } = {}) {
   try {
     // En pruebas todo va al buzón falso o al desvío: la copia no sale a nadie.
-    if (pruebas.ACTIVO) return await enviarEnPruebas({ from: 'Telecab <pruebas@telecab.local>', to, subject, text, html });
+    if (pruebas.ACTIVO) return await enviarEnPruebas({ from: 'Telecab <pruebas@telecab.local>', to, subject, text, html, attachments });
     const a = await ajustesEnvio();
     if (!a) {
       console.log(`✉️  [CORREO] Sin configurar → no se envía a ${to} · «${subject}» (revisa "Correo para procesos" y la variable CRED_KEY)`);
@@ -152,7 +152,8 @@ async function enviarCorreo({ to, cc, subject, text, html } = {}) {
       connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000
     });
     // `cc`: con copia (20/11/2026, los códigos del portal en pruebas, con copia a quien dirige operaciones).
-    const info = await transport.sendMail({ from: a.from, to, ...(cc ? { cc } : {}), subject, text, html });
+    // `attachments` (25/11/2026): el finiquito va con su PDF y su Excel (módulo 7).
+    const info = await transport.sendMail({ from: a.from, to, ...(cc ? { cc } : {}), subject, text, html, ...(attachments ? { attachments } : {}) });
     console.log(`✅ [CORREO] Enviado a ${to}${cc ? ` (cc ${cc})` : ''} · id=${info.messageId || '?'} · ${info.response || ''}`);
     return { enviado: true, id: info.messageId };
   } catch (e) {

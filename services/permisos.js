@@ -66,6 +66,14 @@ const CATALOGO = [
     { clave: '/ausencias', etiqueta: 'Ausencias y bajas (RR. HH.)', manual: true, hijos: [
       { clave: '/ausencias/validar', etiqueta: 'Ausencias · validarlas (baja, permiso, justificada o injustificada)', escribir: true, manual: true },
     ] },
+    // LOS FINIQUITOS (módulo 7, db/291): mirarlos, revisarlos (Diana) y
+    // aprobarlos (Ignacio). Datos de nómina: `manual`, se dan uno a uno. Sin
+    // `escribir`: una llave solo admite UNA hija de escritura, y aquí hay dos;
+    // cada acción la exige el servicio (modules/RRHH/finiquitos.service.js).
+    { clave: '/finiquitos', etiqueta: 'Finiquitos', manual: true, hijos: [
+      { clave: '/finiquitos/revisar', etiqueta: 'Finiquitos · prepararlos y revisarlos', manual: true },
+      { clave: '/finiquitos/aprobar', etiqueta: 'Finiquitos · aprobarlos (se avisa solo a la gestoría o a la ETT)', manual: true },
+    ] },
     // Los SALDOS de vacaciones (14/10/2026): mirarlos. Aprobar es otra llave,
     // '/vacaciones/aprobar', de una sola persona y mirada exacta: tener esta no
     // la da (services/aprobarVacaciones.js).

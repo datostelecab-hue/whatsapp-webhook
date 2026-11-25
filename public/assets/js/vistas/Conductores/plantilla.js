@@ -1138,6 +1138,26 @@
    * quedan por pagar. Se descarga; no se guarda en ningún sitio, porque quien
    * lo pide lo va a mandar a la gestoría y ahí se acaba su vida.
    */
+  /**
+   * EL FINIQUITO (módulo 7, db/291): nace solo al dar la baja. Si ya está, se
+   * abre en Finiquitos; si no (bajas de antes del 25/11/2026), se prepara.
+   */
+  async function accionFiniquitoNuevo(d) {
+    let r;
+    try { r = await api(`/finiquitos/api/conductor/${encodeURIComponent(d.id)}`); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo mirar', texto: e.message, tono: 'error' }); }
+    if (!r.puede) return Dialogo.aviso({ titulo: 'Sin acceso', texto: 'Los finiquitos los ve quien tiene la llave «Finiquitos».' });
+    if (r.finiquitos.length) { location.href = `/finiquitos#${encodeURIComponent(r.finiquitos[0].id)}`; return; }
+    if (!r.puedePreparar) return Dialogo.aviso({ titulo: 'Aún no tiene finiquito', texto: 'Lo prepara quien revisa los finiquitos.' });
+    const ok = await Dialogo.confirmar({ titulo: 'Preparar su finiquito', si: 'Prepararlo', no: 'Cancelar',
+      texto: 'Se calcula con su última baja: vacaciones que le quedan, lo que debe en Recaudación y las variables pendientes. Queda «por revisar».' });
+    if (!ok) return;
+    try {
+      const p = await enviar('/finiquitos/api/preparar', 'POST', { conductorId: d.id });
+      location.href = `/finiquitos#${encodeURIComponent(p.id)}`;
+    } catch (e) { Dialogo.aviso({ titulo: 'No se pudo preparar', texto: e.message, tono: 'error' }); }
+  }
+
   function accionFiniquito(d) {
     return descargarExcel('/nominas/finiquito.xlsx?conductor=' + encodeURIComponent(d.id),
       `extras-pendientes-${nombreEnFichero(d)}.xlsx`);
@@ -1790,6 +1810,8 @@
         // nóminas variables sin pagar —la del mes anterior y la del mes de la
         // baja— y ninguna de las dos llega ya por el camino normal. Se saca
         // desde aquí, que es donde estás cuando surge la pregunta.
+        { texto: 'Finiquito', icono: 'fa-file-signature',
+          visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: accionFiniquitoNuevo },
         { texto: 'Extras pendientes', icono: 'fa-file-invoice-dollar',
           visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: accionFiniquito },
       ],

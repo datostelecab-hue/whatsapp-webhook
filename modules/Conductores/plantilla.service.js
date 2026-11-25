@@ -540,7 +540,17 @@ const darDeAlta = async (id, datos, quien) => {
 };
 // Con fecha futura se PROGRAMA (db/191): sigue de alta y en su plaza hasta ese
 // día. Devuelve { dado } o { programada: 'AAAA-MM-DD' }.
-const darDeBaja = (id, datos, quien) => con.bajaOProgramada(Number(id), datos || {}, quien);
+// Y AL DAR LA BAJA NACE SU FINIQUITO (módulo 7, db/291), propia o ETT. Si es
+// programada, nace el día que llega (aplicarBajasProgramadas). Un finiquito que
+// no se pudo preparar no deshace la baja: lo recoge el repaso diario.
+const finiquitoDe = id => require('../RRHH/finiquitos.service').alDarLaBaja(Number(id));
+const darDeBaja = async (id, datos, quien) => {
+  const r = await con.bajaOProgramada(Number(id), datos || {}, quien);
+  // En segundo plano: calcular las dos nóminas tarda unos segundos y la baja no
+  // tiene por qué esperarlas (alDarLaBaja no lanza nunca).
+  if (r && r.dado) setImmediate(() => { finiquitoDe(id); });
+  return r;
+};
 
 /**
  * Cancela su baja programada: no se le da de baja. Queda en su expediente con
@@ -564,6 +574,7 @@ async function aplicarBajasProgramadas() {
     try {
       await con.darDeBaja(b.conductorId, { fecha: b.fecha, motivo: b.motivo }, { usuarioId: b.usuarioId });
       hechas.push(b);
+      await finiquitoDe(b.conductorId);
     } catch (e) {
       fallos.push({ ...b, error: e.message });
     }
