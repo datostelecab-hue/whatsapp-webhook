@@ -443,7 +443,11 @@ const FICHA_COLUMNAS = `k.id, k.num_hijos,
             -- LA JORNADA, que la ficha no recibía: a todo el mundo le salían
             -- 40 horas y el salario de 40, también a quien tiene 32. La del
             -- contrato abierto y, si aún no lo tiene, la de su candidatura.
-            CASE WHEN emp.abierto THEN emp.jornada_horas ELSE COALESCE(k.jornada_horas, emp.jornada_horas) END AS jornada_horas`;
+            CASE WHEN emp.abierto THEN emp.jornada_horas ELSE COALESCE(k.jornada_horas, emp.jornada_horas) END AS jornada_horas,
+            -- LOS DÍAS QUE LIBRA (25/11/2026, Camilo: «que también estén por ahí
+            -- los días de libranza que apuntamos al darle de alta»): los de su
+            -- patrón de libranza vigente (1 = lunes … 7 = domingo).
+            lib.dias AS libra_dias`;
 const FICHA_UNIONES = `       LEFT JOIN LATERAL (
          SELECT e164 FROM conductor_telefono
           WHERE conductor_id = c.id AND vigente_hasta IS NULL
@@ -454,7 +458,21 @@ const FICHA_UNIONES = `       LEFT JOIN LATERAL (
           ORDER BY id DESC LIMIT 1) per ON TRUE
        LEFT JOIN LATERAL (
          SELECT alta, jornada_horas, (baja IS NULL) AS abierto FROM conductor_periodo_empleo
-          WHERE conductor_id = c.id ORDER BY (baja IS NULL) DESC, alta DESC LIMIT 1) emp ON TRUE`;
+          WHERE conductor_id = c.id ORDER BY (baja IS NULL) DESC, alta DESC LIMIT 1) emp ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT array_agg(d.dia_semana ORDER BY d.dia_semana) AS dias
+           FROM patron_libranza pl
+           JOIN patron_libranza_dia d ON d.patron_id = pl.id
+          WHERE pl.conductor_id = c.id AND pl.hasta IS NULL) lib ON TRUE`;
+
+const DIAS_LIBRA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+/** [1, 2] → «Lunes y martes». Sin días, vacío. */
+function diasDeLibranza(dias) {
+  const n = (dias || []).map(Number).filter(d => d >= 1 && d <= 7).map(d => DIAS_LIBRA[d - 1]);
+  if (!n.length) return '';
+  const t = n.length === 1 ? n[0] : `${n.slice(0, -1).join(', ')} y ${n[n.length - 1].toLowerCase()}`;
+  return t.charAt(0) + t.slice(1).replace(/, ([A-ZÁÉÍÓÚ])/g, (m, l) => ', ' + l.toLowerCase());
+}
 
 /** De la fila a lo que imprime la ficha. El IBAN se descifra aquí. */
 function aDatosFicha(f) {
@@ -476,6 +494,7 @@ function aDatosFicha(f) {
     // Sin jornada, la ficha pone la de por defecto (40 horas).
     ...(f.jornada_horas ? { jornada: `${f.jornada_horas} HORAS` } : {}),
     iban, observaciones: f.observaciones,
+    libranza: diasDeLibranza(f.libra_dias),
   };
 }
 
@@ -1113,7 +1132,7 @@ async function tramitar(id, fechaAlta, fechaHabilitado) {
   return r.rowCount;
 }
 
-module.exports = {
+module.exports = { diasDeLibranza,
   CAMPOS, listar, porTelefono, cambiarEstado, descartar, eliminar, faltantes,
   paraFicha, paraFichaDeConductor, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,

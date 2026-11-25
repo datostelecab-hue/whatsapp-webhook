@@ -202,6 +202,8 @@ async function generarFichaPDF(ficha = {}, documentos = []) {
   y = fila(page, y, HF, [{ label: 'FECHA CADUCIDAD', value: g('carnet_caducidad'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'TIPO DE CONTRATO', value: contratoDe(ficha), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'JORNADA SEMANAL', value: of('jornada'), lw: 130, vw: 385 }], fonts);
+  // Los días que libra, los que se apuntaron al darle de alta (25/11/2026).
+  y = fila(page, y, HF, [{ label: 'DÍAS DE LIBRANZA', value: g('libranza'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'MOTIVO DEL CONTRATO', value: of('motivo'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [
     { label: 'FECHA DE INICIO', value: g('fecha_inicio'), lw: 100, vw: 90 },
