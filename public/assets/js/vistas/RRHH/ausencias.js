@@ -92,6 +92,9 @@
           ayuda: 'Las marcadas pasan a justificadas, con una nota.', onClick: lst => enBloque(lst, 'justificada') },
       ] : []),
       { texto: 'Plantilla de baja', icono: 'fa-chart-line', principal: false, onClick: () => historico() },
+      ...(PUEDE ? [{ texto: 'Buscar ausencias ahora', icono: 'fa-rotate', principal: false,
+        ayuda: 'Lo mismo que se hace solo cada día a las 13:00: las ausencias hasta ayer. Repetirlo no duplica nada.',
+        onClick: lst => buscarAhora(lst) }] : []),
     ],
 
     columnas: [
@@ -213,6 +216,16 @@
     if (!v) return;
     await mandar({ ids: [d.id], estado, desde: v.desde, hasta: v.hasta || null, tipoPermiso: v.tipo, nota: v.nota },
       r => `${esBaja ? 'Baja médica abierta' : 'Permiso abierto'}: ${r.decididas} ${r.decididas === 1 ? 'ausencia resuelta' : 'ausencias resueltas'}`, lst);
+  }
+
+  async function buscarAhora(lst) {
+    const r = await Api.post('/ausencias/api/detectar', {}, { aviso: 'No se han podido buscar', bloquea: true });
+    if (!r) return;
+    const partes = [`${r.nuevas} nuevas`, r.vuelven ? `${r.vuelven} vuelven a pendiente` : '',
+      r.reclasificadas ? `${r.reclasificadas} reclasificadas por una baja o un permiso` : '',
+      r.yaNoSon ? `${r.yaNoSon} ya no son ausencia` : ''].filter(Boolean);
+    Dialogo.hecho(`Ausencias al día: ${partes.join(', ')}`);
+    await lst.recargar();
   }
 
   // ── El % de plantilla de baja ─────────────────────────────────────────────

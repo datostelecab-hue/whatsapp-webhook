@@ -31,6 +31,7 @@ La tarea `ausencias.detectar` ([[Tareas programadas]]) a esa hora ya tiene las h
 - **La que ya no es ausencia** (le pusieron una J, entraron sus horas, una libranza, unas vacaciones) se cierra sola: «Ya no es ausencia».
 - **La que cae dentro de una baja médica o un permiso se reclasifica sola**, también si ya estaba decidida («es retroactivo», dice el encargo). La baja se mira en la base, no en la caché de la bitácora.
 - **La que vuelve a serlo** (se anuló la J, se borró la baja) vuelve a pendiente.
+- **«Buscar ausencias ahora»** (con la llave de validar) hace lo mismo a mano, sin esperar a las 13:00. Repetirlo no duplica nada. La tarea automática empieza el 26/11/2026.
 - Si hay nuevas, **nace la tarjeta del día** en el [[Tablero de tareas]] («Revisar N ausencias nuevas»), a quien tenga la función **«ausencias_validar»** ([[Organizacion]], el puesto de Diana), con plazo de un día. **Se cierra sola** cuando no queda ninguna de las suyas por revisar. Si vence, avisa a Ignacio, como todas.
 
 ## Lo que decide RR. HH.
