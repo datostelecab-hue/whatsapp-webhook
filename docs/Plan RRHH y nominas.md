@@ -57,6 +57,42 @@ Se deciden antes de construir el módulo que tocan.
 15. **Descuentos y ley.** La [[Hoja de ruta]] ya avisaba: quitar sueldo como castigo es multa de haber. El descuento por km, por negligencia y por combustible, y el tope sobre el salario, necesitan el visto bueno de legal antes de automatizar nada.
 16. **La Hoja de ruta de Ignacio.** Su fase de RR. HH. (ítems 4 a 9) y el siniestro (18) cubren lo mismo con otras personas y otras reglas. Hay que decir si este encargo los sustituye.
 
+## La proforma real de A3NOM (noviembre de 2026)
+
+El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.xls`, enviado el lunes 23/11. **Es la plantilla de importación de conceptos de A3NOM**: la proforma y el lienzo del módulo 4. Lo que tiene, visto en Excel en solo lectura:
+
+- **Formato `.xls` antiguo** (binario de Excel 97-2003), no `.xlsx`. Una sola hoja, **«Conceptos»**, **protegida**.
+- **Fila 1 oculta** con un código de A3 (con el código de empresa 7735 y la fecha 23/11/2026). Filas 2 a 5: empresa («7735 · TIBUS LUXURY SERVICES SLU»), selección («Todos los trabajadores») y fecha. Hay **11 nombres definidos** que usa A3 (`CodEmpresa`, `CodTrabajador1`, `Concepto1`, `NomTrabajador1`…). **Sin fórmulas ni validaciones**.
+- **Fila 8, la cabecera**: `Código` (B), `Nombre` (C) y una columna por concepto, como «066 - PACTO PR (I)». Las columnas C a F están **agrupadas** (el «+» de encima de las letras las pliega y despliega).
+- **Filas 9 a 174, 166 trabajadores**: solo plantilla propia, ninguno de ETT. El **código y el nombre están bloqueados**; las celdas de los importes, **desbloqueadas**. Esas son las que se escriben.
+- **El «Código» es el legajo** sin los ceros: de los 92 códigos que el ERP ya tenía, 89 son la misma persona.
+- **Los 17 conceptos de noviembre** (columnas D a T; de la U a la DK, vacías):
+
+| Col. | Concepto | Con importe | Total |
+| --- | --- | --- | --- |
+| D | 066 Pacto productividad | 56 | 10.506,52 € |
+| E | 753 Descuento efectivo | 12 | 2.774,96 € |
+| F | 519 Propinas | 98 | 1.622,00 € |
+| G | 059 Dietas | 0 | |
+| H | 039 Horas de… | 0 | |
+| I | 607 Peaje/parking | 66 | 193,90 € |
+| J | 751 Descuento franquicia | 0 | |
+| K | 752 Penalización | 0 | |
+| L | 754 Descuento | 2 | 133,35 € |
+| M | 609 Notas de gasto | 0 | |
+| N | 015 Plus de calidad | 0 | |
+| O | 012 Festivos | 0 | |
+| P | 053 Nocturnidad | 99 | 4.054,00 € |
+| Q | 145 Regularización | 4 | −601,16 € |
+| R | 790 Descuento absentismo | 0 | |
+| S | 008 Plus de actividad | 0 | |
+| T | 758 Descuento vehículo | 3 | 789,15 € |
+
+**Lo que cambia en el plan del módulo 4:**
+- El **catálogo de conceptos** ya tiene forma: cada concepto es un código de A3 («066», «753»…) y se busca por ese código en la fila 8, no por la letra de la columna (así, si el mes que viene cambian de sitio, se sigue encontrando).
+- **El riesgo técnico es el `.xls`**: ExcelJS no lee ni escribe ese formato. Hay que confirmar con la gestoría si A3NOM acepta el mismo fichero en `.xlsx`. Si no, hay que escribir el `.xls` sin rehacerlo (una librería que entienda el formato binario, o tocar solo los registros de las celdas), y comprobarlo celda a celda contra el original.
+- Los **legajos**: la proforma trae 74 códigos que el ERP no tiene. 57 casan con nombre y apellidos con gente de plantilla propia en alta sin legajo, y 3 legajos del ERP no corresponden a la persona que dice la gestoría. Se resuelven en la carga inicial, revisando a mano los dudosos.
+
 ## Lo que hace falta de fuera
 
 **Archivos reales** (anonimizados si hace falta):
