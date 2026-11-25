@@ -241,6 +241,11 @@ const CATALOGO = [
   ] },
   { grupo: 'Dirección', items: [
     { clave: '/bi', etiqueta: 'Inteligencia de negocio' },
+    // TODAS LAS VENCIDAS (25/11/2026, plan de RR. HH.: «las vencidas avisan a
+    // Ignacio»). No abre ninguna pantalla: quien la tiene recibe el aviso de
+    // cada tarjeta del tablero que vence, sea de quien sea. `manual`: de
+    // inicio, Ignacio (db/285).
+    { clave: '/tablero/vencidas', etiqueta: 'Recibir el aviso de todas las tareas vencidas', manual: true },
   ] },
   { grupo: 'Sistema', items: [
     // USUARIOS Y PERMISOS, ADEMÁS DEL DESARROLLADOR (30/09/2026). Camilo: «dale

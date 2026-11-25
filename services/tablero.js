@@ -697,7 +697,12 @@ contadores.registrarFuente('tareas', {
  * hábil) y aún no se avisaron: notificación al responsable y a sus superiores
  * (organizacion.superioresDe: los dos jefes de Control, si son dos), y su evento. Una vez por tarjeta; si se le cambia
  * el plazo, vuelve a poder avisarse.
+ *
+ * Y A QUIEN TENGA LA LLAVE '/tablero/vencidas' (25/11/2026, plan de RR. HH.:
+ * «las vencidas avisan a Ignacio»; Camilo: «Programa que le lleguen a Ignacio»).
+ * Una llave y no un nombre: se da o se quita en /usuarios.
  */
+const CLAVE_VENCIDAS = '/tablero/vencidas';
 async function avisarVencidas({ periodo, cli }) {
   const cal = await calendario.de('madrid');
   if (!cal.esHabil(periodo)) return { saltada: 'no es hábil' };
@@ -708,9 +713,10 @@ async function avisarVencidas({ periodo, cli }) {
   }
   // Lo que sale fuera de la base, al final (la vez queda hecha con lo de arriba).
   let avisos = 0;
+  const siempre = filas.length ? await repo.conLlave(null, CLAVE_VENCIDAS).catch(() => []) : [];
   for (const t of filas) {
     const sups = t.responsable_id ? await organizacion.superioresDe(t.responsable_id).catch(() => []) : [];
-    const para = [...new Set([t.responsable_id, ...sups.map(x => x.id)].filter(Boolean))];
+    const para = [...new Set([t.responsable_id, ...sups.map(x => x.id), ...siempre].filter(Boolean).map(Number))];
     if (!para.length) continue;
     await push().enviar(para, {
       titulo: 'Tarea vencida', cuerpo: t.sensible ? `Venció el ${t.vence_el}` : `${t.titulo} · venció el ${t.vence_el}`,
@@ -724,7 +730,7 @@ async function avisarVencidas({ periodo, cli }) {
 
 tareasProgramadas.registrar({
   clave: 'tablero.vencidas',
-  descripcion: 'Avisa al responsable y a su superior de las tarjetas que han vencido',
+  descripcion: 'Avisa al responsable, a su superior y a quien tenga /tablero/vencidas de las tarjetas que han vencido',
   desde: '2026-11-17',
   toca: ahora => tareasProgramadas.cuando.diaria(ahora, { hora: '09:00' }),
   hacer: avisarVencidas,

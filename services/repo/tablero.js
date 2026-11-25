@@ -201,6 +201,17 @@ async function vencidasSinAviso(cli, hoyIso) {
   return r.rows;
 }
 
+/**
+ * Quién tiene una llave, entre los usuarios activos (25/11/2026: la de recibir
+ * el aviso de todas las vencidas, '/tablero/vencidas').
+ */
+async function conLlave(cli, clave) {
+  const r = await q(cli,
+    `SELECT p.usuario_id AS id FROM usuario_permiso p JOIN usuario u ON u.id = p.usuario_id
+      WHERE p.clave = $1 AND u.estado = 'activo'`, [clave]);
+  return r.rows.map(x => Number(x.id));
+}
+
 // ── Para las colas (entrega 1c, services/tableroColas.js) ──────────────────
 /** Las tarjetas vivas de un tipo, con el id de su origen. */
 async function vivasDe(tipo) {
@@ -222,6 +233,6 @@ async function deOrigenes(tipo, origenIds) {
 
 module.exports = {
   una, porOrigen, listar, insertar, cambiar, evento, eventos, comentar, comentario, anularComentario, comentarios,
-  ponerColaborador, quitarColaborador, persona, personas, cuentas, vencidasSinAviso, vivasDe, deOrigenes,
+  ponerColaborador, quitarColaborador, persona, personas, cuentas, vencidasSinAviso, conLlave, vivasDe, deOrigenes,
   ficherosDeBorrador, pasarBorrador,
 };

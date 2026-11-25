@@ -77,6 +77,7 @@ Lo que no puede ver le da un 404 (no un 403): ni sabe que existe.
 - **En días hábiles** con el [[Calendario laboral]] de Madrid (A2): `{ plazoDias: 3 }`, que cuenta desde mañana, o `{ venceEl: 'aaaa-mm-dd' }`. Se guarda la **fecha límite ya calculada** (`vence_el`) y desde cuándo cuenta (`plazo_desde`).
 - **El semáforo:** verde mientras queda plazo, amarillo el último día y rojo vencida (`calendario.semaforo`).
 - **Al vencer:** la tarea programada `tablero.vencidas` (A10) se lanza cada día hábil a las 09:00 y avisa **al responsable y a su superior** con una notificación urgente al móvil. Avisa una sola vez por tarjeta; si se cambia el plazo, vuelve a poder avisar.
+  - **Y a quien tenga la llave `/tablero/vencidas`** (25/11/2026, db/285, plan de RR. HH.: «las vencidas avisan a Ignacio»; Camilo: *«Programa que le lleguen a Ignacio»*): recibe el aviso de todas, sean de quien sean. Es una llave y no un nombre: de inicio la tiene Ignacio y se da o se quita en [[Usuarios y permisos]] (grupo Dirección). No abre ninguna pantalla.
 
 ## Los tickets (`modules/Ticketera/tarjetas.js`)
 

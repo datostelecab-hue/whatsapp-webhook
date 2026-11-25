@@ -5,7 +5,7 @@ actualizado: 2026-11-06
 
 # Vacaciones
 
-`/vacaciones` (`modules/Vacaciones/`): el **saldo de vacaciones** de cada persona con contrato abierto, debajo de su nombre, y en su ficha de dónde sale cada número. Solo se mira. Poner, corregir o borrar unas vacaciones sigue siendo de [[Conductores|Plantilla]], con la llave de aprobar, que tiene una sola persona: Laura Blanco ([[Ticketera#Las vacaciones las aprueba una sola persona (09/10/2026)]]).
+`/vacaciones` (`modules/Vacaciones/`): el **saldo de vacaciones** de cada persona con contrato abierto, debajo de su nombre, y en su ficha de dónde sale cada número. Solo se mira. Poner, corregir o borrar unas vacaciones sigue siendo de [[Conductores|Plantilla]], con la llave de aprobar, que tiene una sola persona ([[Ticketera#Las vacaciones las aprueba una sola persona (09/10/2026)]]). Desde el 25/11/2026 (db/285) es **Diana**, que asume RR. HH.; antes, Laura Blanco.
 
 Se construye sobre el histórico de vacaciones cargado de los Excel de RRHH ([[RRHH#Las vacaciones de los Excel de RRHH, cargadas (14/10/2026, db/195)]]).
 

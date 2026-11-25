@@ -70,6 +70,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El portal de conductores (19/10/2026)
 
+- **Aplicar `db/285`** (25/11/2026), después de la 284: Diana recibe las llaves de RR. HH. (la de aprobar vacaciones pasa de Laura a ella) y la llave nueva `/tablero/vencidas` va a Ignacio. Ver [[Plan RRHH y nominas]].
 - **Aplicar `db/284`** (25/11/2026): el legajo con su formato (seis cifras) y los ficheros importados. Antes, la carga de legajos dice que falta. Ver [[Ficheros importados]].
 - **Plan de RR. HH. y nóminas** (25/11/2026): fase 0 empezada (legajo y ficheros importados). Para arrancar hacen falta los archivos de la gestoría y las decisiones de la empresa. Ver [[Plan RRHH y nominas]].
 - **Aplicar `db/282` y `db/283`** (24/11/2026), en ese orden: la revisión de fotos del taller (`/revision-fotos`), foto a foto. Sin ellas la pantalla enseña los lotes pero no deja revisar, y la purga de los 20 días no guarda nada. Las llaves van a quien ya tenía Mantenimientos. Ver [[Revision de fotos]].

@@ -76,8 +76,11 @@ Se deciden antes de construir el módulo que tocan.
 **Fase 0 · Cimientos** (no depende de nadie)
 - ✔ 25/11, db/284: el `legajo` como código de la gestoría, **solo plantilla propia** (decidido por Camilo): formato de seis cifras, «Sin legajo» en Plantilla y la carga desde un Excel con sus incidencias. Ver [[Conductores#El legajo: el código de la gestoría (25/11/2026, db/284)]].
 - ✔ 25/11, db/284: los [[Ficheros importados]]: tipo, periodo, huella (el mismo fichero no entra dos veces), estructura, resultado, incidencias y el original.
-- ✔ 25/11: `cuando.semanal` en las [[Tareas programadas]], para la tarjeta del lunes. **Falta la tarjeta** (es del módulo 8 y va a Diana) y decidir el aviso de vencidas a Ignacio (ver abajo).
-- Llaves de salud y de nómina, y el traspaso de las llaves de RR. HH. a Diana. **Pendiente: el usuario de Diana.**
+- ✔ 25/11: `cuando.semanal` en las [[Tareas programadas]], para la tarjeta del lunes. **La tarjeta va con el módulo 8** (es la de subir el listado de la gestoría, y antes tiene que existir dónde subirlo).
+- ✔ 25/11, db/285: **las vencidas avisan a Ignacio**: llave `/tablero/vencidas` (ver [[Tablero de tareas]]).
+- ✔ 25/11, db/285: **el traspaso a Diana** (usuario 20): la llave única de aprobar vacaciones pasa de Laura a ella, más `/convenio` y `/reportes`, que tenía Laura y ella no. El usuario de Laura sigue activo (darlo de baja es de /usuarios).
+- Llaves de salud y de nómina: pendiente.
+- **El Excel de plantilla del 25/11** (pestaña PLANTILLA, 265 filas): 251 legajos ya estaban igual en el ERP, 1 nuevo (de alguien de baja) y 13 que no cuadran: los 6 últimos traen legajos (002592 a 002598) que en el ERP ya son de otras personas, una persona sale con dos legajos y una fila no tiene DNI. Los 69 de plantilla propia en alta sin legajo no vienen en ese Excel. No se cargó nada: se le pasa a Diana para aclararlo con la gestoría.
 - Los parámetros del encargo en [[Parametros]].
 
 **Fase 1 · Módulo 8** (necesita un listado real de la gestoría)

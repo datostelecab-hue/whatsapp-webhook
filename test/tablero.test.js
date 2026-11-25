@@ -254,6 +254,18 @@ test('cada día hábil se avisa de las vencidas al responsable y a su superior, 
   assert.equal((await tablero.avisarVencidas({ periodo: '2026-11-22', cli: null })).saltada, 'no es hábil', 'domingo, nada');
 }));
 
+test('quien tiene la llave /tablero/vencidas recibe también el aviso de todas las vencidas (25/11/2026)', () => conBase(async h => {
+  const p = await gente(h);
+  await h.consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/tablero/vencidas')`, [p.ignacio]);
+  const t = await tablero.crear(p.ignacio, { titulo: 'Pedir la proforma', responsableId: p.laura, plazoDias: 1 });
+  const cal = await calendario.de('madrid');
+  const lunes = cal.habilEnODespues('2026-11-23');
+  await h.consulta(`UPDATE tarea SET vence_el = $2::date WHERE id = $1`, [t.id, cal.restarDiasHabiles(lunes, 1)]);
+  enviadas = [];
+  await tablero.avisarVencidas({ periodo: lunes, cli: null });
+  assert.deepEqual(enviadas.map(e => [...e.ids].sort((x, y) => x - y)), [[p.ignacio, p.laura].sort((x, y) => x - y)]);
+}));
+
 test('los números del menú: las suyas (en rojo si hay vencidas), y por aprobar y por asignar a quien le toca', () => conBase(async h => {
   const p = await gente(h);
   await tablero.crear(p.laura, { titulo: 'Pedida', responsableId: p.diana, plazoDias: 1 });

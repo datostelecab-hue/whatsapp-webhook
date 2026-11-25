@@ -50,7 +50,7 @@ const FUNCIONES = [
   { codigo: 'j_taller', etiqueta: 'Lleva las J de Taller', item: 1, varias: true,
     descripcion: 'Le nace en el tablero la tarjeta de cada J de Taller pendiente. Óscar (16/11/2026).' },
   { codigo: 'j_rrhh', etiqueta: 'Lleva las J de RR. HH.', item: 1, varias: true,
-    descripcion: 'Le nace en el tablero la tarjeta de cada J de RR. HH. pendiente. Laura (16/11/2026).' },
+    descripcion: 'Le nace en el tablero la tarjeta de cada J de RR. HH. pendiente.' },
   { codigo: 'menos_j', etiqueta: 'Lleva las −J', item: 1, varias: true,
     descripcion: 'Le nace en el tablero la tarjeta de cada −J pendiente. William (16/11/2026).' },
   // El chat (ítem 2, db/256): «solo los roles autorizados crean canales». De

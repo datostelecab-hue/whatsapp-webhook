@@ -290,7 +290,7 @@
         opciones: catalogo.map(f => ({ valor: f.codigo, texto: f.etiqueta })) },
       { id: 'suplente', etiqueta: '¿Como suplente?', tipo: 'lista', obligatorio: true, valor: 'no', opciones: SI_NO,
         ayuda: 'El suplente la hace cuando falta el titular.' },
-      { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', max: 500, marcador: 'Opcional. Ej.: solo los de Madrid; hasta que vuelva Laura' },
+      { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', max: 500, marcador: 'Opcional. Ej.: solo los de Madrid; hasta que vuelva de vacaciones' },
     ], { textoBoton: 'Dar la función', nota: 'Desde ya le llegan las tareas de esa función. Queda en su historia, con tu nombre.' });
     if (!v) return;
     await guardar(`${URL}/api/funcion/${d.id}`, { funcion: v.funcion, suplente: v.suplente === 'si', nota: v.nota }, 'Función dada', d);
