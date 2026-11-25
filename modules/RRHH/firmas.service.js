@@ -39,8 +39,17 @@ const FIRMADO = 'firma_firmada';  // el PDF firmado
 
 const TIPOS = {
   finiquito: 'Finiquito', suspension: 'Suspensión de empleo y sueldo', sancion: 'Carta de sanción',
-  descuento: 'Descuento en nómina', contrato: 'Contrato', otro: 'Otro documento',
+  descuento: 'Descuento en nómina', contrato: 'Contrato',
+  comunicacion: 'Comunicación de horas (ausencias)', otro: 'Otro documento',
 };
+// Cómo se manda cada tipo. `plantilla`: el documento es una plantilla de
+// YouTrust (no se sube PDF); `sms`: la firma lleva código por SMS (hace falta
+// el móvil). Camilo (25/11/2026), de las comunicaciones de horas: «sin SMS de
+// autenticación, directo a su correo electrónico».
+const COMO = {
+  comunicacion: { plantilla: 'Comunicación al trabajador', sms: false },
+};
+const comoSe = tipo => ({ plantilla: null, sms: true, ...(COMO[tipo] || {}) });
 const ESTADOS = {
   borrador: { etiqueta: 'Por aprobar', tono: 'warn' },
   aprobado: { etiqueta: 'Aprobado, por enviar', tono: 'gold' },
@@ -142,18 +151,47 @@ async function aprobar(id, { nota } = {}, quien = {}) {
   await exigir(quien, CLAVE_APROBAR, 'Aprobar envíos a firma es de quien tiene la llave «Firmas · aprobar»');
   const r = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'firmas', accion: 'cambio', motivo: `Aprobado para firma${texto(nota) ? `: ${texto(nota)}` : ''}` }, async cli => {
     const f = await cargar(cli, id);
-    if (f.estado !== 'borrador') throw error('Solo se aprueba el que está por aprobar', 409);
-    if (!f.documentos) throw error('Falta el PDF que se va a firmar: súbelo en «Documento a firmar»', 409);
+    await comprobarParaAprobar(cli, f);
     const p = await repo.firmanteDe(Number(f.conductor_id), cli);
-    if (!emailValido(p.email)) throw error('Falta el email de la persona (o está mal) en su ficha: YouTrust manda la invitación por correo', 409);
-    if (!/^\+\d{8,15}$/.test(String(p.movil || ''))) throw error('Falta su móvil en la ficha: la firma lleva un código por SMS', 409);
     await repo.cambiar(cli, f.id, { estado: 'aprobado', aprobado_at: 'now', aprobado_por: quien.usuarioId, en_nombre_de: quien.usuarioId,
       firmante_nombre: p.nombre, firmante_email: p.email, firmante_movil: p.movil, ...(texto(nota) ? { nota: texto(nota) } : {}) });
     await cerrarTarjeta(cli, f.id, quien.usuarioId, 'Aprobado: espera a que se mande');
+    if (f.origen === 'semana') await require('./comunicaciones.service').cerrarSiHecha(cli, f.origen_id, quien.usuarioId);
     return { estado: 'aprobado' };
   });
   avisarCambio();
   return r;
+}
+
+/** Lo que tiene que tener para aprobarse: el PDF (si no es plantilla), el email y, con SMS, el móvil. */
+async function comprobarParaAprobar(cli, f) {
+  const como = comoSe(f.tipo);
+  if (f.estado !== 'borrador') throw error('Solo se aprueba el que está por aprobar', 409);
+  if (!como.plantilla && !f.documentos) throw error('Falta el PDF que se va a firmar: súbelo en «Documento a firmar»', 409);
+  const p = await repo.firmanteDe(Number(f.conductor_id), cli);
+  if (!emailValido(p.email)) {
+    throw error(f.tipo === 'comunicacion' ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
+      : 'Falta el email de la persona (o está mal) en su ficha: YouTrust manda la invitación por correo', 409);
+  }
+  if (como.sms && !/^\+\d{8,15}$/.test(String(p.movil || ''))) throw error('Falta su móvil en la ficha: la firma lleva un código por SMS', 409);
+}
+
+/**
+ * APROBAR VARIAS a la vez (las comunicaciones de la semana). Las que no se
+ * pueden (sin email…) se quedan como estaban y se dice por qué.
+ * → { aprobadas, fallos: [{ id, nombre, motivo }] }
+ */
+async function aprobarVarias({ ids } = {}, quien = {}) {
+  await exigir(quien, CLAVE_APROBAR, 'Aprobar envíos a firma es de quien tiene la llave «Firmas · aprobar»');
+  const lista_ = [...new Set([].concat(ids || []).map(String).filter(x => /^\d+$/.test(x)))];
+  if (!lista_.length) throw error('No hay ninguno marcado');
+  let aprobadas = 0;
+  const fallos = [];
+  for (const id of lista_) {
+    try { await aprobar(id, {}, quien); aprobadas++; }
+    catch (e) { const f = await repo.porId(id).catch(() => null); fallos.push({ id, nombre: f ? f.nombre : '', motivo: e.message }); }
+  }
+  return { aprobadas, fallos };
 }
 
 async function descartar(id, { nota } = {}, quien = {}) {
@@ -165,6 +203,7 @@ async function descartar(id, { nota } = {}, quien = {}) {
     if (!['borrador', 'aprobado', 'error'].includes(f.estado)) throw error('Ese ya se mandó: no se descarta', 409);
     await repo.cambiar(cli, f.id, { estado: 'descartado', cerrado_at: 'now', cerrado_por: quien.usuarioId, nota: `Descartado: ${n}` });
     await cerrarTarjeta(cli, f.id, quien.usuarioId, 'Descartado');
+    if (f.origen === 'semana') await require('./comunicaciones.service').cerrarSiHecha(cli, f.origen_id, quien.usuarioId);
     return { estado: 'descartado' };
   });
   avisarCambio();
@@ -283,7 +322,7 @@ const delBot = {
 async function lista(quien) {
   await exigir(quien, CLAVE_VER);
   if (!await repo.hayTabla()) return { filas: [], sinTabla: true, estados: ESTADOS, tipos: TIPOS };
-  return { filas: await repo.lista(), sinTabla: false, estados: ESTADOS, tipos: TIPOS, puedeAprobar: await puede(quien, CLAVE_APROBAR) };
+  return { filas: await repo.lista(), sinTabla: false, estados: ESTADOS, tipos: TIPOS, como: COMO, puedeAprobar: await puede(quien, CLAVE_APROBAR) };
 }
 
 async function ficha(id, quien) {
@@ -329,6 +368,6 @@ contadores.registrarFuente('firmas', {
 });
 
 module.exports = {
-  crear, desdeFiniquito, aprobar, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
+  crear, desdeFiniquito, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
   TIPOS, ESTADOS, CLAVE_VER, CLAVE_APROBAR, DOC, FIRMADO,
 };

@@ -51,10 +51,10 @@ async function personas() {
 
 async function insertar(cli, x) {
   const r = await q(cli,
-    `INSERT INTO firma_envio (tipo, titulo, origen, origen_id, conductor_id, firmante_nombre, firmante_email, firmante_movil, nota, creado_por)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id::text AS id`,
+    `INSERT INTO firma_envio (tipo, titulo, origen, origen_id, conductor_id, firmante_nombre, firmante_email, firmante_movil, nota, creado_por${x.detalle ? ', detalle' : ''})
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10${x.detalle ? ', $11::jsonb' : ''}) RETURNING id::text AS id`,
     [x.tipo, x.titulo, x.origen || 'manual', x.origenId || null, x.conductorId, x.firmante.nombre, x.firmante.email,
-     x.firmante.movil, x.nota || null, x.creadoPor || null]);
+     x.firmante.movil, x.nota || null, x.creadoPor || null, ...(x.detalle ? [JSON.stringify(x.detalle)] : [])]);
   return r.rows[0].id;
 }
 
@@ -82,7 +82,7 @@ async function cambiar(cli, id, cambios) {
 const nombreDe = a => `NULLIF(btrim(COALESCE(${a}.nombre, '') || ' ' || COALESCE(NULLIF(${a}.apellidos, '.'), '')), '')`;
 const fecha = c => `to_char(${c} AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI')`;
 const SELECT = `
-  SELECT f.id::text AS id, f.tipo, f.titulo, f.origen, f.origen_id, f.conductor_id::text AS conductor_id, f.estado, f.nota,
+  SELECT f.id::text AS id, f.tipo, f.titulo, f.origen, f.origen_id, f.conductor_id::text AS conductor_id, f.estado, f.nota, f.detalle,
          f.firmante_nombre, f.firmante_email, f.firmante_movil, f.proveedor_ref, f.proveedor_url,
          ${fecha('f.creado_at')} AS creado, ${fecha('f.aprobado_at')} AS aprobado, ${fecha('f.enviado_at')} AS enviado,
          ${fecha('f.cerrado_at')} AS cerrado,
@@ -118,4 +118,8 @@ async function cuantos() {
   return r.rows[0];
 }
 
-module.exports = { hayTabla, bot, firmanteDe, personas, insertar, deOrigen, cambiar, lista, porId, porEstado, cuantos };
+async function variasPorId(cli, ids) {
+  return (await q(cli, `${SELECT} WHERE f.id = ANY($1::bigint[]) ORDER BY f.id`, [ids])).rows;
+}
+
+module.exports = { variasPorId, hayTabla, bot, firmanteDe, personas, insertar, deOrigen, cambiar, lista, porId, porEstado, cuantos };

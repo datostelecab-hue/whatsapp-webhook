@@ -9,6 +9,8 @@
 const express = require('express');
 const router = express.Router();
 const firmas = require('./firmas.service');
+// Las comunicaciones de horas de cada martes (db/294): su tarea se registra al cargarse.
+require('./comunicaciones.service');
 const actor = require('../../services/repo/actor');
 
 const quien = async req => ({ usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req), rol: (req.usuario || {}).rol || '' });
@@ -32,6 +34,7 @@ router.get('/api/lista', responde(async req => firmas.lista(await quien(req))));
 router.get('/api/envio/:id', responde(async req => ({ ficha: await firmas.ficha(req.params.id, await quien(req)) })));
 router.get('/api/personas', responde(async req => firmas.personas(await quien(req))));
 router.post('/api/envio', responde(async req => firmas.crear(req.body || {}, await quien(req))));
+router.post('/api/aprobar-varias', responde(async req => firmas.aprobarVarias(req.body || {}, await quien(req))));
 router.post('/api/envio/:id/aprobar', responde(async req => firmas.aprobar(req.params.id, req.body || {}, await quien(req))));
 router.post('/api/envio/:id/descartar', responde(async req => firmas.descartar(req.params.id, req.body || {}, await quien(req))));
 router.post('/api/envio/:id/borrador', responde(async req => firmas.aBorrador(req.params.id, req.body || {}, await quien(req))));

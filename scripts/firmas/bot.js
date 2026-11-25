@@ -48,9 +48,15 @@ function opciones(args) {
   switch (orden) {
     case 'pendientes': {
       const lista = await firmas.delBot.pendientes();
-      r = lista.map(f => ({ id: f.id, documento: f.titulo, tipo: f.tipo, firmante: f.firmante_nombre,
-        nombre: f.nombre_pila, apellidos: f.apellidos, email: f.firmante_email,
-        movil: f.firmante_movil, pdfs: f.documentos, aprobado: `${f.aprobado} por ${f.aprobado_por_nombre}` }));
+      r = lista.map(f => {
+        const como = firmas.comoSe(f.tipo);
+        return { id: f.id, documento: f.titulo, tipo: f.tipo, firmante: f.firmante_nombre,
+          nombre: f.nombre_pila, apellidos: f.apellidos, email: f.firmante_email,
+          movil: como.sms ? f.firmante_movil : '(sin SMS)', pdfs: como.plantilla ? `(plantilla «${como.plantilla}»)` : f.documentos,
+          // Los huecos de la plantilla de YouTrust (create-signature-request-from-template).
+          ...(como.plantilla && f.detalle ? { plantilla: como.plantilla, incidencias: f.detalle.incidencias, total: f.detalle.total } : {}),
+          aprobado: `${f.aprobado} por ${f.aprobado_por_nombre}` };
+      });
       break;
     }
     case 'enviados': {

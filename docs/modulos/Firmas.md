@@ -56,6 +56,27 @@ Con el **conector de YouTrust** (instalado el 25/11/2026) y el script del bot. E
 > - Que alguien revise las **condiciones de uso de YouTrust** sobre manejar la aplicación de forma automatizada: venden la API aparte.
 > - Confirmar con legal que la **firma simple con código por SMS** vale para finiquitos y cartas (la cualificada es un complemento aparte).
 
+## La comunicación semanal de horas (db/294, 25/11/2026)
+
+La carta de RR. HH. «Comunicación al trabajador»: los días que quedó debiendo horas y el descuento en nómina, para que la firme de enterado. Camilo: *«semanalmente, dependiendo del contrato (40, 32, 20 horas…) debemos de mandar estas cartas … sin SMS de autenticación, directo a su correo electrónico; si no tiene, debe de haber un mensaje que diga que se debe de poner el correo del conductor»*.
+
+```
+modules/RRHH/comunicaciones.js          la cuenta de la semana (pura)
+modules/RRHH/comunicaciones.service.js  la tarea de los martes y la tarjeta de la semana
+modules/RRHH/comunicaciones.repo.js
+test/comunicaciones.test.js
+```
+
+- **La regla** (Camilo): *«si faltó un día, pero hizo 41 horas en la semana, pues está bien, nada de carta»*. Semana de **lunes a domingo**; se le piden las horas de su contrato (sin jornada en la ficha, 40), en proporción a los días con contrato; **8 h menos** por cada día de vacaciones, baja, permiso, situación sin marca, sin plaza, o que RR. HH. dio por justificado en [[Ausencias]]. Hizo: las horas de la [[Bitacora]] (BOLT de su turno + J aprobadas). Si no llega, hay carta.
+- **La carta**: cada «Ausencia» (8 h) y cada día con menos de 8 h (lo que le faltó). El **total es lo que debe en la semana** (lo que se descuenta): un día largo compensa uno corto. *«Siempre son 8»*.
+- **Solo plantilla propia.**
+- **Cada martes a las 09:00**, la semana pasada (`comunicaciones.semana`): el lunes Tráfico pide y aprueba los justificantes que falten, y no le llega a quien cumplió por un justificante. Empieza el 01/12/2026.
+- Entran en la cola como tipo **«comunicacion»**, una por persona y semana, **sin PDF** (el documento es la plantilla de YouTrust) y **sin móvil** (sin SMS). Sin email se dice en la nota y al aprobarla: *«falta el email del conductor: ponlo en su ficha (Plantilla) para poder mandársela»*.
+- **Diana**: una **tarjeta por semana** («Revisar N comunicaciones de horas»), que se cierra sola al no quedar ninguna por aprobar. En la ficha de cada una, la semana (pedido, hecho, debe) y cada día; **«Aprobar marcadas»** las aprueba de golpe y dice cuáles no se pudieron y por qué.
+- **El envío**: `create-signature-request-from-template` con la plantilla **«Comunicación al trabajador»**: firmante «Conductor» (nombre, apellidos, email; sin SMS) y los textos **«Incidencias»** (los días) y **«Total»**. `bot.js pendientes` los da hechos.
+
+**La plantilla de YouTrust** es la carta de RR. HH. sin datos de nadie (el nombre, los días y el total, en blanco). Campos: «Nombre del firmante» junto al nombre, texto de solo lectura **«Incidencias»** en el hueco de los días, **«Total»** tras «Horario de la ausencia sin justificar:», y la **firma** bajo «Fdo. Trabajador:»; firmante de marcador **«Conductor»**, firma simple **sin código**.
+
 ## Llaves
 
 - `/firmas`: mirar la cola. Diana e Ignacio.
