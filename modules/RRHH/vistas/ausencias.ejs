@@ -1,0 +1,13 @@
+<%#
+  LAS AUSENCIAS QUE VALIDA RR. HH. (módulo 1, db/289, 25/11/2026).
+  Las «Ausencias» de la bitácora de la plantilla propia, desde el 26/10/2026:
+  Diana dice si son una baja médica, un permiso, justificadas o injustificadas
+  (las únicas que son absentismo). Y el % de plantilla de baja.
+  El JavaScript, en /assets/js/vistas/RRHH/ausencias.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeValidar: !!puedeValidar }) %></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/ausencias.js') %>"></script>

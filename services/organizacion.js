@@ -70,6 +70,10 @@ const FUNCIONES = [
   // de administración de personal y nómina. (item: el módulo 8 del plan de RR. HH.)
   { codigo: 'plantilla_gestoria', etiqueta: 'Sube el listado de plantilla de la gestoría', item: 8, varias: false,
     descripcion: 'Cada lunes le nace la tarjeta de pedir a la gestoría el listado de plantilla en alta y subirlo, con vencimiento ese mismo día.' },
+  // Las ausencias que valida RR. HH. (módulo 1, db/289): cada día le nace la
+  // tarjeta de revisar las nuevas. De inicio, el puesto de Diana.
+  { codigo: 'ausencias_validar', etiqueta: 'Revisa las ausencias de cada día', item: 1, varias: false,
+    descripcion: 'Cada día le nace la tarjeta de revisar las ausencias nuevas de la plantilla propia: baja médica, permiso, justificada o injustificada (absentismo).' },
   { codigo: 'cartas_consulta', etiqueta: 'Consulta las cartas de descuento', item: 6, varias: true,
     descripcion: 'Ve las cartas y su firma; no las emite.' },
   { codigo: 'desactiva_baja_voluntaria', etiqueta: 'Desactiva al que se va: baja voluntaria o periodo de prueba', item: 8, varias: true,

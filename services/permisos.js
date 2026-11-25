@@ -59,6 +59,12 @@ const CATALOGO = [
     { clave: '/gestoria', etiqueta: 'Plantilla de la gestoría', hijos: [
       { clave: '/gestoria/gestionar', etiqueta: 'Plantilla de la gestoría · subir el listado y resolver', escribir: true },
     ] },
+    // LAS AUSENCIAS QUE VALIDA RR. HH. (módulo 1, db/289): mirarlas (y el % de
+    // plantilla de baja) y validarlas; validar va marcada `escribir`. Son datos
+    // de salud: solo quien lleva RR. HH.
+    { clave: '/ausencias', etiqueta: 'Ausencias y bajas (RR. HH.)', hijos: [
+      { clave: '/ausencias/validar', etiqueta: 'Ausencias · validarlas (baja, permiso, justificada o injustificada)', escribir: true },
+    ] },
     // Los SALDOS de vacaciones (14/10/2026): mirarlos. Aprobar es otra llave,
     // '/vacaciones/aprobar', de una sola persona y mirada exacta: tener esta no
     // la da (services/aprobarVacaciones.js).

@@ -417,6 +417,8 @@ app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
 // El inventario del taller (db/241): recambios sin matrícula y sus movimientos.
 app.use('/inventario', require('./modules/Vehiculos/inventario.controller'));
 // La revisión de las fotos del portal (db/282): cada lote contra el anterior del mismo coche.
+// Las ausencias que valida RR. HH. (módulo 1 del plan de RR. HH., db/289).
+app.use('/ausencias', require('./modules/RRHH/ausencias.controller'));
 // La plantilla de la gestoría (módulo 8 del plan de RR. HH., db/287).
 app.use('/gestoria', require('./modules/Gestoria/gestoria.controller'));
 app.use('/revision-fotos', require('./modules/Vehiculos/revisionFotos.controller'));

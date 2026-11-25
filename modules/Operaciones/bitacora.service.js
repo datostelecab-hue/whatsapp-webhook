@@ -223,6 +223,50 @@ async function mediaDelMes({ hasta } = {}) {
 }
 
 /**
+ * QUÉ FUE UN DÍA DE UNA PERSONA, para contar: 'trabajado', 'ausencia' o null
+ * (no cuenta). LA REGLA DE LA «AUSENCIA», UNA SOLA VEZ (25/11/2026): la usan el
+ * promedio de horas de la casa (abajo) y las ausencias que valida RR. HH.
+ * (modules/RRHH/ausencias.service.js, módulo 1). Si fueran dos, la bandeja de
+ * Diana y la letra de la persona dirían cosas distintas del mismo día.
+ *
+ *   · trabajado: horas de BOLT (más de 0), o una J.
+ *   · null: fuera de contrato (antes del alta, tras la baja, entre dos), una
+ *     libranza, vacaciones, baja o permiso (V B P L), una situación sin marca
+ *     (suspensión…) o un día sin ninguna plaza.
+ *   · ausencia: lo demás. Con plaza, le tocaba, y no salió sin nada que lo explique.
+ *
+ * `c` es una persona de la rejilla (`datos().conductores`) e `i`, el índice del día.
+ */
+const NO_CUENTA = new Set(['V', 'B', 'P', 'L']);
+const enTramo = (tramos, i) => (tramos || []).some(([a, b]) => i >= a && i <= b);
+function claseDelDia(c, i) {
+  const v = c.dias[i];
+  if (typeof v === 'number' && v > 0) return 'trabajado';
+  if (c.altaIdx == null || i < c.altaIdx || (c.bajaIdx != null && i > c.bajaIdx) || enTramo(c.huecos, i)) return null;
+  if (v === 'J') return 'trabajado';
+  if (NO_CUENTA.has(v) || enTramo(c.situaciones, i) || enTramo(c.sinPlaza, i)) return null;
+  return 'ausencia';
+}
+
+/**
+ * LAS «AUSENCIAS» DE UN TRAMO, día a día: [{ conductorId, dia }]. Las de la
+ * regla de arriba, de toda la rejilla, hasta AYER como mucho (hoy va a medias).
+ */
+async function ausenciasEntre({ desde, hasta } = {}) {
+  const d = await datos();
+  const base = Date.UTC(d.inicio.y, d.inicio.m, d.inicio.d);
+  const idx = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - base) / 86400000);
+  const iso = i => new Date(base + i * 86400000).toISOString().slice(0, 10);
+  const ini = Math.max(0, idx(desde));
+  const fin = Math.min(d.hoyIdx - 1, hasta ? idx(hasta) : d.hoyIdx - 1);
+  const out = [];
+  d.conductores.forEach(c => {
+    for (let i = ini; i <= fin; i++) if (claseDelDia(c, i) === 'ausencia') out.push({ conductorId: String(c.conductorId), dia: iso(i) });
+  });
+  return out;
+}
+
+/**
  * EL PROMEDIO DE HORAS DE LA CASA (15/10/2026). Camilo: «la letra debe de
  * calcularse igual en todas partes, pon lo del cálculo de las horas como un
  * estándar en todas partes, hasta en los reportes». Es ESTE, y lo demás lo lee
@@ -260,23 +304,21 @@ async function promedioHoras({ desde, hasta } = {}) {
   const desdeIso = esIso(desde) ? String(desde).slice(0, 10) : hastaIso.slice(0, 8) + '01';
   const ini = Math.max(0, idx(desdeIso));
 
-  const enTramo = (tramos, i) => (tramos || []).some(([a, b]) => i >= a && i <= b);
-  const fuera = (c, i) => c.altaIdx == null || i < c.altaIdx || (c.bajaIdx != null && i > c.bajaIdx)
-    || enTramo(c.huecos, i);
-  const NO_CUENTA = new Set(['V', 'B', 'P', 'L']);
   const r1 = x => Math.round(x * 10) / 10;
   const porId = new Map();
   d.conductores.forEach(c => {
     let horas = 0, dias = 0, ausencias = 0;
     for (let i = ini; i <= fin; i++) {
-      const v = c.dias[i];
-      if (typeof v === 'number' && v > 0) { horas += v; dias++; continue; }
-      if (fuera(c, i)) continue;
-      if (v === 'J') {
-        const dia = iso(i), j = c.justif[dia] || {};
-        horas += (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
+      const k = claseDelDia(c, i);
+      if (k === 'trabajado') {
+        const v = c.dias[i];
+        if (typeof v === 'number') horas += v;
+        else {
+          const dia = iso(i), j = c.justif[dia] || {};
+          horas += (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[dia] || 0);
+        }
         dias++;
-      } else if (!NO_CUENTA.has(v) && !enTramo(c.situaciones, i) && !enTramo(c.sinPlaza, i)) ausencias++;
+      } else if (k === 'ausencia') ausencias++;
     }
     if (dias || ausencias) {
       const promedio = r1(horas / (dias + ausencias));
@@ -323,7 +365,7 @@ async function sellarPuntuacionSemanal() {
 }
 
 module.exports = {
-  mediaDelMes, promedioHoras, recalcularPromedios, sellarPuntuacionSemanal,
+  mediaDelMes, promedioHoras, recalcularPromedios, sellarPuntuacionSemanal, claseDelDia, ausenciasEntre,
   datos, vacaciones, vacacionesExcel, llamadasDelDia,
   justificar, anularJustificante, libranza, resellar, DESTINOS, ponerMenosJ,
   CASUISTICAS_MENOS_J: menosJ.CASUISTICAS,
