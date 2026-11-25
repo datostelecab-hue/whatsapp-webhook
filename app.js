@@ -417,6 +417,8 @@ app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
 // El inventario del taller (db/241): recambios sin matrícula y sus movimientos.
 app.use('/inventario', require('./modules/Vehiculos/inventario.controller'));
 // La revisión de las fotos del portal (db/282): cada lote contra el anterior del mismo coche.
+// El envío a firma por YouTrust (módulo 6 del plan de RR. HH., db/293).
+app.use('/firmas', require('./modules/RRHH/firmas.controller'));
 // Los finiquitos (módulo 7 del plan de RR. HH., db/291).
 app.use('/finiquitos', require('./modules/RRHH/finiquitos.controller'));
 // Las ausencias que valida RR. HH. (módulo 1 del plan de RR. HH., db/289).

@@ -141,6 +141,8 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 
 **Módulo 5 adelantado** — ✔ 25/11 (db/288): el informe de jornada para el SMAC, ver [[Informe de jornada]]. Decidido: estricto del convenio, día natural, desde el 01/07/2026.
 
+**Módulo 6** — ✔ 25/11 (db/293), sin API: la cola de firmas, ver [[Firmas]]. Plan Plus de YouTrust (aplicación, un asiento, Diana); Claude manda los aprobados en su nombre. Falta contratarlo, revisar sus condiciones de uso y confirmar con legal la firma simple con SMS. El SMS certificado (módulo 9, Mensatec) sigue pendiente.
+
 **Módulo 7 adelantado** — ✔ 25/11 (db/291): los finiquitos, ver [[Finiquitos]]. Decidido: nace al dar la baja (propia y ETT), Diana revisa, Ignacio aprueba, vacaciones en días.
 
 **Módulo 2** — ✔ 25/11 (db/292): «Para decidir» en el ticket con los cuatro datos, el aviso al conductor en su portal y la baja encima de unas vacaciones (la baja manda y Diana decide). Ver [[Vacaciones#Para decidir una solicitud (25/11/2026, módulo 2 del plan de RR. HH.)]]. Queda para más adelante: cupos y fechas bloqueadas (el encargo: «estructura preparada para reglas futuras»).

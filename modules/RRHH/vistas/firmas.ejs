@@ -1,0 +1,12 @@
+<%#
+  EL ENVÍO A FIRMA (módulo 6, db/293, 25/11/2026).
+  Los documentos que se mandan a firmar por YouTrust: Diana decide si se mandan;
+  los aprobados los manda Claude en su nombre; el firmado se adjunta.
+  El JavaScript, en /assets/js/vistas/RRHH/firmas.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeAprobar: !!puedeAprobar }) %></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/firmas.js') %>"></script>

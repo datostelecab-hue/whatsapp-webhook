@@ -46,7 +46,7 @@ No incluye el salario base del mes, la indemnización ni la parte de las pagas: 
 2. **Tarjeta a Diana** (función «finiquitos_revisar», su puesto): lo mira, puede **recalcularlo**, y lo da por **revisado**.
 3. **Tarjeta a Ignacio** (quien tenga `/finiquitos/aprobar`): lo **aprueba** o lo **devuelve** con motivo.
 4. **Al aprobarlo**, solo: el PDF se guarda en sus documentos (tipo «Finiquito») y se **manda por correo** con el PDF y el Excel de las variables al «Correo de la gestoría» (los propios) o al «Correo de la ETT para los finiquitos» (los de ETT), los dos en [[Parametros]]. Sin correo, o si no sale, queda «aprobado, sin enviar» y lo dice; se reintenta o se marca **«Lo mandé a mano»**. Aprobado, ya no se recalcula.
-5. **Firmado**: mientras no esté la firma digital (módulo 6), se sube el firmado en el bloque «Firmado» y se marca. Sin el fichero no deja.
+5. **A firmar**: al aprobarse, entra solo en la cola de [[Firmas]], a falta del finiquito de la gestoría (el documento con los importes). Cuando se firma allí, este queda **firmado**. También se puede subir el firmado aquí, en «Firmado», y marcarlo.
 
 Todo va al libro de auditoría (`auditoria_vigilar('finiquito')`), y el menú cuenta lo que le toca a cada uno.
 

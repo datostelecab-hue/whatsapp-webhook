@@ -66,6 +66,11 @@ const CATALOGO = [
     { clave: '/ausencias', etiqueta: 'Ausencias y bajas (RR. HH.)', manual: true, hijos: [
       { clave: '/ausencias/validar', etiqueta: 'Ausencias · validarlas (baja, permiso, justificada o injustificada)', escribir: true, manual: true },
     ] },
+    // EL ENVÍO A FIRMA (módulo 6, db/293): mirar la cola y aprobar lo que se
+    // manda (Diana). `manual`: se dan uno a uno.
+    { clave: '/firmas', etiqueta: 'Firmas (envío de documentos por YouTrust)', manual: true, hijos: [
+      { clave: '/firmas/aprobar', etiqueta: 'Firmas · preparar y aprobar lo que se manda a firmar', escribir: true, manual: true },
+    ] },
     // LOS FINIQUITOS (módulo 7, db/291): mirarlos, revisarlos (Diana) y
     // aprobarlos (Ignacio). Datos de nómina: `manual`, se dan uno a uno. Sin
     // `escribir`: una llave solo admite UNA hija de escritura, y aquí hay dos;

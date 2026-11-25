@@ -319,6 +319,8 @@ async function aprobar(id, quien = {}) {
       cli => repo.cambiar(cli, f.id, { documento_id: d.id }));
   } catch (e) { console.error(`❌ [Finiquitos] no se pudo guardar el PDF de ${f.id}: ${e.message}`); }
   const aviso = await avisar(f).catch(e => ({ enviado: false, motivo: e.message }));
+  // Y a la cola de firmas (módulo 6): a falta del finiquito de la gestoría, que es lo que se firma.
+  await require('./firmas.service').desdeFiniquito(f);
   await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'finiquitos', accion: 'cambio',
     motivo: aviso.enviado ? `Aviso enviado a ${aviso.a}` : `Aviso sin enviar: ${aviso.motivo}` }, cli => repo.cambiar(cli, f.id, aviso.enviado
     ? { estado: 'enviado', enviado_at: 'now', enviado_por: quien.usuarioId, enviado_a: aviso.a, envio_nota: null }
