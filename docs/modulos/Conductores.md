@@ -196,6 +196,8 @@ Lo pidió el caso de Ronnie Adrián Cuñas Maldonado: baja con fecha 13/10 apunt
 
 **Ya no se teclea.** El fijo libra el descanso de su coche; el CT, los días que no le pusieron. La columna "Libra" lo enseña y el tooltip distingue si viene del cuadrante o de un patrón puesto a mano. La regla vive **una sola vez**, en la vista `v_conductor_libranza` (`db/113`), para que Plantilla y la agenda de PostgreSQL no puedan decir cosas distintas de la misma persona.
 
+**Manda la plaza; sin plaza, lo apuntado** (25/11/2026). Si tiene plaza en el planificador, la columna «Libra», la ficha y la ficha de alta dicen los días de su plaza, aunque haya un patrón apuntado a mano (antes era al revés: lo apuntado en el alta tapaba para siempre al planificador; en producción, 7 personas). **Quien está contratado y aún no tiene plaza** (45 el 25/11/2026) sí se edita desde Plantilla: el campo **«Días que libra»** en «Editar datos» y el botón **«Libranzas»** de la ficha. Es el patrón de siempre (`guardarLibranza`, POST `/plantilla/api/conductor/:id/libranza`), con su historial y su apunte en el libro. En cuanto el planificador le da una plaza, el campo y el botón dejan de salir. La cuenta, en `conductores.service.libranzasDe(id, { momento })`. Prueba: `test/libranzas-sin-plaza.test.js`.
+
 El turno que se pinta es el del historial si alguien lo puso a mano y, si no, el de su **plaza**, que es donde vive de verdad. Ver [[Jornada y turnos]].
 
 ## Las cuentas de BOLT

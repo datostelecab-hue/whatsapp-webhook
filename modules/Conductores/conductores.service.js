@@ -121,9 +121,23 @@ const AVISO_INDUCCION = 'Entra con el bloqueo de motor encendido: al terminar ca
   + 'desde su ficha de Plantilla («Vídeo del bloqueo») o desde Control → Próximas incorporaciones. '
   + 'El vídeo solo sale si ha escrito al WhatsApp de Telecab en las últimas 24 horas.';
 
+/**
+ * LOS DÍAS QUE LIBRA UNA PERSONA, como números (1 = lunes … 7 = domingo). Es
+ * la misma cuenta que la columna «Libra» de Plantilla: el patrón apuntado a
+ * mano si lo hay y, si no, lo que dice su plaza en el planificador. Sin plaza
+ * ni patrón, vacío. `momento` mira otro día (el de su incorporación, si aún no
+ * ha entrado).
+ */
+const LETRA_DIA = { L: 1, M: 2, X: 3, J: 4, V: 5, S: 6, D: 7 };
+async function libranzasDe(id, { momento } = {}) {
+  const [fila] = await repo.listar({ id: Number(id), momento });
+  return String(fila?.libranzas || '').split(/\s+/).map(l => LETRA_DIA[l]).filter(Boolean);
+}
+
 module.exports = {
   // Qué es un campo de la ficha (y de qué tipo). Es un catálogo, no una función.
   CAMPOS: repo.CAMPOS,
+  libranzasDe,
   AVISO_INDUCCION,
   crearPersona: (...a) => repo.crearPersona(...a),
   actualizar: (...a) => repo.actualizar(...a),

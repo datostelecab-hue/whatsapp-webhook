@@ -756,6 +756,25 @@ async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {})
   return ficha(id);
 }
 
+/**
+ * LOS DÍAS DE LIBRANZA DE LA FICHA DE ALTA (25/11/2026). Camilo: «algunos a los
+ * cuales no les apuntamos el día de libranza salen vacíos, así ya tengan días de
+ * libranza por el planificador». Los mismos que la columna «Libra» de
+ * Plantilla: los de su plaza del planificador y, sin plaza, los apuntados a
+ * mano. Se miran el día que empieza (si aún no ha entrado), para que salgan
+ * también los de quien entra la semana que viene; si ese día no hay nada, se
+ * queda lo apuntado que ya traía la ficha.
+ */
+async function conLibranza(datos) {
+  if (!datos || !datos.conductorId) return datos;
+  const [d, m, a] = String(datos.fecha_inicio || '').split('/');
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+  const inicio = a ? `${a}-${m}-${d}` : null;
+  const momento = inicio && inicio > hoy ? inicio : hoy;
+  const dias = await conductores.libranzasDe(datos.conductorId, { momento });
+  return dias.length ? { ...datos, libranza: repo.diasDeLibranza(dias) } : datos;
+}
+
 module.exports = {
   // Lo que coordina con Conductores y Documentos: vive aquí.
   catalogos, ficha, abrir, abrirContratada, guardar, pasarARRHH, importarMatriz, altaAMano, tramitarAlta, dniValido,
@@ -767,8 +786,8 @@ module.exports = {
   descartar: (...a) => repo.descartar(...a),
   eliminar: (...a) => repo.eliminar(...a),
   faltantes: (...a) => repo.faltantes(...a),
-  paraFicha: (...a) => repo.paraFicha(...a),
-  paraFichaDeConductor: (...a) => repo.paraFichaDeConductor(...a),
+  paraFicha: async (...a) => conLibranza(await repo.paraFicha(...a)),
+  paraFichaDeConductor: async (...a) => conLibranza(await repo.paraFichaDeConductor(...a)),
   parsearMatriz: (...a) => repo.parsearMatriz(...a),
   paraETT: (...a) => repo.paraETT(...a),
   paraETTElegidos: (...a) => repo.paraETTElegidos(...a),

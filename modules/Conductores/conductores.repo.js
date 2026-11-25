@@ -137,11 +137,13 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            coche.matricula, coche.vehiculo_id, coche.rol, coche.zona,
            coche.plazas AS plazas_abiertas,
 
-           -- Libranzas como 'L M' y no como siete columnas. El patrón manual
-           -- manda; si no lo hay —y hoy no lo tiene NADIE— se deducen del
-           -- cuadrante, que es lo que de verdad se cumple.
-           COALESCE(lib.dias, pl.libra) AS libranzas,
-           (lib.dias IS NULL AND pl.libra IS NOT NULL) AS libranzas_del_cuadrante,
+           -- Libranzas como 'L M' y no como siete columnas. MANDA SU PLAZA del
+           -- cuadrante, que es lo que de verdad se cumple; el patrón apuntado a
+           -- mano (al darle de alta, o en Plantilla) solo vale mientras no
+           -- tiene plaza (25/11/2026: antes era al revés, y lo apuntado en el
+           -- alta tapaba para siempre lo que decía el planificador).
+           COALESCE(pl.libra, lib.dias) AS libranzas,
+           (pl.libra IS NOT NULL) AS libranzas_del_cuadrante,
 
            -- Documentación obligatoria que le falta. Sale de v_documento_falta,
            -- que es la única definición de "obligatorio" del sistema.

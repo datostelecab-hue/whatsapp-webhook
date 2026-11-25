@@ -352,6 +352,30 @@
   // tanto la ficha y el tablero decían cosas distintas de la misma persona.
   //
   // Se cambian donde viven: en el planificador.
+  //
+  // SALVO QUIEN AÚN NO TIENE PLAZA (25/11/2026). Camilo: «si no está planificado
+  // pero ya contratado, al darle en editar datos, no me sale para editarle los
+  // días de libranza». Quien está contratado y todavía no ocupa ninguna plaza
+  // no tiene cuadrante que le diga qué días libra: lo apuntado (al darle de
+  // alta o aquí) es lo único que hay, y es lo que imprime la ficha de alta. En
+  // cuanto el planificador le da una plaza, manda su plaza y esto deja de salir.
+  const LETRA_DIA = { L: 1, M: 2, X: 3, J: 4, V: 5, S: 6, D: 7 };
+  const diasDe = d => String(d.libranzas || '').split(/\s+/).map(l => LETRA_DIA[l]).filter(Boolean);
+  const libranzaEditable = d => !!d.empleo_vigente && !(Number(d.plazas_abiertas) > 0);
+  const AYUDA_LIBRANZA = 'Aún no tiene plaza en el planificador: estos son los días que libra hasta que la tenga. '
+    + 'Cuando el planificador le dé una plaza, mandan los de su plaza.';
+  const mismosDias = (a, b) => [...a].sort().join(' ') === [...b].sort().join(' ');
+
+  async function accionLibranzas(d) {
+    const antes = diasDe(d);
+    const v = await pedirDatos(`Días que libra ${d.nombre_completo}`, [
+      { id: 'dias', etiqueta: 'Días que libra', tipo: 'semana', valor: antes, ayuda: AYUDA_LIBRANZA },
+    ], { nota: 'Queda registrado con tu nombre y la hora.' });
+    if (!v) return;
+    const dias = (v.dias || []).map(Number);
+    if (mismosDias(dias, antes)) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/libranza`, 'POST', { dias }));
+  }
 
   async function accionTelefono(d) {
     const v = await pedirDatos(`Teléfono de ${d.nombre_completo}`, [
@@ -996,6 +1020,18 @@
       });
     }
 
+    // LOS DÍAS QUE LIBRA, para quien aún no tiene plaza (ver accionLibranzas).
+    const LIBRANZAS = '__libranzas';
+    const libranzasAntes = diasDe(d);
+    const conLibranzas = libranzaEditable(d)
+      && (!soloGrupo || soloGrupo === '*' || soloGrupo === 'Contrato');
+    if (conLibranzas) {
+      campos.push({
+        id: LIBRANZAS, etiqueta: 'Días que libra', grupo: 'Contrato', tipo: 'semana',
+        valor: libranzasAntes, ayuda: AYUDA_LIBRANZA,
+      });
+    }
+
     if (!campos.length) {
       return alert(soloGrupo && soloGrupo !== '*'
         ? `Tu rol no puede editar los campos de "${soloGrupo}".`
@@ -1015,18 +1051,21 @@
     // llena de campos que nadie ha tocado.
     const cambios = {};
     campos.forEach(c => {
-      if (c.id === JORNADA) return;
+      if (c.id === JORNADA || c.id === LIBRANZAS) return;
       const antes = c.valor || '';
       const ahora = v[c.id] == null ? '' : String(v[c.id]);
       const comparable = c.tipo === 'fecha' ? (aISO(antes) || '') : antes;
       if (ahora !== comparable && !(ahora === '' && comparable === '')) cambios[c.id] = v[c.id];
     });
     const jornadaNueva = conJornada && v[JORNADA] && String(v[JORNADA]) !== jornadaAntes ? String(v[JORNADA]) : null;
-    if (!Object.keys(cambios).length && !jornadaNueva) return;
+    const diasNuevos = conLibranzas ? (v[LIBRANZAS] || []).map(Number) : null;
+    const libranzasNuevas = diasNuevos && !mismosDias(diasNuevos, libranzasAntes) ? diasNuevos : null;
+    if (!Object.keys(cambios).length && !jornadaNueva && !libranzasNuevas) return;
 
     await hacer(async () => {
       if (Object.keys(cambios).length) await enviar(`/plantilla/api/conductor/${d.id}`, 'PUT', cambios);
       if (jornadaNueva) await enviar(`/plantilla/api/conductor/${d.id}/jornada`, 'POST', { jornadaHoras: jornadaNueva });
+      if (libranzasNuevas) await enviar(`/plantilla/api/conductor/${d.id}/libranza`, 'POST', { dias: libranzasNuevas });
     });
   }
 
@@ -1784,6 +1823,7 @@
                 puedeEditar: !SOLO_OPERATIVO,
                 onEditar: grupo => accionDatos(d, grupo),
                 onSituacion: d.empleo_vigente ? () => accionSituacion(d) : null,
+                onLibranzas: libranzaEditable(d) ? () => accionLibranzas(d) : null,
               });
             }).catch(e => {
               hueco.innerHTML = `<p class="text-sm text-telecab-red">No se pudo cargar la ficha: ${esc(e.message)}</p>`;
