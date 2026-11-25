@@ -18,6 +18,7 @@ El mapa del proyecto. Cada nota cuenta una pieza y enlaza con las de al lado; si
 - **[[Arquitectura]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
 - **[[Estado y pendientes]]** — Lo que está abierto hoy. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
 - **[[Hoja de ruta]]** — Los 22 desarrollos que pide Ignacio (tablero de tareas, chat, avisos, RR. HH., administración, flota y el informe trimestral por persona), en qué orden, qué del ERP sirve para cada uno y qué falta decidir. Antes de nada, una fase de cimientos.
+- **[[Plan RRHH y nominas]]** — El encargo del 25/11/2026 para automatizar RR. HH. y nóminas (nueve módulos, con Diana al frente): qué hay ya, qué falta, los choques con el ERP de hoy, qué hace falta de fuera y las fases. Aún sin construir.
 
 ## Referencia de las APIs
 
