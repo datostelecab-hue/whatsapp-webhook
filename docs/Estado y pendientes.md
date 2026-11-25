@@ -70,6 +70,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El portal de conductores (19/10/2026)
 
+- **Aplicar `db/288`** (25/11/2026): la llave del informe de jornada para el SMAC (a Diana e Ignacio). Ver [[Informe de jornada]].
 - **Aplicar `db/287`** (25/11/2026): la plantilla de la gestoría (/gestoria, módulo 8). Después: en Parámetros, el «Coste diario estimado de Seguridad Social» y el «Correo de la gestoría»; y subir la proforma de noviembre. Ver [[Gestoria]].
 - **Aplicar `db/286`** (25/11/2026), después de la 285: los 55 legajos de la proforma de noviembre y la corrección de 3 que no eran de quien dice la gestoría. Quedan dos dudosos para revisar a mano (en [[Plan RRHH y nominas]]).
 - **Aplicar `db/285`** (25/11/2026), después de la 284: Diana recibe las llaves de RR. HH. (la de aprobar vacaciones pasa de Laura a ella) y la llave nueva `/tablero/vencidas` va a Ignacio. Ver [[Plan RRHH y nominas]].

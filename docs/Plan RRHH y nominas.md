@@ -138,6 +138,8 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 **Fase 4 · Módulos 6 y 9**
 - La comunicación como entidad única, con plantillas y evidencias, y las dos integraciones.
 
+**Módulo 5 adelantado** — ✔ 25/11 (db/288): el informe de jornada para el SMAC, ver [[Informe de jornada]]. Decidido: estricto del convenio, día natural, desde el 01/07/2026.
+
 **Fase 5 · Módulos 7, 2, 3 y 5**
 - Finiquitos (cableando `liquidacion`), la bandeja de vacaciones, las sanciones con su carta y el informe para el SMAC.
 

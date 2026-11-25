@@ -50,6 +50,9 @@ const CATALOGO = [
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
     { clave: '/nominas',        etiqueta: 'Nóminas' },
     { clave: '/convenio',       etiqueta: 'Convenio' },
+    // EL INFORME DE JORNADA PARA EL SMAC (módulo 5, 25/11/2026): por conductor y
+    // rango, en PDF y Excel, desde su ficha. Para RR. HH. y legal (db/288).
+    { clave: '/informe-jornada', etiqueta: 'Informe de jornada de un conductor (para el SMAC y los abogados)' },
     // LA PLANTILLA DE LA GESTORÍA (módulo 8, db/287): el cruce de su listado
     // con la plantilla propia. Mirarlo y gestionarlo (subir, resolver, el
     // correo); gestionar va marcada `escribir`.

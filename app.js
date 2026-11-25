@@ -485,6 +485,8 @@ app.use('/tickets-telecab', ticketsTelecabRoutes);
 app.use('/reportes', reportesRoutes);
 app.use('/nominas', nominasRoutes);
 app.use('/convenio', convenioRoutes);
+// El informe de jornada para el SMAC (módulo 5 del plan de RR. HH.), desde la ficha del conductor.
+app.use('/informe-jornada', require('./modules/RRHH/informeJornada.controller'));
 app.use('/vacaciones', vacacionesRoutes);
 app.use('/bitacora', bitacoraRoutes);
 // El módulo /incorporaciones se ELIMINÓ: su alerta vive en el planificador

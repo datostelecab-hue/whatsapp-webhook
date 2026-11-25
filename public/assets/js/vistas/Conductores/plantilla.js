@@ -26,6 +26,8 @@
   // MIRARLO no: ver que alguien trabajó con una cuenta prestada es información
   // que RRHH necesita para entender su ficha.
   const PERMISOS = DEL_SERVIDOR.permisos;
+  // El informe de jornada para el SMAC (módulo 5): su llave.
+  const PUEDE_INFORME = ['superadmin', 'desarrollador'].includes(ROL) || (PERMISOS || []).includes('/informe-jornada');
   const PUEDE_FANTASMA = ['superadmin', 'desarrollador'].includes(ROL)
     || PERMISOS.includes('/plantilla/fantasma');
   // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026, db/189): Laura
@@ -836,6 +838,34 @@
     catch (e) { return Dialogo.aviso({ titulo: 'No se pudieron poner', texto: e.message, tono: 'error' }); }
     Dialogo.hecho(`${hecho.resumen.poner} legajos puestos${hecho.resumen.incidencias ? ` · ${hecho.resumen.incidencias} incidencias` : ''}`);
     await plantilla.recargar();
+  }
+
+  /**
+   * EL INFORME DE JORNADA (módulo 5, 25/11/2026): el rango y el formato, y se
+   * descarga. Estricto del convenio, por días naturales, desde el 01/07/2026.
+   */
+  async function informeJornada(d) {
+    const hoy = new Date();
+    const v = await pedirDatos(`Informe de jornada · ${d.nombre_completo}`, [
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', obligatorio: true,
+        valor: fecha(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)) },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', obligatorio: true, valor: fecha(hoy) },
+      { id: 'formato', etiqueta: 'Formato', tipo: 'lista', obligatorio: true, valor: 'pdf',
+        opciones: [{ valor: 'pdf', texto: 'PDF' }, { valor: 'xlsx', texto: 'Excel' }] },
+    ], { textoBoton: 'Descargar', columnas: 2,
+      nota: 'Fichajes de conexión y desconexión, viaje, espera, descanso y los totales por día, semana y mes, según el convenio (art. 18.6 y 18.7), por días naturales. Con datos desde el 01/07/2026. Queda apuntado quién lo emite.' });
+    if (!v) return;
+    const url = `/informe-jornada/${encodeURIComponent(d.id)}.${v.formato}?desde=${encodeURIComponent(v.desde)}&hasta=${encodeURIComponent(v.hasta)}`;
+    // Se pide primero: si algo falla (fechas, permiso), se dice en la pantalla y no en una pestaña con un JSON.
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(((await r.json().catch(() => null)) || {}).msg || `Error ${r.status}`);
+      const nombre = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || `informe-jornada.${v.formato}`;
+      const blob = URL.createObjectURL(await r.blob());
+      const a = document.createElement('a');
+      a.href = blob; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(blob), 10000);
+    } catch (e) { Dialogo.aviso({ titulo: 'No se pudo sacar el informe', texto: e.message, tono: 'error' }); }
   }
 
   /**
@@ -1680,6 +1710,10 @@
         // fue dentro de «Editar datos»: uno o varios meses, día a día.
         { texto: 'Extras', icono: 'fa-file-invoice-dollar',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionExtras },
+        // EL INFORME DE JORNADA PARA EL SMAC (módulo 5, 25/11/2026): PDF y Excel
+        // por rango de fechas, para legal y los abogados. Con su llave.
+        { texto: 'Informe de jornada', icono: 'fa-scale-balanced',
+          visible: () => PUEDE_INFORME, onClick: d => informeJornada(d) },
         // LA INDUCCIÓN DEL BLOQUEO DE MOTOR (26/10/2026): «El WhatsApp del coche».
         { texto: 'Vídeo del bloqueo', icono: 'fa-film',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente && !!d.telefono,
