@@ -71,6 +71,16 @@ const CATALOGO = [
     { clave: '/firmas', etiqueta: 'Firmas (envío de documentos por YouTrust)', manual: true, hijos: [
       { clave: '/firmas/aprobar', etiqueta: 'Firmas · preparar y aprobar lo que se manda a firmar', escribir: true, manual: true },
     ] },
+    // LAS FALTAS Y SANCIONES (módulo 3, db/295): mirarlas, abrirlas (la
+    // oficina), aprobarlas (Ángel, William, Ignacio) y preparar la carta
+    // (Diana). `manual`, y sin `escribir` (hay tres hijas de escritura; cada
+    // acción la exige modules/RRHH/sanciones.service.js). `/sanciones` es otra:
+    // los excesos de velocidad.
+    { clave: '/disciplina', etiqueta: 'Faltas y sanciones', manual: true, hijos: [
+      { clave: '/disciplina/abrir', etiqueta: 'Sanciones · abrirlas, con los hechos y las pruebas', manual: true },
+      { clave: '/disciplina/aprobar', etiqueta: 'Sanciones · aprobarlas (la sanción dentro del convenio)', manual: true },
+      { clave: '/disciplina/carta', etiqueta: 'Sanciones · preparar la carta y mandarla a firmar', manual: true },
+    ] },
     // LOS FINIQUITOS (módulo 7, db/291): mirarlos, revisarlos (Diana) y
     // aprobarlos (Ignacio). Datos de nómina: `manual`, se dan uno a uno. Sin
     // `escribir`: una llave solo admite UNA hija de escritura, y aquí hay dos;

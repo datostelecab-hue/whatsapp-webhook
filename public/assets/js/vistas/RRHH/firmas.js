@@ -9,7 +9,8 @@
   const { esc, etiqueta } = Listado.fmt;
   let ESTADOS = {}, TIPOS = {}, COMO = {};
   // Una plantilla de YouTrust no lleva PDF; sin SMS no hace falta el móvil.
-  const como = f => ({ plantilla: null, sms: true, ...(COMO[f.tipo] || {}) });
+  // La carta que sale de Sanciones (db/295) va por su origen: la plantilla «Carta de sanción».
+  const como = f => ({ plantilla: null, sms: true, ...(COMO[f.origen === 'sancion' ? 'carta_sancion' : f.tipo] || {}) });
   const est = f => ESTADOS[f.estado] || { etiqueta: f.estado, tono: 'muted' };
   const quien = (cuando, por) => (cuando ? `${cuando}${por ? ` · ${por}` : ''}` : '—');
   const falta = f => [!como(f).plantilla && !f.documentos ? 'el PDF' : '', !f.firmante_email ? 'el email' : '',
@@ -122,6 +123,17 @@
               ? 'ausencia' : `hizo ${esc(coma(l.horas))} h`} · <b>debe ${esc(coma(l.debe))} h</b></li>`).join('')}</ul>
             <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y sin SMS.
               Lo que pondrá: <span class="whitespace-pre-line">${esc(x.incidencias || '')}</span> · Total ${esc(x.total || '')}.</p>`;
+        } },
+        // LA CARTA DE UNA SANCIÓN (db/295): lo que pondrá cada hueco de la plantilla.
+        { titulo: 'La carta', icono: 'fa-gavel', visible: d => d.origen === 'sancion' && !!d.detalle, pinta: (d, hueco) => {
+          const x = d.detalle;
+          hueco.className = 'p-5 space-y-2 text-sm';
+          hueco.innerHTML = `
+            <p><b>Hechos.</b> ${esc(x.hechos || '')}</p>
+            <p><b>Calificación.</b> ${esc(x.calificacion || '')}</p>
+            <p><b>Sanción.</b> ${esc(x.sancion || '')}</p>
+            <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», con código por SMS.
+              <a class="underline" href="/disciplina#${encodeURIComponent(d.origen_id)}">La sanción</a></p>`;
         } },
         { titulo: 'Documento a firmar', icono: 'fa-file-pdf', visible: d => !como(d).plantilla, pinta: (d, hueco) => {
           hueco.className = '';

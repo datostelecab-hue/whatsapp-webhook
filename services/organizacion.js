@@ -77,6 +77,11 @@ const FUNCIONES = [
   // El envío a firma (módulo 6, db/293): le nace la tarjeta de cada documento por decidir.
   { codigo: 'firmas_aprobar', etiqueta: 'Decide qué documentos se mandan a firmar', item: 6, varias: false,
     descripcion: 'Cada documento que entra en la cola de firmas (un finiquito aprobado, una carta…) le crea la tarjeta de subir el PDF y decidir si se manda.' },
+  // Las faltas y sanciones (módulo 3, db/295).
+  { codigo: 'sanciones_aprobar', etiqueta: 'Aprueba las sanciones', item: 3, varias: true,
+    descripcion: 'Le nace la tarjeta de cada sanción abierta: decide la sanción dentro de la horquilla del convenio, o la descarta.' },
+  { codigo: 'sanciones_rrhh', etiqueta: 'Lleva las sanciones en RR. HH.', item: 3, varias: false,
+    descripcion: 'Le nacen las faltas que propone el ERP (abrirlas o descartarlas) y las cartas de las sanciones aprobadas (mandarlas a firmar).' },
   // Los finiquitos (módulo 7, db/291): le nace la tarjeta de revisar cada uno.
   { codigo: 'finiquitos_revisar', etiqueta: 'Revisa los finiquitos', item: 7, varias: false,
     descripcion: 'Cada baja le crea la tarjeta de revisar su finiquito (vacaciones, recaudación y variables) antes de que se apruebe.' },

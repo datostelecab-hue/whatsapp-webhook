@@ -93,6 +93,19 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 - **El riesgo técnico es el `.xls`**: ExcelJS no lee ni escribe ese formato. Hay que confirmar con la gestoría si A3NOM acepta el mismo fichero en `.xlsx`. Si no, hay que escribir el `.xls` sin rehacerlo (una librería que entienda el formato binario, o tocar solo los registros de las celdas), y comprobarlo celda a celda contra el original.
 - Los **legajos**: la proforma trae 74 códigos que el ERP no tiene. 57 casan con nombre y apellidos con gente de plantilla propia en alta sin legajo, y 3 legajos del ERP no corresponden a la persona que dice la gestoría. Se resuelven en la carga inicial, revisando a mano los dudosos. **Hecho en db/286** (Camilo: «Sí, carga los 57 y corrige los 3»): se cargan 55, con la fecha de alta como control (sigue el orden de los códigos), y quedan fuera dos dudosos para revisarlos a mano. Los 3 conflictos se corrigen con lo que dice la gestoría (dos fichas en alta cambian de legajo y dos de baja se quedan sin él). Después quedan unas 16 personas de plantilla propia en alta sin legajo.
 
+## La nómina de noviembre de A3, «sin variables» (25/11/2026)
+
+El 25/11 Camilo pasó la **proforma**: `EXCEL NOVIEMBRE TIBUS LUXURY SL SIN VARIABLES.xlsx`. No es el fichero de arriba: aquel es la **plantilla de importación** (el lienzo, donde se escriben las variables); este es el **resultado de la nómina en A3 antes de las variables**, que la gestoría manda para revisar. Así que el circuito del módulo 4 queda: proforma (esto) → revisión → variables en el lienzo (`.xls`) → borrador → aprobación.
+
+- **`.xlsx`**, dos hojas, sin proteger, sin nombres definidos. Periodo «DEL 01/11/26 AL 30/11/26» (mes natural; las variables van del 26 al 25).
+- **Hoja «1»: un trabajador por COLUMNA** (D a FK, 164), no por fila: fila 4 el código (el legajo con sus ceros), filas 5 a 7 apellidos y nombre (cortados a 12 letras), y **filas 1 a 3 con notas a mano** de quien la revisa (49 columnas: «BAJA MEDICA», «RETIRADO», «suspensión empleo y sueldo hasta…», «ALTA ANULADA», «baja voluntaria»…).
+- **Un concepto por fila** (B el código de A3, C el nombre): devengos de la 11 a la 28 (1 Salario base, 4 Antigüedad, 49 Plus permanencia, 53 Nocturnidad, 110 Prorrateo de pagas, 145 Regularización, 199 Vacaciones, 376 Plus productividad, Plus de calidad (sin código), 450-455 IT, 465 y 519 Propinas, 605 Abono, 607 Peaje, 790 Descuento por absentismo); fila 30 **TOTAL BRUTO** con fórmula (`SUM(D11:D29)-2*D28`: el 790 resta); deducciones de la 32 a la 46 (embargos, 724, cuota sindical, 751/753/754 descuentos, 791 anticipo, cotizaciones, 999 IRPF); 48 total deducciones, 50 **TOTAL LÍQUIDO**; y de la 52 a la 68 Seguridad Social, coste de empresa, bases, horas de presencia y **días cotizados**.
+- **Hoja «2»: el total de la empresa**, sumando cada fila de la «1». **Le faltan las dos filas que se metieron a mano** (376 Plus productividad, 11.166,73 €, y Plus de calidad, 150 €): a partir de ahí sus filas van dos por debajo. Los totales siguen bien: bruto 219.246,28 €, líquido 195.407,65 €, coste de empresa 265.460,88 €.
+
+**Cruzada con el ERP** (solo lectura, 25/11), lo que no cuadra: 23 códigos que ninguna ficha tiene (13 son de fichas sin legajo, 5 con otro legajo en el ERP, 5 sin encontrar o dudosos); 9 personas a las que la nómina paga noviembre sin contrato propio en el ERP; 10 bajas médicas del ERP que la nómina no recoge; 4 suspensiones que no cuadran (en un lado y no en el otro); 12 personas cuyos días cotizados no son sus días de contrato; y 43 de plantilla propia del ERP en noviembre que no están en la nómina (la mayoría, altas del 18/11 en adelante: los legajos de la nómina acaban en el 002716). El detalle, con nombres, se le pasó a RR. HH. en un Excel (no va al repositorio).
+
+Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la proforma y que el ERP diga estas seis cosas.
+
 ## Lo que hace falta de fuera
 
 **Archivos reales** (anonimizados si hace falta):
@@ -146,6 +159,8 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 **Comunicación semanal de horas** — ✔ 25/11 (db/294): la carta de horas que quedó debiendo, cada martes, por la cola de Firmas con la plantilla de YouTrust (sin SMS). Ver [[Firmas#La comunicación semanal de horas (db/294, 25/11/2026)]].
 
 **Módulo 7 adelantado** — ✔ 25/11 (db/291): los finiquitos, ver [[Finiquitos]]. Decidido: nace al dar la baja (propia y ETT), Diana revisa, Ignacio aprueba, vacaciones en días.
+
+**Módulo 3** — ✔ 25/11 (db/295): las faltas y sanciones, ver [[Faltas y sanciones]]. Decidido: abre la oficina, aprueban Ángel, William o Ignacio, Diana la carta; el ERP propone (ausencias injustificadas y reincidencia) y una persona decide; carta con plantilla de YouTrust, sin IA; la suspensión entra en la ficha al firmarse, o no firmarla, o caducar. Falta crear la plantilla «Carta de sanción» en YouTrust, y los rechazos de servicios y el rendimiento (no hay dato).
 
 **Módulo 2** — ✔ 25/11 (db/292): «Para decidir» en el ticket con los cuatro datos, el aviso al conductor en su portal y la baja encima de unas vacaciones (la baja manda y Diana decide). Ver [[Vacaciones#Para decidir una solicitud (25/11/2026, módulo 2 del plan de RR. HH.)]]. Queda para más adelante: cupos y fechas bloqueadas (el encargo: «estructura preparada para reglas futuras»).
 

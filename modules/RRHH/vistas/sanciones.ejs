@@ -1,0 +1,12 @@
+<%#
+  FALTAS Y SANCIONES (módulo 3, db/295, 25/11/2026).
+  La abre la oficina o la propone el ERP; la aprueban Ángel, William o Ignacio;
+  Diana manda la carta a firmar por la cola de Firmas.
+  El JavaScript, en /assets/js/vistas/RRHH/sanciones.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puede: puede || {} }) %></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/sanciones.js') %>"></script>

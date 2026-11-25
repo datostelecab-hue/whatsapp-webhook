@@ -49,13 +49,13 @@ function opciones(args) {
     case 'pendientes': {
       const lista = await firmas.delBot.pendientes();
       r = lista.map(f => {
-        const como = firmas.comoSe(f.tipo);
+        const como = firmas.comoSe(f);
         return { id: f.id, documento: f.titulo, tipo: f.tipo, firmante: f.firmante_nombre,
           nombre: f.nombre_pila, apellidos: f.apellidos, email: f.firmante_email,
           movil: como.sms ? f.firmante_movil : '(sin SMS)', pdfs: como.plantilla ? `(plantilla «${como.plantilla}»)` : f.documentos,
-          // Los huecos de la plantilla de YouTrust (create-signature-request-from-template).
+          // La plantilla de YouTrust (create-signature-request-from-template) y el texto de cada hueco.
           ...(como.plantilla && f.detalle ? { plantilla: como.plantilla, plantillaId: como.plantillaId, workspaceId: como.workspaceId,
-            incidencias: f.detalle.incidencias, total: f.detalle.total } : {}),
+            huecos: Object.fromEntries(Object.entries(como.huecos || {}).map(([campo, clave]) => [campo, f.detalle[clave]])) } : {}),
           aprobado: `${f.aprobado} por ${f.aprobado_por_nombre}` };
       });
       break;

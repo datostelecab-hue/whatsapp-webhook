@@ -50,13 +50,27 @@ const TIPOS = {
 // firmante de marcador «Conductor» (firma simple, sin código) y los textos de
 // solo lectura «Incidencias» y «Total». Va sin espacio de trabajo: al crear la
 // solicitud hay que decir el de la cuenta («Datos telecab»).
+// `huecos`: el campo de la plantilla → la clave de `detalle` que lo rellena.
+// La CARTA DE SANCIÓN (módulo 3, db/295) va por su origen, no por su tipo: una
+// suspensión preparada a mano lleva su PDF; la que sale de Sanciones, la
+// plantilla «Carta de sanción», con código por SMS.
+const WORKSPACE = '8cca36ee-1d49-4385-985c-d0d98930707a';
 const COMO = {
   comunicacion: {
     plantilla: 'Comunicación al trabajador', sms: false,
-    plantillaId: '4dd646df-3e2d-455a-b363-664b032c446c', workspaceId: '8cca36ee-1d49-4385-985c-d0d98930707a',
+    plantillaId: '4dd646df-3e2d-455a-b363-664b032c446c', workspaceId: WORKSPACE,
+    huecos: { Incidencias: 'incidencias', Total: 'total' },
+  },
+  carta_sancion: {
+    plantilla: 'Carta de sanción', sms: true, plantillaId: null, workspaceId: WORKSPACE,
+    huecos: { Fecha: 'fecha', Hechos: 'hechos', 'Calificación': 'calificacion', 'Sanción': 'sancion' },
   },
 };
-const comoSe = tipo => ({ plantilla: null, sms: true, ...(COMO[tipo] || {}) });
+/** Cómo se manda: por el tipo, o por el origen (la carta de Sanciones). Acepta el envío entero o su tipo. */
+const comoSe = (tipo, origen) => {
+  const t = tipo && typeof tipo === 'object' ? tipo : { tipo, origen };
+  return { plantilla: null, sms: true, ...(COMO[t.origen === 'sancion' ? 'carta_sancion' : t.tipo] || {}) };
+};
 const ESTADOS = {
   borrador: { etiqueta: 'Por aprobar', tono: 'warn' },
   aprobado: { etiqueta: 'Aprobado, por enviar', tono: 'gold' },
@@ -148,6 +162,19 @@ async function desdeFiniquito(f) {
   } catch (e) { console.error(`❌ [Firmas] el finiquito ${f.id} no entró en la cola: ${e.message}`); return null; }
 }
 
+/**
+ * La CARTA DE UNA SANCIÓN (módulo 3, db/295): entra en borrador, con los huecos
+ * de la plantilla en `detalle`. Va en la transacción de la sanción. → id
+ */
+async function desdeSancion(cli, { sancionId, conductorId, tipo, titulo, detalle, creadoPor }) {
+  const firmante = await repo.firmanteDe(conductorId, cli);
+  const id = await repo.insertar(cli, { tipo, titulo: texto(titulo, 200), origen: 'sancion', origenId: String(sancionId), conductorId,
+    firmante, detalle, creadoPor, nota: null });
+  await tarjeta(cli, id, titulo);
+  avisarCambio();
+  return id;
+}
+
 // ── Lo que decide Diana ────────────────────────────────────────────────────
 /**
  * APROBAR: se manda. Hace falta el PDF y el email y el móvil del firmante (se
@@ -172,7 +199,7 @@ async function aprobar(id, { nota } = {}, quien = {}) {
 
 /** Lo que tiene que tener para aprobarse: el PDF (si no es plantilla), el email y, con SMS, el móvil. */
 async function comprobarParaAprobar(cli, f) {
-  const como = comoSe(f.tipo);
+  const como = comoSe(f);
   if (f.estado !== 'borrador') throw error('Solo se aprueba el que está por aprobar', 409);
   if (!como.plantilla && !f.documentos) throw error('Falta el PDF que se va a firmar: súbelo en «Documento a firmar»', 409);
   const p = await repo.firmanteDe(Number(f.conductor_id), cli);
@@ -211,6 +238,7 @@ async function descartar(id, { nota } = {}, quien = {}) {
     await repo.cambiar(cli, f.id, { estado: 'descartado', cerrado_at: 'now', cerrado_por: quien.usuarioId, nota: `Descartado: ${n}` });
     await cerrarTarjeta(cli, f.id, quien.usuarioId, 'Descartado');
     if (f.origen === 'semana') await require('./comunicaciones.service').cerrarSiHecha(cli, f.origen_id, quien.usuarioId);
+    if (f.origen === 'sancion') await require('./sanciones.service').alDescartarFirma(cli, f.origen_id, quien.usuarioId);
     return { estado: 'descartado' };
   });
   avisarCambio();
@@ -253,6 +281,8 @@ async function cerrarComo(id, estado, nota, quien) {
     return { estado };
   });
   avisarCambio();
+  // Si era la carta de una sanción, la sanción queda comunicada (y la suspensión, en su ficha).
+  if (f0.origen === 'sancion') await require('./sanciones.service').alCerrarFirma(f0.origen_id, estado, quien);
   return r;
 }
 
@@ -375,6 +405,6 @@ contadores.registrarFuente('firmas', {
 });
 
 module.exports = {
-  crear, desdeFiniquito, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
+  crear, desdeFiniquito, desdeSancion, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
   TIPOS, ESTADOS, CLAVE_VER, CLAVE_APROBAR, DOC, FIRMADO,
 };
