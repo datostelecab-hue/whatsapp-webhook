@@ -296,7 +296,7 @@
     if (v.estado === 'permiso') {
       const p = await Dialogo.formulario('¿Qué permiso es?', [
         { id: 'tipoPermiso', etiqueta: 'Tipo de permiso', tipo: 'lista', obligatorio: true,
-          opciones: TIPOS_PERMISO.map(x => ({ valor: x.codigo, texto: x.etiqueta }))
+          opciones: TIPOS_PERMISO.map(x => ({ valor: x.codigo, texto: x.regla ? `${x.etiqueta} · ${x.regla}` : x.etiqueta }))
             .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]), buscador: { tope: 20 } },
       ], { textoBoton: 'Aplicar', nota: 'Los permisos no tocan las vacaciones. Si son asuntos propios, cancela y elige la situación «Asuntos propios».' });
       if (!p) return;
@@ -319,7 +319,13 @@
       v.libraDias = l.libraDias;
     }
 
-    const r = await api('/aplicar', { id: t.id, ...v });
+    let r = await api('/aplicar', { id: t.id, ...v });
+    // Un permiso que se pasa de lo que da el convenio: se guarda con su motivo (módulo 1).
+    if (r.status !== 'ok' && r.pide) {
+      const extra = await Dialogo.loQuePide(r.pide);
+      if (!extra) return;
+      r = await api('/aplicar', { id: t.id, ...v, ...extra });
+    }
     if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se ha podido aplicar', texto: r.msg, tono: 'error' });
     aviso('Aplicado: la ausencia ya está en su ficha.', 'ok');
     cargar();

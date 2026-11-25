@@ -126,7 +126,7 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 
 **Fase 2 · Módulo 1**
 - ✔ 25/11 (db/289), sin esperar al fichero: la ausencia guardada con «pendiente de validar», la bandeja y la tarjeta del día, la reclasificación sola (también hacia atrás) y el % de plantilla de baja. Ver [[Ausencias]]. Decidido: solo plantilla propia, desde el 26/10/2026 (las nóminas van del 26 al 25), y cuatro decisiones (injustificada, justificada, baja médica, permiso).
-- Falta, sin fichero: los permisos con su saldo por tipo y su validador.
+- ✔ 25/11 (db/290): los permisos con su saldo por tipo y su validador (llave `/permisos/aprobar` en todas las puertas, también asuntos propios; pasarse del convenio pide motivo). Ver [[Ausencias#Los permisos: quién los valida y su saldo (db/290)]].
 - Con el fichero del INSS: el importador, la baja con sus prórrogas, la reclasificación y la tarjeta de reincorporación.
 
 **Fase 3 · Módulo 4** (necesita los archivos de noviembre)

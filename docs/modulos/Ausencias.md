@@ -61,10 +61,29 @@ En las cifras de arriba, el de hoy: plantilla propia de alta con una baja médic
 
 Son datos de salud: no se dan a nadie más sin pensarlo.
 
+## Los permisos: quién los valida y su saldo (db/290)
+
+El encargo: *«Permisos retribuidos: validador configurable (de momento, Diana), con el saldo por conductor y tipo de permiso siempre visible según el convenio. Se pueden modificar o anular, con registro y recálculo del saldo»*. Decidido por Camilo el 25/11/2026: **la llave en todas las puertas, también los asuntos propios**, y **pasarse del convenio avisa y pide motivo**.
+
+```
+services/aprobarPermisos.js              la llave '/permisos/aprobar' (como la de vacaciones, pero de varias personas)
+modules/Conductores/permisosConvenio.js  lo que da cada permiso, lo que lleva cada persona y el aviso
+test/permisos-convenio.test.js
+```
+
+- **La llave `/permisos/aprobar`** (en /usuarios, «Aprobaciones»; de inicio, Diana): sin ella nadie pone, cambia ni borra un permiso retribuido o unos asuntos propios, por ninguna puerta: Plantilla (añadir una ausencia, cambiar la situación, corregirla, borrarla, corregir unas vacaciones a permiso), la Ticketera (aplicar) y Ausencias. Se mira en la matriz de verdad: ni el superadmin ni el desarrollador validan por su rol.
+- **Lo que da cada uno** sale del catálogo del convenio (`leave_type`, art. 22) y se ve al elegirlo: «Fallecimiento… · 2 días laborables por hecho causante (+2 días si requiere desplazamiento)».
+  - **Por hecho causante** (matrimonio 15 naturales, enfermedad grave 5 laborables, fallecimiento 2, traslado 1): se mira cada permiso.
+  - **Al año** (asuntos propios 2 días, acompañamiento médico 8 h): se suman los del año natural. Cada día de un permiso por horas cuenta 8 h.
+  - Lo indispensable, el crédito sindical, las reducciones y la lactancia no tienen un número de días que contar.
+  - **Laborables** = los que le tocaba trabajar: la semana menos lo que libra (su plaza o, sin plaza, lo apuntado).
+- **Si se pasa**, no se guarda a la primera: sale lo que da el convenio y lo que llevaría, y para guardarlo hay que decir por qué (`Dialogo.loQuePide`, la misma pieza en las tres pantallas). El motivo queda en el del tramo («Más de lo que da el convenio (…): Desplazamiento a Galicia») y con él en el libro.
+- **El saldo**, en la ficha de Vacaciones: bloque «Permisos del convenio», con lo que lleva este año de cada tipo y lo que le queda de los que son al año. Se recalcula al leer: cambiar o borrar un permiso lo cambia en el momento.
+- **Las semillas de los roles ya no reparten lo marcado `manual`** (`services/permisos.js`, `G`): las llaves de Ausencias, que son datos de salud, se dan una a una.
+
 ## Lo que falta (segunda parte del módulo 1)
 
 - El **fichero del INSS** (FIE) que manda la gestoría: el importador, la baja con sus prórrogas, confirmaciones y altas, el campo de cruce configurable (aún no se sabe si viene por DNI, nombre o código de la gestoría) y la tarjeta de reincorporación dos días hábiles antes del fin previsto.
-- **Los permisos con su saldo** por persona y tipo, y su validador configurable.
 - Lo retroactivo **con la nómina ya cerrada**: proponer la corrección en la rectificación o en la nómina siguiente (va con el módulo 4).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Bitacora]] · [[Conductores]] · [[RRHH]] · [[Tablero de tareas]]

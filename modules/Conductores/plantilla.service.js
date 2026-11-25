@@ -327,11 +327,31 @@ const codigo = x => String(x && typeof x === 'object' ? x.valor : (x || ''));
 const sonVacaciones = x => codigo(x) === aprobarVac.ESTADO;
 const vacacionesParaLaPantalla = quien => aprobarVac.paraLaPantalla((quien || {}).usuarioId);
 
+// LOS PERMISOS RETRIBUIDOS Y LOS ASUNTOS PROPIOS (módulo 1, db/290): ponerlos,
+// cambiarlos o borrarlos es validarlos, y solo lo hace quien tiene la llave
+// (services/aprobarPermisos.js). Y si se pasan de lo que da el convenio, se
+// guardan solo con un motivo (permisosConvenio.revisar): sin él, el error PIDE
+// el motivo y la pantalla lo pregunta.
+const aprobarPer = require('../../services/aprobarPermisos');
+const permisosConvenio = require('./permisosConvenio');
+const juntar = (...partes) => partes.map(x => String(x || '').trim()).filter(Boolean).join(' · ');
+const permisosParaLaPantalla = async quien => ({ puede: await aprobarPer.puede((quien || {}).usuarioId) });
+const saldoPermisos = (id, anio) => permisosConvenio.saldo(Number(id), { anio });
+
 /** Los tipos de permiso del convenio, para elegirlo al poner un permiso (también desde la Ticketera). */
-const tiposPermiso = () => con.tiposPermiso();
+const tiposPermiso = async () => {
+  const [tipos, reglas] = await Promise.all([con.tiposPermiso(), permisosConvenio.reglas().catch(() => new Map())]);
+  return tipos.map(t => ({ ...t, regla: reglas.get(t.codigo) || '' }));
+};
 
 const cambiarSituacion = async (id, datos, quien) => {
   if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
+  if (aprobarPer.esPermiso((datos || {}).estado)) {
+    await aprobarPer.exigir((quien || {}).usuarioId);
+    const nota = await permisosConvenio.revisar(Number(id), { estado: codigo(datos.estado), tipo: datos.tipoPermiso,
+      desde: datos.desde, hasta: datos.hastaPrevisto }, datos.motivoExceso);
+    if (nota) datos = { ...datos, motivo: juntar(datos.motivo, nota) };
+  }
   return { vigencia: await con.cambiarSituacion(Number(id), datos, quien) };
 };
 
@@ -341,7 +361,31 @@ const cambiarSituacion = async (id, datos, quien) => {
  */
 const anadirAusencia = async (id, datos, quien) => {
   if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
+  if (aprobarPer.esPermiso((datos || {}).estado)) {
+    await aprobarPer.exigir((quien || {}).usuarioId);
+    const nota = await permisosConvenio.revisar(Number(id), { estado: codigo(datos.estado), tipo: datos.tipoPermiso,
+      desde: datos.desde, hasta: datos.hasta }, datos.motivoExceso);
+    if (nota) datos = { ...datos, motivo: juntar(datos.motivo, nota) };
+  }
   return con.anadirAusencia(Number(id), datos, quien);
+};
+
+/**
+ * Un permiso ya puesto que se cambia: la llave si lo era o lo pasa a ser, y la
+ * cuenta del convenio con cómo QUEDA (sin contarse a sí mismo).
+ */
+const revisarPermisoEditado = async (id, filaId, datos, quien) => {
+  const t = await con.ausenciaDe(Number(id), Number(filaId));
+  if (!t) return datos;
+  const estado = datos.estado !== undefined ? codigo(datos.estado) : t.estado;
+  if (!aprobarPer.esPermiso(t.estado) && !aprobarPer.esPermiso(estado)) return datos;
+  await aprobarPer.exigir((quien || {}).usuarioId);
+  if (!aprobarPer.esPermiso(estado)) return datos;
+  const nota = await permisosConvenio.revisar(Number(id), {
+    estado, tipo: datos.tipoPermiso !== undefined ? datos.tipoPermiso : t.leave_type_code,
+    desde: datos.desde || t.desde, hasta: datos.hasta !== undefined ? datos.hasta : t.hasta, excluirId: Number(filaId),
+  }, datos.motivoExceso);
+  return nota ? { ...datos, motivo: juntar(datos.motivo !== undefined ? datos.motivo : t.motivo, nota) } : datos;
 };
 
 /**
@@ -360,6 +404,7 @@ const vacacionesDe = async (id, filaId, quien) => {
   return t;
 };
 const editarAusencia = async (id, filaId, datos, quien) => {
+  datos = await revisarPermisoEditado(id, filaId, datos || {}, quien);
   const t = await vacacionesDe(id, filaId, quien);
   if (t) {
     aFuturo.validarCambio(t, { desde: (datos || {}).desde, hasta: (datos || {}).hasta });
@@ -377,6 +422,8 @@ const editarAusencia = async (id, filaId, datos, quien) => {
  */
 const libranzasSugeridas = (id, desde) => require('../Vacaciones/vacaciones.service').libranzasSugeridas(id, desde);
 const borrarAusencia = async (id, filaId, quien) => {
+  const p = await con.ausenciaDe(Number(id), Number(filaId));
+  if (p && aprobarPer.esPermiso(p.estado)) await aprobarPer.exigir((quien || {}).usuarioId);
   const t = await vacacionesDe(id, filaId, quien);
   if (t) aFuturo.validarBorrado(t);
   return con.borrarAusencia(Number(id), Number(filaId), quien);
@@ -411,6 +458,7 @@ const corregirVacaciones = async (id, filaId, datos = {}, quien = {}) => {
     }
     const estado = datos.estado || 'vacaciones';
     if (!TIPOS_CORRECCION.includes(estado)) throw new Error(`No se pueden pasar a «${estado}»`);
+    if (aprobarPer.esPermiso(estado)) await aprobarPer.exigir((quien || {}).usuarioId);
     const cambios = {};
     if (datos.desde) cambios.desde = datos.desde;
     if (datos.hasta) cambios.hasta = datos.hasta;
@@ -666,6 +714,7 @@ module.exports = {
   paraLaPantalla, lista, mediaDelMes, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, corregirVacaciones, vacacionesParaLaPantalla, tiposPermiso, libranzasSugeridas,
+  permisosParaLaPantalla, saldoPermisos,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
   anulacionDeAlta, anularAlta,

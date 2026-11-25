@@ -445,6 +445,9 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
     id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, hoy,
     reglas: reglas(sinHistorico),
     ...saldoPara(p, x, festivos, hoy),
+    // EL SALDO DE SUS PERMISOS DEL CONVENIO este año (módulo 1 de RR. HH.,
+    // 25/11/2026: «el saldo por conductor y tipo de permiso siempre visible»).
+    permisosConvenio: await plantilla.saldoPermisos(p.id, hoy.slice(0, 4)).catch(() => null),
   };
 }
 

@@ -32,7 +32,7 @@ test('la regla de la «Ausencia» de la bitácora, una sola vez', () => {
 
 test('detectar, decidir y reclasificar sola (también lo ya decidido)', () => conBase(async ({ consulta, fabrica }) => {
   const diana = await fabrica.usuario({ rol: 'oficina', nombre: 'Diana' });
-  await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/ausencias'), ($1, '/ausencias/validar')`, [diana.id]);
+  await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/ausencias'), ($1, '/ausencias/validar'), ($1, '/permisos/aprobar')`, [diana.id]);
   const yo = { usuarioId: diana.id, rol: 'oficina' };
   const p = await fabrica.conductor({ nombre: 'PROPIA' });
   const e = await fabrica.conductor({ nombre: 'DE ETT', tipo: 'ett' });

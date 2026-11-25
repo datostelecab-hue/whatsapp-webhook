@@ -851,6 +851,37 @@ async function tiposPermiso() {
 }
 
 /**
+ * EL CATÁLOGO DE PERMISOS CON LO QUE DA CADA UNO (art. 22, `leave_type`): la
+ * duración, su unidad, el artículo y la nota. Lo usa la cuenta del convenio
+ * (permisosConvenio.js, módulo 1 del plan de RR. HH.), con los asuntos propios.
+ */
+async function catalogoPermisos() {
+  const r = await db.consulta(
+    `SELECT leave_type_code AS codigo, name AS nombre, duration_value::float AS duracion, duration_unit AS unidad,
+            article_ref AS articulo, notes AS nota
+       FROM leave_type ORDER BY name`);
+  return r.rows;
+}
+
+/**
+ * Los permisos de un tipo de una persona que tocan un tramo de fechas (los de
+ * asuntos propios, por su situación). `excluirId`: el que se está cambiando.
+ * → [{ id, desde, hasta }] en 'AAAA-MM-DD'
+ */
+async function permisosEntre(id, codigo, desde, hasta, excluirId = null) {
+  const r = await db.consulta(
+    `SELECT h.id::text AS id, to_char(h.desde, 'YYYY-MM-DD') AS desde, to_char(h.hasta, 'YYYY-MM-DD') AS hasta
+       FROM conductor_estado_hist h
+      WHERE h.conductor_id = $1
+        AND (h.leave_type_code = $2 OR ($2 = 'PR_ASUNTOS_PROPIOS' AND h.estado = 'asuntos_propios'))
+        AND h.estado IN ('permiso', 'asuntos_propios')
+        AND h.desde <= $4::date AND COALESCE(h.hasta, h.desde) >= $3::date
+        AND ($5::bigint IS NULL OR h.id <> $5::bigint)
+      ORDER BY h.desde`, [id, codigo, desde, hasta, excluirId]);
+  return r.rows;
+}
+
+/**
  * El tipo de un permiso, comprobado contra el catálogo. Solo vale en un
  * permiso; vacío u 'OTRO' = ninguno de los del convenio (NULL). Los asuntos
  * propios (db/225) llevan el suyo sin preguntarlo: es lo que son.
@@ -2373,7 +2404,7 @@ module.exports = {
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe, ausenciaDe, tiposPermiso,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe, ausenciaDe, tiposPermiso, catalogoPermisos, permisosEntre,
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,

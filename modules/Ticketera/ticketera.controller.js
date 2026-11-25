@@ -117,7 +117,8 @@ const responde = fn => async (req, res) => {
   try { res.json({ status: 'ok', ...(await fn(req)) }); }
   catch (e) {
     console.error('❌ [Ticketera]', e.message);
-    res.status(400).json({ status: 'error', msg: e.message });
+    // `pide`: el motivo de un permiso que se pasa del convenio (módulo 1).
+    res.status(e.status && e.status < 500 ? e.status : 400).json({ status: 'error', msg: e.message, pide: e.pide });
   }
 };
 

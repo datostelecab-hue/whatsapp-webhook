@@ -19,7 +19,7 @@ const responde = fn => async (req, res) => {
   try { res.json({ status: 'ok', ...(await fn(req)) }); }
   catch (e) {
     console.error('❌ [Ausencias]', req.method, req.path + ':', e.message);
-    res.status(e.status && e.status < 500 ? e.status : 400).json({ status: 'error', msg: e.message });
+    res.status(e.status && e.status < 500 ? e.status : 400).json({ status: 'error', msg: e.message, pide: e.pide });
   }
 };
 

@@ -199,7 +199,7 @@
     const esBaja = estado === 'baja_medica';
     const campos = [
       ...(esBaja ? [] : [{ id: 'tipo', etiqueta: 'Qué permiso es', tipo: 'lista', obligatorio: true,
-        opciones: TIPOS_PERMISO.map(t => ({ valor: t.codigo, texto: t.etiqueta })) }]),
+        opciones: TIPOS_PERMISO.map(t => ({ valor: t.codigo, texto: t.regla ? `${t.etiqueta} · ${t.regla}` : t.etiqueta })) }]),
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: dmy(d.dia), obligatorio: true },
       { id: 'hasta', etiqueta: esBaja ? 'Hasta (vacío si sigue de baja)' : 'Hasta', tipo: 'fecha', valor: dmy(d.dia), obligatorio: !esBaja,
         ayuda: esBaja ? 'Sin fecha, la baja queda abierta hasta que se le dé el alta en Plantilla.' : '' },
@@ -211,8 +211,19 @@
         + 'Las ausencias suyas de esas fechas quedan resueltas con ella. El justificante se sube en el bloque «Justificante».',
     });
     if (!v) return;
-    await mandar({ ids: [d.id], estado, desde: v.desde, hasta: v.hasta || null, tipoPermiso: v.tipo, nota: v.nota },
-      r => `${esBaja ? 'Baja médica abierta' : 'Permiso abierto'}: ${r.decididas} ${r.decididas === 1 ? 'ausencia resuelta' : 'ausencias resueltas'}`, lst);
+    const cuerpo = { ids: [d.id], estado, desde: v.desde, hasta: v.hasta || null, tipoPermiso: v.tipo, nota: v.nota };
+    const hecho = r => `${esBaja ? 'Baja médica abierta' : 'Permiso abierto'}: ${r.decididas} ${r.decididas === 1 ? 'ausencia resuelta' : 'ausencias resueltas'}`;
+    // Un permiso que se pasa de lo que da el convenio pide su motivo antes de guardarse.
+    try {
+      const r = await Api.post('/ausencias/api/decidir', cuerpo, { bloquea: true });
+      Dialogo.hecho(hecho(r));
+      await lst.recargar();
+    } catch (e) {
+      const pide = e.respuesta && e.respuesta.pide;
+      if (!pide) return Dialogo.aviso({ titulo: 'No se ha podido guardar', texto: e.message, tono: 'error' });
+      const extra = await Dialogo.loQuePide(pide);
+      if (extra) await mandar({ ...cuerpo, ...extra }, hecho, lst);
+    }
   }
 
   // ── El % de plantilla de baja ─────────────────────────────────────────────

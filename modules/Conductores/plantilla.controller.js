@@ -50,7 +50,9 @@ const responde = fn => async (req, res) => {
     // `conflicto` viaja con el error: dice QUIÉN es la persona que ya existe y
     // si está de alta. Sin eso, la pantalla solo puede enseñar un mensaje y
     // dejar a quien lo lee sin saber qué hacer.
-    res.status(400).json({ status: 'error', msg: e.message, conflicto: e.conflicto });
+    // `pide`: el error pide algo para seguir (el motivo de un permiso que se pasa
+    // de lo que da el convenio, módulo 1): la pantalla lo pregunta y reenvía.
+    res.status(e.status && e.status < 500 ? e.status : 400).json({ status: 'error', msg: e.message, conflicto: e.conflicto, pide: e.pide });
   }
 };
 
@@ -153,6 +155,10 @@ router.put('/api/conductor/:id/situacion/:filaId', responde(async req =>
 
 router.delete('/api/conductor/:id/situacion/:filaId', responde(async req =>
   plantilla.borrarAusencia(req.params.id, req.params.filaId, await quien(req))));
+
+// El saldo de sus permisos del convenio en un año (módulo 1).
+router.get('/api/conductor/:id/permisos', responde(async req =>
+  ({ saldo: await plantilla.saldoPermisos(req.params.id, req.query.anio) })));
 
 router.post('/api/conductor/:id/turno', responde(async req =>
   plantilla.cambiarTurno(req.params.id, req.body || {}, await quien(req))));

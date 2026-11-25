@@ -61,9 +61,10 @@ const CATALOGO = [
     ] },
     // LAS AUSENCIAS QUE VALIDA RR. HH. (módulo 1, db/289): mirarlas (y el % de
     // plantilla de baja) y validarlas; validar va marcada `escribir`. Son datos
-    // de salud: solo quien lleva RR. HH.
-    { clave: '/ausencias', etiqueta: 'Ausencias y bajas (RR. HH.)', hijos: [
-      { clave: '/ausencias/validar', etiqueta: 'Ausencias · validarlas (baja, permiso, justificada o injustificada)', escribir: true },
+    // de salud: solo quien lleva RR. HH. `manual`: no las siembra el rol de
+    // oficina al crear un usuario; se dan una a una.
+    { clave: '/ausencias', etiqueta: 'Ausencias y bajas (RR. HH.)', manual: true, hijos: [
+      { clave: '/ausencias/validar', etiqueta: 'Ausencias · validarlas (baja, permiso, justificada o injustificada)', escribir: true, manual: true },
     ] },
     // Los SALDOS de vacaciones (14/10/2026): mirarlos. Aprobar es otra llave,
     // '/vacaciones/aprobar', de una sola persona y mirada exacta: tener esta no
@@ -221,6 +222,10 @@ const CATALOGO = [
     // en «Aprobaciones», y no en «RRHH», porque ese grupo lo siembra el rol de
     // oficina y esta no la reparte ningún rol.
     { clave: '/vacaciones/aprobar', etiqueta: 'Vacaciones · aprobarlas (una sola persona)', manual: true },
+    // LOS PERMISOS RETRIBUIDOS Y LOS ASUNTOS PROPIOS (módulo 1, db/290): los
+    // pone, cambia o borra quien tenga esta llave, por cualquier puerta
+    // (services/aprobarPermisos.js). No es de una sola persona. De inicio, Diana.
+    { clave: '/permisos/aprobar', etiqueta: 'Validar permisos (permisos retribuidos y asuntos propios)', manual: true },
   ] },
   { grupo: 'Caja', items: [
     // Nacen APAGADOS para todo el mundo, hasta para dirección: `manual` los
@@ -406,10 +411,16 @@ function claveDeRuta(path, metodo) {
 }
 
 // ── Los permisos típicos de cada rol (la semilla, el reparto de siempre) ─────
+// Lo marcado `manual` NO entra (25/11/2026): «no la reparte ningún rol: se da
+// persona a persona». Hasta ahora el grupo entero se sembraba igual, y un
+// usuario nuevo de oficina se habría llevado las Ausencias (datos de salud).
 const G = nombre => {
   const g = CATALOGO.find(x => x.grupo === nombre);
   const out = [];
-  (g ? g.items : []).forEach(i => { out.push(i.clave); (i.hijos || []).forEach(h => out.push(h.clave)); });
+  (g ? g.items : []).filter(i => !i.manual).forEach(i => {
+    out.push(i.clave);
+    (i.hijos || []).filter(h => !h.manual).forEach(h => out.push(h.clave));
+  });
   return out;
 };
 // Todas las claves del catálogo, para los roles que las llevan todas. Las

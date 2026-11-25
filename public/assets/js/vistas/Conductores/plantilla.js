@@ -60,6 +60,9 @@
       // El servidor puede decir MÁS que un mensaje: si el fallo es un choque
       // con alguien que ya existe, viene con quién es y en qué situación está.
       if (j && j.conflicto) e.conflicto = j.conflicto;
+      // Y si le falta algo para seguir (el motivo de un permiso que se pasa del
+      // convenio), lo dice: `conLoQuePide` lo pregunta y reenvía.
+      if (j && j.pide) e.pide = j.pide;
       throw e;
     }
     return j;
@@ -69,6 +72,15 @@
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo || {}),
   });
+  /** Manda; si el servidor pide algo (un motivo), lo pregunta y lo vuelve a mandar. Cancelar no guarda. */
+  async function conLoQuePide(url, metodo, cuerpo) {
+    try { return await enviar(url, metodo, cuerpo); }
+    catch (e) {
+      if (!e.pide) throw e;
+      const extra = await Dialogo.loQuePide(e.pide);
+      return extra ? enviar(url, metodo, { ...(cuerpo || {}), ...extra }) : null;
+    }
+  }
 
   // Estos dos viven en `dialogo.js`: los usa tambien Seleccion, y una copia por
   // pantalla envejece por su cuenta.
@@ -155,7 +167,8 @@
   // QUÉ PERMISO ES (14/10/2026), con los tipos del convenio. Los de asuntos
   // propios ya no salen aquí: desde el 29/10/2026 son su propia situación, con
   // su banco aparte en Vacaciones. Devuelve el código, 'OTRO', o null si se cancela.
-  const opcionesPermiso = () => (CAT.tiposPermiso || []).map(x => ({ valor: x.codigo, texto: x.etiqueta }))
+  // Con lo que da cada uno según el convenio (módulo 1): «Matrimonio · 15 días naturales…».
+  const opcionesPermiso = () => (CAT.tiposPermiso || []).map(x => ({ valor: x.codigo, texto: x.regla ? `${x.etiqueta} · ${x.regla}` : x.etiqueta }))
     .concat([{ valor: 'OTRO', texto: 'Otro (ninguno de estos)' }]);
   const NOTA_PERMISO = 'Los permisos no tocan las vacaciones. Si son asuntos propios, cancela y elige la situación «Asuntos propios»: restan de su banco de asuntos propios.';
   const tipoPermisoTxt = c => ((CAT.tiposPermiso || []).find(x => x.codigo === c) || {}).etiqueta || '';
@@ -243,7 +256,7 @@
 
     // Una ausencia no cierra su asignación, así que aquí no se toca nada del
     // coche. Está decidido en el esquema y esto solo lo respeta.
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion`, 'POST', v));
+    await hacer(() => conLoQuePide(`/plantilla/api/conductor/${d.id}/situacion`, 'POST', v));
   }
 
   /**
@@ -279,7 +292,7 @@
       if (!l) return;
       v.libraDias = l;
     }
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/ausencia`, 'POST', v));
+    await hacer(() => conLoQuePide(`/plantilla/api/conductor/${d.id}/ausencia`, 'POST', v));
   }
 
   // Las vacaciones aprobadas solo se cambian a futuro (16/10/2026). El día de
@@ -325,7 +338,7 @@
              + 'esa persona desaparecería del cuadrante.' });
       return editarAusencia(fila, d);
     }
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion/${fila.id}`, 'PUT', v));
+    await hacer(() => conLoQuePide(`/plantilla/api/conductor/${d.id}/situacion/${fila.id}`, 'PUT', v));
   }
 
   /** Borra una ausencia entera: la que se metió por error y NO llegó a pasar. */

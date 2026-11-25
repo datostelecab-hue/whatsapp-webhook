@@ -280,7 +280,7 @@ const textoNota = v => String(v == null ? '' : v).trim().slice(0, 2000);
  *     Plantilla; las de esa persona en esas fechas quedan resueltas con ella.
  * → { decididas }
  */
-async function decidir({ ids, estado, nota, desde, hasta, tipoPermiso } = {}, quien = {}) {
+async function decidir({ ids, estado, nota, desde, hasta, tipoPermiso, motivoExceso } = {}, quien = {}) {
   await exigir(quien, CLAVE_VALIDAR);
   const lista_ = [...new Set([].concat(ids || []).map(String).filter(x => /^\d+$/.test(x)))];
   if (!lista_.length) throw error('No hay ninguna ausencia elegida');
@@ -321,7 +321,7 @@ async function decidir({ ids, estado, nota, desde, hasta, tipoPermiso } = {}, qu
   if (estado === 'permiso' && !tipoPermiso) throw error('Elige qué permiso es');
   const motivo = `${estado === 'baja_medica' ? 'Baja médica' : 'Permiso'} puesta desde Ausencias (RR. HH.)${n ? `: ${n}` : ''}`;
   const puesta = await plantilla.anadirAusencia(Number(f.conductor_id),
-    { estado, desde: d, hasta: h, motivo, tipoPermiso: estado === 'permiso' ? tipoPermiso : undefined }, quien);
+    { estado, desde: d, hasta: h, motivo, tipoPermiso: estado === 'permiso' ? tipoPermiso : undefined, motivoExceso }, quien);
   const situacionId = puesta && puesta.anadida ? String(puesta.anadida.id) : null;
   const decididas = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'ausencias', accion: 'cambio', motivo }, async cli => {
     const filas = await repo.deEntre(cli, f.conductor_id, d, h);

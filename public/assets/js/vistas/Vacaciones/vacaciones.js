@@ -240,6 +240,26 @@
           },
         },
         {
+          // EL SALDO DE LOS PERMISOS DEL CONVENIO (módulo 1 de RR. HH., 25/11/2026):
+          // lo que da cada uno (art. 22) y lo que lleva este año. Salen los que
+          // ha usado y los que son al año (asuntos propios, acompañamiento médico).
+          titulo: 'Permisos del convenio', icono: 'fa-scale-balanced',
+          visible: d => !!(d.permisosConvenio && d.permisosConvenio.tipos),
+          tabla: {
+            datos: d => d.permisosConvenio.tipos.filter(t => t.permisos > 0 || t.queda !== null),
+            columnas: [
+              { titulo: 'Permiso', campo: 'nombre',
+                pinta: (v, x) => `${esc(v)}<span class="block text-[11px] text-telecab-muted">${esc(x.regla)}${x.articulo ? ` · ${esc(x.articulo)}` : ''}</span>` },
+              { titulo: 'Este año', campo: 'usado', clase: 'whitespace-nowrap tabular-nums',
+                pinta: (v, x) => (x.permisos ? `${esc(String(v).replace('.', ','))} ${esc(x.unidad)}<span class="block text-[11px] text-telecab-muted">${x.permisos} ${x.permisos === 1 ? 'permiso' : 'permisos'}</span>` : DASH) },
+              { titulo: 'Le queda', campo: 'queda', clase: 'whitespace-nowrap tabular-nums',
+                ayuda: 'Solo los que son al año. Los de por hecho causante (matrimonio, fallecimiento…) se miran en cada permiso.',
+                pinta: (v, x) => (v === null ? '<span class="text-telecab-muted">Por hecho causante</span>'
+                  : `<b class="${x.pasado ? 'text-telecab-red' : ''}">${esc(String(v).replace('.', ','))} ${esc(x.unidad)}</b>`) },
+            ],
+          },
+        },
+        {
           titulo: 'Asuntos propios, permisos, libranzas y suspensiones', icono: 'fa-file-signature',
           visible: d => d.detalle.asuntos.length > 0 || d.detalle.permisos.length > 0 || d.detalle.suspensiones.length > 0
             || (d.detalle.libranzasExc || []).length > 0,

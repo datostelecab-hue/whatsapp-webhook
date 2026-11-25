@@ -756,7 +756,25 @@
     }, segundos * 1000);
   }
 
-  global.Dialogo = { abrir, aviso, confirmar, elegir, formulario, hecho, aISO, TONOS };
+  /**
+   * LO QUE PIDE UN ERROR PARA SEGUIR (25/11/2026, módulo 1 de RR. HH.). El
+   * servidor contesta `{ status: 'error', pide: { campo, titulo, texto } }`
+   * cuando le falta algo que solo puede decir una persona —el motivo de un
+   * permiso que se pasa de lo que da el convenio—. Esto lo pregunta y devuelve
+   * `{ [campo]: lo escrito }` para reenviar, o null si se cancela.
+   *
+   *   const extra = await Dialogo.loQuePide(error.pide);
+   *   if (extra) await enviar({ ...datos, ...extra });
+   */
+  async function loQuePide(pide) {
+    if (!pide || !pide.campo) return null;
+    const v = await formulario(pide.titulo || 'Falta un dato', [
+      { id: 'valor', etiqueta: 'Por qué', tipo: 'texto-largo', obligatorio: true, minimo: 3, max: 2000 },
+    ], { textoBoton: 'Guardar con este motivo', nota: pide.texto || '' });
+    return v && String(v.valor || '').trim() ? { [pide.campo]: String(v.valor).trim() } : null;
+  }
+
+  global.Dialogo = { abrir, aviso, confirmar, elegir, formulario, hecho, aISO, TONOS, loQuePide };
 
   // `alert` se sustituye de una vez para TODAS las pantallas: no devuelve nada,
   // así que ningún código que lo llame se entera del cambio. Con `confirm` no
