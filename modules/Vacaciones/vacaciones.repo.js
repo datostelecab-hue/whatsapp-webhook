@@ -251,6 +251,66 @@ async function planes(ids) {
   return { porId: out, inicio: inicio.rows[0].inicio };
 }
 
+// ── UNA BAJA ENCIMA DE UNAS VACACIONES (db/292, módulo 2) ──────────────────
+const sinTablaSolape = e => e && e.code === '42P01';
+
+/**
+ * Los días que pisó una baja y RR. HH. decidió MANTENER, como tramos de
+ * vacaciones (con sus dos días de libranza): cuentan como disfrutados.
+ */
+async function solapesMantenidos(ids, desde) {
+  if (!ids.length) return [];
+  try {
+    const r = await db.consulta(
+      `SELECT NULL::text AS fila, s.conductor_id::text AS id, 'vacaciones' AS estado, s.libra_dias,
+              to_char(s.desde, 'YYYY-MM-DD') AS desde, to_char(s.hasta, 'YYYY-MM-DD') AS hasta,
+              'Mantenidas durante una baja médica' || COALESCE(': ' || s.nota, '') AS motivo,
+              NULL AS leave_type_code, NULL AS tipo_permiso,
+              NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS quien,
+              to_char(s.resuelta_at AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS puesto,
+              s.ticket_id::text AS ticket_id, t.codigo AS ticket_codigo, TRUE AS solape
+         FROM vacaciones_solape s
+         LEFT JOIN usuario u ON u.id = s.resuelta_por
+         LEFT JOIN ticket t ON t.id = s.ticket_id
+        WHERE s.estado = 'mantenidos' AND s.conductor_id = ANY($1::bigint[]) AND s.hasta >= $2::date`, [ids, desde]);
+    return r.rows;
+  } catch (e) { if (sinTablaSolape(e)) return []; throw e; }
+}
+
+/** Los solapes (todos, o los de una persona), con la baja que los causó. */
+async function solapes({ conductorId = null } = {}) {
+  try {
+    const r = await db.consulta(
+      `SELECT s.id::text AS id, s.conductor_id::text AS conductor_id, s.estado, s.nota,
+              btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre,
+              to_char(s.desde, 'YYYY-MM-DD') AS desde, to_char(s.hasta, 'YYYY-MM-DD') AS hasta,
+              (s.hasta - s.desde + 1)::int AS dias,
+              to_char(s.vacaciones_desde, 'YYYY-MM-DD') AS vacaciones_desde, to_char(s.vacaciones_hasta, 'YYYY-MM-DD') AS vacaciones_hasta,
+              to_char(b.desde, 'YYYY-MM-DD') AS baja_desde, to_char(b.hasta, 'YYYY-MM-DD') AS baja_hasta,
+              t.codigo AS ticket_codigo, s.ticket_id::text AS ticket_id,
+              to_char(s.resuelta_at AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI') AS resuelta,
+              NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS resuelta_por_nombre
+         FROM vacaciones_solape s
+         JOIN conductor c ON c.id = s.conductor_id
+         LEFT JOIN conductor_estado_hist b ON b.id = s.baja_id
+         LEFT JOIN ticket t ON t.id = s.ticket_id
+         LEFT JOIN usuario u ON u.id = s.resuelta_por
+        WHERE ($1::bigint IS NULL OR s.conductor_id = $1::bigint)
+        ORDER BY (s.estado = 'pendiente') DESC, s.desde DESC`, [conductorId]);
+    return r.rows;
+  } catch (e) { if (sinTablaSolape(e)) return []; throw e; }
+}
+
+/** Decide uno pendiente. → la fila, o null si ya estaba decidido o no existe. */
+async function resolverSolape(cli, id, { estado, nota, usuarioId }) {
+  const r = await cli.query(
+    `UPDATE vacaciones_solape SET estado = $2, nota = $3, resuelta_at = now(), resuelta_por = $4
+      WHERE id = $1 AND estado = 'pendiente'
+      RETURNING id::text AS id, conductor_id::text AS conductor_id, ticket_id::text AS ticket_id,
+                to_char(desde, 'DD/MM/YYYY') AS desde, to_char(hasta, 'DD/MM/YYYY') AS hasta`, [id, estado, nota || null, usuarioId || null]);
+  return r.rows[0] || null;
+}
+
 // ── PARA DECIDIR UNA SOLICITUD (módulo 2 del plan de RR. HH., 25/11/2026) ──
 // «Cada solicitud le llega con: calificación del conductor, días disponibles,
 // conductores ya fuera esas fechas y cobertura de planificación».
@@ -318,4 +378,4 @@ async function coberturaDe(conductorId, desde, hasta) {
 }
 
 module.exports = { ESTADOS, personas, tramos, tramo, festivos, horasFestivos, festivosPorSellar, guardarHorasFestivo, diasLaborados, justificados, planes,
-  letraDe, fueraEntre, coberturaDe };
+  letraDe, fueraEntre, coberturaDe, solapesMantenidos, solapes, resolverSolape };

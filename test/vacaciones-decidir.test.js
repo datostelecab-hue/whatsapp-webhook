@@ -28,3 +28,13 @@ test('los cuatro datos: letra, saldo, quién está fuera y la cobertura de su co
   assert.ok(d.cobertura.diasSinCubrir.length > 0, 'nadie más lleva su coche esos días');
   await assert.rejects(vacaciones.paraDecidir(yo.id, {}), /desde cuándo/);
 }));
+
+test('el portal le dice en qué quedó su solicitud (el aviso al conductor)', () => conBase(async ({ consulta, fabrica }) => {
+  const portal = require('../modules/Portal/portal.service');
+  const c = await fabrica.conductor({ nombre: 'PORTAL' });
+  await consulta(
+    `INSERT INTO ticket (codigo, origen, area_codigo, subtipo_codigo, nombre, descripcion, estado, conductor_id, fecha_ini, fecha_fin, resolucion, resuelto_at)
+     VALUES ('RH-PRUEBA-1', 'interno', 'RRHH', 'VACACIONES', 'Portal', 'Quiero vacaciones', 'rechazado', $1, '2026-12-20', '2026-12-31', 'Ya hay tres de su zona fuera', now())`, [c.id]);
+  const v = await portal.vacacionesDe({ id: c.id });
+  assert.deepEqual([v.ultima.estado, v.ultima.desde, v.ultima.motivo], ['rechazada', '2026-12-20', 'Ya hay tres de su zona fuera']);
+}));

@@ -967,16 +967,23 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo, tipo
         '(o «Cambiar las fechas» en Vacaciones), que las deja unidas a su ticket.');
     }
   }
+  // Una baja encima de unas vacaciones (db/292): la baja manda, como al añadirla.
+  // Antes, `reemplazar` las recortaba sin decir nada (y perdía lo de después).
+  const conSolapes = estado === 'baja_medica' && await haySolapes();
   return conLibraDias(() => db.transaccion(async cli => {
+    const solapes = conSolapes
+      ? await recortarVacaciones(cli, id, desde || new Date().toISOString().slice(0, 10), previsto) : [];
     // Y la ausencia nace CERRADA en esa fecha (`hasta`), no solo "prevista": así
     // el día que toca vuelve al cuadrante sola, sin que nadie tenga que acordarse
     // de cerrarla. Si no vuelve, se amplía; que es justo lo que se quiere mirar.
-    return vig.reemplazar('situacion', id, {
+    const nueva = await vig.reemplazar('situacion', id, {
       estado, hasta: previsto, hasta_previsto: previsto,
       motivo: motivo || null, usuario_id: usuarioId || null,
       ...(tipo ? { leave_type_code: tipo } : {}),
       ...(libra ? { libra_dias: libra } : {}),
     }, { desde, cli });
+    await apuntarSolapes(cli, id, nueva.id, solapes);
+    return nueva;
   }));
 }
 
@@ -1090,7 +1097,13 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
   // ausencia y se vuelve a abrir al día siguiente de la vuelta. Lo que NO se
   // parte es otra ausencia: dos bajas solapadas sí son un error de verdad, y
   // ahí el aviso tiene que seguir saltando.
-  const estorban = pisa.filter(x => x.es_ausencia);
+  // UNA BAJA ENCIMA DE UNAS VACACIONES (db/292, módulo 2): la baja manda. Las
+  // vacaciones que pisa se recortan (o se parten) y los días quedan apuntados
+  // para que RR. HH. decida si vuelven al saldo. Sin la migración, como antes:
+  // el aviso de qué estorba.
+  const vacPisadas = estado === 'baja_medica' && await haySolapes()
+    ? pisa.filter(x => x.estado === 'vacaciones') : [];
+  const estorban = pisa.filter(x => x.es_ausencia && !vacPisadas.includes(x));
   if (estorban.length) {
     const choca = estorban[0];
     throw new Error(`Esas fechas pisan otro tramo suyo: ${choca.etiqueta}, `
@@ -1108,6 +1121,7 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
   // a medias quedaría alguien sin ningún tramo —o con dos— y eso lo leen la
   // bitácora, el cuadrante y la nómina.
   return conLibraDias(() => db.transaccion(async cli => {
+    const solapes = vacPisadas.length ? await recortarVacaciones(cli, id, desde, fin) : [];
     await partirFondos(cli, id, fondos, desde, fin);
 
     // Quién la abrió queda en `usuario_id`, que es la pregunta que de verdad se
@@ -1121,8 +1135,73 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId, tipo
        VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8, $9${libra ? ', $10::smallint[]' : ''}) RETURNING *`,
       [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null,
        usuarioId || null, ticketId || null, tipo, ...(libra ? [libra] : [])]);
-    return { anadida: r.rows[0], fondoPartido: fondos.length };
+    await apuntarSolapes(cli, id, r.rows[0].id, solapes);
+    return { anadida: r.rows[0], fondoPartido: fondos.length, solapes: solapes.length };
   }));
+}
+
+/**
+ * ¿Está la tabla de los solapes de vacaciones y baja (db/292)? En cuanto está,
+ * se recuerda; mientras no, se vuelve a mirar (la migración se aplica sin reiniciar).
+ */
+let haySolapesYa = false;
+async function haySolapes() {
+  if (!haySolapesYa) {
+    haySolapesYa = (await db.consulta(`SELECT to_regclass('public.vacaciones_solape') IS NOT NULL AS hay`)).rows[0].hay;
+  }
+  return haySolapesYa;
+}
+
+/**
+ * LA BAJA MANDA (db/292): recorta, parte o quita las vacaciones de la persona
+ * que pisa una baja de `desde` a `fin` (sin fin = abierta), y devuelve lo que
+ * pisó, para apuntarlo. Va en la transacción de la baja, antes de meterla.
+ *   · empiezan antes y acaban después: se parten en dos (el trozo de después
+ *     conserva su ticket y sus dos días de libranza);
+ *   · empiezan antes: acaban la víspera de la baja;
+ *   · acaban después: empiezan el día siguiente al alta;
+ *   · enteras dentro: se quitan (lo que eran queda en el apunte).
+ */
+async function recortarVacaciones(cli, id, desde, fin) {
+  const vs = (await cli.query(
+    `SELECT id, to_char(desde, 'YYYY-MM-DD') AS d, to_char(hasta, 'YYYY-MM-DD') AS h, ticket_id, libra_dias, motivo, usuario_id
+       FROM conductor_estado_hist
+      WHERE conductor_id = $1 AND estado = 'vacaciones'
+        AND desde <= COALESCE($3::date, 'infinity'::date) AND COALESCE(hasta, 'infinity'::date) >= $2::date
+      ORDER BY desde`, [id, desde, fin || null])).rows;
+  const out = [];
+  for (const v of vs) {
+    const antes = v.d < desde;
+    const despues = !!fin && (!v.h || v.h > fin);
+    if (antes && despues) {
+      await cli.query(`UPDATE conductor_estado_hist SET hasta = $2::date - 1, hasta_previsto = $2::date - 1 WHERE id = $1`, [v.id, desde]);
+      await cli.query(
+        `INSERT INTO conductor_estado_hist (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, ticket_id, libra_dias)
+         VALUES ($1, 'vacaciones', $2::date + 1, $3::date, $3::date, $4, $5, $6, $7)`,
+        [id, fin, v.h, v.motivo, v.usuario_id, v.ticket_id, v.libra_dias]);
+    } else if (antes) {
+      await cli.query(`UPDATE conductor_estado_hist SET hasta = $2::date - 1, hasta_previsto = $2::date - 1 WHERE id = $1`, [v.id, desde]);
+    } else if (despues) {
+      await cli.query(`UPDATE conductor_estado_hist SET desde = $2::date + 1 WHERE id = $1`, [v.id, fin]);
+    } else {
+      await cli.query(`DELETE FROM conductor_estado_hist WHERE id = $1`, [v.id]);
+    }
+    out.push({
+      vacacionesDesde: v.d, vacacionesHasta: v.h, ticketId: v.ticket_id, libraDias: v.libra_dias,
+      desde: antes ? desde : v.d, hasta: fin && (!v.h || v.h > fin) ? fin : v.h,
+    });
+  }
+  return out;
+}
+
+/** Apunta los días que pisó la baja `bajaId`, pendientes de que RR. HH. decida. */
+async function apuntarSolapes(cli, id, bajaId, solapes) {
+  for (const s of solapes || []) {
+    await cli.query(
+      `INSERT INTO vacaciones_solape (conductor_id, baja_id, vacaciones_desde, vacaciones_hasta, ticket_id, libra_dias, desde, hasta)
+       VALUES ($1, $2, $3::date, $4::date, $5, $6, $7::date, $8::date)`,
+      [id, bajaId, s.vacacionesDesde, s.vacacionesHasta, s.ticketId, s.libraDias, s.desde, s.hasta]);
+  }
 }
 
 /**

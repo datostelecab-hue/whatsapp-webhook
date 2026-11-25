@@ -335,6 +335,20 @@ async function efectivo(persona) {
   }
 }
 
+/**
+ * SUS VACACIONES: la última solicitud (y las de antes, hasta cinco en 120 días)
+ * con lo que se decidió, y su saldo de hoy (solo plantilla propia: a la ETT se
+ * las da la agencia). Null si no ha pedido nada ni tiene saldo que enseñar.
+ */
+async function vacacionesDe(persona) {
+  const solicitudes = await require('../Ticketera/ticketera.service').vacacionesDelConductor(persona.id);
+  let saldo = null;
+  try { saldo = (await require('../Vacaciones/vacaciones.service').ficha(persona.id)).saldoTras; }
+  catch (_) { /* ETT o sin contrato este año: sin saldo */ }
+  if (!solicitudes.length && saldo == null) return null;
+  return { solicitudes, ultima: solicitudes[0] || null, saldo };
+}
+
 /** La portada: el coche, el próximo turno, el dinero del mes, el efectivo y la última nota. */
 async function inicio(persona) {
   // Si el dinero, el efectivo o el coche no se pueden leer, la portada sale igual, sin esa tarjeta.
@@ -348,8 +362,11 @@ async function inicio(persona) {
     // Mis horas (24/11/2026): su estado en BOLT y, con coche, el cronómetro.
     require('./portal.horas').cronometro(persona).catch(fallo('horas')),
   ]);
+  // Sus vacaciones (módulo 2 de RR. HH., 25/11/2026): lo que se decidió de lo
+  // que pidió, y su saldo. Es el aviso de que se aprobaron o se rechazaron.
+  const vac = await vacacionesDe(persona).catch(fallo('vacaciones'));
   return {
-    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef, coche: co, horas: hor,
+    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef, coche: co, horas: hor, vacaciones: vac,
     proximo: t.dias.find(d => d.trabaja) || null,
     hayPlan: t.dias.some(d => !d.sinPlan),
     evento: t.evento,
@@ -359,7 +376,7 @@ async function inicio(persona) {
 }
 
 module.exports = {
-  pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero, efectivo,
+  pedirCodigo, entrar, quienEs, salir, inicio, turnos, semanas, dinero, efectivo, vacacionesDe,
   SESION_DIAS, COOKIE_DIAS,
   // Para el comprobador.
   _normalizarDni: normalizarDni, _ocultarEmail: ocultarEmail, _pilaDe: pilaDe, _correoDelCodigo: correoDelCodigo, _enDosColumnas: enDosColumnas,

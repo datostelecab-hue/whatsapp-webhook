@@ -545,8 +545,22 @@ const nuevasTarjetas = async () => { await tarjetas().deNuevos(); };
 const trasCambiarTicket = async (r, [id, , quien]) => { await tarjetas().alCambiar(Number(id), (quien || {}).usuarioId); };
 const trasAsignarTicket = async (r, [id, , quien]) => { await tarjetas().alAsignar(Number(id), (quien || {}).usuarioId); };
 
+/**
+ * LO QUE VE EL CONDUCTOR EN SU PORTAL de sus solicitudes de vacaciones (módulo
+ * 2): cada una con sus fechas y en qué quedó, sin notas internas. «Aplicado»
+ * (ejecutado) es que se aprobaron; «Rechazado», con el motivo que se escribió.
+ */
+async function vacacionesDelConductor(conductorId) {
+  const QUEDO = { ejecutado: 'aprobada', aprobado: 'aprobada', rechazado: 'rechazada', no_procede: 'rechazada' };
+  return (await repo.vacacionesDe(conductorId)).map(t => ({
+    codigo: t.codigo, desde: t.fechaIniIso, hasta: t.fechaFinIso, pedida: t.pedidoIso || '',
+    estado: QUEDO[t.estado] || (t.cerrado ? 'cerrada' : 'pendiente'),
+    motivo: (QUEDO[t.estado] === 'rechazada' && t.resolucion) ? t.resolucion : '',
+  }));
+}
+
 module.exports = {
-  vacacionesParaLaPantalla, anotarCambioDeVacaciones,
+  vacacionesParaLaPantalla, anotarCambioDeVacaciones, vacacionesDelConductor,
   sincronizar: avisaTras(sincronizar, 'tickets', r => !!(r && r.nuevas), async r => { if (r && r.nuevas) await nuevasTarjetas(); }),
   datos, ficha,
   asignar: avisaTras(asignar, 'tickets', () => false, trasAsignarTicket),

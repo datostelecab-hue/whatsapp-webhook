@@ -290,6 +290,20 @@ En la Ticketera, un ticket de vacaciones abierto y enlazado lleva **«Para decid
 
 Desde ahí, **Aprobar** es «Aplicar» (con sus dos días de libranza) y **Rechazar** cierra el ticket como «Rechazado» con el motivo. `vacaciones.service.paraDecidir`, `GET /ticketera/api/vacaciones/decidir`. Prueba: `test/vacaciones-decidir.test.js`.
 
+### El aviso al conductor, en su portal
+
+Decidido por Camilo: **por el portal**, sin WhatsApp. En el inicio del [[Portal de conductores]], la tarjeta **«Tus vacaciones»** dice en qué quedó su última solicitud: aprobadas (el ticket «Aplicado»), no aprobadas (con el motivo que se escribió al rechazarla) o pendiente; y cuántos días le quedan (solo plantilla propia). Sale de `ticketera.service.vacacionesDelConductor` (las de los últimos 120 días, sin notas internas) y `portal.service.vacacionesDe`.
+
+## Una baja encima de unas vacaciones (25/11/2026, db/292)
+
+El encargo: *«si una baja coincide con vacaciones aprobadas, el ERP no cambia nada solo: muestra una alerta en Vacaciones con el conductor, los días solapados y la baja, para que Diana decida si devuelve esos días al saldo»*. La base no deja dos situaciones el mismo día: hasta hoy, «Añadir ausencia» daba error y «Cambiar situación» recortaba las vacaciones sin avisar (y perdía lo de después de la baja). Decidido por Camilo: **la baja manda y Diana decide**.
+
+- **Al cargar una baja médica** (por cualquier puerta: Plantilla, Ticketera, Ausencias) las vacaciones que pisa se **recortan**, se **parten en dos** (el trozo de después conserva su ticket y sus dos días de libranza) o, si caen enteras dentro, **se quitan**. Los días pisados quedan en `vacaciones_solape`, **por decidir** (`conductores.repo.recortarVacaciones`).
+- **En Vacaciones**: la cifra **«Solapes con bajas»** (y el filtro) y, en la ficha, el bloque **«Baja encima de sus vacaciones»** con los días, sus vacaciones (y su ticket) y la baja. Quien tiene la llave de aprobar decide:
+  - **Devolverlos al saldo**: ya lo están, porque la baja recortó las vacaciones.
+  - **Mantenerlos como vacaciones**: siguen contando como disfrutados (`repo.solapesMantenidos`), y salen en la tabla de vacaciones como «Mantenidas durante una baja médica», sin botones.
+- El saldo se recalcula al leer, y la decisión va al libro de auditoría con su nota. Pendiente de confirmar con legal, como dice el encargo. Prueba: `test/vacaciones-solape-baja.test.js`.
+
 ## La llave
 
 `/vacaciones`, en el grupo RRHH del catálogo ([[Usuarios y permisos]]). db/197 se la da a quien ya tenía `/rrhh` o la de aprobar vacaciones, que son 8 usuarios. **Mirar los saldos no da permiso para aprobar**: `/vacaciones/aprobar` se mira exacta (`services/aprobarVacaciones.js`) y no por prefijo.

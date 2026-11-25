@@ -57,4 +57,8 @@ router.put('/api/conductor/:id/vacaciones/:filaId', responde(async req =>
 router.post('/api/conductor/:id/vacaciones/:filaId/corregir', responde(async req =>
   vacaciones.corregirVacaciones(req.params.id, req.params.filaId, req.body || {}, await quien(req))));
 
+// UNA BAJA PISÓ UNAS VACACIONES (módulo 2, db/292): devolver los días o mantenerlos.
+router.post('/api/solape/:id', responde(async req =>
+  vacaciones.resolverSolape(req.params.id, req.body || {}, await quien(req))));
+
 module.exports = router;

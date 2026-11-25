@@ -235,7 +235,9 @@ function saldoDe(p, tramos, festivos, horas, hoy, laborados, plan, justificados)
         ticket: t.ticket_id ? { id: t.ticket_id, codigo: t.ticket_codigo || '' } : null,
         // Se pueden cambiar mientras les quede algo por llegar; las empezadas,
         // solo la vuelta (ver `validarCambio`).
-        editable: !!t.hasta && t.hasta >= hoy,
+        // Los días que pisó una baja y RR. HH. decidió mantener (db/292) no son
+        // una fila de la ficha: no se cambian ni se corrigen desde aquí.
+        editable: !t.solape && !!t.hasta && t.hasta >= hoy, solape: !!t.solape,
         empezadas: t.desde <= hoy });
     } else if (esAsuntoPropio(t)) {
       if (!pasado && !futuro) continue;
@@ -384,6 +386,9 @@ async function cargar({ id = null } = {}) {
   const porId = new Map(ids.map(i => [i, { tramos: [], horas: new Map(), laborados: new Map(), justificados: new Set(), plan: planDe(i) }]));
   js.forEach(j => { const x = porId.get(j.id); if (x) x.justificados.add(j.dia); });
   tramos.forEach(t => porId.get(t.id).tramos.push(t));
+  // Los días de vacaciones que pisó una baja y RR. HH. decidió MANTENER (db/292):
+  // siguen contando como disfrutados, como el trozo de vacaciones que eran.
+  (await repo.solapesMantenidos(ids, DESDE_HISTORICO)).forEach(t => { const x = porId.get(t.id); if (x) x.tramos.push(t); });
   horas.forEach(h => porId.get(h.id).horas.set(h.fecha, Number(h.segundos)));
   lab.filas.forEach(d => { const x = porId.get(d.id); if (x) x.laborados.set(d.dia, Number(d.segundos)); });
   return { gente, festivos, porId, sinHistorico: lab.sinHistorico };
@@ -418,12 +423,16 @@ const reglas = sinHistorico => ({ tasa: TASA, topeMes: TOPE_MES, desde: DESDE_HI
   umbralLaborado: UMBRAL_LABORADO / 3600, bajaSinPlaza: '5/7', nucleoDesde: NUCLEO_DESDE, apPorAnio: AP_POR_ANIO, sinHistorico: !!sinHistorico });
 
 async function lista({ hoy = hoyMadrid() } = {}) {
-  const { gente, festivos, porId, sinHistorico } = await cargar();
+  const [{ gente, festivos, porId, sinHistorico }, sol] = await Promise.all([cargar(), repo.solapes()]);
+  // Los solapes con una baja por decidir (db/292), por persona.
+  const pendientes = new Map();
+  sol.filter(x => x.estado === 'pendiente').forEach(x => pendientes.set(x.conductor_id, (pendientes.get(x.conductor_id) || 0) + x.dias));
   const filas = gente.map(p => {
     const x = porId.get(p.id);
     const s = saldoPara(p, x, festivos, hoy);
     delete s.detalle;
-    return { id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, ...s };
+    return { id: p.id, nombre: p.nombre, dni: p.dni_nie || '', alta: p.alta, contrato: contrato(p), tipo: p.tipo, ...s,
+      solapesPendientes: pendientes.get(String(p.id)) || 0 };
   });
   return { filas, hoy, reglas: reglas(sinHistorico) };
 }
@@ -448,7 +457,28 @@ async function ficha(id, { hoy = hoyMadrid() } = {}) {
     // EL SALDO DE SUS PERMISOS DEL CONVENIO este año (módulo 1 de RR. HH.,
     // 25/11/2026: «el saldo por conductor y tipo de permiso siempre visible»).
     permisosConvenio: await plantilla.saldoPermisos(p.id, hoy.slice(0, 4)).catch(() => null),
+    // Los días de vacaciones que pisó una baja (db/292): por decidir y decididos.
+    solapes: await repo.solapes({ conductorId: p.id }),
   };
+}
+
+/**
+ * UNA BAJA PISÓ UNAS VACACIONES: RR. HH. DECIDE (módulo 2, db/292). El encargo:
+ * «para que Diana decida si devuelve esos días al saldo (a confirmar con legal).
+ * Al resolverla, el saldo se recalcula y queda registrado».
+ *   · devueltos: vuelven al saldo (ya lo están: la baja recortó las vacaciones);
+ *   · mantenidos: siguen contando como disfrutados (`repo.solapesMantenidos`).
+ * Con la llave de aprobar vacaciones; al libro, con el motivo.
+ */
+async function resolverSolape(id, { decision, nota } = {}, quien = {}) {
+  await require('../../services/aprobarVacaciones').exigir(quien.usuarioId);
+  if (!['devueltos', 'mantenidos'].includes(decision)) throw new Error('Elige: devolver los días al saldo o mantenerlos como vacaciones');
+  const n = String(nota || '').trim().slice(0, 2000);
+  const que = decision === 'devueltos' ? 'Días devueltos al saldo' : 'Días mantenidos como vacaciones';
+  const r = await require('../../services/libro').conFirma({ usuarioId: quien.usuarioId, origen: 'vacaciones · solape con baja', accion: 'cambio',
+    motivo: `${que}${n ? `: ${n}` : ''}` }, cli => repo.resolverSolape(cli, String(id), { estado: decision, nota: n, usuarioId: quien.usuarioId }));
+  if (!r) throw new Error('Ese solape ya estaba decidido (o no existe)');
+  return { decidido: decision, texto: `${que} (del ${r.desde} al ${r.hasta})` };
 }
 
 // ── Simular unas vacaciones (06/11/2026) ────────────────────────────────────
@@ -702,7 +732,7 @@ async function paraDecidir(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}
 }
 
 module.exports = {
-  paraDecidir,
+  paraDecidir, resolverSolape,
   TASA, TOPE_MES, DESDE_HISTORICO, UMBRAL_LABORADO, UMBRAL_FESTIVO, FESTIVOS_PAGADOS_HASTA, NUCLEO_DESDE, ASUNTOS_PROPIOS, AP_POR_ANIO,
   lista, ficha, simular, libranzasSugeridas, sellarFestivos, cambiarVacaciones, corregirVacaciones,
   _saldoDe: saldoDe, _validarCambio: validarCambio,

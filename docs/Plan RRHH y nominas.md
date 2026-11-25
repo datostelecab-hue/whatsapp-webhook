@@ -143,6 +143,8 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 
 **Módulo 7 adelantado** — ✔ 25/11 (db/291): los finiquitos, ver [[Finiquitos]]. Decidido: nace al dar la baja (propia y ETT), Diana revisa, Ignacio aprueba, vacaciones en días.
 
+**Módulo 2** — ✔ 25/11 (db/292): «Para decidir» en el ticket con los cuatro datos, el aviso al conductor en su portal y la baja encima de unas vacaciones (la baja manda y Diana decide). Ver [[Vacaciones#Para decidir una solicitud (25/11/2026, módulo 2 del plan de RR. HH.)]]. Queda para más adelante: cupos y fechas bloqueadas (el encargo: «estructura preparada para reglas futuras»).
+
 **Fase 5 · Módulos 7, 2, 3 y 5**
 - Finiquitos (cableando `liquidacion`), la bandeja de vacaciones, las sanciones con su carta y el informe para el SMAC.
 

@@ -128,6 +128,20 @@ async function una(id) {
   return r.rows.length ? aFila(r.rows[0]) : null;
 }
 
+/**
+ * LAS SOLICITUDES DE VACACIONES DE UNA PERSONA (módulo 2 del plan de RR. HH.,
+ * 25/11/2026): las de los últimos 120 días, de la más nueva a la más vieja.
+ * Lo pide su portal, para decirle qué se decidió.
+ */
+async function vacacionesDe(conductorId) {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS} ${DE}
+      WHERE t.conductor_id = $1 AND t.subtipo_codigo = 'VACACIONES'
+        AND t.creado_at >= now() - interval '120 days'
+      ORDER BY t.creado_at DESC LIMIT 5`, [Number(conductorId)]);
+  return r.rows.map(aFila);
+}
+
 /** Cuántos hay sin cerrar, por área. Lo pide la campana de notificaciones. */
 async function abiertosPorArea() {
   const r = await db.consulta(
@@ -298,7 +312,7 @@ async function catalogos() {
 }
 
 module.exports = {
-  bandeja, pendientesDesde, una, abiertosPorArea, alta, altaInterna, mios, cambiarEstado, cambiarResolucion, asignar,
+  bandeja, pendientesDesde, una, abiertosPorArea, vacacionesDe, alta, altaInterna, mios, cambiarEstado, cambiarResolucion, asignar,
   guardarNotas, guardarAdjuntos,
   guardarObservaciones, enlazar, reclasificar, apuntar, historia, catalogos,
 };

@@ -69,6 +69,30 @@
 </section><%# cierra portalTarjeta %>
 <% } %>
 
+<% if (locals.vacaciones) { const v = locals.vacaciones, u = v.ultima; %>
+<%# SUS VACACIONES (módulo 2 de RR. HH., 25/11/2026): en qué quedó lo que pidió, y su saldo. Es el aviso. %>
+<section class="caja" aria-labelledby="t-vacaciones">
+  <div class="caja-tit caja-tit-ico"><span class="caja-ico"><%- include('portalIcono', { n: 'vacaciones' }) %></span><h2 id="t-vacaciones">Tus vacaciones</h2></div>
+  <div class="caja-in">
+  <% if (u) { const tramo = u.desde ? 'del ' + f.fecha(u.desde) + (u.hasta && u.hasta !== u.desde ? ' al ' + f.fecha(u.hasta) : '') : ''; %>
+    <% if (u.estado === 'aprobada') { %>
+    <p class="cambio-mas"><b>Aprobadas</b> tus vacaciones <%= tramo %>.</p>
+    <% } else if (u.estado === 'rechazada') { %>
+    <p><b>No se han aprobado</b> tus vacaciones <%= tramo %>.</p>
+    <% if (u.motivo) { %><p class="suave peq">Motivo: <%= u.motivo %></p><% } %>
+    <% } else if (u.estado === 'pendiente') { %>
+    <p>Tu solicitud <%= tramo %> está <b>pendiente</b>: RR. HH. la está mirando.</p>
+    <% } else { %>
+    <p>Tu solicitud <%= tramo %> está cerrada.</p>
+    <% } %>
+  <% } %>
+  <% if (v.saldo != null) { %>
+    <p class="<%= u ? 'suave peq' : '' %>">Te quedan <b><%= String(Math.round(v.saldo * 10) / 10).replace('.', ',') %></b> días de vacaciones<%= u ? '' : ' a día de hoy' %>.</p>
+  <% } %>
+  </div>
+</section>
+<% } %>
+
 <%- include('portalTarjeta', { id: 't-nota', href: '/puntuacion', icono: 'puntuacion', titulo: 'Tu última nota', ir: 'Todas las semanas' }) %>
   <div class="caja-in">
   <% if (!ultima) { %>

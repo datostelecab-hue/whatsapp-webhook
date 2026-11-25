@@ -95,6 +95,11 @@
           filtro: { id: 'saldo', valor: 'negativo' }, ayuda: 'Pulsa para verlos.' },
         { etiqueta: 'De vacaciones hoy', valor: hoy, pie: 'según su ficha',
           filtro: { id: 'saldo', valor: 'hoy' }, ayuda: 'Pulsa para verlos.' },
+        // UNA BAJA PISÓ SUS VACACIONES (módulo 2, db/292): días por decidir.
+        ...(todas.some(x => x.solapesPendientes) ? [{ etiqueta: 'Solapes con bajas', tono: 'warn',
+          valor: todas.filter(x => x.solapesPendientes).length, pie: 'baja encima de vacaciones: por decidir',
+          filtro: { id: 'saldo', valor: 'solape' },
+          ayuda: 'Una baja médica cayó encima de sus vacaciones y las recortó. Decide en su ficha si esos días vuelven al saldo o se mantienen como vacaciones. Pulsa para verlos.' }] : []),
         { etiqueta: 'Dados de baja', valor: bajas.length, pie: `${num(porLiquidar, 0)} días sin disfrutar a su baja`,
           filtro: { id: 'situacion', valor: 'baja' },
           ayuda: `Quien se fue desde el ${f(R.desde)}: lo que generó y no disfrutó hasta el día de su baja, para su finiquito. Pulsa para verlos.` },
@@ -116,8 +121,10 @@
           { valor: 'negativo', texto: 'En negativo' },
           { valor: 'mas30', texto: 'Más de 30 días' },
           { valor: 'hoy', texto: 'De vacaciones hoy' },
+          { valor: 'solape', texto: 'Con una baja encima de sus vacaciones' },
         ],
-        pasa: (x, v) => (v === 'negativo' ? x.saldo < 0 : v === 'mas30' ? x.saldo > 30 : v === 'hoy' ? !!x.deVacacionesHasta : true) },
+        pasa: (x, v) => (v === 'negativo' ? x.saldo < 0 : v === 'mas30' ? x.saldo > 30 : v === 'hoy' ? !!x.deVacacionesHasta
+          : v === 'solape' ? x.solapesPendientes > 0 : true) },
     ],
 
     columnas: [
@@ -235,7 +242,34 @@
               // (libranza excepcional…), otras fechas o borrarlas, con un motivo
               // que queda en el libro de auditoría.
               { icono: 'fa-file-pen', titulo: 'Corregir (también si ya pasaron)', onClick: corregir,
-                visible: x => APRUEBA.puede && !x.deAntes },
+                visible: x => APRUEBA.puede && !x.deAntes && !x.solape },
+            ],
+          },
+        },
+        {
+          // UNA BAJA ENCIMA DE SUS VACACIONES (módulo 2, db/292): la baja mandó y
+          // las recortó. Quien aprueba vacaciones decide si esos días vuelven al
+          // saldo o se mantienen como disfrutados; el saldo se recalcula solo.
+          titulo: 'Baja encima de sus vacaciones', icono: 'fa-notes-medical',
+          visible: d => (d.solapes || []).length > 0,
+          tabla: {
+            datos: d => d.solapes,
+            columnas: [
+              { titulo: 'Días que pisó la baja', campo: 'desde', clase: 'whitespace-nowrap tabular-nums',
+                pinta: (v, x) => `${f(v)} → ${f(x.hasta)}<span class="block text-[11px] text-telecab-muted">${x.dias} ${x.dias === 1 ? 'día' : 'días'}</span>` },
+              { titulo: 'Sus vacaciones', campo: 'vacaciones_desde', clase: 'whitespace-nowrap tabular-nums',
+                pinta: (v, x) => `${f(v)} → ${f(x.vacaciones_hasta)}${x.ticket_codigo ? `<span class="block text-[11px] text-telecab-muted">${esc(x.ticket_codigo)}</span>` : ''}` },
+              { titulo: 'La baja', campo: 'baja_desde', clase: 'whitespace-nowrap tabular-nums',
+                pinta: (v, x) => (v ? `${f(v)} → ${x.baja_hasta ? f(x.baja_hasta) : 'abierta'}` : DASH) },
+              { titulo: 'Decisión', campo: 'estado',
+                pinta: (v, x) => (v === 'pendiente' ? '<span class="text-telecab-warn font-semibold">Por decidir</span>'
+                  : `${v === 'devueltos' ? 'Devueltos al saldo' : 'Mantenidos como vacaciones'}<span class="block text-[11px] text-telecab-muted">${esc(x.resuelta || '')}${x.resuelta_por_nombre ? ` · ${esc(x.resuelta_por_nombre)}` : ''}${x.nota ? ` · ${esc(x.nota)}` : ''}</span>`) },
+            ],
+            acciones: [
+              { icono: 'fa-rotate-left', titulo: 'Devolverlos al saldo', visible: x => APRUEBA.puede && x.estado === 'pendiente',
+                onClick: (x, d) => resolverSolape(x, d, 'devueltos') },
+              { icono: 'fa-umbrella-beach', titulo: 'Mantenerlos como vacaciones', visible: x => APRUEBA.puede && x.estado === 'pendiente',
+                onClick: (x, d) => resolverSolape(x, d, 'mantenidos') },
             ],
           },
         },
@@ -460,6 +494,25 @@
     { valor: 'corregir', texto: 'Corregir el tipo o las fechas' },
     { valor: 'borrar', texto: 'Borrarlas: esos días no fueron vacaciones ni otra ausencia' },
   ];
+  /** Una baja pisó sus vacaciones (db/292): devolver esos días al saldo o mantenerlos. */
+  async function resolverSolape(x, d, decision) {
+    const devolver = decision === 'devueltos';
+    const v = await Dialogo.formulario(devolver ? 'Devolver los días al saldo' : 'Mantenerlos como vacaciones', [
+      { id: 'nota', etiqueta: 'Nota (opcional)', tipo: 'texto-largo', max: 2000 },
+    ], {
+      textoBoton: devolver ? 'Devolverlos' : 'Mantenerlos',
+      nota: `Del ${f(x.desde)} al ${f(x.hasta)} (${x.dias} ${x.dias === 1 ? 'día' : 'días'}). ` + (devolver
+        ? 'Vuelven a su saldo: la baja ya recortó esas vacaciones.'
+        : 'Siguen contando como vacaciones disfrutadas, aunque estuviera de baja.') + ' Queda en el libro de auditoría.',
+    });
+    if (!v) return;
+    const r = await Api.post(`/vacaciones/api/solape/${encodeURIComponent(x.id)}`, { decision, nota: v.nota }, { aviso: 'No se ha podido guardar' });
+    if (!r) return;
+    Dialogo.hecho(r.texto);
+    await lst.recargar();
+    await lst.abrir(d.id, { historial: false });
+  }
+
   async function corregir(x, d) {
     const campos = [
       { id: 'accion', etiqueta: 'Qué hacer', tipo: 'lista', obligatorio: true, opciones: ACCIONES_CORRECCION, valor: 'corregir' },
