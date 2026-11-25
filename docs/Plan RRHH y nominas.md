@@ -91,7 +91,7 @@ El 25/11 llegó el primer fichero real de la gestoría: `E07735_…_nom_nov2026.
 **Lo que cambia en el plan del módulo 4:**
 - El **catálogo de conceptos** ya tiene forma: cada concepto es un código de A3 («066», «753»…) y se busca por ese código en la fila 8, no por la letra de la columna (así, si el mes que viene cambian de sitio, se sigue encontrando).
 - **El riesgo técnico es el `.xls`**: ExcelJS no lee ni escribe ese formato. Hay que confirmar con la gestoría si A3NOM acepta el mismo fichero en `.xlsx`. Si no, hay que escribir el `.xls` sin rehacerlo (una librería que entienda el formato binario, o tocar solo los registros de las celdas), y comprobarlo celda a celda contra el original.
-- Los **legajos**: la proforma trae 74 códigos que el ERP no tiene. 57 casan con nombre y apellidos con gente de plantilla propia en alta sin legajo, y 3 legajos del ERP no corresponden a la persona que dice la gestoría. Se resuelven en la carga inicial, revisando a mano los dudosos.
+- Los **legajos**: la proforma trae 74 códigos que el ERP no tiene. 57 casan con nombre y apellidos con gente de plantilla propia en alta sin legajo, y 3 legajos del ERP no corresponden a la persona que dice la gestoría. Se resuelven en la carga inicial, revisando a mano los dudosos. **Hecho en db/286** (Camilo: «Sí, carga los 57 y corrige los 3»): se cargan 55, con la fecha de alta como control (sigue el orden de los códigos), y quedan fuera dos dudosos para revisarlos a mano. Los 3 conflictos se corrigen con lo que dice la gestoría (dos fichas en alta cambian de legajo y dos de baja se quedan sin él). Después quedan unas 16 personas de plantilla propia en alta sin legajo.
 
 ## Lo que hace falta de fuera
 
