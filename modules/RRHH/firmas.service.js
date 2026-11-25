@@ -53,6 +53,15 @@ const ESTADOS = {
 };
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
+// La solicitud en la aplicación de YouTrust (el `url` que da su conector).
+const YOUTRUST_APP = 'https://yousign.app/auth/workspace/requests/';
+// Lo que dice YouTrust de una solicitud → cómo queda aquí.
+const ESTADO_YOUTRUST = {
+  done: { estado: 'firmado', nota: 'Firmado en YouTrust' },
+  declined: { estado: 'rechazado', nota: 'No lo firmó (rechazado en YouTrust)' },
+  expired: { estado: 'caducado', nota: 'Caducó en YouTrust' },
+  canceled: { estado: 'caducado', nota: 'Cancelado en YouTrust' },
+};
 const texto = (v, max = 2000) => String(v == null ? '' : v).trim().slice(0, max);
 const emailValido = e => /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(String(e || ''));
 
@@ -213,15 +222,20 @@ const delBot = {
   async pendientes() {
     return repo.porEstado('aprobado');
   },
-  /** Mandado por YouTrust: el enlace (y la referencia) del sobre. En nombre de quien lo aprobó. */
+  /**
+   * Mandado por YouTrust: el número de la solicitud (`ref`, el de su conector)
+   * y su enlace (si no se da, el de la aplicación). En nombre de quien lo aprobó.
+   */
   async enviado(id, { url, ref } = {}) {
     const bot = await comoBot();
-    const u = texto(url, 500);
-    if (!/^https:\/\//.test(u)) throw error('Falta el enlace del sobre en YouTrust');
+    const r0 = texto(ref, 120);
+    if (!/^[0-9a-f-]{36}$/i.test(r0)) throw error('Falta el número de la solicitud de YouTrust');
+    const u = texto(url, 500) || `${YOUTRUST_APP}${r0}`;
+    if (!/^https:\/\//.test(u)) throw error('El enlace de la solicitud no es válido');
     const r = await libro.conFirma({ usuarioId: bot.usuarioId, origen: 'firmas · Bot telecab', accion: 'cambio', motivo: `Enviado a firma por YouTrust: ${u}` }, async cli => {
       const f = await cargar(cli, id);
       if (f.estado !== 'aprobado') throw error(`Está «${ESTADOS[f.estado].etiqueta}»: solo se manda el aprobado`, 409);
-      await repo.cambiar(cli, f.id, { estado: 'enviado', enviado_at: 'now', enviado_por: bot.usuarioId, proveedor_url: u, proveedor_ref: texto(ref, 120) || null });
+      await repo.cambiar(cli, f.id, { estado: 'enviado', enviado_at: 'now', enviado_por: bot.usuarioId, proveedor_url: u, proveedor_ref: r0 });
       return { estado: 'enviado', enNombreDe: f.aprobado_por_nombre };
     });
     avisarCambio();
@@ -245,6 +259,23 @@ const delBot = {
   /** Firmado, no lo firmó o caducó, según YouTrust. */
   async cerrar(id, { estado, nota } = {}) {
     return cerrarComo(id, estado, texto(nota), await comoBot());
+  },
+  /** Los enviados, con el número de su solicitud: lo que hay que consultar en YouTrust. */
+  async enviados() {
+    return repo.porEstado('enviado');
+  },
+  /**
+   * PONERLO AL DÍA con lo que dice YouTrust de su solicitud (el `status` de
+   * get-signature-request del conector): done → firmado, declined → no lo
+   * firmó, expired o canceled → caducado. Lo demás (ongoing…) no cambia nada.
+   * → { estado } o { sinCambios: true }
+   */
+  async sincronizar(id, { estado: suyo, cuando, motivo } = {}) {
+    const a = ESTADO_YOUTRUST[String(suyo || '')];
+    if (!a) return { sinCambios: true, youtrust: suyo || null };
+    const nota = [a.nota, cuando ? `el ${new Date(cuando).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}` : '', texto(motivo)]
+      .filter(Boolean).join(' ');
+    return cerrarComo(id, a.estado, nota, await comoBot());
   },
 };
 

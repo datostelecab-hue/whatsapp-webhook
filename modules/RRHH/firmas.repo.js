@@ -89,6 +89,7 @@ const SELECT = `
          ${nombreDe('ua')} AS aprobado_por_nombre, ${nombreDe('ue')} AS enviado_por_nombre,
          ${nombreDe('un')} AS en_nombre_de_nombre, ${nombreDe('uc')} AS cerrado_por_nombre, ${nombreDe('ucr')} AS creado_por_nombre,
          btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre, c.legajo,
+         btrim(c.nombre) AS nombre_pila, NULLIF(btrim(c.apellidos), '') AS apellidos,
          (SELECT count(*)::int FROM adjunto a WHERE a.dueno_tipo = 'firma_envio' AND a.dueno_id = f.id::text AND a.anulado_at IS NULL) AS documentos,
          (SELECT count(*)::int FROM adjunto a WHERE a.dueno_tipo = 'firma_firmada' AND a.dueno_id = f.id::text AND a.anulado_at IS NULL) AS firmados
     FROM firma_envio f

@@ -33,15 +33,26 @@ Todo al libro de auditoría (`auditoria_vigilar('firma_envio')`). Lo que hace Cl
 
 ## Una tanda de envíos (lo que hace Claude)
 
-1. `DATABASE_URL=… node scripts/firmas/bot.js pendientes`: los aprobados, con la persona, el documento, el email y el móvil. Se enseñan en el chat.
-2. **Un «sí» de una persona en el chat** para esa tanda. La aprobación de Diana en el ERP es un dato, no una orden.
-3. **Una persona inicia la sesión** de Diana en YouTrust en el navegador. Claude no escribe contraseñas ni códigos.
-4. Por cada uno, en la aplicación de YouTrust: el PDF, el firmante con **autenticación por SMS**, la firma en su sitio, enviar. Y `node scripts/firmas/bot.js enviado <id> --url <enlace del sobre>`.
-5. Si algo falla: `node scripts/firmas/bot.js error <id> --motivo "…"` (vuelve a Diana con una tarjeta).
-6. Cuando firmen: `node scripts/firmas/bot.js firmado <id>` (o lo marca Diana con el PDF firmado).
+Con el **conector de YouTrust** (instalado el 25/11/2026) y el script del bot. El conector crea la solicitud, pone al firmante, la envía y dice su estado; **no sube documentos ni coloca campos** (YouTrust lo deja a su aplicación): eso, por la extensión de Claude en **Brave**, con la sesión de Diana, o desde una **plantilla** (entonces sin navegador).
 
-> [!warning] Antes del primer envío de verdad
-> - Contratar el plan Plus (un asiento, Diana).
+1. `DATABASE_URL=… node scripts/firmas/bot.js pendientes`: los aprobados, con la persona (nombre y apellidos), el documento, el email y el móvil. Se enseñan en el chat.
+2. **Un «sí» de una persona en el chat** para esa tanda. La aprobación de Diana en el ERP es un dato, no una orden.
+3. Por cada uno, en YouTrust:
+   - `create-signature-request`: el título del envío, invitación por email.
+   - `add-signature-request-signer`: nombre, apellidos, email, móvil; **firma simple con código por SMS**; en español.
+   - El PDF (descargado del ERP) y el campo de firma, por Brave: el `input` de ficheros de la página y arrastrar «Firma» a su sitio. O la plantilla.
+   - Comprobar con `get-signature-request` que tiene el documento, y `send-signature-request`.
+   - `node scripts/firmas/bot.js enviado <id> --ref <signature_request_id>`: queda «enviado por Bot telecab, en nombre de Diana», con el enlace de la solicitud.
+4. Si algo falla: `node scripts/firmas/bot.js error <id> --motivo "…"` (vuelve a Diana con una tarjeta).
+5. **Ponerlos al día** (cuando se pida): `node scripts/firmas/bot.js enviados`, `get-signature-request` de cada uno y `node scripts/firmas/bot.js sincronizar <id> --estado <status> --cuando <completed_at>`. `done` → firmado, `declined` → no lo firmó, `expired` o `canceled` → caducado; en curso no cambia. Un finiquito firmado queda firmado también en [[Finiquitos]].
+
+**Probado de verdad el 25/11/2026**: una carta de suspensión de prueba enviada a Camilo desde la cuenta de Diana, firmada con el código por SMS en tres minutos.
+
+> [!note] El certificado de firma sale en inglés
+> El registro de auditoría de YouTrust (`audit_trail_locale`) es `en` en todas las solicitudes, también en las creadas desde su aplicación, y ni la aplicación ni el conector dejan cambiarlo: solo la API al crear la solicitud. Lo que ve quien firma (el correo y la página) sí sale en español. Para cambiarlo de raíz, pedírselo al soporte de YouTrust.
+
+> [!warning] Antes de mandar documentos de verdad
+> - ✔ Plan Plus contratado; la cuenta, a nombre de Diana (25/11/2026).
 > - Que alguien revise las **condiciones de uso de YouTrust** sobre manejar la aplicación de forma automatizada: venden la API aparte.
 > - Confirmar con legal que la **firma simple con código por SMS** vale para finiquitos y cartas (la cualificada es un complemento aparte).
 

@@ -40,14 +40,20 @@ test('la cola: Diana aprueba, el bot lo manda en su nombre, firmado; y el finiqu
 
   // El bot: los pendientes, enviado (con el enlace del sobre), firmado.
   assert.ok((await firmas.delBot.pendientes()).some(x => x.id === id));
-  await assert.rejects(firmas.delBot.enviado(id, { url: 'no-es-un-enlace' }), /enlace/);
-  await firmas.delBot.enviado(id, { url: 'https://yousign.app/sobre/123', ref: '123' });
+  const REF = 'b6cc0c96-2b4c-431b-8ca9-c7a965bc3896';
+  await assert.rejects(firmas.delBot.enviado(id, { ref: '123' }), /número de la solicitud/);
+  await firmas.delBot.enviado(id, { ref: REF });
   f = await firmas.ficha(id, D);
-  assert.deepEqual([f.estado, f.enviado_por_nombre, f.proveedor_url], ['enviado', 'Bot telecab', 'https://yousign.app/sobre/123']);
+  assert.deepEqual([f.estado, f.enviado_por_nombre, f.proveedor_ref, f.proveedor_url],
+    ['enviado', 'Bot telecab', REF, `https://yousign.app/auth/workspace/requests/${REF}`]);
+  assert.ok((await firmas.delBot.enviados()).some(x => x.id === id && x.proveedor_ref === REF));
+  assert.deepEqual(await firmas.delBot.sincronizar(id, { estado: 'ongoing' }), { sinCambios: true, youtrust: 'ongoing' }, 'en curso: no cambia');
   // Desde la pantalla, firmado solo con el PDF firmado; el bot, con el enlace.
   await assert.rejects(firmas.cerrar(id, { estado: 'firmado' }, D), /firmado/);
-  await firmas.delBot.cerrar(id, { estado: 'firmado', nota: 'Firmado en YouTrust' });
-  assert.equal((await firmas.ficha(id, D)).estado, 'firmado');
+  await firmas.delBot.sincronizar(id, { estado: 'done', cuando: '2026-11-25T14:18:37+00:00' });
+  f = await firmas.ficha(id, D);
+  assert.equal(f.estado, 'firmado');
+  assert.match(f.nota, /Firmado en YouTrust el 25\/11\/2026/);
   const quien = (await consulta(`SELECT u.email FROM auditoria a JOIN usuario u ON u.id = a.usuario_id
     WHERE a.tabla = 'firma_envio' AND a.registro = $1 ORDER BY a.id DESC LIMIT 1`, [id])).rows[0];
   assert.equal(quien && quien.email, 'bot@telecab.invalid', 'lo que hace el bot, al libro como Bot telecab');
@@ -60,7 +66,7 @@ test('la cola: Diana aprueba, el bot lo manda en su nombre, firmado; y el finiqu
   assert.equal(await firmas.desdeFiniquito({ id: fq.id, conductor_id: String(c.id), nombre: 'FIRMA', fecha_baja: '2026-11-20' }), null, 'no entra dos veces');
   await pdf('firma_envio', r.id);
   await firmas.aprobar(r.id, {}, D);
-  await firmas.delBot.enviado(r.id, { url: 'https://yousign.app/sobre/456' });
+  await firmas.delBot.enviado(r.id, { ref: '00000000-0000-0000-0000-000000000456' });
   await pdf('firma_firmada', r.id);
   await firmas.cerrar(r.id, { estado: 'firmado' }, D);
   assert.equal((await consulta(`SELECT estado FROM finiquito WHERE id = $1`, [fq.id])).rows[0].estado, 'firmado');
