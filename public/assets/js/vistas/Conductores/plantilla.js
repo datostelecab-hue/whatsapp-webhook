@@ -749,6 +749,95 @@
    * los datos es la ingesta, cada pocos minutos. Lo único que hace falta saber
    * aquí es si están al día — y eso se pregunta a la base, no a la API.
    */
+  // ── LOS LEGAJOS (db/284, 25/11/2026): el código de la gestoría ───────────
+  // Quién de la plantilla propia en alta no lo tiene, las últimas cargas y
+  // «Cargar del Excel». El cruce es por el DNI, nunca por el nombre; solo se
+  // rellena al que no tiene, y lo que no cuadra sale como incidencia.
+  async function verLegajos() {
+    let r;
+    try { r = await api('/plantilla/api/legajos'); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudieron mirar los legajos', texto: e.message, tono: 'error' }); }
+    const sin = r.sinLegajo || [];
+    const lista = sin.length
+      ? `<ul class="max-h-64 overflow-y-auto divide-y divide-telecab-border/60 text-sm">${sin.map(p => `
+          <li class="py-1.5 flex items-center gap-2">
+            <span class="font-medium">${esc(p.nombre)}</span>
+            <span class="text-xs text-telecab-muted ml-auto whitespace-nowrap">alta ${esc(fecha(p.alta))}${p.tiene_dni ? '' : ' · sin DNI'}</span>
+          </li>`).join('')}</ul>
+         <p class="text-xs text-telecab-muted mt-1">En la lista, la tarjeta «Sin legajo» los filtra.</p>`
+      : '<p class="text-sm text-telecab-green"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Toda la plantilla propia en alta tiene su legajo.</p>';
+    const cargas = (r.cargas || []).length
+      ? `<ul class="text-xs text-telecab-muted space-y-1">${r.cargas.map(c => `
+          <li>${esc(c.cuando)} · ${esc(c.nombre)}${c.por ? ` · ${esc(c.por)}` : ''} · ${(c.resultado && c.resultado.puestos) || 0} puestos${c.incidencias ? ` · ${c.incidencias} incidencias` : ''}${c.original ? ` · <a class="underline" href="${esc(c.original)}">original</a>` : ''}</li>`).join('')}</ul>`
+      : '<p class="text-xs text-telecab-muted">Aún no se ha cargado ningún fichero.</p>';
+    const html = `
+      <p class="text-sm mb-3">El legajo es el número de empleado de la gestoría: por él se cruzan sus ficheros, nunca por el nombre. Solo para la plantilla propia.</p>
+      <h4 class="text-sm font-semibold mb-1.5">Plantilla propia en alta sin legajo: ${sin.length}</h4>
+      ${lista}
+      <h4 class="text-sm font-semibold mt-4 mb-1.5">Últimas cargas</h4>
+      ${r.sinTabla ? '<p class="text-xs text-telecab-warn">Falta aplicar la migración db/284 para poder cargar.</p>' : cargas}`;
+    if (r.sinTabla) return Dialogo.aviso({ titulo: 'Legajos de la gestoría', html, ancho: 'max-w-xl' });
+    const cargar = await Dialogo.confirmar({ titulo: 'Legajos de la gestoría', html, ancho: 'max-w-xl',
+      si: 'Cargar del Excel', no: 'Cerrar' });
+    if (cargar) return cargarLegajos();
+  }
+
+  async function cargarLegajos() {
+    const v = await pedirDatos('Cargar legajos del Excel', [
+      { id: 'fichero', etiqueta: 'El Excel de la gestoría', tipo: 'ficheros', multiple: false, obligatorio: true,
+        accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ayuda: 'Cualquier hoja con una columna de DNI/NIE y otra de legajo (o «código», «nº de empleado»).' },
+    ], { textoBoton: 'Revisar', nota: 'Primero se enseña qué se va a poner y qué no cuadra. No se cambia nada hasta que lo confirmes.' });
+    if (!v || !v.fichero || !v.fichero[0]) return;
+    const file = v.fichero[0];
+    let base64;
+    try {
+      base64 = await new Promise((ok, ko) => {
+        const fr = new FileReader();
+        fr.onload = () => ok(String(fr.result).split(',')[1]);
+        fr.onerror = () => ko(new Error('No se pudo leer el fichero'));
+        fr.readAsDataURL(file);
+      });
+    } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo leer', texto: e.message, tono: 'error' }); }
+    let previa;
+    try { previa = await enviar('/plantilla/api/legajos/cargar', 'POST', { base64, nombre: file.name, confirmar: false }); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo leer el Excel', texto: e.message, tono: 'error' }); }
+    if (previa.yaCargado) {
+      return Dialogo.aviso({ titulo: 'Ese fichero ya se cargó', tono: 'aviso',
+        texto: `Se cargó el ${previa.yaCargado.cuando}${previa.yaCargado.por ? ` (${previa.yaCargado.por})` : ''}. El mismo fichero no se carga dos veces.` });
+    }
+    const r = previa.resumen;
+    const incid = previa.incidencias || [];
+    const tabla = incid.length ? `
+      <h4 class="text-sm font-semibold mt-3 mb-1">No cuadran (${incid.length}): no se tocan</h4>
+      <div class="max-h-60 overflow-y-auto border border-telecab-border rounded-lg">
+        <table class="w-full text-xs"><thead class="text-telecab-muted"><tr>
+          <th class="text-left px-2 py-1">Fila</th><th class="text-left px-2 py-1">DNI</th>
+          <th class="text-left px-2 py-1">Legajo</th><th class="text-left px-2 py-1">Por qué</th></tr></thead>
+        <tbody>${incid.map(i => `<tr class="border-t border-telecab-border/60">
+          <td class="px-2 py-1 tabular-nums">${esc(i.fila)}</td>
+          <td class="px-2 py-1">${esc(i.dni)}${i.nombre ? `<span class="block text-telecab-muted">${esc(i.nombre)}</span>` : ''}</td>
+          <td class="px-2 py-1 tabular-nums">${esc(i.legajo)}</td>
+          <td class="px-2 py-1">${esc(i.explicacion)}${i.legajoErp ? ` (en el ERP: ${esc(i.legajoErp)})` : ''}${i.de ? ` (${esc(i.de.nombre)})` : ''}</td></tr>`).join('')}
+        </tbody></table></div>` : '';
+    const html = `
+      <p class="text-sm">Hoja «${esc(previa.estructura.hoja)}», columnas «${esc(previa.estructura.columnas.dni)}» y «${esc(previa.estructura.columnas.legajo)}»: ${r.leidas} filas.</p>
+      <ul class="text-sm mt-2 space-y-0.5">
+        <li><b>${r.poner}</b> legajos nuevos${r.ett ? ` (${r.ett} de gente que para nosotros es de ETT)` : ''}${r.deBaja ? ` (${r.deBaja} de gente de baja)` : ''}</li>
+        <li><b>${r.igual}</b> ya estaban bien</li>
+        <li><b>${r.incidencias}</b> no cuadran</li>
+      </ul>${tabla}`;
+    if (!r.poner) return Dialogo.aviso({ titulo: 'No hay ningún legajo que poner', html, ancho: 'max-w-2xl', tono: r.incidencias ? 'aviso' : 'info' });
+    const ok = await Dialogo.confirmar({ titulo: `Poner ${r.poner} legajos`, html, ancho: 'max-w-2xl',
+      si: `Poner ${r.poner} legajos`, no: 'Cancelar' });
+    if (!ok) return;
+    let hecho;
+    try { hecho = await enviar('/plantilla/api/legajos/cargar', 'POST', { base64, nombre: file.name, confirmar: true }); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudieron poner', texto: e.message, tono: 'error' }); }
+    Dialogo.hecho(`${hecho.resumen.poner} legajos puestos${hecho.resumen.incidencias ? ` · ${hecho.resumen.incidencias} incidencias` : ''}`);
+    await plantilla.recargar();
+  }
+
   /**
    * El Excel de la gestoria: SU misma pestaña, con nuestros datos.
    *
@@ -1381,6 +1470,16 @@
         { etiqueta: 'Fichas con huecos', valor: deAlta.filter(f => f.faltan.length).length, tono: 'warn',
           filtro: { id: 'ficha', valor: 'incompleta' },
           pie: `${h.sin_bolt || 0} sin BOLT · ${h.sin_telefono || 0} sin teléfono` },
+        // SIN LEGAJO (db/284): la plantilla propia en alta sin el código de la
+        // gestoría. Solo si hay alguno, y solo para quien lleva esos datos.
+        ...((() => {
+          const sin = deAlta.filter(f => (f.faltan || []).includes('legajo de la gestoría'));
+          return sin.length && !SOLO_OPERATIVO ? [{
+            etiqueta: 'Sin legajo', valor: sin.length, tono: 'warn',
+            filtro: { id: 'ficha', valor: 'sin_legajo' },
+            pie: 'plantilla propia: pedirlo a la gestoría',
+          }] : [];
+        })()),
         // Solo cuando hay alguien en C o D: es la lista con la que se sienta uno
         // a hablar, y si no hay nadie, la tarjeta sobra.
         ...((() => {
@@ -1401,6 +1500,9 @@
       { texto: 'Datos', icono: 'fa-clock-rotate-left', principal: false, onClick: verFrescura },
       ...(SOLO_OPERATIVO ? [] : [{ texto: 'Excel gestoría', icono: 'fa-building-columns',
         principal: false, onClick: excelGestoria }]),
+      // El código de la gestoría (db/284): quién no lo tiene y cargarlo de un Excel.
+      ...(SOLO_OPERATIVO ? [] : [{ texto: 'Legajos', icono: 'fa-id-badge',
+        principal: false, onClick: verLegajos }]),
     ],
 
     filtros: [
@@ -1453,8 +1555,10 @@
       },
       {
         id: 'ficha', etiqueta: 'Ficha', textoTodos: 'Completas e incompletas',
-        pasa: (f, v) => v === 'incompleta' ? f.faltan.length > 0 : f.faltan.length === 0,
-        opciones: () => [{ valor: 'incompleta', texto: 'Ficha incompleta' }],
+        pasa: (f, v) => (v === 'sin_legajo' ? f.faltan.includes('legajo de la gestoría')
+          : v === 'incompleta' ? f.faltan.length > 0 : f.faltan.length === 0),
+        opciones: () => [{ valor: 'incompleta', texto: 'Ficha incompleta' },
+          ...(SOLO_OPERATIVO ? [] : [{ valor: 'sin_legajo', texto: 'Sin legajo de la gestoría' }])],
       },
     ],
 

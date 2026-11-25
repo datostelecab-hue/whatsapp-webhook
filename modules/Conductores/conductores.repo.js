@@ -18,6 +18,7 @@ const db = require('../../services/db');
 const vig = require('../../services/repo/vigencia');
 // La ficha de pruebas (db/281): fuera de los recuentos y de la gestoría.
 const pruebas = require('../../services/repo/fichaDePruebas');
+const legajoEnLimpio = require('./legajo');
 const audit = require('../../services/repo/auditoria');
 const jornada = require('./jornada');
 const { dosDiasLibra } = require('../Vacaciones/libranzas');
@@ -77,6 +78,8 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            -- Número de afiliación a la Seguridad Social. Quien va por ETT no lo
            -- tiene con nosotros: lo cotiza la ETT.
            c.naf,
+           -- Si tiene el legajo de la gestoría (db/284): solo el sí o el no, para «Fichas con huecos».
+           (c.legajo IS NOT NULL) AS tiene_legajo,
            c.es_centinela, ${colPrueba}, c.empleo_vigente,
 
            -- Empleo vigente en la fecha: propia o ETT, desde cuándo, y con qué
@@ -369,6 +372,9 @@ function faltantesDe(c) {
   if (c.empleo_tipo !== 'ett') {
     if (!c.nombre_ss) f.push('nombre de la Seguridad Social');
     if (!c.email)     f.push('correo');
+    // El código de la gestoría (db/284): por él se cruzan sus ficheros. Solo la
+    // plantilla propia («solo plantilla propia», Camilo, 25/11/2026).
+    if (c.tiene_legajo === false) f.push('legajo de la gestoría');
   }
   // Papeles. La lista de cuáles son obligatorios vive en cat_tipo_documento, no
   // aquí: añadir uno nuevo no debería obligar a tocar código.
@@ -749,6 +755,10 @@ function camposDe(rol) {
  * lanza. Ignorarlo haría creer a quien lo escribió que se guardó.
  */
 async function actualizar(id, campos, { usuarioId, rol } = {}) {
+  // El legajo, en limpio (db/284): «57» se guarda «000057».
+  if (campos && Object.prototype.hasOwnProperty.call(campos, 'legajo')) {
+    campos = { ...campos, legajo: legajoEnLimpio.normalizar(campos.legajo) };
+  }
   const permitidos = new Set(camposDe(rol));
   const entradas = Object.entries(campos || {})
     .filter(([k]) => k in CAMPOS || GENERADAS.includes(k));
@@ -782,22 +792,36 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
     const antes = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];
     if (!antes) throw new Error('No existe ese conductor');
 
-    await cli.query(
-      `UPDATE conductor SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')},
-              actualizado_at = now()
-        WHERE id = $1`,
-      [id, ...cols.map(c => {
-        const v = campos[c];
-        if (v === '' || v === undefined || v === null) return null;
-        // Los numéricos llegan como texto del formulario; PostgreSQL no acepta
-        // '' en una columna NUMERIC y una coma decimal tampoco.
-        if (CAMPOS[c] && CAMPOS[c].tipo === 'numero') {
-          const n = Number(String(v).replace(',', '.'));
-          if (!Number.isFinite(n)) throw new Error(`"${CAMPOS[c].etiqueta}" tiene que ser un número`);
-          return n;
-        }
-        return v;
-      })]);
+    // El legajo de otra persona: se dice de quién (db/284), no el error de PostgreSQL.
+    if (campos.legajo) {
+      const otro = await duenoDeLegajo(campos.legajo, id, cli);
+      if (otro) throw new Error(`El legajo ${campos.legajo} ya lo tiene ${otro.nombre} (ficha ${otro.id})`);
+    }
+
+    try {
+      await cli.query(
+        `UPDATE conductor SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')},
+                actualizado_at = now()
+          WHERE id = $1`,
+        [id, ...cols.map(c => {
+          const v = campos[c];
+          if (v === '' || v === undefined || v === null) return null;
+          // Los numéricos llegan como texto del formulario; PostgreSQL no acepta
+          // '' en una columna NUMERIC y una coma decimal tampoco.
+          if (CAMPOS[c] && CAMPOS[c].tipo === 'numero') {
+            const n = Number(String(v).replace(',', '.'));
+            if (!Number.isFinite(n)) throw new Error(`"${CAMPOS[c].etiqueta}" tiene que ser un número`);
+            return n;
+          }
+          return v;
+        })]);
+    } catch (e) {
+      // Si otra persona se lo puso a la vez, entre la comprobación y aquí.
+      if (e.code === '23505' && /uq_cond_legajo/.test(e.constraint || e.message || '')) {
+        throw new Error(`El legajo ${campos.legajo} ya lo tiene otra persona`);
+      }
+      throw e;
+    }
 
     const ahora = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];
     // `direccion` y `naf` se recalculan solas al cambiar sus piezas: apuntarlas
@@ -2282,7 +2306,56 @@ async function guardarIban(id, valor, { usuarioId } = {}) {
   }).catch(() => {});
 }
 
+// ── LOS LEGAJOS (db/284, 25/11/2026): el código de la gestoría ─────────────
+// La lógica vive en legajos.service.js; aquí, solo los datos.
+
+/** Todas las personas con DNI, con su legajo y su empleo de hoy: con ellas se cruza un fichero. */
+async function personasParaLegajos() {
+  const r = await db.consulta(
+    `SELECT c.id, btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre, c.dni_nie, c.legajo,
+            c.empleo_vigente, e.tipo AS empleo_tipo
+       FROM conductor c
+       LEFT JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
+      WHERE NOT c.es_centinela AND c.dni_nie IS NOT NULL AND btrim(c.dni_nie) <> ''${await pruebas.fuera('c')}`);
+  return r.rows;
+}
+
+/**
+ * Pone los legajos, solo a quien no tiene (si alguien se lo puso entretanto,
+ * no se pisa). Dentro de la transacción firmada `cli`. Devuelve cuántos.
+ */
+async function ponerLegajos(cli, lista) {
+  let n = 0;
+  for (const { id, legajo } of lista) {
+    const r = await cli.query(
+      `UPDATE conductor SET legajo = $2, actualizado_at = now() WHERE id = $1 AND legajo IS NULL`, [Number(id), legajo]);
+    n += r.rowCount;
+  }
+  return n;
+}
+
+/** La plantilla propia en alta sin legajo: lo que hay que pedir a la gestoría. */
+async function propiaSinLegajo() {
+  const r = await db.consulta(
+    `SELECT c.id::text AS id, btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre,
+            to_char(e.alta, 'YYYY-MM-DD') AS alta, c.dni_nie IS NOT NULL AS tiene_dni
+       FROM conductor c
+       JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL AND e.tipo = 'propia'
+      WHERE c.empleo_vigente AND c.legajo IS NULL AND NOT c.es_centinela${await pruebas.fuera('c')}
+      ORDER BY e.alta DESC, 2`);
+  return r.rows;
+}
+
+/** De quién es un legajo (para decir con quién choca). */
+async function duenoDeLegajo(legajo, menosId = null, cli = null) {
+  const q = `SELECT c.id::text AS id, btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre
+               FROM conductor c WHERE c.legajo = $1 AND ($2::bigint IS NULL OR c.id <> $2) LIMIT 1`;
+  const r = cli ? await cli.query(q, [legajo, menosId]) : await db.consulta(q, [legajo, menosId]);
+  return r.rows[0] || null;
+}
+
 module.exports = {
+  personasParaLegajos, ponerLegajos, propiaSinLegajo, duenoDeLegajo,
   paraGestoria, buscarPersona,
   ibanEnmascarado, guardarIban,
   JORNADAS, TOPE_JORNADA, OPCIONES_JORNADA: jornada.OPCIONES_JORNADA,

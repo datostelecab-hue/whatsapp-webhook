@@ -7,7 +7,7 @@ actualizado: 2026-11-25
 
 El 25/11/2026 llegó un encargo para automatizar RR. HH. y nóminas: la persona que llevaba RR. HH. ha salido y **Diana** asume el puesto. La idea: el ERP prepara y propone, y a Diana le quedan las decisiones y las validaciones. Son nueve módulos, en este orden: **8** (plantilla de la gestoría y altas) → **1** (bajas médicas y ausencias) → **4** (nóminas) → **6 y 9** (firma digital y SMS certificado) → **7, 2, 3 y 5** (finiquitos, vacaciones, sanciones, informe para el SMAC).
 
-Esta nota es el plan: qué hay ya, qué falta, dónde el encargo choca con el ERP de hoy, qué hace falta de fuera y las fases. **Nada de esto está construido todavía.**
+Esta nota es el plan: qué hay ya, qué falta, dónde el encargo choca con el ERP de hoy, qué hace falta de fuera y las fases. **Construido: parte de la fase 0** (ver abajo).
 
 > [!warning] Cómo se hizo el inventario
 > Lo leyeron agentes en paralelo (uno por área) y un revisor. Comprobado a mano en el código: el `legajo`, las tarjetas del tablero, las funciones del convenio que nadie llama, los parámetros de RR. HH. y el recuento de legajos. **Lo demás se confirma al empezar cada fase**, con la nota del módulo y el código delante. El área de firma y SMS no devolvió inventario: se sabe que en el repositorio no hay nada de ninguna de las dos.
@@ -74,10 +74,10 @@ Se deciden antes de construir el módulo que tocan.
 ## Las fases
 
 **Fase 0 · Cimientos** (no depende de nadie)
-- `legajo` obligatorio para la plantilla propia en alta, con su bandeja de «sin código» y «código repetido», y la carga de los que faltan desde un listado.
-- El fichero importado genérico: tipo, periodo, huella (el mismo fichero no entra dos veces), estructura detectada, resultado e incidencias. Sobre [[Adjuntos]].
-- La tarjeta que nace sola cada semana y el aviso de vencidas a Dirección.
-- Llaves de salud y de nómina, y el traspaso de las llaves de RR. HH. a Diana.
+- ✔ 25/11, db/284: el `legajo` como código de la gestoría, **solo plantilla propia** (decidido por Camilo): formato de seis cifras, «Sin legajo» en Plantilla y la carga desde un Excel con sus incidencias. Ver [[Conductores#El legajo: el código de la gestoría (25/11/2026, db/284)]].
+- ✔ 25/11, db/284: los [[Ficheros importados]]: tipo, periodo, huella (el mismo fichero no entra dos veces), estructura, resultado, incidencias y el original.
+- ✔ 25/11: `cuando.semanal` en las [[Tareas programadas]], para la tarjeta del lunes. **Falta la tarjeta** (es del módulo 8 y va a Diana) y decidir el aviso de vencidas a Ignacio (ver abajo).
+- Llaves de salud y de nómina, y el traspaso de las llaves de RR. HH. a Diana. **Pendiente: el usuario de Diana.**
 - Los parámetros del encargo en [[Parametros]].
 
 **Fase 1 · Módulo 8** (necesita un listado real de la gestoría)

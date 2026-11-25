@@ -147,6 +147,20 @@ const cuando = {
   },
 
   /**
+   * Una vez a la semana, el día `dia` (1 = lunes … 7 = domingo) a la `hora` de
+   * Madrid (fase 0 del plan de RR. HH., 25/11/2026: «cada lunes a primera hora,
+   * tarjeta a Diana»). El periodo es la fecha de ese día: ['el de la semana
+   * pasada', 'el de esta'] o solo el de la pasada si aún no ha llegado.
+   */
+  semanal(ahora, { dia = 1, hora = '00:00' } = {}) {
+    if (!Number.isInteger(dia) || dia < 1 || dia > 7) throw new Error('semanal: el día va de 1 (lunes) a 7 (domingo)');
+    const { fecha, min } = calendario.partesMadrid(ahora);
+    const esta = calendario.sumarDias(fecha, dia - calendario.diaSemana(fecha));
+    const pasada = calendario.sumarDias(esta, -7);
+    return fecha > esta || (fecha === esta && min >= aMinutos(hora)) ? [pasada, esta] : [pasada];
+  },
+
+  /**
    * Una vez al mes, el día `dia` a la `hora` de Madrid; si ese día no es hábil,
    * el hábil anterior (ítem 7: «si el 20 no es hábil, se genera el día hábil
    * anterior»), aunque caiga en el mes de antes (el día 1, un domingo, toca el

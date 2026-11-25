@@ -42,6 +42,7 @@ tareasProgramadas.registrar({
 
 - **`toca(ahora)` devuelve las veces que ya deberían estar hechas.** Son la de ahora, si ya toca, y **la anterior**, para recuperarla si se perdió. Se hacen las que no estén hechas. Hay dos ayudas:
   - `cuando.diaria(ahora, { hora })` devuelve ayer y, si ya es la hora, hoy (hora de Madrid);
+  - `cuando.semanal(ahora, { dia, hora })` (25/11/2026), una vez a la semana: `dia` 1 = lunes … 7 = domingo. El periodo es la fecha de ese día; devuelve el de la semana pasada y, si ya llegó el día y la hora, el de esta. Para la tarjeta de los lunes del [[Plan RRHH y nominas]];
   - `cuando.mensualHabil(ahora, { dia, hora })` devuelve el mes anterior, este si ya llegó su día y el siguiente si su día cae en este mes. Si el día no es hábil, se toma el hábil anterior con el [[Calendario laboral]], aunque caiga en el mes de antes: el día 1, si es domingo, toca el viernes 30. Si el mes es más corto, su último día.
 - **`desde`** evita que una tarea recién estrenada haga las veces de antes.
 - **`hacer({ periodo, cli })`** hace la tarea **con el `cli` que recibe** y devuelve **recuentos**.

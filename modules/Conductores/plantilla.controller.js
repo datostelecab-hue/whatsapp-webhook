@@ -18,6 +18,8 @@ const actor = require('../../services/repo/actor');
 // un DNI escaneado se pasa de largo, así que aquí va su propio límite.
 router.use('/api/documento', express.json({ limit: '30mb' }));
 router.use('/api/conductor/:id/foto', express.json({ limit: '6mb' }));
+// El Excel de los legajos (db/284) viaja en base64: con su propio límite.
+router.use('/api/legajos/cargar', express.json({ limit: '15mb' }));
 
 /** Quién hace el cambio y con qué rol. Todo lo que escribe pasa por aquí. */
 const quien = async req => ({
@@ -224,6 +226,13 @@ router.get('/api/conductor/:id/cambios', responde(req => plantilla.cambios(req.p
 
 // La misma persona en dos coches el mismo día.
 router.get('/api/conflictos', responde(req => plantilla.conflictos(req.query.momento)));
+
+// ── Los legajos (db/284): el código de la gestoría ─────────────────────────
+// Lo que falta (propia en alta sin legajo) y las últimas cargas; y cargarlos de
+// un Excel (sin `confirmar`, solo dice qué haría).
+const legajos = require('./legajos.service');
+router.get('/api/legajos', responde(async req => legajos.estado(await quien(req))));
+router.post('/api/legajos/cargar', responde(async req => legajos.cargar(req.body || {}, await quien(req))));
 
 // ── El Excel de la gestoría ────────────────────────────────────────────────
 // Con el punto en la ruta a propósito: así el navegador nombra bien la descarga.

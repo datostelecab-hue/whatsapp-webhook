@@ -473,6 +473,20 @@ Pero no se fueron de balde. Al mirarlas apareció un fallo que llevaba **desde q
 
 `activo` resultó no usarlo nadie. `libra` sí: de él cuelgan `services/control`, `services/reportes` y `services/vistaFinal` —que alimenta el reporte de horas de Control—. Los tres creían que no libraba nadie. Arreglado devolviendo booleanos: de 0 a **171 conductores con libranza**, los mismos 171 que enseña esta pantalla. Ver [[Flota viva]].
 
+## El legajo: el código de la gestoría (25/11/2026, db/284)
+
+Fase 0 del [[Plan RRHH y nominas]]. El encargo pedía un campo nuevo «Código gestoría», obligatorio y único, para cruzar cualquier fichero de la gestoría por el número de empleado y nunca por el nombre (la gestoría corta los apellidos largos). **Ese campo ya existía: es el `legajo`**. Camilo: *«Sí, reutiliza Legajo, solo plantilla propia»*.
+
+- **Formato**: seis cifras con ceros delante («000057»), como los 258 que había el 25/11 (ninguno repetido). «57», «0057» o « 57 » se guardan como «000057» (`modules/Conductores/legajo.js`), y la base lo exige (`ck_conductor_legajo`): dos maneras de escribir el mismo número no pueden acabar siendo dos legajos.
+- **Único**: si se pone uno que ya tiene otra persona, la ficha dice de quién es («El legajo 000057 ya lo tiene Pérez, Ana (ficha 12)»).
+- **Obligatorio para la plantilla propia en alta, sin imponerlo**: no puede ser `NOT NULL`, porque la gestoría lo da después del alta. Faltar es un hueco de la ficha («legajo de la gestoría» en «Fichas con huecos») y tiene su tarjeta, **«Sin legajo»**, que filtra la lista. La ETT no lo necesita (la contrata la agencia). El 25/11 lo tenían 94 de 165 de plantilla propia en alta.
+- **Cargarlos de un Excel**: botón **«Legajos»** en Plantilla (no para Tráfico) → quién falta, las últimas cargas y «Cargar del Excel». Vale cualquier hoja con una columna de DNI/NIE y otra de legajo («código», «nº de empleado»…), con la cabecera en cualquiera de las 15 primeras filas. Se cruza **por el DNI** (sin guiones ni espacios, y sin ceros delante en un DNI). Primero se enseña qué se va a hacer; nada cambia hasta confirmarlo.
+  - Se rellena **solo a quien no tiene**.
+  - **No se toca y sale como incidencia**: quien ya tiene otro legajo, un legajo que ya es de otra persona, un DNI que no está en el ERP, un DNI que tienen dos fichas, una fila sin DNI o con un legajo que no es un número, y el mismo legajo con dos DNI (o el mismo DNI con dos legajos) dentro del fichero.
+  - Se avisa, pero se pone, a quien para nosotros es de ETT o está de baja.
+  - La carga queda apuntada con su original y sus incidencias, y **el mismo fichero no se carga dos veces** (ver [[Ficheros importados]]). Los cambios van al libro con el motivo «Legajos cargados del fichero «…»».
+- Código: `modules/Conductores/legajos.service.js` (leer, cruzar, cargar), `conductores.repo` (`personasParaLegajos`, `ponerLegajos`, `propiaSinLegajo`), rutas `GET /plantilla/api/legajos` y `POST /plantilla/api/legajos/cargar`. Prueba: `test/legajos.test.js`.
+
 ## Lo que aún no está bien
 
 `modules/Conductores/conductores.repo.js` son ~1.236 líneas con reglas dentro que son de servicio: qué campos puede tocar cada rol, qué pasa al dar de baja. Se movió el módulo primero porque mover y partir a la vez es cómo se pierde una ruta sin enterarse.

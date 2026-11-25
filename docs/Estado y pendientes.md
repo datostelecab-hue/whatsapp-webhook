@@ -70,7 +70,8 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El portal de conductores (19/10/2026)
 
-- **Plan de RR. HH. y nóminas** (25/11/2026): el plan está escrito y sin empezar. Para arrancar hacen falta los archivos de la gestoría y las decisiones de la empresa. Ver [[Plan RRHH y nominas]].
+- **Aplicar `db/284`** (25/11/2026): el legajo con su formato (seis cifras) y los ficheros importados. Antes, la carga de legajos dice que falta. Ver [[Ficheros importados]].
+- **Plan de RR. HH. y nóminas** (25/11/2026): fase 0 empezada (legajo y ficheros importados). Para arrancar hacen falta los archivos de la gestoría y las decisiones de la empresa. Ver [[Plan RRHH y nominas]].
 - **Aplicar `db/282` y `db/283`** (24/11/2026), en ese orden: la revisión de fotos del taller (`/revision-fotos`), foto a foto. Sin ellas la pantalla enseña los lotes pero no deja revisar, y la purga de los 20 días no guarda nada. Las llaves van a quien ya tenía Mantenimientos. Ver [[Revision de fotos]].
 - **Portal: poner el teléfono de Tráfico** (24/11/2026): en Parámetros, «Portal de conductores: teléfono de Tráfico» (nueve cifras). Sin él no sale el botón «Llamar a Tráfico» de los avisos y la Ayuda. Ver [[Portal de conductores#Las 10 heurísticas de Nielsen (24/11/2026)]].
 - **Portal: lo que queda para lanzarlo** (24/11/2026): el código está; faltan los 52 conductores en activo sin email o sin DNI (RRHH), mirarlo en un iPhone y, al final, el vídeo. Ver [[Portal de conductores#Lo que queda para lanzarlo (24/11/2026)]].
