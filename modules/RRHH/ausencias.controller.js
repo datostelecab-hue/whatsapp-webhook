@@ -33,7 +33,6 @@ router.get('/', async (req, res) => {
 router.get('/api/lista', responde(async req => ausencias.lista(await quien(req))));
 router.get('/api/ausencia/:id', responde(async req => ({ ficha: await ausencias.ficha(req.params.id, await quien(req)) })));
 router.get('/api/bajas', responde(async req => ausencias.historicoBaja(await quien(req))));
-router.post('/api/detectar', responde(async req => ausencias.detectarAhora(await quien(req))));
 router.post('/api/decidir', responde(async req => ausencias.decidir(req.body || {}, await quien(req))));
 
 module.exports = router;

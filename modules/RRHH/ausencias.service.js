@@ -203,17 +203,6 @@ tareasProgramadas.registrar({
   hacer: ({ cli }) => detectar({ cli }),
 });
 
-/**
- * «BUSCAR AUSENCIAS AHORA» (25/11/2026, Camilo: «¿puedes lanzar el script de
- * una vez?»). La misma detección de las 13:00, a mano, para quien valida: no
- * hay que esperar a mañana para ver las de ayer. Repetirla no duplica nada.
- */
-async function detectarAhora(quien = {}) {
-  await exigir(quien, CLAVE_VALIDAR);
-  if (!await repo.hayTabla()) throw error('Falta aplicar la migración db/289 en Migraciones');
-  return detectar();
-}
-
 // ── Leer ───────────────────────────────────────────────────────────────────
 /**
  * Los días seguidos sin salir de cada una (las de la misma persona en días
@@ -416,6 +405,6 @@ contadores.registrarFuente('ausencias', {
 });
 
 module.exports = {
-  detectar, detectarAhora, lista, ficha, decidir, historicoBaja, puede, periodoDe,
+  detectar, lista, ficha, decidir, historicoBaja, puede, periodoDe,
   ESTADOS, DESDE, TIPO_TARJETA, DUENO, CLAVE_VER, CLAVE_VALIDAR,
 };
