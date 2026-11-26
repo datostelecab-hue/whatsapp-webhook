@@ -6,7 +6,8 @@
 // Una suspensión entra en la ficha cuando la carta queda firmada (o no la firma, o caduca).
 
 (function () {
-  const P = Casa.datos().puede || {};
+  const { puede: PUEDE } = Casa.datos();
+  const P = PUEDE || {};
   const { esc, etiqueta } = Listado.fmt;
   let ESTADOS = {}, GRAVEDAD = {}, MEDIDAS = {};
   const est = s => ESTADOS[s.estado] || { etiqueta: s.estado, tono: 'muted' };

@@ -96,6 +96,31 @@ test/proforma.test.js                  con una proforma de mentira hecha en el t
 
 **Con la de noviembre** (comprobado el 26/11 en solo lectura): 164 trabajadores, bruto 219.246,28 €, líquido 195.407,65 €; 100 casos: 23 códigos, 9 sin contrato propio, 8 bajas médicas, 3 suspensiones, 10 de días y 47 fuera de la nómina (36 de ellos, altas recientes).
 
+## La pestaña «Cierre del mes» (módulo 4, db/299, 26/11/2026)
+
+El mes de nómina (del 26 al 25) con sus **cuatro etapas** en una línea, cada una con su fecha, quién y cuándo, y en rojo si va con retraso. Camilo, 26/11/2026, eligió las etapas, los días y quién aprueba:
+
+| Etapa | Fecha | Cómo se marca |
+|---|---|---|
+| **Proforma revisada** | el 20 (`nomina.cierre_proforma`) | **Sola**: la proforma del mes subida y sin casos por decidir en la pestaña «Proforma» |
+| **Variables y descuentos enviados** | el 25 (`nomina.dia_corte`) | A mano, quien tiene `/gestoria/gestionar`. Antes mira si la variable del mes está **congelada en [[Nominas]]** y si los **[[Descuentos en nomina\|descuentos]] del mes están cerrados**. Avisa, no frena: si falta algo, la nota dice por qué |
+| **Borrador revisado** | el 28 (`nomina.cierre_borrador`) | A mano, quien tiene `/gestoria/gestionar`, después de las variables |
+| **Nómina aprobada** | el 30, o el último del mes (`nomina.cierre_aprobada`) | Quien tiene la llave nueva **`/gestoria/nomina`** («Gestoría · aprobar la nómina del mes»; db/299 se la da a Ignacio), con las tres anteriores hechas |
+
+```
+modules/Gestoria/cierre.service.js   las etapas, las fechas, marcar, deshacer y las tarjetas
+modules/Gestoria/cierre.repo.js      el SQL (nomina_cierre_etapa)
+public/assets/js/vistas/Gestoria/cierre.js
+test/cierre-nomina.test.js
+```
+
+- **Deshacer** (o «Reabrir» la aprobada) pide motivo y va de la última hacia atrás. Lo deshecho queda en la historia del mes. Todo al [[Libro de auditoria]].
+- **Las tarjetas**: la tarea `nomina.cierre` (cada día a las 08:00, desde el 27/11/2026) mira este mes y el anterior. Cada etapa sin hacer a **tres días hábiles o menos** de su fecha hace nacer una tarjeta `nomina_cierre` («AAAA-MM|etapa»): a quien tiene la función «plantilla_gestoria» (Diana) y la de aprobar a quien tiene la llave. Se cierra sola al marcar la etapa. La de la proforma solo nace si no se ha subido; subida, la lleva su propia tarjeta.
+- **El número de la pestaña**: las etapas con retraso del mes en curso y del anterior (se cuenta una vez por minuto, para todos).
+- **Qué mes se abre**: el anterior mientras no esté cerrado; si no, el que está en curso. Con las flechas, los meses desde noviembre de 2026.
+- Las rutas `/gestoria/api/cierre*` van por `RUTA_A_CLAVE` a `/gestoria`, y el servicio pide la llave de cada cosa. Si no, aprobar exigiría también `/gestoria/gestionar`.
+- No sustituye los dos cierres que ya hay (congelar en /nominas y el del convenio). Los mira y deja constancia de que se mandaron, se revisaron y se aprobaron.
+
 ## Lo que falta del módulo 8
 
 - El **listado de plantilla en alta** (o el ITA) real, para las **fechas que no coinciden**.

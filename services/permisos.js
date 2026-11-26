@@ -58,6 +58,9 @@ const CATALOGO = [
     // correo); gestionar va marcada `escribir`.
     { clave: '/gestoria', etiqueta: 'Plantilla de la gestoría', hijos: [
       { clave: '/gestoria/gestionar', etiqueta: 'Plantilla de la gestoría · subir el listado y resolver', escribir: true },
+      // El cierre de la nómina del mes (módulo 4, db/299): aprobarla, la última
+      // etapa. Ignacio (Camilo, 26/11/2026). Se da persona a persona.
+      { clave: '/gestoria/nomina', etiqueta: 'Gestoría · aprobar la nómina del mes', manual: true },
     ] },
     // LAS AUSENCIAS QUE VALIDA RR. HH. (módulo 1, db/289): mirarlas (y el % de
     // plantilla de baja) y validarlas; validar va marcada `escribir`. Son datos
@@ -338,6 +341,10 @@ const RUTA_A_CLAVE = [
   // les exigiría el permiso de editar el tablero. Quien abre la bandeja puede
   // trabajarla.
   ['/planificador/tickets',       '/planificador'],
+  // El cierre de la nómina (db/299): marcar las etapas y aprobar son POST, pero
+  // cada uno con su llave, que comprueba el servicio ('/gestoria/gestionar' o
+  // '/gestoria/nomina'). Sin esta línea, aprobar exigiría también gestionar.
+  ['/gestoria/api/cierre',        '/gestoria'],
   ['/control/reporte/',           '/control/reportes'],
   ['/control/sankey/',            '/control/reportes'],
   ['/control/cascada/',           '/control/reportes'],

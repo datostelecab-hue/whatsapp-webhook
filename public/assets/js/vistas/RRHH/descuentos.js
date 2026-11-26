@@ -6,7 +6,8 @@
 // aplaza al siguiente; el efectivo queda saldado en Recaudación.
 
 (function () {
-  const P = Casa.datos().puede || {};
+  const { puede: PUEDE } = Casa.datos();
+  const P = PUEDE || {};
   const { esc, etiqueta } = Listado.fmt;
   let ORIGENES = {}, ESTADOS = {}, PERIODO = '', PERIODOS = [];
   const est = d => ESTADOS[d.estado] || { etiqueta: d.estado, tono: 'muted' };

@@ -13,6 +13,8 @@ const router = express.Router();
 const gestoria = require('./gestoria.service');
 // La proforma de A3 (módulo 4, db/296): la pestaña «Proforma», con las mismas llaves.
 const proforma = require('./proforma.service');
+// El cierre de la nómina del mes (módulo 4, db/299): la pestaña «Cierre».
+const cierre = require('./cierre.service');
 const actor = require('../../services/repo/actor');
 
 // El listado viaja en base64 dentro del JSON: con su propio límite.
@@ -51,5 +53,9 @@ router.post('/api/proforma/recruzar', responde(async req => proforma.recruzar(re
 router.post('/api/proforma/decidir', responde(async req => proforma.decidir(req.body || {}, await quien(req))));
 router.get('/api/proforma/correo', responde(async req => proforma.correo(await quien(req))));
 router.post('/api/proforma/correo/enviado', responde(async req => proforma.marcarEnviadas(req.body || {}, await quien(req))));
+
+router.get('/api/cierre', responde(async req => cierre.vista({ periodo: req.query.periodo }, await quien(req))));
+router.post('/api/cierre/marcar', responde(async req => cierre.marcar(req.body || {}, await quien(req))));
+router.post('/api/cierre/deshacer', responde(async req => cierre.deshacer(req.body || {}, await quien(req))));
 
 module.exports = router;

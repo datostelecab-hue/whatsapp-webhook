@@ -145,7 +145,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 **Fase 3 · Módulo 4** (necesita los archivos de noviembre)
 - ✔ 26/11 (db/296): revisar la proforma contra el ERP, en [[Gestoria#La pestaña «Proforma» (módulo 4, db/296, 26/11/2026)]]. Decidido: en Gestoría; cada caso, corregir en A3 (correo), en el ERP o está bien; avisa, no frena.
 - Primero la prueba del Excel: abrir el original, escribir valores y comparar celda a celda.
-- El periodo con sus cuatro etapas, la línea de progreso y el calendario con tarjetas.
+- ✔ 26/11 (db/299): el cierre del mes con sus cuatro etapas, la línea de progreso y las tarjetas, en [[Gestoria#La pestaña «Cierre del mes» (módulo 4, db/299, 26/11/2026)]]. Decidido: proforma revisada (sola) el 20, variables y descuentos enviados el 25, borrador revisado el 28 y nómina aprobada el 30; aprueba Ignacio (llave `/gestoria/nomina`).
 - El catálogo de conceptos y las líneas, cada una con su origen.
 - ✔ 26/11 (db/298): los descuentos en nómina, ver [[Descuentos en nomina]]. Decidido: km del Banco de KM a un precio por km; aprobar es una llave que se da a quien se quiera; sin tope (se aplaza a mano); conceptos 753/758/751/754. Falta: que alguien tenga la llave de aprobar, el precio por km y el visto bueno de Legal antes del primer cierre.
 - El borrador: validación, versiones y rectificaciones. La IT. El panel.

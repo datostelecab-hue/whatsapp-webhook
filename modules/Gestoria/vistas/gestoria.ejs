@@ -5,12 +5,15 @@
   resuelve. El JavaScript, en /assets/js/vistas/Gestoria/gestoria.js.
 %>
 
-<%# Dos pestañas (módulo 4, db/296): el listado de plantilla y la proforma de A3. %>
+<%# Tres pestañas: el listado de plantilla, la proforma de A3 (módulo 4, db/296)
+    y el cierre de la nómina del mes (módulo 4, db/299). %>
 <div class="px-4 lg:px-6 pt-4 lg:pt-6"><div id="gs-pestanas" aria-label="Gestoría"></div></div>
 <div id="gs-plantilla"></div>
 <div id="gs-proforma" class="hidden"></div>
+<div id="gs-cierre" class="hidden"></div>
 
 <script type="application/json" id="datos-servidor"><%- json({ puedeGestionar: !!puedeGestionar }) %></script>
 <script src="<%= est('/assets/js/pestanas.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Gestoria/gestoria.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Gestoria/proforma.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Gestoria/cierre.js') %>"></script>
