@@ -230,6 +230,22 @@ Con eso, el **Historial de situaciones** de la ficha contesta sin salir de ahí 
 
 El código del ticket es un enlace a `/ticketera?ticket=CÓDIGO`, que llega con la búsqueda puesta **y los cerrados encendidos** — un ticket ya aplicado está cerrado, y sin eso el enlace llevaría a una bandeja vacía.
 
+## Los datos de salud y de nómina: cada uno con su llave (26/11/2026, db/301)
+
+La Ticketera de RR. HH. la tenían 15 de las 16 personas activas y, con ella, los **casos de baja médica** (con los partes que manda el conductor) y los **casos de nómina** (con los cambios de cuenta, el IBAN). Desde la fase 0 del [[Plan RRHH y nominas]], cada uno va por su llave, persona a persona (`manual`):
+
+| Llave | Qué abre | A quién (db/301) |
+|---|---|---|
+| `/ticketera/salud` «Datos de salud» | los tickets `BAJA_AUSENCIA` | Diana, Ignacio, William y Ángel |
+| `/ticketera/nomina` «Datos de nómina» | `INCIDENCIA_NOMINA` y `CAMBIO_CUENTA` | Diana, Ignacio y quien ya tenía `/nominas` |
+
+- Sin la llave, esos tickets **no salen en la bandeja**, ni en su ficha, ni en los números de la barra y del menú (el total de RR. HH. no los cuenta y sus cuadros no se pintan), y **no se puede actuar** sobre ellos (cada POST con `id` se comprueba antes: 403). Todo en `ticketera.controller.js` (`SENSIBLES`, `ocultosDe`).
+- **La ficha del conductor** ([[Conductores|Plantilla]]) enseña en cada situación el ticket que la abrió: sin la llave, el código sí, **los adjuntos (el parte) no**.
+- **Que alguien ESTÁ de baja y hasta cuándo** se sigue viendo donde hace falta (planificador, bitácora, Control): eso no es el parte.
+- En el **tablero**, la tarjeta de una baja y la de un cambio de cuenta no llevan nombre ni descripción; la de una incidencia de nómina, sí (es lo que necesita quien la reparte).
+- **`/nominas` y `/convenio` pasan a `manual`**: ya no se reparten por rol a un usuario nuevo. No se le quitó nada a nadie: se hace en [[Usuarios y permisos|Usuarios]].
+- Prueba: `test/ticketera-datos-sensibles.test.js`.
+
 ## Los tickets de IT
 
 Son los mismos tickets, con `area = IT` y `origen = soporte`. Desde el 15/09/2026 viven en la tabla `ticket`, la misma que los del formulario: antes tenían su propia hoja, su propio esquema y su propia pantalla, para acabar contestando a las mismas preguntas.

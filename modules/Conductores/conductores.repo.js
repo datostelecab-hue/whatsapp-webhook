@@ -436,7 +436,7 @@ async function ponerleCara(situaciones) {
     SELECT h.id,
            NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS quien,
            t.id AS ticket_id, t.codigo AS ticket_codigo,
-           t.descripcion AS ticket_desc, t.adjuntos AS ticket_adjuntos
+           t.descripcion AS ticket_desc, t.adjuntos AS ticket_adjuntos, t.subtipo_codigo AS ticket_subtipo
       FROM conductor_estado_hist h
       LEFT JOIN usuario u ON u.id = h.usuario_id
       LEFT JOIN ticket  t ON t.id = h.ticket_id
@@ -447,7 +447,9 @@ async function ponerleCara(situaciones) {
     if (!d) return;
     x.quien = d.quien || null;
     x.ticket = d.ticket_id
-      ? { id: Number(d.ticket_id), codigo: d.ticket_codigo,
+      // `subtipo`: para tapar los adjuntos de una baja médica (el parte) a quien
+      // no tiene la llave de datos de salud (plantilla.controller, db/301).
+      ? { id: Number(d.ticket_id), codigo: d.ticket_codigo, subtipo: d.ticket_subtipo,
           enlaces: enlacesDelTicket(d.ticket_desc, d.ticket_adjuntos) }
       : null;
   });

@@ -46,10 +46,16 @@ const CATALOGO = [
     // 24/09/2026). La llave SE QUEDA: por el prefijo es la que cierra
     // /administracion/tickets, y sin ella esos tickets quedarían abiertos.
     { clave: '/administracion', etiqueta: 'Administración (tickets)' },
-    { clave: '/ticketera',      etiqueta: 'Ticketera RRHH' },
+    { clave: '/ticketera',      etiqueta: 'Ticketera RRHH', hijos: [
+      // Los datos de salud y de nómina de la Ticketera (26/11/2026, fase 0 del
+      // plan de RR. HH.): sin ellas, esos tickets no se ven. Persona a persona.
+      { clave: '/ticketera/salud', etiqueta: 'Datos de salud · los casos de baja médica de la Ticketera y sus partes', manual: true },
+      { clave: '/ticketera/nomina', etiqueta: 'Datos de nómina · los casos de nómina y los cambios de cuenta (IBAN) de la Ticketera', manual: true },
+    ] },
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
-    { clave: '/nominas',        etiqueta: 'Nóminas' },
-    { clave: '/convenio',       etiqueta: 'Convenio' },
+    // Datos de nómina: persona a persona, no por rol (26/11/2026).
+    { clave: '/nominas',        etiqueta: 'Nóminas', manual: true },
+    { clave: '/convenio',       etiqueta: 'Convenio', manual: true },
     // EL INFORME DE JORNADA PARA EL SMAC (módulo 5, 25/11/2026): por conductor y
     // rango, en PDF y Excel, desde su ficha. Para RR. HH. y legal (db/288).
     { clave: '/informe-jornada', etiqueta: 'Informe de jornada de un conductor (para el SMAC y los abogados)' },

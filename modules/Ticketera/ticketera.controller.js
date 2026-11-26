@@ -40,6 +40,27 @@ const PARTES_RRHH = [
 ];
 const OTROS = { clave: 'otros', etiqueta: 'Otros de RRHH' };
 
+// LOS DATOS DE SALUD Y DE NÓMINA (26/11/2026, plan de RR. HH., fase 0). La
+// Ticketera de RR. HH. la tenían 15 de 16 personas, y con ella los casos de
+// baja médica (con sus partes) y los de nómina (con los cambios de cuenta,
+// IBAN). Ahora cada uno va por su llave, que se da persona a persona: sin
+// ella, esos tickets no salen ni en la lista, ni en la ficha, ni en los
+// números de la barra, y no se puede actuar sobre ellos. Que alguien ESTÁ de
+// baja y hasta cuándo se sigue viendo donde hace falta (planificador,
+// bitácora, Control): eso no es el parte.
+const SENSIBLES = [
+  { clave: '/ticketera/salud', subtipos: ['BAJA_AUSENCIA'] },
+  { clave: '/ticketera/nomina', subtipos: ['INCIDENCIA_NOMINA', 'CAMBIO_CUENTA'] },
+];
+/** Los subtipos que NO puede ver quien tiene esas llaves (null = las tiene todas). */
+function ocultosDe(mias) {
+  const out = new Set();
+  if (mias == null) return out;
+  SENSIBLES.forEach(s => { if (!mias.includes(s.clave)) s.subtipos.forEach(x => out.add(x)); });
+  return out;
+}
+const sinPermiso = () => Object.assign(new Error('Ese ticket es de datos de salud o de nómina: hace falta su llave'), { status: 403 });
+
 const BANDEJAS = [
   { area: 'RRHH',        href: '/ticketera',               etiqueta: 'RRHH', partes: PARTES_RRHH },
   { area: 'ADMIN',       href: '/administracion/tickets',  etiqueta: 'Administración' },
@@ -68,12 +89,15 @@ function visiblesDe(mias) {
 
 /** Deja en la vista qué cuadros pintar. Va después de sesion.cargarPermisos. */
 /** Las partes de una bandeja, con su enlace a la bandeja ya filtrada (`?grupo=`). */
-const partesDe = b => (b.partes ? b.partes.concat(OTROS) : [])
+// Una parte cuyos tickets no puede ver no se pinta.
+const sePuede = (p, ocultos) => !(p.subtipos && p.subtipos.every(x => ocultos.has(x)));
+const partesDe = (b, ocultos = new Set()) => (b.partes ? b.partes.filter(p => sePuede(p, ocultos)).concat(OTROS) : [])
   .map(p => ({ clave: p.clave, etiqueta: p.etiqueta, href: b.href + '?grupo=' + p.clave, otros: p === OTROS }));
 
 function enLaBarra(req, res, next) {
+  const ocultos = ocultosDe(res.locals.permisos);
   res.locals.bandejasBarra = req.usuario
-    ? visibles(res).map(b => ({ area: b.area, href: b.href, etiqueta: b.etiqueta, partes: partesDe(b) }))
+    ? visibles(res).map(b => ({ area: b.area, href: b.href, etiqueta: b.etiqueta, partes: partesDe(b, ocultos) }))
     : [];
   next();
 }
@@ -88,13 +112,15 @@ function resumen() {
   router.get('/api/pendientes', async (req, res) => {
     try {
       const mias = visibles(res);
+      const ocultos = ocultosDe(res.locals.permisos);
       const r = await ticketera.pendientes(mias.map(b => b.area));
       res.json({ status: 'ok', desde: r.desde,
         bandejas: mias.map(b => {
-          const total = r.pendientes[b.area] || 0;
           const tipos = r.porSubtipo[b.area] || {};
           const suma = subtipos => subtipos.reduce((s, x) => s + (tipos[x] || 0), 0);
-          const partes = (b.partes || []).map(p => ({ clave: p.clave, pendientes: suma(p.subtipos) }));
+          // Lo que no puede ver no cuenta.
+          const total = (r.pendientes[b.area] || 0) - suma([...ocultos]);
+          const partes = (b.partes || []).filter(p => sePuede(p, ocultos)).map(p => ({ clave: p.clave, pendientes: suma(p.subtipos) }));
           // «Otros»: lo del área que no ha caído en ninguna parte.
           if (b.partes) partes.push({ clave: OTROS.clave, pendientes: total - partes.reduce((s, p) => s + p.pendientes, 0) });
           return { area: b.area, href: b.href, etiqueta: b.etiqueta, pendientes: total, partes };
@@ -114,7 +140,7 @@ const quien = async req => ({
 });
 
 const responde = fn => async (req, res) => {
-  try { res.json({ status: 'ok', ...(await fn(req)) }); }
+  try { res.json({ status: 'ok', ...(await fn(req, res)) }); }
   catch (e) {
     console.error('❌ [Ticketera]', e.message);
     // `pide`: el motivo de un permiso que se pasa del convenio (módulo 1).
@@ -134,11 +160,24 @@ function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {})
   const partes = ((BANDEJAS.find(b => b.area === areaCodigo) || {}).partes || [])
     .map(p => ({ clave: p.clave, etiqueta: p.etiqueta, subtipos: p.subtipos }));
 
+  // Los datos de salud y de nómina: lo que hay que comprobar antes de leer o
+  // tocar un ticket por su id (la ficha y cada acción: asignar, estado…).
+  const exigirVisible = async (id, res) => {
+    const ocultos = ocultosDe(res.locals.permisos);
+    if (!ocultos.size || id == null || id === '') return;
+    const f = await ticketera.ficha(id);
+    if (ocultos.has(f.ticket.subtipoCodigo)) throw sinPermiso();
+  };
+  router.post('*', async (req, res, next) => {
+    try { await exigirVisible(req.body && req.body.id, res); next(); }
+    catch (e) { res.status(e.status || 400).json({ status: 'error', msg: e.message }); }
+  });
+
   router.get('/', async (req, res) => {
     res.render('ticketera', {
       // Si quien mira aprueba vacaciones, y quién lo hace (db/189).
       vacaciones: await ticketera.vacacionesParaLaPantalla(await actor.idDe(req)),
-      partes,
+      partes: partes.filter(p => sePuede(p, ocultosDe(res.locals.permisos))),
       titulo: titulo || 'Ticketera',
       subtitulo: subtitulo || '',
       seccion: seccion || 'ticketera',
@@ -151,10 +190,18 @@ function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {})
 
   // Solo lo pedido desde el corte (lo anterior ya no sirve), salvo el ticket
   // del enlace directo (`?ticket=CÓDIGO`), que se trae sea de cuando sea.
-  router.get('/api/datos', responde(async req =>
-    await ticketera.datos(areaCodigo, { cerrados: req.query.cerrados === '1', recientes, codigo: req.query.ticket || null })));
+  router.get('/api/datos', responde(async (req, res) => {
+    const r = await ticketera.datos(areaCodigo, { cerrados: req.query.cerrados === '1', recientes, codigo: req.query.ticket || null });
+    const ocultos = ocultosDe(res.locals.permisos);
+    if (ocultos.size) r.tickets = r.tickets.filter(t => !ocultos.has(t.subtipoCodigo));
+    return r;
+  }));
 
-  router.get('/api/ticket/:id', responde(async req => await ticketera.ficha(req.params.id)));
+  router.get('/api/ticket/:id', responde(async (req, res) => {
+    const f = await ticketera.ficha(req.params.id);
+    if (ocultosDe(res.locals.permisos).has(f.ticket.subtipoCodigo)) throw sinPermiso();
+    return f;
+  }));
 
   router.post('/asignar', responde(async req =>
     ({ ticket: await ticketera.asignar(req.body.id, req.body, await quien(req)) })));
@@ -213,16 +260,18 @@ require('../../services/contadores').registrarFuente('tickets', {
   async contar(quien) {
     const mias = visiblesDe(quien.permisos);
     if (!mias.length) return {};
+    const ocultos = ocultosDe(quien.permisos);
     const r = await ticketera.pendientes(mias.map(b => b.area));
     const salida = {};
     const titulo = (nombre, n) => `${nombre}: ${n ? n + (n === 1 ? ' ticket pendiente' : ' tickets pendientes') : 'nada pendiente'} desde el ${r.desde}`;
     for (const b of mias) {
-      const total = r.pendientes[b.area] || 0;
+      const tipos = r.porSubtipo[b.area] || {};
+      // Lo que no puede ver no cuenta.
+      const total = (r.pendientes[b.area] || 0) - [...ocultos].reduce((s, x) => s + (tipos[x] || 0), 0);
       salida[`tickets.${b.area}`] = { n: total, titulo: titulo(b.etiqueta, total) };
       if (!b.partes) continue;
-      const tipos = r.porSubtipo[b.area] || {};
       let enPartes = 0;
-      for (const p of b.partes) {
+      for (const p of b.partes.filter(x => sePuede(x, ocultos))) {
         const n = p.subtipos.reduce((s, x) => s + (tipos[x] || 0), 0);
         enPartes += n;
         salida[`tickets.${b.area}.${p.clave}`] = { n, titulo: titulo(p.etiqueta, n) };
@@ -234,4 +283,4 @@ require('../../services/contadores').registrarFuente('tickets', {
   },
 });
 
-module.exports = { para, resumen, enLaBarra, BANDEJAS };
+module.exports = { para, resumen, enLaBarra, BANDEJAS, SENSIBLES, ocultosDe, _ocultosDe: ocultosDe };

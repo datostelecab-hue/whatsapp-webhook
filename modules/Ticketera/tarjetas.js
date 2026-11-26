@@ -32,8 +32,11 @@ const BANDEJA = {
   RRHH: '/ticketera', ADMIN: '/administracion/tickets', TRAFICO: '/planificador/tickets',
   TALLER: '/taller/tickets', OPERACIONES: '/operaciones/sin-traza', IT: '/tickets-telecab',
 };
-// Los tipos de ticket con datos de salud: su tarjeta no lleva nombre.
-const SENSIBLES = new Set(['BAJA_AUSENCIA']);
+// Los tipos de ticket con datos de salud, y los cambios de cuenta (su
+// descripción lleva el IBAN, desde el 26/11/2026): su tarjeta no lleva nombre
+// ni descripción. Una incidencia de nómina sí lleva el nombre: es lo que
+// necesita quien la reparte; el ticket en sí lo cierra su llave en la Ticketera.
+const SENSIBLES = new Set(['BAJA_AUSENCIA', 'CAMBIO_CUENTA']);
 
 const ticketera = () => require('./ticketera.service');
 

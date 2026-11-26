@@ -128,7 +128,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - ✔ 25/11: `cuando.semanal` en las [[Tareas programadas]], para la tarjeta del lunes. **La tarjeta va con el módulo 8** (es la de subir el listado de la gestoría, y antes tiene que existir dónde subirlo).
 - ✔ 25/11, db/285: **las vencidas avisan a Ignacio**: llave `/tablero/vencidas` (ver [[Tablero de tareas]]).
 - ✔ 25/11, db/285: **el traspaso a Diana** (usuario 20): la llave única de aprobar vacaciones pasa de Laura a ella, más `/convenio` y `/reportes`, que tenía Laura y ella no. El usuario de Laura sigue activo (darlo de baja es de /usuarios).
-- Llaves de salud y de nómina: pendiente.
+- ✔ 26/11 (db/301): las llaves de salud y de nómina, ver [[Ticketera#Los datos de salud y de nómina: cada uno con su llave (26/11/2026, db/301)]]. Decidido: «Datos de salud» (los casos de baja médica de la Ticketera y sus partes) a Diana, Ignacio, William y Ángel; «Datos de nómina» (casos de nómina y cambios de cuenta) a Diana, Ignacio y quien ya tenía /nominas; /nominas y Convenio, persona a persona; no se le quita nada a nadie.
 - **El Excel de plantilla del 25/11** (pestaña PLANTILLA, 265 filas): 251 legajos ya estaban igual en el ERP, 1 nuevo (de alguien de baja) y 13 que no cuadran: los 6 últimos traen legajos (002592 a 002598) que en el ERP ya son de otras personas, una persona sale con dos legajos y una fila no tiene DNI. Los 69 de plantilla propia en alta sin legajo no vienen en ese Excel. No se cargó nada: se le pasa a Diana para aclararlo con la gestoría.
 - Los parámetros del encargo en [[Parametros]].
 

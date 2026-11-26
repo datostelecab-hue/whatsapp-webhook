@@ -95,7 +95,17 @@ router.get('/api/media-mes', async (req, res) => {
 
 router.get('/api/ficha/:id', async (req, res) => {
   try {
-    res.json(await plantilla.ficha(req.params.id, { momento: momentoDe(req) }));
+    const f = await plantilla.ficha(req.params.id, { momento: momentoDe(req) });
+    // LOS PARTES DE UNA BAJA MÉDICA (y los papeles de un caso de nómina) que
+    // vienen del ticket de cada situación: solo con su llave (db/301). Sin
+    // ella se ve la situación y el código del ticket, no sus adjuntos.
+    const ocultos = require('../Ticketera/ticketera.controller').ocultosDe(res.locals.permisos);
+    if (ocultos.size) {
+      (f.situaciones || []).forEach(s => {
+        if (s.ticket && ocultos.has(s.ticket.subtipo)) s.ticket = { id: s.ticket.id, codigo: s.ticket.codigo, enlaces: [], oculto: true };
+      });
+    }
+    res.json(f);
   } catch (e) {
     const noExiste = /No existe/.test(e.message);
     if (!noExiste) console.error('❌ [PLANTILLA] /api/ficha:', e.message);
