@@ -46,6 +46,9 @@ test('la cuenta: 8 h por día planificado, lo que compensa, lo que no se pide', 
   assert.deepEqual([d.objetivo, d.debe], [24, 0]);
   const e = cuenta.calcular({ dias: semana([0, 8, 8, 8, 8, 'L', 'L']), alta: '2026-01-01', justificadas: new Set(['2026-11-16']) });
   assert.equal(e.debe, 0, 'la ausencia que RR. HH. justificó no se debe');
+  // Un día justificado que ya trae sus horas (J aprobada) cuenta como trabajado: no se pide Y suma.
+  const j = cuenta.calcular({ dias: semana([0, 8, 8, 7, 0, 'L', 'L']), alta: '2026-01-01', justificadas: new Set(['2026-11-19']) });
+  assert.deepEqual([j.objetivo, j.horas, j.debe], [40, 23, 17], 'el 19 justificado con 7 h no se descuenta del objetivo');
   // Entra el jueves: solo los días con contrato.
   const f = cuenta.calcular({ dias: semana([0, 0, 0, 8, 0, 'L', 'L'], Object.fromEntries(DIAS.slice(0, 3).map(x => [x, { fuera: true, clase: null }]))),
     alta: '2026-11-19' });

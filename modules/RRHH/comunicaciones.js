@@ -41,7 +41,10 @@ const coma = n => String(r1(n)).replace('.', ',');
  */
 function calcular({ dias = [], alta, baja = null, justificadas = new Set() }) {
   const enContrato = dias.filter(d => !d.fuera && d.dia >= alta && (!baja || d.dia <= baja));
-  const libre = d => NO_SE_PIDE.has(d.marca) || d.situacion || d.sinPlaza || justificadas.has(d.dia);
+  // Un día en que trabajó (horas en la bitácora) cuenta como trabajado, caiga en
+  // lo que caiga (una suspensión que empieza ese día, un justificado con su J):
+  // no se le pedía y además sumaba sus horas (26/11/2026, el caso de Jeisson Hoyos).
+  const libre = d => d.clase !== 'trabajado' && (NO_SE_PIDE.has(d.marca) || d.situacion || d.sinPlaza || justificadas.has(d.dia));
   // Le tocaba trabajar: la bitácora dice «trabajado» o «ausencia» (libranzas y
   // días fuera de plan salen sin clase).
   const deTrabajo = enContrato.filter(d => !libre(d) && (d.clase === 'trabajado' || d.clase === 'ausencia'));
