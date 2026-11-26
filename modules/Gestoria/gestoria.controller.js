@@ -11,10 +11,13 @@
 const express = require('express');
 const router = express.Router();
 const gestoria = require('./gestoria.service');
+// La proforma de A3 (módulo 4, db/296): la pestaña «Proforma», con las mismas llaves.
+const proforma = require('./proforma.service');
 const actor = require('../../services/repo/actor');
 
 // El listado viaja en base64 dentro del JSON: con su propio límite.
 router.use('/api/subir', express.json({ limit: '20mb' }));
+router.use('/api/proforma/subir', express.json({ limit: '20mb' }));
 
 const quien = async req => ({ usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req), rol: (req.usuario || {}).rol || '' });
 
@@ -40,5 +43,12 @@ router.post('/api/discrepancia/:id/cerrar', responde(async req => gestoria.cerra
 router.post('/api/discrepancia/:id/legajo', responde(async req => gestoria.ponerLegajo(req.params.id, req.body || {}, await quien(req))));
 router.get('/api/correo', responde(async req => gestoria.correo(await quien(req))));
 router.post('/api/correo/enviado', responde(async req => gestoria.marcarEnviadas(req.body || {}, await quien(req))));
+
+router.get('/api/proforma/lista', responde(async req => proforma.lista(await quien(req))));
+router.get('/api/proforma/caso/:id', responde(async req => ({ ficha: await proforma.ficha(req.params.id, await quien(req)) })));
+router.post('/api/proforma/subir', responde(async req => proforma.subir(req.body || {}, await quien(req))));
+router.post('/api/proforma/decidir', responde(async req => proforma.decidir(req.body || {}, await quien(req))));
+router.get('/api/proforma/correo', responde(async req => proforma.correo(await quien(req))));
+router.post('/api/proforma/correo/enviado', responde(async req => proforma.marcarEnviadas(req.body || {}, await quien(req))));
 
 module.exports = router;

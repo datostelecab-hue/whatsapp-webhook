@@ -32,7 +32,7 @@
   const persona = f => f.nombre_erp || f.nombre_gestoria || '—';
 
   const lista = Listado.montar({
-    raiz: '#modulo',
+    raiz: '#gs-plantilla',
     titulo: 'Plantilla de la gestoría',
     icono: 'fa-building-columns',
     clave: 'id',

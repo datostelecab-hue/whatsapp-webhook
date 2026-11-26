@@ -217,7 +217,7 @@
       { id: 'hechos', etiqueta: 'Qué pasó', tipo: 'texto-largo', obligatorio: true, minimo: 10, max: 4000,
         ayuda: 'Es lo que dirá la carta: cuándo, dónde y qué hizo, sin opiniones.' },
       { id: 'pruebas', etiqueta: 'Pruebas (opcional)', tipo: 'ficheros', ayuda: 'Fotos, capturas, el parte… También se pueden subir después.' },
-    ], { textoBoton: 'Abrir', nota: 'Pasa a aprobación de Ángel, William o Ignacio.', ancho: 'max-w-xl' });
+    ], { textoBoton: 'Abrir', nota: 'Pasa a aprobación.', ancho: 'max-w-xl' });
     if (!v || !v.conductorId) return;
     const otra = v.regla === OTRA;
     const r = await Api.post('/disciplina/api/sancion', {

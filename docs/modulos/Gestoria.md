@@ -62,6 +62,38 @@ Cada lunes a las 08:00 (`gestoria.tarjeta_lunes`, `cuando.semanal`) nace en el [
 
 27 diferencias: **3 personas en la nómina de la gestoría que se fueron hace semanas** (una el 15/10 y dos el 04/09: 39 y 80 días), **5 legajos cambiados**, **15 legajos que el ERP no tiene** (13 con su ficha propuesta: 6 de ellos son de ETT para nosotros —uno sale dos veces, con dos legajos— y 3 están de baja), **2 de alta con nosotros que no salen** y **2 sin legajo**.
 
+## La pestaña «Proforma» (módulo 4, db/296, 26/11/2026)
+
+La **proforma** es la nómina del mes que calcula A3 **antes de las variables** y que la gestoría manda para revisar (`EXCEL NOVIEMBRE … SIN VARIABLES.xlsx`); ver [[Plan RRHH y nominas#La nómina de noviembre de A3, «sin variables» (25/11/2026)]]. Camilo (25/11/2026): *en Gestoría; cada caso se marca y con los de A3 el ERP prepara el correo; avisa, no frena*.
+
+```
+modules/Gestoria/proforma.js           leerla (un trabajador por columna) y cruzarla con el ERP: puro
+modules/Gestoria/proforma.service.js   subir, la lista, decidir, el correo, la tarjeta
+modules/Gestoria/proforma.repo.js      el SQL (proforma_caso)
+public/assets/js/vistas/Gestoria/proforma.js   la pestaña (y las dos pestañas de la pantalla)
+test/proforma.test.js                  con una proforma de mentira hecha en el test
+```
+
+- **Leerla**: la fila con los códigos de seis cifras (desde la D), las tres de debajo con el nombre, las de arriba con las **notas a mano**; el mes del «DEL 01/11/26 AL 30/11/26»; los conceptos por su código (B) y los totales por su nombre (A: «TOTAL BRUTO», «TOTAL LIQUIDO», «COSTE EMPRESA», «DIAS COTIZADOS»). La IT, de los conceptos 450, 451, 452 y 455.
+- **El cruce**, contra el ERP en ese mes:
+
+| Caso | Qué es |
+| --- | --- |
+| Código que el ERP no tiene | con la ficha que se le parece por el nombre (si es una) |
+| Cobra el mes sin contrato propio | para el ERP no es plantilla propia ese mes (o es de ETT) |
+| Baja médica que la nómina no recoge | baja del ERP que ya había empezado al subirla, sin IT ni nota; avisa si es de un día |
+| Suspensión que no cuadra | suspendido en el ERP y cotiza los días enteros; o la nota dice suspensión y el ERP no la tiene |
+| Días cotizados distintos a su contrato | días de contrato propio en el mes, **menos los suspendido** |
+| Plantilla propia fuera de la nómina | dice si es un alta reciente (código posterior al último de la nómina): lo normal es que llegue después |
+
+- **Decidir** cada caso (o varios marcados): **corregir en A3** (con nota: va al correo), **corregir en el ERP** o **está bien**; se puede volver a «por decidir».
+- **Otra proforma del mismo mes**: lo decidido se conserva; lo que estaba por decidir y ya no sale, se cierra solo («ya no sale»). La misma no entra dos veces ([[Ficheros importados]], tipo `proforma_a3`).
+- **El correo**: los «corregir en A3» sin mandar, con su frase y la nota; «Ya lo he mandado» los apunta.
+- **La tarjeta**: «Revisar la proforma de noviembre de 2026: N casos», a quien sube los listados de la gestoría, con vencimiento el día del corte (`nomina.dia_corte`); se cierra sola al no quedar ninguno por decidir. **No frena nada.**
+- Mismas llaves que la pestaña de plantilla. El número de la pestaña: los casos por decidir.
+
+**Con la de noviembre** (comprobado el 26/11 en solo lectura): 164 trabajadores, bruto 219.246,28 €, líquido 195.407,65 €; 100 casos: 23 códigos, 9 sin contrato propio, 8 bajas médicas, 3 suspensiones, 10 de días y 47 fuera de la nómina (36 de ellos, altas recientes).
+
 ## Lo que falta del módulo 8
 
 - El **listado de plantilla en alta** (o el ITA) real, para las **fechas que no coinciden**.

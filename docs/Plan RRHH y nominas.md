@@ -104,7 +104,7 @@ El 25/11 Camilo pasó la **proforma**: `EXCEL NOVIEMBRE TIBUS LUXURY SL SIN VARI
 
 **Cruzada con el ERP** (solo lectura, 25/11), lo que no cuadra: 23 códigos que ninguna ficha tiene (13 son de fichas sin legajo, 5 con otro legajo en el ERP, 5 sin encontrar o dudosos); 9 personas a las que la nómina paga noviembre sin contrato propio en el ERP; 10 bajas médicas del ERP que la nómina no recoge; 4 suspensiones que no cuadran (en un lado y no en el otro); 12 personas cuyos días cotizados no son sus días de contrato; y 43 de plantilla propia del ERP en noviembre que no están en la nómina (la mayoría, altas del 18/11 en adelante: los legajos de la nómina acaban en el 002716). El detalle, con nombres, se le pasó a RR. HH. en un Excel (no va al repositorio).
 
-Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la proforma y que el ERP diga estas seis cosas.
+Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la proforma y que el ERP diga estas seis cosas. **Hecho el 26/11 (db/296)**: pestaña «Proforma» en [[Gestoria]].
 
 ## Lo que hace falta de fuera
 
@@ -143,6 +143,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - Con el fichero del INSS: el importador, la baja con sus prórrogas, la reclasificación y la tarjeta de reincorporación.
 
 **Fase 3 · Módulo 4** (necesita los archivos de noviembre)
+- ✔ 26/11 (db/296): revisar la proforma contra el ERP, en [[Gestoria#La pestaña «Proforma» (módulo 4, db/296, 26/11/2026)]]. Decidido: en Gestoría; cada caso, corregir en A3 (correo), en el ERP o está bien; avisa, no frena.
 - Primero la prueba del Excel: abrir el original, escribir valores y comparar celda a celda.
 - El periodo con sus cuatro etapas, la línea de progreso y el calendario con tarjetas.
 - El catálogo de conceptos y las líneas, cada una con su origen.
