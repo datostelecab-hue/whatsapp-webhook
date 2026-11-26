@@ -131,6 +131,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - ✔ 26/11 (db/301): las llaves de salud y de nómina, ver [[Ticketera#Los datos de salud y de nómina: cada uno con su llave (26/11/2026, db/301)]]. Decidido: «Datos de salud» (los casos de baja médica de la Ticketera y sus partes) a Diana, Ignacio, William y Ángel; «Datos de nómina» (casos de nómina y cambios de cuenta) a Diana, Ignacio y quien ya tenía /nominas; /nominas y Convenio, persona a persona; no se le quita nada a nadie.
 - **El Excel de plantilla del 25/11** (pestaña PLANTILLA, 265 filas): 251 legajos ya estaban igual en el ERP, 1 nuevo (de alguien de baja) y 13 que no cuadran: los 6 últimos traen legajos (002592 a 002598) que en el ERP ya son de otras personas, una persona sale con dos legajos y una fila no tiene DNI. Los 69 de plantilla propia en alta sin legajo no vienen en ese Excel. No se cargó nada: se le pasa a Diana para aclararlo con la gestoría.
 - Los parámetros del encargo en [[Parametros]].
+- ✔ 26/11: el expediente del conductor, en la ficha de Plantilla: lo de cada módulo de RR. HH., cada sección con su llave; ver [[Conductores#El expediente de RR. HH. (26/11/2026)]].
 
 **Fase 1 · Módulo 8** — ✔ primera parte el 25/11 (db/287), con la proforma: ver [[Gestoria]]. Falta lo de las altas (confirmación de la gestoría, bloqueo en el planificador, no presentación) y las fechas, que necesitan el listado de plantilla en alta.
 - Subir el listado, cruzarlo por legajo y enseñar las tres discrepancias con su coste.

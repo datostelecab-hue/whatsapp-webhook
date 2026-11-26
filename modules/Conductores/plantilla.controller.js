@@ -269,6 +269,11 @@ router.get('/api/gestoria.xlsx', async (req, res) => {
 
 router.get('/api/tipos-documento', responde(async () => ({ tipos: await plantilla.tiposDocumento() })));
 
+// EL EXPEDIENTE DE RR. HH. (26/11/2026): lo de cada módulo, solo lo que deja
+// ver la llave de quien mira (expediente.service).
+router.get('/api/conductor/:id/expediente', responde(async req =>
+  require('./expediente.service').deUno(req.params.id, await quien(req))));
+
 router.get('/api/conductor/:id/documentos', responde(async req =>
   ({ documentos: await plantilla.documentosDe(req.params.id, req.query.historico) })));
 

@@ -100,6 +100,58 @@
     }
   }
 
+  // ── EL EXPEDIENTE DE RR. HH. (26/11/2026) ──
+  const EXP_AUS = { injustificada: 'injustificadas', justificada: 'justificadas', baja_medica: 'de baja médica', permiso: 'de permiso', pendiente: 'sin revisar' };
+  const EXP_SAN = { propuesta: 'Propuesta', abierta: 'Abierta', aprobada: 'Aprobada', en_firma: 'En firma', comunicada: 'Comunicada', descartada: 'Descartada' };
+  const eur = n => Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+  const dmyE = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
+  const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+  function expedienteSeccion(s) {
+    const d = s.datos || {};
+    const vacio = t => `<p class="text-sm text-telecab-muted">${t}</p>`;
+    let cuerpo;
+    if (s.error) cuerpo = `<p class="text-sm text-telecab-warn">No se pudo leer: ${esc(s.error)}</p>`;
+    else if (s.id === 'vacaciones') {
+      cuerpo = `<p class="text-sm">Le quedan <b>${esc(String(d.saldo).replace('.', ','))}</b> días${d.programadas ? ` (${esc(String(d.programadas).replace('.', ','))} ya programados: tras ellos, ${esc(String(d.saldoTras).replace('.', ','))})` : ''}.</p>`;
+    } else if (s.id === 'ausencias') {
+      const a = Object.entries(d.ausencias || {}).filter(([, n]) => n).map(([k, n]) => `${n} ${EXP_AUS[k] || k}`);
+      const b = (d.bajas || []).map(x => `<li>Baja médica del ${esc(dmyE(x.desde))}${x.hasta ? ` al ${esc(dmyE(x.hasta))}` : `, abierta${x.prevista ? ` (prevista hasta el ${esc(dmyE(x.prevista))})` : ''}`}</li>`);
+      cuerpo = (a.length ? `<p class="text-sm">Ausencias en 12 meses: ${esc(a.join(', '))}.</p>` : vacio('Sin ausencias en 12 meses.')) +
+        (b.length ? `<ul class="text-sm mt-1 list-disc pl-5">${b.join('')}</ul>` : '');
+    } else if (s.id === 'permisos') {
+      cuerpo = (d.tipos || []).length
+        ? `<ul class="text-sm list-disc pl-5">${d.tipos.map(t => `<li>${esc(t.nombre)}: ${esc(String(t.usado))} ${esc(t.unidad || '')}${t.queda != null ? ` (le quedan ${esc(String(t.queda))})` : ''}</li>`).join('')}</ul>`
+        : vacio(`Sin permisos en ${esc(String(d.anio || ''))}.`);
+    } else if (s.id === 'sanciones') {
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li><b>${esc(cap(x.gravedad || ''))}</b> · ${esc(x.falta || '')} · ${esc(dmyE(x.fecha))} · ${esc(EXP_SAN[x.estado] || x.estado)}${x.medida ? ` · ${esc(x.medida)}${x.dias ? ` (${x.dias} días)` : ''}` : ''}${x.suspension_desde ? ` · suspensión del ${esc(dmyE(x.suspension_desde))} al ${esc(dmyE(x.suspension_hasta))}` : ''}</li>`).join('')}</ul>`
+        : vacio('Sin faltas ni sanciones.');
+    } else if (s.id === 'firmas') {
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.titulo || x.tipo)} · ${esc(x.estado)} · ${esc(dmyE(x.enviado || x.creado))}</li>`).join('')}</ul>`
+        : vacio('Ninguna carta ni documento a firma.');
+    } else if (s.id === 'descuentos') {
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.motivo || x.origen)} · ${esc(eur(x.importe))}${x.saldo && x.saldo !== x.importe ? ` (quedan ${esc(eur(x.saldo))})` : ''} · ${esc(x.estado)} · nómina ${esc(x.periodo)}</li>`).join('')}</ul>`
+        : vacio('Sin descuentos en nómina.');
+    } else if (s.id === 'finiquito') {
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>Baja del ${esc(dmyE(x.fecha_baja))} · ${esc(x.estado)}${x.enviado ? ` · enviado el ${esc(dmyE(x.enviado))}` : x.aprobado ? ` · aprobado el ${esc(dmyE(x.aprobado))}` : ''}</li>`).join('')}</ul>`
+        : vacio('Sin finiquito.');
+    } else if (s.id === 'efectivo') {
+      cuerpo = d.pendiente == null ? vacio('Sin cuenta en Recaudación.')
+        : `<p class="text-sm">${d.pendiente > 0.005 ? `Debe <b class="text-telecab-red">${esc(eur(d.pendiente))}</b> de efectivo.` : 'Al día con el efectivo.'}</p>`;
+    } else cuerpo = '';
+    return `<section class="py-3 border-t border-telecab-border first:border-t-0">
+      <div class="flex items-center gap-2 mb-1"><h4 class="text-sm font-semibold text-telecab-text">${esc(s.titulo)}</h4>
+        <a href="${esc(s.enlace)}" class="ml-auto text-xs text-telecab-gold hover:underline">Abrir</a></div>${cuerpo}</section>`;
+  }
+  function expedienteHtml(r) {
+    if (!r.secciones.length) return '<p class="text-sm text-telecab-muted">No tienes acceso a ninguna parte del expediente de RR. HH.</p>';
+    return r.secciones.map(expedienteSeccion).join('') +
+      (r.ocultas ? `<p class="text-xs text-telecab-muted mt-2">${r.ocultas} ${r.ocultas === 1 ? 'parte no se enseña' : 'partes no se enseñan'}: son de módulos a los que no tienes acceso.</p>` : '');
+  }
+
   /** Enlaza en bloque todas las cuentas de BOLT que casan por teléfono (1:1). */
   async function autoEnlazarBolt() {
     const ok = await Dialogo.confirmar({
@@ -1881,6 +1933,18 @@
             }).catch(e => {
               hueco.innerHTML = `<p class="text-sm text-telecab-red">No se pudo cargar la ficha: ${esc(e.message)}</p>`;
             });
+          },
+        },
+        {
+          // EL EXPEDIENTE DE RR. HH. (26/11/2026): vacaciones, ausencias y bajas,
+          // permisos, sanciones, cartas a firma, descuentos, finiquito y efectivo.
+          // Cada sección solo si quien mira tiene la llave de su módulo.
+          titulo: 'Expediente de RR. HH.', icono: 'fa-folder-tree',
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = '<p class="text-sm text-telecab-muted">Cargando…</p>';
+            api(`/plantilla/api/conductor/${d.id}/expediente`).then(r => { hueco.innerHTML = expedienteHtml(r); })
+              .catch(e => { hueco.innerHTML = `<p class="text-sm text-telecab-red">No se pudo cargar: ${esc(e.message)}</p>`; });
           },
         },
         {

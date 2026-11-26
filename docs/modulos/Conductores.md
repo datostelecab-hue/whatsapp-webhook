@@ -507,3 +507,23 @@ Un contrato de 40 horas se reparte en **5 días (40x5)**, que es la de por defec
 - **Límite:** el generador de vacantes sigue ofreciendo 32 y 40 por días cubiertos. La modalidad se elige al contratar, no desde la vacante.
 - **Ley:** 40x4 son 10 horas al día. El Estatuto fija 9 horas diarias salvo que el convenio diga otra cosa: hay que comprobarlo antes de ofrecerlo.
 - **Comprobador:** `node scripts/comprobar-jornada-modalidad.js`.
+
+## El expediente de RR. HH. (26/11/2026)
+
+El «expediente del conductor» del [[Plan RRHH y nominas]] (piezas comunes). En la ficha de Plantilla, el bloque **«Expediente de RR. HH.»**, debajo de la hoja: lo de cada módulo de una persona, sin calcular nada nuevo (`modules/Conductores/expediente.service.js`, ruta `/plantilla/api/conductor/:id/expediente`).
+
+| Sección | Llave | De dónde sale |
+|---|---|---|
+| Vacaciones | `/vacaciones` | el saldo de [[Vacaciones]] (y lo programado) |
+| Ausencias y bajas médicas | `/ausencias` | las ausencias de 12 meses por decisión y sus bajas ([[Ausencias]]) |
+| Permisos de este año | `/ausencias` | el saldo de permisos del convenio |
+| Faltas y sanciones | `/disciplina` | [[Faltas y sanciones]] |
+| Cartas y documentos a firma | `/firmas` | [[Firmas]] |
+| Descuentos en nómina | `/descuentos` | [[Descuentos en nomina]] |
+| Finiquito | `/finiquitos` | [[Finiquitos]] |
+| Efectivo por entregar | `/recaudacion` | [[Administracion\|Recaudación]] |
+
+- **Cada sección solo si quien mira tiene la llave de su módulo**: la ficha de Plantilla la abre mucha gente y aquí hay datos de salud y de dinero. Lo que no puede ver **no llega** a la pantalla (no se esconde: no se manda); abajo se dice cuántas partes no se enseñan. Una sección que no se puede leer sale con su error, sin tumbar las demás.
+- Cada sección lleva «Abrir» a su módulo.
+- Con producción (solo lectura), las ocho secciones de una persona en unos 4 s desde fuera de Render; el bloque se carga aparte de la hoja.
+- Prueba: `test/expediente.test.js`.
