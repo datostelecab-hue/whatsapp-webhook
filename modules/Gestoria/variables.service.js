@@ -297,4 +297,36 @@ async function excel(periodo, quien) {
   return { buffer: Buffer.from(await wb.xlsx.writeBuffer()), nombre: `Variables A3 ${mesDe(periodo)}.xlsx` };
 }
 
-module.exports = { ORIGENES_CONCEPTO, ORIGENES_LINEA, catalogo, guardarConcepto, calcularDelErp, preparar, apuntar, anular, lista, ficha, personas, excel };
+/**
+ * RELLENAR EL LIENZO DE A3 (26/11/2026): el .xls que manda la gestoría, tal
+ * cual, con las líneas del mes escritas en sus celdas (lienzoXls.js: sin
+ * rehacer el fichero; comprobado contra el de noviembre celda a celda en
+ * Excel). Cada línea va a la fila de su código (el legajo sin ceros) y a la
+ * columna de su concepto. Lo que no cabe se dice: quien no está en el lienzo,
+ * el concepto que el lienzo no trae, quien no tiene código. Una cifra que ya
+ * estaba en el lienzo se sustituye, y se dice cuál era.
+ */
+async function lienzo({ periodo, base64, nombre } = {}, quien) {
+  await exigir(quien, CLAVE_GESTIONAR);
+  if (!esPeriodo(periodo)) throw error('Elige el mes');
+  await exigirTabla();
+  const buffer = Buffer.from(String(base64 || ''), 'base64');
+  if (!buffer.length) throw error('Falta el lienzo de la gestoría (.xls)');
+  const lineas = await repo.delMes(null, periodo);
+  if (!lineas.length) throw error(`No hay variables de ${mesDe(periodo)}: prepáralas primero`);
+  const sinCodigo = [...new Map(lineas.filter(l => !l.legajo).map(l => [l.conductor_id, l.nombre])).values()];
+  const conCodigo = lineas.filter(l => l.legajo);
+  const r = require('./lienzoXls').rellenarLienzo(buffer, conCodigo.map(l => ({ codigo: l.legajo, concepto: l.concepto, importe: l.importe })));
+  const nombreDe = new Map(conCodigo.map(l => [String(l.legajo).replace(/^0+/, ''), l.nombre]));
+  const base = String(nombre || 'lienzo.xls').replace(/\.xls$/i, '');
+  return {
+    mes: mesDe(periodo), nombre: `${base} (variables ${mesDe(periodo)}).xls`,
+    base64: r.buffer.toString('base64'),
+    escritas: r.escritas, trabajadores: r.trabajadores, cifrado: r.cifrado,
+    sustituidas: r.ocupadas.map(o => ({ ...o, nombre: nombreDe.get(o.codigo) || o.nombre })),
+    noEnElLienzo: r.sinFila.map(c => ({ codigo: c, nombre: nombreDe.get(c) || '' })),
+    conceptosQueNoTrae: r.sinColumna, sinCodigo, sinEscribir: r.faltan,
+  };
+}
+
+module.exports = { ORIGENES_CONCEPTO, ORIGENES_LINEA, catalogo, guardarConcepto, calcularDelErp, preparar, apuntar, anular, lista, ficha, personas, excel, lienzo };

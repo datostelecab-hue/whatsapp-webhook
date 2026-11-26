@@ -69,6 +69,7 @@
           { texto: 'Preparar desde el ERP', icono: 'fa-wand-magic-sparkles', onClick: lst => preparar(lst) },
           { texto: 'Línea a mano', icono: 'fa-plus', principal: false, onClick: lst => apuntar(lst) },
         ] : []),
+        ...(PUEDE ? [{ texto: 'Rellenar el lienzo de A3', icono: 'fa-file-import', principal: false, onClick: lst => lienzo(lst) }] : []),
         { texto: 'Excel para A3', icono: 'fa-file-excel', principal: false, onClick: lst => excel(lst) },
         { texto: 'Conceptos', icono: 'fa-list-ol', principal: false, onClick: () => conceptos() },
       ],
@@ -169,6 +170,41 @@
   async function excel(lst) {
     const periodo = await elegirMes(lst, 'Excel para A3');
     if (periodo) location.href = `/gestoria/api/variables/excel/${encodeURIComponent(periodo)}`;
+  }
+
+  // ── El lienzo de A3: el .xls de la gestoría, con las variables escritas ──
+  async function lienzo(lst) {
+    const v = await Dialogo.formulario('Rellenar el lienzo de A3', [
+      { id: 'periodo', etiqueta: 'Mes de nómina', tipo: 'lista', obligatorio: true, valor: mesElegido(lst), opciones: MESES.map(m => ({ valor: m.periodo, texto: m.mes })) },
+      { id: 'fichero', etiqueta: 'El lienzo', tipo: 'ficheros', multiple: false, obligatorio: true, accept: '.xls',
+        ayuda: 'El .xls de importación de conceptos que manda la gestoría, tal cual llega.' },
+    ], { textoBoton: 'Rellenar', nota: 'Se escriben las variables del mes en sus celdas y no se toca nada más. Te lo descargas para mandarlo.' });
+    if (!v || !v.fichero || !v.fichero[0]) return;
+    const file = v.fichero[0];
+    let base64;
+    try {
+      base64 = await new Promise((ok, ko) => {
+        const fr = new FileReader();
+        fr.onload = () => ok(String(fr.result).split(',')[1]);
+        fr.onerror = () => ko(new Error('No se pudo leer el fichero'));
+        fr.readAsDataURL(file);
+      });
+    } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo leer', texto: e.message, tono: 'error' }); }
+    const r = await Api.post('/gestoria/api/variables/lienzo', { periodo: v.periodo, base64, nombre: file.name }, { aviso: 'No se ha podido rellenar', bloquea: true });
+    if (!r) return;
+    // La descarga: el mismo fichero, con las cifras.
+    const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.ms-excel' }));
+    const a = document.createElement('a'); a.href = url; a.download = r.nombre; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const lista_ = (titulo, filas) => (filas.length ? `<p class="text-sm font-semibold mt-3">${esc(titulo)}</p><ul class="text-sm list-disc pl-5">${filas.join('')}</ul>` : '');
+    const conceptoTxt = c => { const k = CONCEPTOS.find(x => x.codigo === c); return k ? `${c} ${k.nombre}` : c; };
+    await Dialogo.aviso({ titulo: `Lienzo de ${r.mes}`, tono: (r.noEnElLienzo.length || r.sinCodigo.length || r.conceptosQueNoTrae.length) ? 'aviso' : 'info', ancho: 'max-w-xl',
+      html: `<p class="text-sm"><b>${r.escritas}</b> cifras escritas en un lienzo de ${r.trabajadores} trabajadores. Se ha descargado «${esc(r.nombre)}».</p>` +
+        lista_('Ya tenían una cifra en el lienzo (se ha puesto la del ERP)', r.sustituidas.map(o => `<li>${esc(o.nombre || o.codigo)} · ${esc(conceptoTxt(o.concepto))}: ${esc(euros(o.antes))} → ${esc(euros(o.ahora))}</li>`)) +
+        lista_('No están en el lienzo (no se ha escrito lo suyo)', r.noEnElLienzo.map(o => `<li>${esc(o.nombre || '')} · código ${esc(o.codigo)}</li>`)) +
+        lista_('Sin código de la gestoría (no se ha escrito lo suyo)', r.sinCodigo.map(n => `<li>${esc(n)}</li>`)) +
+        lista_('Conceptos que el lienzo no trae', r.conceptosQueNoTrae.map(c => `<li>${esc(conceptoTxt(c))}</li>`)) });
   }
 
   // ── El catálogo ──

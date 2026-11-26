@@ -22,6 +22,7 @@ const actor = require('../../services/repo/actor');
 // El listado viaja en base64 dentro del JSON: con su propio límite.
 router.use('/api/subir', express.json({ limit: '20mb' }));
 router.use('/api/proforma/subir', express.json({ limit: '20mb' }));
+router.use('/api/variables/lienzo', express.json({ limit: '20mb' }));
 
 const quien = async req => ({ usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req), rol: (req.usuario || {}).rol || '' });
 
@@ -67,6 +68,7 @@ router.get('/api/variables/conceptos', responde(async req => variables.catalogo(
 router.post('/api/variables/conceptos', responde(async req => variables.guardarConcepto(req.body || {}, await quien(req))));
 router.post('/api/variables/preparar', responde(async req => variables.preparar(req.body || {}, await quien(req))));
 router.post('/api/variables/linea', responde(async req => variables.apuntar(req.body || {}, await quien(req))));
+router.post('/api/variables/lienzo', responde(async req => variables.lienzo(req.body || {}, await quien(req))));
 router.post('/api/variables/linea/:id/anular', responde(async req => variables.anular(req.params.id, req.body || {}, await quien(req))));
 router.get('/api/variables/excel/:periodo', async (req, res) => {
   try {

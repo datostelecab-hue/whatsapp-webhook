@@ -1,0 +1,3 @@
+# Ficheros binarios: git no les toca los finales de línea.
+*.xls binary
+*.xlsx binary

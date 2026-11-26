@@ -118,8 +118,17 @@ test/variables-a3.test.js
 - **Lo de a mano** se anula con motivo; lo del ERP no se anula, se rehace.
 - **Cuando en «Cierre del mes» las variables están marcadas enviadas**, el mes ya no cambia: ni preparar, ni apuntar, ni anular. Hay que deshacer esa etapa.
 - **El cierre** pide como requisito de las variables que estén preparadas.
-- **«Excel para A3»**: hoja «Conceptos» con la **cabecera en la fila 8** como el lienzo («Código», «Nombre» y la cabecera de cada concepto), el **código de la gestoría sin los ceros** (el lienzo lo trae así) y el total en fórmula. Quien no tiene legajo va en la hoja «Sin código» (A3 no lo puede importar), y la hoja «Detalle» trae cada línea con su origen. **Es para copiar al lienzo** mientras no se sepa si A3NOM acepta un `.xlsx`; escribir el `.xls` original es lo que falta.
+- **«Excel para A3»**: hoja «Conceptos» con la **cabecera en la fila 8** como el lienzo («Código», «Nombre» y la cabecera de cada concepto), el **código de la gestoría sin los ceros** (el lienzo lo trae así) y el total en fórmula. Quien no tiene legajo va en la hoja «Sin código» (A3 no lo puede importar), y la hoja «Detalle» trae cada línea con su origen. Sirve para revisarlo; el fichero para A3 es el lienzo rellenado (abajo).
 - Llaves: mirar, `/gestoria`; preparar, a mano, anular y el catálogo, `/gestoria/gestionar` (Diana).
+
+### Rellenar el lienzo de A3 (el .xls de la gestoría, 26/11/2026)
+
+**«Rellenar el lienzo de A3»** (quien gestiona): se sube el `.xls` de importación de conceptos que manda la gestoría, se elige el mes, y el ERP devuelve **el mismo fichero** con las variables del mes escritas en sus celdas: cada línea en la fila de su código (el legajo sin ceros) y la columna de su concepto (por el código de la cabecera, «066 - …»). Dice cuántas escribió, **qué cifras que ya traía el lienzo sustituyó** (con la de antes y la nueva), quién no está en el lienzo, quién no tiene código y qué conceptos no trae.
+
+- **Por qué un escritor propio** (`modules/Gestoria/lienzoXls.js`, sin dependencias): el lienzo es un `.xls` de Excel 97-2003 (BIFF8), con la hoja protegida, la fila 1 oculta, 11 nombres definidos que usa A3 y **cifrado con la clave por defecto de Excel** («VelvetSweatshop», RC4 CryptoAPI: lo que hace Excel con un libro protegido sin contraseña de apertura). ExcelJS no lee `.xls`, y reescribirlo entero perdería eso. Aquí se toca lo mínimo: se descifra, se escriben solo las celdas de los importes (con su mismo formato), se recalculan los índices de la hoja (INDEX, DBCELL) y la extensión de la fila, y se vuelve a cifrar con la misma clave.
+- **Comprobado con el lienzo de noviembre** (en local, sin subirlo a ningún sitio): leído y montado sin cambios sale **idéntico byte a byte**; escrito, Excel lo abre y, celda a celda (700 con dato), **solo cambian las escritas**; siguen la protección de la hoja y del libro, la fila 1 oculta, los 11 nombres y qué celdas están bloqueadas.
+- Las pruebas (`test/lienzo-xls.test.js`) usan dos lienzos **inventados** hechos con Excel (`test/fixtures`, sin nombres reales ni en las propiedades): uno en claro y otro cifrado (contraseña «prueba»).
+- Con esto **ya no hace falta** que la gestoría acepte un `.xlsx`. Lo que falta es que A3NOM importe el fichero escrito: la primera vez, que la gestoría lo confirme.
 
 ## La pestaña «Cierre del mes» (módulo 4, db/299, 26/11/2026)
 
