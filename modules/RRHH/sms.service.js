@@ -136,7 +136,7 @@ async function lista(quien = {}) {
   const em = await emisor();
   return {
     filas: (await repo.lista()).map(publico), sinTabla: false, ...base,
-    faltaEmisor: !em.telContacto || !em.cif, puedeEnviar: await puede(quien, CLAVE_ENVIAR),
+    faltaEmisor: [!em.telContacto ? 'el teléfono' : '', !em.cif ? 'el CIF' : ''].filter(Boolean), puedeEnviar: await puede(quien, CLAVE_ENVIAR),
   };
 }
 
@@ -224,7 +224,8 @@ async function enviar(id, quien = {}, { esperar = false } = {}) {
   const enPruebas = require('../../services/modoPruebas').ACTIVO;
   if (!mensatek.configurado() && !enPruebas) throw error('Mensatek no está configurado en el servidor (faltan el usuario y el token de la API)', 409);
   const em = await emisor();
-  if (!em.telContacto || !em.cif) throw error('Faltan el teléfono y el CIF de la empresa en Parámetros (Mensatek los pide en cada envío)', 409);
+  const faltan = [!em.telContacto ? 'el teléfono' : '', !em.cif ? 'el CIF' : ''].filter(Boolean);
+  if (faltan.length) throw error(`Falta ${faltan.join(' y ')} de la empresa en Parámetros (Mensatek lo pide en cada envío)`, 409);
   const r = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'sms', accion: 'cambio', motivo: 'SMS certificado enviado' }, async cli => {
     const e = await repo.porId(cli, id);
     if (!e) throw error('Ese envío no existe', 404);

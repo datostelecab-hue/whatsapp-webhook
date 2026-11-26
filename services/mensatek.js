@@ -71,6 +71,11 @@ async function llamar(funcion, cuerpo = {}, { fichero = false } = {}) {
   const res = Number(o.Res);
   if (!(res > 0)) {
     // Con -1 (no le reconoce), lo mismo que con el 401: qué le llega al servidor.
+    // La IP del servidor sin autorizar en la cuenta (Tus datos → Configurar → Seguridad).
+    const ip = /public IP address \(([^)]+)\)/i.exec(String(o.Error || ''));
+    if (res === -1 && ip) {
+      throw error(`Mensatek no acepta peticiones desde la IP del servidor (${ip[1]}): hay que autorizarla en Mensatek, en Tus datos → Configurar cuenta → Seguridad (y las demás IPs de salida de Render)`, { res, respuesta: o, ipNoAutorizada: ip[1] });
+    }
     const pista = res === -1
       ? `. Al servidor le llegan un usuario de ${usuario().length} caracteres y un token de ${clave().length}; Mensatek dice: «${JSON.stringify(o).slice(0, 160)}»`
       : '';

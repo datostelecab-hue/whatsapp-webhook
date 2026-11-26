@@ -38,7 +38,7 @@
     nota: (filas, extra) => [
       ...(extra && extra.sinTabla ? [{ tono: 'aviso', icono: 'fa-database', texto: 'Falta aplicar la migración db/306 en Migraciones.' }] : []),
       ...(extra && !extra.sinTabla && !extra.configurado ? [{ tono: 'aviso', icono: 'fa-plug', texto: 'Mensatek no está configurado en el servidor (falta el usuario y el token de la API): se pueden preparar, no mandar.' }] : []),
-      ...(extra && extra.faltaEmisor ? [{ tono: 'aviso', icono: 'fa-building', texto: 'Faltan el teléfono y el CIF de la empresa en Parámetros: Mensatek los pide en cada envío.' }] : []),
+      ...(extra && extra.faltaEmisor && extra.faltaEmisor.length ? [{ tono: 'aviso', icono: 'fa-building', texto: `Falta ${extra.faltaEmisor.join(' y ')} de la empresa en Parámetros: Mensatek lo pide en cada envío.` }] : []),
       { icono: 'fa-circle-info', texto: 'Cada persona recibe un SMS certificado y, para abrir la notificación, escribe su DNI (sin DNI en su ficha, su móvil). Cada envío gasta créditos de Mensatek. El certificado de entrega se guarda solo en el envío y en el expediente del conductor.' },
     ],
     filtros: [
