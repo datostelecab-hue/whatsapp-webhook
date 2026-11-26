@@ -153,6 +153,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - ✔ 26/11: el panel del mes, encima del cierre en [[Gestoria#La pestaña «Cierre del mes» (módulo 4, db/299, 26/11/2026)]] (proforma, variables para A3 y descuentos, contra el mes anterior).
 - ✔ 26/11 (db/307): el doble cruce de la IT con la gestoría, completo: la baja del ERP sin IT en la nómina (db/296) y ahora la IT de la nómina sin baja en el ERP, en la proforma.
 - ✔ 26/11: en el finiquito, «Otros descuentos» son ya los de [[Descuentos en nomina]] aprobados o aplazados (los por aprobar se enseñan, no entran).
+- ✔ 26/11 (db/308): el documento informativo del contrato (modelo oficial del SEPE) a firma con cada alta nueva, una sola firma; ver [[Firmas#El documento informativo del contrato (db/308, 26/11/2026)]]. Y las plantillas de YouTrust «Carta de incorporación» y «Carta de sanción», creadas.
 - ✔ 26/11: el histórico por conductor y mes (4.7), en el expediente: proforma, variables y descuentos de cada mes, con la llave de Gestoría.
 - El borrador: validación, versiones y rectificaciones (falta un borrador real de la gestoría). La IT precalculada (faltan las tablas de 2026 y 2027).
 

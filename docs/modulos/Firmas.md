@@ -91,6 +91,15 @@ Camilo: *«Esta será la plantilla que mandaremos para baja voluntaria»*. Plant
 
 Del módulo 8: *«el conductor confirma por firma digital su fecha de incorporación»*. Cada alta nueva de plantilla propia ([[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]]) cuyo día aún no ha llegado mete su carta en la cola: tipo `incorporacion`, origen `alta`, con **DNI**, **Fecha** (la de hoy) y **Fecha de incorporacion** en `detalle`. Plantilla de YouTrust **«Carta de incorporación»** (`24eebfef-409f-4816-b4fd-9505a9f0f2e1`, creada el 26/11/2026), firmante «Trabajador», con código por SMS, a nombre de TIBUS LUXURY SERVICES, S.L. Hace falta el DNI, el email y el móvil de la ficha.
 
+## El documento informativo del contrato (db/308, 26/11/2026)
+
+El **modelo oficial del SEPE** de los elementos esenciales del contrato (RD 723/2026; la gestoría lo adjunta a cada contrato). Camilo: *«búscalo tú en el SEPE, una sola firma al final»*. Se bajó el modelo en blanco de la web del SEPE (Empresas › Contratos de trabajo › Documento informativo…), se le quitó la protección, la hoja de instrucciones y los campos, y se escribió el **texto fijo de Tibus** en cada apartado, copiado del que acompaña a los contratos de la gestoría (convenio VTC Madrid, Ibermutua, artículos del convenio y del Estatuto…). Plantilla de YouTrust **«Documento informativo del contrato»** (`33e44e87-9e62-49e3-adfe-baad91ffe005`): firmante «Trabajador» con SMS y **una sola firma**, en el recuadro «La persona trabajadora (recibí)» de la última página, al lado del de la empresa.
+
+- **Nace con cada alta nueva** (Gestoría › Altas), junto a la carta de incorporación: tipo `informativo`, origen `alta`, `origen_id` «ID|informativo».
+- **Lo de cada persona**: su nombre (YouTrust), **DNI**, **Tipo de relacion** (el ERP no guarda si el contrato es temporal: «INDEFINIDO A TIEMPO COMPLETO» con 40 h; si no, «INDEFINIDO A TIEMPO PARCIAL (N HORAS SEMANALES)»), **Fecha de inicio** (la del alta) y **Dia**, **Mes** y **Ano** del día en que se prepara («En ALCOBENDAS a …»).
+- La empresa sale como la escribe la gestoría: «TIBUS LUXURY SERVICES SLU», domicilio social Cl Josefa Valcárcel 20, centro de trabajo Avd Valdelaparra 47 (Alcobendas). El generador del PDF está fuera del repo (Scripts de análisis); si cambia algo fijo, se rehace el PDF y se reemplaza en la plantilla.
+- Sin db/308 aplicada no se intenta (rompería la transacción del alta).
+
 La plantilla **«Carta de sanción»** se creó el mismo día (`f63c8d2b-b9c2-405d-ab75-34749d1a6aaf`): firmante «Trabajador», SMS; Fecha y, en cajas del ancho del párrafo (el texto salta de línea), Hechos, Calificación y Sanción. Texto aprobado por Camilo el 26/11/2026; conviene que lo revise Legal (se edita la plantilla sin tocar el ERP).
 
 ## Llaves

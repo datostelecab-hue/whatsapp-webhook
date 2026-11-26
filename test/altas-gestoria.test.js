@@ -40,6 +40,12 @@ test('alta nueva: sin pedir, el candado del coche y la confirmación con justifi
   assert.equal((await consulta(`SELECT count(*)::int AS n FROM tarea WHERE tipo = 'alta_pedir' AND origen_id = $1 AND estado <> 'cerrada'`, [suya.id])).rows[0].n, 1);
   assert.equal((await consulta(`SELECT tipo FROM firma_envio WHERE origen = 'alta' AND origen_id = $1`, [suya.id])).rows[0].tipo, 'incorporacion',
     'su carta de incorporación, a la cola de Firmas');
+  // Y su documento informativo del contrato (db/308), con lo de esa persona.
+  const info = (await consulta(`SELECT tipo, detalle FROM firma_envio WHERE origen = 'alta' AND origen_id = $1`, [`${suya.id}|informativo`])).rows[0];
+  assert.equal(info.tipo, 'informativo');
+  assert.equal(info.detalle.tipo, 'INDEFINIDO A TIEMPO COMPLETO');
+  assert.equal(info.detalle.inicio, entra.split('-').reverse().join('/'));
+  assert.match(info.detalle.mes, /^[A-Z]+$/);
 
   // El candado: sin confirmar, no vincula coche. La ETT y los de antes, sí.
   assert.deepEqual(await altas.bloqueaCoche(nuevo.id), { fechaAlta: entra, estado: 'pendiente' });

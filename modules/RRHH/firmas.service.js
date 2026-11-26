@@ -41,7 +41,7 @@ const TIPOS = {
   finiquito: 'Finiquito', suspension: 'Suspensión de empleo y sueldo', sancion: 'Carta de sanción',
   descuento: 'Descuento en nómina', contrato: 'Contrato',
   comunicacion: 'Comunicación de horas (ausencias)', baja_voluntaria: 'Carta de baja voluntaria',
-  incorporacion: 'Carta de incorporación', otro: 'Otro documento',
+  incorporacion: 'Carta de incorporación', informativo: 'Documento informativo del contrato', otro: 'Otro documento',
 };
 // Cómo se manda cada tipo. `plantilla`: el documento es una plantilla de
 // YouTrust (no se sube PDF); `sms`: la firma lleva código por SMS (hace falta
@@ -79,6 +79,14 @@ const COMO = {
   incorporacion: {
     plantilla: 'Carta de incorporación', sms: true, plantillaId: '24eebfef-409f-4816-b4fd-9505a9f0f2e1', workspaceId: WORKSPACE,
     huecos: { DNI: 'dni', Fecha: 'fecha', 'Fecha de incorporacion': 'incorporacion' },
+  },
+  // EL DOCUMENTO INFORMATIVO DEL CONTRATO (módulo 8, db/308, 26/11/2026): el
+  // modelo oficial del SEPE (RD 723/2026) con el texto fijo de Tibus; plantilla
+  // de YouTrust «Documento informativo del contrato», firmante «Trabajador»
+  // con SMS, una sola firma al final. Desde aquí, lo de cada persona.
+  informativo: {
+    plantilla: 'Documento informativo del contrato', sms: true, plantillaId: '33e44e87-9e62-49e3-adfe-baad91ffe005', workspaceId: WORKSPACE,
+    huecos: { DNI: 'dni', 'Tipo de relacion': 'tipo', 'Fecha de inicio': 'inicio', Dia: 'dia', Mes: 'mes', Ano: 'ano' },
   },
   // La CARTA DE SANCIÓN (módulo 3, db/295): plantilla de YouTrust «Carta de
   // sanción» (creada el 26/11/2026), firmante «Trabajador» con código por SMS;
@@ -256,8 +264,45 @@ async function desdeAlta({ cli = null, altaId, conductorId, fechaAlta, creadoPor
   };
   const r = cli ? await hacer(cli)
     : await libro.conFirma({ usuarioId: creadoPor, origen: 'firmas', accion: 'alta', motivo: 'Alta nueva: su carta de incorporación a la cola de firmas' }, hacer);
-  avisarCambio();
+  // Y el documento informativo del contrato (db/308), si la base ya lo admite.
+  if (await admiteInformativo(cli)) {
+    const info = async c => {
+      const autor = creadoPor || await repo.bot();
+      const origenId = `${altaId}|informativo`;
+      if (await repo.deOrigen(c, 'alta', origenId)) return null;
+      const db = require('../../services/db');
+      const sql = `SELECT p.jornada_horas FROM alta_gestoria a JOIN conductor_periodo_empleo p ON p.id = a.periodo_id WHERE a.id = $1`;
+      const p = (await (c ? c.query(sql, [altaId]) : db.consulta(sql, [altaId]))).rows[0] || {};
+      const [y, m, d] = hoy.split('-');
+      const tituloI = `Documento informativo del contrato: ${firmante.nombre} (desde el ${fechaAlta.split('-').reverse().join('/')})`;
+      const id = await repo.insertar(c, { tipo: 'informativo', titulo: tituloI, origen: 'alta', origenId, conductorId: Number(conductorId), firmante,
+        detalle: { dni: firmante.dni || '', tipo: tipoDeRelacion(p.jornada_horas), inicio: fechaAlta.split('-').reverse().join('/'),
+          dia: String(Number(d)), mes: MESES_MAYUS[Number(m) - 1], ano: y, alta: fechaAlta },
+        creadoPor: autor,
+        nota: faltan.length ? `Falta ${faltan.join(' y ')} del trabajador: ponlo en su ficha (Plantilla) para poder mandársela.` : null });
+      await tarjeta(c, id, tituloI);
+      return { id };
+    };
+    if (cli) await info(cli);
+    else await libro.conFirma({ usuarioId: creadoPor, origen: 'firmas', accion: 'alta', motivo: 'Alta nueva: su documento informativo a la cola de firmas' }, info);
+    avisarCambio();
+  }
   return r;
+}
+
+const MESES_MAYUS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+/** El tipo de relación del documento informativo, por la jornada (el ERP no guarda si es temporal: todos indefinidos). */
+const tipoDeRelacion = horas => (!horas || Number(horas) >= 40 ? 'INDEFINIDO A TIEMPO COMPLETO'
+  : `INDEFINIDO A TIEMPO PARCIAL (${Number(horas)} HORAS SEMANALES)`);
+let admite = false;
+/** ¿La base ya admite el tipo 'informativo' (db/308)? Sin ella, no se intenta: rompería la transacción del alta. */
+async function admiteInformativo(cli) {
+  if (admite) return true;
+  const db = require('../../services/db');
+  const sql = `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'ck_firma_tipo'`;
+  const r = await (cli ? cli.query(sql) : db.consulta(sql)).catch(() => ({ rows: [] }));
+  admite = !!(r.rows[0] && /informativo/.test(r.rows[0].def));
+  return admite;
 }
 
 /** Se canceló la baja programada: su carta de baja voluntaria, si aún no salió, se descarta. No lanza. */
@@ -303,9 +348,9 @@ async function comprobarParaAprobar(cli, f) {
   if (f.estado !== 'borrador') throw error('Solo se aprueba el que está por aprobar', 409);
   if (!como.plantilla && !f.documentos) throw error('Falta el PDF que se va a firmar: súbelo en «Documento a firmar»', 409);
   const p = await repo.firmanteDe(Number(f.conductor_id), cli);
-  if (['baja_voluntaria', 'incorporacion'].includes(f.tipo) && !p.dni) throw error(`${f.nombre}: falta el DNI del trabajador en su ficha (va en la carta)`, 409);
+  if (['baja_voluntaria', 'incorporacion', 'informativo'].includes(f.tipo) && !p.dni) throw error(`${f.nombre}: falta el DNI del trabajador en su ficha (va en la carta)`, 409);
   if (!emailValido(p.email)) {
-    throw error(['comunicacion', 'baja_voluntaria', 'incorporacion'].includes(f.tipo) ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
+    throw error(['comunicacion', 'baja_voluntaria', 'incorporacion', 'informativo'].includes(f.tipo) ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
       : 'Falta el email de la persona (o está mal) en su ficha: YouTrust manda la invitación por correo', 409);
   }
   if (como.sms && !/^\+\d{8,15}$/.test(String(p.movil || ''))) throw error('Falta su móvil en la ficha: la firma lleva un código por SMS', 409);
