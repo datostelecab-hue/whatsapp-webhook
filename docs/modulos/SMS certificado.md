@@ -44,7 +44,7 @@ aliases: [SMS certificado, Mensatek, Notificaciones certificadas]
 | Render (entorno) | `MENSATEK_USUARIO` y `MENSATEK_API_KEY`: el Usuario API y el API Token (Mensatek → Tus Datos → Configurar cuenta) |
 | Render (entorno) | `MENSATEK_WEBHOOK_USUARIO` y `MENSATEK_WEBHOOK_CLAVE`: los que se ponen en Mensatek para llamar al receptor. Sin ellos, el receptor no acepta nada (y queda la vuelta de cada hora) |
 | Panel de Mensatek (configuración de la API) | recepción de reports en `https://erptelecab.es/mensatek/reports` y de eventos de adjuntos en `https://erptelecab.es/mensatek/eventos`, con autenticación básica y JSON |
-| Parámetros | `mensatek.telefono` y `mensatek.cif` (obligatorios: Mensatek los pide en cada envío), `mensatek.contacto` (TIBUS LUXURY SERVICES, S.L.), `mensatek.remitente` (vacío) y `mensatek.dias_validez` (3) |
+| Parámetros | `mensatek.telefono` (obligatorio: Mensatek lo pide en cada envío) y `mensatek.cif` (B67065664 de serie: el NIF público de Tibus Luxury Services, S.L., inscrita en el Registro Mercantil de Barcelona), `mensatek.contacto` (TIBUS LUXURY SERVICES, S.L.), `mensatek.remitente` (vacío) y `mensatek.dias_validez` (3) |
 
 En `MODO_PRUEBAS` no sale nada: se contesta como si se hubiera mandado.
 

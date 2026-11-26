@@ -140,7 +140,7 @@ const CATALOGO = [
   { clave: 'mensatek.telefono', modulo: 'RR. HH.', item: 9, tipo: 'texto', max: 20, vacio: true, defecto: '', usa: 'SMS certificado (modules/RRHH/sms.service.js)',
     etiqueta: 'SMS certificado · teléfono de contacto de la empresa',
     descripcion: 'Mensatek lo pide en cada envío. Vacío, no se puede mandar ninguno.' },
-  { clave: 'mensatek.cif', modulo: 'RR. HH.', item: 9, tipo: 'texto', max: 20, vacio: true, defecto: '', usa: 'SMS certificado (modules/RRHH/sms.service.js)',
+  { clave: 'mensatek.cif', modulo: 'RR. HH.', item: 9, tipo: 'texto', max: 20, vacio: true, defecto: 'B67065664', usa: 'SMS certificado (modules/RRHH/sms.service.js)',
     etiqueta: 'SMS certificado · CIF de la empresa',
     descripcion: 'Mensatek lo pide en cada envío. Vacío, no se puede mandar ninguno.' },
   { clave: 'mensatek.remitente', modulo: 'RR. HH.', item: 9, tipo: 'texto', max: 11, vacio: true, defecto: '', usa: 'SMS certificado (modules/RRHH/sms.service.js)',
