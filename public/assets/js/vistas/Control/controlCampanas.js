@@ -204,13 +204,15 @@
         valor: TIPOS_J[0].codigo, opciones: TIPOS_J.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
       { id: 'horas', etiqueta: 'Horas que se justifican (opcional)', tipo: 'horas', ayuda: 'Se SUMAN a las de BOLT.' },
       { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', obligatorio: true },
+      { id: 'km', etiqueta: 'Km por fuera que se justifican (opcional)', marcador: 'p. ej. 12',
+        ayuda: 'Para que no gasten su banco de KM. Quedan pendientes de aprobar, como la J.' },
     ], { nota: 'La J lo saca de las campañas y lo apunta en la bitácora con tu nombre.' });
     if (!v || !v.observacion) return;
     try {
       const r = await fetch('/control/api/justificar-directo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conductorId: p.conductorId, dia: D.dia,
-          horas: v.horas || '', observacion: v.observacion, tipo: v.tipo }),
+          horas: v.horas || '', observacion: v.observacion, tipo: v.tipo, km: v.km || '' }),
       }).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo justificar');
       cargar();

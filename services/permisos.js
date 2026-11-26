@@ -218,8 +218,9 @@ const CATALOGO = [
     // no viene sembrado en ningún rol (salvo los que llevan TODO el catálogo).
     { clave: '/justificantes', etiqueta: 'Justificantes (aprobación)', hijos: [
       // Las justificaciones de KM del banco de KM (db/268): las apunta Control y
-      // las aprueba quien tenga esta llave (Camilo: William y Ángel).
-      { clave: '/justificantes/km', etiqueta: 'Justificantes · aprobar las de KM (banco de KM)', manual: true },
+      // las aprueba quien aprueba las J (Camilo, 26/11/2026). Esta llave sirve
+      // para dárselas a alguien que no aprueba las J.
+      { clave: '/justificantes/km', etiqueta: 'Justificantes · aprobar las de KM (banco de KM), sin las J', manual: true },
     ] },
     // PONER la J (y quitarla, y marcar libranza) desde la bitácora. Es un
     // poder aparte de ABRIR la bitácora: media empresa la mira, y solo algunos

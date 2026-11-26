@@ -126,7 +126,8 @@ test('con la base: el ejemplo de Camilo — 3 h de viaje, 50 km fuera, 28 justif
   const control = await fabrica.usuario({ nombre: 'Control' });
   const william = await fabrica.usuario({ nombre: 'William' });
   await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/justificantes'), ($1, '/justificantes/km')`, [william.id]);
-  await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/justificantes')`, [control.id]);
+  // Control apunta, pero no aprueba las J (desde el 26/11/2026, quien aprueba
+  // las J, la llave «/justificantes», aprueba también las de KM).
   permisos.invalidar(william.id); permisos.invalidar(control.id);
 
   // Control la apunta desde la ficha del banco: nace pendiente y no resta.

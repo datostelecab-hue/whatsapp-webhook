@@ -45,15 +45,19 @@ const MENOS_J = 'menos_j';
 
 // LAS JUSTIFICACIONES DE KM (18/11/2026, db/268) también tienen aquí su
 // pestaña: los km fuera de BOLT que no cuentan en el banco de KM. Control las
-// apunta (aquí o en la ficha del banco) y las aprueba quien tiene la llave
-// «/justificantes/km» (Camilo: William y Ángel). `tipo` = 'km' es esa pestaña.
+// apunta (aquí, en la ficha del banco o en la misma J) y las aprueba QUIEN
+// APRUEBA LAS J, la llave «/justificantes» (Camilo, 26/11/2026: «quien aprueba
+// las J»), o quien tenga la de KM, «/justificantes/km», para darla sin las J.
+// `tipo` = 'km' es esa pestaña.
 const KM = 'km';
 const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
+const CLAVE_J = '/justificantes';
+const apruebaConClaves = claves => claves.has(CLAVE_J) || claves.has(kmj.CLAVE_APROBAR);
 /** ¿Aprueba justificaciones de KM? quien = { id, rol }. */
 async function apruebaKm(quien) {
   if (!quien || !quien.id) return false;
   if (ADMIN_TOTAL.includes(quien.rol)) return true;
-  try { return (await permisos.clavesDe(quien.id)).has(kmj.CLAVE_APROBAR); } catch (_) { return false; }
+  try { return apruebaConClaves(await permisos.clavesDe(quien.id)); } catch (_) { return false; }
 }
 const sinTabla = (p, valor) => p.catch(e => { if (kmj.faltaMigracion(e)) return valor; throw e; });
 
@@ -134,7 +138,7 @@ kmj.avisarCambios(() => contadores.cambio('km_justificados'));
 contadores.registrarFuente('km_justificados', {
   async contar(q) {
     const aprueba = q && (q.permisos === null || ADMIN_TOTAL.includes(q.rol)
-      || (Array.isArray(q.permisos) && q.permisos.includes(kmj.CLAVE_APROBAR)));
+      || (Array.isArray(q.permisos) && apruebaConClaves(new Set(q.permisos))));
     if (!aprueba) return {};
     const n = await sinTabla(kmj.pendientes(), 0);
     return { 'justificantes.km': { n, tono: n ? 'aviso' : 'info', titulo: `${n} ${n === 1 ? 'justificación' : 'justificaciones'} de KM por aprobar` } };

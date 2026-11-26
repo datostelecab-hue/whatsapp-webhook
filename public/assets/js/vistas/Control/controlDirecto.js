@@ -1309,6 +1309,10 @@
           (HorasMin.texto(sugeridaMin) || '0 min') + ' justificadas, la jornada queda en 8 h.' +
           (rodando ? ' OJO: sigue conectado; lo que haga a partir de ahora no se descuenta de lo justificado.' : '') },
       { id: 'obs', etiqueta: 'Motivo (obligatorio)', tipo: 'texto', marcador: 'p. ej. coche en taller' },
+      // Los km por fuera de BOLT que no tienen que gastar su banco de KM (una
+      // tarea administrativa, llevar el coche al taller...). Van con el mismo motivo.
+      { id: 'km', etiqueta: 'Km por fuera que se justifican (opcional)', marcador: 'p. ej. 12',
+        ayuda: 'Para que no gasten su banco de KM. Quedan pendientes de aprobar, como la J.' },
     ], { textoBoton: 'Justificar',
          nota: 'Queda registrado tu usuario. La carta pasa a "J": el siguiente operador ya no le llama.' });
     if (!v) return;
@@ -1321,7 +1325,8 @@
     try {
       const r = await fetch('/control/api/justificar-directo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conductorId: f.conductorId, horas: h, observacion: v.obs, tipo: v.tipo, dia: DATOS && DATOS.dia }) });
+        body: JSON.stringify({ conductorId: f.conductorId, horas: h, observacion: v.obs, tipo: v.tipo, km: v.km || '',
+          matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '', dia: DATOS && DATOS.dia }) });
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo justificar');
       cargar();

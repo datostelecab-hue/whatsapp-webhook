@@ -41,6 +41,7 @@ const rutas = require('../../services/flotaViva/rutas');
 const llamadas = require('../../services/repo/llamadas');       // el "telefonito"
 const repoJust = require('../../services/repo/justificantes');  // justificar: PostgreSQL
 const menosJ = require('../../services/repo/menosJ');            // la −J (db/227)
+const kmj = require('../../services/repo/kmJustificacion');      // los km por fuera de la J (db/268)
 const marcas = require('./marcas.repo');                         // «No saldrá» y «Traza por Slack»
 const campanasSrv = require('./campanas.service');
 const historicoSrv = require('./historico.service');
@@ -349,19 +350,34 @@ const listarLlamadas = ({ desde, hasta } = {}) => llamadas.listar({ desde, hasta
  * carta enseña luego "J · X h · quién", que es lo que le dice al segundo
  * operador que no hace falta volver a llamar.
  */
+//
+// LOS KM POR FUERA DE LA J (Camilo, 26/11/2026: «también habrá un número de KM
+// por fuera que podremos justificarle para que su banco de KM no se vea
+// afectado por tareas administrativas»). Opcionales: si vienen, nace con la J
+// una justificación de KM de ese conductor y ese día, con el mismo motivo, en la
+// cola de Justificantes › KM. Pendiente, como la J: la aprueba quien aprueba
+// las J. Los km se validan ANTES de guardar la J, para no dejar una J sin sus km.
 async function justificarEnDirecto(b, usuario, usuarioId) {
   const dia = diaDe(b.dia);
+  const km = kmj.leerKm(b.km);
+  const quien = (usuario && usuario.id) || usuarioId;
   const r = await repoJust.guardarPorId({
     conductorId: b.conductorId, diaIso: dia,
     horas: horasLimpias(b.horas),
     observacion: b.observacion,
     tipo: b.tipo,
-    usuarioId: (usuario && usuario.id) || usuarioId,
+    usuarioId: quien,
     origen: 'control',
   });
+  let kmJustificacionId = null;
+  if (km) {
+    const motivo = 'Con la J: ' + String(b.observacion || '').trim();
+    kmJustificacionId = (await kmj.poner({ conductorId: r.conductorId, dia, km, matricula: b.matricula, motivo,
+      origen: 'justificantes', usuarioId: quien })).id;
+  }
   console.log(`📝 [Control] J en directo · ${dia} · conductor ${r.conductorId} ` +
-    `(${b.horas || 'sin'} h) · ${(usuario || {}).nombre || ''}`);
-  return { dia, ...r };
+    `(${b.horas || 'sin'} h${km ? ` · ${km} km por fuera` : ''}) · ${(usuario || {}).nombre || ''}`);
+  return { dia, ...r, km, kmJustificacionId };
 }
 
 // ── La −J (30/10/2026, db/227) ─────────────────────────────────────────────

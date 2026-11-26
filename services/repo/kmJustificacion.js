@@ -7,10 +7,11 @@
 // por William o Ángel, que serán los que tengan la llave, entonces hice 22 km
 // por fuera».
 //
-//   · NACE PENDIENTE: la apunta Control (desde la ficha del banco de KM o desde
-//     /justificantes) y no resta nada hasta que la aprueba quien tiene la llave
-//     «/justificantes/km». Como una J (Camilo: «Control la apunta, ellos la
-//     aprueban»).
+//   · NACE PENDIENTE: la apunta Control (desde la ficha del banco de KM, desde
+//     /justificantes o en la misma J, con sus «km por fuera») y no resta nada
+//     hasta que la aprueba quien aprueba las J (la llave «/justificantes») o
+//     quien tiene la de KM, «/justificantes/km» (Camilo, 26/11/2026).
+//     Como una J (Camilo: «Control la apunta, ellos la aprueban»).
 //   · APROBADA: resta de los km fuera de BOLT de ese conductor ese día (nunca
 //     por debajo de cero). No toca el límite: va «por fuera del límite y de los
 //     km generados».
@@ -38,6 +39,19 @@ const ORIGEN = 'justificantes';
 const entero = v => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : null; };
 const n1 = v => Math.round((Number(v) || 0) * 10) / 10;
 function error(msg, status = 400) { const e = new Error(msg); e.status = status; return e; }
+
+/**
+ * Los km que escribe una persona («28», «28,5», «28 km») -> número con un
+ * decimal, o null si viene vacío. Lanza si no vale: más que cero y no más de 1.000.
+ */
+function leerKm(km) {
+  const txt = String(km == null ? '' : km).replace(/\s|km/gi, '').replace(',', '.');
+  if (!txt) return null;
+  const k = Number(txt);
+  if (!(k > 0)) throw error('Los km justificados tienen que ser más que cero');
+  if (k > 1000) throw error('¿Más de 1.000 km en un día? Revisa la cifra');
+  return Math.round(k * 10) / 10;
+}
 
 // Quien guarda copia (el banco de KM) se entera de que cambian.
 const alCambiar = new Set();
@@ -74,9 +88,8 @@ async function poner({ conductorId, dia, km, matricula, motivo, origen = 'banco_
   const cid = entero(conductorId);
   if (!cid) throw error('Falta de qué conductor son los km');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) || Number.isNaN(Date.parse(dia))) throw error('Falta el día (AAAA-MM-DD)');
-  const k = Number(String(km == null ? '' : km).replace(/\s|km/gi, '').replace(',', '.'));
-  if (!(k > 0)) throw error('Los km justificados tienen que ser más que cero');
-  if (k > 1000) throw error('¿Más de 1.000 km en un día? Revisa la cifra');
+  const k = leerKm(km);
+  if (k == null) throw error('Los km justificados tienen que ser más que cero');
   const m = String(motivo || '').trim();
   if (m.length < 3) throw error('Di por qué se justifican: el que lo aprueba tiene que saberlo');
   const mat = String(matricula || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16) || null;
@@ -84,7 +97,7 @@ async function poner({ conductorId, dia, km, matricula, motivo, origen = 'banco_
     const r = await cli.query(
       `INSERT INTO km_justificacion (conductor_id, dia, km, matricula, motivo, origen, creado_por)
        VALUES ($1, $2::date, $3, $4, $5, $6, $7) RETURNING id`,
-      [cid, dia, Math.round(k * 10) / 10, mat, m.slice(0, 1000), origen === 'justificantes' ? 'justificantes' : 'banco_km', entero(usuarioId)]);
+      [cid, dia, k, mat, m.slice(0, 1000), origen === 'justificantes' ? 'justificantes' : 'banco_km', entero(usuarioId)]);
     return String(r.rows[0].id);
   });
   cambiaron();
@@ -164,5 +177,5 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
 const faltaMigracion = e => e && (e.code === '42P01' || /km_justificacion/.test(String(e.message || '')));
 
 module.exports = {
-  CLAVE_APROBAR, poner, listar, cuentas, pendientes, porConductorYDia, aprobar, rechazar, avisarCambios, faltaMigracion,
+  CLAVE_APROBAR, leerKm, poner, listar, cuentas, pendientes, porConductorYDia, aprobar, rechazar, avisarCambios, faltaMigracion,
 };

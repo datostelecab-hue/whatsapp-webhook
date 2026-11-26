@@ -90,8 +90,18 @@ Y decidió: generan **solo las horas de viaje**; Control apunta la justificació
 - **Las horas de viaje** salen del mismo reparto que las horas del reporte (`repartoTurnos.porPersonaYDia` da ahora también `viaje`, y `reporteDia` la columna `horasViaje`). Se guardan en `km_banco_dia.horas_viaje`. Con la copia local (20/10): el 72 % de las horas trabajadas son de viaje, y ese día la mitad de la gente llegaba al tope de 53.
 - **Rehacer el histórico**: cada día guarda con qué regla se calculó (`km_banco_calculo.version`, 2 = por horas de viaje). La tarea `banco_km.dia` rehace los de una versión anterior, como mucho tres por vuelta: la jornada más nueva y otras dos que van rotando, para que un día que falle una y otra vez no tape a los demás. El periodo de la tarea lleva la versión («2026-11-16#v2»). Sin db/268 aplicada no hace nada y la pantalla dice que falta.
 - **Las justificaciones de KM** (`km_justificacion`, `services/repo/kmJustificacion.js`, bajo el [[Libro de auditoria]]): un conductor, un día, los km, el coche si se sabe y el motivo (obligatorio). **Nacen pendientes** y no restan hasta que las aprueba quien tiene la llave **`/justificantes/km`** («Justificantes · aprobar las de KM», `manual`: se da en Usuarios a William y Ángel). Rechazada, o anulada después de aprobarla, deja de restar, con quién y por qué.
-  - **Se apuntan** desde la ficha del banco («Justificar km» en cada día con km fuera) o desde **Justificantes › KM · Banco de KM** («Justificar KM»).
-  - **Se aprueban** en Justificantes › KM, con su número en el menú para quien tiene la llave. Quien no la tiene las ve «a la espera de ser aprobada».
+  - **Se apuntan** desde la ficha del banco («Justificar km» en cada día con km fuera), desde **Justificantes › KM · Banco de KM** («Justificar KM») o **en la misma J de Control** (ver abajo).
+  - **Se aprueban** en Justificantes › KM, con su número en el menú. **Desde el 26/11/2026 las aprueba quien aprueba las J** (la llave `/justificantes`; Camilo: «quien aprueba las J»). La llave `/justificantes/km` queda para dárselas a alguien que no aprueba las J. Quien no puede las ve «a la espera de ser aprobada».
+
+### Los km por fuera en la J de Control (26/11/2026)
+
+Camilo: *«En Control están las J, las cuales piden las horas o minutos que justificaremos. Pero también habrá un número de KM por fuera que podremos justificarle para que su banco de KM no se vea afectado por tareas administrativas»*.
+
+- La J de **Control en directo** y la de **Campañas** llevan un campo opcional, **«Km por fuera que se justifican»**. Si se rellena, junto con la J nace una justificación de KM de ese conductor y ese día, con el motivo «Con la J: …» y el coche que llevaba si se sabe (`control.service.justificarEnDirecto`).
+- Va a la cola de Justificantes › KM, **pendiente**, y se aprueba aparte de la J: aprobar la J no aprueba los km.
+- Los km se validan **antes** de guardar la J (`kmJustificacion.leerKm`: más de cero y no más de 1.000), para no dejar una J a medias.
+- La J de la bitácora no lo lleva: los km se justifican allí desde la ficha del banco.
+- Prueba: `test/justificar-km.test.js`.
   - **Se leen en vivo**, no van en la foto: aprobar una no obliga a recalcular nada.
 - **En la pantalla**: la columna «Viaje» (horas de la semana) sustituye a «Días»; «Km fuera de BOLT» es lo que gasta, con «50,0 − 28,0 justificados» y lo que está por aprobar debajo; en la ficha, cada día dice sus horas de viaje, lo que genera, sus justificaciones y el botón para justificar.
 
