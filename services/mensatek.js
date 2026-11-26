@@ -54,7 +54,13 @@ async function llamar(funcion, cuerpo = {}, { fichero = false } = {}) {
   } catch (e) {
     throw error(e.name === 'AbortError' ? 'Mensatek no ha contestado a tiempo' : `No se pudo llamar a Mensatek: ${e.message}`);
   } finally { clearTimeout(reloj); }
-  if (r.status === 401) throw error(ERRORES['-1'], { res: -1 });
+  // Sin enseñar las credenciales: cuántos caracteres llegan (32 y 32 las buenas)
+  // y lo que dice Mensatek, para saber si es un espacio de más, una variable
+  // vacía o un bloqueo suyo.
+  if (r.status === 401) {
+    const dice = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160);
+    throw error(`${ERRORES['-1']}. Al servidor le llegan un usuario de ${usuario().length} caracteres y un token de ${clave().length}${dice ? `; Mensatek dice: «${dice}»` : ''}`, { res: -1 });
+  }
   if (!r.ok) throw error(`Mensatek ha contestado ${r.status}`);
   const tipo = String(r.headers.get('content-type') || '');
   if (fichero && !/json|text|xml/i.test(tipo)) return Buffer.from(await r.arrayBuffer());
