@@ -81,6 +81,14 @@ const CATALOGO = [
       { clave: '/disciplina/aprobar', etiqueta: 'Sanciones · aprobarlas (la sanción dentro del convenio)', manual: true },
       { clave: '/disciplina/carta', etiqueta: 'Sanciones · preparar la carta y mandarla a firmar', manual: true },
     ] },
+    // LOS DESCUENTOS EN NÓMINA (módulo 4.2, db/298): mirarlos, proponerlos
+    // (Taller, Control, RR. HH.) y aprobarlos (aprobar, anular, aplazar y cerrar
+    // el mes), que es la llave que se da a quien se quiera (Camilo, 26/11/2026).
+    // Datos de nómina: `manual`. Sin `escribir` (dos hijas de escritura).
+    { clave: '/descuentos', etiqueta: 'Descuentos en nómina', manual: true, hijos: [
+      { clave: '/descuentos/proponer', etiqueta: 'Descuentos · proponerlos (siniestro, combustible, otro), con sus pruebas', manual: true },
+      { clave: '/descuentos/aprobar', etiqueta: 'Descuentos · aprobarlos, anularlos, aplazarlos y cerrar el mes', manual: true },
+    ] },
     // LOS FINIQUITOS (módulo 7, db/291): mirarlos, revisarlos (Diana) y
     // aprobarlos (Ignacio). Datos de nómina: `manual`, se dan uno a uno. Sin
     // `escribir`: una llave solo admite UNA hija de escritura, y aquí hay dos;

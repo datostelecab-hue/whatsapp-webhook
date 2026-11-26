@@ -1,0 +1,12 @@
+<%#
+  LOS DESCUENTOS EN NÓMINA (módulo 4.2, db/298, 26/11/2026).
+  Efectivo, km del Banco de KM, siniestros y combustible: cada uno con su
+  prueba; nada entra en la nómina sin aprobar; al cerrar el mes, descontado o
+  aplazado con su saldo. El JavaScript, en /assets/js/vistas/RRHH/descuentos.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puede: puede || {} }) %></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/descuentos.js') %>"></script>

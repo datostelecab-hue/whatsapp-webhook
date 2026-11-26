@@ -421,6 +421,8 @@ app.use('/inventario', require('./modules/Vehiculos/inventario.controller'));
 app.use('/firmas', require('./modules/RRHH/firmas.controller'));
 // Las faltas y sanciones (módulo 3 del plan de RR. HH., db/295). `/sanciones` es la de velocidad.
 app.use('/disciplina', require('./modules/RRHH/sanciones.controller'));
+// Los descuentos en nómina (módulo 4.2 del plan de RR. HH., db/298).
+app.use('/descuentos', require('./modules/RRHH/descuentos.controller'));
 // Los finiquitos (módulo 7 del plan de RR. HH., db/291).
 app.use('/finiquitos', require('./modules/RRHH/finiquitos.controller'));
 // Las ausencias que valida RR. HH. (módulo 1 del plan de RR. HH., db/289).

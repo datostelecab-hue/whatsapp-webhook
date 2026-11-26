@@ -18,6 +18,8 @@
   // ficha» es lo normal y no se pinta en rojo, y «en plantilla» quiere decir que
   // la cuenta no está desactivada.
   const BASE = DEL_SERVIDOR.base || '/recaudacion';
+  // Madrid manda el descuento de nómina a «Descuentos en nómina» (db/298); Barcelona, como siempre.
+  const MADRID = BASE === '/recaudacion';
   const SOLO_CUENTAS = !!DEL_SERVIDOR.soloCuentas;
   const sinFichaDe = x => !!(x && x.sinFicha) && !SOLO_CUENTAS;
   const TXT_FUERA = SOLO_CUENTAS ? 'cuenta desactivada' : 'ya no está';
@@ -690,9 +692,22 @@
         ayuda: 'La que corresponda a la nómina, no tiene por qué ser la de hoy.' },
       { id: 'importe', etiqueta: 'Importe (€)', obligatorio: true, ayuda: 'Lo que se le descuenta. "125,50" vale.' },
       { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo' },
-    ], { nota: 'Queda apuntado con tu nombre y cuenta como recaudado, igual que si lo hubiera traído en mano.' });
+    ], { nota: MADRID
+      ? 'Va a «Descuentos en nómina»: se descuenta cuando esté aprobado, y al cerrar la nómina queda saldado aquí, como recaudado.'
+      : 'Queda apuntado con tu nombre y cuenta como recaudado, igual que si lo hubiera traído en mano.' });
     if (!v || !v.importe) return;
     try {
+      if (MADRID) {
+        // El encargo (4.2): «Aplicar descuento en nómina»; solo se descuenta lo
+        // marcado y, al cerrar la nómina, la deuda queda saldada (db/298).
+        const r = await pedir('/descuentos/api/descuento', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conductorId: v.conductorId, origen: 'efectivo', importe: v.importe, fecha: v.fecha,
+            motivo: v.observacion || 'Efectivo sin entregar' }),
+        });
+        Dialogo.hecho(r.estado === 'aprobado' ? 'Descuento aprobado: se salda al cerrar la nómina' : 'Descuento en nómina, a la espera de ser aprobado');
+        return;
+      }
       await pedir(BASE + '/api/movimiento', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...v, tipo: 'nomina' }),

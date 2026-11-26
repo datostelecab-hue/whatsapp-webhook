@@ -234,3 +234,7 @@ El repositorio, el servicio y el controlador son **fábricas**: `crear(cfg)`. Ma
 **La pantalla `/administracion` ya no existe** (24/09/2026). Era el PIN de Ballenoil y los códigos de lavado, y los dos se quitaron: ya no se trabaja con Ballenoil. Los códigos de lavado vuelven **solo al bot**: hasta el 15/10/2026 con la tanda de db/164 desde el 20/10, hasta el 17/11/2026 con 338 más, metidos directo en la base, y desde el 20/11 hasta el **17/12/2026** con 88 más (db/273) (ver [[WhatsApp]]). No vuelve la pantalla. La ruta lleva ahora a `/administracion/tickets`. **La llave `/administracion` se queda**: por el prefijo, es la que cierra esos tickets —sin ella quedarían abiertos a cualquiera—, y en `/usuarios` se llama «Administración (tickets)». Con ella se fue `services/codigosBallenoil.js`; la tabla `ballenoil_codigo` se queda en la base por lo ya repartido.
 
 Por eso este módulo es, hoy, solo recaudación.
+
+## El descuento de nómina va por Descuentos en nómina (26/11/2026, db/298)
+
+En Madrid, el botón «Descuento de nómina» ya no apunta el movimiento en el acto: deja el descuento en [[Descuentos en nomina]] (por aprobar, o aprobado si quien lo apunta tiene la llave de aprobar), y la deuda se salda **al cerrar la nómina** con un movimiento `nomina` («Descuento en la nómina de … (descuento N)»). El encargo (4.2): *«solo se descuenta lo marcado; al cerrar la nómina la deuda queda saldada en Recaudación»*. Barcelona sigue como antes.

@@ -147,7 +147,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - Primero la prueba del Excel: abrir el original, escribir valores y comparar celda a celda.
 - El periodo con sus cuatro etapas, la línea de progreso y el calendario con tarjetas.
 - El catálogo de conceptos y las líneas, cada una con su origen.
-- Los descuentos pendientes (Recaudación, km, Taller, combustible).
+- ✔ 26/11 (db/298): los descuentos en nómina, ver [[Descuentos en nomina]]. Decidido: km del Banco de KM a un precio por km; aprobar es una llave que se da a quien se quiera; sin tope (se aplaza a mano); conceptos 753/758/751/754. Falta: que alguien tenga la llave de aprobar, el precio por km y el visto bueno de Legal antes del primer cierre.
 - El borrador: validación, versiones y rectificaciones. La IT. El panel.
 
 **Fase 4 · Módulos 6 y 9**
