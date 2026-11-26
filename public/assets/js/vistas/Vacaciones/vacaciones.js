@@ -73,6 +73,12 @@
     // Se abre con los de alta; quien se fue está en «De baja» (21/10/2026).
     filtrosIniciales: { situacion: 'alta' },
 
+    // LA CAPACIDAD Y LAS FECHAS BLOQUEADAS (módulo 2, db/302).
+    acciones: [
+      { texto: 'Capacidad', icono: 'fa-gauge-high', principal: false, onClick: () => capacidad() },
+      { texto: 'Fechas bloqueadas', icono: 'fa-calendar-xmark', principal: false, onClick: () => bloqueos() },
+    ],
+
     // Solo plantilla propia (16/10/2026): a los de ETT las vacaciones se las da la agencia.
     subtitulo: (visibles, todas) => `${visibles.length} de ${todas.length} personas de plantilla propia · saldo a hoy (a quien se fue, a su baja)`,
 
@@ -686,5 +692,58 @@
           </div>` : ''}
         <p class="text-xs text-telecab-muted pb-2">No toca las vacaciones: se pone en Plantilla con la situación «Asuntos propios».</p>
       </div>`;
+  }
+
+  // ── LA CAPACIDAD DE UN TRAMO (módulo 2, db/302) ──
+  // Si se aprobaran más vacaciones esas fechas: lo que hacen los que trabajan
+  // (cada uno su promedio, los días que le tocan) contra las horas del mes.
+  async function capacidad() {
+    const v = await Dialogo.formulario('Capacidad de la flota', [
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', obligatorio: true },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', obligatorio: true },
+    ], { textoBoton: 'Calcular', nota: 'Con quien ya está fuera esas fechas (vacaciones, bajas, permisos…). Las horas del mes y el % por festivo, en Parámetros.' });
+    if (!v) return;
+    const iso = x => Dialogo.aISO(x) || x;
+    let r;
+    try { r = (await Api.get(`/vacaciones/api/capacidad?desde=${encodeURIComponent(iso(v.desde))}&hasta=${encodeURIComponent(iso(v.hasta))}`)).capacidad; }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo calcular', texto: e.message, tono: 'error' }); }
+    const miles = n => String(Math.round(Number(n || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    await Dialogo.aviso({ titulo: 'Capacidad de la flota', tono: r.alcanza && !r.bloqueos.length ? 'info' : 'aviso', html:
+      `<p class="text-sm ${r.alcanza ? '' : 'text-telecab-red font-semibold'}">${esc(r.frase)}</p>` +
+      `<p class="text-xs text-telecab-muted mt-1">${r.peorDia ? `El día más justo, el ${esc(f(r.peorDia.dia))}: ${miles(r.peorDia.capacidad)} de ${miles(r.peorDia.hace_falta)} h.` : ''}${r.sinPromedio ? ` ${r.sinPromedio} sin promedio aún cuentan 8 h.` : ''}${r.recortado ? ' Se miran los dos primeros meses.' : ''}</p>` +
+      (r.bloqueos.length ? `<ul class="text-sm text-telecab-red mt-2">${r.bloqueos.map(b => `<li>Fecha bloqueada: del ${esc(f(b.desde))} al ${esc(f(b.hasta))} · ${esc(b.motivo)}</li>`).join('')}</ul>` : '') });
+  }
+
+  // ── LAS FECHAS BLOQUEADAS: las pone quien aprueba vacaciones ──
+  async function bloqueos() {
+    let r;
+    try { r = await Api.get('/vacaciones/api/bloqueos'); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudieron leer', texto: e.message, tono: 'error' }); }
+    if (!r.hayTabla) return Dialogo.aviso({ titulo: 'Fechas bloqueadas', texto: 'Falta aplicar la migración 302.', tono: 'aviso' });
+    const filas = r.bloqueos.map(b => `<li class="flex items-center gap-2 py-1.5 border-t border-telecab-border first:border-t-0">
+        <span class="text-sm flex-1"><b>${esc(f(b.desde))} → ${esc(f(b.hasta))}</b> · ${esc(b.motivo)}${b.puesto_por ? `<span class="block text-xs text-telecab-muted">${esc(b.puesto_por)}</span>` : ''}</span>
+        ${APRUEBA.puede ? `<button data-quitar="${esc(b.id)}" class="tc-boton tc-boton--chico" aria-label="Quitar el bloqueo del ${esc(f(b.desde))}">Quitar</button>` : ''}</li>`).join('');
+    const panel = Panel.abrir({ titulo: 'Fechas bloqueadas', subtitulo: 'Unas vacaciones que las pisan avisan y piden motivo al aprobarlas',
+      html: `<ul>${filas || '<li class="text-sm text-telecab-muted">No hay ninguna por llegar.</li>'}</ul>` +
+        (APRUEBA.puede ? '<div class="mt-4"><button data-nuevo class="tc-boton tc-boton--principal tc-boton--chico">Bloquear unas fechas</button></div>' : '') });
+    panel.cuerpo.querySelectorAll('[data-quitar]').forEach(b => b.addEventListener('click', async () => {
+      const v = await Dialogo.formulario('Quitar el bloqueo', [{ id: 'motivo', etiqueta: 'Por qué', tipo: 'texto-largo', obligatorio: true, minimo: 3 }], { textoBoton: 'Quitar' });
+      if (!v) return;
+      if (await Api.post(`/vacaciones/api/bloqueos/${encodeURIComponent(b.dataset.quitar)}/quitar`, v, { aviso: 'No se ha podido quitar' })) { panel.cerrar(); bloqueos(); }
+    }));
+    const n = panel.cuerpo.querySelector('[data-nuevo]');
+    if (n) n.addEventListener('click', async () => {
+      const v = await Dialogo.formulario('Bloquear unas fechas', [
+        { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', obligatorio: true },
+        { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', obligatorio: true },
+        { id: 'motivo', etiqueta: 'Motivo', obligatorio: true, minimo: 3, marcador: 'p. ej. Navidad' },
+      ], { textoBoton: 'Bloquear' });
+      if (!v) return;
+      const iso = x => Dialogo.aISO(x) || x;
+      if (await Api.post('/vacaciones/api/bloqueos', { desde: iso(v.desde), hasta: iso(v.hasta), motivo: v.motivo }, { aviso: 'No se ha podido bloquear' })) {
+        Dialogo.hecho('Fechas bloqueadas');
+        panel.cerrar(); bloqueos();
+      }
+    });
   }
 })();

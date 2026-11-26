@@ -1,4 +1,5 @@
 <div id="modulo"></div>
 
 <script type="application/json" id="datos-servidor"><%- json({ reglas: reglas || {}, aprueba: typeof aprueba !== 'undefined' && aprueba ? aprueba : { puede: false, quien: null } }) %></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Vacaciones/vacaciones.js') %>"></script>

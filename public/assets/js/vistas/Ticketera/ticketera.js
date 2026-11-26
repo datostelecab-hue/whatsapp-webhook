@@ -387,6 +387,21 @@
    * turno) y los días en que su coche se quedaría sin nadie. Aprobar es
    * «Aplicar»; rechazar cierra el ticket con el motivo, que ve en su portal.
    */
+  // LA CAPACIDAD DE LA FLOTA Y LAS FECHAS BLOQUEADAS (módulo 2, db/302): si unas
+  // vacaciones dejan a los que trabajan por debajo de las horas del mes, o pisan
+  // una fecha bloqueada, en rojo; aplicarlas pedirá un motivo.
+  function capacidadHtml(c, bloque, aEsp) {
+    if (!c) return '';
+    if (c.error) return bloque('Capacidad de la flota', `<p class="text-sm text-telecab-warn">${esc(c.error)}</p>`);
+    const miles = n => String(Math.round(Number(n || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const bloq = (c.bloqueos || []).map(b => `<li>Fecha bloqueada: del ${esc(aEsp(b.desde))} al ${esc(aEsp(b.hasta))} · ${esc(b.motivo)}</li>`).join('');
+    return bloque('Capacidad de la flota', `
+      <p class="text-sm ${c.alcanza ? '' : 'text-telecab-red font-semibold'}">${esc(c.frase)}</p>
+      <p class="text-xs text-telecab-muted mt-0.5" title="Cada conductor suma su promedio de horas los días que le toca trabajar según el planificador; quien está fuera, y él, no suman.">Sin él: ${miles(c.capacidad)} h de ${miles(c.hace_falta)} h${c.festivos.length ? ` · ${c.festivos.length} ${c.festivos.length === 1 ? 'festivo' : 'festivos'}` : ''}${c.peorDia ? ` · el día más justo, el ${esc(aEsp(c.peorDia.dia))} (${miles(c.peorDia.capacidad)} de ${miles(c.peorDia.hace_falta)} h)` : ''}${c.recortado ? ' · se miran los dos primeros meses' : ''}.</p>
+      ${bloq ? `<ul class="text-sm text-telecab-red mt-1">${bloq}</ul>` : ''}
+      ${!c.alcanza || bloq ? '<p class="text-xs text-telecab-warn mt-1">Aplicarlas pedirá un motivo.</p>' : ''}`);
+  }
+
   async function paraDecidir(t) {
     const q = new URLSearchParams({ conductor: t.conductorId, desde: t.fechaIniIso, hasta: t.fechaFinIso || t.fechaIniIso });
     let d;
@@ -399,6 +414,7 @@
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">${titulo}</p>${cuerpo}</div>`;
     const html = `
       <p class="text-sm mb-2">${esc(t.quien)} · del <b>${esc(aEsp(d.desde))}</b> al <b>${esc(aEsp(d.hasta))}</b></p>
+      ${capacidadHtml(d.capacidad, bloque, aEsp)}
       ${bloque('Calificación', d.letra ? `<p class="text-sm"><b class="text-lg">${esc(d.letra.letra || '—')}</b>${d.letra.horas != null ? ` · ${esc(fmt(d.letra.horas))} h de media` : ''}</p>` : '<p class="text-sm text-telecab-muted">Sin letra.</p>')}
       ${bloque('Días disponibles', s.error ? `<p class="text-sm text-telecab-warn">${esc(s.error)}</p>`
         : `<p class="text-sm">Tiene <b>${esc(fmt(s.saldo))}</b> días${s.programadas ? ` (${esc(fmt(s.programadas))} ya programados: le quedan ${esc(fmt(s.saldoTras))})` : ''}.

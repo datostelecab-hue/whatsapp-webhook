@@ -315,3 +315,14 @@ El encargo: *«si una baja coincide con vacaciones aprobadas, el ERP no cambia n
 - Wellim Matos (ficha 75) se fue 33 días, del 03/09 al 05/10/2026 (fila 29). BOLT lo confirma: de la jornada del 02/09 a la del 07/10 no tiene ni una hora. Con alta el 16/02/2026 le salen −11,2: o RRHH le adelantó vacaciones o parte no fueron vacaciones.
 - ETT: sale todo el que tiene contrato abierto. Las vacaciones de quien está por ETT las paga la agencia; el filtro de contrato los separa.
 - Con los datos del 14/10/2026 (ensayado en copia, antes de aplicar db/197 y db/198): 214 personas, saldo medio de 9,1 días, 8 en negativo y 15 con más de 30.
+
+## La capacidad de la flota y las fechas bloqueadas (módulo 2, db/302, 26/11/2026)
+
+Los «cupos y fechas bloqueadas» del encargo. Camilo: *«Siempre tiene que haber un promedio de 32.000 horas de mes previsto… si hay festivos en ese tramo, esa capacidad crece un 3 % por cada festivo… viendo siempre quién viene de vacaciones, baja médica, permisos… no son 8 horas por cada conductor, sino las horas en promedio del mes que estén haciendo: si uno me hace 12 y otro 6, la capacidad instalada es de 18 horas»*.
+
+- **La cuenta** (`modules/Vacaciones/capacidad.js`), día a día del tramo: la **capacidad** es la suma del [[Bitacora|promedio de horas de la casa]] (últimos 30 días) de cada conductor que **trabaja ese día según el planificador** (`f_cobertura`, que ya quita a quien está de vacaciones, baja, permiso, asuntos propios…), **sin quien pide las vacaciones**. El promedio es por día trabajado: cada uno suma solo los días que le tocan. Sin promedio aún (recién llegado), 8 h. **Lo que hace falta**: las horas del mes (`vacaciones.capacidad_horas_mes`, 32.000) repartidas entre los días de ese mes, un **3 % más por cada festivo** del tramo (`vacaciones.capacidad_festivo_pct`). Se miran como mucho dos meses.
+- **Para decidir** (Ticketera) lo enseña el primero: «Hay capacidad…» o, en rojo, «No se pueden aprobar más vacaciones del … al …: hacen falta X h y salen Y h; faltan Z», el día más justo y las fechas bloqueadas que pisa.
+- **Al aprobarlas** (aplicar el ticket, o ponerlas en la ficha), si no hay capacidad o pisan una fecha bloqueada, **piden un motivo** (como el permiso que se pasa del convenio) y queda en la ausencia.
+- **Fechas bloqueadas** (`vacaciones_bloqueo`): en Vacaciones, «Fechas bloqueadas»; las pone y las quita (con motivo) quien aprueba vacaciones. **«Capacidad»** calcula cualquier tramo sin persona.
+- Con producción (26/11/2026), la flota va justa: unas 1.050 h al día contra ~1.050 que hacen falta. Del 1 al 7 de diciembre faltan 2 h; del 21 al 31, 266 h; del 7 al 25 de enero sobran 628.
+- Pruebas: `test/vacaciones-capacidad.test.js`.

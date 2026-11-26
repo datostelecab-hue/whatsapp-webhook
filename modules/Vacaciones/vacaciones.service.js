@@ -707,11 +707,13 @@ async function paraDecidir(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}
   const libra = (sug.propuestos || []).length === 2 ? sug.propuestos.join(',') : '';
   // Sin los dos días que libra (el planificador da otros), el saldo de hoy sin
   // «lo que gastaría»: esos dos días se eligen al aplicarlas.
-  const [sim, letra, fuera, cob] = await Promise.all([
+  const [sim, letra, fuera, cob, capacidad] = await Promise.all([
     (libra ? simular(n, { desde: a, hasta: b, libra }, { hoy })
       : ficha(n, { hoy }).then(f => ({ saldo: f.saldo, programadas: f.programadas, saldoTras: f.saldoTras, nuevos: null, quedaria: null,
         naturales: dias(a, b), diasQueLibra: [] }))).catch(e => ({ error: e.message })),
     repo.letraDe(n), repo.fueraEntre(n, a, b), repo.coberturaDe(n, a, finCob),
+    // La capacidad de la flota sin él y las fechas bloqueadas (db/302).
+    require('./capacidad').revisar({ conductorId: n, desde: a, hasta: b, hoy }).catch(e => ({ error: e.message })),
   ]);
   const trabaja = new Set(cob.filter(c => c.le_toca).map(c => c.dia));
   const diasSinCubrir = [...new Set(cob.filter(c => c.le_toca && !c.cubierto).map(c => c.dia))];
@@ -728,6 +730,7 @@ async function paraDecidir(id, { desde, hasta } = {}, { hoy = hoyMadrid() } = {}
       coches: [...new Map(cob.map(c => [`${c.matricula}|${c.turno || ''}`, { matricula: c.matricula, turno: c.turno || '' }])).values()],
       diasDeTrabajo: trabaja.size, diasSinCubrir, recortado: finCob !== b,
     },
+    capacidad,
   };
 }
 

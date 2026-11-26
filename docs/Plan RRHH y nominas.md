@@ -164,7 +164,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 
 **Módulo 3** — ✔ 25/11 (db/295): las faltas y sanciones, ver [[Faltas y sanciones]]. Decidido: abre la oficina, aprueban Ángel, William o Ignacio, Diana la carta; el ERP propone (ausencias injustificadas y reincidencia) y una persona decide; carta con plantilla de YouTrust, sin IA; la suspensión entra en la ficha al firmarse, o no firmarla, o caducar. Falta crear la plantilla «Carta de sanción» en YouTrust, y los rechazos de servicios y el rendimiento (no hay dato).
 
-**Módulo 2** — ✔ 25/11 (db/292): «Para decidir» en el ticket con los cuatro datos, el aviso al conductor en su portal y la baja encima de unas vacaciones (la baja manda y Diana decide). Ver [[Vacaciones#Para decidir una solicitud (25/11/2026, módulo 2 del plan de RR. HH.)]]. Queda para más adelante: cupos y fechas bloqueadas (el encargo: «estructura preparada para reglas futuras»).
+**Módulo 2** — ✔ 25/11 (db/292): «Para decidir» en el ticket con los cuatro datos, el aviso al conductor en su portal y la baja encima de unas vacaciones (la baja manda y Diana decide). Ver [[Vacaciones#Para decidir una solicitud (25/11/2026, módulo 2 del plan de RR. HH.)]]. ✔ 26/11 (db/302): los cupos como **capacidad de la flota** (las horas del mes, +3 % por festivo, con el promedio de cada uno los días que trabaja) y las fechas bloqueadas; avisa en «Para decidir» y aprobar pide motivo. Ver [[Vacaciones#La capacidad de la flota y las fechas bloqueadas (módulo 2, db/302, 26/11/2026)]].
 
 **Fase 5 · Módulos 7, 2, 3 y 5**
 - Finiquitos (cableando `liquidacion`), la bandeja de vacaciones, las sanciones con su carta y el informe para el SMAC.

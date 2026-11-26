@@ -345,8 +345,19 @@ const tiposPermiso = async () => {
   return tipos.map(t => ({ ...t, regla: reglas.get(t.codigo) || '' }));
 };
 
+// LA CAPACIDAD Y LAS FECHAS BLOQUEADAS (módulo 2, db/302): unas vacaciones que
+// dejan a la flota por debajo de las horas del mes, o que pisan una fecha
+// bloqueada, piden un motivo, que queda en la ausencia.
+async function revisarCapacidad(id, desde, hasta, datos) {
+  const nota = await require('../Vacaciones/capacidad').alAplicar(Number(id), { desde, hasta }, datos.motivoExceso);
+  return nota ? { ...datos, motivo: juntar(datos.motivo, nota) } : datos;
+}
+
 const cambiarSituacion = async (id, datos, quien) => {
-  if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
+  if (sonVacaciones((datos || {}).estado)) {
+    await aprobarVac.exigir((quien || {}).usuarioId);
+    datos = await revisarCapacidad(id, datos.desde, datos.hastaPrevisto, datos);
+  }
   if (aprobarPer.esPermiso((datos || {}).estado)) {
     await aprobarPer.exigir((quien || {}).usuarioId);
     const nota = await permisosConvenio.revisar(Number(id), { estado: codigo(datos.estado), tipo: datos.tipoPermiso,
@@ -361,7 +372,10 @@ const cambiarSituacion = async (id, datos, quien) => {
  * y 3 en noviembre. No reemplaza nada; si pisa otro tramo, lo dice.
  */
 const anadirAusencia = async (id, datos, quien) => {
-  if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
+  if (sonVacaciones((datos || {}).estado)) {
+    await aprobarVac.exigir((quien || {}).usuarioId);
+    datos = await revisarCapacidad(id, datos.desde, datos.hasta, datos);
+  }
   if (aprobarPer.esPermiso((datos || {}).estado)) {
     await aprobarPer.exigir((quien || {}).usuarioId);
     const nota = await permisosConvenio.revisar(Number(id), { estado: codigo(datos.estado), tipo: datos.tipoPermiso,

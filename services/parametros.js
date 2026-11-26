@@ -39,6 +39,8 @@ const UNIDADES = {
   anios: { una: 'año', varias: 'años' },
   mb: { una: 'MB', varias: 'MB' },
   km: { una: 'km', varias: 'km' },
+  horas: { una: 'hora', varias: 'horas' },
+  pct: { una: '%', varias: '%' },
   dia_mes: null,   // «el día 20 de cada mes»
 };
 
@@ -159,6 +161,15 @@ const CATALOGO = [
     usa: 'Cierre de la nómina (modules/Gestoria/cierre.service.js)',
     etiqueta: 'Cierre de la nómina: nómina aprobada',
     descripcion: 'El día del mes en que la nómina tiene que estar aprobada (en un mes más corto, su último día).' },
+  // La capacidad de la flota al aprobar vacaciones (módulo 2, db/302).
+  { clave: 'vacaciones.capacidad_horas_mes', modulo: 'Vacaciones', tipo: 'entero', unidad: 'horas', min: 0, max: 500000, defecto: 32000,
+    usa: 'Vacaciones: la capacidad (modules/Vacaciones/capacidad.js)',
+    etiqueta: 'Horas al mes que tiene que hacer la flota',
+    descripcion: 'Entre todos, de media al mes. Si unas vacaciones dejan a los que trabajan (cada uno con su promedio de horas, los días que le tocan) por debajo, se avisa y aprobarlas pide un motivo.' },
+  { clave: 'vacaciones.capacidad_festivo_pct', modulo: 'Vacaciones', tipo: 'decimal', unidad: 'pct', decimales: 1, min: 0, max: 50, defecto: 3,
+    usa: 'Vacaciones: la capacidad (modules/Vacaciones/capacidad.js)',
+    etiqueta: 'Más horas por cada festivo del tramo (%)',
+    descripcion: 'Lo que crecen las horas que hacen falta por cada festivo que cae en las vacaciones que se piden.' },
   { clave: 'nomina.dia_corte', modulo: 'RR. HH.', item: 6, tipo: 'entero', unidad: 'dia_mes', min: 1, max: 31, defecto: 25,
     etiqueta: 'Día del corte de la nómina',
     descripcion: 'La «nómina del 25» de la hoja de ruta.' },

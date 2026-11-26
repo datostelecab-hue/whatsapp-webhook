@@ -61,4 +61,20 @@ router.post('/api/conductor/:id/vacaciones/:filaId/corregir', responde(async req
 router.post('/api/solape/:id', responde(async req =>
   vacaciones.resolverSolape(req.params.id, req.body || {}, await quien(req))));
 
+// LA CAPACIDAD Y LAS FECHAS BLOQUEADAS (módulo 2, db/302). Mirar: quien entra
+// aquí. Bloquear y quitar: la llave de aprobar vacaciones (la exige esto).
+const capacidad = require('./capacidad');
+router.get('/api/capacidad', responde(async req => ({ capacidad: await capacidad.revisar({ desde: req.query.desde, hasta: req.query.hasta }) })));
+router.get('/api/bloqueos', responde(async () => ({ bloqueos: await capacidad.bloqueos({ desde: new Date().toISOString().slice(0, 10) }), hayTabla: await capacidad.hayTabla() })));
+router.post('/api/bloqueos', responde(async req => {
+  const q = await quien(req);
+  await aprobarVac.exigir(q.usuarioId);
+  return capacidad.bloquear(req.body || {}, q.usuarioId);
+}));
+router.post('/api/bloqueos/:id/quitar', responde(async req => {
+  const q = await quien(req);
+  await aprobarVac.exigir(q.usuarioId);
+  return capacidad.desbloquear(req.params.id, req.body || {}, q.usuarioId);
+}));
+
 module.exports = router;
