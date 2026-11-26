@@ -140,7 +140,8 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 **Fase 2 · Módulo 1**
 - ✔ 25/11 (db/289), sin esperar al fichero: la ausencia guardada con «pendiente de validar», la bandeja y la tarjeta del día, la reclasificación sola (también hacia atrás) y el % de plantilla de baja. Ver [[Ausencias]]. Decidido: solo plantilla propia, desde el 26/10/2026 (las nóminas van del 26 al 25), y cuatro decisiones (injustificada, justificada, baja médica, permiso).
 - ✔ 25/11 (db/290): los permisos con su saldo por tipo y su validador (llave `/permisos/aprobar` en todas las puertas, también asuntos propios; pasarse del convenio pide motivo). Ver [[Ausencias#Los permisos: quién los valida y su saldo (db/290)]].
-- Con el fichero del INSS: el importador, la baja con sus prórrogas, la reclasificación y la tarjeta de reincorporación.
+- ✔ 26/11 (db/303), a mano: la baja con sus partes (baja, prórroga, alta, rectificación), la tarjeta de «comprobar» dos días hábiles antes del fin previsto, la de reincorporación y el aviso a Planificación; ver [[Ausencias#Las bajas médicas y sus partes (db/303, 26/11/2026)]].
+- Con el fichero del INSS: el importador, que meterá esos mismos partes solo.
 
 **Fase 3 · Módulo 4** (necesita los archivos de noviembre)
 - ✔ 26/11 (db/296): revisar la proforma contra el ERP, en [[Gestoria#La pestaña «Proforma» (módulo 4, db/296, 26/11/2026)]]. Decidido: en Gestoría; cada caso, corregir en A3 (correo), en el ERP o está bien; avisa, no frena.

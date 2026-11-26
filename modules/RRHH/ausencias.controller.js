@@ -35,4 +35,14 @@ router.get('/api/ausencia/:id', responde(async req => ({ ficha: await ausencias.
 router.get('/api/bajas', responde(async req => ausencias.historicoBaja(await quien(req))));
 router.post('/api/decidir', responde(async req => ausencias.decidir(req.body || {}, await quien(req))));
 
+// LAS BAJAS MÉDICAS Y SUS PARTES (módulo 1, db/303): la pestaña «Bajas médicas».
+const bajas = require('./bajas.service');
+router.get('/api/baja-medica/lista', responde(async req => bajas.lista(await quien(req))));
+router.get('/api/baja-medica/personas', responde(async req => bajas.personas(await quien(req))));
+router.get('/api/baja-medica/:id', responde(async req => ({ ficha: await bajas.ficha(req.params.id, await quien(req)) })));
+router.post('/api/baja-medica', responde(async req => bajas.nuevaBaja(req.body || {}, await quien(req))));
+router.post('/api/baja-medica/:id/confirmacion', responde(async req => bajas.confirmacion(req.params.id, req.body || {}, await quien(req))));
+router.post('/api/baja-medica/:id/alta', responde(async req => bajas.alta(req.params.id, req.body || {}, await quien(req))));
+router.post('/api/baja-medica/:id/rectificar', responde(async req => bajas.rectificar(req.params.id, req.body || {}, await quien(req))));
+
 module.exports = router;

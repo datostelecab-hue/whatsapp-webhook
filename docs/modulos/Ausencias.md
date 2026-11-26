@@ -81,9 +81,34 @@ test/permisos-convenio.test.js
 - **El saldo**, en la ficha de Vacaciones: bloque «Permisos del convenio», con lo que lleva este año de cada tipo y lo que le queda de los que son al año. Se recalcula al leer: cambiar o borrar un permiso lo cambia en el momento.
 - **Las semillas de los roles ya no reparten lo marcado `manual`** (`services/permisos.js`, `G`): las llaves de Ausencias, que son datos de salud, se dan una a una.
 
+## Las bajas médicas y sus partes (db/303, 26/11/2026)
+
+La pestaña **«Bajas médicas»** de esta pantalla. El encargo: *«bajas nuevas, prórrogas o confirmaciones, rectificaciones y altas, con la fecha prevista de cada una… Dos días hábiles antes del fin previsto, comprobar si hay prórroga. Solo si se confirma el alta se crea una tarjeta a Diana para la reincorporación y se avisa a planificación»*. Camilo, 26/11/2026: **a mano** hasta que llegue el fichero del INSS (que meterá los mismos partes, `origen` 'fie'); con el alta **vuelve al día siguiente**; los apunta quien valida ausencias; el aviso, al área de **Planificación**.
+
+```
+modules/RRHH/bajas.service.js   los partes, las tarjetas y la tarea diaria
+modules/RRHH/bajas.repo.js      el SQL (baja_parte)
+public/assets/js/vistas/RRHH/bajas.js
+test/bajas-medicas.test.js
+```
+
+- **La baja sigue siendo la situación «baja médica» de su ficha** (la que manda en el planificador y la bitácora). Cada parte (`baja_parte`) la mueve:
+
+| Parte | Qué hace |
+|---|---|
+| **Baja** | la abre desde ese día (la misma puerta que Plantilla), con la fecha prevista y la contingencia (común, accidente no laboral, enfermedad profesional, accidente de trabajo) |
+| **Confirmación (prórroga)** | cambia la fecha prevista (`hasta_previsto`) |
+| **Alta** | la cierra **el día del alta**; vuelve al siguiente. Nace la tarjeta de **reincorporación** a quien valida ausencias y un **aviso al área de Planificación** («X vuelve de baja médica el dd/mm»), que se da por visto cuando ya está en el planificador ese día, o caduca |
+| **Rectificación** | corrige el primer día o la fecha prevista, con motivo |
+
+- **Cada día a las 08:00** (`bajas.revisar`, desde el 27/11/2026): a la baja abierta cuyo fin previsto está a **dos días hábiles** o menos (o ya pasó) le nace una tarjeta, «comprobar si hay prórroga o alta». Se cierra sola con la confirmación o el alta.
+- **Los partes escaneados**, en la baja (adjuntos, dueño `baja_medica`), con las mismas llaves.
+- La lista: abiertas y cerradas en 60 días, cómo va cada una (en plazo, comprobar, fin previsto pasado, sin fecha prevista, con el alta) y los partes de los últimos 7 días. Cada baja se abre en un panel (la lista de Ausencias usa la dirección para sus fichas); desde una tarjeta, `/ausencias?vista=bajas&baja=ID`.
+- **Al empezar** (producción, 26/11/2026): 15 bajas abiertas de gente de alta, **ninguna con fecha prevista**: no nace ninguna tarjeta hasta que se apunten partes.
+
 ## Lo que falta (segunda parte del módulo 1)
 
-- El **fichero del INSS** (FIE) que manda la gestoría: el importador, la baja con sus prórrogas, confirmaciones y altas, el campo de cruce configurable (aún no se sabe si viene por DNI, nombre o código de la gestoría) y la tarjeta de reincorporación dos días hábiles antes del fin previsto.
+- El **fichero del INSS** (FIE) que manda la gestoría: el importador, que meterá los partes de arriba solos (`origen` 'fie'), y el campo de cruce configurable (aún no se sabe si viene por DNI, nombre o código de la gestoría).
 - Lo retroactivo **con la nómina ya cerrada**: proponer la corrección en la rectificación o en la nómina siguiente (va con el módulo 4).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Bitacora]] · [[Conductores]] · [[RRHH]] · [[Tablero de tareas]]

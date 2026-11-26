@@ -6,8 +6,14 @@
   El JavaScript, en /assets/js/vistas/RRHH/ausencias.js.
 %>
 
+<%# Dos pestañas: las ausencias y las bajas médicas con sus partes (db/303). %>
+<div class="px-4 lg:px-6 pt-4 lg:pt-6"><div id="au-pestanas" aria-label="Ausencias"></div></div>
 <div id="modulo"></div>
+<div id="au-bajas" class="hidden"></div>
 
 <script type="application/json" id="datos-servidor"><%- json({ puedeValidar: !!puedeValidar }) %></script>
 <script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/pestanas.js') %>"></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/RRHH/ausencias.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/bajas.js') %>"></script>
