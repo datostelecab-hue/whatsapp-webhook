@@ -201,7 +201,13 @@ function segundosNocturnos(ini, fin) {
  * dos cuentas de BOLT que se pisan, ese rato cuenta UNA vez. En SQL saldría, pero
  * con window functions que nadie va a poder leer dentro de un año.
  */
-async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
+// `enVentana` (26/11/2026): el día va como «día N desde `desdeIso`» y no como
+// día del mes, para una ventana que cruza dos meses (del 26 al 25). En un mes
+// natural es lo mismo; sin la opción, todo como siempre.
+const indiceEn = desdeIso => iso => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(desdeIso + 'T00:00:00Z')) / 86400000) + 1;
+
+async function horasDelMes(desdeIso, hastaIso, { conductorId = null, enVentana = false } = {}) {
+  const diaDe = enVentana ? indiceEn(desdeIso) : iso => Number(iso.slice(8));
   const r = await db.consulta(SQL_TROZOS,
     [desdeIso, hastaIso, String(HORA_CORTE), conductorId == null ? null : Number(conductorId)]);
 
@@ -239,7 +245,7 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
       nocEsperaSeg += nocE;
       viajeSeg += vSeg;
       esperaSeg += eSeg;
-      const d = Number(dia.slice(8));
+      const d = diaDe(dia);
       porDia.set(d, seg);
       detalle.set(d, { seg, viajeSeg: vSeg, esperaSeg: eSeg, nocSeg: noc, nocEsperaSeg: nocE });
       if (!primerDia || d < primerDia) primerDia = d;
@@ -284,10 +290,10 @@ async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
  * la bitacora. Esas J van aparte, en `tapadas`, para poder decir cuales no
  * contaron y por que.
  */
-async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
+async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null, enVentana = false } = {}) {
   const r = await db.consulta(
     `SELECT j.conductor_id,
-            EXTRACT(DAY FROM j.dia_operativo)::int AS dia,
+            (CASE WHEN $4::boolean THEN (j.dia_operativo - $1::date + 1) ELSE EXTRACT(DAY FROM j.dia_operativo) END)::int AS dia,
             to_char(j.dia_operativo, 'YYYY-MM-DD') AS fecha,
             (j.aprobado_at IS NOT NULL) AS aprobada,
             COALESCE(j.horas_seg_momento, 0)::int AS seg,
@@ -304,7 +310,7 @@ async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = 
         AND j.anulado_at IS NULL
         AND ($3::bigint IS NULL OR j.conductor_id = $3::bigint)
       ORDER BY j.conductor_id, j.dia_operativo`,
-    [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId)]);
+    [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId), !!enVentana]);
 
   const out = new Map();
   for (const x of r.rows) {
@@ -332,16 +338,16 @@ async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = 
  * La misma vista y la misma ventana que `dineroDelMes`, solo que sin sumar el
  * mes: la suma de sus días es lo que la nómina le paga.
  */
-async function dineroPorDia(conductorId, desdeIso, hastaIso) {
+async function dineroPorDia(conductorId, desdeIso, hastaIso, { enVentana = false } = {}) {
   const r = await db.consulta(
-    `SELECT EXTRACT(DAY FROM dia)::int AS dia,
+    `SELECT (CASE WHEN $4::boolean THEN (dia - $2::date + 1) ELSE EXTRACT(DAY FROM dia) END)::int AS dia,
             COALESCE(sum(neto),    0)::float8 AS neto,
             COALESCE(sum(propina), 0)::float8 AS propinas,
             COALESCE(sum(peaje),   0)::float8 AS peajes
        FROM v_ordenes_conductor
       WHERE conductor_id = $1 AND dia BETWEEN $2::date AND $3::date
       GROUP BY 1`,
-    [Number(conductorId), desdeIso, hastaIso]);
+    [Number(conductorId), desdeIso, hastaIso, !!enVentana]);
   return new Map(r.rows.map(x => [Number(x.dia), {
     neto: Number(x.neto), propinas: Number(x.propinas), peajes: Number(x.peajes),
   }]));

@@ -347,11 +347,21 @@ const horasDiaVacaciones = cfg => cfg.horasMetaDia * cfg.pctDiaVacaciones;
 // ── El cálculo de UNA persona ───────────────────────────────────────────────
 // Es la cadena del .gs, intacta. Si algo de aquí cambia, cambia lo que cobra
 // la gente: no se toca sin rehacer la comprobación contra un mes ya pagado.
-function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
+// `ventana` (26/11/2026): { desde, hasta, indice } para una ventana que no es un
+// mes natural (del 26 al 25): el alta se sitúa por fechas y cada día es «día N
+// de la ventana». Sin ella, como siempre (el mes natural).
+function situarEnVentana(altaIso, v) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(altaIso || ''))) return { donde: null, dia: 0 };
+  if (altaIso < v.desde) return { donde: 'antes', dia: v.indice(altaIso) };
+  if (altaIso <= v.hasta) return { donde: 'dentro', dia: v.indice(altaIso) };
+  return { donde: 'despues', dia: v.indice(altaIso) };
+}
+
+function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo, ventana = null) {
   const util = (c.utilPct != null ? c.utilPct : 0) / 100;          // 0..1
 
   // Día desde el que cuenta el mes para esta persona.
-  const { donde, dia } = situarAlta(c.alta, mesTrabajo, anoTrabajo);
+  const { donde, dia } = ventana ? situarEnVentana(c.alta, ventana) : situarAlta(c.alta, mesTrabajo, anoTrabajo);
   let arranque, origen;
   if (donde === 'antes')       { arranque = 1;   origen = 'alta-anterior'; }
   else if (donde === 'dentro') { arranque = dia; origen = 'alta-en-mes'; }
@@ -384,7 +394,8 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
 
   // ── Vacaciones y permisos retribuidos (regla 7) ──────────────────────────
   // Por día natural, y solo los de su ventana: desde el arranque y hasta su baja.
-  const enSuVentana = iso => Number(String(iso).slice(8, 10)) >= primerDia && (!c.baja || iso <= c.baja);
+  const diaDe = ventana ? ventana.indice : iso => Number(String(iso).slice(8, 10));
+  const enSuVentana = iso => diaDe(String(iso)) >= primerDia && (!c.baja || iso <= c.baja);
   const diasVacaciones = (c.vacDias || []).filter(enSuVentana).length;
   const diasPermiso = (c.permDias || []).filter(enSuVentana).length;
   const horasVacaciones = diasVacaciones * horasDiaVacaciones(cfg);
@@ -506,16 +517,16 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
  *   f         la ficha de `fichasDelMes` (el contrato del final del mes)
  *   periodos  los contratos que tocan el mes, de `periodosDelMes`
  */
-function partesDelMes(f, periodos, desde, hasta) {
+function partesDelMes(f, periodos, desde, hasta, diaDe = iso => Number(iso.slice(8, 10))) {
   const ps = periodos || [];
   if (new Set(ps.map(p => p.ett)).size < 2) {
     return [{ ett: !!f.ett, alta: f.alta || '', baja: f.baja || '', jornada: f.jornada, dias: null }];
   }
-  const ultimo = Number(hasta.slice(8, 10));
+  const ultimo = diaDe(hasta);
   const tipoDelDia = new Map();
   ps.forEach(p => {
-    const ini = p.alta > desde ? Number(p.alta.slice(8, 10)) : 1;
-    const fin = p.baja && p.baja < hasta ? Number(p.baja.slice(8, 10)) : ultimo;
+    const ini = p.alta > desde ? diaDe(p.alta) : 1;
+    const fin = p.baja && p.baja < hasta ? diaDe(p.baja) : ultimo;
     for (let d = ini; d <= fin; d++) tipoDelDia.set(d, p.ett);
   });
   return [false, true].map(ett => {
@@ -565,9 +576,9 @@ const soloDias = {
       tapadas: (j.tapadas || []).filter(t => dias.has(t.dia)),
     };
   },
-  ausencias(a, dias) {
+  ausencias(a, dias, diaDe = iso => Number(String(iso).slice(8, 10))) {
     if (!dias) return a;
-    const dentro = iso => dias.has(Number(String(iso).slice(8, 10)));
+    const dentro = iso => dias.has(diaDe(String(iso)));
     return { vacaciones: a.vacaciones.filter(dentro), permiso: a.permiso.filter(dentro) };
   },
 };
@@ -578,18 +589,30 @@ const soloDias = {
  * Las cuatro consultas van en paralelo: son independientes y la de las horas es
  * la que manda en el tiempo total.
  */
+// `opciones.ventana` (26/11/2026): { desde, hasta } para calcular la variable
+// de una ventana que no es el mes natural (Camilo: «solo las variables… del 26
+// de octubre al 25 de noviembre»). La misma fórmula; el objetivo del mes se
+// prorratea por los días de la ventana. Sin ella, el mes de trabajo de siempre.
 async function calcular(mesNom, anoNom, opciones = {}) {
   const cfg = opciones.config || await leerConfig();
-  const { mes: mesD, ano: anoD } = mesVencido(mesNom, anoNom);
-  const diasDelMes = new Date(anoD, mesD, 0).getDate();          // días del mes de TRABAJO
-  const desde = `${anoD}-${pad(mesD)}-01`;
-  const hasta = `${anoD}-${pad(mesD)}-${pad(diasDelMes)}`;
+  const v = opciones.ventana;
+  const esIso = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));
+  if (v && (!esIso(v.desde) || !esIso(v.hasta) || v.hasta < v.desde)) throw new Error('La ventana necesita desde y hasta (AAAA-MM-DD)');
+  const { mes: mesV, ano: anoV } = mesVencido(mesNom, anoNom);
+  const mesD = v ? Number(v.hasta.slice(5, 7)) : mesV;
+  const anoD = v ? Number(v.hasta.slice(0, 4)) : anoV;
+  const desde = v ? v.desde : `${anoD}-${pad(mesD)}-01`;
+  const indice = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(desde + 'T00:00:00Z')) / 86400000) + 1;
+  const diasDelMes = v ? indice(v.hasta) : new Date(anoD, mesD, 0).getDate();   // días del mes de TRABAJO
+  const hasta = v ? v.hasta : `${anoD}-${pad(mesD)}-${pad(diasDelMes)}`;
+  const ventana = v ? { desde, hasta, indice } : null;
+  const diaDe = v ? indice : iso => Number(String(iso).slice(8, 10));
 
   const [horas, dinero, fichas, justificantes, ausencias, periodos] = await Promise.all([
-    repo.horasDelMes(desde, hasta),
+    repo.horasDelMes(desde, hasta, { enVentana: !!v }),
     repo.dineroDelMes(desde, hasta),
     repo.fichasDelMes(hasta),
-    repo.justificantesDelMes(desde, hasta),
+    repo.justificantesDelMes(desde, hasta, { enVentana: !!v }),
     repo.ausenciasDelPeriodo(desde, hasta),
     repo.periodosDelMes(desde, hasta),
   ]);
@@ -612,11 +635,10 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   // Quien pasó de la ETT a plantilla propia (o al revés) dentro del mes va DOS
   // veces: cada parte con sus días (ver `partesDelMes`). Su dinero se reparte
   // por días, así que se pide día a día; son pocos.
-  const partes = new Map([...ids].map(cid => [cid, partesDelMes(fichas.get(cid) || {}, periodos.get(cid), desde, hasta)]));
+  const partes = new Map([...ids].map(cid => [cid, partesDelMes(fichas.get(cid) || {}, periodos.get(cid), desde, hasta, diaDe)]));
   const partidos = [...partes].filter(([, p]) => p.length > 1).map(([cid]) => cid);
-  const dineroDiario = new Map(await Promise.all(partidos.map(async cid => [cid, await repo.dineroPorDia(cid, desde, hasta)])));
+  const dineroDiario = new Map(await Promise.all(partidos.map(async cid => [cid, await repo.dineroPorDia(cid, desde, hasta, { enVentana: !!v })])));
 
-  const diaDe = iso => Number(String(iso).slice(8, 10));
   const gente = [...ids].flatMap(cid => partes.get(cid).map(parte => {
     const f = fichas.get(cid) || {};
     const { dias } = parte;
@@ -624,7 +646,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
     const d = dias ? soloDias.dinero(dineroDiario.get(cid), dias)
       : dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
     const j = soloDias.justificantes(justificantes.get(cid) || { aprobados: [], horas: new Map(), pendientes: 0 }, dias);
-    const a = soloDias.ausencias(ausencias.get(cid) || { vacaciones: [], permiso: [] }, dias);
+    const a = soloDias.ausencias(ausencias.get(cid) || { vacaciones: [], permiso: [] }, dias, diaDe);
     const efectivos = h ? h.viajeSeg + h.esperaSeg : 0;
     // Solo se usa sin fecha de alta (el criterio viejo): el primer día con algo.
     const primerConAlgo = h ? h.primerDia : Math.min(...j.aprobados, ...a.vacaciones.map(diaDe), ...a.permiso.map(diaDe));
@@ -662,13 +684,13 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   // puesta, así que se lista aparte en vez de callarlo.
   const fuera = [];
   const dentro = gente.filter(c => {
-    if (situarAlta(c.alta, mesD, anoD).donde !== 'despues') return true;
+    if ((ventana ? situarEnVentana(c.alta, ventana) : situarAlta(c.alta, mesD, anoD)).donde !== 'despues') return true;
     if (!c.ett) fuera.push({ nombre: c.nombre, alta: c.alta, horas: r2(c.horas) });
     return false;
   });
 
   const todas = dentro
-    .map(c => calcularFila(c, diasDelMes, cfg, mesD, anoD))
+    .map(c => calcularFila(c, diasDelMes, cfg, mesD, anoD, ventana))
     .sort((a, b) => b.total - a.total);
   // La ETT se calcula con todos —su parte sale de estas mismas filas— pero va
   // aparte: la nómina, sus totales, su Excel y lo que se congela son solo de
@@ -690,8 +712,8 @@ async function calcular(mesNom, anoNom, opciones = {}) {
 
   // ¿El mes de trabajo aún no terminó? → datos incompletos (aún no toca esa nómina).
   const hoy = new Date();
-  const trabajoIncompleto = anoD > hoy.getFullYear() ||
-    (anoD === hoy.getFullYear() && mesD >= hoy.getMonth() + 1);
+  const trabajoIncompleto = v ? hasta >= new Date().toISOString().slice(0, 10) : (anoD > hoy.getFullYear() ||
+    (anoD === hoy.getFullYear() && mesD >= hoy.getMonth() + 1));
 
   // Quién trabajó pero no está sellado en la bitácora: ahí los dos números se
   // separan y conviene decirlo antes de que alguien compare las pantallas.

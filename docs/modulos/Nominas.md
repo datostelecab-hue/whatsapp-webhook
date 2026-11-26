@@ -60,6 +60,14 @@ Así **horas, dinero y justificantes miran la misma ventana**. Cuando las horas 
 
 Además, la bitácora **sella** las horas cuando la jornada cierra y no las recalcula, así que a quien se le enlace su cuenta de BOLT más tarde no aparece allí. La nómina no puede permitirse eso —dejaría a alguien sin cobrar 137 horas—, así que calcula ella y **cuenta a todo el que trabajó**; el panel nombra a quien la bitácora no tiene, que se arregla resellando el mes.
 
+### Una ventana que no es el mes natural (26/11/2026)
+
+Camilo: *«Dame solo las variables como las hacemos ahora, pero del 26 de octubre al 25 de noviembre»*. `calcular(mes, año, { ventana: { desde, hasta } })` hace la MISMA cuenta sobre esa ventana: cada día cuenta como «día N de la ventana» en vez de «día N del mes» (las horas, las J, el dinero día a día y las ausencias: `enVentana` en el repositorio), el alta se sitúa por fechas y el objetivo del mes se prorratea por los días de la ventana (del 26/10 al 25/11 son 31: el objetivo entero). Sin la opción, todo como siempre.
+
+- **Comprobado contra producción** (solo lectura): octubre con el código de antes, con el nuevo y con la ventana del 01/10 al 31/10 salen **idénticos byte a byte** (308 filas, 19.645,43 €).
+- En el Excel, «Desde día» es el día de la ventana (el 1 es el 26/10).
+- No hay pantalla: lo saca `Scripts de análisis/variables-ventana/variables.js` (fuera del repositorio), con el Excel de siempre sin la pestaña de la base.
+
 ## A mes vencido, y el prorrateo desde la fecha de alta
 
 La nómina de un mes se calcula con los datos del mes **anterior**: la de julio paga el trabajo de junio; la de enero, el de diciembre del año pasado. El mes que se elige en la pantalla es el del **pago**, y la cabecera dice siempre de qué mes son los datos (`mesVencido` en `nominas.service.js`).
