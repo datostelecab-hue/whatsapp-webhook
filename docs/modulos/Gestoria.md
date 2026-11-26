@@ -180,13 +180,12 @@ test/altas-gestoria.test.js
   - **El contador**: días cotizados desde el alta hasta hoy (o su baja, o el día que se anuló), **solo si el alta se pidió**; el coste, con el parámetro `gestoria.coste_ss_dia`. **A los dos días** sin resolver, **aviso a Ignacio** (una vez).
   - **Si al final se presenta**, la tarjeta se cierra y los avisos se dan por vistos.
 - **Quién es quién**: Diana = la función «Sube el listado de plantilla de la gestoría» (Organización); Ignacio = quien tiene la llave `/tablero/vencidas`. Los avisos van **uno por persona** (cada uno lo da por visto).
-- **La carta de incorporación**: al crearse un alta cuyo día aún no ha llegado, entra en la cola de [[Firmas]] (tipo `incorporacion`, origen `alta`). Sale cuando exista la plantilla «Carta de incorporación» en YouTrust (a nombre de Tibus Luxury, con SMS). La lista enseña cómo va.
+- **La carta de incorporación**: al crearse un alta cuyo día aún no ha llegado, entra en la cola de [[Firmas]] (tipo `incorporacion`, origen `alta`). Va con la plantilla «Carta de incorporación» de YouTrust (creada el 26/11/2026, a nombre de Tibus Luxury, con SMS). La lista enseña cómo va.
 - **Tarjeta «Pedir el alta a la gestoría»** a Diana al crearse, con plazo el día antes de su alta; se cierra sola al marcarla pedida, confirmada o anulada.
 - Número en la pestaña: las sin pedir, las urgentes y los no presentados. Desde una tarjeta o un aviso: `/gestoria?vista=altas&alta=ID`.
 
 ## Lo que falta del módulo 8
 
 - El **listado de plantilla en alta** (o el ITA) real, para las **fechas que no coinciden**.
-- La plantilla **«Carta de incorporación»** en YouTrust (su `plantillaId` en `firmas.service`, entrada `incorporacion`).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Conductores]] · [[Ficheros importados]]

@@ -89,7 +89,9 @@ Camilo: *«Esta será la plantilla que mandaremos para baja voluntaria»*. Plant
 
 ## La carta de incorporación (db/304, 26/11/2026)
 
-Del módulo 8: *«el conductor confirma por firma digital su fecha de incorporación»*. Cada alta nueva de plantilla propia ([[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]]) cuyo día aún no ha llegado mete su carta en la cola: tipo `incorporacion`, origen `alta`, con **DNI**, **Fecha** (la de hoy) y **Fecha de incorporacion** en `detalle`. Plantilla de YouTrust **«Carta de incorporación»**, con código por SMS, a nombre de Tibus Luxury: **aún no existe** (`plantillaId` vacío), así que se puede aprobar pero no mandar hasta crearla. Hace falta el DNI, el email y el móvil de la ficha.
+Del módulo 8: *«el conductor confirma por firma digital su fecha de incorporación»*. Cada alta nueva de plantilla propia ([[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]]) cuyo día aún no ha llegado mete su carta en la cola: tipo `incorporacion`, origen `alta`, con **DNI**, **Fecha** (la de hoy) y **Fecha de incorporacion** en `detalle`. Plantilla de YouTrust **«Carta de incorporación»** (`24eebfef-409f-4816-b4fd-9505a9f0f2e1`, creada el 26/11/2026), firmante «Trabajador», con código por SMS, a nombre de TIBUS LUXURY SERVICES, S.L. Hace falta el DNI, el email y el móvil de la ficha.
+
+La plantilla **«Carta de sanción»** se creó el mismo día (`f63c8d2b-b9c2-405d-ab75-34749d1a6aaf`): firmante «Trabajador», SMS; Fecha y, en cajas del ancho del párrafo (el texto salta de línea), Hechos, Calificación y Sanción. Texto aprobado por Camilo el 26/11/2026; conviene que lo revise Legal (se edita la plantilla sin tocar el ERP).
 
 ## Llaves
 

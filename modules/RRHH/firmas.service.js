@@ -73,13 +73,18 @@ const COMO = {
   },
   // La CARTA DE INCORPORACIÓN (módulo 8, db/304, 26/11/2026): el conductor
   // confirma por firma su fecha de incorporación. Plantilla de YouTrust
-  // «Carta de incorporación» (por crear: hasta entonces no se puede mandar).
+  // «Carta de incorporación» (creada el 26/11/2026): firmante «Trabajador» con
+  // código por SMS; su nombre lo pone YouTrust y desde aquí, Fecha, DNI y
+  // Fecha de incorporacion.
   incorporacion: {
-    plantilla: 'Carta de incorporación', sms: true, plantillaId: null, workspaceId: WORKSPACE,
+    plantilla: 'Carta de incorporación', sms: true, plantillaId: '24eebfef-409f-4816-b4fd-9505a9f0f2e1', workspaceId: WORKSPACE,
     huecos: { DNI: 'dni', Fecha: 'fecha', 'Fecha de incorporacion': 'incorporacion' },
   },
+  // La CARTA DE SANCIÓN (módulo 3, db/295): plantilla de YouTrust «Carta de
+  // sanción» (creada el 26/11/2026), firmante «Trabajador» con código por SMS;
+  // Hechos, Calificación y Sanción van en cajas del ancho del párrafo.
   carta_sancion: {
-    plantilla: 'Carta de sanción', sms: true, plantillaId: null, workspaceId: WORKSPACE,
+    plantilla: 'Carta de sanción', sms: true, plantillaId: 'f63c8d2b-b9c2-405d-ab75-34749d1a6aaf', workspaceId: WORKSPACE,
     huecos: { Fecha: 'fecha', Hechos: 'hechos', 'Calificación': 'calificacion', 'Sanción': 'sancion' },
   },
 };
