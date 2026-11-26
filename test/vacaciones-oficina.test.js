@@ -13,9 +13,10 @@
 //     11,84»), y cada día del calendario suma al banco con los días reales;
 //   · cada uno ve las suyas; quien tiene la llave de Usuarios y permisos, las
 //     de todos, pone la fecha de alta y aprueba; pedidas, no restan.
-//   · (20/11/2026) para usar hoy, lo generado hasta hoy; aparte, lo que tendrá
-//     al cierre de 2026; y cada 1 de enero, desde 2027, entran 22 de una vez
-//     (el año del alta, la parte proporcional); lo que sobra o falta se arrastra.
+//   · (20/11/2026) para usar hoy, lo generado hasta hoy; aparte, solo
+//     informativo, lo que tendrá al cierre del año en curso;
+//   · (26/11/2026) todos los años igual, día a día (se quitaron los 22 de una
+//     vez cada 1 de enero desde 2027); lo que sobra o falta se arrastra.
 'use strict';
 
 const { conBase } = require('./apoyo/base');   // primero: sustituye services/db
@@ -36,31 +37,29 @@ afterEach(() => { push.enviar = enviar; contadores.olvidar(); });
 const LV = [1, 2, 3, 4, 5];
 const base = { laborables: LV, festivos: new Set(), tope: 1.84 };
 
-test('cada mes completo genera 1,84 justos (se pase o no llegue); el que va en curso, 0,0846 por día de lunes a viernes; aparte, lo del cierre de 2026; desde 2027, 22 cada 1 de enero', () => {
+test('cada mes completo genera 1,84 justos (se pase o no llegue); el que va en curso, 0,0846 por día de lunes a viernes; aparte, lo del cierre del año; en 2027, igual', () => {
   assert.equal(Math.round(vac._tasaDe(1.84, LV) * 10000) / 10000, 0.0846, '1,84 entre los 21,74 días de un mes medio');
   // Enero de 2026 tiene 22 días de lunes a viernes (pasaría de 1,84); febrero, 20 (no llegaría).
   const s = vac._saldoDe({ ...base, alta: '2025-06-01', hoy: '2026-02-28', festivos: new Set(['2026-01-01', '2026-01-06']) });
   assert.equal(s.inicio, '2026-01-01', 'quien entró antes de 2026 empieza el 01/01/2026');
   assert.deepEqual(s.meses.map(m => [m.mes, m.dias, m.generadas, m.completo]), [['2026-01', 22, 1.84, true], ['2026-02', 20, 1.84, true]]);
   assert.equal(s.generadas, 3.68, 'para usar hoy, lo generado hasta hoy');
-  assert.deepEqual(s.cierre2026, { generadas: 22.08, gastadas: 0, quedaran: 22.08 }, '«las generadas al cierre de 2026», aparte');
+  assert.deepEqual(s.cierreAno, { ano: 2026, generadas: 22.08, gastadas: 0, quedaran: 22.08 }, '«las generadas al cierre de 2026», aparte');
   // Alta el 15/01: enero, 12 días × 0,0846 = 1,02; febrero va por el 10, 7 días = 0,59.
   const mitad = vac._saldoDe({ ...base, alta: '2026-01-15', hoy: '2026-02-10' });
   assert.deepEqual(mitad.meses.map(m => [m.mes, m.dias, m.generadas, m.completo]), [['2026-01', 12, 1.02, false], ['2026-02', 7, 0.59, false]]);
   assert.equal(mitad.generadas, 1.61);
-  // Alta el 17/06/2026 (el caso de Camilo): el 20/11 lleva 9,48; al cierre, 11,89; el 01/01/2027, + 22.
+  // Alta el 17/06/2026 (el caso de Camilo): el 20/11 lleva 9,48; al cierre, 11,89.
   const camilo = vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2026-11-20' });
-  assert.deepEqual([camilo.saldo, camilo.cierre2026.generadas], [9.48, 11.89]);
+  assert.deepEqual([camilo.saldo, camilo.cierreAno.generadas], [9.48, 11.89]);
+  // En 2027, igual, día a día (26/11/2026): el 01/01/2027 (viernes) suma 0,08, no 22.
   const enero = vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2027-01-01' });
-  assert.equal(enero.generadas, 33.89, 'lo de 2026 se arrastra y entran los 22 de 2027');
-  assert.equal(enero.cierre2026, null, 'pasado 2026, ya no se enseña «al cierre»');
-  assert.deepEqual(enero.meses.slice(-1).map(m => [m.ano, m.anual, m.completo, m.generadas]), [[2027, true, true, 22]]);
-  assert.equal(vac._saldoDe({ ...base, alta: '2025-06-01', hoy: '2028-03-01' }).generadas, 66.08, 'y otros 22 en 2028');
-  // Quien entra el 02/07/2027: 183 de los 365 días que le quedan al año → 11,03.
-  const julio = vac._saldoDe({ ...base, alta: '2027-07-02', hoy: '2027-08-01' });
-  assert.deepEqual([julio.generadas, julio.meses.length, julio.meses[0].completo], [11.03, 1, false]);
+  assert.equal(enero.generadas, 11.97, 'lo de 2026 se arrastra y enero va por días');
+  assert.equal(enero.cierreAno.ano, 2027, 'el cierre informativo es el del año en curso');
+  assert.deepEqual(enero.meses.slice(-1).map(m => [m.mes, m.dias, m.completo, m.generadas]), [['2027-01', 1, false, 0.08]]);
+  assert.equal(vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2027-12-31' }).generadas, 44.16, 'dos años completos, 24 meses × 1,84');
   const sinAlta = vac._saldoDe({ ...base, alta: null, hoy: '2026-02-28' });
-  assert.deepEqual([sinAlta.generadas, sinAlta.saldo, sinAlta.inicio, sinAlta.cierre2026], [0, 0, null, null], 'sin fecha de alta no genera');
+  assert.deepEqual([sinAlta.generadas, sinAlta.saldo, sinAlta.inicio, sinAlta.cierreAno], [0, 0, null, null], 'sin fecha de alta no genera');
 });
 
 test('gastan las aprobadas sin sus dos días de libranza ni festivos; las pedidas no restan; las futuras, programadas', () => {
@@ -81,7 +80,7 @@ test('gastan las aprobadas sin sus dos días de libranza ni festivos; las pedida
   assert.equal(otra.disfrutadas, 5);
 });
 
-test('el simulador suma lo que generará hasta irse y durante las vacaciones, con los días reales («el otro mes, 11,84»); los 22 del año que viene, no', () => {
+test('el simulador suma lo que generará hasta irse y durante las vacaciones, con los días reales («el otro mes, 11,84»), también en 2027', () => {
   // Hasta el 30/06/2026, seis meses completos: 6 × 1,84 = 11,04.
   const s = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-30' });
   assert.equal(s.saldo, 11.04);
@@ -94,20 +93,17 @@ test('el simulador suma lo que generará hasta irse y durante las vacaciones, co
   assert.deepEqual(sim.dias.slice(0, 7).map(d => d.banco), [11.96, 11.05, 10.13, 9.22, 8.3, 8.3, 8.3],
     'el banco de cada día: + 0,0846 − 1 los laborables; el fin de semana, igual');
   // Del 28/12/2026 al 08/01/2027: el 31/12 tiene todo 2026 (22,08) menos 4; el
-  // 01/01 NO suma los 22 de 2027 («esas todavía no se han generado»): − 1.
+  // 01/01/2027 (viernes) genera 0,0846 como cualquier día y gasta 1.
   const cruza = vac._simularSobre(s, { desde: '2026-12-28', hasta: '2027-01-08', libra: [6, 7], hoy: '2026-06-30', festivos: new Set() });
   const dia = d => cruza.dias.find(x => x.dia === d).banco;
-  assert.deepEqual([dia('2026-12-31'), dia('2027-01-01')], [18.08, 17.08]);
-  // Unas que EMPIEZAN en 2027 sí cuentan los 22 (26/11/2026, el caso de Camilo:
-  // alta el 17/06/2026, hoy 26/11, del 07/01 al 01/02/2027 con S y D y Reyes).
-  // Hoy 9,81 + 2,08 hasta el cierre de 2026 + 22 = 33,89; gasta 18; en enero no
-  // se genera por día (los 22 entran de una vez): al volver, 15,89.
+  assert.deepEqual([dia('2026-12-31'), dia('2027-01-01')], [18.08, 17.16]);
+  // El caso de Camilo (26/11/2026): alta el 17/06/2026, hoy 26/11, del 07/01 al
+  // 25/01/2027 con S y D. Hoy 9,81 + 2,08 hasta el 31/12 + 4 días de enero
+  // antes de irse (el 1, 4, 5 y 6: 0,34) = 12,22 (el banco va sin redondear); 13 días que gastan y que
+  // generan (1,10): al volver, 0,33.
   const camilo = vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2026-11-26' });
-  const enero27 = vac._simularSobre(camilo, { desde: '2027-01-07', hasta: '2027-02-01', libra: [6, 7], hoy: '2026-11-26', festivos: new Set(['2027-01-01', '2027-01-06']) });
-  assert.deepEqual([camilo.saldo, enero27.cuentan, enero27.disponible, enero27.alVolver], [9.81, 18, 33.89, 15.89]);
-  // Y si se va el mismo 1 de enero, ese día ya trae los suyos.
-  const unoEnero = vac._simularSobre(camilo, { desde: '2027-01-01', hasta: '2027-01-08', libra: [6, 7], hoy: '2026-11-26', festivos: new Set(['2027-01-01', '2027-01-06']) });
-  assert.equal(unoEnero.disponible, 33.89);
+  const enero27 = vac._simularSobre(camilo, { desde: '2027-01-07', hasta: '2027-01-25', libra: [6, 7], hoy: '2026-11-26', festivos: new Set(['2027-01-01', '2027-01-06']) });
+  assert.deepEqual([camilo.saldo, enero27.cuentan, enero27.disponible, enero27.alVolver], [9.81, 13, 12.22, 0.33]);
   // A mitad de mes (15/06: 11 días, 0,93): si se va el 01/07, junio se completa (+0,91).
   const mitad = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-15' });
   const julio = vac._simularSobre(mitad, { desde: '2026-07-01', hasta: '2026-07-03', libra: [6, 7], hoy: '2026-06-15', festivos: new Set() });
@@ -208,7 +204,7 @@ test('«Vacaciones por meses» de la oficina: quién se va y cuándo, solo para 
   assert.deepEqual(otra.periodos.filter(x => x.id === p.ana.id), [], 'las no aprobadas ya no salen');
 }));
 
-test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de enero, festivos seguros); al irse tendrá 11,49 y al volver 0,89 (los 22 de 2027 no cuentan); hasta el 26/02, se pasa', () => {
+test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de enero, festivos seguros); al irse tendrá 11,49 y al volver 1,56 (enero de 2027 genera día a día); hasta el 26/02, se pasa', () => {
   // El caso de Camilo (17/11/2026): alta el 17/06/2026, hoy 9,22. De 2027 no
   // hay festivos cargados: el 1 y el 6 de enero van igual.
   const e = { hoy: '2026-11-17', festivos: vac._festivosDe({ festivos: ['2026-12-07', '2026-12-08', '2026-12-25'] }, '2026-11-17') };
@@ -217,14 +213,14 @@ test('la previsión de una petición: del 24/12 al 12/01 gasta 11 (1 y 6 de ener
   const s = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [v] });
   assert.equal(s.saldo, 9.22);
   const pv = vac._previsionDe(s, v, { ...e, laborables: LV });
-  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.generaDurante, pv.sePasa], [11, 11.49, 0.89, 0.4, false],
-    'lo que genera hasta el 31/12; los 22 de 2027, no: aún no se han generado');
+  assert.deepEqual([pv.gasta, pv.alIrse, pv.alVolver, pv.generaDurante, pv.sePasa], [11, 11.49, 1.56, 1.07, false],
+    'lo que genera durante las vacaciones, también en enero de 2027 (26/11/2026: día a día todos los años)');
   const larga = { ...v, hasta: '2027-02-26' };
   const s2 = vac._saldoDe({ ...base, ...e, alta: '2026-06-17', vacaciones: [larga] });
   const pv2 = vac._previsionDe(s2, larga, { ...e, laborables: LV });
-  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [44, true, -32.11], 'se pasa 32,11 días');
-  // En el saldo de verdad, los 22 entran el 01/01/2027.
-  assert.equal(vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2027-01-01' }).saldo, 33.89);
+  assert.deepEqual([pv2.gasta, pv2.sePasa, pv2.alVolver], [44, true, -28.58], 'se pasa 28,58 días');
+  // En el saldo de verdad, el 01/01/2027 suma un día más, no 22.
+  assert.equal(vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2027-01-01' }).saldo, 11.97);
 });
 
 test('registrar unas ya disfrutadas: del 20 al 30 de agosto son 7 días, y se restan de las de hoy', () => conBase(async h => {

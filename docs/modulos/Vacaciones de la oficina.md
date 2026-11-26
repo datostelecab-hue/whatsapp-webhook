@@ -170,7 +170,15 @@ Camilo: *«Que aparezca en el mapa que hicimos de meses los permisos especiales,
 - **Apuntar un permiso pasado** (`registrarPermiso`, `POST /mis-vacaciones/api/permisos/registrar`): como «Registrar unas ya disfrutadas». Solo quien aprueba; solo lo que ya acabó (antes de hoy) y desde el 01/01/2026; no encima de otro permiso ni de unas vacaciones. Nace **aprobado** y le llega aviso a la persona. Los asuntos propios restan de su banco aunque se pase (ya ocurrió): lo dice `sePasa` y la pantalla lo avisa. Botón «Apuntar un permiso pasado» en el mapa de «La oficina» y en la ficha de cada persona.
 - **En «Vacaciones por meses»** salen los **asuntos propios en violeta** y los **permisos retribuidos en verde**, una barra por solicitud (de su primer a su último día; el fin de semana en medio, en gris), con lo pendiente con el borde discontinuo como las vacaciones. **El teletrabajo no sale**: quien teletrabaja no falta. Cuentan en «a la vez» (esa persona falta, y la fila pasa a decir «fuera»), pero no en las cifras de arriba ni en los días de vacaciones de cada persona, ni la sacan de «Sin vacaciones todavía». La pieza global (`vacacionesPorMeses.js`) lo hace con `clase` y `etiqueta` en cada periodo; sin `clase` (la bitácora de los conductores) todo sigue igual.
 
-## Al cierre de 2026, y 22 cada 1 de enero desde 2027 (20/11/2026)
+## Día a día todos los años; el cierre del año, solo informativo (26/11/2026)
+
+Camilo, con su 07/01–25/01/2027: *«No, pero cómo que 22 del 2027?… Las que vaya generando del 2027»* y *«la regla de día a día está genial, lo del cierre al 2026 es solo informativa, en la cual me muestran 22 o las que haré hipotéticamente a final del año menos las que he usado, pero no una regla de cálculo»*.
+
+- **Todos los años se genera igual**: 1,84 cada mes completo y 0,0846 por día del horario el mes en curso (también festivos y vacaciones). **Se quitaron los 22 de una vez cada 1 de enero desde 2027** (lo que sigue, del 20/11, era la regla anterior) y el parámetro `oficina.vacaciones.dias_ano`. Lo que sobra o falta se arrastra.
+- **«Al cierre de 2026»** (el año en curso; `cierreAno`) es **solo informativo**: lo generado el 31/12 menos lo aprobado hasta ese día.
+- Su caso (alta el 17/06/2026, hoy 26/11, del 07/01 al 25/01/2027 con S y D): hoy 9,81 + 2,08 hasta el 31/12 + 4 días de enero antes de irse (el 1, el 4, el 5 y el 6, 0,34; se cuentan los días de lunes a viernes, no los naturales) = **12,22 al irse**; gasta 13 y genera 13 × 0,0846 = 1,10 durante: **0,33 al volver**. Y su 24/12–12/01 vuelve a dar 1,56 al volver, como lo dio por bueno el 17/11.
+
+## (Anterior, del 20/11 al 26/11/2026) Al cierre de 2026, y 22 cada 1 de enero desde 2027
 
 Camilo: *«Que a cada uno le salgan las generadas al cierre de 2026, que se vaya descontando con las disfrutadas y se renueven 22 cuando sea 1 de enero de 2027»*. Decidió en el chat: lo que sobre o falte de 2026 **se suma** a los 22; los 22 entran **enteros** el 01/01; quien entra a mitad de año, **la parte proporcional**. Primero se puso todo 2026 como «para usar hoy» y lo corrigió el mismo día: *«para usar hoy debe de ser menos… las que son para usar hoy son las que he generado»*.
 

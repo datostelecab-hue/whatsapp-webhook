@@ -42,11 +42,11 @@
   function cifras(d) {
     return `<div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
       ${kpi('Para usar hoy', num(d.saldo), d.programadas ? `tras lo programado, ${num(d.saldoTras)}` : 'días', d.saldo < 0 ? 'red' : 'gold')}
-      ${d.cierre2026
-        ? kpi('Al cierre de 2026', num(d.cierre2026.generadas), `generadas el 31/12; te quedarán ${num(d.cierre2026.quedaran)}`, d.cierre2026.quedaran < 0 ? 'red' : 'text',
-          `Lo que habrás generado el 31/12/2026 (${num(R.tope)} por mes completo) menos lo disfrutado y lo programado de 2026: ${num(d.cierre2026.gastadas, 0)} días. El 01/01/2027 se suman ${num(R.anual, 0)} de una vez.`)
+      ${d.cierreAno
+        ? kpi(`Al cierre de ${d.cierreAno.ano}`, num(d.cierreAno.generadas), `generadas el 31/12; te quedarán ${num(d.cierreAno.quedaran)}`, d.cierreAno.quedaran < 0 ? 'red' : 'text',
+          `Solo informativo: lo que habrás generado el 31/12/${d.cierreAno.ano} (${num(R.tope)} por mes completo) menos lo aprobado hasta ese día: ${num(d.cierreAno.gastadas, 0)} días. Se sigue generando igual el año que viene.`)
         : kpi('Generadas', num(d.generadas), d.inicio ? `desde el ${f(d.inicio)}` : 'sin fecha de alta', 'text',
-          `Hasta el 31/12/2026, ${num(R.tope)} por mes completo. Desde 2027, cada 1 de enero se suman ${num(R.anual, 0)} de una vez (el año del alta, la parte proporcional). Lo que sobra o falta pasa al año siguiente.`)}
+          `${num(R.tope)} por mes completo, todos los años. Lo que sobra o falta pasa al año siguiente.`)}
       ${kpi('Gastadas', num(d.disfrutadas, 0), 'vacaciones ya pasadas')}
       ${kpi('Programadas', num(d.programadas, 0), 'aprobadas, aún por llegar')}
       ${kpi('Pedidas', num(d.pedidas, 0), 'esperan aprobación', d.pedidas ? 'warn' : 'text')}
@@ -106,13 +106,12 @@
         <th class="text-right font-medium pb-1 pl-3">Gastadas</th>
       </tr></thead>
       <tbody>${d.meses.slice().reverse().map(m => `<tr class="border-t border-telecab-border/60">
-        <td class="py-2 pr-3${m.anual ? ' font-semibold' : ' capitalize'}">${m.anual ? `Año ${m.ano}` : mesTxt(m.mes)}</td>
-        <td class="py-2 px-3 text-right tabular-nums">${m.anual ? '—' : m.dias}</td>
-        <td class="py-2 px-3 text-right tabular-nums">+ ${num(m.generadas)}<span class="block text-[11px] text-telecab-muted">${m.anual
-          ? (m.completo ? `los ${num(R.anual, 0)} del año, el 01/01` : `proporcional desde el ${f(m.desde)}`)
-          : (m.completo ? 'mes completo' : `${m.dias} × ${num(R.tasa, 4)}`)}</span></td>
+        <td class="py-2 pr-3 capitalize">${mesTxt(m.mes)}</td>
+        <td class="py-2 px-3 text-right tabular-nums">${m.dias}</td>
+        <td class="py-2 px-3 text-right tabular-nums">+ ${num(m.generadas)}<span class="block text-[11px] text-telecab-muted">${
+          m.completo ? 'mes completo' : `${m.dias} × ${num(R.tasa, 4)}`}</span></td>
         <td class="py-2 pl-3 text-right tabular-nums">${m.gastadas ? '− ' + m.gastadas : '—'}</td></tr>`).join('')}</tbody></table>
-      <p class="text-xs text-telecab-muted mt-3"><b>Desde 2027, cada 1 de enero entran ${num(R.anual, 0)} de una vez</b> (el año de su alta, la parte proporcional), y lo que sobre o falte de 2026 se suma. En 2026, cada mes completo genera ${num(R.tope)}, tenga los días laborables que tenga. El que va en curso (y el de la fecha de alta, si entró a mitad) genera el promedio, ${num(R.tasa, 4)} por cada día de ${esc(R.laborablesTexto)} (${num(R.tope)} entre los ${num(R.diasMes)} días de un mes medio), también festivos y días de vacaciones, sin pasar de ${num(R.tope)}. Cuenta desde la fecha de alta, o desde el ${f(R.desde)} si entró antes. Gastan los días de vacaciones que no son sus dos días de libranza ni festivos.</p></div>`;
+      <p class="text-xs text-telecab-muted mt-3">Cada mes completo genera ${num(R.tope)}, tenga los días laborables que tenga, todos los años; lo que sobra o falta pasa al año siguiente. El que va en curso (y el de la fecha de alta, si entró a mitad) genera el promedio, ${num(R.tasa, 4)} por cada día de ${esc(R.laborablesTexto)} (${num(R.tope)} entre los ${num(R.diasMes)} días de un mes medio), también festivos y días de vacaciones, sin pasar de ${num(R.tope)}. Cuenta desde la fecha de alta, o desde el ${f(R.desde)} si entró antes. Gastan los días de vacaciones que no son sus dos días de libranza ni festivos.</p></div>`;
   }
 
   const bloque = (titulo, icono, html, extra = '') => `
@@ -199,7 +198,7 @@
       ${avisos.length ? `<p class="text-sm text-telecab-warn mb-3">${avisos.map(esc).join(' ')}</p>` : ''}
       <div class="grid gap-4 sm:grid-cols-2">${calendario(s)}</div>
       <p class="text-xs text-telecab-muted mt-3"><span class="inline-block w-3 h-3 rounded bg-telecab-gold/20 border border-telecab-gold/40 align-middle mr-1"></span>gastan ·
-        <span class="line-through">12</span> libranza o festivo (F) · el punto, días que ya tienen vacaciones · debajo de cada día, el banco al acabarlo: en 2026 cada día laborable suma ${num(R.tasa, 4)}, también en vacaciones; desde 2027 entran ${num(R.anual, 0)} de una vez cada 1 de enero, que cuentan si las vacaciones empiezan ese año</p>`;
+        <span class="line-through">12</span> libranza o festivo (F) · el punto, días que ya tienen vacaciones · debajo de cada día, el banco al acabarlo: cada día laborable suma ${num(R.tasa, 4)}, también en vacaciones y festivos (un mes completo, ${num(R.tope)} justos)</p>`;
   }
 
   function calendario(s) {

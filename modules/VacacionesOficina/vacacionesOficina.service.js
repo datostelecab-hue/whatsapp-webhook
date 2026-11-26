@@ -26,11 +26,13 @@
 //                calculen los días así tal cual»). Hasta entonces, 0,084 por día
 //                con un tope de 1,84. Sin fichajes. Quien entró antes de 2026
 //                empieza el 01/01/2026, como los conductores.
-//   DESDE 2027   (20/11/2026) cada 1 de enero entran 22 de una vez
-//                (parámetro oficina.vacaciones.dias_ano); el año del alta, la
-//                parte proporcional. Lo que sobra o falta, se arrastra. Y se
-//                enseña aparte lo que tendrá al cierre de 2026 («Al cierre de
-//                2026»): para usar hoy sigue siendo lo generado hasta hoy.
+//   CADA AÑO     igual, día a día, también desde 2027 (26/11/2026, Camilo:
+//                «la regla de día a día está genial, lo del cierre al 2026 es
+//                solo informativa… pero no una regla de cálculo»). Del 20/11 al
+//                26/11 entraban 22 de una vez cada 1 de enero desde 2027: ya no.
+//                Lo que sobra o falta, se arrastra. Aparte, SOLO INFORMATIVO, lo
+//                que tendrá al cierre del año en curso («Al cierre de 2026»):
+//                para usar hoy sigue siendo lo generado hasta hoy.
 //   GASTADAS     los días de unas vacaciones APROBADAS que no son sus dos días
 //                de libranza (los elige al pedirlas) ni festivo de la oficina.
 //                Las pasadas restan del saldo de hoy; las futuras, «programadas».
@@ -61,13 +63,11 @@ const ORIGEN = 'vacaciones_oficina';
 const tasaDe = (tope, laborables) => tope / (laborables.length * 365.25 / 7 / 12);
 const DESDE = '2026-01-01';            // todo empieza aquí, como en los conductores
 const TOPE = 'oficina.vacaciones.tope_mes';
-// DESDE 2027, 22 AL AÑO DE UNA VEZ (20/11/2026, Camilo: «que a cada uno le
+// EL CIERRE DEL AÑO, SOLO INFORMATIVO (20/11/2026, Camilo: «que a cada uno le
 // salgan las generadas al cierre de 2026, que se vaya descontando con las
-// disfrutadas y se renueven 22 cuando sea 1 de enero de 2027»). Decidió en el
-// chat: lo que sobre o falte de 2026 se suma a los 22; los 22 entran enteros el
-// 01/01; quien entra a mitad de año, la parte proporcional.
-const CIERRE_2026 = '2026-12-31';
-const ANUAL = 'oficina.vacaciones.dias_ano';
+// disfrutadas»). No es una regla de cálculo (26/11/2026): todos los años se
+// genera día a día. Los 22 de una vez cada 1 de enero (20/11) se quitaron.
+const cierreDe = hoy => `${hoy.slice(0, 4)}-12-31`;
 const DIAS_SEMANA = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const URL = '/mis-vacaciones';
 
@@ -98,42 +98,25 @@ function dosDias(libra, laborables) {
  *   vacaciones  [{ id, desde, hasta, libra_dias, estado }] suyas
  *   hoy, laborables [1..7] (el horario), festivos Set('AAAA-MM-DD'), tope
  */
-function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(), tope, anual = 22 }) {
+function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(), tope }) {
   const inicio = alta ? max(alta, DESDE) : null;
   const tasa = tasaDe(tope, laborables);
-  // Lo generado hasta un día. En 2026, como siempre: cada mes completo, el
-  // tope justo; el que no ha acabado (o empezó con su alta a mitad), el
-  // promedio por cada día del horario, sin pasar del tope. Desde 2027
-  // (20/11/2026), cada 1 de enero `anual` días enteros; el año de su alta, la
-  // parte proporcional de los días naturales que le quedan. Lo que sobra o
-  // falta se arrastra: es un banco. Se guarda lo de cada mes sin redondear.
+  // Lo generado hasta un día, TODOS LOS AÑOS IGUAL (26/11/2026): cada mes
+  // completo, el tope justo; el que no ha acabado (o empezó con su alta a
+  // mitad), el promedio por cada día del horario, sin pasar del tope. Lo que
+  // sobra o falta se arrastra: es un banco. Se guarda lo de cada mes sin redondear.
   const meses = new Map();
-  // `anoMax`: los años cuyos `anual` días cuentan. El simulador y la previsión
-  // cuentan los de los años que ya empezaron EL DÍA QUE SE VA (20/11/2026,
-  // Camilo: «esas todavía no se han generado»): unas vacaciones que cruzan el
-  // 1 de enero no suman los 22 del año que viene; unas que EMPIEZAN después
-  // del 1 de enero, sí (26/11/2026: las del 07/01/2027 no los contaban, porque
-  // se miraba el año de hoy).
-  const generadasHasta = (hasta, anoMax = Infinity) => {
+  const generadasHasta = hasta => {
     if (!inicio || hasta < inicio) return { total: 0, meses: [] };
     const lista = [];
-    const fin2026 = min(hasta, CIERRE_2026);
-    for (let m = inicio.slice(0, 7); inicio <= CIERRE_2026 && m <= fin2026.slice(0, 7); m = mesSiguiente(m)) {
+    for (let m = inicio.slice(0, 7); m <= hasta.slice(0, 7); m = mesSiguiente(m)) {
       const primero = m + '-01', ultimo = mas(mesSiguiente(m) + '-01', -1);
-      const a = max(inicio, primero), b = min(fin2026, ultimo);
+      const a = max(inicio, primero), b = min(hasta, ultimo);
       let dias = 0;
       for (let d = a; d <= b; d = mas(d, 1)) if (laborables.includes(dow(d))) dias++;
       const completo = a === primero && b === ultimo;
       const crudo = completo ? tope : Math.min(tope, tasa * dias);
       lista.push({ mes: m, dias, completo, crudo, generadas: r2(crudo) });
-    }
-    for (let y = 2027; y <= Math.min(Number(hasta.slice(0, 4)), anoMax); y++) {
-      const ini = `${y}-01-01`, fin = `${y}-12-31`;
-      if (inicio > fin) continue;
-      const desdeY = max(inicio, ini);
-      const completo = desdeY === ini;
-      const crudo = completo ? anual : anual * (Math.round((ms(fin) - ms(desdeY)) / DIA) + 1) / (Math.round((ms(fin) - ms(ini)) / DIA) + 1);
-      lista.push({ mes: desdeY.slice(0, 7), ano: y, anual: true, dias: null, completo, desde: desdeY, crudo, generadas: r2(crudo) });
     }
     return { total: r2(lista.reduce((t, x) => t + x.crudo, 0)), meses: lista };
   };
@@ -164,20 +147,22 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
     return { ...v, dias, pasados, futuros };
   });
   const saldo = r2(hoyGen.total - disfrutadas);
-  // LAS DE AL CIERRE DE 2026 (20/11/2026, Camilo: «que a cada uno le salgan las
-  // generadas al cierre de 2026, que se vaya descontando con las disfrutadas»):
-  // lo que habrá generado el 31/12/2026 y lo que le quedará entonces, después
-  // de lo disfrutado y lo programado de 2026. Aparte: para usar hoy, lo de hoy.
-  let cierre2026 = null;
-  if (inicio && inicio <= CIERRE_2026 && hoy <= CIERRE_2026) {
-    const generadas = generadasHasta(CIERRE_2026).total;
-    const gastadas2026 = lista.filter(v => v.estado === 'aprobada').reduce((n, v) => n + gasta(v, v.desde, CIERRE_2026), 0);
-    cierre2026 = { generadas, gastadas: gastadas2026, quedaran: r2(generadas - gastadas2026) };
+  // AL CIERRE DEL AÑO EN CURSO, SOLO INFORMATIVO (20/11/2026, Camilo: «que a
+  // cada uno le salgan las generadas al cierre de 2026, que se vaya
+  // descontando con las disfrutadas»): lo que habrá generado el 31/12 y lo que
+  // le quedará entonces, después de todo lo aprobado hasta ese día. No es una
+  // regla de cálculo: para usar hoy, lo de hoy.
+  let cierreAno = null;
+  const fin = cierreDe(hoy);
+  if (inicio && inicio <= fin) {
+    const generadas = generadasHasta(fin).total;
+    const gastadas = lista.filter(v => v.estado === 'aprobada').reduce((n, v) => n + gasta(v, v.desde, fin), 0);
+    cierreAno = { ano: Number(fin.slice(0, 4)), generadas, gastadas, quedaran: r2(generadas - gastadas) };
   }
   return {
-    inicio, generadas: hoyGen.total, disfrutadas, programadas, pedidas, saldo, saldoTras: r2(saldo - programadas), cierre2026,
-    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: (d, anoMax = Number(hoy.slice(0, 4))) => generadasHasta(d, anoMax).total,
-    gasta, tasa, anual,
+    inicio, generadas: hoyGen.total, disfrutadas, programadas, pedidas, saldo, saldoTras: r2(saldo - programadas), cierreAno,
+    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: d => generadasHasta(d).total,
+    gasta, tasa,
   };
 }
 
@@ -197,19 +182,15 @@ function simularSobre(s, { desde, hasta, libra, hoy, festivos = new Set(), vacac
   const cuentan = dias.filter(d => d.cuenta).length;
   // Lo ya aprobado no se cuenta dos veces.
   const nuevos = dias.filter(d => d.cuenta && d.ya !== 'aprobada').length;
-  // Los 22 de un año cuentan si las vacaciones empiezan ese año (o después).
-  const anoMax = Math.max(Number(hoy.slice(0, 4)), Number(desde.slice(0, 4)));
-  // Lo generado hasta el día antes de irse; si se va un 1 de enero, ese día ya
-  // trae los suyos (desde 2027 el 1 de enero no genera por día: entran de una vez).
-  const generadasAlEmpezar = desde <= hoy ? s.generadas
-    : s.generadasHasta(desde.slice(5) === '01-01' ? desde : mas(desde, -1), anoMax);
+  // Lo generado hasta el día antes de irse.
+  const generadasAlEmpezar = desde > hoy ? s.generadasHasta(mas(desde, -1)) : s.generadas;
   const disponible = r2(generadasAlEmpezar - s.disfrutadas - s.programadas);
   // EL BANCO DE CADA DÍA DEL CALENDARIO: lo generado hasta ese día (con los
   // días reales de esa fecha), menos lo aprobado y lo que llevan gastado estas.
   let gastados = 0;
   for (const x of dias) {
     if (x.cuenta && x.ya !== 'aprobada') gastados++;
-    const generado = x.dia > hoy ? s.generadasHasta(x.dia, anoMax) : s.generadas;
+    const generado = x.dia > hoy ? s.generadasHasta(x.dia) : s.generadas;
     x.banco = r2(generado - s.disfrutadas - s.programadas - gastados);
   }
   const alVolver = dias.length ? dias[dias.length - 1].banco : disponible;
@@ -247,10 +228,9 @@ function festivosDe(cal, hoy) {
 }
 
 async function entorno() {
-  const [cal, tope, anual] = await Promise.all([calendario.de('madrid'), parametros.valor(TOPE).catch(() => 1.84),
-    parametros.valor(ANUAL).catch(() => 22)]);
+  const [cal, tope] = await Promise.all([calendario.de('madrid'), parametros.valor(TOPE).catch(() => 1.84)]);
   const hoy = calendario.hoy();
-  return { hoy, laborables: [...cal.horario.dias], festivos: festivosDe(cal, hoy), tope: Number(tope), anual: Number(anual) || 22 };
+  return { hoy, laborables: [...cal.horario.dias], festivos: festivosDe(cal, hoy), tope: Number(tope) };
 }
 
 /** Lo de una persona: su saldo, sus vacaciones y los meses. Lanza 404 si no es de la oficina. */
@@ -258,7 +238,7 @@ async function deUna(usuarioId, e) {
   const p = await repo.persona(Number(usuarioId));
   if (!p) throw error('Esa persona no es de la oficina', 404);
   const vacs = (await repo.vacacionesDe([p.id])).get(p.id) || [];
-  const s = saldoDe({ alta: p.alta, vacaciones: vacs, hoy: e.hoy, laborables: e.laborables, festivos: e.festivos, tope: e.tope, anual: e.anual });
+  const s = saldoDe({ alta: p.alta, vacaciones: vacs, hoy: e.hoy, laborables: e.laborables, festivos: e.festivos, tope: e.tope });
   return { p, vacs, s };
 }
 
@@ -282,7 +262,7 @@ function previsionDe(s, v, e) {
 const publica = (p, s, e) => ({
   id: p.id, nombre: p.nombre, alta: p.alta || null, inicio: s.inicio, hoy: e.hoy,
   generadas: s.generadas, disfrutadas: s.disfrutadas, programadas: s.programadas, pedidas: s.pedidas,
-  saldo: s.saldo, saldoTras: s.saldoTras, meses: s.meses, cierre2026: s.cierre2026,
+  saldo: s.saldo, saldoTras: s.saldoTras, meses: s.meses, cierreAno: s.cierreAno,
   vacaciones: s.vacaciones.map(v => ({
     id: v.id, desde: v.desde, hasta: v.hasta, libra: v.libra_dias, libraTexto: v.libra_dias.map(n => DIAS_SEMANA[n - 1]).join(' y '),
     estado: v.estado, nota: v.nota || '', dias: v.dias, pasados: v.pasados, futuros: v.futuros,
@@ -293,7 +273,6 @@ const publica = (p, s, e) => ({
 
 const reglas = e => ({
   tasa: tasaDe(e.tope, e.laborables), diasMes: r2(e.laborables.length * 365.25 / 7 / 12), tope: e.tope, desde: DESDE, laborables: e.laborables,
-  anual: e.anual, cierre2026: CIERRE_2026,
   laborablesTexto: e.laborables.map(n => DIAS_SEMANA[n - 1]).join(', '), libraPorDefecto: dosDias(null, e.laborables),
 });
 
@@ -324,7 +303,7 @@ async function lista(quien) {
   const gente = await repo.oficina();
   const vacs = await repo.vacacionesDe(gente.map(x => x.id));
   const filas = gente.map(p => {
-    const s = saldoDe({ alta: p.alta, vacaciones: vacs.get(p.id) || [], hoy: e.hoy, laborables: e.laborables, festivos: e.festivos, tope: e.tope, anual: e.anual });
+    const s = saldoDe({ alta: p.alta, vacaciones: vacs.get(p.id) || [], hoy: e.hoy, laborables: e.laborables, festivos: e.festivos, tope: e.tope });
     return {
       id: p.id, nombre: p.nombre, puesto: p.puesto || '', alta: p.alta || null,
       generadas: s.generadas, disfrutadas: s.disfrutadas, programadas: s.programadas, saldo: s.saldo, saldoTras: s.saldoTras,
