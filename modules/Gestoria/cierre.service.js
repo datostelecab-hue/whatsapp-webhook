@@ -154,6 +154,28 @@ async function estado(periodo, quien = null, { cli = null, ligero = false } = {}
     etapas, hechas: etapas.filter(e => e.hecha).length, cerrado: etapas.every(e => e.hecha) };
 }
 
+/**
+ * EL PANEL DEL MES (26/11/2026, plan de RR. HH., módulo 4: «el panel»): lo que
+ * ya hay, junto y contra el mes anterior. La proforma de A3 (trabajadores,
+ * bruto, líquido, coste de empresa, casos por decidir), las líneas para A3 (lo
+ * que se paga y lo que se descuenta) y los descuentos del mes. Nada se
+ * calcula aquí: sale de lo guardado.
+ */
+async function resumenDe(periodo, cli = null) {
+  const [pro, lin, des, quedan] = await Promise.all([
+    repo.proformaDelMes(cli, periodo), repo.lineasDelMes(cli, periodo), repo.descuentosDelMes(cli, periodo),
+    proformaRepo.quedanDe(cli, periodo).catch(() => null),
+  ]);
+  const t = pro && pro.resultado && pro.resultado.totales;
+  return {
+    periodo, mes: mesDe(periodo),
+    proforma: t ? { trabajadores: pro.resultado.trabajadores, bruto: t.bruto, liquido: t.liquido, coste: t.costeEmpresa,
+      casos: pro.resultado.casos, quedan, fichero: pro.nombre, subida: pro.cuando } : null,
+    lineas: lin,
+    descuentos: des,
+  };
+}
+
 /** Para la pestaña: el mes que se pide (o el que está en curso) y los meses que se pueden mirar. */
 async function vista({ periodo } = {}, quien) {
   await exigir(quien, CLAVE_VER);
@@ -169,8 +191,9 @@ async function vista({ periodo } = {}, quien) {
   for (let x = siguiente(actual); x >= PRIMER_PERIODO && meses.length < 12; x = anterior(x)) meses.push({ periodo: x, mes: mesDe(x) });
   const [puedeMarcar, puedeAprobar] = await Promise.all([gestoria.puede(quien, CLAVE_MARCAR), gestoria.puede(quien, CLAVE_APROBAR)]);
   if (!hay) return { sinTabla: true, meses, periodo: p, puedeMarcar, puedeAprobar };
+  const [resumen, anteriorMes] = await Promise.all([resumenDe(p), resumenDe(anterior(p))]);
   return { ...(await estado(p, quien)), meses, actual, puedeMarcar, puedeAprobar,
-    historia: await repo.deshechas(p) };
+    historia: await repo.deshechas(p), resumen, anterior: anteriorMes };
 }
 
 const tarjetaId = (periodo, etapa) => `${periodo}|${etapa}`;
@@ -310,4 +333,4 @@ contadores.registrarFuente('gestoria_cierre', {
   },
 });
 
-module.exports = { ETAPAS, CLAVE_APROBAR, CLAVE_MARCAR, TIPO_TARJETA, periodoDe, fechas, estado, vista, marcar, deshacer, tarjetas };
+module.exports = { ETAPAS, CLAVE_APROBAR, CLAVE_MARCAR, TIPO_TARJETA, periodoDe, fechas, estado, vista, marcar, deshacer, tarjetas, resumenDe };

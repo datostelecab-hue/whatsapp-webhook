@@ -148,6 +148,7 @@ public/assets/js/vistas/Gestoria/cierre.js
 test/cierre-nomina.test.js
 ```
 
+- **El panel del mes**, encima de las etapas (26/11/2026, el «panel» del módulo 4): lo que ya hay, junto y contra el mes anterior. De la **proforma** de A3 (lo guardado al subirla): bruto, líquido, coste de empresa, personas y casos por decidir. De las **variables para A3**: lo que se paga y lo que se descuenta, y cuántos no tienen código. De los **descuentos**: los que esperan aprobación. Nada se calcula: sale de lo guardado (`cierre.service.resumenDe`). Con producción, noviembre: 164 personas, bruto 219.246,28 €, 93 casos por decidir; 413 líneas de variables de 142 personas (19.645,43 €), 18 sin código.
 - **Deshacer** (o «Reabrir» la aprobada) pide motivo y va de la última hacia atrás. Lo deshecho queda en la historia del mes. Todo al [[Libro de auditoria]].
 - **Las tarjetas**: la tarea `nomina.cierre` (cada día a las 08:00, desde el 27/11/2026) mira este mes y el anterior. Cada etapa sin hacer a **tres días hábiles o menos** de su fecha hace nacer una tarjeta `nomina_cierre` («AAAA-MM|etapa»): a quien tiene la función «plantilla_gestoria» (Diana) y la de aprobar a quien tiene la llave. Se cierra sola al marcar la etapa. La de la proforma solo nace si no se ha subido; subida, la lleva su propia tarjeta.
 - **El número de la pestaña**: las etapas con retraso del mes en curso y del anterior (se cuenta una vez por minuto, para todos).

@@ -75,6 +75,44 @@
       '</div></li>';
   }
 
+  // ── EL PANEL DEL MES: lo que ya hay, junto y contra el mes anterior ──
+  const euros = n => Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  const kpi = (etiqueta, valor, pie, tono, ayuda) =>
+    '<div class="tc-kpi" data-tono="' + (tono || 'text') + '"' + (ayuda ? ' title="' + esc(ayuda) + '"' : '') + '>' +
+      '<p class="tc-kpi-etiqueta">' + esc(etiqueta) + '</p><p class="tc-kpi-valor">' + esc(valor) + '</p>' +
+      (pie ? '<p class="tc-kpi-pie">' + pie + '</p>' : '') + '</div>';
+  // «+3 % que octubre»: solo si el mes anterior tiene la cifra.
+  function contra(ahora, antes, mesAntes) {
+    if (ahora == null || antes == null || !Number(antes)) return '';
+    const pct = Math.round((ahora - antes) / Math.abs(antes) * 1000) / 10;
+    const txt = (pct > 0 ? '+' : '') + pct.toLocaleString('es-ES') + ' % que ' + mesAntes.split(' de ')[0];
+    return '<span class="' + (pct ? '' : 'text-telecab-muted') + '">' + esc(txt) + '</span>';
+  }
+  function panel() {
+    const r = datos.resumen, a = datos.anterior || {};
+    if (!r) return '';
+    const p = r.proforma, pa = a.proforma || {}, l = r.lineas, la = a.lineas || {}, d = r.descuentos;
+    const mesA = a.mes || '';
+    const tarjetas = [
+      p ? kpi('Bruto (A3)', euros(p.bruto), contra(p.bruto, pa.bruto, mesA), 'text', 'De la proforma de A3 del mes, antes de las variables.')
+        : kpi('Bruto (A3)', '—', 'sin proforma del mes', 'muted'),
+      p ? kpi('Líquido (A3)', euros(p.liquido), contra(p.liquido, pa.liquido, mesA)) : '',
+      p ? kpi('Coste de empresa', euros(p.coste), contra(p.coste, pa.coste, mesA), 'text', 'Bruto más la Seguridad Social a cargo de la empresa, según la proforma.') : '',
+      p ? kpi('En la proforma', p.trabajadores + ' personas',
+        p.quedan ? esc(p.quedan + (p.quedan === 1 ? ' caso' : ' casos') + ' por decidir') : 'todo revisado', p.quedan ? 'warn' : 'green') : '',
+      l && l.lineas ? kpi('Variables a pagar', euros(l.pagar), contra(l.pagar, la.pagar, mesA) || esc(l.personas + ' personas'), 'gold',
+        'Lo que se escribe en el lienzo de A3 y se paga: MBO, nocturnidad, propinas, peajes y lo de a mano.')
+        : kpi('Variables a pagar', '—', 'sin preparar (pestaña Variables)', 'muted'),
+      l && l.lineas ? kpi('A descontar', euros(l.descontar), contra(l.descontar, la.descontar, mesA), 'red', 'Los descuentos que van en el lienzo de A3.') : '',
+      d && d.por_aprobar ? kpi('Descuentos por aprobar', String(d.por_aprobar), esc(euros(d.por_aprobar_importe)), 'warn',
+        'Propuestos para este mes y sin aprobar: no van en la nómina hasta que se aprueben.') : '',
+      l && l.sin_codigo ? kpi('Sin código', String(l.sin_codigo), 'A3 no los puede importar', 'warn',
+        'Personas con variables o descuentos y sin código de la gestoría (legajo).') : '',
+    ].filter(Boolean);
+    return '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">' + tarjetas.join('') + '</div>' +
+      (p ? '<p class="text-xs text-telecab-muted -mt-4 mb-6">Proforma «' + esc(p.fichero || '') + '», subida el ' + esc(p.subida || '') + '.</p>' : '');
+  }
+
   function pintar() {
     const i = datos.meses.findIndex(x => x.periodo === periodo);
     const masNuevo = i > 0 ? datos.meses[i - 1] : null;
@@ -94,7 +132,7 @@
       enganchar();
       return;
     }
-    raiz.innerHTML = '<div class="tc-pantalla max-w-3xl">' + cab +
+    raiz.innerHTML = '<div class="tc-pantalla max-w-4xl">' + cab + panel() +
       (datos.cerrado ? '<p class="mb-4 text-sm text-telecab-green"><i class="fa-solid fa-circle-check mr-1" aria-hidden="true"></i>La nómina de ' + esc(datos.mes) + ' está cerrada.</p>' : '') +
       '<ol>' + datos.etapas.map((e, k) => etapaHtml(e, k, datos.etapas.length)).join('') + '</ol>' +
       (datos.historia && datos.historia.length ? '<details class="mt-2 text-sm"><summary class="cursor-pointer text-telecab-muted">Etapas que se deshicieron (' + datos.historia.length + ')</summary><ul class="mt-2 space-y-1">' +
