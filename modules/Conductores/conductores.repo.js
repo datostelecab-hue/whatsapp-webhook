@@ -2000,7 +2000,7 @@ async function moverConElAlta(cli, id, { antes, ahora, periodoId, tope }) {
  * asignación abierta de alguien que ya no está haría que su coche siguiera
  * apareciendo cubierto.
  */
-async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
+async function darDeBaja(id, { fecha, motivo, causa = null, comunicada = null }, { usuarioId, cli } = {}) {
   const dia = fecha || new Date().toISOString().slice(0, 10);
   // Se puede llamar dentro de una transacción que ya esté abierta —los
   // cargadores lo hacen— o suelta. Lo que NO puede es haber dos definiciones de
@@ -2057,6 +2057,11 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
     await cli.query(
       `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4 WHERE id = $1`,
       [abierto.id, dia, motivo || null, usuarioId || null]);
+    // La causa de una lista y, si es voluntaria, el día en que la comunicó (db/297).
+    if ((causa || comunicada) && await hayCausaBaja()) {
+      await cli.query(`UPDATE conductor_periodo_empleo SET causa_baja = $2, baja_comunicada = $3::date WHERE id = $1`,
+        [abierto.id, causa || null, comunicada || null]);
+    }
     await suyo();
     await sinProgramada();
 
@@ -2121,14 +2126,28 @@ async function bajasProgramadas() {
  * - Antes de que empiece su contrato: se cancela el alta ya (`darDeBaja`), que
  *   un contrato que nunca arranca no tiene nada que esperar.
  */
-async function bajaOProgramada(id, { fecha, motivo } = {}, { usuarioId } = {}) {
-  if (!fecha) return { dado: await darDeBaja(id, { fecha, motivo }, { usuarioId }) };
+async function bajaOProgramada(id, { fecha, motivo, causa = null, comunicada = null } = {}, { usuarioId } = {}) {
+  if (!fecha) return { dado: await darDeBaja(id, { fecha, motivo, causa, comunicada }, { usuarioId }) };
   const r = (await db.consulta(
     `SELECT $2::date > (now() AT TIME ZONE 'Europe/Madrid')::date AS futura,
             (SELECT alta > $2::date FROM conductor_periodo_empleo
               WHERE conductor_id = $1 AND baja IS NULL) AS antes_del_alta`, [id, fecha])).rows[0];
-  if (!r.futura || r.antes_del_alta) return { dado: await darDeBaja(id, { fecha, motivo }, { usuarioId }) };
-  return { programada: await programarBaja(id, { fecha, motivo }, { usuarioId }) };
+  if (!r.futura || r.antes_del_alta) return { dado: await darDeBaja(id, { fecha, motivo, causa, comunicada }, { usuarioId }) };
+  return { programada: await programarBaja(id, { fecha, motivo, causa, comunicada }, { usuarioId }) };
+}
+
+/**
+ * ¿Están la causa de la baja y el día en que se comunicó (db/297)? En cuanto
+ * están, se recuerda; mientras no, se vuelve a mirar (la migración se aplica sin reiniciar).
+ */
+let hayCausaBajaYa = false;
+async function hayCausaBaja() {
+  if (!hayCausaBajaYa) {
+    hayCausaBajaYa = (await db.consulta(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name = 'conductor_periodo_empleo' AND column_name = 'causa_baja') AS hay`)).rows[0].hay;
+  }
+  return hayCausaBajaYa;
 }
 
 /**
@@ -2136,7 +2155,7 @@ async function bajaOProgramada(id, { fecha, motivo } = {}, { usuarioId } = {}) {
  * El MOTIVO es obligatorio (13/10/2026): si luego se cancela, es la mitad del
  * expediente (db/193).
  */
-async function programarBaja(id, { fecha, motivo } = {}, { usuarioId } = {}) {
+async function programarBaja(id, { fecha, motivo, causa = null, comunicada = null } = {}, { usuarioId } = {}) {
   motivo = String(motivo || '').trim();
   if (!motivo) throw new Error('Para programar la baja hace falta el motivo: si luego se cancela, queda en su expediente.');
   if (motivo.length > 255) throw new Error(`El motivo admite como mucho 255 caracteres y tiene ${motivo.length}: abrévialo.`);
@@ -2152,6 +2171,10 @@ async function programarBaja(id, { fecha, motivo } = {}, { usuarioId } = {}) {
            SET fecha = EXCLUDED.fecha, motivo = EXCLUDED.motivo,
                usuario_id = EXCLUDED.usuario_id, creado_at = now()`,
         [abierto.id, id, fecha, motivo || null, usuarioId || null]);
+      if ((causa || comunicada) && await hayCausaBaja()) {
+        await cli.query(`UPDATE conductor_baja_programada SET causa = $2, comunicada = $3::date WHERE periodo_id = $1`,
+          [abierto.id, causa || null, comunicada || null]);
+      }
     } catch (e) {
       if (SIN_TABLA_PROGRAMADA(e)) throw new Error('Para dar de baja con fecha futura hay que aplicar antes la migración db/191.');
       throw e;
@@ -2247,12 +2270,14 @@ async function expedienteBajas(id) {
 async function bajasVencidas() {
   try {
     const r = await db.consulta(
-      `SELECT p.conductor_id, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.motivo, p.usuario_id
+      `SELECT p.conductor_id, to_char(p.fecha, 'YYYY-MM-DD') AS fecha, p.motivo, p.usuario_id,
+              to_jsonb(p) ->> 'causa' AS causa, to_jsonb(p) ->> 'comunicada' AS comunicada
          FROM conductor_baja_programada p
          JOIN conductor_periodo_empleo e ON e.id = p.periodo_id AND e.baja IS NULL
         WHERE p.fecha < ((now() AT TIME ZONE 'Europe/Madrid') - INTERVAL '5 hours')::date
         ORDER BY p.fecha, p.conductor_id`);
-    return r.rows.map(x => ({ conductorId: Number(x.conductor_id), fecha: x.fecha, motivo: x.motivo || null, usuarioId: x.usuario_id }));
+    return r.rows.map(x => ({ conductorId: Number(x.conductor_id), fecha: x.fecha, motivo: x.motivo || null, usuarioId: x.usuario_id,
+      causa: x.causa || null, comunicada: x.comunicada || null }));
   } catch (e) {
     if (SIN_TABLA_PROGRAMADA(e)) return [];
     throw e;

@@ -124,6 +124,16 @@
             <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y sin SMS.
               Lo que pondrá: <span class="whitespace-pre-line">${esc(x.incidencias || '')}</span> · Total ${esc(x.total || '')}.</p>`;
         } },
+        // LA CARTA DE BAJA VOLUNTARIA (db/297): lo que pondrá cada hueco de la plantilla.
+        { titulo: 'La carta', icono: 'fa-door-open', visible: d => d.tipo === 'baja_voluntaria' && !!d.detalle, pinta: (d, hueco) => {
+          const x = d.detalle;
+          hueco.className = 'p-5 space-y-1 text-sm';
+          hueco.innerHTML = `
+            <p><b>DNI/NIE:</b> ${esc(x.dni || '') || '<span class="text-telecab-warn">falta en su ficha</span>'}</p>
+            <p><b>Fecha de la carta:</b> ${esc(x.fecha || '')}</p>
+            <p><b>Preaviso:</b> ${esc(x.preaviso || '')} días · <b>Último día:</b> ${esc(x.ultimoDia || '')}</p>
+            <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y sin código. El nombre lo pone YouTrust.</p>`;
+        } },
         // LA CARTA DE UNA SANCIÓN (db/295): lo que pondrá cada hueco de la plantilla.
         { titulo: 'La carta', icono: 'fa-gavel', visible: d => d.origen === 'sancion' && !!d.detalle, pinta: (d, hueco) => {
           const x = d.detalle;

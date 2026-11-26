@@ -12,6 +12,7 @@
 // orquestación de los papeles.
 
 const con = require('./conductores.repo');
+const db = require('../../services/db');
 const ficha360 = require('./ficha360.repo');
 const cazamiento = require('./cazamiento.repo');
 const gestoria = require('./gestoria.excel');
@@ -544,11 +545,39 @@ const darDeAlta = async (id, datos, quien) => {
 // programada, nace el día que llega (aplicarBajasProgramadas). Un finiquito que
 // no se pudo preparar no deshace la baja: lo recoge el repaso diario.
 const finiquitoDe = id => require('../RRHH/finiquitos.service').alDarLaBaja(Number(id));
+// LA CAUSA DE LA BAJA (db/297, 26/11/2026): de una lista. Y en una BAJA
+// VOLUNTARIA de plantilla propia, el día en que la comunicó: su carta entra sola
+// en la cola de Firmas (al registrarla, también si es programada).
+const CAUSAS_BAJA = {
+  voluntaria: 'Baja voluntaria', prueba: 'No supera el periodo de prueba', no_incorpora: 'No se incorpora',
+  despido_disciplinario: 'Despido disciplinario', despido_objetivo: 'Despido objetivo', fin_contrato: 'Fin de contrato', otra: 'Otra',
+};
+const esIsoBaja = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 const darDeBaja = async (id, datos, quien) => {
-  const r = await con.bajaOProgramada(Number(id), datos || {}, quien);
+  const d = { ...(datos || {}) };
+  d.causa = d.causa ? String(d.causa) : null;
+  if (d.causa && !CAUSAS_BAJA[d.causa]) throw new Error('Esa causa de baja no existe');
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+  const ultimo = esIsoBaja(d.fecha) ? d.fecha : hoy;
+  if (d.causa === 'voluntaria') {
+    if (!esIsoBaja(d.comunicada)) throw new Error('Di qué día comunicó la baja voluntaria: es la fecha de su carta');
+    if (d.comunicada > hoy) throw new Error('El día en que comunicó la baja no puede ser posterior a hoy');
+    if (d.comunicada > ultimo) throw new Error('No pudo comunicar la baja después de su último día');
+  } else d.comunicada = null;
+  // Sin escribir motivo, la causa hace de motivo (el texto de siempre, para el expediente).
+  if (d.causa && !String(d.motivo || '').trim()) d.motivo = CAUSAS_BAJA[d.causa];
+  const propia = d.causa === 'voluntaria' && (await db.consulta(
+    `SELECT tipo FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [Number(id)])).rows.some(x => x.tipo === 'propia');
+  const r = await con.bajaOProgramada(Number(id), d, quien);
   // En segundo plano: calcular las dos nóminas tarda unos segundos y la baja no
   // tiene por qué esperarlas (alDarLaBaja no lanza nunca).
   if (r && r.dado) setImmediate(() => { finiquitoDe(id); });
+  // La carta de baja voluntaria, a la cola de Firmas. No deshace la baja si falla.
+  if (propia && r && (r.dado || r.programada)) {
+    await require('../RRHH/firmas.service').desdeBajaVoluntaria({
+      conductorId: Number(id), ultimoDia: r.programada || ultimo, comunicada: d.comunicada, creadoPor: (quien || {}).usuarioId,
+    });
+  }
   return r;
 };
 
@@ -560,6 +589,8 @@ const darDeBaja = async (id, datos, quien) => {
 async function cancelarBaja(id, { motivo, motivoBaja } = {}, quien) {
   const fecha = await con.cancelarBajaProgramada(Number(id), { motivo, motivoBaja }, quien);
   if (!fecha) throw new Error('No tiene ninguna baja programada');
+  // Si era voluntaria y su carta aún no se mandó, se descarta (db/297).
+  await require('../RRHH/firmas.service').alCancelarBaja({ conductorId: Number(id), ultimoDia: fecha, quien });
   return { cancelada: fecha };
 }
 
@@ -572,7 +603,7 @@ async function aplicarBajasProgramadas() {
   const hechas = [], fallos = [];
   for (const b of await con.bajasVencidas()) {
     try {
-      await con.darDeBaja(b.conductorId, { fecha: b.fecha, motivo: b.motivo }, { usuarioId: b.usuarioId });
+      await con.darDeBaja(b.conductorId, { fecha: b.fecha, motivo: b.motivo, causa: b.causa, comunicada: b.comunicada }, { usuarioId: b.usuarioId });
       hechas.push(b);
       await finiquitoDe(b.conductorId);
     } catch (e) {
@@ -727,7 +758,7 @@ module.exports = {
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, corregirVacaciones, vacacionesParaLaPantalla, tiposPermiso, libranzasSugeridas,
   permisosParaLaPantalla, saldoPermisos,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
-  darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
+  CAUSAS_BAJA, darDeAlta, darDeBaja, cancelarBaja, aplicarBajasProgramadas, aPropia, cambiarJornada, cambiarAlta, corregirContrato, cambios, conflictos,
   anulacionDeAlta, anularAlta,
   videoBloqueo,
   excelGestoria,

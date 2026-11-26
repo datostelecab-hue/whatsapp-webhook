@@ -31,7 +31,7 @@ async function bot() {
 async function firmanteDe(conductorId, cli = null) {
   const r = await q(cli,
     `SELECT c.id::text AS id, COALESCE(NULLIF(btrim(c.nombre_ss), ''), btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)) AS nombre,
-            NULLIF(btrim(c.email), '') AS email,
+            NULLIF(btrim(c.email), '') AS email, NULLIF(btrim(c.dni_nie), '') AS dni,
             (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
               ORDER BY t.principal DESC, t.id LIMIT 1) AS movil
        FROM conductor c WHERE c.id = $1`, [conductorId]);

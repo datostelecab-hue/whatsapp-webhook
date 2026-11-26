@@ -77,6 +77,16 @@ test/comunicaciones.test.js
 
 **La plantilla de YouTrust** es la carta de RR. HH. sin datos de nadie (el nombre, los días y el total, en blanco). Campos: «Nombre del firmante» junto al nombre, texto de solo lectura **«Incidencias»** en el hueco de los días, **«Total»** tras «Horario de la ausencia sin justificar:», y la **firma** bajo «Fdo. Trabajador:»; firmante de marcador **«Conductor»**, firma simple **sin código**.
 
+## La carta de baja voluntaria (db/297, 26/11/2026)
+
+Camilo: *«Esta será la plantilla que mandaremos para baja voluntaria»*. Plantilla de YouTrust **«Carta de baja voluntaria»** (`7b79d63e-c1a8-4794-8de0-2bf85539c3d2`): firmante «Trabajador», firma simple **sin código**; el nombre lo pone YouTrust (dos veces) y desde aquí se rellenan **DNI**, **Fecha**, **Preaviso**, **Ultimo dia** y **DNI pie**.
+
+- **Al dar la baja** (Plantilla → Dar de baja) se elige la **causa** de una lista: baja voluntaria, no supera el periodo de prueba, no se incorpora, despido disciplinario, despido objetivo, fin de contrato u otra (`conductor_periodo_empleo.causa_baja`; el motivo de texto queda para los detalles y, vacío, lo pone la causa). La migración la puso a las bajas de antes por su motivo donde no había duda: 67 voluntarias, 54 de periodo de prueba, 19 que no se incorporan y 5 despidos disciplinarios; 224 se quedan sin causa.
+- **Baja voluntaria**: además, el **día en que la comunicó** (`baja_comunicada`), que es la «Fecha de la carta»; el **preaviso** son los días de ese día a su último día. No puede ser posterior a hoy ni a su último día.
+- **De plantilla propia** (la ETT no: su empresa es la ETT), al registrarla, **inmediata o programada**, la carta entra sola en la cola como tipo `baja_voluntaria`, origen `baja`, con los huecos en `detalle`. Diana la aprueba (hacen falta el email y el DNI de la ficha) y sale con la plantilla, sin PDF.
+- **Si se cancela la baja programada**, la carta que aún no salió se descarta sola.
+- **Remitente**: el nombre de la organización, **TIBUS LUXURY SERVICES, S.L.** (Camilo, 26/11: todas las plantillas a nombre de Tibus Luxury).
+
 ## Llaves
 
 - `/firmas`: mirar la cola. Diana e Ignacio.

@@ -1201,8 +1201,8 @@
   }
 
   // Declarada, no `const`: `accionSituacion` está más arriba y también la usa.
-  async function darDeBaja(d, fecha, motivo) {
-    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', { fecha, motivo }));
+  async function darDeBaja(d, fecha, motivo, extra = {}) {
+    const r = await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', { fecha, motivo, ...extra }));
     if (r && r.programada) {
       await Dialogo.aviso({ titulo: 'Baja programada', tono: 'ok',
         texto: `${d.nombre_completo} sigue de alta y en su plaza hasta el ${dmy(r.programada)}. ` +
@@ -1339,22 +1339,34 @@
     if (r && r.anulada && window.Dialogo && Dialogo.hecho) Dialogo.hecho('Alta anulada');
   }
 
+  // LA CAUSA DE LA BAJA (db/297, 26/11/2026): de una lista; el motivo de texto,
+  // para los detalles. En una baja voluntaria de plantilla propia, su carta entra
+  // sola en Firmas, con el día en que la comunicó.
+  const CAUSAS_BAJA = [
+    { valor: 'voluntaria', texto: 'Baja voluntaria' }, { valor: 'prueba', texto: 'No supera el periodo de prueba' },
+    { valor: 'no_incorpora', texto: 'No se incorpora' }, { valor: 'despido_disciplinario', texto: 'Despido disciplinario' },
+    { valor: 'despido_objetivo', texto: 'Despido objetivo' }, { valor: 'fin_contrato', texto: 'Fin de contrato' },
+    { valor: 'otra', texto: 'Otra' },
+  ];
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
       { id: 'fecha', etiqueta: 'Fecha de baja (su último día)', tipo: 'fecha',
         valor: d.baja_prevista ? dmy(d.baja_prevista) : fecha(new Date()) },
-      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: d.baja_prevista_motivo || '' },
+      { id: 'causa', etiqueta: 'Causa', tipo: 'lista', obligatorio: true, opciones: CAUSAS_BAJA },
+      { id: 'comunicada', etiqueta: 'Día en que la comunicó (solo baja voluntaria)', tipo: 'fecha', valor: fecha(new Date()),
+        ayuda: 'Es la fecha de su carta de baja voluntaria; el preaviso son los días de ese día a su último. En plantilla propia, la carta entra sola en Firmas.' },
+      { id: 'motivo', etiqueta: 'Motivo (detalles, opcional)', tipo: 'texto-largo', valor: d.baja_prevista_motivo || '' },
     ], { textoBoton: 'Dar de baja',
          nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero. '
              + 'Con una fecha futura, la baja se programa: sigue de alta y en su plaza hasta ese día.' });
     if (!v) return;
     // Programada, el motivo es obligatorio: si luego se cancela, es la mitad de su expediente.
-    if (v.fecha && v.fecha > hoyMadrid() && !String(v.motivo || '').trim()) {
+    if (v.fecha && v.fecha > hoyMadrid() && !v.causa && !String(v.motivo || '').trim()) {
       return Dialogo.aviso({ titulo: 'Falta el motivo', tono: 'aviso',
         texto: 'Para programar una baja hay que decir por qué: si luego se cancela, queda en su expediente con el motivo de la cancelación.' });
     }
     if (!await confirmarBaja(d, v.fecha)) return;
-    await darDeBaja(d, v.fecha, v.motivo);
+    await darDeBaja(d, v.fecha, v.motivo, { causa: v.causa, comunicada: v.causa === 'voluntaria' ? v.comunicada : null });
   }
 
   // ---------- documentos ----------

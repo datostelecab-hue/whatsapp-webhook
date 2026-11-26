@@ -40,7 +40,7 @@ const FIRMADO = 'firma_firmada';  // el PDF firmado
 const TIPOS = {
   finiquito: 'Finiquito', suspension: 'Suspensión de empleo y sueldo', sancion: 'Carta de sanción',
   descuento: 'Descuento en nómina', contrato: 'Contrato',
-  comunicacion: 'Comunicación de horas (ausencias)', otro: 'Otro documento',
+  comunicacion: 'Comunicación de horas (ausencias)', baja_voluntaria: 'Carta de baja voluntaria', otro: 'Otro documento',
 };
 // Cómo se manda cada tipo. `plantilla`: el documento es una plantilla de
 // YouTrust (no se sube PDF); `sms`: la firma lleva código por SMS (hace falta
@@ -60,6 +60,13 @@ const COMO = {
     plantilla: 'Comunicación al trabajador', sms: false,
     plantillaId: '4dd646df-3e2d-455a-b363-664b032c446c', workspaceId: WORKSPACE,
     huecos: { Incidencias: 'incidencias', Total: 'total' },
+  },
+  // La carta de BAJA VOLUNTARIA (db/297, 26/11/2026): la plantilla de YouTrust
+  // «Carta de baja voluntaria», firmante «Trabajador», sin código (Camilo).
+  baja_voluntaria: {
+    plantilla: 'Carta de baja voluntaria', sms: false,
+    plantillaId: '7b79d63e-c1a8-4794-8de0-2bf85539c3d2', workspaceId: WORKSPACE,
+    huecos: { DNI: 'dni', Fecha: 'fecha', Preaviso: 'preaviso', 'Ultimo dia': 'ultimoDia', 'DNI pie': 'dni' },
   },
   carta_sancion: {
     plantilla: 'Carta de sanción', sms: true, plantillaId: null, workspaceId: WORKSPACE,
@@ -175,6 +182,53 @@ async function desdeSancion(cli, { sancionId, conductorId, tipo, titulo, detalle
   return id;
 }
 
+/**
+ * LA CARTA DE BAJA VOLUNTARIA (db/297): al registrar una baja voluntaria de
+ * plantilla propia (también programada), con los huecos de la plantilla: el
+ * DNI, el día en que la comunicó, los días de preaviso hasta su último día y
+ * ese último día. Una por persona y último día. No lanza: la baja ya está dada.
+ */
+async function desdeBajaVoluntaria({ conductorId, ultimoDia, comunicada, creadoPor = null }) {
+  try {
+    if (!await repo.hayTabla()) return null;
+    const { diaLargo } = require('./comunicaciones');
+    const firmante = await repo.firmanteDe(Number(conductorId));
+    if (!firmante) return null;
+    const dias = Math.round((Date.parse(`${ultimoDia}T12:00:00Z`) - Date.parse(`${comunicada}T12:00:00Z`)) / 86400000);
+    const detalle = { dni: firmante.dni || '', fecha: diaLargo(comunicada), preaviso: String(Math.max(0, dias)),
+      ultimoDia: `${diaLargo(ultimoDia)}.`, comunicada, ultimo: ultimoDia };
+    const titulo = `Carta de baja voluntaria: ${firmante.nombre} (último día ${ultimoDia.split('-').reverse().join('/')})`;
+    const faltan = [!emailValido(firmante.email) ? 'el email' : '', !firmante.dni ? 'el DNI' : ''].filter(Boolean);
+    const autor = creadoPor || await repo.bot();
+    const r = await libro.conFirma({ usuarioId: autor, origen: 'firmas', accion: 'alta', motivo: 'Baja voluntaria: su carta a la cola de firmas' }, async cli => {
+      const origenId = `${conductorId}|${ultimoDia}`;
+      if (await repo.deOrigen(cli, 'baja', origenId)) return null;
+      const id = await repo.insertar(cli, { tipo: 'baja_voluntaria', titulo, origen: 'baja', origenId, conductorId: Number(conductorId),
+        firmante, detalle, creadoPor: autor,
+        nota: faltan.length ? `Falta ${faltan.join(' y ')} del trabajador: ponlo en su ficha (Plantilla) para poder mandársela.` : null });
+      await tarjeta(cli, id, titulo);
+      return { id };
+    });
+    avisarCambio();
+    return r;
+  } catch (e) { console.error(`❌ [Firmas] la carta de baja voluntaria de ${conductorId} no entró en la cola: ${e.message}`); return null; }
+}
+
+/** Se canceló la baja programada: su carta de baja voluntaria, si aún no salió, se descarta. No lanza. */
+async function alCancelarBaja({ conductorId, ultimoDia, quien = {} }) {
+  try {
+    if (!await repo.hayTabla()) return;
+    const ya = await repo.deOrigen(null, 'baja', `${conductorId}|${ultimoDia}`);
+    if (!ya || !['borrador', 'aprobado', 'error'].includes(ya.estado)) return;
+    const autor = quien.usuarioId || await repo.bot();
+    await libro.conFirma({ usuarioId: autor, origen: 'firmas', accion: 'cambio', motivo: 'Se canceló la baja programada' }, async cli => {
+      await repo.cambiar(cli, ya.id, { estado: 'descartado', cerrado_at: 'now', cerrado_por: autor, nota: 'Descartado: se canceló la baja programada' });
+      await cerrarTarjeta(cli, ya.id, autor, 'Se canceló la baja');
+    });
+    avisarCambio();
+  } catch (e) { console.error(`❌ [Firmas] no se descartó la carta de baja de ${conductorId}: ${e.message}`); }
+}
+
 // ── Lo que decide Diana ────────────────────────────────────────────────────
 /**
  * APROBAR: se manda. Hace falta el PDF y el email y el móvil del firmante (se
@@ -203,8 +257,9 @@ async function comprobarParaAprobar(cli, f) {
   if (f.estado !== 'borrador') throw error('Solo se aprueba el que está por aprobar', 409);
   if (!como.plantilla && !f.documentos) throw error('Falta el PDF que se va a firmar: súbelo en «Documento a firmar»', 409);
   const p = await repo.firmanteDe(Number(f.conductor_id), cli);
+  if (f.tipo === 'baja_voluntaria' && !p.dni) throw error(`${f.nombre}: falta el DNI del trabajador en su ficha (va en la carta)`, 409);
   if (!emailValido(p.email)) {
-    throw error(f.tipo === 'comunicacion' ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
+    throw error(['comunicacion', 'baja_voluntaria'].includes(f.tipo) ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
       : 'Falta el email de la persona (o está mal) en su ficha: YouTrust manda la invitación por correo', 409);
   }
   if (como.sms && !/^\+\d{8,15}$/.test(String(p.movil || ''))) throw error('Falta su móvil en la ficha: la firma lleva un código por SMS', 409);
@@ -405,6 +460,6 @@ contadores.registrarFuente('firmas', {
 });
 
 module.exports = {
-  crear, desdeFiniquito, desdeSancion, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
+  crear, desdeFiniquito, desdeSancion, desdeBajaVoluntaria, alCancelarBaja, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
   TIPOS, ESTADOS, CLAVE_VER, CLAVE_APROBAR, DOC, FIRMADO,
 };
