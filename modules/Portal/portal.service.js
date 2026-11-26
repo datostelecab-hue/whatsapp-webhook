@@ -365,8 +365,11 @@ async function inicio(persona) {
   // Sus vacaciones (módulo 2 de RR. HH., 25/11/2026): lo que se decidió de lo
   // que pidió, y su saldo. Es el aviso de que se aprobaron o se rechazaron.
   const vac = await vacacionesDe(persona).catch(fallo('vacaciones'));
+  // Los comunicados sin leer (db/305): la tarjeta de arriba del todo.
+  const com = await require('../RRHH/comunicados.service').delConductor(persona)
+    .then(l => l.filter(c => !c.leido)).catch(fallo('comunicados'));
   return {
-    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef, coche: co, horas: hor, vacaciones: vac,
+    hoy: t.desde, hasta: t.hasta, dinero: d, efectivo: ef, coche: co, horas: hor, vacaciones: vac, comunicados: com || [],
     proximo: t.dias.find(d => d.trabaja) || null,
     hayPlan: t.dias.some(d => !d.sinPlan),
     evento: t.evento,

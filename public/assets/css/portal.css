@@ -501,3 +501,14 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 .coche-entregar { margin-top: 1rem; display: grid; gap: .35rem; }
 .codigo-lavado { font-size: 2rem; font-weight: 800; letter-spacing: .12em; margin: .35rem 0; font-variant-numeric: tabular-nums; user-select: all; }
 .pasos-lavado { margin: .5rem 0 0; padding-left: 1.25rem; display: grid; gap: .25rem; font-size: .9rem; }
+
+/* Los comunicados de la empresa y su «Lo he leído» (db/305, 26/11/2026). */
+.com-lista { list-style: none; margin: 0; padding: 0; }
+.com-lista li + li { border-top: 1px solid rgb(var(--linea)); }
+.com-lista a { display: grid; gap: .2rem; padding: .85rem 1.1rem; color: inherit; text-decoration: none; }
+.com-lista a:hover { background: rgb(var(--sup2)); }
+.com-tit { font-weight: 600; }
+.com-texto { white-space: pre-line; line-height: 1.55; overflow-wrap: anywhere; }
+.com-acuse { display: grid; gap: .6rem; }
+.com-hecho { color: rgb(var(--verde)); font-weight: 600; }
+.com-pendientes { margin: 0; padding: 0 1.1rem 1rem; display: grid; gap: .3rem; }

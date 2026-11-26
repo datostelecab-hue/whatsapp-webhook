@@ -1,0 +1,18 @@
+<%# UN COMUNICADO (db/305): el texto y, al final, «Lo he leído». Pulsarlo deja el día y la hora:
+    es el acuse que ve la oficina. Sin JavaScript: un formulario de siempre. %>
+<p><a class="boton-sec" href="/comunicados">← Todos los comunicados</a></p>
+<h1><%= comunicado.titulo %></h1>
+<p class="suave peq">Del <%= f.fecha(comunicado.dia) %></p>
+
+<section class="caja">
+  <div class="caja-in com-texto"><%= comunicado.cuerpo %></div>
+</section>
+
+<% if (comunicado.leido) { %>
+  <p class="com-hecho">Confirmaste que lo has leído el <%= comunicado.leido_en %>.</p>
+<% } else { %>
+  <form method="post" action="/comunicados/<%= comunicado.id %>/leido" class="com-acuse">
+    <p class="suave peq">Al pulsarlo, la empresa sabe que lo has leído (queda el día y la hora).</p>
+    <button class="boton" type="submit" data-enviando="Guardando…">Lo he leído</button>
+  </form>
+<% } %>

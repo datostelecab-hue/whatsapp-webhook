@@ -137,6 +137,26 @@ router.get('/turnos', pagina('portalTurnos', 'Mis turnos', portal.turnos));
 router.get('/puntuacion', pagina('portalPuntuacion', 'Mi puntuación', portal.semanas));
 router.get('/efectivo', pagina('portalEfectivo', 'Mi efectivo', async p => ({ efectivo: await portal.efectivo(p) })));
 
+// ── Los comunicados de la empresa (módulos 6 y 9 de RR. HH., db/305) ───────
+// Cada uno se lee y se confirma con «Lo he leído», que deja el día, la hora,
+// la IP y el navegador: es el acuse que ve la oficina en /comunicados.
+const comunicados = require('../RRHH/comunicados.service');
+router.get('/comunicados', pagina('portalComunicados', 'Comunicados', async p => ({ comunicados: await comunicados.delConductor(p) })));
+router.get('/comunicados/:id', async (req, res, next) => {
+  try {
+    const c = await comunicados.abrirEnPortal(req.conductor, req.params.id);
+    if (!c) return vista(res.status(404), 'portalAviso', { titulo: 'No existe', conductor: req.conductor, texto: 'Ese comunicado no existe o ya no está.' });
+    vista(res, 'portalComunicado', { titulo: c.titulo, pagina: 'portalComunicados', conductor: req.conductor, comunicado: c });
+  } catch (e) { next(e); }
+});
+router.post('/comunicados/:id/leido', async (req, res, next) => {
+  try {
+    const c = await comunicados.acusar(req.conductor, req.params.id, { ip: req.ip, agente: req.get('user-agent') });
+    if (!c) return vista(res.status(404), 'portalAviso', { titulo: 'No existe', conductor: req.conductor, texto: 'Ese comunicado no existe o ya no está.' });
+    res.redirect(303, `/comunicados/${encodeURIComponent(c.id)}`);
+  } catch (e) { next(e); }
+});
+
 // ── Mis horas (24/11/2026): el cronómetro desde que vincula el coche ─────────
 // La página sale ya con los números; /horas/vivo los da otra vez cada 30 s y el
 // reloj de «Horas con el coche» corre en el móvil cada segundo.

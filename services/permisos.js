@@ -80,6 +80,13 @@ const CATALOGO = [
     { clave: '/firmas', etiqueta: 'Firmas (envío de documentos por YouTrust)', manual: true, hijos: [
       { clave: '/firmas/aprobar', etiqueta: 'Firmas · preparar y aprobar lo que se manda a firmar', escribir: true, manual: true },
     ] },
+    // LOS COMUNICADOS A LA PLANTILLA (módulos 6 y 9, db/305): mirarlos, prepararlos
+    // (Diana) y aprobarlos (Ignacio; quien lo prepara no lo aprueba). `manual`,
+    // sin `escribir` (dos hijas de escritura: las comprueba el servicio).
+    { clave: '/comunicados', etiqueta: 'Comunicados a la plantilla', manual: true, hijos: [
+      { clave: '/comunicados/preparar', etiqueta: 'Comunicados · redactarlos y pedir que se aprueben', manual: true },
+      { clave: '/comunicados/aprobar', etiqueta: 'Comunicados · aprobarlos (salen a la plantilla) o devolverlos', manual: true },
+    ] },
     // LAS FALTAS Y SANCIONES (módulo 3, db/295): mirarlas, abrirlas (la
     // oficina), aprobarlas (Ángel, William, Ignacio) y preparar la carta
     // (Diana). `manual`, y sin `escribir` (hay tres hijas de escritura; cada

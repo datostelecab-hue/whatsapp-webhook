@@ -130,6 +130,10 @@
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.titulo || x.tipo)} · ${esc(x.estado)} · ${esc(dmyE(x.enviado || x.creado))}</li>`).join('')}</ul>`
         : vacio('Ninguna carta ni documento a firma.');
+    } else if (s.id === 'comunicados') {
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.titulo)} · ${esc(dmyE(x.dia))} · ${x.leido ? `leído el ${esc(dmyE(x.leido))}` : '<span class="text-telecab-warn">sin leer</span>'}</li>`).join('')}</ul>`
+        : vacio('Ningún comunicado.');
     } else if (s.id === 'descuentos') {
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.motivo || x.origen)} · ${esc(eur(x.importe))}${x.saldo && x.saldo !== x.importe ? ` (quedan ${esc(eur(x.saldo))})` : ''} · ${esc(x.estado)} · nómina ${esc(x.periodo)}</li>`).join('')}</ul>`

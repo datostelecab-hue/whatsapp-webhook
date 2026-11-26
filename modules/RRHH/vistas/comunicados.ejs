@@ -1,0 +1,12 @@
+<%#
+  LOS COMUNICADOS A LA PLANTILLA (módulos 6 y 9, db/305, 26/11/2026).
+  Diana los prepara, otra persona los aprueba y salen por correo y al portal,
+  donde cada uno pulsa «Lo he leído». El seguimiento se refresca solo.
+  El JavaScript, en /assets/js/vistas/RRHH/comunicados.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedePreparar: !!puedePreparar, puedeAprobar: !!puedeAprobar }) %></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/comunicados.js') %>"></script>

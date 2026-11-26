@@ -4,6 +4,16 @@
 <p class="aviso"><b><%= evento.nombre %>.</b> Del <%= f.fecha(evento.desde) %> al <%= f.fecha(evento.hasta) %> los turnos son temporales.</p>
 <% } %>
 
+<% const sinLeer = locals.comunicados || []; if (sinLeer.length) { %>
+<%- include('portalTarjeta', { id: 't-comunicados', href: sinLeer.length === 1 ? '/comunicados/' + sinLeer[0].id : '/comunicados', icono: 'comunicado',
+      titulo: sinLeer.length === 1 ? 'Tienes un comunicado sin leer' : 'Tienes ' + sinLeer.length + ' comunicados sin leer', ir: 'Leer' }) %>
+  <ul class="com-pendientes">
+  <% sinLeer.slice(0, 3).forEach(c => { %><li><b><%= c.titulo %></b> <span class="suave peq">· <%= f.fecha(c.dia) %></span></li><% }) %>
+  </ul>
+  <p class="suave peq" style="padding:0 1.1rem 1rem;margin:0">Léelo y pulsa «Lo he leído» al final.</p>
+</section><%# cierra portalTarjeta %>
+<% } %>
+
 <% const coche = locals.coche; const cocheArriba = !!(coche && coche.puede && coche.vinculado); %>
 <% const horasIni = locals.horas && locals.horas.puede !== false ? locals.horas : null; %>
 <% if (cocheArriba) { %><%- include('portalInicioCoche', { coche }) %><% if (horasIni) { %><%- include('portalInicioHoras', { horas: horasIni }) %><% } %><% } %>

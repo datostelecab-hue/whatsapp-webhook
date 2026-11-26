@@ -87,6 +87,14 @@ const SECCIONES = [
     },
   },
   {
+    // Los comunicados a la plantilla (db/305) y si pulsó «Lo he leído».
+    id: 'comunicados', titulo: 'Comunicados recibidos', llave: '/comunicados', enlace: () => '/comunicados',
+    async leer(id) {
+      if (!await existe('comunicado_destinatario')) return { lista: [] };
+      return { lista: await require('../RRHH/comunicados.repo').expediente(id) };
+    },
+  },
+  {
     id: 'descuentos', titulo: 'Descuentos en nómina', llave: '/descuentos', enlace: () => '/descuentos',
     async leer(id) {
       if (!await existe('descuento_nomina')) return { lista: [] };

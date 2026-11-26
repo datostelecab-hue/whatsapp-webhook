@@ -1,0 +1,23 @@
+<%# LOS COMUNICADOS DE LA EMPRESA (módulos 6 y 9 de RR. HH., db/305, 26/11/2026): los suyos,
+    los que tiene sin leer primero. Cada uno se abre y al final se pulsa «Lo he leído». %>
+<div>
+  <h1>Comunicados</h1>
+  <p class="suave" style="margin-top:.25rem">Lo que la empresa te comunica: normas, códigos de descuento y avisos.</p>
+</div>
+
+<section class="caja" aria-label="Tus comunicados">
+<% if (!comunicados.length) { %>
+  <p class="vacio">No tienes comunicados.</p>
+<% } else { %>
+  <ul class="com-lista">
+  <% comunicados.forEach(c => { %>
+    <li>
+      <a href="/comunicados/<%= c.id %>">
+        <span class="com-tit"><%= c.titulo %></span>
+        <span class="peq <%= c.leido ? 'suave' : 'aviso-linea' %>"><%= c.leido ? 'Leído el ' + c.leido_en : 'Sin leer' %> · <%= f.fecha(c.dia) %></span>
+      </a>
+    </li>
+  <% }) %>
+  </ul>
+<% } %>
+</section>

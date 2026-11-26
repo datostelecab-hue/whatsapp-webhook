@@ -167,6 +167,10 @@ Camilo: *«A toda la APP aplica Las 10 heurísticas de usabilidad de Jakob Niels
 - Piezas: `public/assets/js/portal/comun.js` (lo de todas las páginas: el toque en iPhone, «Un momento…», preguntar antes de salir con `data-confirmar`, sin conexión, el DNI con `data-recordar`), `modules/Portal/vistas/portalAyuda.ejs`, `portalLlamar.ejs`. El formulario de las fotos (`data-fotos-form`) queda fuera de «Un momento…»: tiene el suyo.
 - Probado en local a 320 y 375 px: Inicio, Mi coche (con y sin coche vinculado), Mis horas, Ayuda (con y sin sesión) y Entrar.
 
+## Los comunicados de la empresa (db/305, 26/11/2026)
+
+`/comunicados`: los suyos, los sin leer primero; cada uno se abre y al final se pulsa **«Lo he leído»** (queda el día, la hora, la IP y el navegador). Con alguno sin leer, la tarjeta sale arriba del todo en el inicio. No hay botón en la barra de abajo: se llega desde el inicio y desde el enlace del correo. Ver [[Comunicados]].
+
 ## Lo que queda para lanzarlo (24/11/2026)
 
 - **Poner el teléfono de Tráfico** en Parámetros (ver arriba): hasta entonces no sale «Llamar a Tráfico».

@@ -155,6 +155,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 
 **Fase 4 · Módulos 6 y 9**
 - La comunicación como entidad única, con plantillas y evidencias, y las dos integraciones.
+- ✔ 26/11 (db/305): los comunicados masivos con acuse, ver [[Comunicados]]. Decidido: el acuse es el «Lo he leído» del portal (día, hora, IP); aviso por correo y portal, sin WhatsApp; recordatorio cada 2 días hábiles, 3 como mucho; Diana prepara y aprueba otra persona (Ignacio). Falta el SMS certificado (Mensatec) y adjuntar un PDF.
 
 **Módulo 5 adelantado** — ✔ 25/11 (db/288): el informe de jornada para el SMAC, ver [[Informe de jornada]]. Decidido: estricto del convenio, día natural, desde el 01/07/2026.
 

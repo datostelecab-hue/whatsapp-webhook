@@ -419,6 +419,8 @@ app.use('/inventario', require('./modules/Vehiculos/inventario.controller'));
 // La revisión de las fotos del portal (db/282): cada lote contra el anterior del mismo coche.
 // El envío a firma por YouTrust (módulo 6 del plan de RR. HH., db/293).
 app.use('/firmas', require('./modules/RRHH/firmas.controller'));
+// Los comunicados a la plantilla, con su «Lo he leído» en el portal (módulos 6 y 9, db/305).
+app.use('/comunicados', require('./modules/RRHH/comunicados.controller'));
 // Las faltas y sanciones (módulo 3 del plan de RR. HH., db/295). `/sanciones` es la de velocidad.
 app.use('/disciplina', require('./modules/RRHH/sanciones.controller'));
 // Los descuentos en nómina (módulo 4.2 del plan de RR. HH., db/298).
