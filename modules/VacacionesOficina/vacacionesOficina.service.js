@@ -109,9 +109,11 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
   // falta se arrastra: es un banco. Se guarda lo de cada mes sin redondear.
   const meses = new Map();
   // `anoMax`: los años cuyos `anual` días cuentan. El simulador y la previsión
-  // solo cuentan los de años que ya empezaron (20/11/2026, Camilo: «esas
-  // todavía no se han generado»): unas vacaciones que cruzan el 1 de enero no
-  // suman los 22 del año que viene; entran en el saldo cuando llegue el día.
+  // cuentan los de los años que ya empezaron EL DÍA QUE SE VA (20/11/2026,
+  // Camilo: «esas todavía no se han generado»): unas vacaciones que cruzan el
+  // 1 de enero no suman los 22 del año que viene; unas que EMPIEZAN después
+  // del 1 de enero, sí (26/11/2026: las del 07/01/2027 no los contaban, porque
+  // se miraba el año de hoy).
   const generadasHasta = (hasta, anoMax = Infinity) => {
     if (!inicio || hasta < inicio) return { total: 0, meses: [] };
     const lista = [];
@@ -174,7 +176,7 @@ function saldoDe({ alta, vacaciones = [], hoy, laborables, festivos = new Set(),
   }
   return {
     inicio, generadas: hoyGen.total, disfrutadas, programadas, pedidas, saldo, saldoTras: r2(saldo - programadas), cierre2026,
-    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: d => generadasHasta(d, Number(hoy.slice(0, 4))).total,
+    meses: [...meses.values()].map(({ crudo, ...x }) => x), vacaciones: lista, generadasHasta: (d, anoMax = Number(hoy.slice(0, 4))) => generadasHasta(d, anoMax).total,
     gasta, tasa, anual,
   };
 }
@@ -195,14 +197,19 @@ function simularSobre(s, { desde, hasta, libra, hoy, festivos = new Set(), vacac
   const cuentan = dias.filter(d => d.cuenta).length;
   // Lo ya aprobado no se cuenta dos veces.
   const nuevos = dias.filter(d => d.cuenta && d.ya !== 'aprobada').length;
-  const generadasAlEmpezar = desde > hoy ? s.generadasHasta(mas(desde, -1)) : s.generadas;
+  // Los 22 de un año cuentan si las vacaciones empiezan ese año (o después).
+  const anoMax = Math.max(Number(hoy.slice(0, 4)), Number(desde.slice(0, 4)));
+  // Lo generado hasta el día antes de irse; si se va un 1 de enero, ese día ya
+  // trae los suyos (desde 2027 el 1 de enero no genera por día: entran de una vez).
+  const generadasAlEmpezar = desde <= hoy ? s.generadas
+    : s.generadasHasta(desde.slice(5) === '01-01' ? desde : mas(desde, -1), anoMax);
   const disponible = r2(generadasAlEmpezar - s.disfrutadas - s.programadas);
   // EL BANCO DE CADA DÍA DEL CALENDARIO: lo generado hasta ese día (con los
   // días reales de esa fecha), menos lo aprobado y lo que llevan gastado estas.
   let gastados = 0;
   for (const x of dias) {
     if (x.cuenta && x.ya !== 'aprobada') gastados++;
-    const generado = x.dia > hoy ? s.generadasHasta(x.dia) : s.generadas;
+    const generado = x.dia > hoy ? s.generadasHasta(x.dia, anoMax) : s.generadas;
     x.banco = r2(generado - s.disfrutadas - s.programadas - gastados);
   }
   const alVolver = dias.length ? dias[dias.length - 1].banco : disponible;

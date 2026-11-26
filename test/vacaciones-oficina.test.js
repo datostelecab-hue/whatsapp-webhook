@@ -98,6 +98,16 @@ test('el simulador suma lo que generará hasta irse y durante las vacaciones, co
   const cruza = vac._simularSobre(s, { desde: '2026-12-28', hasta: '2027-01-08', libra: [6, 7], hoy: '2026-06-30', festivos: new Set() });
   const dia = d => cruza.dias.find(x => x.dia === d).banco;
   assert.deepEqual([dia('2026-12-31'), dia('2027-01-01')], [18.08, 17.08]);
+  // Unas que EMPIEZAN en 2027 sí cuentan los 22 (26/11/2026, el caso de Camilo:
+  // alta el 17/06/2026, hoy 26/11, del 07/01 al 01/02/2027 con S y D y Reyes).
+  // Hoy 9,81 + 2,08 hasta el cierre de 2026 + 22 = 33,89; gasta 18; en enero no
+  // se genera por día (los 22 entran de una vez): al volver, 15,89.
+  const camilo = vac._saldoDe({ ...base, alta: '2026-06-17', hoy: '2026-11-26' });
+  const enero27 = vac._simularSobre(camilo, { desde: '2027-01-07', hasta: '2027-02-01', libra: [6, 7], hoy: '2026-11-26', festivos: new Set(['2027-01-01', '2027-01-06']) });
+  assert.deepEqual([camilo.saldo, enero27.cuentan, enero27.disponible, enero27.alVolver], [9.81, 18, 33.89, 15.89]);
+  // Y si se va el mismo 1 de enero, ese día ya trae los suyos.
+  const unoEnero = vac._simularSobre(camilo, { desde: '2027-01-01', hasta: '2027-01-08', libra: [6, 7], hoy: '2026-11-26', festivos: new Set(['2027-01-01', '2027-01-06']) });
+  assert.equal(unoEnero.disponible, 33.89);
   // A mitad de mes (15/06: 11 días, 0,93): si se va el 01/07, junio se completa (+0,91).
   const mitad = vac._saldoDe({ ...base, alta: '2026-01-01', hoy: '2026-06-15' });
   const julio = vac._simularSobre(mitad, { desde: '2026-07-01', hasta: '2026-07-03', libra: [6, 7], hoy: '2026-06-15', festivos: new Set() });

@@ -199,7 +199,7 @@
       ${avisos.length ? `<p class="text-sm text-telecab-warn mb-3">${avisos.map(esc).join(' ')}</p>` : ''}
       <div class="grid gap-4 sm:grid-cols-2">${calendario(s)}</div>
       <p class="text-xs text-telecab-muted mt-3"><span class="inline-block w-3 h-3 rounded bg-telecab-gold/20 border border-telecab-gold/40 align-middle mr-1"></span>gastan ·
-        <span class="line-through">12</span> libranza o festivo (F) · el punto, días que ya tienen vacaciones · debajo de cada día, el banco al acabarlo: cada día laborable suma ${num(R.tasa, 4)}, también en vacaciones (los ${num(R.anual, 0)} del año que viene no cuentan hasta que llegue el 1 de enero)</p>`;
+        <span class="line-through">12</span> libranza o festivo (F) · el punto, días que ya tienen vacaciones · debajo de cada día, el banco al acabarlo: en 2026 cada día laborable suma ${num(R.tasa, 4)}, también en vacaciones; desde 2027 entran ${num(R.anual, 0)} de una vez cada 1 de enero, que cuentan si las vacaciones empiezan ese año</p>`;
   }
 
   function calendario(s) {
