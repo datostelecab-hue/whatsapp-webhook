@@ -120,4 +120,10 @@ async function ultimaCarga(periodo) {
   return r.rows[0] || null;
 }
 
-module.exports = { ultimaCarga, hayTabla, personasDelMes, delMes, insertar, sigue, yaNoSale, decidir, marcarEnviadas, lista, porId, quedanDe, pendientes };
+/** Guarda en la carga la cifra de cada trabajador (al volver a cruzar una de antes del 26/11). */
+async function guardarTrabajadores(cli, ficheroId, trabajadores) {
+  await cli.query(`UPDATE fichero_importado SET resultado = COALESCE(resultado, '{}'::jsonb) || jsonb_build_object('trabajadores', $2::jsonb) WHERE id = $1`,
+    [ficheroId, JSON.stringify(trabajadores)]);
+}
+
+module.exports = { guardarTrabajadores, ultimaCarga, hayTabla, personasDelMes, delMes, insertar, sigue, yaNoSale, decidir, marcarEnviadas, lista, porId, quedanDe, pendientes };

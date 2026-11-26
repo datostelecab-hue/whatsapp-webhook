@@ -134,6 +134,17 @@
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.titulo)} · ${esc(dmyE(x.dia))} · ${x.leido ? `leído el ${esc(dmyE(x.leido))}` : '<span class="text-telecab-warn">sin leer</span>'}</li>`).join('')}</ul>`
         : vacio('Ningún comunicado.');
+    } else if (s.id === 'nomina') {
+      const filaMes = m => {
+        const p = m.proforma;
+        const partes = [
+          p ? `bruto ${esc(eur(p.bruto))} · líquido ${esc(eur(p.liquido))} · ${esc(String(p.dias))} días cotizados${p.it ? ` · IT ${esc(eur(p.it))}` : ''}` : '<span class="text-telecab-muted">sin proforma</span>',
+          m.variables.lineas.length ? `variables: ${m.variables.lineas.map(l => `${esc(l.concepto)} ${esc(l.nombre)} ${esc(eur(l.importe * (l.tipo === 'deduccion' ? -1 : 1)))}`).join(', ')}` : '',
+          m.descuentos.length ? `descontado: ${m.descuentos.map(x => `${esc(x.etiqueta)} ${esc(eur(x.importe))}`).join(', ')}` : '',
+        ].filter(Boolean);
+        return `<li><b>${esc(cap(m.mes))}</b>: ${partes.join(' · ')}</li>`;
+      };
+      cuerpo = (d.meses || []).length ? `<ul class="text-sm space-y-1">${d.meses.map(filaMes).join('')}</ul>` : vacio('Sin datos de nómina todavía.');
     } else if (s.id === 'sms') {
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.asunto)} · ${esc(dmyE(x.dia))} · ${x.error ? `<span class="text-telecab-red">${esc(x.error)}</span>` : esc(x.estado_texto || 'enviado')}${x.abierto ? ` · abierto el ${esc(dmyE(x.abierto))}` : ''}${x.certificado_adjunto_id ? ` · <a class="text-telecab-gold hover:underline" href="/adjuntos/${encodeURIComponent(x.certificado_adjunto_id)}/fichero" target="_blank" rel="noopener">certificado</a>` : ''}</li>`).join('')}</ul>`

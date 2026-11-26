@@ -125,6 +125,9 @@ async function sincronizar(cli, { leido, casos, ficheroId, nombre, quien }) {
   return { nuevos, siguen, cerrados, quedan };
 }
 
+/** Lo de cada trabajador que se guarda con la carga: su código, días, IT, bruto y líquido. */
+const porTrabajador = leido => leido.trabajadores.map(t => ({ legajo: t.legajo, dias: t.dias, it: t.it, bruto: t.bruto, liquido: t.liquido }));
+
 /** SUBE LA PROFORMA. Sin `confirmar`, solo dice qué sale. */
 async function subir({ base64, nombre, confirmar = false } = {}, quien = {}) {
   await exigir(quien, gestoria.CLAVE_GESTIONAR);
@@ -145,7 +148,8 @@ async function subir({ base64, nombre, confirmar = false } = {}, quien = {}) {
       tipo: TIPO_FICHERO, periodo: leido.periodo, nombre: nombreFichero, buffer,
       estructura: { hoja: leido.hoja, desde: leido.desde, hasta: leido.hasta, empresa: leido.empresa,
         conceptos: leido.conceptos.map(c => ({ codigo: c.codigo, nombre: c.nombre })) },
-      resultado: resumen, incidencias: casos.length, usuarioId: quien.usuarioId,
+      // Con la cifra de cada trabajador (26/11/2026): el histórico de su nómina, mes a mes.
+      resultado: { ...resumen, trabajadores: porTrabajador(leido) }, incidencias: casos.length, usuarioId: quien.usuarioId,
     });
     return { ficheroId, ...await sincronizar(cli, { leido, casos, ficheroId, nombre: nombreFichero, quien }) };
   });
@@ -171,7 +175,10 @@ async function recruzar({ periodo } = {}, quien = {}) {
   const { leido, casos } = await analizar(Buffer.concat(trozos));
   const r = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'gestoria · proforma', accion: 'cambio',
     motivo: `Proforma de ${mesDe(periodo)} cruzada otra vez con el ERP` },
-    cli => sincronizar(cli, { leido, casos, ficheroId: Number(carga.id), nombre: carga.nombre, quien }));
+    async cli => {
+      await repo.guardarTrabajadores(cli, carga.id, porTrabajador(leido));
+      return sincronizar(cli, { leido, casos, ficheroId: Number(carga.id), nombre: carga.nombre, quien });
+    });
   avisarCambio();
   return r;
 }

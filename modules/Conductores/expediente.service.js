@@ -95,6 +95,12 @@ const SECCIONES = [
     },
   },
   {
+    // EL HISTÓRICO DE SU NÓMINA, MES A MES (módulo 4.7, 26/11/2026): lo que dijo
+    // la proforma de A3, las variables que se le mandaron y lo descontado.
+    id: 'nomina', titulo: 'Nómina por meses', llave: '/gestoria', enlace: () => '/gestoria?vista=variables',
+    async leer(id) { return { meses: await require('../Gestoria/historico').deConductor(id) }; },
+  },
+  {
     // El SMS certificado de Mensatek (db/306), con su certificado de entrega.
     id: 'sms', titulo: 'SMS certificados', llave: '/sms', enlace: () => '/sms',
     async leer(id) {
