@@ -40,7 +40,8 @@ const FIRMADO = 'firma_firmada';  // el PDF firmado
 const TIPOS = {
   finiquito: 'Finiquito', suspension: 'Suspensión de empleo y sueldo', sancion: 'Carta de sanción',
   descuento: 'Descuento en nómina', contrato: 'Contrato',
-  comunicacion: 'Comunicación de horas (ausencias)', baja_voluntaria: 'Carta de baja voluntaria', otro: 'Otro documento',
+  comunicacion: 'Comunicación de horas (ausencias)', baja_voluntaria: 'Carta de baja voluntaria',
+  incorporacion: 'Carta de incorporación', otro: 'Otro documento',
 };
 // Cómo se manda cada tipo. `plantilla`: el documento es una plantilla de
 // YouTrust (no se sube PDF); `sms`: la firma lleva código por SMS (hace falta
@@ -69,6 +70,13 @@ const COMO = {
     plantilla: 'Carta de baja voluntaria', sms: true,
     plantillaId: '7b79d63e-c1a8-4794-8de0-2bf85539c3d2', workspaceId: WORKSPACE,
     huecos: { DNI: 'dni', Fecha: 'fecha', Preaviso: 'preaviso', 'Ultimo dia': 'ultimoDia', 'DNI pie': 'dni' },
+  },
+  // La CARTA DE INCORPORACIÓN (módulo 8, db/304, 26/11/2026): el conductor
+  // confirma por firma su fecha de incorporación. Plantilla de YouTrust
+  // «Carta de incorporación» (por crear: hasta entonces no se puede mandar).
+  incorporacion: {
+    plantilla: 'Carta de incorporación', sms: true, plantillaId: null, workspaceId: WORKSPACE,
+    huecos: { DNI: 'dni', Fecha: 'fecha', 'Fecha de incorporacion': 'incorporacion' },
   },
   carta_sancion: {
     plantilla: 'Carta de sanción', sms: true, plantillaId: null, workspaceId: WORKSPACE,
@@ -217,6 +225,36 @@ async function desdeBajaVoluntaria({ conductorId, ultimoDia, comunicada, creadoP
   } catch (e) { console.error(`❌ [Firmas] la carta de baja voluntaria de ${conductorId} no entró en la cola: ${e.message}`); return null; }
 }
 
+/**
+ * Un ALTA NUEVA de plantilla propia (Gestoría › Altas, db/304): su carta de
+ * incorporación a la cola de Firmas, por aprobar. Con `cli`, dentro de esa
+ * transacción (ya firmada); si no, en la suya. Una por alta.
+ */
+async function desdeAlta({ cli = null, altaId, conductorId, fechaAlta, creadoPor = null }) {
+  if (!await repo.hayTabla(cli)) return null;
+  const { diaLargo } = require('./comunicaciones');
+  const firmante = await repo.firmanteDe(Number(conductorId), cli);
+  if (!firmante) return null;
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const detalle = { dni: firmante.dni || '', fecha: diaLargo(hoy), incorporacion: diaLargo(fechaAlta), alta: fechaAlta };
+  const titulo = `Carta de incorporación: ${firmante.nombre} (entra el ${fechaAlta.split('-').reverse().join('/')})`;
+  const faltan = [!emailValido(firmante.email) ? 'el email' : '', !firmante.dni ? 'el DNI' : '',
+    !/^\+\d{8,15}$/.test(String(firmante.movil || '')) ? 'el móvil' : ''].filter(Boolean);
+  const hacer = async c => {
+    const autor = creadoPor || await repo.bot();
+    if (await repo.deOrigen(c, 'alta', String(altaId))) return null;
+    const id = await repo.insertar(c, { tipo: 'incorporacion', titulo, origen: 'alta', origenId: String(altaId), conductorId: Number(conductorId),
+      firmante, detalle, creadoPor: autor,
+      nota: faltan.length ? `Falta ${faltan.join(' y ')} del trabajador: ponlo en su ficha (Plantilla) para poder mandársela.` : null });
+    await tarjeta(c, id, titulo);
+    return { id };
+  };
+  const r = cli ? await hacer(cli)
+    : await libro.conFirma({ usuarioId: creadoPor, origen: 'firmas', accion: 'alta', motivo: 'Alta nueva: su carta de incorporación a la cola de firmas' }, hacer);
+  avisarCambio();
+  return r;
+}
+
 /** Se canceló la baja programada: su carta de baja voluntaria, si aún no salió, se descarta. No lanza. */
 async function alCancelarBaja({ conductorId, ultimoDia, quien = {} }) {
   try {
@@ -260,9 +298,9 @@ async function comprobarParaAprobar(cli, f) {
   if (f.estado !== 'borrador') throw error('Solo se aprueba el que está por aprobar', 409);
   if (!como.plantilla && !f.documentos) throw error('Falta el PDF que se va a firmar: súbelo en «Documento a firmar»', 409);
   const p = await repo.firmanteDe(Number(f.conductor_id), cli);
-  if (f.tipo === 'baja_voluntaria' && !p.dni) throw error(`${f.nombre}: falta el DNI del trabajador en su ficha (va en la carta)`, 409);
+  if (['baja_voluntaria', 'incorporacion'].includes(f.tipo) && !p.dni) throw error(`${f.nombre}: falta el DNI del trabajador en su ficha (va en la carta)`, 409);
   if (!emailValido(p.email)) {
-    throw error(['comunicacion', 'baja_voluntaria'].includes(f.tipo) ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
+    throw error(['comunicacion', 'baja_voluntaria', 'incorporacion'].includes(f.tipo) ? `${f.nombre}: falta el email del conductor. Ponlo en su ficha (Plantilla) para poder mandársela.`
       : 'Falta el email de la persona (o está mal) en su ficha: YouTrust manda la invitación por correo', 409);
   }
   if (como.sms && !/^\+\d{8,15}$/.test(String(p.movil || ''))) throw error('Falta su móvil en la ficha: la firma lleva un código por SMS', 409);
@@ -463,6 +501,6 @@ contadores.registrarFuente('firmas', {
 });
 
 module.exports = {
-  crear, desdeFiniquito, desdeSancion, desdeBajaVoluntaria, alCancelarBaja, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
+  crear, desdeFiniquito, desdeSancion, desdeBajaVoluntaria, desdeAlta, alCancelarBaja, aprobar, aprobarVarias, comoSe, descartar, aBorrador, cerrar, lista, ficha, personas, puede, delBot,
   TIPOS, ESTADOS, CLAVE_VER, CLAVE_APROBAR, DOC, FIRMADO,
 };

@@ -108,6 +108,8 @@ async function vincular(persona, matriculaEscrita) {
     const revisa = 'Revisa la matrícula y escríbela otra vez, todo junto (por ejemplo 1234ABC). Si es correcta, comunícate con Tráfico.';
     const m = {
       'no-participa': NO_PARTICIPA,
+      'sin-alta': { titulo: 'Todavía no puedes llevar un coche',
+        texto: ['Tu alta en la Seguridad Social aún no está confirmada. En cuanto la oficina la confirme, podrás vincularlo.', 'Si empiezas hoy, avisa a la oficina o a Tráfico.'] },
       'otra-sede': { titulo: `El ${r.matricula} es un coche de ${r.sede}`, texto: ['Desde aquí no se lleva.', revisa] },
       'coche-sin-sede': { titulo: `El ${r.matricula} no es un coche de ${r.sedePersona}`, texto: [revisa] },
       'sin-matricula': { titulo: `No encuentro la matrícula ${matricula}`, texto: [revisa] },

@@ -45,6 +45,14 @@
     return t;
   }
 
+  // SIN EL ALTA CONFIRMADA (módulo 8, db/304): planificable, pero en rojo. No
+  // vinculará coche hasta que se confirme en Gestoría › Altas.
+  function chipSinAlta(p) {
+    if (!p || !p.sinAlta) return '';
+    const como = p.sinAlta === 'solicitada' ? 'pedida, sin confirmar' : 'sin pedir';
+    return ` <span class="text-telecab-red text-xs font-semibold whitespace-nowrap" title="Su alta en la gestoría está ${como}: no podrá vincular ningún coche hasta que se confirme en Gestoría › Altas">Sin alta confirmada</span>`;
+  }
+
   function chipRend(r, mini) {
     if (!r) return '';
     // Recién incorporado: no se promedia hasta el cuarto día. "0 h · C" en
@@ -87,7 +95,7 @@
           : diasTexto((p.diasSugeridos || []).map(d => d + 1));
         sub = dias ? ('días ' + dias) : 'sin días';
       }
-      const ett = persona && persona.esEtt ? ' <span class="text-telecab-violet">ETT</span>' : '';
+      const ett = (persona && persona.esEtt ? ' <span class="text-telecab-violet">ETT</span>' : '') + chipSinAlta(persona);
       const av = avisoAusencia(persona);
       const nombreCls = av && av.tachado ? 'line-through text-telecab-muted' : 'font-medium group-hover:text-telecab-gold';
       // El teléfono SIEMPRE a la vista bajo el nombre. El envío por WhatsApp va en

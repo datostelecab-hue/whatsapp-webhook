@@ -358,7 +358,7 @@
     $('#banq-n').textContent = `${gente.length}/${(T.pendientes || []).length}`;
     $('#banquillo').innerHTML = gente.length ? gente.map(p => `
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
-        <div class="text-sm font-medium truncate">${nombreConFicha(p.id, p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''} ${chipRend(p.rendimiento)}</div>
+        <div class="text-sm font-medium truncate">${nombreConFicha(p.id, p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''}${chipSinAlta(p)} ${chipRend(p.rendimiento)}</div>
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
         ${p.faltanDias ? `<div class="text-[11px] text-telecab-gold"><i class="fa-solid fa-calendar-day text-[9px]"></i> correturnos a medio poner: ${p.diasPuestos} de ${p.diasQueDebeCT} días${
           (p.diasDePlaza || []).length ? ` (lleva ${p.diasDePlaza.map(d => 'LMXJVSD'[d - 1] || '?').join('')})` : ''}</div>` : ''}

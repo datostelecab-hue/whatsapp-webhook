@@ -17,6 +17,9 @@ const proforma = require('./proforma.service');
 const cierre = require('./cierre.service');
 // El catálogo de conceptos de A3 y las líneas del mes (módulo 4, db/300): la pestaña «Variables».
 const variables = require('./variables.service');
+// Las altas nuevas ante la gestoría (módulo 8, db/304): la pestaña «Altas».
+// Cargarlo aquí registra su tarea de cada hora y el candado del coche.
+const altas = require('./altas.service');
 const actor = require('../../services/repo/actor');
 
 // El listado viaja en base64 dentro del JSON: con su propio límite.
@@ -56,6 +59,13 @@ router.post('/api/proforma/recruzar', responde(async req => proforma.recruzar(re
 router.post('/api/proforma/decidir', responde(async req => proforma.decidir(req.body || {}, await quien(req))));
 router.get('/api/proforma/correo', responde(async req => proforma.correo(await quien(req))));
 router.post('/api/proforma/correo/enviado', responde(async req => proforma.marcarEnviadas(req.body || {}, await quien(req))));
+
+router.get('/api/altas/lista', responde(async req => altas.lista(await quien(req))));
+router.get('/api/altas/:id', responde(async req => ({ ficha: await altas.ficha(req.params.id, await quien(req)) })));
+router.post('/api/altas/:id/solicitar', responde(async req => altas.solicitar(req.params.id, req.body || {}, await quien(req))));
+router.post('/api/altas/:id/confirmar', responde(async req => altas.confirmar(req.params.id, req.body || {}, await quien(req))));
+router.post('/api/altas/:id/anular', responde(async req => altas.anular(req.params.id, req.body || {}, await quien(req))));
+router.post('/api/altas/:id/reabrir', responde(async req => altas.reabrir(req.params.id, req.body || {}, await quien(req))));
 
 router.get('/api/cierre', responde(async req => cierre.vista({ periodo: req.query.periodo }, await quien(req))));
 router.post('/api/cierre/marcar', responde(async req => cierre.marcar(req.body || {}, await quien(req))));

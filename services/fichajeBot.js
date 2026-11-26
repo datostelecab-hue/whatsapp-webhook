@@ -366,6 +366,12 @@ async function abrir(telefono, matricula) {
       await enviarTexto(telefono, 'ℹ️ No tienes activado el uso de coches por aquí. Si crees que es un error, avisa a Tráfico.');
       return;
     }
+    // Contrato nuevo sin el alta confirmada por la gestoría (db/304).
+    if (r.motivo === 'sin-alta') {
+      await enviarTexto(telefono, '⛔ Todavía no puedo vincularte ningún coche: tu alta en la Seguridad Social aún no está confirmada. ' +
+        'En cuanto la oficina la confirme, podrás. Si empiezas hoy, avisa a la oficina o a Tráfico.');
+      return;
+    }
     if (r.motivo === 'otra-sede') {
       await enviarTexto(telefono, `❌ El *${r.matricula}* es un coche de ${r.sede}: por aquí no se lleva. ` +
         'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*). Si es correcta, comunícate con Tráfico.');

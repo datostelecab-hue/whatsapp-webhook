@@ -5,10 +5,12 @@
   resuelve. El JavaScript, en /assets/js/vistas/Gestoria/gestoria.js.
 %>
 
-<%# Cuatro pestañas: el listado de plantilla, la proforma de A3 (módulo 4,
-    db/296), las variables de A3 (db/300) y el cierre de la nómina del mes (db/299). %>
+<%# Cinco pestañas: el listado de plantilla, las altas nuevas (módulo 8,
+    db/304), la proforma de A3 (módulo 4, db/296), las variables de A3 (db/300)
+    y el cierre de la nómina del mes (db/299). %>
 <div class="px-4 lg:px-6 pt-4 lg:pt-6"><div id="gs-pestanas" aria-label="Gestoría"></div></div>
 <div id="gs-plantilla"></div>
+<div id="gs-altas" class="hidden"></div>
 <div id="gs-proforma" class="hidden"></div>
 <div id="gs-variables" class="hidden"></div>
 <div id="gs-cierre" class="hidden"></div>
@@ -16,7 +18,9 @@
 <script type="application/json" id="datos-servidor"><%- json({ puedeGestionar: !!puedeGestionar }) %></script>
 <script src="<%= est('/assets/js/pestanas.js') %>"></script>
 <script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Gestoria/gestoria.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Gestoria/proforma.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Gestoria/variables.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/Gestoria/cierre.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/Gestoria/altas.js') %>"></script>

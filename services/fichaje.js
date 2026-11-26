@@ -1038,6 +1038,15 @@ async function iniciar({ telefono, nombre, matricula, soloSiLibre = false }) {
   // Y si no tiene el fichaje encendido, no abre nada.
   const p = await participa(telefono);
   if (!p || p.soloCerrar) return { ok: false, motivo: 'no-participa' };
+  // SIN EL ALTA CONFIRMADA, NINGÚN COCHE (plan de RR. HH., módulo 8, db/304,
+  // 26/11/2026). Un contrato de plantilla propia desde el 27/11/2026 no vincula
+  // coche hasta que la gestoría confirma su alta (Gestoría › Altas): trabajar
+  // sin alta es uno de los dos riesgos del encargo. Solo conductores (el viaje
+  // de la oficina, no). Si la base falla, deja pasar (altas.bloqueaCoche).
+  if (p.tipo === 'turno' && p.conductorId) {
+    const sinAlta = await require('../modules/Gestoria/altas.service').bloqueaCoche(p.conductorId);
+    if (sinAlta) return { ok: false, motivo: 'sin-alta', fechaAlta: sinAlta.fechaAlta };
+  }
   const quien = await quienFicha(telefono);
   const nom = quien.nombre || String(nombre || '').trim();
   if (!nom) return { ok: false, motivo: 'sin-nombre' };

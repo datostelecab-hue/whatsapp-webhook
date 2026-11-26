@@ -376,6 +376,11 @@ async function tablero({ dia } = {}) {
       return new Map();
     });
 
+  // SIN EL ALTA CONFIRMADA (módulo 8, db/304, 26/11/2026): se le puede
+  // planificar, pero sale en rojo; no vinculará coche hasta que la gestoría la
+  // confirme (Gestoría › Altas). Sin la migración, nadie.
+  const sinAlta = await require('../Gestoria/altas.service').sinConfirmar();
+
   const gente = new Map();
   conductores.rows.forEach(c => {
     const bajaPrevista = seVaEl.get(String(c.id)) || null;
@@ -409,6 +414,8 @@ async function tablero({ dia } = {}) {
         : '',
       esEtt: c.contrato_tipo === 'ett',
       ettNombre: c.ett_nombre || '',
+      // 'pendiente' | 'solicitada' si su alta ante la gestoría no está confirmada; null si lo está (o no aplica).
+      sinAlta: sinAlta.get(String(c.id)) || null,
       // Ficha su turno por WhatsApp (db/148): iniciar suelta el motor y
       // terminar lo bloquea. Se enciende desde el botón «Fichaje».
       fichaCoche: !!c.ficha_coche,

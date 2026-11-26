@@ -133,10 +133,10 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - Los parámetros del encargo en [[Parametros]].
 - ✔ 26/11: el expediente del conductor, en la ficha de Plantilla: lo de cada módulo de RR. HH., cada sección con su llave; ver [[Conductores#El expediente de RR. HH. (26/11/2026)]].
 
-**Fase 1 · Módulo 8** — ✔ primera parte el 25/11 (db/287), con la proforma: ver [[Gestoria]]. Falta lo de las altas (confirmación de la gestoría, bloqueo en el planificador, no presentación) y las fechas, que necesitan el listado de plantilla en alta.
+**Fase 1 · Módulo 8** — ✔ primera parte el 25/11 (db/287), con la proforma: ver [[Gestoria]]. ✔ 26/11 (db/304) las altas: ver [[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]]. Decidido: Diana lo marca a mano (pedida y confirmada con justificante); sin confirmar no vincula coche (planificar, sí, en rojo); no presentación a las dos horas del inicio del primer turno; carta de incorporación con plantilla de YouTrust. Falta la plantilla de la carta y las fechas, que necesitan el listado de plantilla en alta.
 - Subir el listado, cruzarlo por legajo y enseñar las tres discrepancias con su coste.
 - Correo de correcciones y seguimiento hasta resolverlas.
-- Alta solicitada y confirmada; el bloqueo en el planificador; la alerta de no presentación.
+- ✔ 26/11: alta pedida y confirmada; el candado del coche y la marca en el planificador; la alerta de no presentación con el contador y el aviso a Ignacio a los dos días.
 
 **Fase 2 · Módulo 1**
 - ✔ 25/11 (db/289), sin esperar al fichero: la ausencia guardada con «pendiente de validar», la bandeja y la tarjeta del día, la reclasificación sola (también hacia atrás) y el % de plantilla de baja. Ver [[Ausencias]]. Decidido: solo plantilla propia, desde el 26/10/2026 (las nóminas van del 26 al 25), y cuatro decisiones (injustificada, justificada, baja médica, permiso).

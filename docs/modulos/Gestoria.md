@@ -156,9 +156,35 @@ test/cierre-nomina.test.js
 - Las rutas `/gestoria/api/cierre*` van por `RUTA_A_CLAVE` a `/gestoria`, y el servicio pide la llave de cada cosa. Si no, aprobar exigiría también `/gestoria/gestionar`.
 - No sustituye los dos cierres que ya hay (congelar en /nominas y el del convenio). Los mira y deja constancia de que se mandaron, se revisaron y se aprobaron.
 
+## La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)
+
+El encargo: *«dos riesgos igual de graves: trabajar sin alta y cotizar más de dos días por alguien que no se presenta»*. Lo que decidió Camilo el 26/11/2026: **Diana lo marca a mano**; sin el alta confirmada **no vincula coche** (planificarle, sí: sale en rojo); la no presentación, **pasadas dos horas del inicio de su primer turno**; la carta de incorporación, **con su plantilla de YouTrust**.
+
+```
+modules/Gestoria/altas.service.js   estados, candado del coche, tarea de cada hora
+modules/Gestoria/altas.repo.js      el SQL (alta_gestoria)
+public/assets/js/vistas/Gestoria/altas.js
+test/altas-gestoria.test.js
+```
+
+- **Quién entra**: cada contrato (periodo de empleo) de **plantilla propia** con alta **desde el 27/11/2026**. La ETT no (el alta la da la agencia), ni los contratos de antes (ya trabajan). La ficha de pruebas tampoco. Se crean solos (al abrir la pestaña y cada hora), como **sin pedir**; su fecha sigue a la del contrato si se corrige en Plantilla.
+- **Los estados**: sin pedir → **Alta pedida** (Diana se la pide a la gestoría) → **Alta confirmada** (hace falta adjuntar antes el **justificante** de la gestoría; se puede confirmar sin haberla marcado pedida) · **Anular** (no llegó a empezar; con motivo) · **Deshacer** (vuelve a sin pedir, con motivo). Lo marca quien tiene `/gestoria/gestionar`; lo ve quien tiene `/gestoria`. Todo al libro.
+- **El candado del coche**: `fichaje.iniciar` pregunta a `altas.bloqueaCoche`. Con un contrato así sin el alta confirmada, el bot contesta que su alta aún no está confirmada y el portal lo mismo (motivo `sin-alta`); «No tengo yo el coche» tampoco se lo pasa. Solo conductores (el viaje de la oficina no). **Si la base falla, deja pasar**: un error ahí no puede dejar a la plantilla sin coche.
+- **El planificador** le deja planificar, pero pone **«Sin alta confirmada»** en rojo al lado del nombre (cuadrante y banquillo), con el estado en el título (`sinAlta` en la persona).
+- **Cada hora** (tarea `gestoria.altas`, desde el 27/11/2026):
+  - Apunta su **primer día con turno** desde el alta (`f_cobertura`, como el planificador) y de qué turno; mientras no se presente, se recalcula.
+  - **El día antes** del primer turno (o el mismo día, o después) sin el alta confirmada: **aviso urgente** a Diana y a Ignacio.
+  - **No presentación**: el turno de día empieza a las 05:00 y el de noche a las 17:00; **dos horas después**, si no ha vinculado ningún coche (libro de turnos del bot y del portal) ni BOLT le ha visto conectado con ninguna de sus cuentas, **aviso urgente** a los dos y **tarjeta a Diana** con plazo ese día: pedir la anulación del alta (o la baja).
+  - **El contador**: días cotizados desde el alta hasta hoy (o su baja, o el día que se anuló), **solo si el alta se pidió**; el coste, con el parámetro `gestoria.coste_ss_dia`. **A los dos días** sin resolver, **aviso a Ignacio** (una vez).
+  - **Si al final se presenta**, la tarjeta se cierra y los avisos se dan por vistos.
+- **Quién es quién**: Diana = la función «Sube el listado de plantilla de la gestoría» (Organización); Ignacio = quien tiene la llave `/tablero/vencidas`. Los avisos van **uno por persona** (cada uno lo da por visto).
+- **La carta de incorporación**: al crearse un alta cuyo día aún no ha llegado, entra en la cola de [[Firmas]] (tipo `incorporacion`, origen `alta`). Sale cuando exista la plantilla «Carta de incorporación» en YouTrust (a nombre de Tibus Luxury, con SMS). La lista enseña cómo va.
+- **Tarjeta «Pedir el alta a la gestoría»** a Diana al crearse, con plazo el día antes de su alta; se cierra sola al marcarla pedida, confirmada o anulada.
+- Número en la pestaña: las sin pedir, las urgentes y los no presentados. Desde una tarjeta o un aviso: `/gestoria?vista=altas&alta=ID`.
+
 ## Lo que falta del módulo 8
 
 - El **listado de plantilla en alta** (o el ITA) real, para las **fechas que no coinciden**.
-- **Altas**: alta solicitada y confirmada por la gestoría, el **bloqueo en el planificador** y la **alerta de no presentación** con su contador. Necesitan decidir cómo confirma la gestoría un alta (y la firma de la fecha de incorporación, del módulo 6).
+- La plantilla **«Carta de incorporación»** en YouTrust (su `plantillaId` en `firmas.service`, entrada `incorporacion`).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Conductores]] · [[Ficheros importados]]

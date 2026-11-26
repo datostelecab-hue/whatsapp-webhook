@@ -87,6 +87,10 @@ Camilo: *«Esta será la plantilla que mandaremos para baja voluntaria»*. Plant
 - **Si se cancela la baja programada**, la carta que aún no salió se descarta sola.
 - **Remitente**: el nombre de la organización, **TIBUS LUXURY SERVICES, S.L.** (Camilo, 26/11: todas las plantillas a nombre de Tibus Luxury).
 
+## La carta de incorporación (db/304, 26/11/2026)
+
+Del módulo 8: *«el conductor confirma por firma digital su fecha de incorporación»*. Cada alta nueva de plantilla propia ([[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]]) cuyo día aún no ha llegado mete su carta en la cola: tipo `incorporacion`, origen `alta`, con **DNI**, **Fecha** (la de hoy) y **Fecha de incorporacion** en `detalle`. Plantilla de YouTrust **«Carta de incorporación»**, con código por SMS, a nombre de Tibus Luxury: **aún no existe** (`plantillaId` vacío), así que se puede aprobar pero no mandar hasta crearla. Hace falta el DNI, el email y el móvil de la ficha.
+
 ## Llaves
 
 - `/firmas`: mirar la cola. Diana e Ignacio.

@@ -484,6 +484,10 @@ Los turnos de Barcelona **no salen en el panel «Fichaje» del planificador de M
 
 Lo prueban las secciones 14 y 15 de `scripts/probar-corte-motor.js`. La conversación entera se simula en `Scripts de análisis/simular-bot-conductor.js` (escenas 8 a 10), y el panel de oficina en `simular-puertas-oficina.js`.
 
+## Sin el alta confirmada, ningún coche (db/304, 26/11/2026)
+
+Un contrato de plantilla propia desde el 27/11/2026 no vincula coche hasta que la gestoría confirma su alta (Gestoría › Altas): `iniciar` devuelve `sin-alta` y el bot y el portal se lo dicen. Solo conductores; si la base falla, deja pasar. Ver [[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]].
+
 ## Con Mapon caído, se ficha solo en la base (05/10/2026)
 
 El 05/10 a las 11:06, Mapon suspendió la cuenta por un pago pendiente y empezó a contestar a todo **«Company suspended»**. Con eso nadie podía abrir turno: el padrón de unidades se quedaba **vacío y en caché**, y el bot contestaba «No encuentro la matrícula» a cualquiera.
