@@ -57,14 +57,16 @@ const TIPOS = {
 const WORKSPACE = '8cca36ee-1d49-4385-985c-d0d98930707a';
 const COMO = {
   comunicacion: {
-    plantilla: 'Comunicación al trabajador', sms: false,
+    // 26/11/2026, Camilo: «que sean todos con SMS certificado» (antes, sin código).
+    plantilla: 'Comunicación al trabajador', sms: true,
     plantillaId: '4dd646df-3e2d-455a-b363-664b032c446c', workspaceId: WORKSPACE,
     huecos: { Incidencias: 'incidencias', Total: 'total' },
   },
   // La carta de BAJA VOLUNTARIA (db/297, 26/11/2026): la plantilla de YouTrust
-  // «Carta de baja voluntaria», firmante «Trabajador», sin código (Camilo).
+  // «Carta de baja voluntaria», firmante «Trabajador», con código por SMS
+  // (Camilo, 26/11/2026: «que sean todos con SMS certificado»).
   baja_voluntaria: {
-    plantilla: 'Carta de baja voluntaria', sms: false,
+    plantilla: 'Carta de baja voluntaria', sms: true,
     plantillaId: '7b79d63e-c1a8-4794-8de0-2bf85539c3d2', workspaceId: WORKSPACE,
     huecos: { DNI: 'dni', Fecha: 'fecha', Preaviso: 'preaviso', 'Ultimo dia': 'ultimoDia', 'DNI pie': 'dni' },
   },
@@ -198,7 +200,8 @@ async function desdeBajaVoluntaria({ conductorId, ultimoDia, comunicada, creadoP
     const detalle = { dni: firmante.dni || '', fecha: diaLargo(comunicada), preaviso: String(Math.max(0, dias)),
       ultimoDia: `${diaLargo(ultimoDia)}.`, comunicada, ultimo: ultimoDia };
     const titulo = `Carta de baja voluntaria: ${firmante.nombre} (último día ${ultimoDia.split('-').reverse().join('/')})`;
-    const faltan = [!emailValido(firmante.email) ? 'el email' : '', !firmante.dni ? 'el DNI' : ''].filter(Boolean);
+    const faltan = [!emailValido(firmante.email) ? 'el email' : '', !firmante.dni ? 'el DNI' : '',
+      !/^\+\d{8,15}$/.test(String(firmante.movil || '')) ? 'el móvil' : ''].filter(Boolean);
     const autor = creadoPor || await repo.bot();
     const r = await libro.conFirma({ usuarioId: autor, origen: 'firmas', accion: 'alta', motivo: 'Baja voluntaria: su carta a la cola de firmas' }, async cli => {
       const origenId = `${conductorId}|${ultimoDia}`;

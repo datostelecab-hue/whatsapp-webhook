@@ -121,7 +121,7 @@
               <b class="text-telecab-red">${esc(coma(x.debe))} h</b>.</p>
             <ul class="space-y-0.5">${(x.lineas || []).map(l => `<li>${esc(dmy(l.dia))} · ${l.tipo === 'ausencia'
               ? 'ausencia' : `hizo ${esc(coma(l.horas))} h`} · <b>debe ${esc(coma(l.debe))} h</b></li>`).join('')}</ul>
-            <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y sin SMS.
+            <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y con código por SMS.
               Lo que pondrá: <span class="whitespace-pre-line">${esc(x.incidencias || '')}</span> · Total ${esc(x.total || '')}.</p>`;
         } },
         // LA CARTA DE BAJA VOLUNTARIA (db/297): lo que pondrá cada hueco de la plantilla.
@@ -132,7 +132,7 @@
             <p><b>DNI/NIE:</b> ${esc(x.dni || '') || '<span class="text-telecab-warn">falta en su ficha</span>'}</p>
             <p><b>Fecha de la carta:</b> ${esc(x.fecha || '')}</p>
             <p><b>Preaviso:</b> ${esc(x.preaviso || '')} días · <b>Último día:</b> ${esc(x.ultimoDia || '')}</p>
-            <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y sin código. El nombre lo pone YouTrust.</p>`;
+            <p class="text-xs text-telecab-muted">Se manda con la plantilla de YouTrust «${esc(como(d).plantilla || '')}», por correo y con código por SMS. El nombre lo pone YouTrust.</p>`;
         } },
         // LA CARTA DE UNA SANCIÓN (db/295): lo que pondrá cada hueco de la plantilla.
         { titulo: 'La carta', icono: 'fa-gavel', visible: d => d.origen === 'sancion' && !!d.detalle, pinta: (d, hueco) => {

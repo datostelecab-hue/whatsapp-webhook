@@ -25,6 +25,8 @@ const tareasProgramadas = require('../../services/tareasProgramadas');
 const T_SEMANA = 'comunicaciones_semana';
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const SIN_EMAIL = 'Falta el email del conductor: ponlo en su ficha (Plantilla) para poder mandársela.';
+// Firma con código por SMS (26/11/2026): sin móvil tampoco sale.
+const SIN_MOVIL = 'Falta el móvil del conductor: ponlo en su ficha (Plantilla); la firma lleva un código por SMS.';
 
 tablero.registrarTipo(T_SEMANA, { etiqueta: 'Comunicaciones de horas', abrir: 'Revisarlas en Firmas', cierreManual: false });
 
@@ -71,7 +73,7 @@ async function prepararSemana(lunes, { cli = null, dias = null } = {}) {
         firmante, creadoPor: bot,
         detalle: { semana: { desde: lunes, hasta: domingo }, dias: x.dias, objetivo: x.objetivo, horas: x.horas,
           debe: x.debe, lineas: x.lineas, ...cuenta.textos(x) },
-        nota: firmante && firmante.email ? null : SIN_EMAIL,
+        nota: !firmante || !firmante.email ? SIN_EMAIL : (!firmante.movil ? SIN_MOVIL : null),
       });
       nuevas++;
     }
@@ -89,7 +91,7 @@ async function tarjetaDeLaSemana(cli, lunes, domingo) {
   const titulo = `Revisar ${n} ${n === 1 ? 'comunicación' : 'comunicaciones'} de horas (semana del ${dm(lunes)} al ${dm(domingo)})`;
   const t = await tablero.nacer(cli, {
     tipo: T_SEMANA, origenId: lunes, enlace: '/firmas', sensible: true, titulo,
-    descripcion: 'Quien no llegó a las horas de su contrato la semana pasada. Revisa cada una en Firmas (sus días y lo que debe) y apruébala o descártala; las aprobadas se mandan desde la plantilla de YouTrust, por correo y sin SMS.',
+    descripcion: 'Quien no llegó a las horas de su contrato la semana pasada. Revisa cada una en Firmas (sus días y lo que debe) y apruébala o descártala; las aprobadas se mandan desde la plantilla de YouTrust, por correo y con código por SMS.',
     responsableId: titulares.length ? titulares[0].id : null, plazoDias: 1,
   });
   if (!t.nueva) await tablero.ajustarPorOrigen(cli, { tipo: T_SEMANA, origenId: lunes, titulo });
@@ -112,4 +114,4 @@ tareasProgramadas.registrar({
   hacer: ({ periodo, cli }) => prepararSemana(calendario.sumarDias(periodo, -8), { cli }),
 });
 
-module.exports = { calcularSemana, prepararSemana, cerrarSiHecha, SIN_EMAIL };
+module.exports = { calcularSemana, prepararSemana, cerrarSiHecha, SIN_EMAIL, SIN_MOVIL };

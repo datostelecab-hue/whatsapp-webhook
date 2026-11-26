@@ -55,7 +55,7 @@ test('la cuenta: 8 h por día planificado, lo que compensa, lo que no se pide', 
   assert.deepEqual(cuenta.semanaDe('2026-11-19'), { lunes: '2026-11-16', domingo: '2026-11-22' });
 });
 
-test('el martes: a la cola de Firmas, sin PDF ni SMS; sin email no se aprueba y lo dice', () => conBase(async ({ consulta, fabrica }) => {
+test('el martes: a la cola de Firmas, sin PDF y con SMS; sin email no se aprueba y lo dice', () => conBase(async ({ consulta, fabrica }) => {
   const diana = await fabrica.usuario({ rol: 'oficina', nombre: 'Diana' });
   await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/firmas'), ($1, '/firmas/aprobar')`, [diana.id]);
   const D = { usuarioId: diana.id, rol: 'oficina' };
@@ -63,6 +63,7 @@ test('el martes: a la cola de Firmas, sin PDF ni SMS; sin email no se aprueba y 
   const cumple = await fabrica.conductor({ nombre: 'CUMPLE' });
   const ett = await fabrica.conductor({ nombre: 'DE ETT', tipo: 'ett' });
   await consulta(`UPDATE conductor SET email = 'corto@ejemplo.test' WHERE id = $1`, [corto.id]);
+  await consulta(`INSERT INTO conductor_telefono (conductor_id, e164, origen, principal) VALUES ($1, '+34600111444', 'manual', TRUE)`, [corto.id]);
   const dias = new Map([
     [String(corto.id), semana([0, 8, 5.3, 8, 8, 'L', 'L'])],
     [String(cumple.id), semana([0, 10, 10, 11, 10, 'L', 'L'])],
@@ -75,7 +76,7 @@ test('el martes: a la cola de Firmas, sin PDF ni SMS; sin email no se aprueba y 
   assert.deepEqual([env.tipo, env.estado, env.detalle.debe, env.detalle.total], ['comunicacion', 'borrador', 10.7, '10,7 h']);
   assert.ok((await consulta(`SELECT 1 FROM tarea WHERE tipo = 'comunicaciones_semana' AND origen_id = '2026-11-16' AND estado <> 'cerrada'`)).rows.length);
 
-  // Sin PDF y sin móvil se aprueba (plantilla, sin SMS). La tarjeta de la semana se cierra sola.
+  // Sin PDF se aprueba (plantilla); con el móvil, que la firma lleva código por SMS. La tarjeta de la semana se cierra sola.
   const a = await firmas.aprobarVarias({ ids: [env.id] }, D);
   assert.deepEqual([a.aprobadas, a.fallos.length], [1, 0]);
   assert.equal((await consulta(`SELECT estado FROM tarea WHERE tipo = 'comunicaciones_semana' AND origen_id = '2026-11-16'`)).rows[0].estado, 'cerrada');

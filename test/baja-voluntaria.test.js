@@ -26,6 +26,7 @@ test('baja voluntaria: la causa se guarda, la carta entra en Firmas con sus huec
   const conDatos = async nombre => {
     const c = await fabrica.conductor({ nombre });
     await consulta(`UPDATE conductor SET email = $2, dni_nie = $3 WHERE id = $1`, [c.id, `${nombre.toLowerCase()}@ejemplo.test`, `0000000${++n}T`]);
+    await consulta(`INSERT INTO conductor_telefono (conductor_id, e164, origen, principal) VALUES ($1, $2, 'manual', TRUE)`, [c.id, `+3460011100${n}`]);
     return c;
   };
   const cartaDe = async id => (await consulta(`SELECT id::text AS id, tipo, origen, estado, detalle FROM firma_envio WHERE conductor_id = $1`, [id])).rows;
