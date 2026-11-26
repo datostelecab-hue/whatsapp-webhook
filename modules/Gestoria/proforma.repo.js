@@ -112,4 +112,12 @@ async function pendientes() {
   return r.rows[0].n;
 }
 
-module.exports = { hayTabla, personasDelMes, delMes, insertar, sigue, yaNoSale, decidir, marcarEnviadas, lista, porId, quedanDe, pendientes };
+/** La última proforma subida de un mes (la que se vuelve a cruzar), con su original guardado. */
+async function ultimaCarga(periodo) {
+  const r = await db.consulta(
+    `SELECT id::text AS id, nombre, adjunto_id::text AS adjunto_id FROM fichero_importado
+      WHERE tipo = 'proforma_a3' AND periodo = $1 AND estado = 'cargado' ORDER BY id DESC LIMIT 1`, [periodo]);
+  return r.rows[0] || null;
+}
+
+module.exports = { ultimaCarga, hayTabla, personasDelMes, delMes, insertar, sigue, yaNoSale, decidir, marcarEnviadas, lista, porId, quedanDe, pendientes };

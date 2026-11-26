@@ -28,6 +28,7 @@ const contadores = require('../../services/contadores');
 const calendario = require('../../services/calendario');
 const tablero = require('../../services/tablero');
 const organizacion = require('../../services/organizacion');
+const adjuntos = require('../../services/adjuntos');
 
 const TIPO_FICHERO = 'proforma_a3';
 const TIPO_TARJETA = 'gestoria_proforma';
@@ -86,6 +87,31 @@ async function cerrarTarjetaSiHecha(cli, periodo, autorId) {
   await tablero.cerrarPorOrigen(cli, { tipo: TIPO_TARJETA, origenId: periodo, autorId, nota: 'Revisados todos los casos' });
 }
 
+/**
+ * Los casos del mes, al día con un cruce: los nuevos entran, los que siguen se
+ * refrescan (conservan lo decidido) y los que estaban por decidir y ya no
+ * salen se cierran solos. Y la tarjeta. → { nuevos, siguen, cerrados, quedan }
+ */
+async function sincronizar(cli, { leido, casos, ficheroId, nombre, quien }) {
+  const hay = await repo.delMes(cli, leido.periodo);
+  let nuevos = 0, siguen = 0, cerrados = 0;
+  const vistos = new Set();
+  for (const c of casos) {
+    if (vistos.has(c.clave)) continue;
+    vistos.add(c.clave);
+    const ya = hay.get(c.clave);
+    if (ya) { await repo.sigue(cli, ya.id, { detalle: c.detalle, nombreA3: c.nombreA3, ficheroId }); siguen++; }
+    else { await repo.insertar(cli, { ...c, periodo: leido.periodo, ficheroId }); nuevos++; }
+  }
+  for (const [clave, x] of hay) {
+    if (!vistos.has(clave) && await repo.yaNoSale(cli, x.id, `Ya no sale al cruzar «${nombre}»`)) cerrados++;
+  }
+  const quedan = await repo.quedanDe(cli, leido.periodo);
+  if (quedan) await tarjeta(cli, leido.periodo, quedan);
+  else await cerrarTarjetaSiHecha(cli, leido.periodo, quien.usuarioId);
+  return { nuevos, siguen, cerrados, quedan };
+}
+
 /** SUBE LA PROFORMA. Sin `confirmar`, solo dice qué sale. */
 async function subir({ base64, nombre, confirmar = false } = {}, quien = {}) {
   await exigir(quien, gestoria.CLAVE_GESTIONAR);
@@ -108,27 +134,33 @@ async function subir({ base64, nombre, confirmar = false } = {}, quien = {}) {
         conceptos: leido.conceptos.map(c => ({ codigo: c.codigo, nombre: c.nombre })) },
       resultado: resumen, incidencias: casos.length, usuarioId: quien.usuarioId,
     });
-    const hay = await repo.delMes(cli, leido.periodo);
-    let nuevos = 0, siguen = 0, cerrados = 0;
-    const vistos = new Set();
-    for (const c of casos) {
-      if (vistos.has(c.clave)) continue;
-      vistos.add(c.clave);
-      const ya = hay.get(c.clave);
-      if (ya) { await repo.sigue(cli, ya.id, { detalle: c.detalle, nombreA3: c.nombreA3, ficheroId }); siguen++; }
-      else { await repo.insertar(cli, { ...c, periodo: leido.periodo, ficheroId }); nuevos++; }
-    }
-    for (const [clave, x] of hay) {
-      if (!vistos.has(clave) && await repo.yaNoSale(cli, x.id, `Ya no sale en la proforma «${nombreFichero}»`)) cerrados++;
-    }
-    const quedan = await repo.quedanDe(cli, leido.periodo);
-    if (quedan) await tarjeta(cli, leido.periodo, quedan);
-    else await cerrarTarjetaSiHecha(cli, leido.periodo, quien.usuarioId);
-    return { ficheroId, nuevos, siguen, cerrados, quedan };
+    return { ficheroId, ...await sincronizar(cli, { leido, casos, ficheroId, nombre: nombreFichero, quien }) };
   });
   await ficheros.guardarOriginal(r.ficheroId, { nombre: nombreFichero, buffer, usuarioId: quien.usuarioId });
   avisarCambio();
   return { previa: false, resumen, ...r };
+}
+
+/**
+ * VOLVER A CRUZAR la última proforma de un mes con el ERP de ahora (después de
+ * poner un legajo, una baja o una suspensión): el original guardado, sin
+ * subirlo otra vez. → { nuevos, siguen, cerrados, quedan }
+ */
+async function recruzar({ periodo } = {}, quien = {}) {
+  await exigir(quien, gestoria.CLAVE_GESTIONAR);
+  if (!/^\d{4}-\d{2}$/.test(String(periodo || ''))) throw error('Elige el mes');
+  const carga = await repo.ultimaCarga(periodo);
+  if (!carga) throw error(`No hay ninguna proforma de ${mesDe(periodo)} subida`);
+  if (!carga.adjunto_id) throw error('No se guardó el original de esa proforma: súbela otra vez');
+  const r0 = await adjuntos.servir(carga.adjunto_id, { id: quien.usuarioId, usuarioId: quien.usuarioId, rol: quien.rol }, { descargar: true });
+  const trozos = [];
+  for await (const t of r0.cuerpo) trozos.push(Buffer.from(t));
+  const { leido, casos } = await analizar(Buffer.concat(trozos));
+  const r = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'gestoria · proforma', accion: 'cambio',
+    motivo: `Proforma de ${mesDe(periodo)} cruzada otra vez con el ERP` },
+    cli => sincronizar(cli, { leido, casos, ficheroId: Number(carga.id), nombre: carga.nombre, quien }));
+  avisarCambio();
+  return r;
 }
 
 /** LA LISTA: los casos de los últimos meses, con su frase, y las últimas proformas subidas. */
@@ -215,4 +247,4 @@ contadores.registrarFuente('proforma', {
   },
 });
 
-module.exports = { analizar, subir, lista, ficha, decidir, correo, marcarEnviadas, DECISIONES, TIPO_FICHERO, TIPO_TARJETA };
+module.exports = { analizar, subir, recruzar, lista, ficha, decidir, correo, marcarEnviadas, DECISIONES, TIPO_FICHERO, TIPO_TARJETA };

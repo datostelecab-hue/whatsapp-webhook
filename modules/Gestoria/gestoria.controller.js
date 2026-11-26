@@ -47,6 +47,7 @@ router.post('/api/correo/enviado', responde(async req => gestoria.marcarEnviadas
 router.get('/api/proforma/lista', responde(async req => proforma.lista(await quien(req))));
 router.get('/api/proforma/caso/:id', responde(async req => ({ ficha: await proforma.ficha(req.params.id, await quien(req)) })));
 router.post('/api/proforma/subir', responde(async req => proforma.subir(req.body || {}, await quien(req))));
+router.post('/api/proforma/recruzar', responde(async req => proforma.recruzar(req.body || {}, await quien(req))));
 router.post('/api/proforma/decidir', responde(async req => proforma.decidir(req.body || {}, await quien(req))));
 router.get('/api/proforma/correo', responde(async req => proforma.correo(await quien(req))));
 router.post('/api/proforma/correo/enviado', responde(async req => proforma.marcarEnviadas(req.body || {}, await quien(req))));

@@ -1021,12 +1021,15 @@
     // ABIERTO, una novación con su propio historial, así que se guarda por su
     // camino (`/jornada`) y solo sale si hay contrato abierto.
     const JORNADA = '__jornada';
-    const jornadaAntes = valorJornadaDe(d);
+    // Sin jornada en el contrato (18 el 26/11/2026), la casilla sale vacía y no
+    // se exige: antes salía «40», que no está en la lista, y «Guardar» se
+    // quedaba pidiendo la jornada abajo del todo, sin que se viera.
+    const jornadaAntes = d.jornada_horas == null ? '' : valorJornadaDe(d);
     const conJornada = !SOLO_OPERATIVO && d.empleo_vigente
       && (!soloGrupo || soloGrupo === '*' || soloGrupo === 'Contrato');
     if (conJornada) {
       campos.push({
-        id: JORNADA, etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista', valor: jornadaAntes, obligatorio: true,
+        id: JORNADA, etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista', valor: jornadaAntes, obligatorio: !!jornadaAntes,
         opciones: JORNADAS,
         ayuda: 'Las horas del contrato que tiene abierto. Cambiarlas no abre uno nuevo ni le toca la '
              + 'antigüedad, y queda en su historial quién lo cambió y de cuánto a cuánto.',
@@ -1075,11 +1078,14 @@
     const libranzasNuevas = diasNuevos && !mismosDias(diasNuevos, libranzasAntes) ? diasNuevos : null;
     if (!Object.keys(cambios).length && !jornadaNueva && !libranzasNuevas) return;
 
-    await hacer(async () => {
+    const hecho = await hacer(async () => {
       if (Object.keys(cambios).length) await enviar(`/plantilla/api/conductor/${d.id}`, 'PUT', cambios);
       if (jornadaNueva) await enviar(`/plantilla/api/conductor/${d.id}/jornada`, 'POST', { jornadaHoras: jornadaNueva });
       if (libranzasNuevas) await enviar(`/plantilla/api/conductor/${d.id}/libranza`, 'POST', { dias: libranzasNuevas });
+      return true;
     });
+    // Que se vea que se guardó (26/11/2026: guardar sin ningún mensaje parecía no hacer nada).
+    if (hecho) Dialogo.hecho('Datos guardados');
   }
 
   /** Baja un Excel que genera el servidor, con su nombre; los errores, a la vista. */

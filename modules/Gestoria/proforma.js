@@ -24,7 +24,7 @@
 //   · fuera         plantilla propia del ERP en el mes que no está en la nómina
 'use strict';
 
-const { mismoNombre, plano } = require('./listado');
+const { palabrasEnComun, plano } = require('./listado');
 
 const CODIGO = /^\d{6}$/;
 const IT = new Set(['450', '451', '452', '455']);
@@ -135,7 +135,10 @@ function cruzar({ trabajadores, personas, desde, hasta, hoy }) {
   for (const t of trabajadores) {
     let p = porLegajo.get(t.legajo);
     if (!p) {
-      const cand = personas.filter(x => x.legajo !== t.legajo && mismoNombre(t.nombre, x.nombre, x.nombre_ss));
+      // A quién se parece: dos palabras en común como poco; entre varias, la que comparte más.
+      const puntos = personas.map(x => ({ x, n: x.legajo !== t.legajo ? palabrasEnComun(t.nombre, x.nombre, x.nombre_ss) : 0 })).filter(y => y.n >= 2);
+      const mejor = Math.max(0, ...puntos.map(y => y.n));
+      const cand = puntos.filter(y => y.n === mejor).map(y => y.x);
       const una = cand.length === 1 ? cand[0] : null;
       poner('legajo', una, t, {
         nota: t.nota, candidatos: cand.length,

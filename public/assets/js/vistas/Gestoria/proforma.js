@@ -8,7 +8,7 @@
 (function () {
   const PUEDE = !!Casa.datos().puedeGestionar;
   const { esc, etiqueta } = Listado.fmt;
-  let TIPOS = {}, DECISIONES = {}, MESES = [];
+  let TIPOS = {}, DECISIONES = {}, MESES = [], PERIODOS = [];
   const $ = s => document.querySelector(s);
   const tipo = f => TIPOS[f.tipo] || { etiqueta: f.tipo, tono: 'muted' };
   const dec = f => DECISIONES[f.decision] || { etiqueta: f.decision, tono: 'muted' };
@@ -45,6 +45,7 @@
         if (extra && extra.tipos) TIPOS = extra.tipos;
         if (extra && extra.decisiones) DECISIONES = extra.decisiones;
         MESES = [...new Set(filas.map(f => f.mes))];
+        PERIODOS = [...new Map(filas.map(f => [f.periodo, { periodo: f.periodo, mes: f.mes }])).values()];
         const pend = filas.filter(f => f.decision === 'pendiente');
         const sinMandar = filas.filter(f => f.decision === 'a3' && !f.enviada).length;
         return [
@@ -77,6 +78,7 @@
       acciones: PUEDE ? [
         { texto: 'Subir proforma', icono: 'fa-file-arrow-up', onClick: () => subir() },
         { id: 'pf-decidir', texto: 'Decidir marcados', icono: 'fa-check-double', principal: false, activa: false, onClick: lst => decidirMarcados(lst) },
+        { texto: 'Volver a cruzar', icono: 'fa-rotate', principal: false, onClick: () => recruzar() },
         { texto: 'Correo a la gestoría', icono: 'fa-envelope', principal: false, onClick: () => correo() },
       ] : [],
       seleccion: PUEDE,
@@ -84,7 +86,8 @@
 
       columnas: [
         { titulo: 'Mes', campo: 'mes', clase: 'whitespace-nowrap text-xs' },
-        { titulo: 'Persona', valor: f => f.nombre_erp || f.nombre_a3 || '—', clase: 'font-semibold',
+        // Un código que el ERP no tiene: manda el nombre de la proforma (el del ERP es solo a quién se parece).
+        { titulo: 'Persona', valor: f => (f.tipo === 'legajo' ? f.nombre_a3 || f.nombre_erp : f.nombre_erp || f.nombre_a3) || '—', clase: 'font-semibold',
           pinta: (v, f) => esc(v) + (f.legajo ? `<span class="block text-xs font-normal text-telecab-muted tabular-nums">Código ${esc(f.legajo)}</span>` : '') },
         { titulo: 'Qué pasa', valor: f => tipo(f).etiqueta, pinta: (v, f) => `${etiqueta(v, tipo(f).tono)}<span class="block text-xs mt-0.5">${esc(f.frase)}</span>` },
         { titulo: 'Nota de la proforma', valor: f => (f.detalle && f.detalle.nota) || '', clase: 'text-xs text-telecab-muted' },
@@ -186,6 +189,20 @@
     const hecho = await Api.post('/gestoria/api/proforma/subir', { base64, nombre: file.name, confirmar: true }, { aviso: 'No se ha podido subir', bloquea: true });
     if (!hecho) return;
     Dialogo.hecho(`Proforma subida: ${hecho.nuevos} nuevos, ${hecho.siguen} siguen${hecho.cerrados ? `, ${hecho.cerrados} ya no salen` : ''}`);
+    if (lista) await lista.recargar();
+  }
+
+  /** La última proforma del mes, cruzada otra vez con el ERP de ahora (después de corregir legajos, bajas…). */
+  async function recruzar() {
+    if (!MESES.length && !PERIODOS.length) return Dialogo.aviso({ titulo: 'No hay proforma', texto: 'Sube primero una proforma.' });
+    const opciones = PERIODOS.map(p => ({ valor: p.periodo, texto: p.mes }));
+    const v = await Dialogo.formulario('Volver a cruzar la proforma', [
+      { id: 'periodo', etiqueta: 'Mes', tipo: 'lista', obligatorio: true, opciones, valor: opciones[0] && opciones[0].valor },
+    ], { textoBoton: 'Cruzar', nota: 'La última proforma subida de ese mes, contra el ERP de ahora. Lo decidido se conserva; lo que ya no salga se cierra solo.' });
+    if (!v) return;
+    const r = await Api.post('/gestoria/api/proforma/recruzar', { periodo: v.periodo }, { aviso: 'No se ha podido cruzar', bloquea: true });
+    if (!r) return;
+    Dialogo.hecho(`Cruzada otra vez: ${r.nuevos} nuevos, ${r.siguen} siguen${r.cerrados ? `, ${r.cerrados} ya no salen` : ''}`);
     if (lista) await lista.recargar();
   }
 

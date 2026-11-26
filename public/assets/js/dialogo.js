@@ -709,6 +709,9 @@
         if (fallos.length) {
           aviso.textContent = fallos.join(' ');
           aviso.classList.remove('hidden');
+          // Que se vea (26/11/2026): en un formulario alto el aviso quedaba abajo,
+          // fuera de la vista, y «Guardar» parecía no hacer nada.
+          aviso.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           return;
         }
         cerrar(salida);

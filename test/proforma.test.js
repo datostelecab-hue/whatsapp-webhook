@@ -54,6 +54,24 @@ test('leer: el mes, la empresa, cada trabajador y los totales', async () => {
   await assert.rejects(async () => proforma.leer([{ nombre: 'x', filas: [['nada']] }]), /No parece una proforma/);
 });
 
+test('a quién se parece un código: palabras distintas, la cortada por A3 vale, y gana la que más comparte', () => {
+  // 26/11/2026: «MEDINA MEDINA MÓNICA» casaba con «MEDINA ROMERO CRISTIAN JEF» (contaba MEDINA dos veces).
+  assert.equal(listado.mismoNombre('MEDINA ROMERO CRISTIAN JEF', 'MEDINA MEDINA MÓNICA'), false);
+  assert.equal(listado.mismoNombre('MEDINA ROMERO CRISTIAN JEF', 'JEFFERSON, CRISTIAN'), true, 'JEF es el principio de JEFFERSON');
+  const personas = [
+    { id: '1', nombre: 'MEDINA MEDINA MÓNICA', legajo: '002619', empleos: [], situaciones: [] },
+    { id: '2', nombre: 'JEFFERSON, CRISTIAN', legajo: null, empleos: [{ tipo: 'propia', alta: '2026-07-21', baja: null }], situaciones: [] },
+    { id: '3', nombre: 'MEDINA ROMERO, CRISTIAN JEFFERSON', legajo: null, empleos: [], situaciones: [] },
+  ];
+  const casos = proforma.cruzar({ trabajadores: [{ legajo: '002648', nombre: 'MEDINA ROMERO CRISTIAN JEF', dias: 30, it: 0, nota: '' }],
+    personas: personas.slice(0, 2), desde: '2026-11-01', hasta: '2026-11-30', hoy: '2026-11-26' });
+  assert.equal(casos.find(c => c.tipo === 'legajo').detalle.propuesta.id, '2');
+  assert.ok(!casos.some(c => c.tipo === 'sin_contrato'), 'ya no le achaca el mes a otra persona');
+  const conTres = proforma.cruzar({ trabajadores: [{ legajo: '002648', nombre: 'MEDINA ROMERO CRISTIAN JEF', dias: 30, it: 0, nota: '' }],
+    personas, desde: '2026-11-01', hasta: '2026-11-30', hoy: '2026-11-26' });
+  assert.equal(conTres.find(c => c.tipo === 'legajo').detalle.propuesta.id, '3', 'entre dos parecidas, la que comparte más palabras');
+});
+
 test('subir, decidir y el correo: cada caso del cruce, y lo que ya no sale se cierra solo', () => conBase(async ({ consulta, fabrica }) => {
   const diana = await fabrica.usuario({ rol: 'oficina', nombre: 'Diana' });
   await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/gestoria'), ($1, '/gestoria/gestionar')`, [diana.id]);

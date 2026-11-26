@@ -87,6 +87,8 @@ test/proforma.test.js                  con una proforma de mentira hecha en el t
 | Plantilla propia fuera de la nómina | dice si es un alta reciente (código posterior al último de la nómina): lo normal es que llegue después |
 
 - **Decidir** cada caso (o varios marcados): **corregir en A3** (con nota: va al correo), **corregir en el ERP** o **está bien**; se puede volver a «por decidir».
+- **A quién se parece un código** (26/11/2026): dos palabras largas **distintas** en común (antes contaba dos veces la misma: «MEDINA MEDINA MÓNICA» casaba con «MEDINA ROMERO CRISTIAN JEF»); una palabra que A3 corta («JEF») vale si es el principio de la otra («JEFFERSON»); entre varias fichas parecidas, la que comparte más. Lo usa también el cruce del listado de plantilla.
+- **Volver a cruzar**: la última proforma subida de un mes, contra el ERP de ahora, con el original guardado (sin subirla otra vez): después de poner un legajo, una baja o una suspensión. Lo decidido se conserva y lo que ya no sale se cierra solo.
 - **Otra proforma del mismo mes**: lo decidido se conserva; lo que estaba por decidir y ya no sale, se cierra solo («ya no sale»). La misma no entra dos veces ([[Ficheros importados]], tipo `proforma_a3`).
 - **El correo**: los «corregir en A3» sin mandar, con su frase y la nota; «Ya lo he mandado» los apunta.
 - **La tarjeta**: «Revisar la proforma de noviembre de 2026: N casos», a quien sube los listados de la gestoría, con vencimiento el día del corte (`nomina.dia_corte`); se cierra sola al no quedar ninguno por decidir. **No frena nada.**

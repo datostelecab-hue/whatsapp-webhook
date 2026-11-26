@@ -124,10 +124,24 @@ function interpretar(hojas) {
     + (muestra ? ` He visto: ${muestra}.` : ' El Excel parece vacío.'));
 }
 
-/** ¿El nombre de la gestoría y el del ERP son la misma persona? Dos palabras largas en común bastan. */
+/**
+ * ¿El nombre de la gestoría y el del ERP son la misma persona? Dos palabras
+ * largas DISTINTAS en común bastan. Una palabra cortada por A3 («JEF», de
+ * «JEFFERSON») vale si es el principio de la otra. 26/11/2026: contaba dos
+ * veces la misma, y «MEDINA MEDINA MÓNICA» casaba con «MEDINA ROMERO CRISTIAN».
+ */
 function mismoNombre(a, ...otros) {
-  const pa = new Set(plano(a).split(' ').filter(p => p.length > 2));
-  return otros.some(o => plano(o).split(' ').filter(p => p.length > 2 && pa.has(p)).length >= 2);
+  return palabrasEnComun(a, ...otros) >= 2;
+}
+
+/** Cuántas palabras largas distintas comparte `a` con el que más se le parece de `otros`. */
+function palabrasEnComun(a, ...otros) {
+  const pa = [...new Set(plano(a).split(' ').filter(p => p.length > 2))];
+  const casa = (x, y) => x === y || (Math.min(x.length, y.length) >= 3 && (x.startsWith(y) || y.startsWith(x)));
+  return Math.max(0, ...otros.map(o => {
+    const po = [...new Set(plano(o).split(' ').filter(p => p.length > 2))];
+    return pa.filter(x => po.some(y => casa(x, y))).length;
+  }));
 }
 
 const diasEntre = (desde, hasta) => {
@@ -209,4 +223,4 @@ function cruzar({ trabajadores, personas, fecha, tipo }) {
   return salida;
 }
 
-module.exports = { hojasDe, interpretar, cruzar, fechaDe, mismoNombre, plano };
+module.exports = { hojasDe, interpretar, cruzar, fechaDe, mismoNombre, palabrasEnComun, plano };
