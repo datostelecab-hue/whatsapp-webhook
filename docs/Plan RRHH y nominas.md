@@ -151,7 +151,9 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - ✔ 26/11 (db/300): el catálogo de conceptos de A3 y las líneas del mes con su origen, en [[Gestoria#La pestaña «Variables»: el catálogo de conceptos de A3 y las líneas del mes (módulo 4, db/300, 26/11/2026)]]. Decidido: MBO → 066, nocturnidad → 053, propinas → 519, peajes → 607; descuentos con su concepto; lo demás a mano; lo gestiona quien gestiona la gestoría. El Excel sale con la forma del lienzo para copiarlo; escribir el `.xls` sigue pendiente de la gestoría.
 - ✔ 26/11 (db/298): los descuentos en nómina, ver [[Descuentos en nomina]]. Decidido: km del Banco de KM a un precio por km; aprobar es una llave que se da a quien se quiera; sin tope (se aplaza a mano); conceptos 753/758/751/754. Falta: que alguien tenga la llave de aprobar, el precio por km y el visto bueno de Legal antes del primer cierre.
 - ✔ 26/11: el panel del mes, encima del cierre en [[Gestoria#La pestaña «Cierre del mes» (módulo 4, db/299, 26/11/2026)]] (proforma, variables para A3 y descuentos, contra el mes anterior).
-- El borrador: validación, versiones y rectificaciones (falta un borrador real de la gestoría). La IT (faltan las tablas de 2026 y 2027).
+- ✔ 26/11 (db/307): el doble cruce de la IT con la gestoría, completo: la baja del ERP sin IT en la nómina (db/296) y ahora la IT de la nómina sin baja en el ERP, en la proforma.
+- ✔ 26/11: en el finiquito, «Otros descuentos» son ya los de [[Descuentos en nomina]] aprobados o aplazados (los por aprobar se enseñan, no entran).
+- El borrador: validación, versiones y rectificaciones (falta un borrador real de la gestoría). La IT precalculada (faltan las tablas de 2026 y 2027).
 
 **Fase 4 · Módulos 6 y 9**
 - La comunicación como entidad única, con plantillas y evidencias, y las dos integraciones.

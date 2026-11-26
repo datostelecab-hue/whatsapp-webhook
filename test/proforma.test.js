@@ -132,3 +132,23 @@ test('subir, decidir y el correo: cada caso del cruce, y lo que ya no sale se ci
   assert.equal(tras.find(x => x.tipo === 'suspension').decision, 'a3', 'lo decidido se conserva');
   assert.equal((await consulta(`SELECT estado FROM tarea WHERE tipo = 'gestoria_proforma' AND origen_id = '2026-11'`)).rows[0].estado, 'cerrada');
 }));
+
+test('el doble cruce de la IT (db/307): IT en la nómina sin baja en el ERP, y la baja del ERP sin IT', () => {
+  const personas = [
+    { id: '1', nombre: 'CON IT, SIN BAJA', legajo: '000201', empleos: [{ tipo: 'propia', alta: '2026-01-01', baja: null }], situaciones: [] },
+    { id: '2', nombre: 'CON IT, CON BAJA', legajo: '000202', empleos: [{ tipo: 'propia', alta: '2026-01-01', baja: null }],
+      situaciones: [{ estado: 'baja_medica', desde: '2026-10-20', hasta: '2026-11-05' }] },
+    { id: '3', nombre: 'SIN IT, CON BAJA', legajo: '000203', empleos: [{ tipo: 'propia', alta: '2026-01-01', baja: null }],
+      situaciones: [{ estado: 'baja_medica', desde: '2026-11-10', hasta: '2026-11-15' }] },
+  ];
+  const casos = proforma.cruzar({ trabajadores: [
+    { legajo: '000201', nombre: 'CON IT SIN BAJA', dias: 30, it: 120.5, nota: '' },
+    { legajo: '000202', nombre: 'CON IT CON BAJA', dias: 30, it: 80, nota: '' },
+    { legajo: '000203', nombre: 'SIN IT CON BAJA', dias: 30, it: 0, nota: '' },
+  ], personas, desde: '2026-11-01', hasta: '2026-11-30', hoy: '2026-11-26' });
+  const de = tipo => casos.filter(c => c.tipo === tipo).map(c => c.conductorId);
+  assert.deepEqual(de('it_sin_baja'), ['1']);
+  assert.deepEqual(de('baja_medica'), ['3']);
+  assert.match(proforma.frase(casos.find(c => c.tipo === 'it_sin_baja')), /120,5 € de IT/);
+});
+

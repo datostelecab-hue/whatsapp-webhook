@@ -82,6 +82,7 @@ test/proforma.test.js                  con una proforma de mentira hecha en el t
 | Código que el ERP no tiene | con la ficha que se le parece por el nombre (si es una) |
 | Cobra el mes sin contrato propio | para el ERP no es plantilla propia ese mes (o es de ETT) |
 | Baja médica que la nómina no recoge | baja del ERP que ya había empezado al subirla, sin IT ni nota; avisa si es de un día |
+| IT en la nómina sin baja en el ERP | (db/307, 26/11/2026) la nómina le imputa IT (450-455) y el ERP no tiene ninguna baja médica que toque el mes: falta apuntarla con su parte, o la IT no corresponde. Es la otra mitad del doble cruce del encargo. Sin la 307 aplicada no se apunta |
 | Suspensión que no cuadra | suspendido en el ERP y cotiza los días enteros; o la nota dice suspensión y el ERP no la tiene |
 | Días cotizados distintos a su contrato | días de contrato propio en el mes, **menos los suspendido** |
 | Plantilla propia fuera de la nómina | dice si es un alta reciente (código posterior al último de la nómina): lo normal es que llegue después |

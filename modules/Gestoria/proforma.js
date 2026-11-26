@@ -19,6 +19,8 @@
 //   · legajo        un código que ninguna ficha tiene (con la ficha que se le parece)
 //   · sin_contrato  la nómina le paga el mes y el ERP no le da contrato propio
 //   · baja_medica   una baja médica del ERP que la nómina no recoge (sin IT ni nota)
+//   · it_sin_baja   la nómina imputa IT y el ERP no tiene ninguna baja médica en el
+//                   mes (db/307: la otra mitad del doble cruce del encargo)
 //   · suspension    una suspensión que la nómina no descuenta, o que el ERP no tiene
 //   · dias          los días cotizados no son los de su contrato (menos los suspendido)
 //   · fuera         plantilla propia del ERP en el mes que no está en la nómina
@@ -32,6 +34,7 @@ const TIPOS = {
   legajo: { etiqueta: 'Código que el ERP no tiene', tono: 'warn' },
   sin_contrato: { etiqueta: 'Cobra el mes sin contrato propio', tono: 'red' },
   baja_medica: { etiqueta: 'Baja médica que la nómina no recoge', tono: 'red' },
+  it_sin_baja: { etiqueta: 'IT en la nómina sin baja en el ERP', tono: 'red' },
   suspension: { etiqueta: 'Suspensión que no cuadra', tono: 'red' },
   dias: { etiqueta: 'Días cotizados distintos a su contrato', tono: 'warn' },
   fuera: { etiqueta: 'Plantilla propia fuera de la nómina', tono: 'warn' },
@@ -158,6 +161,10 @@ function cruzar({ trabajadores, personas, desde, hasta, hoy }) {
     if (bajas.length && t.it === 0 && !/BAJA MEDICA/.test(plano(t.nota))) {
       poner('baja_medica', p, t, { nota: t.nota, tramos: bajas.map(tramo), unDia: bajas.every(s => s.hasta === s.desde) });
     }
+    // Y al revés (db/307): la nómina le imputa IT y el ERP no tiene ninguna baja
+    // médica que toque el mes. O falta apuntarla, o la IT no es de este mes.
+    const bajasMes = (p.situaciones || []).filter(s => s.estado === 'baja_medica' && solape(s.desde, s.hasta, desde, hasta) > 0);
+    if (t.it > 0 && !bajasMes.length) poner('it_sin_baja', p, t, { nota: t.nota, it: t.it });
     const ds = diasSusp(p);
     const notaSusp = /SUSPEN/i.test(plano(t.nota));
     if (ds > 0 && t.dias >= dc) poner('suspension', p, t, { nota: t.nota, dias: t.dias, diasSuspension: ds, tramos: susp(p).map(tramo), que: 'erp' });
@@ -191,6 +198,7 @@ function frase(c) {
     case 'sin_contrato': return `Cotiza ${dias_(d.dias)}, y el ERP no le da contrato propio este mes${(d.empleos || []).length
       ? ` (${d.empleos.map(e => `${e.tipo === 'ett' ? 'ETT' : e.tipo} desde el ${dmy(e.alta)}`).join(', ')})` : ''}`;
     case 'baja_medica': return `Baja médica en el ERP ${tramos(d.tramos)} y la nómina no trae IT${d.unDia ? ' (de un día: ¿justificante médico?)' : ''}`;
+    case 'it_sin_baja': return `La nómina imputa ${String(d.it).replace('.', ',')} € de IT y el ERP no tiene ninguna baja médica este mes: falta apuntarla (con su parte) o la IT no corresponde`;
     case 'suspension': return d.que === 'erp'
       ? `Suspendido en el ERP ${tramos(d.tramos)} (${dias_(d.diasSuspension)}) y la nómina cotiza ${dias_(d.dias)}`
       : `La nómina dice «${d.nota}» y el ERP no tiene esa suspensión`;

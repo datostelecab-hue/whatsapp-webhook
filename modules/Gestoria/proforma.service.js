@@ -52,11 +52,24 @@ ficheros.registrarTipo(TIPO_FICHERO, {
 
 tablero.registrarTipo(TIPO_TARJETA, { etiqueta: 'Proforma de la gestoría', abrir: 'Revisar la proforma', cierreManual: false });
 
+let admite = false;
+async function admiteItSinBaja() {
+  if (admite) return true;
+  const db = require('../../services/db');
+  const r = await db.consulta(
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'ck_proforma_tipo'`).catch(() => ({ rows: [] }));
+  admite = !!(r.rows[0] && /it_sin_baja/.test(r.rows[0].def));
+  return admite;
+}
+
 /** Lee la proforma y la cruza con el ERP. → { leido, casos, resumen } */
 async function analizar(buffer, { hoy = calendario.hoy() } = {}) {
   const leido = proforma.leer(await listado.hojasDe(buffer));
-  const casos = proforma.cruzar({ trabajadores: leido.trabajadores, personas: await repo.personasDelMes(leido.desde, leido.hasta),
+  const todos = proforma.cruzar({ trabajadores: leido.trabajadores, personas: await repo.personasDelMes(leido.desde, leido.hasta),
     desde: leido.desde, hasta: leido.hasta, hoy });
+  // `it_sin_baja` (db/307) solo cuando la base ya lo admite: con el código subido
+  // y la migración sin aplicar, guardarlo rompería la carga entera.
+  const casos = await admiteItSinBaja() ? todos : todos.filter(c => c.tipo !== 'it_sin_baja');
   const porTipo = {};
   casos.forEach(c => { porTipo[c.tipo] = (porTipo[c.tipo] || 0) + 1; });
   return {

@@ -62,7 +62,7 @@
         return [
           { valor: pend.length, etiqueta: 'por decidir', tono: 'warn', filtro: { id: 'decision', valor: 'pendiente' } },
           { valor: sinMandar, etiqueta: 'para la gestoría, sin mandar', tono: sinMandar ? 'red' : undefined, filtro: { id: 'decision', valor: 'a3' } },
-          { valor: pend.filter(f => ['baja_medica', 'suspension', 'sin_contrato'].includes(f.tipo)).length, etiqueta: 'bajas, suspensiones y sin contrato',
+          { valor: pend.filter(f => ['baja_medica', 'it_sin_baja', 'suspension', 'sin_contrato'].includes(f.tipo)).length, etiqueta: 'bajas, suspensiones y sin contrato',
             tono: 'red', ayuda: 'Los que más pesan en la nómina: se paga o se cotiza de más (o de menos).' },
         ];
       },
