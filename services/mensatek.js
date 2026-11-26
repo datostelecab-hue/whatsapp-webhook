@@ -70,7 +70,11 @@ async function llamar(funcion, cuerpo = {}, { fichero = false } = {}) {
   const o = Array.isArray(datos) ? datos[0] || {} : datos || {};
   const res = Number(o.Res);
   if (!(res > 0)) {
-    throw error(ERRORES[String(res)] || o.Error || `Mensatek ha contestado Res=${o.Res}`, { res, respuesta: o });
+    // Con -1 (no le reconoce), lo mismo que con el 401: qué le llega al servidor.
+    const pista = res === -1
+      ? `. Al servidor le llegan un usuario de ${usuario().length} caracteres y un token de ${clave().length}; Mensatek dice: «${JSON.stringify(o).slice(0, 160)}»`
+      : '';
+    throw error((ERRORES[String(res)] || o.Error || `Mensatek ha contestado Res=${o.Res}`) + pista, { res, respuesta: o });
   }
   return o;
 }
