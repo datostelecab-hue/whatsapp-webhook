@@ -137,7 +137,8 @@ router.get('/api/candidatura/:id/foto', async (req, res) => {
   try {
     const f = await ett.foto(req.params.id);
     if (!f) return res.status(404).send('Sin foto');
-    res.setHeader('Content-Type', f.mime || 'image/jpeg');
+    // Solo una imagen de verdad se abre como imagen (26/11/2026): las cabeceras de adjuntos.
+    res.set(require('../../services/adjuntos').cabecerasSeguras({ mime: f.mime || 'image/jpeg', nombre: 'foto' }));
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.send(f.bytes);
   } catch (e) {

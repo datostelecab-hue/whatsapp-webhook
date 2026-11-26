@@ -286,8 +286,8 @@ router.delete('/api/documento/:id', responde(async req =>
 router.get('/api/documento/:id/descargar', async (req, res) => {
   try {
     const d = await plantilla.descargarDocumento(req.params.id);
-    res.setHeader('Content-Type', d.mime || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre)}"`);
+    // Abierto en la página solo si es una foto, un PDF, un vídeo o un audio (26/11/2026).
+    res.set(require('../../services/adjuntos').cabecerasSeguras({ mime: d.mime, nombre: d.nombre }));
     res.send(d.bytes);
   } catch (e) {
     console.error(`❌ [PLANTILLA] descargar: ${e.message}`);
@@ -303,7 +303,8 @@ router.get('/api/conductor/:id/foto', async (req, res) => {
   try {
     const f = await plantilla.foto(req.params.id);
     if (!f) return res.status(404).send('Sin foto');
-    res.setHeader('Content-Type', f.mime || 'image/jpeg');
+    // Solo una imagen de verdad se abre como imagen (26/11/2026): las cabeceras de adjuntos.
+    res.set(require('../../services/adjuntos').cabecerasSeguras({ mime: f.mime || 'image/jpeg', nombre: 'foto' }));
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.send(f.bytes);
   } catch (e) {

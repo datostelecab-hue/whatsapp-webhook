@@ -74,7 +74,7 @@ async function conTiempoLimite(url, opciones, ms = TIMEOUT_BOLT) {
   }
 }
 
-async function apiRequest(endpoint, method = 'POST', body = null) {
+async function apiRequest(endpoint, method = 'POST', body = null, reintento = true) {
   const token = await getAccessToken();
   const options = {
     method,
@@ -89,9 +89,11 @@ async function apiRequest(endpoint, method = 'POST', body = null) {
   }
 
   const response = await conTiempoLimite(CONFIG_BOLT.apiBaseUrl + endpoint, options);
-  if (response.status === 401 || response.status === 403) {
+  // Token caducado: se pide otro UNA vez, como en la v2 (26/11/2026). Con las
+  // credenciales mal, el segundo 401 o 403 ya no vuelve a empezar.
+  if ((response.status === 401 || response.status === 403) && reintento) {
     accessToken = null;
-    return apiRequest(endpoint, method, body);
+    return apiRequest(endpoint, method, body, false);
   }
   return { httpCode: response.status, data: await response.json() };
 }

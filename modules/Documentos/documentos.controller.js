@@ -139,8 +139,8 @@ router.delete('/api/doc/:id', responde(async req => {
 router.get('/api/doc/:id/descargar', async (req, res) => {
   try {
     const d = await docs.descargar(req.params.id);
-    res.setHeader('Content-Type', d.mime || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`);
+    // Abierto en la página solo si es una foto, un PDF, un vídeo o un audio (26/11/2026).
+    res.set(require('../../services/adjuntos').cabecerasSeguras({ mime: d.mime, nombre: d.nombre || 'documento' }));
     res.send(d.bytes);
   } catch (e) {
     console.error('❌ [DOCS] descargar:', e.message);

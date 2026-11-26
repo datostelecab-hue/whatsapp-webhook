@@ -102,10 +102,24 @@ router.get('/auditoria/pdf', descarga(req => operaciones.pdfDeFlujo({
 // documentadas una a una en `mapon.diagnostico`. Sin `status: 'ok'`: se lee
 // como un volcado, no como una respuesta de API.
 
-router.get('/fichaje/diagnostico', async (req, res) => {
-  try { res.json(await require('./mapon.diagnostico').diagnostico(req.query || {})); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
+//
+// SOLO EL DESARROLLADOR (26/11/2026). Por GET, solo lo que lee; lo que ACTÚA
+// (un comando, el relé, soltar el motor, crear o asignar en Mapon) va por POST:
+// una orden a un coche no sale de abrir una dirección.
+const ACTUAN = ['ejecutar', 'probarrele', 'rele', 'liberar', 'crear', 'asignar', 'soltar'];
+const { requiereDesarrollador } = require('../../services/sesion');
+const diagnostico = soloLeer => async (req, res) => {
+  try {
+    const q = { ...(req.query || {}), ...(soloLeer ? {} : (req.body || {})) };
+    const actua = ACTUAN.filter(k => q[k] !== undefined && q[k] !== '');
+    if (soloLeer && actua.length) {
+      return res.status(405).json({ error: `«${actua.join('», «')}» actúa sobre un coche o sobre Mapon: va por POST, no por un enlace.` });
+    }
+    res.json(await require('./mapon.diagnostico').diagnostico(q));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+};
+router.get('/fichaje/diagnostico', requiereDesarrollador, diagnostico(true));
+router.post('/fichaje/diagnostico', requiereDesarrollador, diagnostico(false));
 
 // ── El banco de KM (db/267, 18/11/2026) ─────────────────────────────────────
 router.use('/banco-km', require('./bancoKm.controller'));

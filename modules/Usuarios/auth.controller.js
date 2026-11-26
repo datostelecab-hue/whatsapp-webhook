@@ -143,7 +143,19 @@ router.post('/sede', (req, res) => {
   res.redirect(sede === 'barcelona' ? '/barcelona' : '/inicio');
 });
 
-// ── Olvidé mi contraseña → nueva provisional por correo + cambio forzado ─────
+// ── Olvidé mi contraseña → un ENLACE de un solo uso (26/11/2026) ─────────────
+// Llega un enlace firmado (el secreto de las sesiones), que caduca en una hora y
+// lleva una huella de la contraseña de ahora. Hasta que se abre NO cambia nada.
+// Al abrirlo, la contraseña vieja deja de valer (por eso es de un solo uso), se
+// entra y se pide la nueva (el cambio forzado de siempre).
+const crypto = require('crypto');
+const UNA_HORA = 60 * 60 * 1000;
+const huellaDe = hash => crypto.createHash('sha256').update(String(hash || '')).digest('base64url').slice(0, 16);
+const baseDe = req => {
+  const d = require('../../services/dominioErp').dominio();
+  return d ? `https://${d}` : `${req.protocol}://${req.get('host')}`;
+};
+
 router.get('/olvide-password', (req, res) => {
   res.render('olvide-password', { titulo: 'Recuperar acceso', layout: LAYOUT, mensaje: null, error: null });
 });
@@ -151,19 +163,51 @@ router.get('/olvide-password', (req, res) => {
 router.post('/olvide-password', async (req, res) => {
   const email = usuarios.normalizarEmail((req.body || {}).email);
   // Respuesta genérica siempre (no se revela qué correos existen).
-  const generico = 'Si ese correo tiene una cuenta, te hemos enviado una contraseña provisional.';
+  const generico = 'Si ese correo tiene una cuenta, te hemos enviado un enlace para entrar. Caduca en una hora.';
+  const listo = () => res.render('olvide-password', { titulo: 'Recuperar acceso', layout: LAYOUT, mensaje: generico, error: null });
+  const ip = req.ip || '';
   try {
+    // Sin avalancha de correos: como mucho unos pocos por correo y por IP (el
+    // mismo contador que el del login, con su propia clave).
+    if (Math.max(limite.segundosBloqueo('reset-ip:' + ip), limite.segundosBloqueo('reset:' + email)) > 0) return listo();
+    limite.registrarFallo('reset-ip:' + ip);
+    limite.registrarFallo('reset:' + email);
     const u = await usuarios.buscarUsuario(email);
     if (u && u.estado !== usuarios.ESTADOS_U.BLOQUEADO) {
-      const prov = usuarios.generarPasswordProvisional();
-      // Sin sesión: en el libro, lo hace el sistema desde el acceso.
-      await usuarios.actualizarUsuario(email, { hash: usuarios.hashPassword(prov), debe_cambiar: 'si' }, { origen: 'acceso' });
+      const t = sesion.firmarDato({ t: 'reset', e: email, h: huellaDe(u.hash), exp: Date.now() + UNA_HORA });
+      const enlace = `${baseDe(req)}/restablecer?t=${encodeURIComponent(t)}`;
       const r = await enviarCorreo({ to: email, subject: 'Recuperar acceso — Telecab',
-        text: `Se ha solicitado recuperar el acceso de ${email}.\n\nTu nueva contraseña provisional es: ${prov}\n\nEntra en la plataforma y el sistema te pedirá crear una nueva. Si no lo has pedido tú, avisa al administrador.` });
-      if (!r.enviado) console.log(`🔑 [AUTH] Provisional (reset) de ${email}: ${prov}`);
+        text: `Se ha pedido recuperar el acceso de ${email}.\n\nPara entrar y poner una contraseña nueva, abre este enlace (caduca en una hora y sirve una sola vez):\n${enlace}\n\nSi no lo has pedido tú, no hagas nada: tu contraseña no ha cambiado.` });
+      // Nunca se escribe el enlace en el registro: vale para entrar.
+      if (!r.enviado) console.error(`❌ [AUTH] olvide-password: no se pudo enviar el enlace a ${email}`);
     }
   } catch (e) { console.error('❌ [AUTH] olvide-password:', e.message); }
-  res.render('olvide-password', { titulo: 'Recuperar acceso', layout: LAYOUT, mensaje: generico, error: null });
+  return listo();
+});
+
+router.get('/restablecer', async (req, res) => {
+  const caducado = () => res.status(400).render('olvide-password', { titulo: 'Recuperar acceso', layout: LAYOUT, mensaje: null,
+    error: 'Ese enlace ya no vale: caducó o ya se usó. Pide otro.' });
+  try {
+    const p = sesion.verificarDato(String(req.query.t || ''));
+    if (!p || p.t !== 'reset' || !p.e) return caducado();
+    const u = await usuarios.buscarUsuario(p.e);
+    if (!u || u.estado === usuarios.ESTADOS_U.BLOQUEADO || huellaDe(u.hash) !== p.h) return caducado();
+    // De un solo uso: la contraseña vieja deja de valer y hay que poner otra.
+    await usuarios.actualizarUsuario(p.e, { hash: usuarios.hashPassword(crypto.randomBytes(24).toString('base64url')), debe_cambiar: 'si' },
+      { origen: 'acceso' });
+    let sid = null;
+    try {
+      const abierta = await sesiones.abrir({ usuarioId: u.id, dispositivo: sesion.dispositivoDe(req, res),
+        agente: req.get('user-agent') || '', ip: req.ip || '', larga: false, duracionMs: sesion.DURACION_MS });
+      sid = abierta.sid;
+    } catch (e) { console.error('⚠️  [AUTH] restablecer: no se pudo registrar la sesión:', e.message); }
+    sesion.ponerSesion(res, await usuarios.buscarUsuario(p.e), { recordar: false, sid });
+    return res.redirect('/cambiar-password');
+  } catch (e) {
+    console.error('❌ [AUTH] restablecer:', e.message);
+    return caducado();
+  }
 });
 
 module.exports = router;

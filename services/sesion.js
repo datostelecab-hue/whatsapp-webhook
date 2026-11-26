@@ -452,6 +452,9 @@ async function sembrarSuperadmin() {
 }
 
 module.exports = {
+  // Firmar un dato con caducidad (`exp`), con el mismo secreto que las sesiones:
+  // el enlace de recuperar el acceso (26/11/2026).
+  firmarDato: firmar, verificarDato: verificar,
   COOKIE, SEDES, sedeValida,
   ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
   dispositivoDe, olvidarSesion, sesionVigente,

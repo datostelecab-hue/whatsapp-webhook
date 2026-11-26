@@ -355,8 +355,30 @@ function publico(a) {
 
 function conEstado(e, status) { e.status = status; return e; }
 
+/**
+ * LAS CABECERAS PARA SERVIR UN FICHERO QUE SUBIÓ ALGUIEN, fuera de los
+ * adjuntos (los documentos de Drive, las facturas): la misma regla que
+ * `servir` (26/11/2026). Solo se abre en la página una foto, un PDF, un vídeo
+ * o un audio de tipo conocido; lo demás se descarga con tipo genérico, para
+ * que un HTML o un SVG subido nunca corra en nuestro dominio. Con `nosniff` y
+ * una CSP sin scripts.
+ */
+function cabecerasSeguras({ mime, nombre }) {
+  const m = mimeDe(mime, nombre);
+  const clase = claseDe(m);
+  const enLinea = clase !== 'otro';
+  return {
+    'Content-Type': enLinea ? m : 'application/octet-stream',
+    'Content-Disposition': disposicion(nombre || 'documento', enLinea),
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': clase === 'pdf'
+      ? "default-src 'none'; frame-ancestors 'self'"
+      : "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'; sandbox",
+  };
+}
+
 module.exports = {
-  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, maxBytes, MOTIVO_MINIMO,
+  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, maxBytes, MOTIVO_MINIMO, cabecerasSeguras,
   // Para las pruebas y la pantalla de pruebas:
   ENLINEA, nombreLimpio, mimeDe, claseDe, rangoDe, disposicion, tipos: () => [...DUENOS.keys()],
 };

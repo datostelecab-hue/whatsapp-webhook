@@ -106,7 +106,9 @@ router.get('/api/foto/:conductorId', async (req, res) => {
     const f = await svc.foto(req.params.conductorId);
     // Sin foto, un rato en caché: la lista se repinta cada 10 s y no tiene por qué volver a preguntar.
     if (!f) return res.set('Cache-Control', 'private, max-age=300').status(404).end();
-    res.set({ 'Content-Type': f.mime, 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
+    // Solo una imagen de verdad se abre como imagen (26/11/2026): las cabeceras de adjuntos.
+    res.set(require('../../services/adjuntos').cabecerasSeguras({ mime: f.mime || 'image/jpeg', nombre: 'foto' }));
+    res.set({ 'Cache-Control': 'private, max-age=604800, immutable' });
     res.end(f.bytes);
   } catch (e) {
     console.error(`❌ [WhatsApp] foto ${req.params.conductorId}: ${e.message}`);

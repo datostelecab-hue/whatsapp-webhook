@@ -135,8 +135,8 @@ router.post('/api/linea/coche', responde(exigeApuntar((req, ctx) =>
 router.get('/api/factura/:id/pdf', async (req, res) => {
   try {
     const d = await facturas.pdf(req.params.id, await quien(req));
-    res.setHeader('Content-Type', d.mime);
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(d.nombre)}`);
+    // Abierto en la página solo si es un PDF o una foto de verdad (26/11/2026).
+    res.set(require('../../services/adjuntos').cabecerasSeguras({ mime: d.mime, nombre: d.nombre }));
     res.send(d.bytes);
   } catch (e) {
     console.error('❌ [Facturas] PDF:', e.message);
