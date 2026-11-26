@@ -96,6 +96,31 @@ test/proforma.test.js                  con una proforma de mentira hecha en el t
 
 **Con la de noviembre** (comprobado el 26/11 en solo lectura): 164 trabajadores, bruto 219.246,28 €, líquido 195.407,65 €; 100 casos: 23 códigos, 9 sin contrato propio, 8 bajas médicas, 3 suspensiones, 10 de días y 47 fuera de la nómina (36 de ellos, altas recientes).
 
+## La pestaña «Variables»: el catálogo de conceptos de A3 y las líneas del mes (módulo 4, db/300, 26/11/2026)
+
+Lo que se escribe en el **lienzo de A3NOM** (la plantilla «Conceptos» que manda la gestoría: un trabajador por fila, una columna por concepto) de cada mes de nómina, **una línea por persona y concepto, con su origen**. Camilo, 26/11/2026:
+
+| Origen | Conceptos |
+|---|---|
+| **La variable del mes** ([[Nominas]], la del mes de pago; la congelada si lo está, si no la calculada) | el MBO (el mayor de horas extra y FAS) → **066**, la nocturnidad → **053**, las propinas → **519**, los peajes → **607**. Solo plantilla propia: la ETT va en el parte de la agencia |
+| **[[Descuentos en nomina]]** | lo ya descontado al cerrar el mes y lo aprobado o aplazado a él, cada uno con **su** concepto (753, 758, 751, 754) |
+| **A mano**, con motivo | lo demás: dietas, plus de calidad, festivos, regularización (que puede ir en negativo)… |
+
+```
+modules/Gestoria/variables.service.js   el catálogo, preparar, a mano, anular y el Excel
+modules/Gestoria/variables.repo.js      el SQL (nomina_concepto, nomina_linea)
+public/assets/js/vistas/Gestoria/variables.js
+test/variables-a3.test.js
+```
+
+- **El catálogo** (`nomina_concepto`, botón «Conceptos»): los 17 conceptos del lienzo de noviembre, cada uno con su **cabecera exacta** («066 - PACTO PR (I)», leída del lienzo con Excel en solo lectura), si se paga o se descuenta, de dónde sale y su orden. Cada pieza de la variable va a un solo concepto. Se cambian y se añaden desde la pantalla.
+- **«Preparar desde el ERP»** rehace entero lo que sale del ERP de ese mes; **lo de a mano no se toca**. Dice cuántas líneas, a cuántas personas, cuánto de variable y de descuentos, si la variable estaba congelada y qué no salió (un concepto que falta en el catálogo).
+- **Lo de a mano** se anula con motivo; lo del ERP no se anula, se rehace.
+- **Cuando en «Cierre del mes» las variables están marcadas enviadas**, el mes ya no cambia: ni preparar, ni apuntar, ni anular. Hay que deshacer esa etapa.
+- **El cierre** pide como requisito de las variables que estén preparadas.
+- **«Excel para A3»**: hoja «Conceptos» con la **cabecera en la fila 8** como el lienzo («Código», «Nombre» y la cabecera de cada concepto), el **código de la gestoría sin los ceros** (el lienzo lo trae así) y el total en fórmula. Quien no tiene legajo va en la hoja «Sin código» (A3 no lo puede importar), y la hoja «Detalle» trae cada línea con su origen. **Es para copiar al lienzo** mientras no se sepa si A3NOM acepta un `.xlsx`; escribir el `.xls` original es lo que falta.
+- Llaves: mirar, `/gestoria`; preparar, a mano, anular y el catálogo, `/gestoria/gestionar` (Diana).
+
 ## La pestaña «Cierre del mes» (módulo 4, db/299, 26/11/2026)
 
 El mes de nómina (del 26 al 25) con sus **cuatro etapas** en una línea, cada una con su fecha, quién y cuándo, y en rojo si va con retraso. Camilo, 26/11/2026, eligió las etapas, los días y quién aprueba:

@@ -15,6 +15,8 @@ const gestoria = require('./gestoria.service');
 const proforma = require('./proforma.service');
 // El cierre de la nómina del mes (módulo 4, db/299): la pestaña «Cierre».
 const cierre = require('./cierre.service');
+// El catálogo de conceptos de A3 y las líneas del mes (módulo 4, db/300): la pestaña «Variables».
+const variables = require('./variables.service');
 const actor = require('../../services/repo/actor');
 
 // El listado viaja en base64 dentro del JSON: con su propio límite.
@@ -57,5 +59,24 @@ router.post('/api/proforma/correo/enviado', responde(async req => proforma.marca
 router.get('/api/cierre', responde(async req => cierre.vista({ periodo: req.query.periodo }, await quien(req))));
 router.post('/api/cierre/marcar', responde(async req => cierre.marcar(req.body || {}, await quien(req))));
 router.post('/api/cierre/deshacer', responde(async req => cierre.deshacer(req.body || {}, await quien(req))));
+
+router.get('/api/variables/lista', responde(async req => variables.lista(await quien(req))));
+router.get('/api/variables/linea/:id', responde(async req => ({ ficha: await variables.ficha(req.params.id, await quien(req)) })));
+router.get('/api/variables/personas', responde(async req => variables.personas(await quien(req))));
+router.get('/api/variables/conceptos', responde(async req => variables.catalogo(await quien(req))));
+router.post('/api/variables/conceptos', responde(async req => variables.guardarConcepto(req.body || {}, await quien(req))));
+router.post('/api/variables/preparar', responde(async req => variables.preparar(req.body || {}, await quien(req))));
+router.post('/api/variables/linea', responde(async req => variables.apuntar(req.body || {}, await quien(req))));
+router.post('/api/variables/linea/:id/anular', responde(async req => variables.anular(req.params.id, req.body || {}, await quien(req))));
+router.get('/api/variables/excel/:periodo', async (req, res) => {
+  try {
+    const { buffer, nombre } = await variables.excel(req.params.periodo, await quien(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(nombre)}`);
+    res.send(buffer);
+  } catch (e) {
+    res.status(e.status && e.status < 500 ? e.status : 400).send(e.message);
+  }
+});
 
 module.exports = router;

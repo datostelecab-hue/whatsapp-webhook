@@ -8,9 +8,11 @@
 //                                              del mes subida y sin casos por
 //                                              decidir en Gestoría › Proforma.
 //   2. variables  Variables y descuentos       el 25 (el corte). Se marca a
-//                 enviados a la gestoría       mano. Antes mira la variable del
-//                                              mes congelada en /nominas y los
-//                                              descuentos del mes cerrados:
+//                 enviados a la gestoría       mano. Antes mira las líneas de
+//                                              A3 preparadas (db/300), la
+//                                              variable del mes congelada en
+//                                              /nominas y los descuentos del
+//                                              mes cerrados:
 //                                              avisa, no frena (si falta algo,
 //                                              la nota dice por qué).
 //   3. borrador   Borrador revisado            el 28. A mano.
@@ -113,7 +115,12 @@ async function requisitosVariables(periodo, cli = null) {
   const congelada = (await nominas.mesesCongelados().catch(() => [])).some(x => Number(x.mes) === m && Number(x.ano) === y);
   const d = await repo.descuentosAbiertos(cli, periodo);
   const abiertos = d ? d.por_aprobar + d.por_descontar : 0;
+  // Las líneas del lienzo de A3 (db/300), preparadas en la pestaña «Variables».
+  const lineas = await require('./variables.repo').cuantasDelMes(cli, periodo).catch(() => null);
   return [
+    { clave: 'lineas', ok: !!lineas,
+      texto: lineas == null ? 'Las variables de A3 aún no están (falta la migración 300)'
+        : lineas ? `Variables de A3 preparadas (${lineas} ${lineas === 1 ? 'línea' : 'líneas'})` : 'Las variables de A3 no están preparadas (pestaña «Variables»)' },
     { clave: 'variable', texto: congelada ? 'Variable del mes congelada en Nóminas' : 'La variable del mes no está congelada en Nóminas', ok: congelada },
     { clave: 'descuentos', ok: !!d && abiertos === 0,
       texto: !d ? 'Los descuentos en nómina aún no están (falta la migración 298)'

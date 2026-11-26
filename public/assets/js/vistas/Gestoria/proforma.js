@@ -19,6 +19,7 @@
     pestanas: [
       { id: 'plantilla', texto: 'Plantilla', icono: 'fa-users', contador: 'gestoria.pendientes' },
       { id: 'proforma', texto: 'Proforma', icono: 'fa-file-invoice-dollar', contador: 'gestoria.proforma' },
+      { id: 'variables', texto: 'Variables', icono: 'fa-table-list' },
       { id: 'cierre', texto: 'Cierre del mes', icono: 'fa-flag-checkered', contador: 'gestoria.cierre' },
     ],
     param: 'vista',
@@ -26,6 +27,8 @@
       $('#gs-plantilla').classList.toggle('hidden', id !== 'plantilla');
       $('#gs-proforma').classList.toggle('hidden', id !== 'proforma');
       $('#gs-cierre').classList.toggle('hidden', id !== 'cierre');
+      $('#gs-variables').classList.toggle('hidden', id !== 'variables');
+      if (id === 'variables' && window.GestoriaVariables) window.GestoriaVariables.abrir();
       if (id === 'proforma' && !lista) montar();
       // El cierre lo monta su propio fichero (cierre.js), al abrir su pestaña.
       if (id === 'cierre' && window.GestoriaCierre) window.GestoriaCierre.abrir();
