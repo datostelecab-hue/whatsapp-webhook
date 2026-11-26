@@ -322,6 +322,22 @@ async function servir(adjuntoId, quien, { rango, siNoCoincide, siRango, descarga
   return { estado: r ? 206 : 200, cabeceras: fin, cuerpo };
 }
 
+/**
+ * LOS BYTES de los adjuntos vivos de un dueño, para el SERVIDOR (el SMS
+ * certificado manda el PDF a Mensatek, 26/11/2026). Sin permiso de persona:
+ * solo se llama desde el servidor, nunca desde una ruta. → [{ id, nombre, mime, buffer }]
+ */
+async function bytesDe(tipo, duenoId) {
+  const out = [];
+  for (const a of await repo.deDueno(tipo, idDeDueno(duenoId))) {
+    if (a.anulado_at) continue;
+    const trozos = [];
+    for await (const c of await almacen.de(a.almacen).leer(a.ruta)) trozos.push(c);
+    out.push({ id: String(a.id), nombre: a.nombre, mime: a.mime, buffer: Buffer.concat(trozos) });
+  }
+  return out;
+}
+
 // ── Quitar ─────────────────────────────────────────────────────────────────
 /** Anula un adjunto, con motivo. El fichero se queda en el almacén. */
 const MOTIVO_MINIMO = 3;
@@ -378,7 +394,7 @@ function cabecerasSeguras({ mime, nombre }) {
 }
 
 module.exports = {
-  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, maxBytes, MOTIVO_MINIMO, cabecerasSeguras,
+  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, bytesDe, maxBytes, MOTIVO_MINIMO, cabecerasSeguras,
   // Para las pruebas y la pantalla de pruebas:
   ENLINEA, nombreLimpio, mimeDe, claseDe, rangoDe, disposicion, tipos: () => [...DUENOS.keys()],
 };

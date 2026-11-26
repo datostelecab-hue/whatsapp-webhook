@@ -84,6 +84,9 @@
         { texto: 'Aprobar', icono: 'fa-check', principal: true, visible: d => d.puede.aprobar && d.estado === 'abierta', onClick: (d, l) => aprobar(d, l) },
         { texto: 'Mandar la carta a firmar', icono: 'fa-file-signature', principal: true, visible: d => d.puede.carta && d.estado === 'aprobada', onClick: (d, l) => carta(d, l) },
         { texto: 'Ver la carta en Firmas', icono: 'fa-pen-nib', visible: d => !!d.firma_envio_id, onClick: d => { location.href = `/firmas#${encodeURIComponent(d.firma_envio_id)}`; } },
+        // El SMS certificado (db/306): prepara el borrador a esta persona; el PDF se adjunta allí.
+        { texto: 'Por SMS certificado', icono: 'fa-comment-sms', visible: d => !!PUEDE.sms && ['aprobada', 'en_firma', 'comunicada'].includes(d.estado),
+          onClick: d => porSms('sancion', d.id, d.medida && /suspens/i.test(d.medida) ? 'suspension' : 'sancion') },
         { texto: 'Descartar', icono: 'fa-ban', visible: d => (d.estado === 'propuesta' ? d.puede.abrir : d.puede.aprobar && ['abierta', 'aprobada'].includes(d.estado)),
           onClick: (d, l) => descartar(d, l) },
       ],
@@ -144,6 +147,12 @@
       ],
     },
   });
+
+  // El SMS certificado (db/306): el borrador a esta persona, y a /sms a terminarlo.
+  async function porSms(origen, id, plantilla) {
+    const r = await Api.post('/sms/api/desde', { origen, origenId: id, plantilla }, { aviso: 'No se ha podido preparar', bloquea: true });
+    if (r) location.href = `/sms#${encodeURIComponent(r.id)}`;
+  }
 
   async function post(d, que, cuerpo, aviso) {
     return Api.post(`/disciplina/api/sancion/${encodeURIComponent(d.id)}/${que}`, cuerpo || {}, { aviso: aviso || 'No se ha podido hacer', bloquea: true });

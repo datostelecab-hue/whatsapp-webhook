@@ -86,6 +86,9 @@
       subtitulo: d => `${contrato(d)} · baja el ${dmy(d.fecha_baja)} · para ${(d.resumen || {}).destino || ''}`,
       acciones: [
         { texto: 'Ver el PDF', icono: 'fa-file-pdf', onClick: d => window.open(`/finiquitos/api/finiquito/${encodeURIComponent(d.id)}/pdf`, '_blank', 'noopener') },
+        // El aviso de finiquito por SMS certificado (db/306): prepara el borrador a esta persona.
+        { texto: 'Avisar por SMS certificado', icono: 'fa-comment-sms', visible: d => !!D.puedeSms && ['aprobado', 'enviado', 'firmado'].includes(d.estado),
+          onClick: d => porSms(d.id) },
         { texto: 'Revisado', icono: 'fa-check', principal: true, visible: d => REVISA && d.estado === 'borrador', onClick: (d, l) => revisar(d, l) },
         { texto: 'Aprobar', icono: 'fa-stamp', principal: true, visible: d => APRUEBA && d.estado === 'revisado', onClick: (d, l) => aprobar(d, l) },
         { texto: 'Devolver a revisión', icono: 'fa-rotate-left', visible: d => APRUEBA && d.estado === 'revisado', onClick: (d, l) => conNota(d, l, 'devolver') },
@@ -137,6 +140,12 @@
       ],
     },
   });
+
+  // El SMS certificado (db/306): el borrador a esta persona, y a /sms a terminarlo.
+  async function porSms(id) {
+    const r = await Api.post('/sms/api/desde', { origen: 'finiquito', origenId: id }, { aviso: 'No se ha podido preparar', bloquea: true });
+    if (r) location.href = `/sms#${encodeURIComponent(r.id)}`;
+  }
 
   async function accion(d, lst, que, cuerpo, hecho) {
     const r = await Api.post(`/finiquitos/api/finiquito/${encodeURIComponent(d.id)}/${que}`, cuerpo || {}, { aviso: 'No se ha podido hacer', bloquea: true });

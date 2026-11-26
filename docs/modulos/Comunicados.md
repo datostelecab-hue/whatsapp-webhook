@@ -47,7 +47,7 @@ Todas `manual`: se dan persona a persona en Usuarios.
 
 ## Lo que falta
 
-- El **SMS certificado** (Mensatec, módulo 9): sin credenciales ni documentación de su API.
+- El **SMS certificado** va aparte: [[SMS certificado]] (db/306).
 - **Adjuntar un PDF** al comunicado (el portal tendría que servirlo a cada uno): de momento, solo texto.
 - Los envíos de los módulos 3 y 7 (cartas de sanción, finiquitos) siguen por [[Firmas]].
 - Al mandar a toda la plantilla salen unos 250 correos seguidos por el SMTP de la casa: si el proveedor pone un tope por hora, los que fallen quedan con su error en la lista.

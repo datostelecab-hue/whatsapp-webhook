@@ -1,0 +1,14 @@
+<%#
+  EL SMS CERTIFICADO DE MENSATEK (módulo 9, db/306, 26/11/2026).
+  Diana prepara el envío (a una persona, a un grupo o a la plantilla; texto
+  libre o plantilla; con PDF si hace falta) y lo manda. El estado de cada
+  persona y su certificado se actualizan solos.
+  El JavaScript, en /assets/js/vistas/RRHH/sms.js.
+%>
+
+<div id="modulo"></div>
+
+<script type="application/json" id="datos-servidor"><%- json({ puedeEnviar: !!puedeEnviar }) %></script>
+<script src="<%= est('/assets/js/panel.js') %>"></script>
+<script src="<%= est('/assets/js/adjuntos.js') %>"></script>
+<script src="<%= est('/assets/js/vistas/RRHH/sms.js') %>"></script>

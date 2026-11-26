@@ -159,7 +159,7 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 
 **Módulo 5 adelantado** — ✔ 25/11 (db/288): el informe de jornada para el SMAC, ver [[Informe de jornada]]. Decidido: estricto del convenio, día natural, desde el 01/07/2026.
 
-**Módulo 6** — ✔ 25/11 (db/293), sin API: la cola de firmas, ver [[Firmas]]. Plan Plus de YouTrust (aplicación, un asiento, Diana); Claude manda los aprobados en su nombre. Falta contratarlo, revisar sus condiciones de uso y confirmar con legal la firma simple con SMS. El SMS certificado (módulo 9, Mensatec) sigue pendiente.
+**Módulo 6** — ✔ 25/11 (db/293), sin API: la cola de firmas, ver [[Firmas]]. Plan Plus de YouTrust (aplicación, un asiento, Diana); Claude manda los aprobados en su nombre. Falta contratarlo, revisar sus condiciones de uso y confirmar con legal la firma simple con SMS. ✔ 26/11 (db/306): el SMS certificado de Mensatek, ver [[SMS certificado]]. Decidido: todo el módulo; remitente por defecto de la cuenta; abre con su DNI; lo manda Diana sola.
 
 **Comunicación semanal de horas** — ✔ 25/11 (db/294): la carta de horas que quedó debiendo, cada martes, por la cola de Firmas con la plantilla de YouTrust (sin SMS). Ver [[Firmas#La comunicación semanal de horas (db/294, 25/11/2026)]].
 

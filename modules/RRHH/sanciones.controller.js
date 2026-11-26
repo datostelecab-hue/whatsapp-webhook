@@ -23,10 +23,13 @@ const responde = fn => async (req, res) => {
 
 router.get('/', async (req, res) => {
   const q = await quien(req);
-  const [abrir, aprobar, carta] = await Promise.all([
+  const sms = require('./sms.service');
+  const [abrir, aprobar, carta, porSms] = await Promise.all([
     sanciones.puede(q, sanciones.CLAVE_ABRIR), sanciones.puede(q, sanciones.CLAVE_APROBAR), sanciones.puede(q, sanciones.CLAVE_CARTA),
+    // El SMS certificado (db/306): la carta también puede salir por Mensatek.
+    sms.puede(q, sms.CLAVE_ENVIAR),
   ]);
-  res.render('sanciones', { titulo: 'Faltas y sanciones', seccion: 'disciplina', layout: 'layout-gestion', puede: { abrir, aprobar, carta } });
+  res.render('sanciones', { titulo: 'Faltas y sanciones', seccion: 'disciplina', layout: 'layout-gestion', puede: { abrir, aprobar, carta, sms: porSms } });
 });
 
 router.get('/api/lista', responde(async req => sanciones.lista(await quien(req))));

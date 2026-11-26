@@ -355,6 +355,10 @@ app.get('/', (req, res) => {
 // ============================================================
 app.post('/', botPuertas);
 
+// El receptor de estados del SMS certificado de Mensatek (módulo 9, db/306): sin
+// sesión, con su propio usuario y contraseña (modules/RRHH/sms.receptor.js).
+app.use('/mensatek', require('./modules/RRHH/sms.receptor'));
+
 // ── Autenticación (rutas públicas): login, logout, cambio y recuperación ──────
 app.use('/', authRoutes);
 
@@ -421,6 +425,8 @@ app.use('/inventario', require('./modules/Vehiculos/inventario.controller'));
 app.use('/firmas', require('./modules/RRHH/firmas.controller'));
 // Los comunicados a la plantilla, con su «Lo he leído» en el portal (módulos 6 y 9, db/305).
 app.use('/comunicados', require('./modules/RRHH/comunicados.controller'));
+// El SMS certificado de Mensatek, con su certificado en el expediente (módulo 9, db/306).
+app.use('/sms', require('./modules/RRHH/sms.controller'));
 // Las faltas y sanciones (módulo 3 del plan de RR. HH., db/295). `/sanciones` es la de velocidad.
 app.use('/disciplina', require('./modules/RRHH/sanciones.controller'));
 // Los descuentos en nómina (módulo 4.2 del plan de RR. HH., db/298).

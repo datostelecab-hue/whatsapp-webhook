@@ -8,6 +8,6 @@
 
 <div id="modulo"></div>
 
-<script type="application/json" id="datos-servidor"><%- json({ puedeRevisar: !!puedeRevisar, puedeAprobar: !!puedeAprobar }) %></script>
+<script type="application/json" id="datos-servidor"><%- json({ puedeRevisar: !!puedeRevisar, puedeAprobar: !!puedeAprobar, puedeSms: !!locals.puedeSms }) %></script>
 <script src="<%= est('/assets/js/adjuntos.js') %>"></script>
 <script src="<%= est('/assets/js/vistas/RRHH/finiquitos.js') %>"></script>

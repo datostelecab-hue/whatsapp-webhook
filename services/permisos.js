@@ -80,6 +80,12 @@ const CATALOGO = [
     { clave: '/firmas', etiqueta: 'Firmas (envío de documentos por YouTrust)', manual: true, hijos: [
       { clave: '/firmas/aprobar', etiqueta: 'Firmas · preparar y aprobar lo que se manda a firmar', escribir: true, manual: true },
     ] },
+    // EL SMS CERTIFICADO DE MENSATEK (módulo 9, db/306): mirar los envíos y su
+    // estado, y prepararlos y mandarlos (Diana, sola: Camilo, 26/11/2026).
+    // `manual`; mandar no va como `escribir` (lo comprueba el servicio).
+    { clave: '/sms', etiqueta: 'SMS certificado (Mensatek)', manual: true, hijos: [
+      { clave: '/sms/enviar', etiqueta: 'SMS certificado · prepararlos y mandarlos (gastan créditos)', manual: true },
+    ] },
     // LOS COMUNICADOS A LA PLANTILLA (módulos 6 y 9, db/305): mirarlos, prepararlos
     // (Diana) y aprobarlos (Ignacio; quien lo prepara no lo aprueba). `manual`,
     // sin `escribir` (dos hijas de escritura: las comprueba el servicio).

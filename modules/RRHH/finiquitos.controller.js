@@ -27,6 +27,8 @@ router.get('/', async (req, res) => {
     titulo: 'Finiquitos', seccion: 'finiquitos', layout: 'layout-gestion',
     puedeRevisar: await finiquitos.puede(q, finiquitos.CLAVE_REVISAR),
     puedeAprobar: await finiquitos.puede(q, finiquitos.CLAVE_APROBAR),
+    // El aviso de finiquito por SMS certificado (db/306).
+    puedeSms: await require('./sms.service').puede(q, require('./sms.service').CLAVE_ENVIAR),
   });
 });
 

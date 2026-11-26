@@ -95,6 +95,14 @@ const SECCIONES = [
     },
   },
   {
+    // El SMS certificado de Mensatek (db/306), con su certificado de entrega.
+    id: 'sms', titulo: 'SMS certificados', llave: '/sms', enlace: () => '/sms',
+    async leer(id) {
+      if (!await existe('sms_destinatario')) return { lista: [] };
+      return { lista: await require('../RRHH/sms.service').expediente(id) };
+    },
+  },
+  {
     id: 'descuentos', titulo: 'Descuentos en nómina', llave: '/descuentos', enlace: () => '/descuentos',
     async leer(id) {
       if (!await existe('descuento_nomina')) return { lista: [] };

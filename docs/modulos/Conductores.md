@@ -523,6 +523,7 @@ El «expediente del conductor» del [[Plan RRHH y nominas]] (piezas comunes). En
 | Finiquito | `/finiquitos` | [[Finiquitos]] |
 | Efectivo por entregar | `/recaudacion` | [[Administracion\|Recaudación]] |
 | Comunicados recibidos | `/comunicados` | [[Comunicados]] (y si pulsó «Lo he leído») |
+| SMS certificados | `/sms` | [[SMS certificado]] (estado y certificado de entrega) |
 
 - **Cada sección solo si quien mira tiene la llave de su módulo**: la ficha de Plantilla la abre mucha gente y aquí hay datos de salud y de dinero. Lo que no puede ver **no llega** a la pantalla (no se esconde: no se manda); abajo se dice cuántas partes no se enseñan. Una sección que no se puede leer sale con su error, sin tumbar las demás.
 - Cada sección lleva «Abrir» a su módulo.

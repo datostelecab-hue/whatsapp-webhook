@@ -134,6 +134,10 @@
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.titulo)} · ${esc(dmyE(x.dia))} · ${x.leido ? `leído el ${esc(dmyE(x.leido))}` : '<span class="text-telecab-warn">sin leer</span>'}</li>`).join('')}</ul>`
         : vacio('Ningún comunicado.');
+    } else if (s.id === 'sms') {
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.asunto)} · ${esc(dmyE(x.dia))} · ${x.error ? `<span class="text-telecab-red">${esc(x.error)}</span>` : esc(x.estado_texto || 'enviado')}${x.abierto ? ` · abierto el ${esc(dmyE(x.abierto))}` : ''}${x.certificado_adjunto_id ? ` · <a class="text-telecab-gold hover:underline" href="/adjuntos/${encodeURIComponent(x.certificado_adjunto_id)}/fichero" target="_blank" rel="noopener">certificado</a>` : ''}</li>`).join('')}</ul>`
+        : vacio('Ningún SMS certificado.');
     } else if (s.id === 'descuentos') {
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>${esc(x.motivo || x.origen)} · ${esc(eur(x.importe))}${x.saldo && x.saldo !== x.importe ? ` (quedan ${esc(eur(x.saldo))})` : ''} · ${esc(x.estado)} · nómina ${esc(x.periodo)}</li>`).join('')}</ul>`
