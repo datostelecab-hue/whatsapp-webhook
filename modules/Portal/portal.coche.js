@@ -202,6 +202,99 @@ async function desvincular(persona) {
   return { ok: true, tono: 'ok', titulo: `${t.matricula} desvinculado`, texto };
 }
 
+// ── ENTREGAR COCHE, NO TENGO YO EL COCHE Y EL LAVADO (26/11/2026) ───────────
+// Lo que se quedaba en WhatsApp. Las mismas funciones que el bot
+// (fichaje.marcarRelevo, fichaje.noLoTengo, lavadoBallenoil.solicitar), y el
+// aviso al compañero por WhatsApp (fichajeBot.avisarAlQueRecibe).
+
+/**
+ * «Entregar coche»: sale ahora hacia su compañero (`si`), o «Aún no he salido».
+ * Desde ese momento se cuentan los km hasta que el compañero lo vincule, y
+ * entonces se le desvincula solo.
+ */
+async function entregar(persona, si) {
+  const q = await quien(persona);
+  if (q.error) return q.error;
+  const antes = await fichaje.estado(q.telefono);
+  if (!antes.abierto) return { ok: false, tono: 'aviso', titulo: 'No tienes ningún coche vinculado', texto: [] };
+  if (si && antes.turno.relevo) {
+    return { ok: false, tono: 'aviso', titulo: 'Ya lo tenías anotado', texto: [`Saliste a entregar el coche ${cuandoTxt(momento(antes.turno.relevo))}.`] };
+  }
+  let r;
+  try { r = await fichaje.marcarRelevo(q.telefono, si); }
+  catch (e) { console.error('❌ [Portal] entregar:', e.message); return FALLO('apuntarlo'); }
+  if (!r.ok) return { ok: false, tono: 'aviso', titulo: 'No tienes ningún coche vinculado', texto: [] };
+  if (!si) return { ok: true, tono: 'ok', titulo: 'Quitado', texto: [`Sigues con el ${r.turno.matricula}.`] };
+  return { ok: true, tono: 'ok', titulo: 'Anotado: sales a entregar el coche', texto: [
+    'Desde ahora se cuentan los km hasta que se lo des.',
+    'Cuando llegues, tu compañero solo tiene que vincularlo: el coche pasa a ser suyo y a ti se te desvincula solo.',
+    'Si no hay nadie a quien dárselo, aparca, apaga el coche y desvincúlalo.'] };
+}
+
+/**
+ * «No tengo yo el coche»: se le olvidó desvincularlo y ya lo lleva un
+ * compañero. Se le desvincula SIN tocar el motor y, si en BOLT lo lleva otro de
+ * la plantilla, el coche pasa a ese, que recibe un aviso por WhatsApp.
+ */
+async function noLoTengo(persona) {
+  const q = await quien(persona);
+  if (q.error) return q.error;
+  let r;
+  try { r = await fichaje.noLoTengo(q.telefono); }
+  catch (e) { console.error('❌ [Portal] no lo tengo:', e.message); return FALLO('desvincularlo'); }
+  if (!r.ok) {
+    if (r.motivo === 'cerrando') return { ok: false, tono: 'aviso', titulo: 'Justo se acaba de desvincular', texto: ['El coche estaba parado y apagado.'] };
+    if (r.motivo === 'en-curso') return { ok: false, tono: 'aviso', titulo: 'Un momento', texto: ['Ya se está desvinculando.'] };
+    if (r.motivo === 'lo-llevas-tu') {
+      return { ok: false, tono: 'aviso', titulo: `En BOLT sales tú con el ${r.turno.matricula}`, texto: [
+        `Estás conectado en BOLT con este coche${r.bolt && r.bolt.situacion === 'viaje' ? ', en un viaje' : ''}.`,
+        'Si lo llevas tú, aparca, apágalo y desvincúlalo. Si no lo llevas tú, desconéctate de BOLT y vuelve a pulsar «No tengo yo el coche», o avisa a Tráfico.'] };
+    }
+    return { ok: false, tono: 'aviso', titulo: 'No tienes ningún coche vinculado', texto: [] };
+  }
+  const t = r.turno;
+  const tramo = `Lo tuviste de ${hora(t.inicio)} a ${hora(t.fin)} (${fichaje.duracion(t.fin - t.inicio)}).`;
+  const nombre = (r.otro && r.otro.nombre) || (r.bolt && r.bolt.nombre) || '';
+  if (r.yaLoTiene) return { ok: true, tono: 'ok', titulo: `${t.matricula} desvinculado`, texto: [`Ya lo tiene vinculado ${r.yaLoTiene}.`, tramo, 'El motor no se ha tocado.'] };
+  if (r.pasa && r.pasa.ok) {
+    try { require('../../services/fichajeBot').avisarAlQueRecibe(q.telefono, r).catch(() => {}); }
+    catch (_) { /* sin bot, sin aviso: el coche ya ha pasado igual */ }
+    const m = r.pasa.motor || {};
+    return { ok: true, tono: 'ok', titulo: `${t.matricula} desvinculado`, texto: [
+      `Ahora lo tiene vinculado ${nombre}, que ${r.bolt && r.bolt.porque === 'ahora' ? 'lo lleva ahora en BOLT' : 'fue el último en BOLT con él'}. Se le ha avisado por WhatsApp.`,
+      tramo, m.hecho && !m.yaEstaba ? `El motor estaba cortado: se ha soltado para ${nombre}.` : 'El motor no se ha tocado.'] };
+  }
+  // Se queda sin nadie: se dice por qué.
+  const razon = { 'sin-ficha': 'esa cuenta de BOLT no está enlazada a ninguna ficha', 'de-baja': 'está de baja',
+    'sin-telefono': 'no tiene un teléfono en su ficha' }[r.porQueNo] || 'algo ha fallado al vincularlo';
+  const enBolt = r.bolt && (r.bolt.porque === 'ahora' ? `En BOLT lo lleva ${nombre || 'una cuenta sin nombre'}` : `En BOLT, el último con este coche fue ${nombre || 'una cuenta sin nombre'}`);
+  let porque;
+  if (r.otraSede) porque = `De los coches de ${r.otraSede} no se comprueba quién lo lleva en BOLT: si lo lleva un compañero, que lo vincule.`;
+  else if (!r.bolt) porque = 'Nadie ha salido en BOLT con este coche desde que lo vinculaste.';
+  else if (r.esEl) porque = r.bolt.porque === 'ahora' ? 'Ojo: en BOLT sigues conectado con este coche.' : 'En BOLT, el último con este coche fuiste tú.';
+  else if (r.porQueNo === 'otro-coche') porque = `${enBolt}, pero tiene vinculado el ${r.otro.matriculaSuya}: avisa a Tráfico.`;
+  else porque = `${enBolt}, pero no se le ha podido vincular (${razon}): avisa a Tráfico.`;
+  return { ok: true, tono: 'aviso', titulo: `${t.matricula} desvinculado`, texto: [tramo, porque, 'Ahora no lo tiene nadie. El motor no se ha tocado.'] };
+}
+
+/** El código de lavado Ballenoil (hasta el día que diga lavadoBallenoil), como el botón del bot. */
+const lavado = require('../../services/lavadoBallenoil');
+async function codigoLavado(persona) {
+  const q = await quien(persona);
+  if (q.error) return q.error;
+  if (q.p.sede && q.p.sede !== SEDE_FLOTA) return { ok: false, tono: 'aviso', titulo: 'Sin códigos de lavado', texto: ['En tu sede no hay lavado Ballenoil.'] };
+  if (!lavado.visible()) return { ok: false, tono: 'aviso', titulo: 'Ya no hay códigos de lavado', texto: ['Los códigos de lavado ya no se reparten.'] };
+  let r = null;
+  try { r = await lavado.solicitar({ telefono: q.telefono, conductorId: q.p.conductorId, idBolt: q.p.nombre }); }
+  catch (e) { console.error('❌ [Portal] lavado:', e.message); }
+  if (!r) return { ok: false, tono: 'error', titulo: 'No quedan códigos de lavado', texto: ['Avisa a la oficina, por favor.'] };
+  // Las instrucciones del bot, sin el formato de WhatsApp.
+  const pasos = String(lavado.INSTRUCTIVO).split('\n').map(l => l.replace(/[*_]/g, '').trim()).filter(l => l && !/^📋/.test(l));
+  return { ok: true, tono: 'ok', titulo: 'Tu código de lavado', codigo: r.codigo,
+    texto: [r.vence ? `Válido hasta el ${r.vence}.` : '', r.repetido ? 'Es el mismo que te dimos hace un momento.' : ''].filter(Boolean), pasos };
+}
+const hayLavado = persona => !!(persona && lavado.visible());
+
 // ── El coche que le toca: el vinculado, o el de hoy en su planificación ─────
 async function matriculaDeHoy(persona) {
   const e = await estado(persona);
@@ -366,4 +459,5 @@ async function desvincularConFotos(persona, ficheros = {}) {
 }
 
 module.exports = { _momento: momento, estado, vincular, moverPuertas, desvincular, desvincularConFotos, enVivo, fotosAnteriores, foto,
+  entregar, noLoTengo, codigoLavado, hayLavado,
   matriculaDeHoy, FOTOS, TOPE_FOTO, _limpiar: limpiar };

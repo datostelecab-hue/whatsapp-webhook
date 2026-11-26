@@ -496,3 +496,8 @@ h2 { font-size: 1rem; line-height: 1.35; font-weight: 700; }
 /* El coche de hoy, de un toque: lo primero del formulario de vincular. */
 .vincular-hoy { display: flex; flex-direction: column; gap: .5rem; padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid rgb(var(--linea)); }
 .vincular-hoy .matricula { font-size: 1rem; }
+
+/* Entregar coche, el código de lavado y sus pasos (26/11/2026). */
+.coche-entregar { margin-top: 1rem; display: grid; gap: .35rem; }
+.codigo-lavado { font-size: 2rem; font-weight: 800; letter-spacing: .12em; margin: .35rem 0; font-variant-numeric: tabular-nums; user-select: all; }
+.pasos-lavado { margin: .5rem 0 0; padding-left: 1.25rem; display: grid; gap: .25rem; font-size: .9rem; }

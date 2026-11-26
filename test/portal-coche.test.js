@@ -87,3 +87,51 @@ test('el estado: el coche vinculado y desde cuándo', async () => {
   const e = await coche.estado(yo);
   assert.deepEqual([e.vinculado, e.matricula, typeof e.desde], [true, '1234ABC', 'string']);
 });
+
+test('entregar coche, «no tengo yo el coche» y el código de lavado: las mismas funciones del bot (26/11/2026)', async () => {
+  const relevoReal = fichaje.marcarRelevo, noLoTengoReal = fichaje.noLoTengo;
+  const fichajeBot = require('../services/fichajeBot');
+  const avisoReal = fichajeBot.avisarAlQueRecibe;
+  const lavado = require('../services/lavadoBallenoil');
+  const solicitarReal = lavado.solicitar;
+  try {
+    // Entregar: sin coche, no; con coche, se anota; ya anotado, se dice; y se puede quitar.
+    assert.equal((await coche.entregar(yo, true)).titulo, 'No tienes ningún coche vinculado');
+    fichaje.estado = async () => ({ abierto: true, turno });
+    const pedidas = [];
+    fichaje.marcarRelevo = async (tel, si) => { pedidas.push([tel, si]); return { ok: true, turno: { ...turno, relevo: si ? 1795001000 : 0 } }; };
+    assert.equal((await coche.entregar(yo, true)).titulo, 'Anotado: sales a entregar el coche');
+    assert.equal((await coche.entregar(yo, false)).titulo, 'Quitado');
+    assert.deepEqual(pedidas, [[yo.telefono, true], [yo.telefono, false]]);
+    fichaje.estado = async () => ({ abierto: true, turno: { ...turno, relevo: 1795001000 } });
+    assert.equal((await coche.entregar(yo, true)).titulo, 'Ya lo tenías anotado');
+
+    // No lo tengo: pasa al compañero de BOLT, al que se avisa; o se queda sin nadie, con el porqué.
+    const avisos = [];
+    fichajeBot.avisarAlQueRecibe = async (tel, r) => { avisos.push([tel, r.pasa.telefono]); };
+    fichaje.noLoTengo = async () => ({ ok: true, turno, otro: { nombre: 'Ana' }, bolt: { porque: 'ahora', nombre: 'Ana' },
+      pasa: { ok: true, telefono: '611111111', motor: {} } });
+    const r = await coche.noLoTengo(yo);
+    assert.deepEqual([r.ok, r.titulo], [true, '1234ABC desvinculado']);
+    assert.match(r.texto[0], /Ahora lo tiene vinculado Ana, que lo lleva ahora en BOLT/);
+    await new Promise(ok => setImmediate(ok));
+    assert.deepEqual(avisos, [[yo.telefono, '611111111']], 'al compañero, por WhatsApp');
+    fichaje.noLoTengo = async () => ({ ok: true, turno, bolt: null });
+    const solo = await coche.noLoTengo(yo);
+    assert.equal(solo.tono, 'aviso');
+    assert.match(solo.texto.join(' '), /Nadie ha salido en BOLT con este coche/);
+    fichaje.noLoTengo = async () => ({ ok: false, motivo: 'lo-llevas-tu', turno, bolt: { situacion: 'viaje' } });
+    assert.equal((await coche.noLoTengo(yo)).titulo, 'En BOLT sales tú con el 1234ABC');
+
+    // El lavado: el código, grande, y los pasos sin el formato de WhatsApp.
+    lavado.solicitar = async o => ({ codigo: 'ABC123', vence: '31/12/2026', repetido: false, pedido: o });
+    const l = await coche.codigoLavado(yo);
+    if (lavado.visible()) {
+      assert.deepEqual([l.ok, l.codigo], [true, 'ABC123']);
+      assert.ok(l.pasos.length >= 2 && l.pasos.every(p => !/[*_]/.test(p)));
+    } else assert.equal(l.titulo, 'Ya no hay códigos de lavado');
+  } finally {
+    fichaje.marcarRelevo = relevoReal; fichaje.noLoTengo = noLoTengoReal;
+    fichajeBot.avisarAlQueRecibe = avisoReal; lavado.solicitar = solicitarReal;
+  }
+});

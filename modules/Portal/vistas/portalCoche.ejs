@@ -16,7 +16,11 @@
 <% if (resultado) { %>
 <div class="resultado resultado-<%= resultado.tono %>" role="status">
   <p class="resultado-tit"><%= resultado.titulo %></p>
+  <% if (resultado.codigo) { %><p class="codigo-lavado" aria-label="Código <%= resultado.codigo %>"><%= resultado.codigo %></p><% } %>
   <% (resultado.texto || []).forEach(function (t) { %><p><%= t %></p><% }) %>
+  <% if (resultado.pasos && resultado.pasos.length) { %>
+  <ol class="pasos-lavado"><% resultado.pasos.forEach(function (p) { %><li><%= p.replace(/^\d+\.\s*/, '') %></li><% }) %></ol>
+  <% } %>
   <%# Si no ha ido bien, a quién llamar, a un toque (heurística 9). %>
   <% if (resultado.tono !== 'ok') { %><%- include('portalLlamar') %><% } %>
 </div>
@@ -76,6 +80,31 @@
         </button>
       </form>
     </div>
+
+    <%# ENTREGAR COCHE (26/11/2026), como en el bot: lo que importa es el MOMENTO. %>
+    <% if (!coche.entregando) { %>
+    <form class="coche-entregar" method="post" action="/coche/entregar">
+      <button class="boton boton-claro" type="submit" data-enviando="Anotando…">Voy a entregar el coche</button>
+      <p class="suave peq">Púlsalo justo antes de salir hacia donde está tu compañero. Cuando él lo vincule, a ti se te desvincula solo.</p>
+    </form>
+    <% } else { %>
+    <form class="coche-entregar" method="post" action="/coche/entregar">
+      <input type="hidden" name="accion" value="quitar">
+      <button class="boton boton-claro" type="submit" data-enviando="Quitando…">Aún no he salido</button>
+      <p class="suave peq">Si lo pulsaste sin querer.</p>
+    </form>
+    <% } %>
+  </div>
+</section>
+
+<%# NO TENGO YO EL COCHE (26/11/2026): se le olvidó desvincularlo y ya lo lleva un compañero. %>
+<section class="caja" aria-labelledby="t-nolotengo">
+  <div class="caja-in">
+    <h2 id="t-nolotengo">¿El coche ya lo lleva un compañero?</h2>
+    <p class="suave peq">Si se te olvidó desvincularlo y ya no lo tienes tú, pulsa aquí. Se te desvincula sin tocar el motor y, si en BOLT lo lleva un compañero, pasa a ser suyo (se le avisa por WhatsApp).</p>
+    <form method="post" action="/coche/no-lo-tengo">
+      <button class="boton boton-claro" type="submit" data-enviando="Desvinculando…">No tengo yo el coche</button>
+    </form>
   </div>
 </section>
 
@@ -173,6 +202,19 @@
     <% } else { %>
     <p class="previas-vacio">Próximamente aquí estarán las fotos con las que se dejó el coche. Este turno se terminó por WhatsApp, que todavía no las pide.</p>
     <% } %>
+  </div>
+</section>
+<% } %>
+
+<%# EL CÓDIGO DE LAVADO BALLENOIL (26/11/2026), como el botón del bot, mientras se repartan. %>
+<% if (coche.puede && typeof lavado !== 'undefined' && lavado) { %>
+<section class="caja" aria-labelledby="t-lavado">
+  <div class="caja-in">
+    <h2 id="t-lavado">Código de lavado</h2>
+    <p class="suave peq">Un código para el lavado Ballenoil Easy Wash. Si lo pides dos veces seguidas, te damos el mismo.</p>
+    <form method="post" action="/coche/lavado">
+      <button class="boton boton-claro" type="submit" data-enviando="Pidiendo…">Pedir un código de lavado</button>
+    </form>
   </div>
 </section>
 <% } %>

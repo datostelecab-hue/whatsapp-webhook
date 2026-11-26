@@ -157,7 +157,7 @@ const paginaCoche = async (req, res, resultado = null) => {
   const [estado, previas] = await Promise.all([coche.estado(req.conductor),
     coche.fotosAnteriores(req.conductor).catch(e => { console.error('❌ [Portal] fotos anteriores:', e.message); return null; })]);
   vista(res, 'portalCoche', { titulo: 'Mi coche', pagina: 'portalCoche', conductor: req.conductor,
-    coche: estado, previas, fotos: coche.FOTOS, resultado, matricula: '' });
+    coche: estado, previas, fotos: coche.FOTOS, resultado, matricula: '', lavado: coche.hayLavado(req.conductor) });
 };
 const accionCoche = fn => async (req, res, next) => {
   try { await paginaCoche(req, res, await fn(req)); } catch (e) { next(e); }
@@ -165,6 +165,10 @@ const accionCoche = fn => async (req, res, next) => {
 router.get('/coche', accionCoche(async () => null));
 router.post('/coche/vincular', accionCoche(req => coche.vincular(req.conductor, (req.body || {}).matricula)));
 router.post('/coche/puertas', accionCoche(req => coche.moverPuertas(req.conductor, (req.body || {}).accion === 'abrir')));
+// Lo que se quedaba en WhatsApp (26/11/2026): entregar, «no lo tengo» y el lavado.
+router.post('/coche/entregar', accionCoche(req => coche.entregar(req.conductor, (req.body || {}).accion !== 'quitar')));
+router.post('/coche/no-lo-tengo', accionCoche(req => coche.noLoTengo(req.conductor)));
+router.post('/coche/lavado', accionCoche(req => coche.codigoLavado(req.conductor)));
 // DESVINCULAR, CON LAS CINCO FOTOS (23/11/2026): obligatorias desde el portal.
 // Llegan en el mismo formulario (multipart); en memoria, como mucho 5 y de 20 MB.
 const multer = require('multer');

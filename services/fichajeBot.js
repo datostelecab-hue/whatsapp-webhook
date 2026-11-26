@@ -453,6 +453,28 @@ async function abrir(telefono, matricula) {
  * no se lo ha dado él: una matrícula mal escrita le quita el coche a otro, y
  * así se entera en el momento.
  */
+/**
+ * «NO TENGO YO EL COCHE» y el coche pasa a quien lo lleva en BOLT: a ese
+ * compañero, su panel con por qué tiene el coche; y si el motor no se pudo
+ * soltar, que lo sepa antes de girar la llave (como al vincular). Lo usa
+ * también el portal de conductores (26/11/2026). `r` = lo de fichaje.noLoTengo.
+ */
+async function avisarAlQueRecibe(telefono, r) {
+  if (!r || !r.pasa || !r.pasa.ok) return;
+  const t = r.turno, m = r.pasa.motor || {};
+  const pila = (await fichaje.participa(telefono) || {}).pila || 'Tu compañero';
+  try {
+    if (r.pasa.bloqueoActivo && !m.hecho) {
+      await enviarBotones(r.pasa.telefono,
+        `🔒 *ATENCIÓN: el motor del ${t.matricula} NO se ha desbloqueado*\n_${m.motivo || 'motivo desconocido'}_\n\n` +
+        'Pulsa *Reintentar* en un momento; si sigue igual, avisa a Tráfico.', [{ id: BTN_MOTOR, titulo: '🔓 Reintentar' }]);
+    }
+    await panelTurno(r.pasa.telefono, r.pasa.turno,
+      `🔗 *Te he vinculado el ${t.matricula}*: ${pila} dice que no lo tiene y en BOLT ${r.bolt.porque === 'ahora' ? 'lo llevas tú' : 'fuiste el último con él'}. ` +
+      'Si no lo tienes tú, avisa a Tráfico.', r.pasa.vehiculo);
+  } catch (e) { console.error('⚠️ [FICHAJE] no le llegó el aviso al compañero:', e.message); }
+}
+
 async function avisarAlQueEntrega(t, quienEntra) {
   if (!t || !t.telefono) return;
   const w = W(t.tipo);
@@ -888,19 +910,7 @@ async function noLoTengo(telefono, matricula) {
     await enviarTexto(telefono,
       `🔄 *Coche desvinculado*\n\n🚘 ${t.matricula} → ahora lo tiene vinculado *${quien}*, que ${comoBolt}\n${tramo}\n\n` +
       `${w.tuCerrado}. ${motor} ${w.gracias}`);
-    // Al compañero, su panel, con por qué tiene el coche; y si el motor no se
-    // pudo soltar, que lo sepa antes de girar la llave (como al vincular).
-    const pila = (await fichaje.participa(telefono) || {}).pila || 'Tu compañero';
-    try {
-      if (r.pasa.bloqueoActivo && !m.hecho) {
-        await enviarBotones(r.pasa.telefono,
-          `🔒 *ATENCIÓN: el motor del ${t.matricula} NO se ha desbloqueado*\n_${m.motivo || 'motivo desconocido'}_\n\n` +
-          'Pulsa *Reintentar* en un momento; si sigue igual, avisa a Tráfico.', [{ id: BTN_MOTOR, titulo: '🔓 Reintentar' }]);
-      }
-      await panelTurno(r.pasa.telefono, r.pasa.turno,
-        `🔗 *Te he vinculado el ${t.matricula}*: ${pila} dice que no lo tiene y en BOLT ${r.bolt.porque === 'ahora' ? 'lo llevas tú' : 'fuiste el último con él'}. ` +
-        'Si no lo tienes tú, avisa a Tráfico.', r.pasa.vehiculo);
-    } catch (e) { console.error('⚠️ [FICHAJE] no le llegó el aviso al compañero:', e.message); }
+    await avisarAlQueRecibe(telefono, r);
     return;
   }
 
@@ -1050,4 +1060,5 @@ async function cerrar(telefono) {
 }
 
 // avisarAlQueEntrega: también cuando el coche se vincula desde el portal de conductores (20/11/2026).
-module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado, avisarAlQueEntrega };
+// avisarAlQueRecibe: también desde el portal, en «No tengo yo el coche» (26/11/2026).
+module.exports = { manejarTexto, manejarBoton, panel, panelSiParticipa, botonDeTurno, repasarTurnosLargos, textoPregunta, textoCerrado, avisarAlQueEntrega, avisarAlQueRecibe };

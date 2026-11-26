@@ -87,7 +87,15 @@ Camilo: *«Créales el módulo de vincular coche, ahí podrán abrir y cerrar co
 - **No hay una segunda lógica del coche**: `modules/Portal/portal.coche.js` llama a las MISMAS funciones que el bot (`fichaje.iniciar`, `fichaje.estado`, `fichaje.terminar`, `puertasBot.ejecutar`) con el **teléfono vigente de su ficha** (`conductor_telefono`), que es como el bot sabe quién es. Así vincular aquí y desvincular por WhatsApp (o al revés) es el mismo coche, y las reglas del motor no se duplican: nunca cortar con el contacto puesto ni en marcha (no deja desvincular y lo dice), las órdenes de un coche en fila, el coche que pasa de manos (a quien lo tenía se le avisa por WhatsApp, `fichajeBot.avisarAlQueEntrega`), Mapon caído…
 - Sin teléfono en la ficha, o sin el uso de coches, se le dice y no se toca nada. Palabras del bot desde el 13/11: «vincular», nunca «turno» ni «fichar».
 - **Formularios normales** (sin JavaScript en el móvil): cada acción vuelve a la página del coche con lo que ha pasado arriba, en verde, ámbar o rojo.
-- **Lo que aún se queda en WhatsApp**: «Entregar coche», «No tengo yo el coche», el código de lavado y los avisos (la pregunta de las 14 h, el coche que pasa de manos). Pruebas: `test/portal-coche.test.js`.
+- **Lo que aún se queda en WhatsApp**: los avisos (la pregunta de las 14 h, el coche que pasa de manos). «Entregar coche», «No tengo yo el coche» y el código de lavado pasaron al portal el 26/11/2026 (abajo). Pruebas: `test/portal-coche.test.js`.
+
+## Mi coche: entregar, «no tengo yo el coche» y el lavado (26/11/2026)
+
+Camilo eligió pasar al portal las tres cosas que se quedaban en WhatsApp. Las mismas funciones que el bot, sin una segunda lógica del coche:
+
+- **«Voy a entregar el coche»** (con el coche vinculado, debajo de las puertas): `fichaje.marcarRelevo`. Se anota el momento; desde ahí se cuentan los km hasta que el compañero lo vincule, y entonces a él se le desvincula solo. Ya anotado, «Aún no he salido» lo quita.
+- **«No tengo yo el coche»**: `fichaje.noLoTengo`. Se le desvincula sin tocar el motor y, si en BOLT lo lleva otro de la plantilla, el coche pasa a ese, al que se avisa por WhatsApp (`fichajeBot.avisarAlQueRecibe`, sacado del bot para que lo usen los dos). Si sale él conectado en BOLT con ese coche, no se desvincula y se dice. Si se queda sin nadie, se dice por qué.
+- **«Pedir un código de lavado»** (Ballenoil, con coche o sin él, mientras se repartan; solo Madrid): `lavadoBallenoil.solicitar`. El código en grande y los pasos, sin el formato de WhatsApp. Dos seguidos dan el mismo.
 
 ## Mi coche: ubicación en vivo y las cinco fotos (23/11/2026)
 
@@ -167,7 +175,7 @@ Camilo: *«A toda la APP aplica Las 10 heurísticas de usabilidad de Jakob Niels
 - **52 conductores en activo no pueden entrar**: les falta el email o el DNI (49 son de ETT; 3 de plantilla propia). Es trabajo de RRHH: sin email no les llega el código.
 - **Mirarlo en un iPhone de verdad** (el toque de las tarjetas) antes de anunciarlo.
 - **El vídeo explicativo** para los conductores: al final, cuando se lance (Camilo, 23/11). Con voz generada y montaje en local, como los vídeos anteriores.
-- **Aún se queda en WhatsApp** (a propósito, en transición): «Entregar coche», «No tengo yo el coche», el código de lavado y los avisos (la pregunta de las 14 h, el coche que pasa de manos).
+- **Aún se queda en WhatsApp** (a propósito, en transición): los avisos (la pregunta de las 14 h, el coche que pasa de manos).
 
 ## Para subirlo a producción
 
