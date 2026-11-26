@@ -73,3 +73,25 @@ test('el de la ETT: va a la agencia y sus vacaciones las liquida ella', () => co
   assert.equal(f.resumen.conceptos.find(x => x.clave === 'vacaciones').noAplica, true);
   assert.equal(f.resumen.totales.vacacionesDias, null);
 }));
+
+test('otros descuentos: los aprobados o aplazados cuentan por su saldo; los por aprobar se enseñan; el efectivo no se repite', () => conBase(async ({ consulta, fabrica }) => {
+  const diana = await fabrica.usuario({ rol: 'oficina', nombre: 'Diana' });
+  await consulta(`INSERT INTO usuario_permiso (usuario_id, clave) VALUES ($1, '/finiquitos'), ($1, '/finiquitos/revisar')`, [diana.id]);
+  const D = { usuarioId: diana.id, rol: 'oficina' };
+  const c = await fabrica.conductor({ nombre: 'DEBE', alta: '2026-01-01', baja: '2026-11-20' });
+  const desc = (origen, estado, importe, saldo) => consulta(
+    `INSERT INTO descuento_nomina (conductor_id, origen, concepto, importe, saldo, periodo, fecha, motivo, estado)
+     VALUES ($1, $2, '758', $3, $4, '2026-11', '2026-11-15', 'Prueba', $5)`, [c.id, origen, importe, saldo, estado]);
+  await desc('km', 'aprobado', 40, 40);
+  await desc('siniestro', 'aplazado', 300, 120);
+  await desc('combustible', 'pendiente', 50, 50);
+  await desc('efectivo', 'aprobado', 80, 80);
+  await desc('otro', 'aplicado', 10, 0);
+  const { id } = await finiquitos.preparar(c.id, {}, D);
+  const otros = (await finiquitos.ficha(id, D)).resumen.conceptos.find(x => x.clave === 'otros');
+  assert.ok(!otros.error, otros.error);
+  assert.equal(otros.importe, -160, 'km 40 + lo que queda del siniestro 120');
+  assert.ok(otros.soporte.some(l => /POR APROBAR/.test(l)), 'el de combustible, por aprobar, se enseña');
+  assert.ok(otros.soporte.some(l => /recaudación pendiente/.test(l)), 'el efectivo, en la recaudación');
+}));
+

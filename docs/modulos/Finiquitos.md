@@ -31,7 +31,7 @@ Cada concepto sale del módulo que ya lo cuenta, para que el finiquito no diga a
 | **Vacaciones netas** (días) | el saldo de [[Vacaciones]] a la fecha de baja | generadas, festivos, disfrutadas. Las de ETT las liquida la agencia: «No aplica». |
 | **Recaudación pendiente (100 %)** | lo que debe en [[Administracion\|Recaudación]] (`extractoDe`), al céntimo | cobrado de BOLT, entregado, cambio, saldo de partida. Si la casa le debe, sale a su favor. |
 | **Variables y bonus pendientes** | las «Extras pendientes» de [[Nominas]] (`nominas.finiquito`): las dos nóminas variables que se van sin pagar | cada mes con su total y el Excel día a día |
-| **Otros descuentos** | — | Kilómetros, taller y combustible aún no tienen importe en euros: el resumen lo dice en vez de callarlo. |
+| **Otros descuentos** | [[Descuentos en nomina]] (db/298) | Desde el 26/11/2026: lo que le queda por descontar de km, siniestros, combustible u otro, **aprobado o aplazado**, por su saldo. Los que están por aprobar se enseñan y no entran (como en el lienzo). El efectivo no: ya va entero en la recaudación. |
 
 No incluye el salario base del mes, la indemnización ni la parte de las pagas: eso lo calcula la gestoría. Si una fuente falla, ese concepto sale con su error y no se puede dar por revisado hasta recalcularlo.
 
@@ -62,6 +62,6 @@ Son datos de nómina: `manual`, no las reparte ningún rol. No llevan `escribir`
 
 - **Los correos de destino** en Parámetros: «Correo de la gestoría» y «Correo de la ETT para los finiquitos». Sin ellos, se manda a mano.
 - **La firma digital** (módulo 6): hoy el firmado se sube a mano.
-- **Los otros descuentos en euros** (km, taller, combustible): cuando tengan importe (módulo 4.2 y legal), entran como un concepto más.
+- ✔ 26/11: los otros descuentos en euros, desde [[Descuentos en nomina]] (prueba en `test/finiquitos.test.js`).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Nominas]] · [[Vacaciones]] · [[Administracion]] · [[Conductores]]

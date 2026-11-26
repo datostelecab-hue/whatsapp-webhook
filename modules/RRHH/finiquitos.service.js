@@ -17,8 +17,11 @@
 //   · RECAUDACIÓN PENDIENTE (100 %): lo que debe en Recaudación, con su extracto.
 //   · VARIABLES Y BONUS PENDIENTES: las «Extras pendientes» de Nóminas (los dos
 //     meses que se van sin pagar), con su Excel.
-//   · OTROS DESCUENTOS: kilómetros, taller y combustible aún no tienen importe
-//     en euros; el resumen lo dice en vez de callarlo.
+//   · OTROS DESCUENTOS (26/11/2026): los de Descuentos en nómina (db/298) que
+//     le quedan por descontar: km, siniestro, combustible u otro, APROBADOS o
+//     aplazados, por su saldo. Los que están por aprobar se enseñan, pero no
+//     entran (lo mismo que en el lienzo: «ningún descuento sin aprobación»).
+//     El efectivo no: ya va entero en la recaudación pendiente.
 //
 // EL CAMINO: borrador → revisado (Diana) → aprobado (Ignacio) → enviado (solo:
 // el PDF y el Excel por correo a la gestoría o a la ETT; sin correo en
@@ -81,6 +84,24 @@ async function concepto(clave, titulo, fn) {
   catch (e) { return { clave, titulo, error: e.message, soporte: [] }; }
 }
 
+/** Lo que le queda por descontar en Descuentos en nómina (db/298), sin el efectivo. */
+async function descuentosPendientes(conductorId) {
+  const db = require('../../services/db');
+  const hay = (await db.consulta(`SELECT to_regclass('public.descuento_nomina') IS NOT NULL AS hay`)).rows[0].hay;
+  if (!hay) return { cuentan: [], porAprobar: [], efectivo: false };
+  const r = await db.consulta(
+    `SELECT origen, estado, periodo, saldo::float AS saldo, motivo FROM descuento_nomina
+      WHERE conductor_id = $1 AND estado IN ('pendiente', 'aprobado', 'aplazado') AND saldo > 0
+      ORDER BY periodo, id`, [conductorId]);
+  const { ORIGENES } = require('./descuentos.service');
+  const filas = r.rows.map(x => ({ ...x, etiqueta: (ORIGENES[x.origen] || {}).etiqueta || x.origen }));
+  return {
+    cuentan: filas.filter(x => x.origen !== 'efectivo' && ['aprobado', 'aplazado'].includes(x.estado)),
+    porAprobar: filas.filter(x => x.origen !== 'efectivo' && x.estado === 'pendiente'),
+    efectivo: filas.some(x => x.origen === 'efectivo'),
+  };
+}
+
 async function calcularResumen(p) {
   const id = Number(p.conductor_id);
   const esEtt = p.tipo === 'ett';
@@ -120,10 +141,18 @@ async function calcularResumen(p) {
         .concat(['El detalle día a día, en el Excel «Extras pendientes».']),
     };
   });
-  const otros = {
-    clave: 'otros', titulo: 'Otros descuentos', importe: 0, unidad: '€',
-    soporte: ['Kilómetros fuera de la aplicación, daños del taller y combustible todavía no tienen importe en euros en el ERP: no entran.'],
-  };
+  const otros = await concepto('otros', 'Otros descuentos (km, siniestros, combustible)', async () => {
+    const d = await descuentosPendientes(id);
+    const linea = x => `${x.etiqueta} · nómina de ${x.periodo} · ${r2(x.saldo)} €${x.motivo ? ` (${x.motivo})` : ''}`;
+    return {
+      importe: d.cuentan.length ? -r2(d.cuentan.reduce((s, x) => s + x.saldo, 0)) : 0, unidad: '€',
+      soporte: [
+        ...(d.cuentan.length ? d.cuentan.map(x => `${linea(x)}: ${x.estado === 'aplazado' ? 'aplazado, queda este saldo' : 'aprobado'}`) : ['Ningún descuento aprobado pendiente.']),
+        ...d.porAprobar.map(x => `${linea(x)}: POR APROBAR, no entra hasta que se apruebe en Descuentos`),
+        ...(d.efectivo ? ['El efectivo sin entregar va entero en la recaudación pendiente: aquí no se cuenta dos veces.'] : []),
+      ],
+    };
+  });
   const conceptos = [vacaciones, recaudacion, variables, otros];
   const aFavor = r2(conceptos.reduce((s, c) => s + (c.importe > 0 ? c.importe : 0), 0));
   const aDescontar = r2(conceptos.reduce((s, c) => s + (c.importe < 0 ? -c.importe : 0), 0));
