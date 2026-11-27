@@ -529,6 +529,28 @@ propósito: un barrido de 15 días tarda minuto y medio de forma legítima).
 Convertirlo a booleano perdería la diferencia. *"Decir 'no tiene efectivo' cuando
 en realidad no lo sabemos sería peor que no decir nada."*
 
+### Un coche que BOLT deja de dar no cierra su tramo nunca
+
+BOLT no avisa de que un coche se va: deja de salir en `getVehicles` y de tener
+apuntes. Un tramo solo se cerraba con un apunte nuevo de ESE coche, así que el que
+estaba abierto seguía abierto para siempre. El 26/11/2026 hacia las 09:35 BOLT dejó
+de dar cinco coches (al 5631LBW le cambió el identificador: tiene tres filas en
+`fv_vehiculo`; el 9753LNT desapareció). Dos se quedaron «en viaje» con su conductor,
+que ya trabajaba en otro coche, y la Bitácora selló 17,8 y 18,5 h en un día en que
+BOLT decía menos de 8.
+
+Desde el 27/11, `cerrarHuerfanos` (services/flotaViva/motor.js), en cada vuelta,
+cierra y deja «desconectado»:
+- el tramo de un coche que el padrón no ha devuelto en tres horas (si el padrón
+  lleva dos horas sin pasar, no se toca nada);
+- el de un conductor que ya está en otro coche, si el viejo no ha dicho nada desde
+  entonces.
+
+El sellado de las 05:35 vuelve a calcular los tres últimos días, así que lo
+inflado se corrige solo. Los km que acumuló el tramo colgado se quedan en él.
+Pruebas en test/tramos-huerfanos.test.js. Para buscar casos:
+`Scripts de análisis/horas-dobles/colgados.js`, que está fuera del repo.
+
 ### `ON CONFLICT` falla si BOLT manda la misma cuenta dos veces
 
 `modules/Conductores/cazamiento.repo.js`

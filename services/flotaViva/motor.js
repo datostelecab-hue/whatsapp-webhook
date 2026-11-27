@@ -369,6 +369,14 @@ async function pasada() {
       if (r.conectado) conectados++;
     }
 
+    // Los tramos que BOLT ya no va a cerrar nunca (ver `cerrarHuerfanos`). En
+    // su propio try: si esto falla, la vuelta sigue.
+    try {
+      cambios += await cerrarHuerfanos();
+    } catch (e) {
+      console.error('⚠️  [FLOTA VIVA] El cierre de tramos huérfanos falló:', e.message);
+    }
+
     const ms = Date.now() - t0;
     await db.consulta(
       `UPDATE fv_vuelta SET terminada_at = now(), vehiculos = $2, conectados = $3,
@@ -448,6 +456,76 @@ async function pasada() {
     // el mapa sigue enseñando lo último que supo.
     corriendo = false;
   }
+}
+
+/**
+ * LOS TRAMOS HUÉRFANOS (27/11/2026).
+ *
+ * Un tramo solo se cierra cuando BOLT manda un apunte NUEVO de ese mismo coche.
+ * Si el coche deja de existir para BOLT, ese apunte no llega nunca y el tramo
+ * se queda abierto para siempre, contando horas. Pasó el 26/11 hacia las 09:35:
+ * BOLT dejó de dar cinco coches (al 5631LBW le cambió el identificador, el
+ * 9753LNT desapareció). Dos se quedaron «en viaje» con su conductor, y la
+ * Bitácora les dio 17,8 y 18,5 horas en un día en que BOLT decía menos de 8.
+ * Antes de esto, nada vigilaba que el coche siguiera en BOLT.
+ *
+ * Se cierran dos casos. Lo que se cierra pasa a «desconectado», que es lo que
+ * de verdad sabemos del coche:
+ *
+ *   · EL COCHE YA NO ESTÁ EN BOLT. El padrón no lo ha devuelto en tres horas,
+ *     mientras que a los demás sí. Se cierra en su último apunte. Si el padrón
+ *     lleva más de dos horas sin pasar, no se toca nada: sería BOLT callado, no
+ *     un coche que se ha ido.
+ *   · EL CONDUCTOR ESTÁ EN OTRO COCHE. Se cierra a la hora en que empezó en el
+ *     otro, y solo si el coche viejo no ha dicho nada desde entonces: una
+ *     persona no lleva dos coches a la vez.
+ *
+ * Las horas que se solapan entre los dos coches no cuentan doble: la Bitácora
+ * funde los tramos de cada persona. El sellado de las 05:35 vuelve a calcular
+ * los tres últimos días, así que lo que estaba inflado se corrige solo.
+ */
+async function cerrarHuerfanos() {
+  const r = await db.consulta(`
+    WITH ref AS (SELECT max(visto_at) AS m FROM fv_vehiculo),
+    sin_padron AS (
+      SELECT t.id, GREATEST(t.desde, COALESCE(v.ultimo_log_at, v.visto_at)) AS cierre,
+             'ya no está en BOLT' AS motivo
+        FROM fv_tramo t JOIN fv_vehiculo v ON v.uuid = t.vehiculo_uuid CROSS JOIN ref
+       WHERE t.hasta IS NULL AND t.situacion <> 'desconectado'
+         AND ref.m > now() - interval '2 hours'
+         AND v.visto_at < ref.m - interval '3 hours'),
+    en_otro AS (
+      SELECT t.id, n.desde AS cierre, 'su conductor está en otro coche' AS motivo
+        FROM fv_tramo t JOIN fv_vehiculo v ON v.uuid = t.vehiculo_uuid
+        JOIN LATERAL (SELECT t2.desde FROM fv_tramo t2
+                       WHERE t2.conductor_uuid = t.conductor_uuid
+                         AND t2.vehiculo_uuid <> t.vehiculo_uuid
+                         AND t2.situacion <> 'desconectado'
+                         AND t2.desde > GREATEST(t.desde, COALESCE(v.ultimo_log_at, t.desde))
+                       ORDER BY t2.desde LIMIT 1) n ON true
+       WHERE t.hasta IS NULL AND t.situacion <> 'desconectado' AND t.conductor_uuid IS NOT NULL
+         AND t.id NOT IN (SELECT id FROM sin_padron))
+    SELECT * FROM sin_padron UNION ALL SELECT * FROM en_otro`);
+
+  let cerrados = 0;
+  for (const h of r.rows) {
+    const hecho = await db.transaccion(async cli => {
+      const c = await cli.query(
+        `UPDATE fv_tramo SET hasta = GREATEST(desde, $2::timestamptz)
+          WHERE id = $1 AND hasta IS NULL
+          RETURNING vehiculo_uuid, hasta`, [h.id, h.cierre]);
+      if (!c.rows.length) return null;
+      await cli.query(
+        `INSERT INTO fv_tramo (vehiculo_uuid, situacion, desde, km_m)
+         VALUES ($1, 'desconectado', $2, 0)`, [c.rows[0].vehiculo_uuid, c.rows[0].hasta]);
+      return c.rows[0];
+    });
+    if (hecho) {
+      cerrados++;
+      console.warn(`🧹 [FLOTA VIVA] Tramo ${h.id} cerrado a las ${new Date(hecho.hasta).toISOString()}: ${h.motivo}`);
+    }
+  }
+  return cerrados;
 }
 
 /**
@@ -685,4 +763,4 @@ function kmDelTrozo(tramo, odo, senal) {
   return { metros: delta, dudoso: false };
 }
 
-module.exports = { pasada, padron, vigiladas, kmDelTrozo, repartirKm };
+module.exports = { pasada, padron, vigiladas, kmDelTrozo, repartirKm, cerrarHuerfanos };
