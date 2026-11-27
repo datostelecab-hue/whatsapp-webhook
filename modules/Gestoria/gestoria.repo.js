@@ -16,9 +16,9 @@ async function personas(cli = null) {
   const r = await q(cli,
     `SELECT c.id::text AS id, btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS nombre, c.nombre_ss,
             c.legajo, c.dni_nie, c.empleo_vigente AS vigente,
-            e.tipo, to_char(e.alta, 'YYYY-MM-DD') AS alta, to_char(e.baja, 'YYYY-MM-DD') AS baja
+            e.tipo, to_char(e.alta, 'YYYY-MM-DD') AS alta, to_char(e.baja, 'YYYY-MM-DD') AS baja, e.jornada_horas
        FROM conductor c
-       LEFT JOIN LATERAL (SELECT tipo, alta, baja FROM conductor_periodo_empleo pe
+       LEFT JOIN LATERAL (SELECT tipo, alta, baja, jornada_horas FROM conductor_periodo_empleo pe
                            WHERE pe.conductor_id = c.id ORDER BY (pe.baja IS NULL) DESC, pe.alta DESC LIMIT 1) e ON TRUE
       WHERE NOT c.es_centinela${await pruebas.fuera('c')}`);
   return r.rows;
@@ -70,11 +70,28 @@ async function insertar(cli, { clave, tipo, conductorId, legajo, nombreGestoria,
     [clave, tipo, conductorId, legajo, nombreGestoria, JSON.stringify(detalle || {}), ficheroId]);
 }
 
-/** Sigue saliendo: se apunta con qué carga y se refresca lo que dice. */
+/**
+ * Sigue saliendo: se apunta con qué carga y se refresca lo que dice. Lo que
+ * decidió Diana (pedírselo a la gestoría) se conserva.
+ */
 async function sigue(cli, id, { detalle, nombreGestoria, ficheroId }) {
   await cli.query(
-    `UPDATE gestoria_discrepancia SET ultimo_fichero_id = $2, detalle = $3::jsonb, nombre_gestoria = COALESCE($4, nombre_gestoria)
+    `UPDATE gestoria_discrepancia
+        SET ultimo_fichero_id = $2,
+            detalle = $3::jsonb || jsonb_strip_nulls(jsonb_build_object(
+              'pedir', detalle->'pedir', 'pedidoAt', detalle->'pedidoAt', 'pedidoPor', detalle->'pedidoPor')),
+            nombre_gestoria = COALESCE($4, nombre_gestoria)
       WHERE id = $1`, [id, ficheroId, JSON.stringify(detalle || {}), nombreGestoria]);
+}
+
+/** Diana decide pedírselo a la gestoría: entra en el correo de correcciones. */
+async function pedir(cli, id, { usuarioId, nombre }) {
+  const r = await cli.query(
+    `UPDATE gestoria_discrepancia
+        SET detalle = COALESCE(detalle, '{}'::jsonb) || jsonb_build_object('pedir', true,
+              'pedidoAt', to_char(now() AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY'), 'pedidoPor', $3::text, 'pedidoPorId', $2::int)
+      WHERE id = $1 AND estado = 'pendiente'`, [id, usuarioId || null, nombre || null]);
+  return r.rowCount > 0;
 }
 
 /** Cierra una (resuelta o descartada), si sigue pendiente. → true si la cerró. */
@@ -98,4 +115,4 @@ async function hayTabla() {
   return r.rows[0].hay;
 }
 
-module.exports = { personas, lista, porId, vivas, descartadas, insertar, sigue, cerrar, marcarEnviadas, hayTabla };
+module.exports = { personas, lista, porId, vivas, descartadas, insertar, sigue, pedir, cerrar, marcarEnviadas, hayTabla };

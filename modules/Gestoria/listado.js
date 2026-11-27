@@ -48,7 +48,38 @@ async function hojasDe(buffer) {
 const CAB_CODIGO = new Set(['CODIGO', 'COD', 'LEGAJO', 'N EMPLEADO', 'NUMERO EMPLEADO', 'CODIGO EMPLEADO', 'CODIGO TRABAJADOR', 'N TRABAJADOR']);
 const CAB_NOMBRE = new Set(['NOMBRE', 'TRABAJADOR', 'APELLIDOS Y NOMBRE', 'NOMBRE Y APELLIDOS', 'NOMBRE COMPLETO']);
 const CAB_DNI = new Set(['DNI', 'NIF', 'NIE', 'DNI NIE', 'NIF NIE', 'DOCUMENTO']);
+// El listado de trabajadores de A3 («PLANTILLA TRABAJADORES», 27/11/2026) trae
+// además las fechas y la parcialidad de cada uno. La proforma, no.
+const CAB_INGRESO = new Set(['FECHA INGRESO', 'FECHA DE INGRESO', 'FECHA ALTA', 'FECHA DE ALTA', 'INGRESO']);
+const CAB_BAJA = new Set(['FECHA BAJA', 'FECHA DE BAJA']);
+const CAB_COEF = new Set(['COEFICIENTE TIEMPO PARCIAL', 'COEF TIEMPO PARCIAL', 'COEFICIENTE PARCIALIDAD', 'COEF PARCIALIDAD']);
+const CAB_CONTRATO = new Set(['CONTRATO', 'TIPO CONTRATO', 'TIPO DE CONTRATO']);
 const CONCEPTO = /^(\d{3})\s*-\s*(.+?)\s*(\([A-Z]\))?$/;
+
+/**
+ * Una fecha de celda: «2026-07-26» (la de un .xlsx), «26/07/2026» (texto) o un
+ * número de serie de Excel (la de un .xls). «00/00/0000» es la «sin fecha» de A3.
+ */
+function fechaCelda(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && v > 20000 && v < 80000) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000).toISOString().slice(0, 10);
+  }
+  const s = String(v).trim();
+  if (/^0+\/0+\/0+$/.test(s)) return null;
+  return fechaDe(s.slice(0, 10));
+}
+
+/**
+ * Las horas de su contrato según A3: el coeficiente de parcialidad va en tantos
+ * por mil de la jornada completa (40 h): «000» es completa, «800» son 32 h y
+ * «750», 30 h. Sin coeficiente, el contrato a tiempo completo también dice 40.
+ */
+function horasDe(coef, contrato) {
+  const c = coef == null ? '' : String(coef).trim();
+  if (/^\d+$/.test(c)) return Number(c) === 0 ? 40 : Math.round(Number(c) * 40 / 1000);
+  return /TIEMPO COMPLETO/.test(plano(contrato)) ? 40 : null;
+}
 
 /** «23 de Noviembre de 2026» o «23/11/2026» → '2026-11-23'. */
 function fechaDe(v) {
@@ -82,6 +113,10 @@ function interpretar(hojas) {
         if (cols.codigo == null && CAB_CODIGO.has(p)) cols.codigo = c;
         else if (cols.nombre == null && CAB_NOMBRE.has(p)) cols.nombre = c;
         else if (cols.dni == null && CAB_DNI.has(p)) cols.dni = c;
+        else if (cols.ingreso == null && CAB_INGRESO.has(p)) cols.ingreso = c;
+        else if (cols.baja == null && CAB_BAJA.has(p)) cols.baja = c;
+        else if (cols.coef == null && CAB_COEF.has(p)) cols.coef = c;
+        else if (cols.contrato == null && CAB_CONTRATO.has(p)) cols.contrato = c;
       });
       if (cols.codigo == null || cols.nombre == null) continue;
 
@@ -108,14 +143,22 @@ function interpretar(hojas) {
         if (cod == null || String(cod).trim() === '') continue;
         let legajo = null;
         try { legajo = legajoEnLimpio(cod); } catch (_) { avisos.push(`Fila ${k + 1}: «${String(cod).trim()}» no es un código de trabajador`); continue; }
-        trabajadores.push({
+        const t = {
           fila: k + 1, legajo, nombre: r[cols.nombre] != null ? String(r[cols.nombre]).trim() : '',
           dni: cols.dni != null && r[cols.dni] != null ? String(r[cols.dni]).trim() : null,
-        });
+        };
+        if (cols.ingreso != null) t.ingreso = fechaCelda(r[cols.ingreso]);
+        if (cols.baja != null) t.baja = fechaCelda(r[cols.baja]);
+        if (cols.coef != null || cols.contrato != null) {
+          t.jornada = horasDe(cols.coef != null ? r[cols.coef] : null, cols.contrato != null ? r[cols.contrato] : null);
+        }
+        trabajadores.push(t);
       }
       return {
         hoja: h.nombre, tipo: conceptos.length ? 'proforma' : 'listado', empresa, fecha, filaCabecera: f + 1,
         conceptos, trabajadores, avisos,
+        conFechas: !conceptos.length && cols.baja != null,
+        conJornada: !conceptos.length && (cols.coef != null || cols.contrato != null),
       };
     }
   }
@@ -169,9 +212,33 @@ const diasEntre = (desde, hasta) => {
  *   · nombre_distinto: el legajo es de alguien del ERP que no se llama así.
  *   · sin_legajo: plantilla propia en alta sin legajo (y que nadie del
  *     listado propone): no se puede cruzar.
+ *
+ * CON FECHAS (`conFechas`: el listado de trabajadores de A3, que trae a todos,
+ * también a los que se fueron, con su fecha de baja; 27/11/2026). Quien tiene
+ * baja en la gestoría a la fecha del listado NO está de alta para ellos, y de
+ * cada legajo cuenta su fila de ahora (la que no tiene baja, o la última). Y
+ * cuatro diferencias más, que decide Diana (corregir el ERP o pedírselo a la
+ * gestoría):
+ *
+ *   · baja_gestoria_alta_nuestra: de baja en la gestoría y de alta con nosotros.
+ *   · fecha_alta_distinta: la fecha de alta no es la misma.
+ *   · fecha_baja_distinta: los dos le dieron de baja, en fechas distintas (si la
+ *     de la gestoría es después, son días cotizados de más).
+ *   · jornada_distinta (`conJornada`): las horas de su contrato no son las mismas.
  */
-function cruzar({ trabajadores, personas, fecha, tipo }) {
+function cruzar({ trabajadores, personas, fecha, tipo, conFechas = false, conJornada = false }) {
   const corte = tipo === 'proforma' ? `${fecha.slice(0, 7)}-01` : fecha;
+  // Con fechas, una fila por legajo: la de su contrato de ahora.
+  if (conFechas) {
+    const deAlta = t => !t.baja || t.baja > fecha;
+    const una = new Map();
+    for (const t of trabajadores) {
+      const ya = una.get(t.legajo);
+      if (!ya || (deAlta(t) && !deAlta(ya)) || (deAlta(t) === deAlta(ya) && String(t.ingreso || '') > String(ya.ingreso || ''))) una.set(t.legajo, t);
+    }
+    trabajadores = [...una.values()];
+  }
+  const deBajaEnGestoria = t => conFechas && !!t.baja && t.baja <= fecha;
   const porLegajo = new Map(personas.filter(p => p.legajo).map(p => [p.legajo, p]));
   const enListado = new Set(trabajadores.map(t => t.legajo));
   const propiaEnAlta = personas.filter(p => p.vigente && p.tipo === 'propia' && p.alta && p.alta <= fecha);
@@ -187,6 +254,8 @@ function cruzar({ trabajadores, personas, fecha, tipo }) {
 
   for (const t of trabajadores) {
     const p = porLegajo.get(t.legajo);
+    // Alguien que ya se fue para la gestoría y que el ERP no conoce: es historia.
+    if (!p && deBajaEnGestoria(t)) continue;
     if (!p) {
       const otro = ausentes.filter(a => !cambiados.has(String(a.id)) && mismoNombre(t.nombre, a.nombre, a.nombre_ss));
       if (otro.length === 1) {
@@ -208,9 +277,31 @@ function cruzar({ trabajadores, personas, fecha, tipo }) {
     if (t.nombre && !mismoNombre(t.nombre, p.nombre, p.nombre_ss)) {
       poner('nombre_distinto', { conductorId: p.id, legajo: t.legajo, nombreGestoria: t.nombre, detalle: { fila: t.fila, erp: p.nombre } });
     }
-    if (!p.vigente && p.baja && p.baja < corte) {
-      poner('alta_gestoria_baja_nuestra', { conductorId: p.id, legajo: t.legajo, nombreGestoria: t.nombre,
-        detalle: { fila: t.fila, baja: p.baja, dias: Math.max(0, diasEntre(p.baja, fecha)) } });
+    const base = { conductorId: p.id, legajo: t.legajo, nombreGestoria: t.nombre };
+    const mirarAlta = () => {
+      if (t.ingreso && p.alta && t.ingreso !== p.alta) {
+        poner('fecha_alta_distinta', { ...base, detalle: { fila: t.fila, erp: p.alta, gestoria: t.ingreso, abierto: !!p.vigente } });
+      }
+    };
+    if (!deBajaEnGestoria(t)) {
+      if (!p.vigente && p.baja && p.baja < corte) {
+        poner('alta_gestoria_baja_nuestra', { ...base,
+          detalle: { fila: t.fila, baja: p.baja, dias: Math.max(0, diasEntre(p.baja, fecha)) } });
+      } else if (conFechas && p.vigente) {
+        mirarAlta();
+        const horas = p.jornada_horas == null ? null : Number(p.jornada_horas);
+        if (conJornada && t.jornada && horas && p.tipo === 'propia' && t.jornada !== horas) {
+          poner('jornada_distinta', { ...base, detalle: { fila: t.fila, erp: horas, gestoria: t.jornada } });
+        }
+      }
+    } else if (p.vigente) {
+      poner('baja_gestoria_alta_nuestra', { ...base, detalle: { fila: t.fila, bajaGestoria: t.baja, alta: p.alta } });
+    } else {
+      if (p.baja && p.baja !== t.baja) {
+        poner('fecha_baja_distinta', { ...base,
+          detalle: { fila: t.fila, erp: p.baja, gestoria: t.baja, dias: Math.max(0, diasEntre(p.baja, t.baja)) } });
+      }
+      mirarAlta();
     }
   }
   for (const p of propiaEnAlta) {
@@ -223,4 +314,4 @@ function cruzar({ trabajadores, personas, fecha, tipo }) {
   return salida;
 }
 
-module.exports = { hojasDe, interpretar, cruzar, fechaDe, mismoNombre, palabrasEnComun, plano };
+module.exports = { hojasDe, interpretar, cruzar, fechaDe, fechaCelda, horasDe, mismoNombre, palabrasEnComun, plano };

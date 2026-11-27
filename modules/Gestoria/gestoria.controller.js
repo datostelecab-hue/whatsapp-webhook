@@ -49,6 +49,7 @@ router.get('/api/discrepancia/:id', responde(async req => ({ ficha: await gestor
 router.post('/api/subir', responde(async req => gestoria.subir(req.body || {}, await quien(req))));
 router.post('/api/discrepancia/:id/cerrar', responde(async req => gestoria.cerrar(req.params.id, req.body || {}, await quien(req))));
 router.post('/api/discrepancia/:id/legajo', responde(async req => gestoria.ponerLegajo(req.params.id, req.body || {}, await quien(req))));
+router.post('/api/discrepancia/:id/decidir', responde(async req => gestoria.decidir(req.params.id, req.body || {}, await quien(req))));
 router.get('/api/correo', responde(async req => gestoria.correo(await quien(req))));
 router.post('/api/correo/enviado', responde(async req => gestoria.marcarEnviadas(req.body || {}, await quien(req))));
 

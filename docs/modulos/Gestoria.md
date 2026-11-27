@@ -184,8 +184,38 @@ test/altas-gestoria.test.js
 - **Tarjeta «Pedir el alta a la gestoría»** a Diana al crearse, con plazo el día antes de su alta; se cierra sola al marcarla pedida, confirmada o anulada.
 - Número en la pestaña: las sin pedir, las urgentes y los no presentados. Desde una tarjeta o un aviso: `/gestoria?vista=altas&alta=ID`.
 
+## El listado de trabajadores de A3: fechas y jornada (db/309, 27/11/2026)
+
+El listado de trabajadores que sale de A3 («PLANTILLA TRABAJADORES»: Legajo, TRABAJADOR, DNI…, Fecha Ingreso, Fecha Baja, Contrato, Coeficiente Tiempo Parcial) trae **a todos, también a los que se fueron**. El lector reconoce esas columnas solas (`listado.js`). Lo que hay que saber de ellas:
+- «00/00/0000» quiere decir sin fecha.
+- Una fecha llega como fecha de Excel o como texto «dd/mm/aaaa», y en un .xls como número de serie.
+- La parcialidad va en tantos por mil de 40 h: «000» es la jornada completa, «800» son 32 h y «750», 30 h.
+
+Con fechas, el cruce cambia en dos cosas:
+- Quien tiene **baja en la gestoría a la fecha del listado no está de alta para ellos**.
+- De cada legajo cuenta **su fila de ahora**: la que no tiene baja, o la más reciente. A un recontratado, A3 lo saca dos veces.
+
+Y salen cuatro diferencias más. Camilo decidió que **las decide Diana, una a una**:
+
+| Tipo | Qué es | «Corregir el ERP» |
+| --- | --- | --- |
+| **De baja en la gestoría y de alta con nosotros** | la gestoría le dio de baja; para nosotros sigue trabajando | No: si se fue, se le da la baja en su ficha |
+| **Fecha de baja distinta** | los dos le dieron de baja, en fechas distintas; si la de la gestoría es después, esos días cuestan (con el coste diario de Parámetros) | No: se corrige en la ficha |
+| **Fecha de alta distinta** | la fecha de alta no es la misma | Sí, si el contrato sigue abierto: `cambiarAlta`, con sus reglas (no puede dejar fuera días trabajados) |
+| **Jornada distinta** | las horas de su contrato no son las mismas (solo plantilla propia) | Sí: `cambiarJornada`, la misma novación que en Plantilla |
+
+- **«Pedírselo a la gestoría»** marca la diferencia (`detalle.pedir`, con el día). Entra en el siguiente «Correo a la gestoría» y sigue pendiente hasta que deje de salir en su listado. La marca se conserva al subir listados nuevos. En la columna «A la gestoría» sale «Por pedir» hasta que se manda.
+- **«Corregir el ERP»** cambia la ficha como la tiene la gestoría (queda en el libro de cambios de la ficha) y da la diferencia por resuelta.
+- **La fecha del listado**: el de trabajadores de A3 no la trae, así que al subirlo se pide (por defecto, hoy). Si lo más reciente del fichero es de hace más de un mes, la vista previa avisa: cruzar a hoy un listado viejo llena la lista de diferencias falsas, con los que se fueron y los que entraron después. La proforma sigue sacando su fecha del fichero.
+- **Comprobado el 27/11 en solo lectura** con el «PLANTILLA TRABAJADORES» que había, que es de mediados de septiembre (lo último que trae es una baja del 15/09). Cruzado a su fecha, el 16/09:
+  - 14 en la gestoría y de baja con nosotros, 3 de alta y no en la gestoría;
+  - 8 fechas de alta y 3 de baja distintas, 3 jornadas distintas y 3 de baja en la gestoría y de alta con nosotros;
+  - además, 6 legajos de otra persona, 4 desconocidos, 1 cambiado y 1 sin legajo.
+
+  Cruzado a hoy salían 56 y 56: por eso se pide la fecha. Pruebas en test/gestoria-fechas.test.js.
+
 ## Lo que falta del módulo 8
 
-- El **listado de plantilla en alta** (o el ITA) real, para las **fechas que no coinciden**.
+- Que la gestoría mande cada lunes el **listado de trabajadores de A3 al día** (es el que pide la tarjeta del lunes).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Conductores]] · [[Ficheros importados]]

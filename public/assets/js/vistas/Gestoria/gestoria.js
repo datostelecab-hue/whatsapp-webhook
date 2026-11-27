@@ -26,10 +26,20 @@
         : d.candidatos > 1 ? 'Se parece a varias fichas del ERP' : 'No se parece a nadie del ERP';
       case 'nombre_distinto': return `En el ERP, ese legajo es de ${d.erp}`;
       case 'sin_legajo': return `De alta desde el ${dmy(d.alta)}; sin legajo no se puede cruzar`;
+      case 'baja_gestoria_alta_nuestra': return `De baja en la gestoría el ${dmy(d.bajaGestoria)}; con nosotros sigue de alta desde el ${dmy(d.alta)}`;
+      case 'fecha_alta_distinta': return `Alta el ${dmy(d.gestoria)} en la gestoría y el ${dmy(d.erp)} en el ERP`;
+      case 'fecha_baja_distinta': return `Baja el ${dmy(d.gestoria)} en la gestoría y el ${dmy(d.erp)} en el ERP`
+        + (d.dias ? `: ${d.dias} días más en la gestoría` : '');
+      case 'jornada_distinta': return `${d.gestoria} h en la gestoría y ${d.erp} h en el ERP`;
       default: return '';
     }
   }
   const persona = f => f.nombre_erp || f.nombre_gestoria || '—';
+  const FECHAS = ['fecha_alta_distinta', 'fecha_baja_distinta', 'jornada_distinta'];
+  const decide = f => !!(TIPOS[f.tipo] && TIPOS[f.tipo].decide);
+  const pedida = f => !!(f.detalle && f.detalle.pedir);
+  // «Corregir el ERP» solo donde hay un camino seguro: el alta y la jornada del contrato abierto.
+  const corregible = f => f.tipo === 'jornada_distinta' || (f.tipo === 'fecha_alta_distinta' && f.detalle && f.detalle.abierto);
 
   const lista = Listado.montar({
     raiz: '#gs-plantilla',
@@ -57,6 +67,10 @@
         { valor: n('legajo_cambiado') + n('legajo_desconocido') + n('nombre_distinto'), etiqueta: 'legajos que no cuadran', tono: 'warn',
           filtro: { id: 'tipo', valor: 'legajos' } },
         { valor: n('sin_legajo'), etiqueta: 'sin legajo', filtro: { id: 'tipo', valor: 'sin_legajo' } },
+        ...(n('baja_gestoria_alta_nuestra') ? [{ valor: n('baja_gestoria_alta_nuestra'), etiqueta: 'de baja en la gestoría y trabajando', tono: 'red',
+          filtro: { id: 'tipo', valor: 'baja_gestoria_alta_nuestra' }, ayuda: 'Para la gestoría se fueron y con nosotros siguen de alta.' }] : []),
+        ...(FECHAS.some(t => n(t)) ? [{ valor: FECHAS.reduce((a, t) => a + n(t), 0), etiqueta: 'fechas o jornada que no cuadran', tono: 'warn',
+          filtro: { id: 'tipo', valor: 'fechas' }, ayuda: 'Las decide quien lleva la gestoría: corregir el ERP o pedírselo a la gestoría.' }] : []),
         ...(COSTE_DIA > 0 ? [{ valor: euros(coste), etiqueta: 'coste estimado', tono: 'red',
           ayuda: `Días en su listado después de la baja × ${euros(COSTE_DIA)} al día (Parámetros).` }] : []),
       ];
@@ -82,8 +96,10 @@
       { id: 'estado', etiqueta: 'Estado', campo: 'estado', textoTodos: 'Cualquier estado', opciones: [
         { valor: 'pendiente', texto: 'Pendientes' }, { valor: 'resuelta', texto: 'Resueltas' }, { valor: 'descartada', texto: 'Descartadas (no vuelven a salir)' }] },
       { id: 'tipo', etiqueta: 'Tipo', textoTodos: 'Cualquier tipo',
-        opciones: () => [...Object.entries(TIPOS).map(([valor, t]) => ({ valor, texto: t.etiqueta })), { valor: 'legajos', texto: 'Legajos que no cuadran' }],
-        pasa: (f, v) => (v === 'legajos' ? ['legajo_cambiado', 'legajo_desconocido', 'nombre_distinto'].includes(f.tipo) : f.tipo === v) },
+        opciones: () => [...Object.entries(TIPOS).map(([valor, t]) => ({ valor, texto: t.etiqueta })),
+          { valor: 'legajos', texto: 'Legajos que no cuadran' }, { valor: 'fechas', texto: 'Fechas o jornada que no cuadran' }],
+        pasa: (f, v) => (v === 'legajos' ? ['legajo_cambiado', 'legajo_desconocido', 'nombre_distinto'].includes(f.tipo)
+          : v === 'fechas' ? FECHAS.includes(f.tipo) : f.tipo === v) },
     ],
 
     acciones: PUEDE ? [
@@ -101,7 +117,8 @@
       { titulo: 'Coste', valor: f => f.coste, ayuda: 'Estimado: días en su listado después de la baja × el coste diario (Parámetros).',
         pinta: v => (v == null ? '' : `<span class="text-telecab-red font-semibold whitespace-nowrap">${esc(euros(v))}</span>`) },
       { titulo: 'Detectada', campo: 'detectada', clase: 'whitespace-nowrap' },
-      { titulo: 'A la gestoría', campo: 'enviada', clase: 'whitespace-nowrap', ayuda: 'Cuándo se le mandó en el correo de correcciones.' },
+      { titulo: 'A la gestoría', valor: f => f.enviada || (pedida(f) ? 'Por pedir' : ''), clase: 'whitespace-nowrap',
+        ayuda: 'Cuándo se le mandó en el correo de correcciones («Por pedir»: decidido, aún sin mandar).' },
       { titulo: 'Estado', valor: f => ESTADOS[f.estado][0], pinta: (v, f) => etiqueta(v, ESTADOS[f.estado][1]) },
     ],
 
@@ -113,6 +130,10 @@
         { texto: 'Poner el legajo de la gestoría', icono: 'fa-id-badge', principal: true,
           visible: d => PUEDE && d.estado === 'pendiente' && (d.tipo === 'legajo_cambiado' || (d.tipo === 'legajo_desconocido' && d.detalle && d.detalle.propuesta)),
           onClick: (d, lst) => ponerLegajo(d, lst) },
+        { texto: 'Corregir el ERP', icono: 'fa-pen', principal: true,
+          visible: d => PUEDE && d.estado === 'pendiente' && corregible(d), onClick: (d, lst) => decidir(d, lst, 'erp') },
+        { texto: 'Pedírselo a la gestoría', icono: 'fa-envelope',
+          visible: d => PUEDE && d.estado === 'pendiente' && decide(d) && !pedida(d), onClick: (d, lst) => decidir(d, lst, 'gestoria') },
         { texto: 'Resuelta', icono: 'fa-check', visible: d => PUEDE && d.estado === 'pendiente', onClick: (d, lst) => cerrar(d, lst, 'resuelta') },
         { texto: 'Descartar', icono: 'fa-ban', visible: d => PUEDE && d.estado === 'pendiente', onClick: (d, lst) => cerrar(d, lst, 'descartada') },
       ],
@@ -125,6 +146,7 @@
           { etiqueta: 'Coste estimado', valor: d => (d.coste == null ? '—' : euros(d.coste)) },
           { etiqueta: 'Detectada', valor: d => d.detectada },
           { etiqueta: 'Último listado en que sale', valor: d => d.ultimo_fichero || '—' },
+          { etiqueta: 'Decidido', valor: d => (pedida(d) ? `Pedírselo a la gestoría${d.detalle.pedidoAt ? ` (${d.detalle.pedidoAt})` : ''}` : decide(d) ? 'Aún no' : '—') },
           { etiqueta: 'Enviada a la gestoría', valor: d => d.enviada || 'No' },
           { etiqueta: 'Estado', valor: d => ESTADOS[d.estado][0] + (d.resuelta ? ` el ${d.resuelta}${d.resuelta_por_nombre ? ` por ${d.resuelta_por_nombre}` : ''}` : '') },
           { etiqueta: 'Nota', valor: d => d.nota || '—' },
@@ -147,6 +169,21 @@
     await lst.recargar();
   }
 
+  async function decidir(d, lst, como) {
+    const x = d.detalle || {};
+    const cambio = d.tipo === 'jornada_distinta' ? `la jornada de ${x.erp} h a ${x.gestoria} h` : `la fecha de alta del ${dmy(x.erp)} al ${dmy(x.gestoria)}`;
+    const ok = await Dialogo.confirmar(como === 'erp'
+      ? { titulo: 'Corregir el ERP', si: 'Corregirlo', no: 'Cancelar',
+          texto: `Se cambia en su ficha ${cambio}, como la tiene la gestoría, y la diferencia queda resuelta. Queda en el libro de cambios de su ficha.` }
+      : { titulo: 'Pedírselo a la gestoría', si: 'Pedírselo', no: 'Cancelar',
+          texto: 'Entra en el próximo «Correo a la gestoría». La diferencia sigue pendiente hasta que deje de salir en su listado.' });
+    if (!ok) return;
+    const r = await Api.post(`/gestoria/api/discrepancia/${encodeURIComponent(d.id)}/decidir`, { como }, { aviso: 'No se ha podido hacer' });
+    if (!r) return;
+    Dialogo.hecho(como === 'erp' ? 'Corregido en el ERP' : 'Irá en el correo a la gestoría');
+    await lst.recargar();
+  }
+
   async function cerrar(d, lst, estado) {
     const v = await Dialogo.formulario(estado === 'resuelta' ? 'Dar por resuelta' : 'Descartar la diferencia', [
       { id: 'nota', etiqueta: estado === 'resuelta' ? 'Qué se hizo (opcional)' : 'Por qué se descarta', tipo: 'texto-largo',
@@ -162,7 +199,9 @@
   async function subirListado() {
     const v = await Dialogo.formulario('Subir el listado de la gestoría', [
       { id: 'fichero', etiqueta: 'El fichero de la gestoría', tipo: 'ficheros', multiple: false, obligatorio: true, accept: '.xls,.xlsx',
-        ayuda: 'La proforma de A3NOM o el listado de plantilla en alta, tal cual llega (.xls o .xlsx).' },
+        ayuda: 'La proforma de A3NOM o el listado de trabajadores de A3 (con fechas de ingreso y baja), tal cual llega (.xls o .xlsx).' },
+      { id: 'fecha', etiqueta: 'Fecha del listado', tipo: 'fecha', valor: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' }),
+        ayuda: 'Solo cuenta si el fichero no la trae (el listado de trabajadores de A3 no la lleva): el día en que la gestoría lo sacó.' },
     ], { textoBoton: 'Revisar', nota: 'Primero se enseña qué sale. No se apunta nada hasta que lo confirmes.' });
     if (!v || !v.fichero || !v.fichero[0]) return;
     const file = v.fichero[0];
@@ -175,7 +214,7 @@
         fr.readAsDataURL(file);
       });
     } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo leer', texto: e.message, tono: 'error' }); }
-    const previa = await Api.post('/gestoria/api/subir', { base64, nombre: file.name, confirmar: false }, { aviso: 'No se ha podido leer el listado' });
+    const previa = await Api.post('/gestoria/api/subir', { base64, nombre: file.name, fecha: v.fecha, confirmar: false }, { aviso: 'No se ha podido leer el listado' });
     if (!previa) return;
     if (previa.yaCargado) {
       return Dialogo.aviso({ titulo: 'Ese listado ya se subió', tono: 'aviso',
@@ -185,14 +224,14 @@
     const html = `
       <p class="text-sm">${r.tipo === 'proforma' ? 'Proforma de nómina' : 'Listado de plantilla'} del <b>${esc(dmy(r.fecha))}</b>
         ${r.empresa ? `· empresa ${esc(r.empresa.codigo)} ${esc(r.empresa.nombre)}` : ''} · hoja «${esc(r.hoja)}»</p>
-      <p class="text-sm mt-1"><b>${r.trabajadores}</b> trabajadores${r.conceptos ? ` y ${r.conceptos} conceptos` : ''}.</p>
+      <p class="text-sm mt-1"><b>${r.trabajadores}</b> trabajadores${r.conceptos ? ` y ${r.conceptos} conceptos` : ''}${r.conFechas ? `, con fechas de alta y baja${r.conJornada ? ' y jornada' : ''}` : ''}.</p>
       <ul class="text-sm mt-2 space-y-0.5">${Object.entries(r.porTipo).map(([t, n]) =>
         `<li><b>${n}</b> ${esc((TIPOS[t] || { etiqueta: t }).etiqueta.toLowerCase())}</li>`).join('') || '<li>Ninguna diferencia.</li>'}</ul>
       ${(r.avisos || []).length ? `<p class="text-xs text-telecab-warn mt-2">${r.avisos.map(esc).join('<br>')}</p>` : ''}
       <p class="text-xs text-telecab-muted mt-2">Las que ya estaban pendientes se mantienen; las que ya no salgan se dan por resueltas.</p>`;
     const ok = await Dialogo.confirmar({ titulo: 'Subir el listado', html, ancho: 'max-w-xl', si: 'Subirlo', no: 'Cancelar' });
     if (!ok) return;
-    const hecho = await Api.post('/gestoria/api/subir', { base64, nombre: file.name, confirmar: true }, { aviso: 'No se ha podido subir', bloquea: true });
+    const hecho = await Api.post('/gestoria/api/subir', { base64, nombre: file.name, fecha: v.fecha, confirmar: true }, { aviso: 'No se ha podido subir', bloquea: true });
     if (!hecho) return;
     Dialogo.hecho(`Listado subido: ${hecho.nuevas} nuevas, ${hecho.siguen} siguen, ${hecho.resueltas} resueltas${hecho.ignoradas ? `, ${hecho.ignoradas} descartadas antes` : ''}`);
     await lista.recargar();

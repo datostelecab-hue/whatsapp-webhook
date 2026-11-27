@@ -134,8 +134,8 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - ✔ 26/11: el expediente del conductor, en la ficha de Plantilla: lo de cada módulo de RR. HH., cada sección con su llave; ver [[Conductores#El expediente de RR. HH. (26/11/2026)]].
 
 **Fase 1 · Módulo 8** — ✔ primera parte el 25/11 (db/287), con la proforma: ver [[Gestoria]]. ✔ 26/11 (db/304) las altas: ver [[Gestoria#La pestaña «Altas»: las altas nuevas ante la gestoría (módulo 8, db/304, 26/11/2026)]]. Decidido: Diana lo marca a mano (pedida y confirmada con justificante); sin confirmar no vincula coche (planificar, sí, en rojo); no presentación a las dos horas del inicio del primer turno; carta de incorporación con plantilla de YouTrust. Falta la plantilla de la carta y las fechas, que necesitan el listado de plantilla en alta.
-- Subir el listado, cruzarlo por legajo y enseñar las tres discrepancias con su coste.
-- Correo de correcciones y seguimiento hasta resolverlas.
+- ✔ 25/11 (db/287): subir el listado, cruzarlo por legajo y enseñar las diferencias con su coste; el correo de correcciones y su seguimiento.
+- ✔ 27/11 (db/309): **las fechas que no coinciden**, con el listado de trabajadores de A3 (fechas de ingreso y baja, y la parcialidad): baja en la gestoría y de alta con nosotros, fecha de alta distinta, fecha de baja distinta y **jornada distinta**. Decidido: las decide Diana, una a una (corregir el ERP o pedírselo a la gestoría); también la jornada. Ver [[Gestoria#El listado de trabajadores de A3: fechas y jornada (db/309, 27/11/2026)]]. **Con esto el módulo 8 está completo**; solo falta que la gestoría mande ese listado al día cada lunes.
 - ✔ 26/11: alta pedida y confirmada; el candado del coche y la marca en el planificador; la alerta de no presentación con el contador y el aviso a Ignacio a los dos días.
 
 **Fase 2 · Módulo 1**

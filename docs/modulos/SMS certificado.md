@@ -37,6 +37,12 @@ aliases: [SMS certificado, Mensatek, Notificaciones certificadas]
 - «Créditos de Mensatek» enseña los que quedan y sirve para comprobar la conexión.
 - El texto va en el alfabeto GSM (`Unicode=0`): las tildes salen sin tilde (salvo la é), y así cada SMS cabe en menos mensajes.
 
+## Lo que cuesta (tarifa pública de Mensatek, 27/11/2026)
+
+El ERP usa `EnviarSMSCERTIFICADO`: **9 créditos por persona** con un texto de hasta 160 caracteres, y **3 más por cada trozo de 160** que se pase. La tarifa no dice nada de cobrar aparte el enlace al PDF adjunto. Lo que gasta de verdad cada envío lo devuelve Mensatek (`CreditosUsados`) y queda en el envío. Para comparar: un SMS normal gasta 1 crédito y un SMS contrato, 10.
+
+El crédito cuesta de 0,042 € (bono de 50 €) a 0,0354 € (100 €), 0,0318 € (500 €) o 0,0300 € (1.000 €), **sin IVA**. Por persona sale entre 0,32 y 0,38 €, o entre 0,42 y 0,50 € si el texto pasa de 160 caracteres. El 27/11 aún no se había mandado ninguno desde el ERP.
+
 ## Configuración
 
 | Dónde | Qué |

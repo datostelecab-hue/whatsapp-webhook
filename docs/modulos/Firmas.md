@@ -97,7 +97,7 @@ El **modelo oficial del SEPE** de los elementos esenciales del contrato (RD 723/
 
 - **Nace con cada alta nueva** (Gestoría › Altas), junto a la carta de incorporación: tipo `informativo`, origen `alta`, `origen_id` «ID|informativo».
 - **Lo de cada persona**: su nombre (YouTrust), **DNI**, **Tipo de relacion** (el ERP no guarda si el contrato es temporal: «INDEFINIDO A TIEMPO COMPLETO» con 40 h; si no, «INDEFINIDO A TIEMPO PARCIAL (N HORAS SEMANALES)»), **Fecha de inicio** (la del alta) y **Dia**, **Mes** y **Ano** del día en que se prepara («En ALCOBENDAS a …»).
-- La empresa sale como la escribe la gestoría: «TIBUS LUXURY SERVICES SLU», domicilio social Cl Josefa Valcárcel 20, centro de trabajo Avd Valdelaparra 47 (Alcobendas). El generador del PDF está fuera del repo (Scripts de análisis); si cambia algo fijo, se rehace el PDF y se reemplaza en la plantilla.
+- La empresa sale como «TIBUS LUXURY SERVICES, S.L.» (Camilo, 27/11/2026: «Es S.L.»; antes ponía «SLU», como la escribe A3), domicilio social Cl Josefa Valcárcel 20, centro de trabajo Avd Valdelaparra 47 (Alcobendas). El generador del PDF está fuera del repo (Scripts de análisis); si cambia algo fijo, se rehace el PDF y se reemplaza en la plantilla.
 - Sin db/308 aplicada no se intenta (rompería la transacción del alta).
 
 La plantilla **«Carta de sanción»** se creó el mismo día (`f63c8d2b-b9c2-405d-ab75-34749d1a6aaf`): firmante «Trabajador», SMS; Fecha y, en cajas del ancho del párrafo (el texto salta de línea), Hechos, Calificación y Sanción. Texto aprobado por Camilo el 26/11/2026; conviene que lo revise Legal (se edita la plantilla sin tocar el ERP).

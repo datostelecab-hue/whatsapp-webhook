@@ -48,7 +48,14 @@ const TIPOS = {
   legajo_desconocido: { etiqueta: 'Legajo que no está en el ERP', tono: 'warn' },
   nombre_distinto: { etiqueta: 'El legajo es de otra persona', tono: 'warn' },
   sin_legajo: { etiqueta: 'Sin legajo', tono: 'muted' },
+  // Con el listado de trabajadores de A3, que trae fechas y jornada (27/11/2026).
+  // Las decide Diana: corregir el ERP o pedírselo a la gestoría.
+  baja_gestoria_alta_nuestra: { etiqueta: 'De baja en la gestoría y de alta con nosotros', tono: 'red', gestoria: true, decide: true },
+  fecha_baja_distinta: { etiqueta: 'Fecha de baja distinta', tono: 'red', decide: true },
+  fecha_alta_distinta: { etiqueta: 'Fecha de alta distinta', tono: 'warn', decide: true },
+  jornada_distinta: { etiqueta: 'Jornada distinta', tono: 'warn', decide: true },
 };
+const FECHAS_Y_JORNADA = ['fecha_alta_distinta', 'fecha_baja_distinta', 'jornada_distinta'];
 
 const error = (msg, status = 400) => Object.assign(new Error(msg), { status });
 const dmy = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
@@ -67,17 +74,34 @@ ficheros.registrarTipo(TIPO_FICHERO, {
 });
 
 /** Lee e interpreta el fichero, y lo cruza. → { leido, discrepancias, resumen } */
-async function analizar(buffer) {
+async function analizar(buffer, { fecha } = {}) {
   const leido = listado.interpretar(await listado.hojasDe(buffer));
-  if (!leido.fecha) throw error('No encuentro la fecha del listado (la «FECHA:» de arriba)');
+  if (!leido.fecha) {
+    // El listado de trabajadores de A3 no trae fecha: la dice quien lo sube (por
+    // defecto, hoy). Cruzar a hoy un listado viejo llena la lista de diferencias
+    // falsas: los que se fueron después y los que entraron después.
+    if (leido.tipo === 'proforma') throw error('No encuentro la fecha del listado (la «FECHA:» de arriba)');
+    const f = String(fecha || '').slice(0, 10);
+    if (f && !/^\d{4}-\d{2}-\d{2}$/.test(f)) throw error('La fecha del listado no es válida');
+    if (f > calendario.hoy()) throw error('La fecha del listado no puede ser futura');
+    leido.fecha = f || calendario.hoy();
+    leido.sinFecha = true;
+    leido.avisos.push(`El fichero no trae fecha: se cruza a ${dmy(leido.fecha)}, la que se ha indicado al subirlo`);
+    const ultima = leido.trabajadores.flatMap(t => [t.ingreso, t.baja]).filter(x => x && x <= leido.fecha).sort().pop();
+    if (ultima && calendario.sumarDias(ultima, 30) < leido.fecha) {
+      leido.avisos.push(`Ojo: lo más reciente del fichero es del ${dmy(ultima)}. Si el listado es de entonces, súbelo con esa fecha: cruzado a ${dmy(leido.fecha)} saldrán como diferencias quienes se fueron o entraron después.`);
+    }
+  }
   if (!leido.trabajadores.length) throw error('El listado no trae ningún trabajador');
-  const discrepancias = listado.cruzar({ trabajadores: leido.trabajadores, personas: await repo.personas(), fecha: leido.fecha, tipo: leido.tipo });
+  const discrepancias = listado.cruzar({ trabajadores: leido.trabajadores, personas: await repo.personas(), fecha: leido.fecha, tipo: leido.tipo,
+    conFechas: !!leido.conFechas, conJornada: !!leido.conJornada });
   const porTipo = {};
   discrepancias.forEach(d => { porTipo[d.tipo] = (porTipo[d.tipo] || 0) + 1; });
   return {
     leido, discrepancias,
     resumen: {
       tipo: leido.tipo, hoja: leido.hoja, fecha: leido.fecha, empresa: leido.empresa,
+      conFechas: !!leido.conFechas, conJornada: !!leido.conJornada, sinFecha: !!leido.sinFecha,
       trabajadores: leido.trabajadores.length, conceptos: leido.conceptos.length, avisos: leido.avisos,
       discrepancias: discrepancias.length, porTipo,
     },
@@ -92,13 +116,13 @@ const lunesDe = iso => calendario.sumarDias(iso, 1 - calendario.diaSemana(iso));
  * carga, crea las discrepancias nuevas, refresca las que siguen, resuelve las
  * que ya no salen y cierra la tarjeta de la semana.
  */
-async function subir({ base64, nombre, confirmar = false } = {}, quien = {}) {
+async function subir({ base64, nombre, confirmar = false, fecha = null } = {}, quien = {}) {
   await exigir(quien, CLAVE_GESTIONAR);
   if (!await repo.hayTabla()) throw error('Falta aplicar la migración db/287 (Migraciones)');
   const buffer = Buffer.from(String(base64 || ''), 'base64');
   if (!buffer.length) throw error('No ha llegado ningún fichero');
   const nombreFichero = String(nombre || 'listado-gestoria.xls').slice(0, 255);
-  const { leido, discrepancias, resumen } = await analizar(buffer);
+  const { leido, discrepancias, resumen } = await analizar(buffer, { fecha });
   if (!confirmar) {
     let ya = null;
     try { await ficheros.exigirNuevo(TIPO_FICHERO, ficheros.huella(buffer)); } catch (e) { if (e.yaCargado) ya = e.yaCargado; else throw e; }
@@ -145,7 +169,7 @@ async function subir({ base64, nombre, confirmar = false } = {}, quien = {}) {
 
 /** El coste estimado de una discrepancia, con el parámetro (0: no se calcula). */
 function conCoste(d, costeDia) {
-  const dias = d.tipo === 'alta_gestoria_baja_nuestra' && d.detalle ? Number(d.detalle.dias) || 0 : 0;
+  const dias = ['alta_gestoria_baja_nuestra', 'fecha_baja_distinta'].includes(d.tipo) && d.detalle ? Number(d.detalle.dias) || 0 : 0;
   return { ...d, coste: costeDia > 0 && dias ? Math.round(dias * costeDia * 100) / 100 : null };
 }
 
@@ -203,6 +227,49 @@ async function ponerLegajo(id, { conductorId } = {}, quien = {}) {
 }
 
 /**
+ * DIANA DECIDE una diferencia de fechas o de jornada (27/11/2026). Camilo:
+ * «Diana, en cada caso».
+ *
+ *   · `como: 'gestoria'`: se le pide a la gestoría; entra en el correo de
+ *     correcciones y sigue pendiente hasta que deje de salir en su listado.
+ *   · `como: 'erp'`: el ERP se pone como la gestoría y queda resuelta. Solo lo
+ *     que tiene un camino seguro en la ficha: la fecha de alta y la jornada de
+ *     un contrato abierto, con las mismas reglas que en Plantilla (la fecha de
+ *     alta no puede dejar fuera días trabajados). Una baja se corrige en la
+ *     ficha de la persona, no desde aquí.
+ */
+async function decidir(id, { como } = {}, quien = {}) {
+  await exigir(quien, CLAVE_GESTIONAR);
+  const d = await repo.porId(id);
+  if (!d || d.estado !== 'pendiente') throw error('Esa diferencia ya no está pendiente');
+  if (!(TIPOS[d.tipo] && TIPOS[d.tipo].decide)) throw error('Esta diferencia no se decide así');
+  const det = d.detalle || {};
+  if (como === 'gestoria') {
+    const ok = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'gestoria', accion: 'cambio', motivo: 'Se le pide a la gestoría que lo corrija' },
+      cli => repo.pedir(cli, id, { usuarioId: quien.usuarioId, nombre: quien.nombre }));
+    if (!ok) throw error('Esa diferencia ya no está pendiente');
+    avisarCambio();
+    return { ok: true, como };
+  }
+  if (como !== 'erp') throw error('Elige: corregir el ERP o pedírselo a la gestoría');
+  const plantilla = require('../Conductores/plantilla.service');
+  let nota;
+  if (d.tipo === 'fecha_alta_distinta' && det.abierto) {
+    await plantilla.cambiarAlta(d.conductor_id, { alta: det.gestoria }, quien);
+    nota = `Fecha de alta del ERP cambiada del ${dmy(det.erp)} al ${dmy(det.gestoria)}, como la gestoría`;
+  } else if (d.tipo === 'jornada_distinta') {
+    await plantilla.cambiarJornada(d.conductor_id, { jornadaHoras: String(det.gestoria) }, quien);
+    nota = `Jornada del ERP cambiada de ${det.erp} h a ${det.gestoria} h, como la gestoría`;
+  } else {
+    throw error('Esto no se corrige desde aquí: cámbialo en la ficha de la persona y da la diferencia por resuelta');
+  }
+  await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'gestoria', accion: 'resolucion' },
+    cli => repo.cerrar(cli, id, { estado: 'resuelta', nota, usuarioId: quien.usuarioId }));
+  avisarCambio();
+  return { ok: true, como, nota };
+}
+
+/**
  * EL CORREO A LA GESTORÍA: lo que tienen que corregir ellos, pendiente y con
  * su texto. → { para, asunto, cuerpo, ids }
  */
@@ -229,7 +296,27 @@ async function correo(quien = {}) {
     raras.forEach(d => lineas.push(`  - ${d.legajo} ${d.nombre_gestoria}: para nosotros está ${d.detalle.propuesta.situacion === 'de ETT' ? 'contratado por ETT' : 'de baja'}`));
     lineas.push('');
   }
-  const ids = [...bajas, ...altas, ...raras].map(d => d.id);
+  // Lo que Diana decidió pedirles (fechas, jornada y bajas que nosotros no tenemos).
+  const pedidas = filas.filter(d => TIPOS[d.tipo] && TIPOS[d.tipo].decide && d.detalle && d.detalle.pedir);
+  const susBajas = pedidas.filter(d => d.tipo === 'baja_gestoria_alta_nuestra');
+  const fechas = pedidas.filter(d => FECHAS_Y_JORNADA.includes(d.tipo));
+  if (susBajas.length) {
+    lineas.push('Figuran de baja en vuestro listado y siguen trabajando con nosotros (por favor, revisadlo):');
+    susBajas.forEach(d => lineas.push(`  - ${d.legajo} ${d.nombre_gestoria || d.nombre_erp}: baja el ${dmy(d.detalle.bajaGestoria)} en vuestro listado; para nosotros sigue de alta desde el ${dmy(d.detalle.alta)}`));
+    lineas.push('');
+  }
+  if (fechas.length) {
+    lineas.push('Estas fechas o jornadas no coinciden con las nuestras (por favor, corregidlas):');
+    fechas.forEach(d => {
+      const x = d.detalle;
+      const que = d.tipo === 'jornada_distinta'
+        ? `jornada de ${x.gestoria} h en vuestro listado; para nosotros, ${x.erp} h`
+        : `fecha de ${d.tipo === 'fecha_alta_distinta' ? 'alta' : 'baja'} el ${dmy(x.gestoria)} en vuestro listado; para nosotros, el ${dmy(x.erp)}`;
+      lineas.push(`  - ${d.legajo} ${d.nombre_gestoria || d.nombre_erp}: ${que}`);
+    });
+    lineas.push('');
+  }
+  const ids = [...bajas, ...altas, ...raras, ...susBajas, ...fechas].map(d => d.id);
   if (!ids.length) return { para: '', asunto: '', cuerpo: '', ids: [] };
   lineas.push('Gracias.');
   return {
@@ -292,6 +379,6 @@ tareasProgramadas.registrar({
 });
 
 module.exports = {
-  subir, analizar, lista, ficha, cerrar, ponerLegajo, correo, marcarEnviadas, tarjetaDelLunes, puede,
+  subir, analizar, lista, ficha, cerrar, ponerLegajo, decidir, correo, marcarEnviadas, tarjetaDelLunes, puede,
   TIPOS, TIPO_TARJETA, TIPO_FICHERO, CLAVE_VER, CLAVE_GESTIONAR,
 };
