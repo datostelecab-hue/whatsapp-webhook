@@ -365,6 +365,11 @@ const RUTA_A_CLAVE = [
   // cada uno con su llave, que comprueba el servicio ('/gestoria/gestionar' o
   // '/gestoria/nomina'). Sin esta línea, aprobar exigiría también gestionar.
   ['/gestoria/api/cierre',        '/gestoria'],
+  // Decidir una ausencia (db/311, 27/11/2026): desde el 26/11 la confirma Tráfico
+  // con su llave ('/ausencias/trafico'), y lo de antes, RR. HH. ('/ausencias/validar').
+  // Lo comprueba el servicio, día a día; sin esta línea el POST exigiría a Tráfico
+  // la llave de RR. HH.
+  ['/ausencias/api/decidir',      '/ausencias'],
   ['/control/reporte/',           '/control/reportes'],
   ['/control/sankey/',            '/control/reportes'],
   ['/control/cascada/',           '/control/reportes'],

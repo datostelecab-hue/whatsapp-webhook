@@ -118,9 +118,59 @@ test/bajas-medicas.test.js
 - La lista: abiertas y cerradas en 60 días, cómo va cada una (en plazo, comprobar, fin previsto pasado, sin fecha prevista, con el alta) y los partes de los últimos 7 días. Cada baja se abre en un panel (la lista de Ausencias usa la dirección para sus fichas); desde una tarjeta, `/ausencias?vista=bajas&baja=ID`.
 - **Al empezar** (producción, 26/11/2026): 15 bajas abiertas de gente de alta, **ninguna con fecha prevista**: no nace ninguna tarjeta hasta que se apunten partes.
 
+## El fichero FIE de la gestoría (db/312, 27/11/2026)
+
+Camilo: *«este es el fichero FIE el cual nos pasa la gestoría todos los días, en el cual nos dice quién verdaderamente está de baja médica, la fecha de baja y la fecha de alta (…) si alguien en Telecab pone la fecha de alta y de baja de una baja médica que no coincide con el Excel de la gestoría, este Excel lo corrige ya que es lo legal (…) la verificación empieza desde el 27 de septiembre»*.
+
+```
+modules/RRHH/fie.js           leer el Excel (puro): columnas por su cabecera
+modules/RRHH/fie.service.js   el buzón, importar, el plan, la previa y aplicar
+modules/RRHH/fie.repo.js      el SQL (fie_proceso)
+public/assets/js/vistas/RRHH/fie.js   la pestaña «Fichero FIE»
+test/fie.test.js
+```
+
+- **Cómo llega**: la gestoría se lo manda a Diana cada día y ella lo **reenvía a datos@telecab.es**, el buzón de los repostajes.
+  - **Cada hora** (`rrhh.fie`) se leen ahí, en solo lectura, los correos «FICHERO FIE …» con su Excel, de INBOX y Spam: desde el 27/09 la primera vez, y luego desde diez días antes del último fichero.
+  - El lector del buzón (`correo.leerCorreos`) ya baja también los adjuntos (`adjuntos`).
+  - Cada fichero entra una vez, por su huella (`fichero_importado` tipo 'fie', con el original). Uno vacío es un día sin novedades.
+  - También se puede subir a mano («Subir un FIE»).
+- **El Excel** es la hoja «Report» de la Seguridad Social: la fila 2 son las cabeceras y desde la 3 va un proceso de IT por fila.
+  - De cada proceso se guarda (`fie_proceso`, uno por persona y fecha de baja, con lo último que dijo un FIE del mismo día o posterior):
+    - el **IPF**, que es el documento con un dígito delante;
+    - la **Fecha Baja IT**, la **Fecha Fin IT** (vacía = sin alta) y su causa;
+    - la contingencia (1 común, 2 accidente no laboral, 3 accidente de trabajo, 4 enfermedad profesional);
+    - la recaída, la **próxima revisión médica** y si el **parte de baja** o el **de alta** está **anulado**.
+- **Se cruza por el documento** con la ficha. Si no hay nadie con ese documento, sale «sin ficha». Si hay dos, no se adivina.
+- **Lo que hace con las bajas del ERP** (el FIE manda). La **Fecha Fin IT es el día del alta**: vuelve al día siguiente, como el alta a mano. En el ERP una baja larga suele estar **partida en tramos** (uno por parte), y a veces **empieza antes** que el FIE. Con los tramos que tocan el proceso:
+  - el que **empieza antes** se **corta** el día anterior. Lo de antes **no se borra**, porque puede ser de un proceso anterior al 27/09: queda en «bajas del ERP sin FIE» para revisarlo;
+  - el primero que empieza dentro es **la baja del proceso**:
+    - se le pone su **primer día** (rectificación);
+    - su **alta**: parte de alta y, si vuelve de hoy en adelante, la tarjeta de reincorporación y el aviso a Planificación;
+    - o **se reabre**, si el FIE no tiene alta o la tiene anulada;
+    - y su **próxima revisión** como fecha prevista (parte de confirmación);
+  - los demás que **caben dentro** son trozos de la misma: **se juntan** (se quitan, con su parte de rectificación);
+  - uno que **sigue después del alta** es de la baja siguiente (una recaída): **empieza al día siguiente**;
+  - si no hay ninguna, **se abre**;
+  - con el **parte de baja anulado**, se **quita** la baja de ese día.
+
+  Cada cambio lleva su parte con `origen` 'fie' y va al libro de auditoría (origen 'fie').
+- **Una baja del ERP** de la plantilla propia desde el 27/09 que **no sale en ningún FIE** se **señala** en la pestaña para revisarla. No se toca: el FIE de cada día solo trae lo que cambia.
+- **Primero una previa, luego automático** (Camilo):
+  - hasta que alguien con la llave de validar ausencias pulsa **«Aplicar»**, la pestaña solo enseña lo que cambiaría;
+  - el primer «Aplicar» enciende `fie_automatico` (config_app), y desde entonces cada FIE nuevo se aplica solo en la vuelta de cada hora;
+  - un proceso que falla queda «Error», con el porqué, y se vuelve a intentar.
+- **Quién lo ve**: la pestaña «Fichero FIE» de Ausencias, solo con la llave `/ausencias/validar` (datos de salud). La lectura automática no corre en modo pruebas.
+- **Comprobado el 27/11 en solo lectura** con el FIE de ese día (8 procesos, todos con ficha). Saldrían:
+  - 1 que ya cuadra;
+  - 1 baja partida que se junta y se cierra el 13/11, y su recaída reabierta;
+  - 4 que se reabren, porque en el ERP tenían el fin previsto como alta;
+  - 1 que empieza antes en el ERP (10/09, contra el 22/10 del FIE) y se corta;
+  - 1 alta nueva.
+
 ## Lo que falta (segunda parte del módulo 1)
 
-- El **fichero del INSS** (FIE) que manda la gestoría: el importador, que meterá los partes de arriba solos (`origen` 'fie'), y el campo de cruce configurable (aún no se sabe si viene por DNI, nombre o código de la gestoría).
+- Lo retroactivo **con la nómina ya cerrada**: un FIE que cambia una baja de un mes ya pagado no rehace esa nómina; habría que proponer la corrección en la siguiente (va con el módulo 4).
 - Lo retroactivo **con la nómina ya cerrada**: proponer la corrección en la rectificación o en la nómina siguiente (va con el módulo 4).
 
 Relacionado: [[Plan RRHH y nominas]] · [[Bitacora]] · [[Conductores]] · [[RRHH]] · [[Tablero de tareas]]

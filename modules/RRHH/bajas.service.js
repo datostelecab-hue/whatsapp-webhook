@@ -146,26 +146,36 @@ async function alta(id, d = {}, quien) {
   const vuelve = calendario.sumarDias(d.fecha, 1);
   const plantilla = require('../Conductores/plantilla.service');
   await plantilla.editarAusencia(Number(b.conductor_id), Number(b.id), { hasta: d.fecha }, quien);
-  const responsable = await diana();
-  const cal = await calendario.de('madrid');
-  const hoy = calendario.hoy();
   await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'bajas', accion: 'cambio', motivo: `Alta de ${b.nombre} el ${dmy(d.fecha)}` }, async cli => {
     await repo.insertarParte(cli, { conductorId: b.conductor_id, situacionId: b.id, tipo: 'alta', fecha: d.fecha,
       nota: String(d.nota || '').trim(), creadoPor: quien.usuarioId });
     await tablero.cerrarPorOrigen(cli, { tipo: TARJETA_REVISAR, origenId: b.id, autorId: quien.usuarioId, nota: `Alta el ${dmy(d.fecha)}` });
-    await tablero.nacer(cli, {
-      tipo: TARJETA_VUELVE, origenId: b.id, sensible: true, enlace: `/ausencias?vista=bajas&baja=${encodeURIComponent(b.id)}`,
-      titulo: `Reincorporación de ${b.nombre} el ${dmy(vuelve)}`,
-      descripcion: `Le dieron el alta el ${dmy(d.fecha)} y vuelve el ${dmy(vuelve)}. Comprueba que está en el planificador y lo que haga falta para su vuelta.`,
-      responsableId: responsable, plazoDias: vuelve > hoy ? cal.diasHabilesEntre(hoy, vuelve) : 0,
-    });
+    await tarjetaDeVuelta(cli, b, d.fecha);
   });
-  // A Planificación: que lo tenga en el cuadrante (se da por visto cuando ya está, o caduca).
+  await avisarVuelta(b, d.fecha, quien.usuarioId);
+  return { ok: true, vuelve };
+}
+
+/** La tarjeta de reincorporación a quien valida ausencias (también la pide el FIE, db/312). */
+async function tarjetaDeVuelta(cli, b, fechaAlta) {
+  const vuelve = calendario.sumarDias(fechaAlta, 1);
+  const cal = await calendario.de('madrid');
+  const hoy = calendario.hoy();
+  await tablero.nacer(cli, {
+    tipo: TARJETA_VUELVE, origenId: b.id, sensible: true, enlace: `/ausencias?vista=bajas&baja=${encodeURIComponent(b.id)}`,
+    titulo: `Reincorporación de ${b.nombre} el ${dmy(vuelve)}`,
+    descripcion: `Le dieron el alta el ${dmy(fechaAlta)} y vuelve el ${dmy(vuelve)}. Comprueba que está en el planificador y lo que haga falta para su vuelta.`,
+    responsableId: await diana(), plazoDias: vuelve > hoy ? cal.diasHabilesEntre(hoy, vuelve) : 0,
+  });
+}
+
+/** A Planificación: que lo tenga en el cuadrante (se da por visto cuando ya está, o caduca). No lanza. */
+async function avisarVuelta(b, fechaAlta, autorId = null) {
+  const vuelve = calendario.sumarDias(fechaAlta, 1);
   await avisos.emitir({ tipo: AVISO_VUELVE, origenId: b.id, area: 'planificacion', enlace: '/planificador',
     titulo: `${b.nombre} vuelve de baja médica el ${dmy(vuelve)}`,
     texto: 'Tiene el alta. Si aún no está en el cuadrante para ese día, ponlo.',
-    caducaAt: `${calendario.sumarDias(vuelve, 1)}T00:00:00+01:00`, autorId: quien.usuarioId }).catch(e => console.error('⚠️ [Bajas] aviso a Planificación:', e.message));
-  return { ok: true, vuelve };
+    caducaAt: `${calendario.sumarDias(vuelve, 1)}T00:00:00+01:00`, autorId }).catch(e => console.error('⚠️ [Bajas] aviso a Planificación:', e.message));
 }
 
 /** RECTIFICACIÓN: corrige el primer día o la fecha prevista, con motivo. */
@@ -249,4 +259,4 @@ adjuntos.registrarDueno(DUENO, {
   adjuntar: async q => aus.puede(quienDe(q), aus.CLAVE_VALIDAR),
 });
 
-module.exports = { CONTINGENCIAS, TIPOS, DUENO, lista, ficha, nuevaBaja, confirmacion, alta, rectificar, personas, revisar };
+module.exports = { CONTINGENCIAS, TIPOS, DUENO, TARJETA_REVISAR, lista, ficha, nuevaBaja, confirmacion, alta, rectificar, personas, revisar, tarjetaDeVuelta, avisarVuelta };

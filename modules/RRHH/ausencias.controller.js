@@ -46,4 +46,12 @@ router.post('/api/baja-medica/:id/confirmacion', responde(async req => bajas.con
 router.post('/api/baja-medica/:id/alta', responde(async req => bajas.alta(req.params.id, req.body || {}, await quien(req))));
 router.post('/api/baja-medica/:id/rectificar', responde(async req => bajas.rectificar(req.params.id, req.body || {}, await quien(req))));
 
+// EL FICHERO FIE DE LA GESTORÍA (db/312, 27/11/2026): la pestaña «Fichero FIE».
+const fieSrv = require('./fie.service');
+router.use('/api/fie/subir', express.json({ limit: '15mb' }));
+router.get('/api/fie', responde(async req => fieSrv.vista(await quien(req))));
+router.post('/api/fie/aplicar', responde(async req => fieSrv.aplicar(await quien(req))));
+router.post('/api/fie/leer', responde(async req => fieSrv.leerAhora(await quien(req))));
+router.post('/api/fie/subir', responde(async req => fieSrv.subir(req.body || {}, await quien(req))));
+
 module.exports = router;

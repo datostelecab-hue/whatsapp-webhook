@@ -225,6 +225,7 @@ async function guardarEnEnviados({ user, pass, host, port = 993 }, raw) {
 // correo en crudo. Lo que se haga con todo ello es cosa de quien llama.
 const MAX_PARTE = 512 * 1024;       // un correo de repostaje son 4 KB; esto es un tope, no un tamaño
 const MAX_CRUDO = 2 * 1024 * 1024;  // el correo entero, para la firma
+const MAX_ADJUNTO = 8 * 1024 * 1024;  // un adjunto (el fichero FIE son ~20 KB): tope, no tamaño
 const TOPE_LECTURA = 4 * 60 * 1000;
 
 /** Lee un flujo hasta `max` bytes. `cortado`: no cabía entero. */
@@ -250,8 +251,27 @@ function partesDeTexto(estructura) {
   return partes;
 }
 
+/**
+ * Los adjuntos de un correo, de su estructura MIME: { parte, tipo, nombre, tamano }.
+ * Un adjunto es lo que lleva nombre de fichero (en la disposición o en el tipo).
+ */
+function partesAdjuntas(estructura) {
+  const partes = [];
+  const recorrer = n => {
+    if (!n) return;
+    if (n.childNodes) return n.childNodes.forEach(recorrer);
+    const nombre = (n.dispositionParameters && n.dispositionParameters.filename) || (n.parameters && n.parameters.name) || '';
+    if (nombre) partes.push({ parte: n.part || '1', tipo: String(n.type || '').toLowerCase(), nombre: String(nombre), tamano: n.size || null });
+  };
+  recorrer(estructura);
+  return partes;
+}
+
+// `adjuntos(meta)` (27/11/2026, el fichero FIE de la gestoría): de cada correo
+// elegido, baja también los adjuntos para los que diga que sí, en `adjuntos`
+// ([{ nombre, tipo, buffer }]). Sin él, como siempre: solo el texto.
 async function leerCorreos({ user, pass, host, port = 993, carpeta = 'INBOX', carpetas, desde, elegir = () => true,
-  firma = false, topeMs = TOPE_LECTURA } = {}) {
+  firma = false, adjuntos = null, topeMs = TOPE_LECTURA } = {}) {
   const { ImapFlow } = require('imapflow');
   const client = new ImapFlow({
     host, port, secure: port === 993, auth: { user, pass }, logger: false, emitLogs: false,
@@ -323,6 +343,17 @@ async function leerCorreos({ user, pass, host, port = 993, carpeta = 'INBOX', ca
               const { content } = await client.download(String(s.uid), p.parte, { uid: true });
               if (!content) throw new Error(`el servidor no dio la parte ${p.parte} (¿se movió o se borró mientras se leía?)`);
               correo.partes.push({ tipo: p.tipo, contenido: (await leerFlujo(content, MAX_PARTE)).buf.toString('utf8') });
+            }
+            if (typeof adjuntos === 'function') {
+              correo.adjuntos = [];
+              for (const a of partesAdjuntas(estructura)) {
+                if (!adjuntos(a)) continue;
+                const { content } = await client.download(String(s.uid), a.parte, { uid: true });
+                if (!content) throw new Error(`el servidor no dio el adjunto ${a.nombre}`);
+                const leido = await leerFlujo(content, MAX_ADJUNTO);
+                if (leido.cortado) throw new Error(`el adjunto ${a.nombre} pasa de ${MAX_ADJUNTO / 1024 / 1024} MB`);
+                correo.adjuntos.push({ nombre: a.nombre, tipo: a.tipo, buffer: leido.buf });
+              }
             }
             if (firma) {
               // La firma es un dato más: si no se puede comprobar, el correo sigue.

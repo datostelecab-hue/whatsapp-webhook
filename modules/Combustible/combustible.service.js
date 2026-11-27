@@ -1040,6 +1040,8 @@ async function corregirGasolinera(id, gasolineraId, usuarioId) {
 }
 
 module.exports = {
+  // Con qué se entra a datos@telecab.es: también lo usa el fichero FIE (27/11/2026).
+  credenciales,
   leerBuzon, repasar, lista, ficha, estadoLectura, lecturas, importaciones, importarExcel,
   // La auditoría con Mapon (combustible.auditoria): el cron, el botón y la gasolinera a mano.
   auditarPendientes: auditoria.auditarPendientes, auditarUno, corregirGasolinera,

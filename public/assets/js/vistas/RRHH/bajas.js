@@ -18,12 +18,17 @@
     pestanas: [
       { id: 'ausencias', texto: 'Ausencias', icono: 'fa-user-clock' },
       { id: 'bajas', texto: 'Bajas médicas', icono: 'fa-notes-medical' },
+      // El fichero FIE de la gestoría (db/312): solo quien valida ausencias (datos de salud).
+      ...(PUEDE ? [{ id: 'fie', texto: 'Fichero FIE', icono: 'fa-file-medical' }] : []),
     ],
     param: 'vista',
     alCambiar: id => {
       document.querySelector('#modulo').classList.toggle('hidden', id !== 'ausencias');
       raiz.classList.toggle('hidden', id !== 'bajas');
+      const fie = document.querySelector('#au-fie');
+      if (fie) fie.classList.toggle('hidden', id !== 'fie');
       if (id === 'bajas' && !lista) montar();
+      if (id === 'fie' && window.AusenciasFie) window.AusenciasFie.montar();
     },
   });
 
