@@ -67,7 +67,11 @@ async function cambiarDestinatario(cli, id, cambios) {
   return (await q(cli, `UPDATE sms_destinatario SET ${s.join(', ')} WHERE id = $1`, vals)).rowCount > 0;
 }
 
-/** A quién va: la plantilla de alta por su alcance; con «personas», también quien ya se fue (un finiquito). */
+/**
+ * A quién va: la plantilla de alta por su alcance; con «personas», también quien ya se fue (un finiquito).
+ * La FICHA DE PRUEBAS nunca entra en un envío a un grupo, pero sí si se elige a
+ * mano en «unas personas»: así se prueba de verdad con un móvil propio (27/11/2026).
+ */
 async function destinatariosDe(cli, { alcance, personas }) {
   const filtro = {
     todos: 'AND c.empleo_vigente',
@@ -81,19 +85,19 @@ async function destinatariosDe(cli, { alcance, personas }) {
             (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
               ORDER BY t.principal DESC, t.id LIMIT 1) AS movil
        FROM conductor c
-      WHERE NOT c.es_centinela${await pruebas.fuera('c')} ${filtro}
+      WHERE NOT c.es_centinela${alcance === 'personas' ? '' : await pruebas.fuera('c')} ${filtro}
       ORDER BY 2`, alcance === 'personas' ? [personas || []] : []);
   return r.rows;
 }
 
-/** Para elegir personas: quien está de alta y quien se fue en 120 días. */
+/** Para elegir personas: quien está de alta y quien se fue en 120 días (y la ficha de pruebas, para probar). */
 async function personas() {
   return (await db.consulta(
     `SELECT c.id::text AS id, ${nombre('c')} AS nombre, c.empleo_vigente AS alta,
             NULLIF(btrim(c.dni_nie), '') IS NOT NULL AS con_dni,
             EXISTS (SELECT 1 FROM conductor_telefono t WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL) AS con_movil
        FROM conductor c
-      WHERE NOT c.es_centinela${await pruebas.fuera('c')} AND (c.empleo_vigente OR EXISTS (
+      WHERE NOT c.es_centinela AND (c.empleo_vigente OR EXISTS (
               SELECT 1 FROM conductor_periodo_empleo e WHERE e.conductor_id = c.id AND e.baja >= CURRENT_DATE - 120))
       ORDER BY 2`)).rows;
 }

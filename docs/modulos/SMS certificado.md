@@ -34,6 +34,7 @@ aliases: [SMS certificado, Mensatek, Notificaciones certificadas]
 - **El seguimiento** se refresca solo cada 20 segundos en el panel del envío: quién lo tiene entregado, certificado, abierto, aceptado o rechazado, y el enlace al certificado.
 - **Desde Sanciones** (sanción aprobada, en firma o comunicada): «Por SMS certificado» prepara el borrador a esa persona con la plantilla de sanción o de suspensión. **Desde Finiquitos** (aprobado, enviado o firmado): «Avisar por SMS certificado». El PDF se adjunta en el borrador. Un segundo clic abre el mismo borrador.
 - **Desde Comunicados** (db/310, 27/11/2026): en un comunicado enviado, «SMS certificado a quien falta». El borrador va a los que aún no han pulsado «Lo he leído», con la plantilla «Comunicado sin leer» (origen `comunicado`) y el PDF del comunicado copiado al envío. Así el certificado de Mensatek cubre también el documento. Ver [[Comunicados#El PDF y el SMS certificado a quien no lo lee (db/310, 27/11/2026)]].
+- **La ficha de pruebas** (27/11/2026) nunca entra en un envío a un grupo, pero sí si se elige a mano en «unas personas»: así se prueba de verdad con un móvil propio.
 - **En el expediente** del conductor, la sección «SMS certificados» (llave `/sms`) con su estado y su certificado.
 - «Créditos de Mensatek» enseña los que quedan y sirve para comprobar la conexión.
 - El texto va en el alfabeto GSM (`Unicode=0`): las tildes salen sin tilde (salvo la é), y así cada SMS cabe en menos mensajes.

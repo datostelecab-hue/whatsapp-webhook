@@ -111,3 +111,15 @@ test('el móvil para Mensatek y el texto de cada uno', () => {
   assert.equal(mensatek.movilDe('12'), null);
   assert.match(sms.rellenar('Hola {pila}, el {fecha}', { pila: 'Ana' }), /^Hola Ana, el \d{2}\/\d{2}\/\d{4}$/);
 });
+
+test('la ficha de pruebas: nunca en un envío a un grupo, sí si se elige a mano', () => conBase(async ({ consulta, fabrica }) => {
+  const repo = require('../modules/RRHH/sms.repo');
+  const normal = await fabrica.conductor({ nombre: 'NORMAL' });
+  const prueba = await fabrica.conductor({ nombre: 'PRUEBA' });
+  await consulta(`UPDATE conductor SET es_prueba = true WHERE id = $1`, [prueba.id]);
+  const todos = (await repo.destinatariosDe(null, { alcance: 'todos' })).map(p => p.id);
+  assert.ok(todos.includes(String(normal.id)) && !todos.includes(String(prueba.id)), 'a toda la plantilla, sin la ficha de pruebas');
+  const elegidos = (await repo.destinatariosDe(null, { alcance: 'personas', personas: [prueba.id] })).map(p => p.id);
+  assert.deepEqual(elegidos, [String(prueba.id)], 'elegida a mano, sí');
+  assert.ok((await repo.personas()).some(p => p.id === String(prueba.id)), 'y se puede elegir');
+}));
