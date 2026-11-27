@@ -50,6 +50,18 @@ En `/ausencias` (menú RR. HH. → Ausencias, con su número de pendientes), con
 - La ficha enseña los **días seguidos sin salir** (tres o más suelen ser una baja), las **llamadas de Control** de ese día y sus otras ausencias.
 - **Todo al libro de auditoría** (`auditoria_vigilar`): quién, cuándo y con qué baja. Lo que hace el sistema lleva `automatica`.
 
+## Desde el corte del 26/11/2026 las confirma Tráfico (db/311, 27/11/2026)
+
+Camilo: *«a partir de ayer, que empieza el corte del mes, tienen que confirmarlas Tráfico, o darlas como justificadas, Diana no»*.
+
+- **Quién**: **William y Ángel**. Tienen la llave `/ausencias/trafico` (y `/ausencias` para entrar) y la función «Confirma las ausencias de cada día (Tráfico)». La tarjeta diaria de las ausencias nuevas les nace a ellos. Las tarjetas que seguían abiertas desde el 27/11 se pasaron a William.
+- **Qué deciden**, en las ausencias **del 26/11 en adelante**:
+  - **Injustificada**: absentismo, como siempre.
+  - **Justificada**: pide **las horas** (por defecto 8) y el motivo. **Su J de Tráfico nace ya aprobada** con esas horas, sin pasar por la cola de J, porque lo decidieron ellos. La J dice «Ausencia justificada por Tráfico: …».
+- **Lo que sigue siendo de RR. HH.** (Diana, `/ausencias/validar`): las ausencias **de antes del 26/11** y **abrir una baja médica o un permiso**, sea del día que sea. Si Tráfico ve que es una baja, avisa a RR. HH.
+- El servidor no deja a cada uno decidir lo del otro: lo dice con el nombre y el día de la ausencia.
+- En los pendientes del día 20 (ítem 7), la tarjeta de ausencias sin validar va también a Tráfico.
+
 ## El % de plantilla de baja
 
 En las cifras de arriba, el de hoy: plantilla propia de alta con una baja médica abierta (el 25/11/2026, 30 de 161, un 18,6 %; el encargo decía «en torno al 17 %»). En **«Plantilla de baja»**, los últimos 90 días y la media de cada mes, con su día más alto y más bajo, desde el 01/07/2026.

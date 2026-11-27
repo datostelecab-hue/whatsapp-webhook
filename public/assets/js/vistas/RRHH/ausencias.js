@@ -6,7 +6,13 @@
 // injustificadas son absentismo. Arriba, el % de plantilla de baja.
 
 (function () {
+  // RR. HH. (Diana): lo de antes del 26/11 y abrir una baja o un permiso.
+  // TRÁFICO (William y Ángel, 27/11/2026): desde el corte del 26/11, injustificada
+  // o justificada; justificada pide horas y su J nace ya aprobada.
   const PUEDE = !!Casa.datos().puedeValidar;
+  const TRAFICO = !!Casa.datos().puedeTrafico;
+  const DESDE_TRAFICO = '2026-11-26';
+  const deTrafico = d => String(d.dia || '') >= DESDE_TRAFICO;
   const { esc, etiqueta } = Listado.fmt;
   let ESTADOS = {};
   let TIPOS_PERMISO = [];
@@ -14,7 +20,10 @@
   const dmy = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
   const est = f => ESTADOS[f.estado] || { etiqueta: f.estado, tono: 'muted' };
   const DECIDIBLES = ['pendiente', 'injustificada', 'justificada'];
-  const decidible = d => PUEDE && DECIDIBLES.includes(d.estado);
+  // Injustificada o justificada: según el día, de Tráfico o de RR. HH.
+  const decidible = d => DECIDIBLES.includes(d.estado) && (deTrafico(d) ? TRAFICO : PUEDE);
+  // Abrir una baja médica o un permiso: siempre de RR. HH.
+  const abreSituacion = d => PUEDE && DECIDIBLES.includes(d.estado);
   const pct = n => `${String(n).replace('.', ',')} %`;
 
   /** Cómo se resolvió, en una línea. */
@@ -38,7 +47,7 @@
     vacio: 'No hay ausencias que coincidan.',
     filtrosIniciales: { estado: 'pendiente' },
     buscar: { texto: 'Buscar persona o legajo…', campos: ['nombre', 'legajo'] },
-    seleccion: PUEDE,
+    seleccion: PUEDE || TRAFICO,
     alSeleccionar: elegidas => {
       ['injustificadas', 'justificadas'].forEach(id => {
         const b = document.querySelector(`[data-accion="${id}"]`);
@@ -68,6 +77,7 @@
     nota: (filas, extra) => {
       const notas = [];
       if (extra && extra.sinTabla) notas.push({ tono: 'aviso', icono: 'fa-database', texto: 'Falta aplicar la migración db/289 en Migraciones.' });
+      notas.push({ icono: 'fa-user-shield', texto: `Desde el ${dmy(DESDE_TRAFICO)} (el corte de la nómina) las confirma Tráfico: injustificada, o justificada con sus horas (su J nace ya aprobada). Si es una baja médica o un permiso, lo abre RR. HH.` });
       notas.push({ icono: 'fa-circle-info', texto: 'Cada día a las 13:00 entran las ausencias de ayer. Las que caen dentro de una baja médica o de un permiso se reclasifican solas, también las ya revisadas; las que dejan de ser ausencia en la bitácora (una J, sus horas, una libranza) se cierran solas.' });
       return notas;
     },
@@ -85,7 +95,7 @@
     ],
 
     acciones: [
-      ...(PUEDE ? [
+      ...(PUEDE || TRAFICO ? [
         { id: 'injustificadas', texto: 'Injustificadas', icono: 'fa-user-xmark', activa: false,
           ayuda: 'Las marcadas pasan a injustificadas: cuentan como absentismo.', onClick: lst => enBloque(lst, 'injustificada') },
         { id: 'justificadas', texto: 'Justificadas', icono: 'fa-user-check', principal: false, activa: false,
@@ -112,8 +122,8 @@
       titulo: d => `${d.nombre}`,
       subtitulo: d => `Ausencia del ${DIAS[d.dow] || ''} ${dmy(d.dia)}`,
       acciones: [
-        { texto: 'Baja médica', icono: 'fa-notes-medical', principal: true, visible: decidible, onClick: (d, lst) => abrirSituacion(d, lst, 'baja_medica') },
-        { texto: 'Permiso', icono: 'fa-file-signature', visible: decidible, onClick: (d, lst) => abrirSituacion(d, lst, 'permiso') },
+        { texto: 'Baja médica', icono: 'fa-notes-medical', principal: true, visible: abreSituacion, onClick: (d, lst) => abrirSituacion(d, lst, 'baja_medica') },
+        { texto: 'Permiso', icono: 'fa-file-signature', visible: abreSituacion, onClick: (d, lst) => abrirSituacion(d, lst, 'permiso') },
         { texto: 'Justificada', icono: 'fa-user-check', visible: d => decidible(d) && d.estado !== 'justificada', onClick: (d, lst) => una(d, lst, 'justificada') },
         { texto: 'Injustificada', icono: 'fa-user-xmark', visible: d => decidible(d) && d.estado !== 'injustificada', onClick: (d, lst) => una(d, lst, 'injustificada') },
       ],
@@ -149,7 +159,7 @@
         } },
         { titulo: 'Justificante', icono: 'fa-paperclip', pinta: (d, hueco) => {
           hueco.className = '';
-          Adjuntos.montar(hueco, { tipo: 'ausencia_rrhh', dueno: d.id, titulo: 'Justificante', puedeAdjuntar: PUEDE, puedeQuitar: PUEDE });
+          Adjuntos.montar(hueco, { tipo: 'ausencia_rrhh', dueno: d.id, titulo: 'Justificante', puedeAdjuntar: PUEDE || TRAFICO, puedeQuitar: PUEDE || TRAFICO });
         } },
       ],
     },
@@ -167,32 +177,38 @@
 
   const campoNota = estado => ({ id: 'nota', etiqueta: estado === 'justificada' ? 'Por qué está justificada' : 'Nota (opcional)',
     tipo: 'texto-largo', obligatorio: estado === 'justificada', minimo: estado === 'justificada' ? 3 : undefined, max: 2000 });
+  // Justificada por Tráfico (desde el 26/11): las horas de su J, que nace ya aprobada.
+  const campoHoras = { id: 'horas', etiqueta: 'Horas que se le justifican', tipo: 'texto', obligatorio: true, valor: '8', marcador: 'Ej.: 8',
+    ayuda: 'Se le pone una J de Tráfico ya aprobada con estas horas (cuentan en su nómina). 0 si solo se justifica sin horas.' };
 
   async function una(d, lst, estado) {
-    const v = await Dialogo.formulario(estado === 'justificada' ? 'Justificada' : 'Injustificada', [campoNota(estado)], {
+    const conJ = estado === 'justificada' && deTrafico(d);
+    const v = await Dialogo.formulario(estado === 'justificada' ? 'Justificada' : 'Injustificada', [...(conJ ? [campoHoras] : []), campoNota(estado)], {
       textoBoton: estado === 'justificada' ? 'Justificada' : 'Injustificada',
       nota: estado === 'injustificada'
         ? `La ausencia del ${dmy(d.dia)} cuenta como absentismo: ese día no devenga salario.`
-        : `La ausencia del ${dmy(d.dia)} no cuenta como absentismo. La bitácora no cambia.`,
+        : conJ ? `La ausencia del ${dmy(d.dia)} no cuenta como absentismo y se le pone su J de Tráfico ya aprobada, sin pasar por la cola de J.`
+          : `La ausencia del ${dmy(d.dia)} no cuenta como absentismo. La bitácora no cambia.`,
     });
     if (!v) return;
-    await mandar({ ids: [d.id], estado, nota: v.nota }, () => (estado === 'justificada' ? 'Justificada' : 'Injustificada'), lst);
+    await mandar({ ids: [d.id], estado, nota: v.nota, horas: conJ ? v.horas : undefined }, () => (estado === 'justificada' ? 'Justificada' : 'Injustificada'), lst);
   }
 
   async function enBloque(lst, estado) {
-    const filas = lst.filasSeleccionadas().filter(f => DECIDIBLES.includes(f.estado));
+    const filas = lst.filasSeleccionadas().filter(decidible);
     if (!filas.length) {
       return Dialogo.aviso({ titulo: 'No hay ninguna marcada', tono: 'aviso',
-        texto: 'Marca las casillas de las ausencias que quieras decidir. Las bajas, los permisos y las que ya no son ausencia no se deciden aquí.' });
+        texto: `Marca las casillas de las ausencias que quieras decidir. Las bajas, los permisos y las que ya no son ausencia no se deciden aquí; desde el ${dmy(DESDE_TRAFICO)} las confirma Tráfico, y las de antes, RR. HH.` });
     }
-    const v = await Dialogo.formulario(`${filas.length} ${estado === 'justificada' ? 'justificadas' : 'injustificadas'}`, [campoNota(estado)], {
+    const conJ = estado === 'justificada' && filas.some(deTrafico);
+    const v = await Dialogo.formulario(`${filas.length} ${estado === 'justificada' ? 'justificadas' : 'injustificadas'}`, [...(conJ ? [campoHoras] : []), campoNota(estado)], {
       textoBoton: estado === 'justificada' ? 'Justificarlas' : 'Marcarlas injustificadas',
       nota: estado === 'injustificada'
         ? `Las ${filas.length} cuentan como absentismo. Si alguna es una baja o un permiso, ábrela y elígelo ahí.`
         : `Las ${filas.length} quedan justificadas con la misma nota.`,
     });
     if (!v) return;
-    await mandar({ ids: filas.map(f => f.id), estado, nota: v.nota }, r => `${r.decididas} ${estado === 'justificada' ? 'justificadas' : 'injustificadas'}`, lst);
+    await mandar({ ids: filas.map(f => f.id), estado, nota: v.nota, horas: conJ ? v.horas : undefined }, r => `${r.decididas} ${estado === 'justificada' ? 'justificadas' : 'injustificadas'}`, lst);
   }
 
   async function abrirSituacion(d, lst, estado) {

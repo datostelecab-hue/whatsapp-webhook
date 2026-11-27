@@ -27,6 +27,15 @@
 //
 // Decidido por Camilo el 25/11/2026: solo plantilla propia, desde el 26/10/2026
 // (las nóminas van del 26 al 25), y esas cuatro decisiones.
+//
+// DESDE EL 26/11/2026 LAS CONFIRMA TRÁFICO (Camilo, 27/11/2026: «a partir de
+// ayer, que empieza el corte del mes, tienen que confirmarlas Tráfico, o darlas
+// como justificadas, Diana no»): William y Ángel, con la llave
+// '/ausencias/trafico' y la función «ausencias_trafico» (su tarjeta del día).
+// Deciden injustificada o justificada; y JUSTIFICADA por ellos pide las horas y
+// el motivo y NACE SU J DE TRÁFICO YA APROBADA, sin esperar a la cola de J.
+// Lo de antes del 26/11 y abrir una baja médica o un permiso sigue siendo de
+// RR. HH. (la llave '/ausencias/validar').
 'use strict';
 
 const repo = require('./ausencias.repo');
@@ -51,6 +60,9 @@ const TIPO_TARJETA = 'ausencias_revisar';
 const DUENO = 'ausencia_rrhh';
 const CLAVE_VER = '/ausencias';
 const CLAVE_VALIDAR = '/ausencias/validar';
+const CLAVE_TRAFICO = '/ausencias/trafico';
+const DESDE_TRAFICO = '2026-11-26';
+const deTrafico = dia => String(dia || '') >= DESDE_TRAFICO;
 const TOTAL = ['superadmin', 'desarrollador'];
 
 const ESTADOS = {
@@ -174,16 +186,20 @@ tablero.registrarTipo(TIPO_TARJETA, { etiqueta: 'Ausencias por revisar', abrir: 
 async function tarjetaDelDia(cli, hoy) {
   const n = await repo.quedanDe(cli, hoy);
   if (!n) return null;
-  const titulares = await organizacion.quienes('ausencias_validar', { conSuplentes: false }).catch(() => []);
+  // Lo que se detecta hoy es de ayer: desde el corte del 26/11, de Tráfico.
+  const funcion = deTrafico(calendario.sumarDias(hoy, -1)) ? 'ausencias_trafico' : 'ausencias_validar';
+  const titulares = await organizacion.quienes(funcion, { conSuplentes: false }).catch(() => []);
   const titulo = `Revisar ${n} ${n === 1 ? 'ausencia nueva' : 'ausencias nuevas'} (${dmy(hoy)})`;
   const t = await tablero.nacer(cli, {
     tipo: TIPO_TARJETA, origenId: hoy, enlace: '/ausencias', titulo,
     descripcion: 'Personas de plantilla propia que tenían que salir y no salieron, sin nada que lo explique. '
-      + 'Mira si alguna es una baja médica o un permiso; si no, márcala injustificada (cuenta como absentismo) o justificada. '
+      + (funcion === 'ausencias_trafico'
+        ? 'Confírmala injustificada (cuenta como absentismo) o justificada con sus horas (su J nace ya aprobada). Si es una baja médica o un permiso, avisa a RR. HH. '
+        : 'Mira si alguna es una baja médica o un permiso; si no, márcala injustificada (cuenta como absentismo) o justificada. ')
       + 'La tarjeta se cierra sola cuando no queda ninguna de estas por revisar.',
     responsableId: titulares.length ? titulares[0].id : null, plazoDias: 1,
   });
-  if (!t.nueva) await tablero.ajustarPorOrigen(cli, { tipo: TIPO_TARJETA, origenId: hoy, titulo });
+  if (!t.nueva) await tablero.ajustarPorOrigen(cli, { tipo: TIPO_TARJETA, origenId: hoy, titulo, responsableId: titulares.length ? titulares[0].id : null });
   return t.id;
 }
 
@@ -244,8 +260,8 @@ async function lista(quien) {
     .sort((a, b) => b[0].localeCompare(a[0])).map(([valor, texto]) => ({ valor, texto }));
   return {
     filas, sinTabla: false,
-    estados: ESTADOS, periodos, periodoActual: actual.mes, desde: DESDE,
-    puedeValidar: await puede(quien, CLAVE_VALIDAR),
+    estados: ESTADOS, periodos, periodoActual: actual.mes, desde: DESDE, desdeTrafico: DESDE_TRAFICO,
+    puedeValidar: await puede(quien, CLAVE_VALIDAR), puedeTrafico: await puede(quien, CLAVE_TRAFICO),
     baja: await bajaHoy().catch(() => null),
     tiposPermiso: await plantilla.tiposPermiso(),
   };
@@ -265,7 +281,7 @@ async function ficha(id, quien) {
     .map(x => ({ id: x.id, dia: x.dia, estado: x.estado }));
   const p = periodoDe(f.dia, await corte());
   return { ...f, racha: yo.racha || 0, periodo_texto: nombreDelPeriodo(p), llamadas, otras,
-    puedeValidar: await puede(quien, CLAVE_VALIDAR) };
+    puedeValidar: await puede(quien, CLAVE_VALIDAR), puedeTrafico: await puede(quien, CLAVE_TRAFICO), desdeTrafico: DESDE_TRAFICO };
 }
 
 // ── Decidir ────────────────────────────────────────────────────────────────
@@ -278,10 +294,16 @@ const textoNota = v => String(v == null ? '' : v).trim().slice(0, 2000);
  *   · baja_medica / permiso: UNA (`ids` de una), y se abre esa situación del
  *     `desde` al `hasta` (por omisión, el día de la ausencia) con la puerta de
  *     Plantilla; las de esa persona en esas fechas quedan resueltas con ella.
+ *     Es de RR. HH. (la llave de validar), sea del día que sea.
+ *   · Desde el 26/11/2026 injustificada o justificada es de TRÁFICO (su llave);
+ *     lo de antes, de RR. HH. Justificada por Tráfico pide `horas`: nace su J de
+ *     Tráfico ya aprobada, con esas horas y la nota.
  * → { decididas }
  */
-async function decidir({ ids, estado, nota, desde, hasta, tipoPermiso, motivoExceso } = {}, quien = {}) {
-  await exigir(quien, CLAVE_VALIDAR);
+async function decidir({ ids, estado, nota, desde, hasta, tipoPermiso, motivoExceso, horas } = {}, quien = {}) {
+  const [valida, trafico] = await Promise.all([puede(quien, CLAVE_VALIDAR), puede(quien, CLAVE_TRAFICO)]);
+  if (!valida && !trafico) throw error('No tienes permiso para esto', 403);
+  if (!EN_BLOQUE.includes(estado) && !valida) throw error('Abrir una baja médica o un permiso es de RR. HH.', 403);
   const lista_ = [...new Set([].concat(ids || []).map(String).filter(x => /^\d+$/.test(x)))];
   if (!lista_.length) throw error('No hay ninguna ausencia elegida');
   if (!ESTADOS[estado] || estado === 'pendiente' || estado === 'ya_no_es') throw error('Esa decisión no existe');
@@ -289,6 +311,31 @@ async function decidir({ ids, estado, nota, desde, hasta, tipoPermiso, motivoExc
 
   if (EN_BLOQUE.includes(estado)) {
     if (estado === 'justificada' && n.length < 3) throw error('Di por qué está justificada');
+    // Quién decide cada una: desde el corte del 26/11, Tráfico; lo de antes, RR. HH.
+    const previas = await repo.variasPorId(null, lista_);
+    const ajena = previas.find(f => (deTrafico(f.dia) ? !trafico : !valida));
+    if (ajena) {
+      throw error(deTrafico(ajena.dia)
+        ? `Desde el ${dmy(DESDE_TRAFICO)} las ausencias las confirma Tráfico (la del ${dmy(ajena.dia)} de ${ajena.nombre}).`
+        : `Las ausencias de antes del ${dmy(DESDE_TRAFICO)} las decide RR. HH. (la del ${dmy(ajena.dia)} de ${ajena.nombre}).`, 403);
+    }
+    // Justificada por Tráfico: su J, ya aprobada, ANTES de cambiar nada (si la J
+    // no se puede poner —una libranza a mano ese día—, la ausencia no cambia).
+    const deTrafico_ = previas.filter(f => deTrafico(f.dia) && DECIDIBLES.includes(f.estado));
+    if (estado === 'justificada' && deTrafico_.length) {
+      const h = Number(String(horas == null ? '' : horas).trim().replace(',', '.'));
+      if (String(horas == null ? '' : horas).trim() === '' || !Number.isFinite(h) || h < 0 || h > 24) {
+        throw error('Di cuántas horas se le justifican (entre 0 y 24, por ejemplo 8)');
+      }
+      const jRepo = require('../../services/repo/justificantes');
+      for (const f of deTrafico_) {
+        const j = await jRepo.guardarPorId({ conductorId: f.conductor_id, diaIso: f.dia, horas: h,
+          observacion: `Ausencia justificada por Tráfico: ${n}`, tipo: 'trafico', usuarioId: quien.usuarioId, origen: 'ausencias' });
+        try { await jRepo.aprobar(j.justificanteId, { usuarioId: quien.usuarioId, origen: 'ausencias' }); } catch (e) {
+          if (!/no está pendiente/.test(e.message)) throw e;   // ya estaba aprobada con lo mismo
+        }
+      }
+    }
     const r = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'ausencias', accion: 'cambio',
       motivo: `${ESTADOS[estado].etiqueta}${n ? `: ${n}` : ''}` }, async cli => {
       const filas = await repo.variasPorId(cli, lista_);
@@ -385,7 +432,7 @@ const quienDe = q => ({ usuarioId: q && (q.usuarioId || q.id), rol: q && q.rol }
 adjuntos.registrarDueno(DUENO, {
   etiqueta: 'Ausencia (RR. HH.)',
   ver: async q => puede(quienDe(q), CLAVE_VER),
-  adjuntar: async q => puede(quienDe(q), CLAVE_VALIDAR),
+  adjuntar: async q => (await puede(quienDe(q), CLAVE_VALIDAR)) || puede(quienDe(q), CLAVE_TRAFICO),
 });
 
 // ── El número del menú: las pendientes ─────────────────────────────────────
@@ -406,5 +453,5 @@ contadores.registrarFuente('ausencias', {
 
 module.exports = {
   detectar, lista, ficha, decidir, historicoBaja, puede, periodoDe,
-  ESTADOS, DESDE, TIPO_TARJETA, DUENO, CLAVE_VER, CLAVE_VALIDAR,
+  ESTADOS, DESDE, DESDE_TRAFICO, TIPO_TARJETA, DUENO, CLAVE_VER, CLAVE_VALIDAR, CLAVE_TRAFICO,
 };

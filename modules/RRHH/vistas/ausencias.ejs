@@ -11,7 +11,7 @@
 <div id="modulo"></div>
 <div id="au-bajas" class="hidden"></div>
 
-<script type="application/json" id="datos-servidor"><%- json({ puedeValidar: !!puedeValidar }) %></script>
+<script type="application/json" id="datos-servidor"><%- json({ puedeValidar: !!puedeValidar, puedeTrafico: !!(typeof puedeTrafico !== 'undefined' && puedeTrafico) }) %></script>
 <script src="<%= est('/assets/js/adjuntos.js') %>"></script>
 <script src="<%= est('/assets/js/pestanas.js') %>"></script>
 <script src="<%= est('/assets/js/panel.js') %>"></script>

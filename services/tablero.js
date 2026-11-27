@@ -155,10 +155,31 @@ async function semaforoDe(t, cal, hoy) {
   return { color: cal.semaforo(t.vence_el, hoy), quedan: cal.diasHabilesEntre(hoy, t.vence_el) };
 }
 
+// ── Los grupos de tarjetas (27/11/2026) ───────────────────────────────────
+// Camilo: «sepárale a Diana el tablero por tareas: altas, bajas, etc.; todo se
+// le está acumulando». Cada tipo cae en un grupo por su nombre, y el tablero
+// enseña una pestaña por grupo con su número. Lo que no casa con ninguno, «Otras».
+const GRUPOS = [
+  { id: 'altas', etiqueta: 'Altas', es: /^(alta_|gestoria_plantilla$)/ },
+  { id: 'bajas', etiqueta: 'Bajas médicas', es: /^baja_/ },
+  { id: 'ausencias', etiqueta: 'Ausencias', es: /^ausencias_/ },
+  { id: 'nomina', etiqueta: 'Nómina', es: /^(nomina_|gestoria_proforma$)/ },
+  { id: 'firmas', etiqueta: 'Firmas y cartas', es: /^(firma_|comunicaciones_)/ },
+  { id: 'sanciones', etiqueta: 'Sanciones', es: /^sancion_/ },
+  { id: 'salidas', etiqueta: 'Salidas y finiquitos', es: /^(salida_|finiquito_)/ },
+  { id: 'comunicados', etiqueta: 'Comunicados', es: /^comunicado_/ },
+  { id: 'j', etiqueta: 'J y −J', es: /^(j_|menos_j|km_)/ },
+  { id: 'tickets', etiqueta: 'Tickets y mensajes', es: /^(ticket|mensaje)$/ },
+];
+const OTRAS = { id: 'otras', etiqueta: 'Otras' };
+const grupoDe = tipo => GRUPOS.find(g => g.es.test(String(tipo || ''))) || OTRAS;
+
 // ── Lo que ve la pantalla ──────────────────────────────────────────────────
 function publica(ctx, t, sem) {
+  const g = grupoDe(t.tipo);
   return {
     id: Number(t.id), tipo: t.tipo, tipoEtiqueta: tipoDe(t.tipo).etiqueta, origenId: t.origen_id,
+    grupo: g.id, grupoEtiqueta: g.etiqueta,
     titulo: t.titulo, descripcion: t.sensible ? null : t.descripcion, enlace: t.enlace, sensible: t.sensible,
     // Lo que dice el enlace a su origen, y si se cierra allí (las colas).
     abrir: tipoDe(t.tipo).abrir, seCierraEnSuOrigen: !tipoDe(t.tipo).cierreManual,
@@ -812,6 +833,7 @@ async function gifABorrador(usuarioId, { gifId, borrador } = {}) {
 }
 
 module.exports = {
+  grupoDe, GRUPOS,
   TRABAJANDO, ABIERTAS, FINALES, ETIQUETA_ESTADO,
   registrarTipo, listar, ficha, crear, nacer, ajustarPorOrigen, aprobar, rechazar, asignar, reasignar, cambiarPlazo, mover,
   cerrar, cerrarPorOrigen, asignarPorOrigen, anular, comentar, anularComentario, colaborador, avisar,

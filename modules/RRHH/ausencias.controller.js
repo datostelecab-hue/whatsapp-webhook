@@ -27,6 +27,7 @@ router.get('/', async (req, res) => {
   res.render('ausencias', {
     titulo: 'Ausencias', seccion: 'ausencias', layout: 'layout-gestion',
     puedeValidar: await ausencias.puede(await quien(req), ausencias.CLAVE_VALIDAR),
+    puedeTrafico: await ausencias.puede(await quien(req), ausencias.CLAVE_TRAFICO),
   });
 });
 

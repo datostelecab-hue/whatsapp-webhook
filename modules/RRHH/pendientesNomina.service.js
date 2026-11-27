@@ -52,7 +52,8 @@ async function ventanaDe(periodo) {
 // ── Cada tipo: cuántos hay, a quién y adónde lleva ─────────────────────────
 const TIPOS = {
   ausencias: {
-    funcion: 'ausencias_validar', enlace: '/ausencias', sola: true,
+    // Desde el corte del 26/11/2026, las confirma Tráfico (db/311).
+    funcion: 'ausencias_trafico', enlace: '/ausencias', sola: true,
     titulo: (n, v) => `Nómina de ${v.mes}: ${n} ${n === 1 ? 'ausencia' : 'ausencias'} sin validar`,
     texto: 'Las ausencias del periodo de la nómina que siguen sin decidir: hasta que se validen no se sabe si son absentismo. Se cierra sola al quedar en cero.',
     async contar(cli, v, hoy) {

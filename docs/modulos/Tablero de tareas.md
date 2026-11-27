@@ -43,6 +43,15 @@ Y lo propuesto y aceptado:
 - aprobar y asignar son **funciones de Organización** (`tareas_aprueba` y `tareas_asigna`, de Ignacio desde db/251), no nombres en el código;
 - cada uno ve lo suyo, el responsable de un área ve lo de su área, e Ignacio lo ve todo.
 
+## Por tipo de tarea: las pestañas de grupos (27/11/2026)
+
+Camilo: *«sepárale a Diana el tablero por tareas: altas, bajas, etc.; todo se le está acumulando»*.
+
+- Encima de las columnas, en todas las vistas de columnas, sale una pestaña por **grupo**: Todas, Altas, Bajas médicas, Ausencias, Nómina, Firmas y cartas, Sanciones, Salidas y finiquitos, Comunicados, J y −J, Tickets y mensajes, y Otras.
+- Cada pestaña lleva **cuántas siguen abiertas** y, en rojo, cuántas están vencidas. Al pulsar una, el tablero se queda solo con esas, y la URL lo recuerda (`?grupo=altas`).
+- Con un solo grupo, las pestañas no salen.
+- **El grupo lo pone el servidor** según el tipo de la tarjeta (`grupoDe` en `services/tablero.js`, por el nombre del tipo). Un tipo nuevo que no casa con ninguno cae en «Otras». La lista también filtra por grupo.
+
 ## Las columnas
 
 | Estado | Qué es |

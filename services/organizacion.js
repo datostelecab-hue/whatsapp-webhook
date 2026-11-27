@@ -72,6 +72,9 @@ const FUNCIONES = [
     descripcion: 'Cada lunes le nace la tarjeta de pedir a la gestoría el listado de plantilla en alta y subirlo, con vencimiento ese mismo día.' },
   // Las ausencias que valida RR. HH. (módulo 1, db/289): cada día le nace la
   // tarjeta de revisar las nuevas. De inicio, el puesto de Diana.
+  // Desde el corte del 26/11/2026 las confirma Tráfico (db/311): William y Ángel.
+  { codigo: 'ausencias_trafico', etiqueta: 'Confirma las ausencias de cada día (Tráfico)', item: 1, varias: true,
+    descripcion: 'Desde el 26/11/2026, le nace la tarjeta de las ausencias nuevas: injustificada, o justificada con sus horas (su J nace ya aprobada).' },
   { codigo: 'ausencias_validar', etiqueta: 'Revisa las ausencias de cada día', item: 1, varias: false,
     descripcion: 'Cada día le nace la tarjeta de revisar las ausencias nuevas de la plantilla propia: baja médica, permiso, justificada o injustificada (absentismo).' },
   // El envío a firma (módulo 6, db/293): le nace la tarjeta de cada documento por decidir.

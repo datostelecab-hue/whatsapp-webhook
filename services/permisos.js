@@ -74,6 +74,7 @@ const CATALOGO = [
     // oficina al crear un usuario; se dan una a una.
     { clave: '/ausencias', etiqueta: 'Ausencias y bajas (RR. HH.)', manual: true, hijos: [
       { clave: '/ausencias/validar', etiqueta: 'Ausencias · validarlas (baja, permiso, justificada o injustificada)', escribir: true, manual: true },
+      { clave: '/ausencias/trafico', etiqueta: 'Ausencias · confirmarlas desde el 26/11 (Tráfico: injustificada, o justificada con su J ya aprobada)', escribir: true, manual: true },
     ] },
     // EL ENVÍO A FIRMA (módulo 6, db/293): mirar la cola y aprobar lo que se
     // manda (Diana). `manual`: se dan uno a uno.

@@ -37,6 +37,13 @@
   // ella (?persona=ID); pulsarla otra vez, o «Todos», vuelve al general.
   let carga = [];
   let persona = leerPersona();
+  // POR TIPO DE TAREA (27/11/2026, Camilo: «sepárale a Diana el tablero por
+  // tareas: altas, bajas, etc.; todo se le está acumulando»). Encima de las
+  // columnas, una pestaña por grupo (altas, bajas médicas, ausencias, nómina…)
+  // con sus abiertas; pulsarla deja solo esas (?grupo=…). El grupo lo dice el
+  // servidor (`tarjeta.grupo`). Se ve en todas las vistas de columnas.
+  let grupo = new URLSearchParams(location.search).get('grupo') || null;
+  let ultimas = [];          // lo último que llegó, sin filtrar por grupo
   let panel = null;          // { id, p } la ficha abierta
   let pidiendo = null;
   let otraVez = false;       // se pidió recargar mientras otra recarga estaba en marcha
@@ -112,6 +119,53 @@
   }
   const textoTodos = () => (yo.todos ? 'Todo el equipo' : 'Mi equipo');
 
+  // ── El grupo elegido, en la URL ─────────────────────────────────────────
+  function ponerGrupo(g) {
+    grupo = g;
+    const u = new URL(location.href);
+    if (g == null) u.searchParams.delete('grupo'); else u.searchParams.set('grupo', g);
+    history.replaceState(history.state, '', u);
+  }
+  const delGrupo = ts => (grupo ? ts.filter(t => t.grupo === grupo) : ts);
+
+  /**
+   * Las pestañas por tipo de tarea: «Todas» y una por grupo que tenga alguna
+   * tarjeta, con cuántas siguen abiertas (en rojo, las vencidas). Con un solo
+   * grupo no hacen falta y no salen (salvo que haya uno elegido).
+   */
+  function pintarGrupos() {
+    const caja = document.querySelector('#t-grupos');
+    if (!caja) return;
+    const abiertas = ultimas.filter(t => !FINALES.includes(t.estado));
+    const grupos = [...new Map(ultimas.map(t => [t.grupo, t.grupoEtiqueta]))]
+      .map(([id, etiqueta]) => ({ id, etiqueta, n: abiertas.filter(t => t.grupo === id).length,
+        v: abiertas.filter(t => t.grupo === id && t.plazo && t.plazo.semaforo === 'rojo').length }))
+      .sort((a, b) => (b.n - a.n) || a.etiqueta.localeCompare(b.etiqueta, 'es'));
+    if (grupos.length < 2 && !grupo) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
+    caja.classList.remove('hidden');
+    const vencidasTodas = abiertas.filter(t => t.plazo && t.plazo.semaforo === 'rojo').length;
+    const chip = (id, etiqueta, n, v) => {
+      const elegida = (id || null) === (grupo || null);
+      return `<button type="button" data-grupo="${esc(id || '')}" aria-pressed="${elegida}"
+          class="flex-none inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition ${elegida
+            ? 'border-telecab-gold bg-telecab-gold/10 font-semibold' : 'border-telecab-border bg-telecab-card2 hover:border-telecab-gold'}">
+        ${esc(etiqueta)}
+        <span class="tabular-nums text-xs ${n ? '' : 'text-telecab-muted'}">${n}</span>
+        ${v ? `<span class="tabular-nums text-xs text-telecab-red font-semibold" title="${v} vencida${v === 1 ? '' : 's'}">· ${v}</span>` : ''}
+      </button>`;
+    };
+    caja.innerHTML = `<div class="flex gap-2 overflow-x-auto pb-1 mb-2" role="group" aria-label="Ver solo un tipo de tarea">
+        ${chip(null, 'Todas', abiertas.length, vencidasTodas)}
+        ${grupos.map(g => chip(g.id, g.etiqueta, g.n, g.v)).join('')}
+      </div>`;
+    caja.querySelectorAll('[data-grupo]').forEach(el => el.addEventListener('click', () => {
+      const id = el.dataset.grupo || null;
+      ponerGrupo(id === grupo ? null : id);
+      if (kanban) kanban.poner(delGrupo(ultimas));
+      pintarGrupos();
+    }));
+  }
+
   // ── Traer ───────────────────────────────────────────────────────────────
   /** Las de una vista. En la del equipo con una persona elegida, solo lo que lleva ella. */
   async function traer(v, p = null) {
@@ -170,7 +224,9 @@
           // En la del equipo, también cuántas lleva cada uno (las tarjetas del filtro).
           const [tarjetas] = await Promise.all([traer(v, v === 'equipo' ? p : null), v === 'equipo' ? traerCarga().catch(() => carga) : null]);
           if (v !== vista || p !== persona) continue;
-          if (kanban) kanban.poner(tarjetas);
+          ultimas = tarjetas;
+          if (kanban) kanban.poner(delGrupo(tarjetas));
+          pintarGrupos();
           if (v === 'equipo') pintarFiltro();
         } while (otraVez);
       } catch (e) { document.querySelector('#t-tablero').innerHTML = `<p class="text-sm text-telecab-warn">No se ha podido cargar el tablero: ${esc(e.message)}</p>`; }
@@ -208,6 +264,10 @@
           opciones: filas => [...new Map(filas.filter(t => t.responsable).map(t => [String(t.responsable.id), t.responsable.nombre]))]
             .map(([valor, texto]) => ({ valor, texto, cuenta: filas.filter(t => t.responsable && String(t.responsable.id) === valor).length })),
           pasa: (t, v) => !!t.responsable && String(t.responsable.id) === v },
+        { id: 'grupo', etiqueta: 'Grupo', textoTodos: 'Todos',
+          opciones: filas => [...new Map(filas.map(t => [t.grupo, t.grupoEtiqueta]))]
+            .map(([valor, texto]) => ({ valor, texto, cuenta: filas.filter(t => t.grupo === valor).length })),
+          pasa: (t, v) => t.grupo === v },
         { id: 'tipo', etiqueta: 'Tipo', textoTodos: 'Todos',
           opciones: filas => [...new Map(filas.map(t => [t.tipo, t.tipoEtiqueta]))]
             .map(([valor, texto]) => ({ valor, texto, cuenta: filas.filter(t => t.tipo === valor).length })),
@@ -287,7 +347,12 @@
     document.querySelector('#t-tablero').classList.toggle('hidden', enLista);
     document.querySelector('#t-lista').classList.toggle('hidden', !enLista);
     document.querySelector('#t-persona').classList.toggle('hidden', !enEquipo);
-    if (enLista) { if (!lista) montarLista(); else lista.recargar(); return; }
+    if (enLista) {
+      const g = document.querySelector('#t-grupos');
+      if (g) g.classList.add('hidden');
+      if (!lista) montarLista(); else lista.recargar();
+      return;
+    }
     if (enEquipo) pintarFiltro();
     montarKanban();
     recargar();
