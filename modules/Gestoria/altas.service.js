@@ -6,7 +6,8 @@
 //
 //   · Diana lo marca A MANO: «Alta pedida» y «Alta confirmada» (con el
 //     justificante de la gestoría adjunto).
-//   · SIN EL ALTA CONFIRMADA NO VINCULA COCHE, ni por el bot ni por el portal
+//   · SIN EL ALTA CONFIRMADA NO VINCULA COCHE por el portal (el bot de WhatsApp
+//     no lo mira desde el 27/11/2026: Camilo lo quiere con el flujo antiguo)
 //     (`bloqueaCoche`, que mira `fichaje.iniciar`). Planificarle, sí: en el
 //     planificador sale en rojo «Sin alta confirmada».
 //   · Si el día antes de su primer turno el alta no está confirmada, aviso

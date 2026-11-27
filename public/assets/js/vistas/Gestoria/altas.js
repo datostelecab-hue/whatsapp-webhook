@@ -44,7 +44,7 @@
       },
       nota: (filas, extra) => [
         ...(extra && extra.sinTabla ? [{ tono: 'aviso', icono: 'fa-database', texto: 'Falta aplicar la migración db/304 en Migraciones.' }] : []),
-        { icono: 'fa-circle-info', texto: `Cada contrato de plantilla propia desde el ${dmy((extra && extra.desde) || '2026-11-27')}. Sin el alta confirmada no puede vincular coche (ni por el bot ni por el portal); en el planificador sale en rojo. Si no se presenta a su primer turno, a las dos horas llega el aviso.` },
+        { icono: 'fa-circle-info', texto: `Cada contrato de plantilla propia desde el ${dmy((extra && extra.desde) || '2026-11-27')}. Sin el alta confirmada sale en rojo en el planificador (el bot de WhatsApp le deja vincular coche, como siempre). Si no se presenta a su primer turno, a las dos horas llega el aviso. El PDF del alta que se manda al canal #2-altas-de-empresas la confirma solo y queda como su justificante.` },
         ...(extra && !extra.sinTabla && !extra.costeDia ? [{ icono: 'fa-euro-sign', texto: 'Sin el coste diario de Seguridad Social (Parámetros) no se calcula lo cotizado.' }] : []),
       ],
       filtros: [

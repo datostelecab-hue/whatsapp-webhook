@@ -214,6 +214,22 @@ Y salen cuatro diferencias más. Camilo decidió que **las decide Diana, una a u
 
   Cruzado a hoy salían 56 y 56: por eso se pide la fecha. Pruebas en test/gestoria-fechas.test.js.
 
+## Las altas que Diana manda al chat (27/11/2026)
+
+Diana sube la «RYC» (el alta en la Seguridad Social) al canal **#2-altas-de-empresas**, con el nombre y la fecha. Camilo: *«cuando mande un alta en ese chat, de una vez confirme las altas por confirmar en ese módulo y le relacione el PDF»*. Está en `modules/Gestoria/altasChat.service.js`:
+
+- **Al escribir en el canal con un PDF**, también en un hilo, se busca el alta sin confirmar de esa persona:
+  - por el nombre del fichero («2026 11 30 JOSE ANGEL HERRERA PIMENTEL - RYC.pdf») y por el del texto, hasta la primera «/»;
+  - con dos palabras en común como mínimo, como el cruce con la gestoría, y tiene que salir una sola;
+  - y con el mensaje entre 20 días antes y 30 después de la fecha de alta.
+
+  El PDF se copia como **justificante** del alta y el alta queda **confirmada por quien lo mandó** (con su llave `/gestoria/gestionar`). **Telecab contesta en el hilo**: confirmada, o que no la encontró y hay que hacerlo a mano.
+- **Cada hora** se repasan los mensajes del canal desde el 20/11/2026 (`gestoria.altas_chat`). Así entra el PDF que llegó antes de que existiera el alta, porque Diana lo manda días antes. En ese repaso no se contesta en el chat.
+- **No cuentan:** un mensaje cuyo hilo dice «anulada», ni un PDF que ya es el justificante de un alta (se mira por su huella).
+- **Comprobado el 27/11 en solo lectura** con los mensajes reales: 9 PDF casan con sus 9 altas, sin dobles ni falsos.
+  - No casa «Camilo Peñaranda Azad» con «Peñaranda Ventura, Jesús Fernando»: solo comparten una palabra.
+  - Los del 26/11 (Díaz Tendero y Medrano Díaz) no tienen alta en el módulo, que empieza el 27/11.
+
 ## Lo que falta del módulo 8
 
 - Que la gestoría mande cada lunes el **listado de trabajadores de A3 al día** (es el que pide la tarjeta del lunes).

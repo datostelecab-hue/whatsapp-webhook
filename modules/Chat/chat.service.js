@@ -323,6 +323,10 @@ async function enviar(usuarioId, canalId, { texto: txt, padreId = null, borrador
   avisar(c.id, r.para, { id: r.id, padre: r.padre });
   prepararEnlace(enlaceUrl, { canalId: c.id, para: r.para, id: r.id, padre: r.padre });
   notificarMensaje({ canal: c, autorId: ctx.id, id: r.id, padre: r.padre, texto: t, men: r.men, para: r.para, ficheros: r.ficheros });
+  // Un PDF de alta en #2-altas-de-empresas confirma su alta en Gestoría (27/11/2026).
+  try { require('../Gestoria/altasChat.service').alEscribir({ canal: c, mensajeId: r.id, ficheros: r.ficheros }); } catch (e) {
+    console.error('❌ [Chat] altas desde el chat:', e.message);
+  }
   return (await uno(ctx.id, r.id));
 }
 
@@ -954,6 +958,35 @@ async function avisoDelSistema({ para = [], texto } = {}) {
   return { id: Number(hecho.id), canalId: Number(hecho.canal.id) };
 }
 
+/**
+ * UNA RESPUESTA DE TELECAB EN EL HILO DE UN MENSAJE (27/11/2026): lo que hizo el
+ * ERP con lo que se escribió (un alta confirmada desde #2-altas-de-empresas),
+ * mencionando a quien lo escribió. → id del mensaje o null
+ */
+async function respuestaDelSistema({ mensajeId, texto } = {}) {
+  const t = String(texto || '').trim();
+  const mid = entero(mensajeId);
+  if (!t || !mid) return null;
+  let nueva = null;
+  await libro.conFirma({ usuarioId: null, origen: 'chat', accion: 'alta', motivo: 'Respuesta del sistema' }, async cli => {
+    const m = await repo.mensajeCrudo(cli, mid);
+    if (!m || m.anulado_at) return;
+    const c = await repo.canal(cli, Number(m.canal_id));
+    const autor = entero(m.autor_id);
+    const txt = `${autor ? `<@${autor}> ` : ''}${t}`.slice(0, MAX_TEXTO);
+    const padre = m.padre_id ? Number(m.padre_id) : Number(m.id);
+    const id = await repo.escribir(cli, { canalId: c.id, autorId: null, padreId: padre, texto: txt, evento: 'aviso' });
+    if (autor) await repo.mencionar(cli, id, { usuarios: [autor] });
+    nueva = { id, padre, canal: c, para: await repo.idsMiembros(cli, c.id), texto: txt, autor };
+  });
+  if (!nueva) return null;
+  avisar(nueva.canal.id, nueva.para, { id: nueva.id, padre: nueva.padre });
+  avisarCambio(nueva.canal.id, nueva.para, { id: nueva.padre, padre: null });
+  notificarMensaje({ canal: nueva.canal, autorId: null, id: nueva.id, padre: nueva.padre, texto: nueva.texto,
+    men: { usuarios: nueva.autor ? [nueva.autor] : [], todos: false }, para: nueva.para, evento: 'aviso' });
+  return nueva.id;
+}
+
 // ── Avisar (tiempo real y contadores) ──────────────────────────────────────
 tiempoReal.registrarCanal('chat', { etiqueta: 'Chat interno', puede: async q => !!(q && q.id) });
 
@@ -1010,5 +1043,5 @@ module.exports = {
   ocultar, archivar, eliminar, eliminados,
   editar, anular, reaccionar, fijar, fijados, guardar, guardados, convertirEnTarea,
   nombreDeCanal, primerEnlace, EMOJIS, olvidar, usarVistaPrevia, esperarPendientes,
-  avisoDelSistema, CANAL_AVISOS,
+  avisoDelSistema, respuestaDelSistema, CANAL_AVISOS,
 };

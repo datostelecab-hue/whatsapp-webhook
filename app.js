@@ -808,6 +808,7 @@ programar('10 5 * * *', async () => {
 // las tareas al irse alguien (ítem 8) y los pendientes de nómina del día 20 (ítem 7).
 require('./modules/RRHH/salidas.service');
 require('./modules/RRHH/pendientesNomina.service');
+require('./modules/Gestoria/altasChat.service');
 require('./services/tareasProgramadas').arrancar(programar);
 
 // LAS BAJAS PROGRAMADAS (db/191, 13/10/2026). Quien se da de baja con fecha
