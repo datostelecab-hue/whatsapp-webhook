@@ -1026,7 +1026,7 @@ async function estado(telefono) {
  * asigna el conductor en Mapon y apunta el turno en el libro.
  */
 
-async function iniciar({ telefono, nombre, matricula, soloSiLibre = false }) {
+async function iniciar({ telefono, nombre, matricula, soloSiLibre = false, comprobarAlta = true }) {
   await cerrarOlvidados();
 
   const yaAbierto = await abiertoDe(telefono);
@@ -1043,7 +1043,10 @@ async function iniciar({ telefono, nombre, matricula, soloSiLibre = false }) {
   // coche hasta que la gestoría confirma su alta (Gestoría › Altas): trabajar
   // sin alta es uno de los dos riesgos del encargo. Solo conductores (el viaje
   // de la oficina, no). Si la base falla, deja pasar (altas.bloqueaCoche).
-  if (p.tipo === 'turno' && p.conductorId) {
+  // EL BOT DE WHATSAPP NO LO MIRA (Camilo, 27/11/2026: «en el bot, todavía no
+  // metas nada de estos flujos… como el flujo antiguo»): pasa
+  // `comprobarAlta: false`. El portal, sí.
+  if (comprobarAlta && p.tipo === 'turno' && p.conductorId) {
     const sinAlta = await require('../modules/Gestoria/altas.service').bloqueaCoche(p.conductorId);
     if (sinAlta) return { ok: false, motivo: 'sin-alta', fechaAlta: sinAlta.fechaAlta };
   }

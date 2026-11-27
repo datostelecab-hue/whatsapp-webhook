@@ -355,7 +355,9 @@ async function abrir(telefono, matricula) {
   const w = W(p && p.tipo);
   let r;
   try {
-    r = await fichaje.iniciar({ telefono, matricula });
+    // Sin el candado del alta de la gestoría (db/304): el bot sigue con el flujo
+    // antiguo hasta que Camilo diga (27/11/2026).
+    r = await fichaje.iniciar({ telefono, matricula, comprobarAlta: false });
   } catch (e) {
     console.error('❌ [FICHAJE] iniciar:', e.message);
     await enviarTexto(telefono, `❌ Ahora mismo no he podido ${w.empezar}. Vuelve a escribirme la matrícula en un momento; si sigue igual, comunícate con Tráfico.`);
@@ -364,12 +366,6 @@ async function abrir(telefono, matricula) {
   if (!r.ok) {
     if (r.motivo === 'no-participa') {
       await enviarTexto(telefono, 'ℹ️ No tienes activado el uso de coches por aquí. Si crees que es un error, avisa a Tráfico.');
-      return;
-    }
-    // Contrato nuevo sin el alta confirmada por la gestoría (db/304).
-    if (r.motivo === 'sin-alta') {
-      await enviarTexto(telefono, '⛔ Todavía no puedo vincularte ningún coche: tu alta en la Seguridad Social aún no está confirmada. ' +
-        'En cuanto la oficina la confirme, podrás. Si empiezas hoy, avisa a la oficina o a Tráfico.');
       return;
     }
     if (r.motivo === 'otra-sede') {
