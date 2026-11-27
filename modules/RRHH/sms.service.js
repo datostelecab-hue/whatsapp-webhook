@@ -64,6 +64,11 @@ const PLANTILLAS = {
     texto: `{nombre}: ${EMPRESA} le notifica la suspensión de empleo y sueldo que se detalla en el documento del enlace de este mensaje.` },
   finiquito: { nombre: 'Aviso de finiquito', asunto: 'Aviso de finiquito',
     texto: `{nombre}: ${EMPRESA} le comunica que su liquidación y finiquito está preparada. Tiene el detalle en el enlace de este mensaje.` },
+  // A quien no ha leído un comunicado (db/310). Corto a propósito: hasta 160
+  // caracteres son 9 créditos; cada trozo más, 3.
+  comunicado: { nombre: 'Comunicado sin leer', asunto: 'Comunicado sin leer',
+    // Sin «»: no están en el alfabeto GSM con el que sale el SMS.
+    texto: '{pila}: tienes un comunicado de la empresa sin leer. Léelo en tu portal de conductores y pulsa "Lo he leído".' },
 };
 
 // Lo que dice Mensatek de cada uno (los códigos de su documentación).
@@ -163,7 +168,7 @@ async function personas(quien = {}) {
 async function crear(b = {}, quien = {}) {
   await exigir(quien, CLAVE_ENVIAR, 'Mandar SMS certificados es de quien tiene la llave «SMS certificado · enviar»');
   const x = limpiar(b);
-  const origen = ['sancion', 'finiquito'].includes(b.origen) ? b.origen : 'manual';
+  const origen = ['sancion', 'finiquito', 'comunicado'].includes(b.origen) ? b.origen : 'manual';
   const id = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'sms', accion: 'alta', motivo: `SMS certificado: ${x.asunto}` },
     cli => repo.insertar(cli, { ...x, origen, origenId: origen === 'manual' ? null : texto(b.origenId, 40), creadoPor: quien.usuarioId }));
   avisarCambio();
@@ -200,6 +205,7 @@ async function anular(id, quien = {}) {
  */
 async function borradorDesde({ origen, origenId, plantilla } = {}, quien = {}) {
   await exigir(quien, CLAVE_ENVIAR, 'Mandar SMS certificados es de quien tiene la llave «SMS certificado · enviar»');
+  if (origen === 'comunicado') return desdeComunicado(origenId, quien);
   const db = require('../../services/db');
   const tabla = { sancion: 'sancion', finiquito: 'finiquito' }[origen];
   if (!tabla || !/^\d+$/.test(String(origenId || ''))) throw error('No sé de qué es');
@@ -211,6 +217,40 @@ async function borradorDesde({ origen, origenId, plantilla } = {}, quien = {}) {
   const p = PLANTILLAS[plantilla] && plantilla !== 'libre' ? plantilla : (origen === 'finiquito' ? 'finiquito' : 'sancion');
   return crear({ asunto: PLANTILLAS[p].asunto, mensaje: PLANTILLAS[p].texto, plantilla: p, alcance: 'personas', personas: [f.conductor_id],
     origen, origenId: String(origenId) }, quien);
+}
+
+/**
+ * DESDE UN COMUNICADO (db/310, 27/11/2026): el borrador a quienes aún no lo han
+ * leído, con la plantilla corta y el PDF del comunicado, si lo lleva (así el
+ * certificado de Mensatek cubre también el documento). Lo decide Diana: aquí
+ * solo se prepara; se revisa y se manda en /sms. Si ya había un borrador de ese
+ * comunicado, se abre ese.
+ */
+async function desdeComunicado(comunicadoId, quien) {
+  if (!/^\d+$/.test(String(comunicadoId || ''))) throw error('No sé de qué comunicado es');
+  const db = require('../../services/db');
+  const comunicados = require('./comunicados.service');
+  const m = (await db.consulta(`SELECT id::text AS id, titulo, estado FROM comunicado WHERE id = $1`, [comunicadoId])).rows[0];
+  if (!m) throw error('Ese comunicado no existe', 404);
+  if (m.estado !== 'enviado') throw error('El comunicado aún no se ha mandado', 409);
+  const ya = (await db.consulta(`SELECT id::text AS id FROM sms_envio WHERE origen = 'comunicado' AND origen_id = $1 AND estado = 'borrador' ORDER BY id DESC LIMIT 1`,
+    [String(comunicadoId)])).rows[0];
+  if (ya) return { id: ya.id, ya: true };
+  const faltan = await comunicados.sinLeer(comunicadoId);
+  if (!faltan.length) throw error('Ya lo han leído todos', 409);
+  const p = PLANTILLAS.comunicado;
+  const r = await crear({ asunto: texto(`Comunicado sin leer: ${m.titulo}`, 160), mensaje: p.texto, plantilla: 'comunicado',
+    alcance: 'personas', personas: faltan, origen: 'comunicado', origenId: String(comunicadoId) }, quien);
+  // Y su PDF, si lo lleva: va dentro del SMS y Mensatek lo custodia.
+  try {
+    const pdf = (await adjuntos.bytesDe(comunicados.DUENO_PDF, comunicadoId)).find(a => /pdf/i.test(a.mime));
+    if (pdf) {
+      const { Readable } = require('stream');
+      await adjuntos.subirDelSistema({ tipo: DUENO_PDF, duenoId: String(r.id), nombre: pdf.nombre, mime: 'application/pdf',
+        cuerpo: Readable.from(pdf.buffer), firmante: null, creadoPor: quien.usuarioId || null, origen: 'sms · desde un comunicado' });
+    }
+  } catch (e) { console.error(`❌ [SMS] el PDF del comunicado ${comunicadoId}: ${e.message}`); }
+  return { ...r, personas: faltan.length };
 }
 
 // ── Mandarlo ───────────────────────────────────────────────────────────────

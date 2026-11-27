@@ -338,6 +338,27 @@ async function bytesDe(tipo, duenoId) {
   return out;
 }
 
+/**
+ * Los adjuntos vivos de un dueño, SIN los bytes y sin permiso de persona: para
+ * el servidor, que ya ha comprobado el acceso por su cuenta (el portal de
+ * conductores enseña el PDF de un comunicado a quien se lo mandaron, 27/11/2026).
+ * → [{ id, nombre, mime, bytes }]
+ */
+async function delDueno(tipo, duenoId) {
+  return (await repo.deDueno(tipo, idDeDueno(duenoId))).filter(a => !a.anulado_at)
+    .map(a => ({ id: String(a.id), nombre: a.nombre, mime: a.mime, bytes: Number(a.bytes) || null }));
+}
+
+/** Uno de ellos con sus bytes, si es de ese dueño y está vivo (lo mismo: para el servidor). → { nombre, mime, buffer } | null */
+async function leerDelDueno(tipo, duenoId, adjuntoId) {
+  const n = idDeAdjunto(adjuntoId);
+  const a = n ? await repo.porId(n) : null;
+  if (!a || a.anulado_at || a.dueno_tipo !== tipo || String(a.dueno_id) !== String(idDeDueno(duenoId))) return null;
+  const trozos = [];
+  for await (const c of await almacen.de(a.almacen).leer(a.ruta)) trozos.push(c);
+  return { nombre: a.nombre, mime: a.mime, buffer: Buffer.concat(trozos) };
+}
+
 // ── Quitar ─────────────────────────────────────────────────────────────────
 /** Anula un adjunto, con motivo. El fichero se queda en el almacén. */
 const MOTIVO_MINIMO = 3;
@@ -394,7 +415,7 @@ function cabecerasSeguras({ mime, nombre }) {
 }
 
 module.exports = {
-  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, bytesDe, maxBytes, MOTIVO_MINIMO, cabecerasSeguras,
+  registrarDueno, exigirAdjuntar, subir, subirDelSistema, lista, servir, anular, bytesDe, delDueno, leerDelDueno, maxBytes, MOTIVO_MINIMO, cabecerasSeguras,
   // Para las pruebas y la pantalla de pruebas:
   ENLINEA, nombreLimpio, mimeDe, claseDe, rangoDe, disposicion, tipos: () => [...DUENOS.keys()],
 };

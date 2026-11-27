@@ -139,6 +139,34 @@ const SECCIONES = [
   },
 ];
 
+// ── TODO LO QUE SE LE HA COMUNICADO, POR FECHAS (27/11/2026) ───────────────
+// Camilo: la línea de tiempo de comunicaciones. No se lee nada nuevo: se juntan
+// las secciones de firmas, comunicados y SMS certificados QUE YA VIAJAN (cada una
+// con su llave), así que quien no tiene la de un canal tampoco lo ve aquí.
+const FIRMA_TIPO = {
+  finiquito: 'Finiquito', suspension: 'Suspensión de empleo y sueldo', sancion: 'Carta de sanción', descuento: 'Descuento en nómina',
+  contrato: 'Contrato', comunicacion: 'Comunicación de horas', baja_voluntaria: 'Carta de baja voluntaria',
+  incorporacion: 'Carta de incorporación', informativo: 'Documento informativo del contrato', otro: 'Documento',
+};
+const FIRMA_ESTADO = {
+  borrador: 'por aprobar', aprobado: 'aprobado, por enviar', enviado: 'enviado, sin firmar', firmado: 'firmado',
+  rechazado: 'no lo firmó', caducado: 'caducado', descartado: 'descartado', error: 'error al enviar',
+};
+function lineaDeTiempo(secciones) {
+  const de = id => { const s = secciones.find(x => x.id === id && !x.error); return s ? s.datos || {} : null; };
+  const firmas = de('firmas'), comunicados = de('comunicados'), sms = de('sms');
+  if (!firmas && !comunicados && !sms) return null;
+  const lista = [];
+  ((firmas && firmas.lista) || []).forEach(x => lista.push({ dia: x.enviado || x.creado, canal: 'Firma',
+    que: x.titulo || FIRMA_TIPO[x.tipo] || x.tipo, como: FIRMA_ESTADO[x.estado] || x.estado, aviso: ['rechazado', 'caducado', 'error'].includes(x.estado) }));
+  ((comunicados && comunicados.lista) || []).forEach(x => lista.push({ dia: x.dia, canal: 'Comunicado', que: x.titulo,
+    como: x.leido ? `leído el ${dmy(x.leido)}` : 'sin leer', aviso: !x.leido }));
+  ((sms && sms.lista) || []).forEach(x => lista.push({ dia: x.dia, canal: 'SMS certificado', que: x.asunto,
+    como: x.error || x.estado_texto || 'enviado', aviso: !!x.error, certificado: x.certificado_adjunto_id || null }));
+  lista.sort((a, b) => String(b.dia || '').localeCompare(String(a.dia || '')));
+  return { id: 'comunicaciones', titulo: 'Todo lo que se le ha comunicado', enlace: null, datos: { lista } };
+}
+
 /** El expediente de una persona, solo con las secciones que puede ver quien mira. */
 async function deUno(conductorId, quien) {
   const id = Number(conductorId);
@@ -149,7 +177,13 @@ async function deUno(conductorId, quien) {
     try { return { id: s.id, titulo: s.titulo, enlace: s.enlace(id), datos: await s.leer(id) }; }
     catch (e) { return { id: s.id, titulo: s.titulo, enlace: s.enlace(id), error: e.message }; }
   }));
+  // La línea de tiempo va justo antes de la primera de sus tres secciones.
+  const linea = lineaDeTiempo(secciones);
+  if (linea) {
+    const i = secciones.findIndex(s => ['firmas', 'comunicados', 'sms'].includes(s.id));
+    secciones.splice(i < 0 ? secciones.length : i, 0, linea);
+  }
   return { secciones, ocultas: SECCIONES.length - visibles.length };
 }
 
-module.exports = { deUno, SECCIONES, _dmy: dmy };
+module.exports = { deUno, SECCIONES, lineaDeTiempo, _dmy: dmy };

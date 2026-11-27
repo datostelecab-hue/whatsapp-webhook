@@ -87,7 +87,8 @@ async function destinatarios(id) {
   return (await db.consulta(
     `SELECT d.conductor_id::text AS conductor_id, ${nombre('c')} AS nombre, c.legajo, d.email,
             ${hora('d.correo_at')} AS correo, d.correo_error, d.recordatorios, ${hora('d.recordado_at')} AS recordado,
-            ${hora('d.visto_at')} AS visto, ${hora('d.leido_at')} AS leido, (d.leido_at IS NOT NULL) AS ha_leido
+            ${hora('d.visto_at')} AS visto, ${hora('d.leido_at')} AS leido, (d.leido_at IS NOT NULL) AS ha_leido,
+            ${hora('d.pdf_at')} AS pdf
        FROM comunicado_destinatario d JOIN conductor c ON c.id = d.conductor_id
       WHERE d.comunicado_id = $1
       ORDER BY (d.leido_at IS NOT NULL), 2`, [id])).rows;
@@ -138,6 +139,18 @@ async function unoDeConductor(conductorId, id) {
       WHERE d.conductor_id = $1 AND m.id = $2`, [conductorId, id])).rows[0] || null;
 }
 
+/** Abrió el PDF en el portal (la primera vez es la que queda). */
+async function pdfAbierto(destId) {
+  await db.consulta(`UPDATE comunicado_destinatario SET pdf_at = COALESCE(pdf_at, now()), visto_at = COALESCE(visto_at, now()) WHERE id = $1`, [destId]);
+}
+
+/** Quién no lo ha leído todavía (para el SMS certificado). → [conductorId] */
+async function sinLeerDe(id) {
+  return (await db.consulta(
+    `SELECT conductor_id::text AS id FROM comunicado_destinatario WHERE comunicado_id = $1 AND leido_at IS NULL ORDER BY conductor_id`, [id]))
+    .rows.map(x => x.id);
+}
+
 async function visto(destId) {
   await db.consulta(`UPDATE comunicado_destinatario SET visto_at = COALESCE(visto_at, now()) WHERE id = $1`, [destId]);
 }
@@ -165,5 +178,5 @@ async function conLlave(cli, clave) {
 
 module.exports = {
   hayTabla, lista, porId, insertar, cambiar, destinatariosDe, guardarDestinatarios, destinatarios, correosPorMandar, apuntarCorreo,
-  sinLeer, deConductor, unoDeConductor, visto, leido, expediente, conLlave,
+  sinLeer, deConductor, unoDeConductor, visto, leido, expediente, conLlave, pdfAbierto, sinLeerDe,
 };

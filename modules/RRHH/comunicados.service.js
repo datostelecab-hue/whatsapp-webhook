@@ -20,6 +20,13 @@
 //
 // Al aprobarse se hace la FOTO de a quién va (la plantilla de alta en ese
 // momento, por su alcance) y salen los correos, en segundo plano.
+//
+// Y desde el 27/11/2026 (db/310):
+//   · UN PDF (una circular, una norma), adjunto del dueño 'comunicado', que se
+//     sube mientras es borrador. Se abre SOLO en el portal (Camilo: «en el
+//     portal; el correo avisa»): así queda cuándo lo abrió cada uno (`pdf_at`).
+//   · A QUIEN NO LO HA LEÍDO, un SMS certificado cuando Diana lo decida: el
+//     botón prepara el borrador en /sms (origen 'comunicado'), con el PDF.
 'use strict';
 
 const repo = require('./comunicados.repo');
@@ -30,6 +37,9 @@ const tablero = require('../../services/tablero');
 const tareasProgramadas = require('../../services/tareasProgramadas');
 const contadores = require('../../services/contadores');
 const correo = require('../../services/correo');
+const adjuntos = require('../../services/adjuntos');
+
+const DUENO_PDF = 'comunicado';
 
 const CLAVE_VER = '/comunicados';
 const CLAVE_PREPARAR = '/comunicados/preparar';
@@ -99,6 +109,7 @@ async function ficha(id, quien = {}) {
     ...publico(m), personas,
     previa: previa ? { total: previa.length, sinCorreo: previa.filter(p => !p.email).length } : null,
     puedePreparar: await puede(quien, CLAVE_PREPARAR), puedeAprobar: await puede(quien, CLAVE_APROBAR),
+    puedeSms: await puede(quien, '/sms/enviar'),
     esSuyo: Number(m.creado_por) === Number(quien.usuarioId),
   };
 }
@@ -213,13 +224,15 @@ async function anular(id, { nota } = {}, quien = {}) {
 }
 
 // ── Los correos ────────────────────────────────────────────────────────────
-function correoDe({ pila, titulo, id, recordatorio = 0 }) {
+function correoDe({ pila, titulo, id, recordatorio = 0, conPdf = false }) {
   const enlace = `${PORTAL}/comunicados/${encodeURIComponent(id)}`;
   const hola = `Hola${pila ? `, ${pila}` : ''}:`;
   const que = recordatorio
     ? `Todavía no has confirmado que has leído el comunicado «${titulo}» de Telecab.`
     : `Tienes un comunicado nuevo de Telecab: «${titulo}».`;
-  const pide = 'Léelo en tu portal de conductores y pulsa «Lo he leído» al final.';
+  const pide = conPdf
+    ? 'Lleva un documento: ábrelo en tu portal de conductores y pulsa «Lo he leído» al final.'
+    : 'Léelo en tu portal de conductores y pulsa «Lo he leído» al final.';
   const entrar = 'Se entra con tu DNI y el código que te llega a este correo.';
   return {
     subject: recordatorio ? `Recordatorio: ${titulo}` : `Comunicado de Telecab: ${titulo}`,
@@ -236,9 +249,10 @@ async function mandarCorreos(id) {
   const m = await repo.porId(null, id);
   if (!m || m.estado !== 'enviado') return { mandados: 0 };
   let mandados = 0, fallidos = 0;
+  const conPdf = await tienePdf(id);
   for (const d of await repo.correosPorMandar(id)) {
     try {
-      const r = await correo.enviarCorreo({ to: d.email, ...correoDe({ pila: d.pila, titulo: m.titulo, id }) });
+      const r = await correo.enviarCorreo({ to: d.email, ...correoDe({ pila: d.pila, titulo: m.titulo, id, conPdf }) });
       if (r && r.enviado === false) throw new Error(r.motivo || 'no se mandó');
       await repo.apuntarCorreo(d.id);
       mandados++;
@@ -261,9 +275,12 @@ async function recordar({ cli = null, hoy = calendario.hoy() } = {}) {
   if (!cal.esHabil(hoy)) return { saltada: 'no es hábil' };
   const tocan = (await repo.sinLeer(cli)).filter(d => d.recordatorios < RECORDATORIOS && cal.diasHabilesEntre(d.ultimo, hoy) >= RECORDAR_CADA);
   let mandados = 0;
+  const pdfs = new Map();
   for (const d of tocan) {
     try {
-      const r = await correo.enviarCorreo({ to: d.email, ...correoDe({ pila: d.pila, titulo: d.titulo, id: d.comunicado_id, recordatorio: d.recordatorios + 1 }) });
+      if (!pdfs.has(d.comunicado_id)) pdfs.set(d.comunicado_id, await tienePdf(d.comunicado_id));
+      const r = await correo.enviarCorreo({ to: d.email, ...correoDe({ pila: d.pila, titulo: d.titulo, id: d.comunicado_id,
+        recordatorio: d.recordatorios + 1, conPdf: pdfs.get(d.comunicado_id) }) });
       if (r && r.enviado === false) throw new Error(r.motivo || 'no se mandó');
       await repo.apuntarCorreo(d.id, { recordatorio: true });
       mandados++;
@@ -279,13 +296,39 @@ async function delConductor(persona) {
   return repo.deConductor(persona.id);
 }
 
-/** Abrir uno: queda que lo ha visto (aún no que lo ha leído). */
+/** ¿Lleva PDF? */
+async function tienePdf(id) {
+  try { return (await adjuntos.delDueno(DUENO_PDF, id)).some(a => /pdf/i.test(a.mime)); } catch (_) { return false; }
+}
+
+/** Abrir uno: queda que lo ha visto (aún no que lo ha leído). Con sus documentos. */
 async function abrirEnPortal(persona, id) {
   if (!/^\d+$/.test(String(id || ''))) return null;
   const m = await repo.unoDeConductor(persona.id, id);
   if (!m) return null;
   await repo.visto(m.dest_id).catch(() => null);
-  return m;
+  const documentos = await adjuntos.delDueno(DUENO_PDF, m.id).catch(() => []);
+  return { ...m, documentos };
+}
+
+/**
+ * EL PDF EN EL PORTAL: solo a quien se le mandó ese comunicado, y queda la
+ * primera vez que lo abrió. → { nombre, mime, buffer } | null
+ */
+async function documentoEnPortal(persona, id, adjuntoId) {
+  if (!/^\d+$/.test(String(id || '')) || !/^\d+$/.test(String(adjuntoId || ''))) return null;
+  const m = await repo.unoDeConductor(persona.id, id);
+  if (!m) return null;
+  const a = await adjuntos.leerDelDueno(DUENO_PDF, m.id, adjuntoId);
+  if (!a) return null;
+  await repo.pdfAbierto(m.dest_id).catch(() => null);
+  avisarCambio();
+  return a;
+}
+
+/** Quién no lo ha leído aún (para el SMS certificado desde el comunicado). */
+async function sinLeer(id) {
+  return repo.sinLeerDe(id);
 }
 
 /** «Lo he leído»: el acuse, con la IP y el navegador. → el comunicado. */
@@ -301,6 +344,19 @@ async function acusar(persona, id, { ip, agente } = {}) {
 }
 
 // ── Registro ───────────────────────────────────────────────────────────────
+const quienDe = q => ({ usuarioId: q && (q.usuarioId || q.id), rol: q && q.rol });
+adjuntos.registrarDueno(DUENO_PDF, {
+  etiqueta: 'PDF del comunicado',
+  ver: async q => puede(quienDe(q), CLAVE_VER),
+  // Solo en el borrador: lo que se aprobó es lo que se mandó.
+  adjuntar: async (q, id) => {
+    if (!await puede(quienDe(q), CLAVE_PREPARAR)) return false;
+    const m = await repo.porId(null, id);
+    if (m && m.estado !== 'borrador') throw error('Ya no es un borrador: el documento no se puede cambiar', 409);
+    return !!m;
+  },
+});
+
 tablero.registrarTipo(T_APROBAR, { etiqueta: 'Aprobar un comunicado', abrir: 'Abrir el comunicado', cierreManual: false });
 
 tareasProgramadas.registrar({
@@ -328,6 +384,6 @@ contadores.registrarFuente('comunicados', {
 
 module.exports = {
   lista, ficha, personas, crear, editar, pedir, devolver, aprobar, anular, mandarCorreos, recordar,
-  delConductor, abrirEnPortal, acusar, puede, correoDe,
+  delConductor, abrirEnPortal, documentoEnPortal, acusar, sinLeer, tienePdf, puede, correoDe, DUENO_PDF,
   ALCANCES, ESTADOS, CLAVE_VER, CLAVE_PREPARAR, CLAVE_APROBAR,
 };

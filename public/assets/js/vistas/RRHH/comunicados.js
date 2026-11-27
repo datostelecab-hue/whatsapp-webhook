@@ -90,6 +90,9 @@
       d.estado === 'por_aprobar' && APRUEBA && !d.esSuyo ? '<button data-accion="aprobar" class="tc-boton tc-boton--principal tc-boton--chico">Aprobar y enviar</button>' : '',
       d.estado === 'por_aprobar' && (APRUEBA || PREPARA) ? '<button data-accion="devolver" class="tc-boton tc-boton--chico">Devolver al borrador</button>' : '',
       d.estado !== 'anulado' && (d.estado !== 'enviado' ? (APRUEBA || PREPARA) : APRUEBA) ? '<button data-accion="anular" class="tc-boton tc-boton--chico">Anular</button>' : '',
+      // A quien no lo ha leído, un SMS certificado cuando se decida (db/310): prepara el borrador en /sms.
+      d.estado === 'enviado' && d.puedeSms && d.total > d.leidos
+        ? `<button data-accion="sms" class="tc-boton tc-boton--chico">SMS certificado a quien falta (${d.total - d.leidos})</button>` : '',
     ].join('');
     const previa = d.previa ? `<p class="text-sm mb-3">Iría a <b>${d.previa.total}</b> ${d.previa.total === 1 ? 'persona' : 'personas'}${d.previa.sinCorreo ? `; <span class="text-telecab-warn">${d.previa.sinCorreo} sin correo</span> (lo verán solo al entrar en el portal)` : ''}.</p>` : '';
     const espera = d.estado === 'por_aprobar' && d.esSuyo ? '<p class="text-xs text-telecab-muted mb-3">Lo preparaste tú: lo aprueba otra persona.</p>' : '';
@@ -101,6 +104,7 @@
       ${d.estado === 'enviado' ? seguimiento(d) : ''}
       <h3 class="text-xs font-semibold text-telecab-muted mb-1">El texto</h3>
       <div class="text-sm whitespace-pre-line rounded-lg border border-telecab-border p-3 mb-4">${esc(d.cuerpo)}</div>
+      <div data-adjuntos class="mb-4"></div>
       <p class="text-xs text-telecab-muted">Creado ${esc(d.creado)}${d.creado_por_nombre ? ` por ${esc(d.creado_por_nombre)}` : ''}${d.aprobado ? ` · aprobado ${esc(d.aprobado)}${d.aprobado_por_nombre ? ` por ${esc(d.aprobado_por_nombre)}` : ''}` : ''}</p>`;
   }
 
@@ -110,7 +114,7 @@
         <a class="text-sm font-medium underline-offset-2 hover:underline" href="/plantilla#${encodeURIComponent(p.conductor_id)}">${esc(p.nombre)}</a>
         <span class="text-xs text-telecab-muted">${p.ha_leido ? `leído ${esc(p.leido)}`
           : [p.email ? (p.correo_error ? `<span class="text-telecab-red">el correo falló</span>` : p.correo ? `correo ${esc(p.correo)}` : 'correo por salir') : '<span class="text-telecab-warn">sin correo</span>',
-            p.visto ? `lo abrió ${esc(p.visto)}` : '', p.recordatorios ? `${p.recordatorios} ${p.recordatorios === 1 ? 'recordatorio' : 'recordatorios'}` : ''].filter(Boolean).join(' · ')}</span></li>`;
+            p.visto ? `lo abrió ${esc(p.visto)}` : '', p.pdf ? `abrió el PDF ${esc(p.pdf)}` : '', p.recordatorios ? `${p.recordatorios} ${p.recordatorios === 1 ? 'recordatorio' : 'recordatorios'}` : ''].filter(Boolean).join(' · ')}</span></li>`;
     return `
       <div class="grid grid-cols-3 gap-2 mb-3 text-center">
         <div class="rounded-lg border border-telecab-border p-2"><p class="text-xl font-semibold tabular-nums">${d.leidos}</p><p class="text-xs text-telecab-muted">lo han leído</p></div>
@@ -126,10 +130,24 @@
 
   function enganchar(d) {
     panel.cuerpo.querySelectorAll('[data-accion]').forEach(b => b.addEventListener('click', () => accion(b.dataset.accion, d)));
+    // El PDF (db/310): se sube mientras es borrador; cada uno lo abre en su portal.
+    const caja = panel.cuerpo.querySelector('[data-adjuntos]');
+    const editable = PREPARA && d.estado === 'borrador';
+    if (caja && window.Adjuntos) {
+      Adjuntos.montar(caja, { tipo: 'comunicado', dueno: d.id, titulo: 'Documento (PDF; cada uno lo abre en su portal)', puedeAdjuntar: editable, puedeQuitar: editable });
+    }
   }
 
   async function accion(que, d) {
     if (que === 'editar') return redactar(d);
+    if (que === 'sms') {
+      const ok = await Dialogo.confirmar({ titulo: 'SMS certificado a quien falta', si: 'Preparar el SMS', no: 'Cancelar',
+        texto: `Se prepara un borrador de SMS certificado a las ${d.total - d.leidos} personas que aún no lo han leído, con el documento si lo lleva. No sale hasta que lo mandes desde «SMS certificado» (9 créditos por persona).` });
+      if (!ok) return;
+      const s = await Api.post('/sms/api/desde', { origen: 'comunicado', origenId: d.id }, { aviso: 'No se ha podido preparar', bloquea: true });
+      if (s) location.href = `/sms#${encodeURIComponent(s.id)}`;
+      return;
+    }
     let r;
     if (que === 'pedir') {
       r = await Api.post(`/comunicados/api/comunicado/${encodeURIComponent(d.id)}/pedir`, {}, { aviso: 'No se ha podido', bloquea: true });

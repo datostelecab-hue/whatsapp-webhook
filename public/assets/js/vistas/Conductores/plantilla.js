@@ -157,13 +157,18 @@
       cuerpo = (d.lista || []).length
         ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li>Baja del ${esc(dmyE(x.fecha_baja))} · ${esc(x.estado)}${x.enviado ? ` · enviado el ${esc(dmyE(x.enviado))}` : x.aprobado ? ` · aprobado el ${esc(dmyE(x.aprobado))}` : ''}</li>`).join('')}</ul>`
         : vacio('Sin finiquito.');
+    } else if (s.id === 'comunicaciones') {
+      // Todo lo que se le ha comunicado, por fechas (firmas, comunicados y SMS certificados).
+      cuerpo = (d.lista || []).length
+        ? `<ul class="text-sm space-y-1">${d.lista.map(x => `<li><span class="tabular-nums text-telecab-muted">${esc(dmyE(x.dia)) || '—'}</span> · <b>${esc(x.canal)}</b> · ${esc(x.que || '')} · ${x.aviso ? `<span class="text-telecab-warn">${esc(x.como)}</span>` : esc(x.como)}${x.certificado ? ` · <a class="text-telecab-gold hover:underline" href="/adjuntos/${encodeURIComponent(x.certificado)}/fichero" target="_blank" rel="noopener">certificado</a>` : ''}</li>`).join('')}</ul>`
+        : vacio('No se le ha mandado nada todavía.');
     } else if (s.id === 'efectivo') {
       cuerpo = d.pendiente == null ? vacio('Sin cuenta en Recaudación.')
         : `<p class="text-sm">${d.pendiente > 0.005 ? `Debe <b class="text-telecab-red">${esc(eur(d.pendiente))}</b> de efectivo.` : 'Al día con el efectivo.'}</p>`;
     } else cuerpo = '';
     return `<section class="py-3 border-t border-telecab-border first:border-t-0">
       <div class="flex items-center gap-2 mb-1"><h4 class="text-sm font-semibold text-telecab-text">${esc(s.titulo)}</h4>
-        <a href="${esc(s.enlace)}" class="ml-auto text-xs text-telecab-gold hover:underline">Abrir</a></div>${cuerpo}</section>`;
+        ${s.enlace ? `<a href="${esc(s.enlace)}" class="ml-auto text-xs text-telecab-gold hover:underline">Abrir</a>` : ''}</div>${cuerpo}</section>`;
   }
   function expedienteHtml(r) {
     if (!r.secciones.length) return '<p class="text-sm text-telecab-muted">No tienes acceso a ninguna parte del expediente de RR. HH.</p>';

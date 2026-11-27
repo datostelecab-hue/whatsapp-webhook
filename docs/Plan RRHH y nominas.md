@@ -158,8 +158,8 @@ Esto es justo la **validación** que el módulo 4 tiene que hacer sola: subir la
 - El borrador: validación, versiones y rectificaciones (falta un borrador real de la gestoría). La IT precalculada (faltan las tablas de 2026 y 2027).
 
 **Fase 4 · Módulos 6 y 9**
-- La comunicación como entidad única, con plantillas y evidencias, y las dos integraciones.
-- ✔ 26/11 (db/305): los comunicados masivos con acuse, ver [[Comunicados]]. Decidido: el acuse es el «Lo he leído» del portal (día, hora, IP); aviso por correo y portal, sin WhatsApp; recordatorio cada 2 días hábiles, 3 como mucho; Diana prepara y aprueba otra persona (Ignacio). Falta el SMS certificado (Mensatec) y adjuntar un PDF.
+- ✔ 27/11: la comunicación reunida por persona. En el expediente, «Todo lo que se le ha comunicado»: firmas, comunicados y SMS por fechas, con su estado y su evidencia (el certificado, el «Lo he leído»). Ver [[Conductores#El expediente de RR. HH. (26/11/2026)]]. Las dos integraciones ([[Firmas]] con YouTrust y [[SMS certificado]] con Mensatek), hechas.
+- ✔ 26/11 (db/305): los comunicados masivos con acuse, ver [[Comunicados]]. Decidido: el acuse es el «Lo he leído» del portal (día, hora, IP); aviso por correo y portal, sin WhatsApp; recordatorio cada 2 días hábiles, 3 como mucho; Diana prepara y aprueba otra persona (Ignacio). ✔ 27/11 (db/310): el PDF (solo en el portal; queda cuándo lo abrió cada uno) y el SMS certificado a quien no lo ha leído, cuando Diana lo decide.
 
 **Módulo 5 adelantado** — ✔ 25/11 (db/288): el informe de jornada para el SMAC, ver [[Informe de jornada]]. Decidido: estricto del convenio, día natural, desde el 01/07/2026.
 

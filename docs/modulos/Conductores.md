@@ -518,6 +518,7 @@ El «expediente del conductor» del [[Plan RRHH y nominas]] (piezas comunes). En
 | Ausencias y bajas médicas | `/ausencias` | las ausencias de 12 meses por decisión y sus bajas ([[Ausencias]]) |
 | Permisos de este año | `/ausencias` | el saldo de permisos del convenio |
 | Faltas y sanciones | `/disciplina` | [[Faltas y sanciones]] |
+| **Todo lo que se le ha comunicado** (27/11/2026) | la de cada canal | firmas, comunicados y SMS certificados juntos, por fechas (lo último arriba), con su estado y el certificado; solo lo de las secciones que ya viajan, así que sin la llave de un canal ese canal no sale. Va justo antes de las firmas. |
 | Cartas y documentos a firma | `/firmas` | [[Firmas]] |
 | Descuentos en nómina | `/descuentos` | [[Descuentos en nomina]] |
 | Finiquito | `/finiquitos` | [[Finiquitos]] |

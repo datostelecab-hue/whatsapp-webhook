@@ -33,5 +33,8 @@ test('cada sección con su llave; lo que no puede ver no llega', () => conBase(a
   assert.ok(r2.secciones.every(s => !s.error), JSON.stringify(r2.secciones.filter(s => s.error)));
 
   const todo = await expediente.deUno(c.id, { usuarioId: (await fabrica.usuario({ rol: 'superadmin', nombre: 'Jefe' })).id, rol: 'superadmin' });
-  assert.equal(todo.secciones.length, expediente.SECCIONES.length);
+  // Todas, y la línea de tiempo de comunicaciones (27/11/2026), que junta firmas, comunicados y SMS.
+  assert.equal(todo.secciones.length, expediente.SECCIONES.length + 1);
+  const ids = todo.secciones.map(s => s.id);
+  assert.equal(ids.indexOf('comunicaciones'), ids.indexOf('firmas') - 1, 'justo antes de las firmas');
 }));

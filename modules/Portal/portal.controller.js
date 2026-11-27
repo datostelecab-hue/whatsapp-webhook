@@ -149,6 +149,15 @@ router.get('/comunicados/:id', async (req, res, next) => {
     vista(res, 'portalComunicado', { titulo: c.titulo, pagina: 'portalComunicados', conductor: req.conductor, comunicado: c });
   } catch (e) { next(e); }
 });
+// El PDF del comunicado (db/310): solo a quien se le mandó, y queda cuándo lo abrió.
+router.get('/comunicados/:id/documento/:adjunto', async (req, res, next) => {
+  try {
+    const a = await comunicados.documentoEnPortal(req.conductor, req.params.id, req.params.adjunto);
+    if (!a) return vista(res.status(404), 'portalAviso', { titulo: 'No existe', conductor: req.conductor, texto: 'Ese documento no existe o ya no está.' });
+    res.set({ ...require('../../services/adjuntos').cabecerasSeguras({ mime: a.mime, nombre: a.nombre }), 'Cache-Control': 'private, no-store' });
+    res.send(a.buffer);
+  } catch (e) { next(e); }
+});
 router.post('/comunicados/:id/leido', async (req, res, next) => {
   try {
     const c = await comunicados.acusar(req.conductor, req.params.id, { ip: req.ip, agente: req.get('user-agent') });

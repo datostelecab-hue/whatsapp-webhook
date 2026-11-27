@@ -8,6 +8,18 @@
   <div class="caja-in com-texto"><%= comunicado.cuerpo %></div>
 </section>
 
+<% const docs = comunicado.documentos || []; %>
+<% if (docs.length) { %>
+  <section class="caja">
+    <div class="caja-in">
+      <p class="peq suave">Lleva <%= docs.length === 1 ? 'un documento' : docs.length + ' documentos' %>: ábrelo antes de pulsar «Lo he leído».</p>
+      <% docs.forEach(function (d) { %>
+        <p><a class="boton-sec" href="/comunicados/<%= comunicado.id %>/documento/<%= d.id %>" target="_blank" rel="noopener">Abrir <%= d.nombre %></a></p>
+      <% }) %>
+    </div>
+  </section>
+<% } %>
+
 <% if (comunicado.leido) { %>
   <p class="com-hecho">Confirmaste que lo has leído el <%= comunicado.leido_en %>.</p>
 <% } else { %>

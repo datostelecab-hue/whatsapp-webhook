@@ -45,10 +45,19 @@ aliases: [Comunicados, Comunicados a la plantilla, Lo he leído]
 
 Todas `manual`: se dan persona a persona en Usuarios.
 
-## Lo que falta
+## El PDF y el SMS certificado a quien no lo lee (db/310, 27/11/2026)
 
-- El **SMS certificado** va aparte: [[SMS certificado]] (db/306).
-- **Adjuntar un PDF** al comunicado (el portal tendría que servirlo a cada uno): de momento, solo texto.
+Camilo: el PDF *«en el portal; el correo avisa»*, y el SMS *«cuando Diana lo decida»*.
+
+- **El documento**: en el panel del comunicado, el recuadro «Documento (PDF…)» (adjunto del dueño `comunicado`). Se sube y se quita **solo mientras es borrador**: lo que se aprobó es lo que se mandó.
+- **En el portal**, debajo del texto, «Abrir norma.pdf» (`/comunicados/:id/documento/:adjunto`). Solo se sirve a quien se le mandó ese comunicado, con las cabeceras seguras de [[Adjuntos]] y sin caché. La primera vez que lo abre queda `pdf_at`, y la oficina lo ve en el seguimiento («abrió el PDF …»).
+- **El correo no lleva el PDF**: dice «Lleva un documento: ábrelo en tu portal…» (también en los recordatorios). Abrirlo desde el correo no dejaría constancia.
+- **«SMS certificado a quien falta (N)»**, en un comunicado enviado, para quien tiene la llave `/sms/enviar`. Prepara en [[SMS certificado]] un borrador:
+  - va solo a los que aún no lo han leído, con la plantilla corta «Comunicado sin leer» (≤ 160 caracteres: 9 créditos) y el PDF del comunicado;
+  - no sale hasta que Diana lo manda desde /sms;
+  - un segundo clic abre el mismo borrador.
+
+## Lo que falta
 - Los envíos de los módulos 3 y 7 (cartas de sanción, finiquitos) siguen por [[Firmas]].
 - Al mandar a toda la plantilla salen unos 250 correos seguidos por el SMTP de la casa: si el proveedor pone un tope por hora, los que fallen quedan con su error en la lista.
 
