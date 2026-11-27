@@ -46,6 +46,9 @@ El crédito cuesta de 0,042 € (bono de 50 €) a 0,0354 € (100 €), 0,0318 
 
 ## Configuración
 
+> [!warning] El remitente es obligatorio (27/11/2026)
+> Mensatek **no acepta el remitente vacío**: contesta «REMITENTE should have a length bigger than 3», aunque la cuenta tenga uno por defecto y su documentación diga lo contrario. Pasó en los dos primeros envíos de prueba, que no gastaron créditos. Desde entonces el ERP no manda nada sin el parámetro «SMS certificado · remitente» (4 a 11 caracteres, el mismo que tenga la cuenta).
+
 | Dónde | Qué |
 |---|---|
 | Render (entorno) | `MENSATEK_USUARIO` y `MENSATEK_API_KEY`: el Usuario API y el API Token (Mensatek → Tus Datos → Configurar cuenta) |

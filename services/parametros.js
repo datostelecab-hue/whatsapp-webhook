@@ -145,7 +145,9 @@ const CATALOGO = [
     descripcion: 'Mensatek lo pide en cada envío. Vacío, no se puede mandar ninguno.' },
   { clave: 'mensatek.remitente', modulo: 'RR. HH.', item: 9, tipo: 'texto', max: 11, vacio: true, defecto: '', usa: 'SMS certificado (modules/RRHH/sms.service.js)',
     etiqueta: 'SMS certificado · remitente',
-    descripcion: 'Vacío: el que tenga la cuenta de Mensatek por defecto. Si se pone uno, tiene que estar registrado en la CNMC y validado en la cuenta, o la operadora lo rechaza.' },
+    // 27/11/2026: Mensatek NO acepta el remitente vacío («REMITENTE should have a
+    // length bigger than 3»), aunque la cuenta tenga uno por defecto. Se exige.
+    descripcion: 'Obligatorio (Mensatek no acepta vacío): el mismo que tenga la cuenta de Mensatek, de 4 a 11 caracteres. Si es un nombre, tiene que estar registrado en la CNMC; un número de teléfono no lo necesita.' },
   { clave: 'mensatek.dias_validez', modulo: 'RR. HH.', item: 9, tipo: 'entero', unidad: 'dias', min: 1, max: 20, defecto: 3, usa: 'SMS certificado (modules/RRHH/sms.service.js)',
     etiqueta: 'SMS certificado · días que se intenta entregar',
     descripcion: 'Si el móvil está apagado, Mensatek lo reintenta durante estos días; después, caduca.' },

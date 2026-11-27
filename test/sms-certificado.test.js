@@ -25,7 +25,7 @@ test('preparar, mandar a cada uno con su DNI, los estados y el certificado', () 
   mensatek.configurado = () => true;
   mensatek.enviarCertificado = async x => { mandados.push(x); return { idMensaje: ++siguiente, creditos: 3 }; };
   mensatek.certificado = async () => Buffer.from('%PDF-1.4 prueba');
-  parametros.valor = async k => ({ 'mensatek.telefono': '910000000', 'mensatek.cif': 'B00000000', 'mensatek.contacto': 'EMPRESA', 'mensatek.remitente': '', 'mensatek.dias_validez': 3 }[k] ?? reales.valor(k));
+  parametros.valor = async k => ({ 'mensatek.telefono': '910000000', 'mensatek.cif': 'B00000000', 'mensatek.contacto': 'EMPRESA', 'mensatek.remitente': 'PRUEBAS', 'mensatek.dias_validez': 3 }[k] ?? reales.valor(k));
   adjuntos.subirDelSistema = async () => ({ id: 777 });
   try {
     const u = await fabrica.usuario({ rol: 'oficina', nombre: 'Diana' });

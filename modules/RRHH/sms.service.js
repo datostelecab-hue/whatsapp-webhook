@@ -264,7 +264,8 @@ async function enviar(id, quien = {}, { esperar = false } = {}) {
   const enPruebas = require('../../services/modoPruebas').ACTIVO;
   if (!mensatek.configurado() && !enPruebas) throw error('Mensatek no está configurado en el servidor (faltan el usuario y el token de la API)', 409);
   const em = await emisor();
-  const faltan = [!em.telContacto ? 'el teléfono' : '', !em.cif ? 'el CIF' : ''].filter(Boolean);
+  // El remitente también (27/11/2026): vacío, Mensatek lo rechaza aunque la cuenta tenga uno por defecto.
+  const faltan = [!em.telContacto ? 'el teléfono' : '', !em.cif ? 'el CIF' : '', em.remitente.length < 4 ? 'el remitente' : ''].filter(Boolean);
   if (faltan.length) throw error(`Falta ${faltan.join(' y ')} de la empresa en Parámetros (Mensatek lo pide en cada envío)`, 409);
   const r = await libro.conFirma({ usuarioId: quien.usuarioId, origen: 'sms', accion: 'cambio', motivo: 'SMS certificado enviado' }, async cli => {
     const e = await repo.porId(cli, id);
