@@ -38,6 +38,9 @@ router.get('/', async (req, res) => {
   res.render('vehiculos', {
     titulo: 'Vehículos', seccion: 'vehiculos', layout: 'layout-gestion',
     puedePiezas: !mias || mias.includes('/vehiculos/piezas'),
+    // Las puertas (27/11/2026): el desarrollador o la llave '/puertas' dada a
+    // mano, como en el bot. El superadmin no por serlo.
+    puedePuertas: await require('../../services/puertasOficina').puede(req.usuario),
     estadosVehiculo: catalogos.estados, zonas: catalogos.zonas, sedes: catalogos.sedes,
     // Solo quien ve las DOS sedes necesita una columna que las distinga: a quien
     // ve Madrid entero, una columna con "Madrid" en las 89 filas no le dice nada.

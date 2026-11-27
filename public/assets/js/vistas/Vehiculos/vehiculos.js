@@ -8,6 +8,8 @@
   const tonoEstado = Casa.tonoEstadoCoche;
   // Quién puede cambiar el estado de las piezas (el servidor lo comprueba igual).
   const PUEDE_PIEZAS = DEL_SERVIDOR.puedePiezas;
+  // Abrir y cerrar el coche (27/11/2026): el desarrollador o la llave de puertas.
+  const PUEDE_PUERTAS = !!DEL_SERVIDOR.puedePuertas;
   const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
   const VER_SEDES = DEL_SERVIDOR.verTodasLasSedes;
 
@@ -146,6 +148,8 @@
 
       acciones: [
         { texto: 'Editar', icono: 'fa-pen', principal: true, onClick: d => abrirForm(d) },
+        { texto: 'Abrir puertas', icono: 'fa-lock-open', visible: d => PUEDE_PUERTAS && !d.baja_at, onClick: d => puertas(d, true) },
+        { texto: 'Cerrar puertas', icono: 'fa-lock', visible: d => PUEDE_PUERTAS && !d.baja_at, onClick: d => puertas(d, false) },
         { texto: 'Dar de baja', icono: 'fa-ban', peligro: true,
           visible: d => !d.baja_at, onClick: darDeBaja },
       ],
@@ -348,6 +352,20 @@
   });
 
   // ---------- acciones ----------
+
+  // LAS PUERTAS (27/11/2026): la misma orden que el bot de WhatsApp, a Mapon, y
+  // apuntada con tu nombre. Mapon solo dice que la aceptó: no que el coche abrió.
+  async function puertas(d, abrir) {
+    const ok = await Dialogo.confirmar({
+      titulo: `${abrir ? 'Abrir' : 'Cerrar'} el ${d.matricula}`, si: abrir ? 'Abrir' : 'Cerrar', no: 'Cancelar', tono: abrir ? 'aviso' : 'info',
+      texto: `Se manda a Mapon la orden de ${abrir ? 'abrir' : 'cerrar'} las puertas del ${d.matricula}. Queda apuntada a tu nombre.`,
+    });
+    if (!ok) return;
+    const r = await Api.post('/puertas/api/orden', { matricula: d.matricula, abrir }, { aviso: 'No se ha podido mandar la orden', bloquea: true });
+    if (!r) return;
+    if (r.ok) Dialogo.hecho(r.titulo);
+    await Dialogo.aviso({ titulo: r.titulo, texto: r.texto, tono: r.ok ? 'info' : 'error' });
+  }
 
   async function darDeBaja(d) {
     const ok = await Dialogo.confirmar({

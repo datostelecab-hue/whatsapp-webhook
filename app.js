@@ -445,6 +445,8 @@ app.use('/fichaje', require('./modules/Fichaje/fichaje.controller'));
 // El ciclo de bloqueo de motor: lo que bloquean los conductores al terminar y
 // lo que suelta Tráfico (30/09/2026). No es /fichaje, que es la jornada.
 app.use('/bloqueo-motor', require('./modules/BloqueoMotor/bloqueoMotor.controller'));
+// Abrir y cerrar un coche desde el ERP (27/11/2026): la llave '/puertas', como en el bot.
+app.use('/puertas', require('./modules/Vehiculos/puertas.controller'));
 app.use('/plantilla', plantillaRoutes);
 // La pantalla se llamo /conductores mientras se construia. Quien tenga ese
 // enlace guardado no se encuentra un 404.

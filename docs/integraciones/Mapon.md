@@ -211,6 +211,18 @@ Cómo queda en el código:
 - El panel de la oficina busca la matrícula **exacta** con `unidadPorMatricula` (antes hacía su propia petición, cogía el primer equipo y casaba matrículas parciales o por etiqueta); lo parecido solo se sugiere.
 - Pruebas: `test/puertas-mapon.test.js`; `scripts/probar-corte-motor.js` (secciones 15 y 16).
 
+### Desde el ERP: «Abrir puertas» y «Cerrar puertas» en la ficha del coche (27/11/2026)
+
+Camilo: *«hazme el botón de puertas en el ERP»*. En **Vehículos**, en la ficha de cada coche que no esté de baja, salen dos botones, **«Abrir puertas»** y **«Cerrar puertas»**, con una confirmación antes de mandar la orden.
+
+- **Quién**: igual que en el bot, el rol desarrollador o quien tenga la llave `/puertas` dada a mano. El superadmin, no por serlo.
+- **Cómo**: la ruta `POST /puertas/api/orden` (`modules/Vehiculos/puertas.controller.js`) llama a `services/puertasOficina.js`, que usa la misma `puertasBot.ejecutar`:
+  - Mapon directo, con su fila y el doble toque;
+  - sin comprobar la sede, como la oficina en el bot;
+  - y queda apuntada en `puerta_comando` con «ERP · nombre» como quien la dio y `erp:ID` en el teléfono.
+- Se contesta lo mismo que en el bot: «Orden de abrir enviada», o por qué no salió. Si alguien lleva el coche vinculado, se dice pero no se impide (muchas veces es para abrírselo a él).
+- Pruebas: `test/puertas-oficina.test.js`.
+
 ## Las trampas, juntas
 
 > [!danger] Lo que rompe si no se sabe

@@ -129,5 +129,5 @@
 <script src="<%= typeof est === 'function' ? est('/assets/js/mantenimientosCoche.js') : '/assets/js/mantenimientosCoche.js' %>"></script>
 <%# El resumen en 3D (pestaña «3D»): three.js y el modelo se bajan solo al abrirla. %>
 <script src="<%= typeof est === 'function' ? est('/assets/js/coche3d.js') : '/assets/js/coche3d.js' %>"></script>
-<script type="application/json" id="datos-servidor"><%- json({ puedePiezas: !!(typeof puedePiezas !== 'undefined' && puedePiezas), verTodasLasSedes: !!verTodasLasSedes }) %></script>
+<script type="application/json" id="datos-servidor"><%- json({ puedePiezas: !!(typeof puedePiezas !== 'undefined' && puedePiezas), verTodasLasSedes: !!verTodasLasSedes, puedePuertas: !!(typeof puedePuertas !== 'undefined' && puedePuertas) }) %></script>
 <script src="<%= est('/assets/js/vistas/Vehiculos/vehiculos.js') %>"></script>
