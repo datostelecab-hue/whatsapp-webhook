@@ -29,6 +29,9 @@
       vacio: 'Aún no se ha leído ningún fichero FIE.',
       filtrosIniciales: { cambia: 'si' },
       buscar: { texto: 'Buscar persona…', campos: ['nombre', 'nombre_erp'] },
+      // Sin ficha propia: cada proceso se abre en el panel de al lado (la lista de
+      // Ausencias es la que usa la dirección para sus fichas, 27/11/2026).
+      alAbrir: f => abrir(f),
       subtitulo: (v, t, extra) => `Desde el ${dmy((extra && extra.desde) || '2026-09-27')} · ${v.length} de ${t.length} procesos de baja`,
       kpis: (filas, extra) => {
         EXTRA = extra || {};
@@ -79,6 +82,34 @@
         { titulo: 'Del FIE del', valor: f => f.registro || '', clase: 'whitespace-nowrap tabular-nums text-telecab-muted', pinta: v => esc(dmy(v)) },
       ],
     });
+  }
+
+  // ── Un proceso, en el panel ──────────────────────────────────────────────
+  const CONT = { comun: 'Enfermedad común', accidente_no_laboral: 'Accidente no laboral', accidente_trabajo: 'Accidente de trabajo', enfermedad_profesional: 'Enfermedad profesional' };
+  function abrir(f) {
+    const fila = (t, v) => `<dt class="text-telecab-muted">${esc(t)}</dt><dd>${v}</dd>`;
+    const alta = f.baja_anulada ? 'Parte de baja anulado' : f.alta_anulada ? 'Alta anulada (sigue de baja)'
+      : f.fecha_fin ? `${dmy(f.fecha_fin)} (vuelve el día siguiente)` : 'Sin alta';
+    const html = `
+      <p class="mb-3">${etiqueta(est(f)[0], est(f)[1])}</p>
+      <h3 class="text-xs font-semibold text-telecab-muted mb-1">Lo que dice el FIE</h3>
+      <dl class="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm mb-4">
+        ${fila('Persona', esc(f.nombre_erp || f.nombre || '—') + (f.nombre_erp && f.nombre && f.nombre_erp !== f.nombre ? `<span class="block text-xs text-telecab-muted">En el FIE: ${esc(f.nombre)}</span>` : ''))}
+        ${fila('Baja', esc(dmy(f.fecha_baja)))}
+        ${fila('Alta', esc(alta))}
+        ${fila('Contingencia', esc(CONT[f.contingencia] || '—'))}
+        ${fila('Recaída', f.recaida ? 'Sí' : 'No')}
+        ${fila('Próxima revisión', esc(dmy(f.revision) || '—'))}
+        ${fila('Duración estimada', f.duracion_estimada ? `${esc(String(f.duracion_estimada))} días` : '—')}
+        ${fila('Del FIE del', esc(dmy(f.registro) || '—'))}
+        ${fila('Fichero', esc(f.fichero || '—'))}
+      </dl>
+      <h3 class="text-xs font-semibold text-telecab-muted mb-1">${f.cambia ? (EXTRA.automatico ? 'Lo que se va a cambiar en el ERP' : 'Lo que cambiaría al aplicar') : 'En el ERP'}</h3>
+      ${f.cambia ? `<ul class="text-sm list-disc pl-5 mb-4">${f.acciones.map(a => `<li>${esc(a)}</li>`).join('')}</ul>`
+        : `<p class="text-sm text-telecab-muted mb-4">${esc(f.sin_ficha ? f.acciones[0] : 'Nada: ya cuadra con el FIE.')}</p>`}
+      ${f.nota && f.estado !== 'pendiente' ? `<h3 class="text-xs font-semibold text-telecab-muted mb-1">Lo que se hizo${f.aplicado ? ` (${esc(f.aplicado)})` : ''}</h3><p class="text-sm mb-4">${esc(f.nota)}</p>` : ''}
+      ${f.conductor_id ? `<p class="text-sm"><a class="underline" href="/plantilla#${encodeURIComponent(f.conductor_id)}">Abrir su ficha en Plantilla</a></p>` : ''}`;
+    Panel.abrir({ titulo: f.nombre_erp || f.nombre || 'Proceso de baja', subtitulo: `Baja del ${dmy(f.fecha_baja)}`, html, ancho: 'max-w-xl' });
   }
 
   async function aplicar(lst) {
