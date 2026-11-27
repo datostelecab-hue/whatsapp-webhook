@@ -235,6 +235,11 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
 - **Decidir:** los motivos; si se reutiliza db/50 sin la autorización; qué es «la nómina de Diana»; si la firma es en papel escaneado o electrónica.
 
 ### 7. Pendientes de nómina del día 20 (M)
+- **✔ Hecho el 27/11/2026** (`modules/RRHH/pendientesNomina.service.js`, sin migración). Decidido por Camilo:
+  - **qué sale**, de la nómina del mes (del 26 al 25): las ausencias sin validar del periodo, las horas sin justificar (las del mes que cobra, a mes vencido) y las bajas con el parte por comprobar (fin previsto pasado o sin fecha). Las J pendientes, no;
+  - **cómo**: una tarjeta por tipo con su número, no una por pendiente. Las de ausencias y bajas van a «Revisa las ausencias de cada día»; la de horas, a «Lleva la nómina». Además, **un aviso con el resumen** a quien lleva la nómina;
+  - **cuándo**: el día 20 a las 08:00, o el hábil anterior (`cuando.mensualHabil`). Cada mañana a las 09:00, la de ausencias y la de bajas cambian su número, y se cierran solas al llegar a cero. La de horas se cierra a mano.
+  - Pruebas en test/salidas-y-pendientes.test.js.
 - **Hay:**
   - las horas no justificadas y las J pendientes que ya calcula /nominas;
   - las bajas por aplicar;
@@ -246,6 +251,14 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
 - **Decidir:** qué es una baja sin validar; qué horas sin justificar y en qué ventana; quién responde de las horas sin justificar. Las cartas y las bajas son de Laura.
 
 ### 8. Tareas al cerrar una baja o un despido (L)
+- **✔ Hecho el 27/11/2026** (`modules/RRHH/salidas.service.js`, sin migración). Decidido por Camilo:
+  - **el día efectivo de la baja** nacen estas tarjetas, cada una a quien tenga su función:
+    - **desactivar en BOLT**: solo si tiene alguna cuenta activa. Según la causa va a uno de los tres «Desactiva al que se va». Se cierra sola cuando BOLT ya no le da ninguna cuenta activa;
+    - **recoger lo que tenía** (llaves, tarjeta de combustible, uniforme): a «Recoge lo que tenía quien se va y anula sus credenciales». El PIN de Ballenoil ya no aplica;
+    - **sacarle del coche y del cuadrante**: solo si sigue con el coche vinculado o con turnos. Va a «Coche de sustitución y cambio de cuadrante» y se cierra sola;
+    - **confirmar la baja en la gestoría**, con su justificante: solo la plantilla propia, a quien sube el listado de la gestoría.
+  - **Cuándo**: una baja programada no reparte nada hasta que se aplica. Una vuelta cada hora mira las bajas de los últimos 30 días, desde el 27/11/2026.
+  - Ya estaban: la lista cerrada de causas, el finiquito, que nace solo, y la firma electrónica (YouTrust).
 - **Hay:**
   - `darDeBaja` y la baja programada (db/191), los dos puntos donde enganchar;
   - el portal y el bot, que ya dejan fuera al que se va;
@@ -265,6 +278,7 @@ Orden de lo que queda: A7, A8 y A9 hechas el 16/11/2026, a prueba en sus ramas. 
   - **qué firma electrónica**: simple, con código por email o por el portal, o un proveedor de firma avanzada.
 
 ### 9. Historial del conductor (M, en dos partes)
+- **✔ Primera parte (27/11/2026)**: el expediente de RR. HH. de la ficha de Plantilla. Cada bloque va con su llave: faltas y sanciones (con su gravedad y su medida), «Todo lo que se le ha comunicado», ausencias y bajas, nómina por meses… Ver [[Conductores#El expediente de RR. HH. (26/11/2026)]]. **Falta la segunda parte: las multas, con el ítem 10.**
 - **Hay:** la ficha 360, con el hueco «Multas y sanciones de tráfico» reservado, y la regla de reincidencia del convenio.
 - **Entregas:** las sanciones (y su acumulado) al acabar el 5; las multas (número e importe) con el 10.
 - **Choca:** toda la ficha sale con la llave `/plantilla`, sin permiso por bloque; hoy «sanción» en la ficha son los excesos de velocidad (no entran: el ítem habla de las sanciones del 5 y las multas del 10).

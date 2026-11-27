@@ -804,6 +804,10 @@ programar('10 5 * * *', async () => {
 // de ruta). Una sola vuelta cada diez minutos hace las que tengan su vez
 // pendiente, una vez cada una aunque haya dos procesos, y recupera la que se
 // perdió por una caída. Se registran en services/tareasProgramadas.js.
+// Las que no cuelgan de ninguna pantalla se cargan aquí para que se registren:
+// las tareas al irse alguien (ítem 8) y los pendientes de nómina del día 20 (ítem 7).
+require('./modules/RRHH/salidas.service');
+require('./modules/RRHH/pendientesNomina.service');
 require('./services/tareasProgramadas').arrancar(programar);
 
 // LAS BAJAS PROGRAMADAS (db/191, 13/10/2026). Quien se da de baja con fecha
